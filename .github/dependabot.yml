@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: 'cargo'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []
+    groups:
+      typescript-toolchain:
+        patterns:
+          - '@types/node'
+          - 'oxfmt'
+          - 'oxlint'
+          - 'oxlint-tsgolint'
+          - 'typescript'
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'daily'
+      time: '00:00'
+    labels: []

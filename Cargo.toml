@@ -1,0 +1,26 @@
+[workspace]
+members  = ["apps/*"]
+resolver = "3"
+
+[workspace.package]
+authors     = ["acgxv <xv@acg.box>"]
+description = "description_placeholder"
+edition     = "2024"
+homepage    = "https://hack.ink/name_placeholder"
+license     = "GPL-3.0-only"
+repository  = "https://github.com/hack-ink/name_placeholder"
+version     = "0.1.0"
+
+[profile.final-release]
+inherits = "release"
+lto      = true
+
+[workspace.dependencies]
+# crates.io
+clap               = { version = "4.6", features = ["derive"] }
+color-eyre         = { version = "0.6" }
+directories        = { version = "6.0" }
+tracing            = { version = "0.1" }
+tracing-appender   = { version = "0.2" }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+vergen-gitcl       = { version = "10.0", features = ["cargo", "vcs_info"] }
