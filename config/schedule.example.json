@@ -1,0 +1,6 @@
+{
+  "schema_version": "aiq.schedule.v1",
+  "timezone": "Etc/UTC",
+  "day_local_time": "15:00",
+  "night_local_time": "03:00"
+}

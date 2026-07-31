@@ -1,122 +1,104 @@
 ---
-type: "Reference"
-title: "Architecture And Runtime"
-openwiki_generated: true
+type: 'Architecture'
+title: 'Architecture and Runtime'
+description: 'AIQ components, trust boundaries, data flow, and runtime contracts.'
+tags: ['architecture', 'runtime', 'security']
 ---
 
-# Architecture And Runtime
+# Architecture and Runtime
 
-## Workspace Model
+## Components
 
-The repository is intentionally a small monorepo template with lanes for later growth:
+| Component           | Responsibility                                                         |
+| ------------------- | ---------------------------------------------------------------------- |
+| `apps/aiq-runner`   | Preflight, task execution, scoring, packaging, and submission          |
+| `apps/aiq-verifier` | Queue claims, reconstruction, evaluator replay, and attestations       |
+| `apps/web`          | Public reads and controlled submission, claim, and verification routes |
+| `databases`         | Desired PostgreSQL state, RLS, RPCs, views, and Storage metadata       |
+| `benchmarks`        | Public catalog, schemas, and synthetic examples                        |
 
-| Path | Ownership |
-| --- | --- |
-| `apps/` | Runnable applications, services, sites, and binaries |
-| `apps/name_placeholder/` | Current Rust binary package and all package-specific metadata |
-| `scripts/` | Repository-maintenance TypeScript programs and their colocated tests |
-| `packages/` | Reusable, language-neutral shared packages; currently only `.gitkeep` |
-| `Cargo.toml` | Rust workspace membership (`apps/*`), resolver 3, shared package metadata, `final-release`, and shared dependency versions |
-| `Cargo.lock` | Locked dependency graph used by release commands with `--locked` |
-| `rust-toolchain.toml` | Ordinary Rust toolchain and component selection; formatting remains an explicit nightly task |
-| `package.json` and `package-lock.json` | Private npm tool-package metadata and the exact TypeScript development tool graph |
-| `tsconfig.json` | Strict, erasable, NodeNext TypeScript contract for `scripts/**/*.ts` |
-| `.oxfmtrc.json` and `.oxlintrc.json` | TypeScript formatting and type-aware lint policy |
-| `Makefile.toml` | Repository-native validation task contracts |
-| `.github/` | CI, release, and dependency automation; no CodeQL workflow is currently retained |
-| `openwiki/` | Maintained repository knowledge and agent routing |
+The operator supplies the private corpus, evaluator files, workspaces, runtime,
+Codex profile, and keys. These inputs are not repository data.
 
-The root is a virtual Cargo workspace, not a package. `apps/name_placeholder/Cargo.toml` inherits common metadata, declares the build script, selects dependencies, and names the package. The accepted workspace-first layout was introduced in commit `4f91ab1`, moving the prior root CLI without changing its runtime behavior and reserving `packages/` for future reuse.
+## Identity boundary
 
-**Ownership invariant:** put runnable product surfaces in `apps/`, repository-maintenance programs in `scripts/`, and genuinely reusable code in `packages/`. Add a Rust package lane to workspace membership deliberately; the current `apps/*` pattern does not include `packages/*`, and non-Rust packages never belong in Cargo membership.
+Production uses three Ed25519 identities:
 
-Sources: `Cargo.toml`, `rust-toolchain.toml`, `package.json`, `tsconfig.json`, `apps/name_placeholder/Cargo.toml`, `scripts/list-template-markers.ts`, `packages/.gitkeep`, `Makefile.toml`; historical evidence: commit `4f91ab1`.
+1. The runner signs `aiq.result-package.v3`.
+2. The verifier signs `aiq.verifier-attestation.v3` and must differ from the
+   runner.
+3. The publisher completes the database publication transition and must differ
+   from both.
 
-## TypeScript Script Runtime
+The gateway mints short-lived custom-role JWTs for verifier and publisher RPCs.
+The browser never receives those credentials.
 
-Repository-maintenance TypeScript runs directly on the exact Node.js version in `.node-version`. Node erases supported TypeScript syntax at runtime but does not read `tsconfig.json` or perform type checking. The script lane therefore keeps separate repository gates:
+## Runner flow
 
-- TypeScript 7 `tsc --noEmit` is the authoritative compiler check.
-- Oxfmt owns formatting for TypeScript and its JSON configuration files. The unused root Prettier configuration was removed so two tools cannot format the same files.
-- Oxlint and tsgolint own syntax and type-aware lint. Compiler diagnostics remain separate because Oxlint type checking is not the compiler authority.
-- Node's built-in test runner executes colocated `*.test.ts` integration tests.
+The runner validates the public catalog, current corpus commitment, controlled
+toolchain, evaluator runtime, source manifest, capability manifest, schedule,
+and path layout. Preflight probes the exact local Codex CLI and writes an
+authenticated expiring report.
 
-The compiler contract requires strict checking, `noUncheckedIndexedAccess`, exact optional-property semantics, NodeNext ESM, explicit TypeScript import extensions, and syntax that Node can erase without transformation. Runtime enums, runtime namespaces, parameter properties, TypeScript path aliases, and unchecked type assertions are outside this script profile.
+A live run uses fresh task workspaces and content-addressed artifacts. It writes
+a durable checkpoint and creates one `aiq.run.v3` record. An Official run is
+non-synthetic, complete, and exactly 17 by 72. Calibration runs are not Official.
 
-`scripts/list-template-markers.ts` is the first script owner. It invokes `git grep` without a shell, scans all tracked files, forwards Git's `path:line:text` output, returns success when no markers remain, and reports operational failures on stderr with a nonzero exit status. It intentionally keeps the original template markers after adoption so a clean repository emits no marker records. Its integration test uses temporary directories to prove tracked-file detection, untracked-file exclusion, the clean-repository result, and non-Git failure handling.
+`aiq.run-provenance.v2` contains 18 top-level fields. It binds the run class,
+corpus, catalog, task set, evaluator, runtime, preflight, harness, prompt, tool
+policy, network policy, environment, source manifest, runner executable, Codex
+executable, and permission evidence.
 
-Sources: `.node-version`, `package.json`, `package-lock.json`, `tsconfig.json`, `.oxfmtrc.json`, `.oxlintrc.json`, `scripts/list-template-markers.ts`, `scripts/list-template-markers.test.ts`, `Makefile.toml`.
+## Verification flow
 
-## CLI Contract
+The submission route stores exact package bytes and required artifacts in
+private Storage before it queues an unverified inbox record. Queue receipt does
+not publish the run.
 
-The workspace builds one binary with no subcommands. `apps/name_placeholder/src/cli.rs` derives `clap::Parser` and defines:
+The verifier claims a bounded lease, downloads only claim-bound artifacts,
+reconstructs candidate workspaces, and replays committed evaluators with the
+committed runtime. Production requires the `evaluator_replayed` disposition.
 
-- `--placeholder` / `-p`, parsed as a `String` despite its displayed `value_name = "NUM"`.
-- Default value `Welcome to use name_placeholder!`.
-- A generated `--version` string formed as `<package-version>-<git-sha>-<target-triple>`.
-- Styled help headings/usage in bold red, literals in bold blue, and placeholders in green.
-- `Cli::run`, which emits one structured info log containing the parsed CLI and returns success; it produces no terminal output of its own.
+The verification route performs three ordered database actions:
 
-The unit test checks only the default placeholder string. It does not cover parsing aliases, version metadata, logging, startup errors, or panic behavior.
+1. stage `aiq.normalized-batch.v3`;
+2. record the immutable verifier attestation;
+3. publish through the distinct publisher role.
 
-Sources: `apps/name_placeholder/src/cli.rs`, `apps/name_placeholder/Cargo.toml`.
+Database functions enforce exact structure, identity separation, bindings,
+append-only evidence, and complete run state.
 
-## Startup And Runtime
+## Database boundary
 
-`apps/name_placeholder/src/main.rs` executes this sequence:
+`databases/schema.sql` owns the complete desired state. Private tables are in
+`aiq_private`. RLS is enabled and forced. Eight security-invoker views and one
+bounded trend RPC provide browser reads. Browser roles do not have private-table
+write access.
 
-1. Install `color-eyre`; installation failure returns an error.
-2. Resolve platform application data via `ProjectDirs::from("", "hack.ink", "name_placeholder")`; inability to resolve directories returns `Failed to resolve project directories.`
-3. Build a non-blocking file appender in that data directory. Logs rotate weekly, use the suffix `log`, and retain at most three files. Appender construction errors abort startup through `?`.
-4. Read the tracing filter from the default environment (`RUST_LOG`); an absent **or invalid** value falls back to `info`.
-5. Initialize non-ANSI tracing to the file writer. The guard remains alive through CLI execution so buffered logs can flush.
-6. Replace the panic hook: invoke the default hook, then abort instead of unwinding.
-7. Parse arguments and run the CLI.
+`databases/init.ts` is a one-connection, one-transaction initializer for a new
+AIQ database. It inserts the current public catalog, scoring definition, model
+matrix, corpus commitment, and runner/verifier/publisher identities.
 
-Changing the organization/application identifiers changes the platform data path and therefore is part of template adoption, not a cosmetic rename. Changing flags, commands, version text, logging, startup errors, or panic semantics requires updating this page and relevant tests.
+## Storage boundary
 
-Sources: `apps/name_placeholder/src/main.rs`, `apps/name_placeholder/src/cli.rs`.
+Submitted packages and runner artifacts use separate private buckets. Database
+rows bind object type, digest, byte count, retention state, and active
+references. Reconciliation records database-only and Storage-only mismatches.
+Deletion is a separate bounded worker action and cannot remove referenced or
+held objects.
 
-## Build Metadata
+## Public application
 
-`apps/name_placeholder/build.rs` uses `vergen-gitcl` to expose the target triple and Git SHA at compile time. If adding the Git instructions fails—for example in a crates.io package without usable Git metadata—the script sets `VERGEN_GIT_SHA=crates.io`. Failure to add target-triple instructions or to perform final emission still fails the build.
+The Next.js server reads the public views through the configured Supabase API.
+In explicit development mode, missing public Supabase values select synthetic
+seed data. Production and unknown modes fail closed.
 
-The release profile `final-release` inherits `release` and enables LTO. The release workflow builds each target with `--locked --profile final-release`.
+`GET /api/readiness` checks configuration shape and bounded dependencies. It
+does not claim that a deployment or benchmark run is complete.
 
-Sources: `apps/name_placeholder/build.rs`, `Cargo.toml`, `.github/workflows/release.yml`.
+## Distributed radar
 
-## Placeholder And Replacement Surface
-
-Adoption must replace or deliberately remove all coupled identity values:
-
-- `name_placeholder` and `description_placeholder` in README files, manifests, lockfile, Rust source, workflow package/artifact names, badges, repository/homepage URLs, and OpenWiki claims.
-- `name-placeholder-workspace` in the private npm tool-package manifest.
-- The app directory/package/binary name and all Cargo `-p` selectors.
-- `ProjectDirs` organization/application identifiers and the resulting data location.
-- CLI default text, crate-level docs, release archive names, and crates.io publication target.
-- README TODOs and fake installation dependencies; these are incomplete template guidance, not valid product instructions.
-
-Use [Template Adoption](template-adoption.md) for sequencing.
-
-## Generated And Local-Only Paths
-
-These are not tracked source owners:
-
-- `target/`: Cargo build output, final-release binaries, bundles, and local artifacts.
-- `.worktrees/` and `.workspaces/`: local Git/workspace lanes.
-- `.agent/` and `.codex/`: local agent/runtime state.
-- `tmp/`: scratch data.
-- Other ignored language/tool output in `.gitignore`, including `build`, `dist`, `coverage`, and `node_modules`.
-- Platform application data created by the CLI, including rotating logs.
-
-Never infer repository state from these paths or commit them as source. `.taplo.toml` also excludes generated, local, and tool-owned trees from formatting.
-
-Sources: `.gitignore`, `.taplo.toml`, `package-lock.json`, `apps/name_placeholder/src/main.rs`.
-
-## Change Guide
-
-- Workspace/package move: update both manifests, package paths, workflows, README commands, OpenWiki ownership, and lockfile; run all checks.
-- CLI/runtime change: start in `apps/name_placeholder/src/cli.rs` or `apps/name_placeholder/src/main.rs`; add behavior tests and update this page.
-- TypeScript maintenance change: keep the program and its `*.test.ts` file in `scripts/`, preserve the Node-erasable syntax contract, and run the TypeScript check, lint, format, and test tasks.
-- Shared package addition: establish its language-specific manifest first, then update only the appropriate workspace/tooling membership.
-- Release identity/profile change: update manifest metadata and `.github/workflows/release.yml` together; verify archive paths on all target OSes.
+The radar protocol keeps registry identity, signed observations, receipts, and
+aggregation evidence distinct. Checked-in radar rows are synthetic. The
+repository defines the contracts and public aggregate read but does not operate
+a coordinator or remote nodes.

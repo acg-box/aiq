@@ -1,0 +1,21 @@
+{
+  "schema_version": "aiq.evaluator-result.v3",
+  "outcome": "partial",
+  "score": 0.75,
+  "checks": [
+    {
+      "check_id": "functional_behavior",
+      "weight": 3,
+      "passed": true,
+      "failure_class": "none",
+      "evidence_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    },
+    {
+      "check_id": "regression_suite",
+      "weight": 1,
+      "passed": false,
+      "failure_class": "value",
+      "evidence_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    }
+  ]
+}

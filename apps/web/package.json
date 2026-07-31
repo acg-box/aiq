@@ -1,0 +1,46 @@
+{
+  "name": "@aiq/wiki-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AIQ Wiki public benchmark history and distributed radar interface",
+  "homepage": "https://aiq.wiki",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/acg-box/aiq.git",
+    "directory": "apps/web"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "node --max-old-space-size=512 ../../node_modules/next/dist/bin/next build --webpack",
+    "check": "tsc --noEmit",
+    "dev": "next dev",
+    "start": "next start",
+    "test": "node --test --experimental-test-coverage \"src/**/*.test.ts\"",
+    "test:browser": "npm run test:browser:synthetic && npm run test:browser:invalid-config && npm run test:browser:malformed-config && npm run test:browser:missing-config && npm run test:browser:live-empty && npm run test:browser:live-published",
+    "test:browser:synthetic": "playwright test",
+    "test:browser:invalid-config": "playwright test --config playwright.invalid-config.ts",
+    "test:browser:live-empty": "playwright test --config playwright.live-empty.ts",
+    "test:browser:live-stack": "playwright test --config playwright.live-stack.ts",
+    "test:browser:live-published": "playwright test --config playwright.live-published.ts",
+    "test:browser:malformed-config": "playwright test --config playwright.malformed-config.ts",
+    "test:browser:missing-config": "playwright test --config playwright.missing-config.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.110.8",
+    "next": "16.2.11",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.62.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.18.0",
+    "npm": ">=11.17.0"
+  }
+}

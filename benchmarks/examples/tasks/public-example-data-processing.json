@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "public-example-data-processing-01",
+  "task_version": "1.0.0",
+  "title": "Compute a seeded valid-row count",
+  "domain": "data_processing",
+  "difficulty": "easy",
+  "prompt": "Synthetic example: Three rows have statuses `valid`, `invalid`, and `valid`. Return only the valid-row count.",
+  "allowed_tools": ["none"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
+  "tags": ["synthetic", "count"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
+  "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-data-processing.json"],
+  "visibility": "public_example",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": { "kind": "exact_match", "expected": "2", "case_sensitive": true }
+}

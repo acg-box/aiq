@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "public-example-reliability-recovery-01",
+  "task_version": "1.0.0",
+  "title": "Classify an unavailable capability",
+  "domain": "reliability_recovery",
+  "difficulty": "easy",
+  "prompt": "Synthetic example: A required model configuration is absent from the capability manifest. Return the required structured status name.",
+  "allowed_tools": ["none"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
+  "tags": ["synthetic", "capability"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
+  "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-reliability-recovery.json"],
+  "visibility": "public_example",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": { "kind": "exact_match", "expected": "unsupported", "case_sensitive": false }
+}

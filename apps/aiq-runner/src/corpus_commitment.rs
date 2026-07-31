@@ -1,0 +1,1812 @@
+//! Public-safe identities for the current controlled benchmark corpus.
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	env::{
+		self,
+		consts::{ARCH, OS},
+	},
+	error::Error,
+	fmt::{Display, Formatter},
+	fs::{self, DirEntry, File},
+	io::{self, Read as _, Take},
+	path::{Path, PathBuf},
+};
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
+
+use crate::{
+	protocol,
+	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
+	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
+};
+
+/// Explicit execution class selected before any benchmark work starts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunClass {
+	/// Local best-effort calibration that can never become Official.
+	Calibration,
+	/// Complete non-synthetic 72-task by 17-model execution.
+	Official,
+}
+
+/// Signed public-safe benchmark identities required to replay a real run.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct RunProvenanceCommitment {
+	/// Provenance contract version.
+	pub schema_version: String,
+	/// Explicit execution class.
+	pub run_class: RunClass,
+	/// Current controlled-corpus identifier.
+	pub corpus_release_id: String,
+	/// RFC 8785 SHA-256 commitment to the complete corpus commitment document.
+	pub corpus_commitment_sha256: String,
+	/// Frozen ordered full-catalog metadata commitment.
+	pub catalog_digest: String,
+	/// Content address of the selected task definitions.
+	pub task_set_digest: String,
+	/// Content address of the selected evaluator identities.
+	pub evaluator_digest: String,
+	/// Runner and result protocol commitment.
+	pub runtime_digest: String,
+	/// Exact capability-validation report commitment.
+	pub preflight_digest: String,
+	/// Controlled benchmark harness commitment.
+	pub harness_digest: String,
+	/// Exact runner prompt-source commitment.
+	pub prompt_digest: String,
+	/// Declared tool-policy commitment.
+	pub tool_policy_digest: String,
+	/// Declared network-policy commitment.
+	pub network_policy_digest: String,
+	/// Controlled execution-environment commitment.
+	pub environment_digest: String,
+	/// Runner build-and-test source-manifest commitment.
+	pub source_manifest_digest: String,
+	/// SHA-256 of the actual runner executable.
+	pub runner_executable_digest: String,
+	/// SHA-256 of the actual Codex executable.
+	pub codex_executable_digest: String,
+	/// Deterministic digest of permission policy, requirements, profile, and canary evidence.
+	pub permission_evidence_digest: String,
+}
+
+/// A corpus commitment after source and catalog validation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidatedCorpusCommitment {
+	release_id: String,
+	canonical_sha256: String,
+	harness_digest: String,
+	prompt_digest: String,
+	tool_policy_digest: String,
+	network_policy_digest: String,
+	environment_digest: String,
+	source_manifest_digest: String,
+	evaluator_runtime_executable_digest: String,
+	evaluator_runtime_version: String,
+	model_toolchain_policy: ExecutionToolPolicy,
+	baseline_workspace_digests: BTreeMap<String, String>,
+}
+impl ValidatedCorpusCommitment {
+	/// Returns the current corpus identifier.
+	#[must_use]
+	pub fn release_id(&self) -> &str {
+		&self.release_id
+	}
+
+	/// Returns the canonical digest of the complete corpus commitment.
+	#[must_use]
+	pub fn canonical_sha256(&self) -> &str {
+		&self.canonical_sha256
+	}
+
+	/// Returns the canonical source-manifest digest.
+	#[must_use]
+	pub fn source_manifest_digest(&self) -> &str {
+		&self.source_manifest_digest
+	}
+
+	/// Returns the baseline-tree commitment for every selected task.
+	#[must_use]
+	pub fn baseline_workspace_digests(&self) -> &BTreeMap<String, String> {
+		&self.baseline_workspace_digests
+	}
+
+	/// Checks the selected Node.js runtime against the committed execution provenance.
+	pub fn validate_evaluator_runtime(
+		&self,
+		runtime: &EvaluatorRuntime,
+	) -> Result<(), CorpusCommitmentError> {
+		if runtime.executable_digest() != self.evaluator_runtime_executable_digest
+			|| runtime.version() != self.evaluator_runtime_version
+		{
+			return Err(CorpusCommitmentError::new(
+				"evaluator runtime does not match the corpus commitment",
+			));
+		}
+
+		Ok(())
+	}
+
+	/// Validates the configured model toolchain against the committed policy.
+	pub fn validate_model_toolchain(
+		&self,
+		root: &Path,
+		runtime: &EvaluatorRuntime,
+	) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+		validate_model_toolchain(root, &self.model_toolchain_policy, runtime)
+	}
+
+	/// Validates committed toolchain files without executing their version commands.
+	pub fn validate_model_toolchain_static(
+		&self,
+		root: &Path,
+		runtime: &EvaluatorRuntime,
+	) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+		validate_model_toolchain_static(root, &self.model_toolchain_policy, runtime)
+	}
+
+	/// Builds the complete signed identity set for one selected run.
+	#[must_use]
+	#[allow(clippy::too_many_arguments)]
+	pub fn run_provenance(
+		&self,
+		run_class: RunClass,
+		task_set_digest: String,
+		evaluator_digest: String,
+		runtime_digest: String,
+		preflight_digest: String,
+		runner_executable_digest: String,
+		codex_executable_digest: String,
+		permission_evidence_digest: String,
+	) -> RunProvenanceCommitment {
+		RunProvenanceCommitment {
+			schema_version: "aiq.run-provenance.v2".to_owned(),
+			run_class,
+			corpus_release_id: self.release_id.clone(),
+			corpus_commitment_sha256: self.canonical_sha256.clone(),
+			catalog_digest: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+			task_set_digest,
+			evaluator_digest,
+			runtime_digest,
+			preflight_digest,
+			harness_digest: self.harness_digest.clone(),
+			prompt_digest: self.prompt_digest.clone(),
+			tool_policy_digest: self.tool_policy_digest.clone(),
+			network_policy_digest: self.network_policy_digest.clone(),
+			environment_digest: self.environment_digest.clone(),
+			source_manifest_digest: self.source_manifest_digest.clone(),
+			runner_executable_digest,
+			codex_executable_digest,
+			permission_evidence_digest,
+		}
+	}
+}
+
+/// Corpus commitment validation failure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CorpusCommitmentError {
+	message: String,
+}
+impl CorpusCommitmentError {
+	fn new(message: impl Into<String>) -> Self {
+		Self { message: message.into() }
+	}
+}
+
+impl Display for CorpusCommitmentError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(&self.message)
+	}
+}
+
+impl Error for CorpusCommitmentError {}
+
+/// Committed model-visible command toolchain policy.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutionToolPolicy {
+	/// Policy schema.
+	pub schema_version: String,
+	/// Node platform token.
+	pub platform: String,
+	/// Node architecture token.
+	pub architecture: String,
+	/// Versioned fixed platform path mapping.
+	pub platform_minimal_path: String,
+	/// Ambient PATH inheritance is forbidden.
+	pub inherit_path: bool,
+	/// Shell profile loading is forbidden.
+	pub use_shell_profile: bool,
+	/// Ordered Node.js and ripgrep identities.
+	pub commands: Vec<ToolchainCommand>,
+}
+
+/// One command exposed to model-generated shell commands.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolchainCommand {
+	/// Stable command name.
+	pub name: String,
+	/// Exact root-relative executable filename.
+	pub executable_ref: String,
+	/// Executable SHA-256.
+	pub executable_sha256: String,
+	/// Exact bounded `--version` output.
+	pub version: String,
+}
+
+/// Canonical validated model toolchain selected for one run.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ValidatedModelToolchain {
+	root: PathBuf,
+	policy: ExecutionToolPolicy,
+	digest: String,
+}
+impl ValidatedModelToolchain {
+	/// Canonical toolchain root.
+	#[must_use]
+	pub fn root(&self) -> &Path {
+		&self.root
+	}
+
+	/// Exact execution policy.
+	#[must_use]
+	pub fn policy(&self) -> &ExecutionToolPolicy {
+		&self.policy
+	}
+
+	/// Canonical policy digest.
+	#[must_use]
+	pub fn digest(&self) -> &str {
+		&self.digest
+	}
+
+	/// Exact PATH supplied to Codex and model shells.
+	#[must_use]
+	pub fn path_value(&self) -> String {
+		let separator = if cfg!(windows) { ";" } else { ":" };
+		let mut entries = vec![self.root.display().to_string()];
+
+		entries.extend(platform_minimal_path_entries().iter().map(ToString::to_string));
+
+		entries.join(separator)
+	}
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorpusCommitment {
+	schema_version: String,
+	release_id: String,
+	controlled: bool,
+	synthetic: bool,
+	catalog: CorpusCatalog,
+	execution: CorpusExecution,
+	tasks: Vec<CorpusTask>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorpusCatalog {
+	schema_version: String,
+	task_set_id: String,
+	task_set_version: String,
+	identity_sha256: String,
+	identity_scope: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorpusExecution {
+	harness_sha256: String,
+	runner_prompt_source_sha256: String,
+	declared_tool_policy_sha256: String,
+	declared_network_policy_sha256: String,
+	environment_sha256: String,
+	runtime_provenance: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CorpusTask {
+	task_id: String,
+	task_version: String,
+	task_definition_sha256: String,
+	baseline_workspace_tree_sha256: String,
+	fixture_bundle_sha256: String,
+	catalog_entry_sha256: String,
+	evaluator_runtime_kind: String,
+	evaluator_runtime_executable_sha256: String,
+	evaluator_executable_sha256: String,
+	evaluator_configuration_sha256: String,
+	acceptance_suite_sha256: String,
+	leakage_review_sha256: String,
+}
+
+#[derive(Deserialize)]
+struct FrozenCatalog {
+	tasks: Vec<FrozenTask>,
+}
+
+#[derive(Deserialize)]
+struct FrozenTask {
+	task_id: String,
+	task_version: String,
+	allowed_tools: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceManifest {
+	schema_version: String,
+	package: String,
+	scope: String,
+	path_base: String,
+	entries: Vec<SourceManifestEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceManifestEntry {
+	path: String,
+	sha256: String,
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_model_toolchain(root: PathBuf) -> ValidatedModelToolchain {
+	let (platform, architecture, minimal_path) =
+		host_toolchain_identity().expect("test host toolchain identity");
+
+	ValidatedModelToolchain {
+		root,
+		policy: ExecutionToolPolicy {
+			schema_version: "aiq.execution-tool-policy.v1".to_owned(),
+			platform: platform.to_owned(),
+			architecture: architecture.to_owned(),
+			platform_minimal_path: minimal_path.to_owned(),
+			inherit_path: false,
+			use_shell_profile: false,
+			commands: vec![
+				ToolchainCommand {
+					name: "node".to_owned(),
+					executable_ref: if cfg!(windows) { "node.exe" } else { "node" }.to_owned(),
+					executable_sha256: format!("sha256:{}", "a".repeat(64)),
+					version: "v0.0.0".to_owned(),
+				},
+				ToolchainCommand {
+					name: "rg".to_owned(),
+					executable_ref: if cfg!(windows) { "rg.exe" } else { "rg" }.to_owned(),
+					executable_sha256: format!("sha256:{}", "b".repeat(64)),
+					version: "ripgrep 0.0.0".to_owned(),
+				},
+			],
+		},
+		digest: format!("sha256:{}", "a".repeat(64)),
+	}
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_validated_model_toolchain(
+	root: &Path,
+	runtime: &EvaluatorRuntime,
+) -> ValidatedModelToolchain {
+	let (platform, architecture, minimal_path) =
+		host_toolchain_identity().expect("test host toolchain identity");
+	let suffix = if cfg!(windows) { ".exe" } else { "" };
+	let commands = ["node", "rg"]
+		.into_iter()
+		.map(|name| {
+			let executable_ref = format!("{name}{suffix}");
+			let path = root.join(&executable_ref);
+			let digest = format!(
+				"sha256:{}",
+				hex::encode(Sha256::digest(fs::read(&path).expect("toolchain executable")))
+			);
+			let version = evaluator::probe_executable_version(&path, &["--version".to_owned()])
+				.expect("toolchain version")
+				.lines()
+				.next()
+				.expect("toolchain version line")
+				.to_owned();
+
+			ToolchainCommand {
+				name: name.to_owned(),
+				executable_ref,
+				executable_sha256: digest,
+				version,
+			}
+		})
+		.collect();
+	let policy = ExecutionToolPolicy {
+		schema_version: "aiq.execution-tool-policy.v1".to_owned(),
+		platform: platform.to_owned(),
+		architecture: architecture.to_owned(),
+		platform_minimal_path: minimal_path.to_owned(),
+		inherit_path: false,
+		use_shell_profile: false,
+		commands,
+	};
+
+	validate_model_toolchain(root, &policy, runtime).expect("validated fixture toolchain")
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_run_provenance(
+	task_set_digest: String,
+	evaluator_digest: String,
+	runtime_digest: String,
+	preflight_digest: String,
+) -> RunProvenanceCommitment {
+	fixture_run_provenance_for_class(
+		RunClass::Official,
+		task_set_digest,
+		evaluator_digest,
+		runtime_digest,
+		preflight_digest,
+	)
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_run_provenance_for_class(
+	run_class: RunClass,
+	task_set_digest: String,
+	evaluator_digest: String,
+	runtime_digest: String,
+	preflight_digest: String,
+) -> RunProvenanceCommitment {
+	RunProvenanceCommitment {
+		schema_version: "aiq.run-provenance.v2".to_owned(),
+		run_class,
+		corpus_release_id: "corpus_fixture".to_owned(),
+		corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
+		catalog_digest: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+		task_set_digest,
+		evaluator_digest,
+		runtime_digest,
+		preflight_digest,
+		harness_digest: format!("sha256:{}", "2".repeat(64)),
+		prompt_digest: format!("sha256:{}", "3".repeat(64)),
+		tool_policy_digest: format!("sha256:{}", "4".repeat(64)),
+		network_policy_digest: format!("sha256:{}", "5".repeat(64)),
+		environment_digest: format!("sha256:{}", "6".repeat(64)),
+		source_manifest_digest: format!("sha256:{}", "7".repeat(64)),
+		runner_executable_digest: format!("sha256:{}", "8".repeat(64)),
+		codex_executable_digest: format!("sha256:{}", "9".repeat(64)),
+		permission_evidence_digest: format!("sha256:{}", "a".repeat(64)),
+	}
+}
+
+/// Verifies the corpus document identity and its committed evaluator runtime.
+pub fn validate_evaluator_runtime_commitment(
+	path: &Path,
+	expected_canonical_sha256: &str,
+	runtime: &EvaluatorRuntime,
+	toolchain_root: &Path,
+) -> Result<(), CorpusCommitmentError> {
+	let metadata = fs::symlink_metadata(path)
+		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
+
+	if metadata.file_type().is_symlink()
+		|| !metadata.is_file()
+		|| metadata.len() == 0
+		|| metadata.len() > 4 * 1_024 * 1_024
+	{
+		return Err(CorpusCommitmentError::new("corpus commitment must be a bounded regular file"));
+	}
+
+	let value: Value = serde_json::from_slice(&fs::read(path).map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot read corpus commitment: {error}"))
+	})?)
+	.map_err(|error| CorpusCommitmentError::new(format!("invalid corpus commitment: {error}")))?;
+	let observed = protocol::canonical_hash(&value).map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot hash corpus commitment: {error}"))
+	})?;
+
+	if observed != expected_canonical_sha256
+		|| value.pointer("/schema_version").and_then(Value::as_str)
+			!= Some("aiq.corpus-commitment.v2")
+		|| value
+			.pointer("/execution/runtime_provenance/node_runtime/executable_sha256")
+			.and_then(Value::as_str)
+			!= Some(runtime.executable_digest())
+		|| value
+			.pointer("/execution/runtime_provenance/node_runtime/version")
+			.and_then(Value::as_str)
+			!= Some(runtime.version())
+	{
+		return Err(CorpusCommitmentError::new(
+			"evaluator runtime or corpus identity does not match the signed provenance",
+		));
+	}
+
+	let policy: ExecutionToolPolicy = serde_json::from_value(
+		value
+			.pointer("/execution/runtime_provenance/model_toolchain")
+			.cloned()
+			.ok_or_else(|| CorpusCommitmentError::new("corpus commitment omits model toolchain"))?,
+	)
+	.map_err(|_| CorpusCommitmentError::new("corpus model toolchain policy is invalid"))?;
+	let commitment: CorpusCommitment = serde_json::from_value(value.clone())
+		.map_err(|_| CorpusCommitmentError::new("corpus commitment v2 shape is invalid"))?;
+	let source_manifest = commitment
+		.execution
+		.runtime_provenance
+		.pointer("/runner/source_manifest")
+		.ok_or_else(|| CorpusCommitmentError::new("corpus commitment omits source manifest"))?;
+
+	validate_deterministic_execution_digests(&commitment.execution, source_manifest, &policy)?;
+	validate_model_toolchain(toolchain_root, &policy, runtime)?;
+
+	Ok(())
+}
+
+/// Reads the strict execution tool policy from a bounded corpus v2 document.
+pub fn read_execution_tool_policy(
+	path: &Path,
+) -> Result<ExecutionToolPolicy, CorpusCommitmentError> {
+	let metadata = fs::symlink_metadata(path)
+		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
+
+	if metadata.file_type().is_symlink()
+		|| !metadata.is_file()
+		|| metadata.len() == 0
+		|| metadata.len() > 4 * 1_024 * 1_024
+	{
+		return Err(CorpusCommitmentError::new("corpus commitment must be a bounded regular file"));
+	}
+
+	let value: Value = serde_json::from_slice(&fs::read(path).map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot read corpus commitment: {error}"))
+	})?)
+	.map_err(|error| CorpusCommitmentError::new(format!("invalid corpus commitment: {error}")))?;
+
+	if value.pointer("/schema_version").and_then(Value::as_str) != Some("aiq.corpus-commitment.v2")
+	{
+		return Err(CorpusCommitmentError::new("corpus commitment schema is not v2"));
+	}
+
+	serde_json::from_value(
+		value
+			.pointer("/execution/runtime_provenance/model_toolchain")
+			.cloned()
+			.ok_or_else(|| CorpusCommitmentError::new("corpus commitment omits model toolchain"))?,
+	)
+	.map_err(|_| CorpusCommitmentError::new("corpus model toolchain policy is invalid"))
+}
+
+/// Validates the exact model-visible Node.js and ripgrep toolchain.
+pub fn validate_model_toolchain(
+	root: &Path,
+	policy: &ExecutionToolPolicy,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+	validate_model_toolchain_impl(root, policy, evaluator_runtime, true)
+}
+
+/// Validates committed toolchain paths and bytes without executing them.
+pub fn validate_model_toolchain_static(
+	root: &Path,
+	policy: &ExecutionToolPolicy,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+	validate_model_toolchain_impl(root, policy, evaluator_runtime, false)
+}
+
+/// Loads and validates the current public commitment before any model invocation.
+pub fn validate_corpus_commitment(
+	path: &Path,
+	tasks: &[TaskDefinition],
+	source_root: &Path,
+) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
+	validate_corpus_commitment_inner(path, tasks, source_root)
+}
+
+/// Computes the ordered selected evaluator identity commitment.
+pub fn evaluator_digest(tasks: &[TaskDefinition]) -> Result<String, CorpusCommitmentError> {
+	protocol::canonical_hash(
+		&tasks
+			.iter()
+			.map(|task| (&task.task_id, &task.scorer_version, &task.evaluator))
+			.collect::<Vec<_>>(),
+	)
+	.map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot hash evaluator identities: {error}"))
+	})
+}
+
+/// Validates a signed production provenance object and its run-local bindings.
+pub fn validate_run_provenance(
+	provenance: &RunProvenanceCommitment,
+	task_set_hash: &str,
+	preflight_digest: &str,
+) -> Result<(), CorpusCommitmentError> {
+	if provenance.schema_version != "aiq.run-provenance.v2"
+		|| provenance.catalog_digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+		|| provenance.task_set_digest != task_set_hash
+		|| provenance.preflight_digest != preflight_digest
+		|| !valid_release_id(&provenance.corpus_release_id)
+	{
+		return Err(CorpusCommitmentError::new("signed run provenance bindings are invalid"));
+	}
+
+	for digest in [
+		&provenance.corpus_commitment_sha256,
+		&provenance.catalog_digest,
+		&provenance.task_set_digest,
+		&provenance.evaluator_digest,
+		&provenance.runtime_digest,
+		&provenance.preflight_digest,
+		&provenance.harness_digest,
+		&provenance.prompt_digest,
+		&provenance.tool_policy_digest,
+		&provenance.network_policy_digest,
+		&provenance.environment_digest,
+		&provenance.source_manifest_digest,
+		&provenance.runner_executable_digest,
+		&provenance.codex_executable_digest,
+		&provenance.permission_evidence_digest,
+	] {
+		if !valid_digest(digest) {
+			return Err(CorpusCommitmentError::new(
+				"signed run provenance contains an invalid digest",
+			));
+		}
+	}
+
+	Ok(())
+}
+
+/// Hashes the actual runner executable without recording its path.
+pub fn runner_executable_digest() -> Result<String, CorpusCommitmentError> {
+	let path = env::current_exe()
+		.map_err(|_| CorpusCommitmentError::new("runner executable cannot be resolved"))?;
+
+	hash_executable(&path, "runner executable")
+}
+
+/// Resolves and hashes the exact Codex selector without recording its path.
+pub fn codex_executable_digest(selector: &str) -> Result<String, CorpusCommitmentError> {
+	if selector.trim().is_empty() {
+		return Err(CorpusCommitmentError::new("Codex executable selector is empty"));
+	}
+
+	let candidate = if Path::new(selector).components().count() > 1 {
+		Path::new(selector).to_path_buf()
+	} else {
+		env::split_paths(
+			&env::var_os("PATH")
+				.ok_or_else(|| CorpusCommitmentError::new("PATH is unavailable"))?,
+		)
+		.map(|directory| directory.join(selector))
+		.find(|candidate| candidate.exists())
+		.ok_or_else(|| CorpusCommitmentError::new("Codex executable cannot be resolved"))?
+	};
+
+	hash_executable(&candidate, "Codex executable")
+}
+
+fn validate_model_toolchain_impl(
+	root: &Path,
+	policy: &ExecutionToolPolicy,
+	evaluator_runtime: &EvaluatorRuntime,
+	probe_versions: bool,
+) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+	if !root.is_absolute() {
+		return Err(CorpusCommitmentError::new("Codex toolchain root must be absolute"));
+	}
+
+	let metadata = fs::symlink_metadata(root)
+		.map_err(|_| CorpusCommitmentError::new("Codex toolchain root is unavailable"))?;
+
+	if metadata.file_type().is_symlink() || !metadata.is_dir() {
+		return Err(CorpusCommitmentError::new("Codex toolchain root must be a regular directory"));
+	}
+
+	let root = fs::canonicalize(root)
+		.map_err(|_| CorpusCommitmentError::new("Codex toolchain root cannot be resolved"))?;
+	let (platform, architecture, minimal_path) = host_toolchain_identity()?;
+	let executable_suffix = if cfg!(windows) { ".exe" } else { "" };
+	let expected_refs = [format!("node{executable_suffix}"), format!("rg{executable_suffix}")];
+
+	if policy.schema_version != "aiq.execution-tool-policy.v1"
+		|| policy.platform != platform
+		|| policy.architecture != architecture
+		|| policy.platform_minimal_path != minimal_path
+		|| policy.inherit_path
+		|| policy.use_shell_profile
+		|| policy.commands.len() != 2
+		|| policy.commands[0].name != "node"
+		|| policy.commands[1].name != "rg"
+		|| policy.commands[0].executable_ref != expected_refs[0]
+		|| policy.commands[1].executable_ref != expected_refs[1]
+	{
+		return Err(CorpusCommitmentError::new(
+			"model toolchain policy is incompatible with this host",
+		));
+	}
+
+	let mut entries = fs::read_dir(&root)
+		.map_err(|_| CorpusCommitmentError::new("Codex toolchain root cannot be read"))?
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(|_| CorpusCommitmentError::new("Codex toolchain entries cannot be read"))?;
+
+	entries.sort_by_key(DirEntry::file_name);
+
+	if entries.len() != 2
+		|| entries
+			.iter()
+			.map(|entry| entry.file_name().to_string_lossy().into_owned())
+			.collect::<Vec<_>>()
+			!= expected_refs
+	{
+		return Err(CorpusCommitmentError::new(
+			"Codex toolchain root must contain exactly the committed executables",
+		));
+	}
+
+	for (command, entry) in policy.commands.iter().zip(entries) {
+		let path = entry.path();
+		let metadata = fs::symlink_metadata(&path)
+			.map_err(|_| CorpusCommitmentError::new("Codex toolchain executable is unavailable"))?;
+
+		if metadata.file_type().is_symlink() || !metadata.is_file() {
+			return Err(CorpusCommitmentError::new(
+				"Codex toolchain entries must be regular executable files",
+			));
+		}
+		#[cfg(unix)]
+		if PermissionsExt::mode(&metadata.permissions()) & 0o111 == 0 {
+			return Err(CorpusCommitmentError::new("Codex toolchain entry is not executable"));
+		}
+
+		let canonical = fs::canonicalize(&path).map_err(|_| {
+			CorpusCommitmentError::new("Codex toolchain executable cannot be resolved")
+		})?;
+		let digest = format!(
+			"sha256:{}",
+			hex::encode(Sha256::digest(fs::read(&canonical).map_err(|_| {
+				CorpusCommitmentError::new("Codex toolchain executable cannot be read")
+			},)?))
+		);
+		let observed_version = if probe_versions {
+			let output = evaluator::probe_executable_version(&canonical, &["--version".to_owned()])
+				.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
+
+			output.lines().next().unwrap_or_default().to_owned()
+		} else {
+			command.version.clone()
+		};
+		let version = observed_version.as_str();
+
+		if digest != command.executable_sha256 || version != command.version {
+			return Err(CorpusCommitmentError::new(
+				"Codex toolchain executable identity does not match its commitment",
+			));
+		}
+		if command.name == "node"
+			&& (canonical != evaluator_runtime.executable()
+				|| digest != evaluator_runtime.executable_digest()
+				|| version != evaluator_runtime.version())
+		{
+			return Err(CorpusCommitmentError::new(
+				"model and evaluator Node.js runtimes must have one exact identity",
+			));
+		}
+	}
+
+	let digest = protocol::canonical_hash(policy)
+		.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
+
+	Ok(ValidatedModelToolchain { root, policy: policy.clone(), digest })
+}
+
+fn validate_corpus_commitment_inner(
+	path: &Path,
+	tasks: &[TaskDefinition],
+	source_root: &Path,
+) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
+	let metadata = fs::symlink_metadata(path)
+		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
+
+	if metadata.file_type().is_symlink()
+		|| !metadata.is_file()
+		|| metadata.len() == 0
+		|| metadata.len() > 4 * 1_024 * 1_024
+	{
+		return Err(CorpusCommitmentError::new("corpus commitment must be a bounded regular file"));
+	}
+
+	let bytes = fs::read(path).map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot read corpus commitment: {error}"))
+	})?;
+	let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+		CorpusCommitmentError::new(format!("invalid corpus commitment: {error}"))
+	})?;
+	let canonical_sha256 = protocol::canonical_hash(&value).map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot hash corpus commitment: {error}"))
+	})?;
+	let commitment: CorpusCommitment = serde_json::from_value(value).map_err(|error| {
+		CorpusCommitmentError::new(format!("invalid corpus commitment: {error}"))
+	})?;
+
+	validate_header(&commitment)?;
+	validate_catalog_tasks(&commitment.tasks)?;
+
+	let baseline_workspace_digests = validate_selected_tasks(&commitment.tasks, tasks)?;
+	let source_manifest =
+		commitment.execution.runtime_provenance.pointer("/runner/source_manifest").ok_or_else(
+			|| CorpusCommitmentError::new("corpus commitment omits the runner source manifest"),
+		)?;
+	let source_manifest_digest = string_at(
+		&commitment.execution.runtime_provenance,
+		"/runner/source_manifest_sha256",
+		"runner source-manifest digest",
+	)?;
+	let evaluator_runtime_executable_digest = string_at(
+		&commitment.execution.runtime_provenance,
+		"/node_runtime/executable_sha256",
+		"evaluator runtime executable digest",
+	)?;
+	let evaluator_runtime_version = bounded_string_at(
+		&commitment.execution.runtime_provenance,
+		"/node_runtime/version",
+		"evaluator runtime version",
+	)?;
+	let model_toolchain_policy: ExecutionToolPolicy = serde_json::from_value(
+		commitment
+			.execution
+			.runtime_provenance
+			.pointer("/model_toolchain")
+			.cloned()
+			.ok_or_else(|| CorpusCommitmentError::new("corpus commitment omits model toolchain"))?,
+	)
+	.map_err(|_| CorpusCommitmentError::new("corpus model toolchain policy is invalid"))?;
+
+	if !valid_digest(evaluator_runtime_executable_digest)
+		|| evaluator_runtime_version.is_empty()
+		|| evaluator_runtime_version.len() > 128
+	{
+		return Err(CorpusCommitmentError::new("corpus evaluator runtime identity is invalid"));
+	}
+
+	let observed_source_manifest = protocol::canonical_hash(source_manifest).map_err(|error| {
+		CorpusCommitmentError::new(format!("cannot hash runner source manifest: {error}"))
+	})?;
+
+	if observed_source_manifest != source_manifest_digest {
+		return Err(CorpusCommitmentError::new(
+			"runner source manifest does not match its commitment",
+		));
+	}
+
+	validate_deterministic_execution_digests(
+		&commitment.execution,
+		source_manifest,
+		&model_toolchain_policy,
+	)?;
+
+	let source_manifest: SourceManifest = serde_json::from_value(source_manifest.clone())
+		.map_err(|_| CorpusCommitmentError::new("runner source manifest is invalid"))?;
+
+	validate_source_manifest(&source_manifest, source_root)?;
+
+	// The harness aggregate also covers controlled materializer, evaluator, and schema bytes that
+	// are not deployed with the runner. The canonical corpus identity binds that digest;
+	// the runner independently recomputes every deterministic public execution digest above.
+	Ok(ValidatedCorpusCommitment {
+		release_id: commitment.release_id,
+		canonical_sha256,
+		harness_digest: commitment.execution.harness_sha256,
+		prompt_digest: commitment.execution.runner_prompt_source_sha256,
+		tool_policy_digest: commitment.execution.declared_tool_policy_sha256,
+		network_policy_digest: commitment.execution.declared_network_policy_sha256,
+		environment_digest: commitment.execution.environment_sha256,
+		source_manifest_digest: source_manifest_digest.to_owned(),
+		evaluator_runtime_executable_digest: evaluator_runtime_executable_digest.to_owned(),
+		evaluator_runtime_version: evaluator_runtime_version.to_owned(),
+		model_toolchain_policy,
+		baseline_workspace_digests,
+	})
+}
+
+fn host_toolchain_identity()
+-> Result<(&'static str, &'static str, &'static str), CorpusCommitmentError> {
+	let platform = match OS {
+		"macos" => "darwin",
+		"linux" => "linux",
+		"windows" => "win32",
+		_ => return Err(CorpusCommitmentError::new("unsupported model toolchain platform")),
+	};
+	let architecture = match ARCH {
+		"aarch64" => "arm64",
+		"x86_64" => "x64",
+		_ => return Err(CorpusCommitmentError::new("unsupported model toolchain architecture")),
+	};
+	let minimal = match platform {
+		"darwin" => "darwin_v1",
+		"linux" => "linux_v1",
+		"win32" => "windows_v1",
+		_ => unreachable!(),
+	};
+
+	Ok((platform, architecture, minimal))
+}
+
+fn platform_minimal_path_entries() -> &'static [&'static str] {
+	#[cfg(target_os = "macos")]
+	let entries = &["/usr/bin", "/bin", "/usr/sbin", "/sbin"][..];
+	#[cfg(target_os = "linux")]
+	let entries = &["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"][..];
+	#[cfg(target_os = "windows")]
+	let entries = &[r"C:\Windows\System32", r"C:\Windows"][..];
+	#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+	let entries = &[];
+
+	entries
+}
+
+fn validate_deterministic_execution_digests(
+	execution: &CorpusExecution,
+	source_manifest: &Value,
+	model_toolchain_policy: &ExecutionToolPolicy,
+) -> Result<(), CorpusCommitmentError> {
+	let catalog: FrozenCatalog =
+		serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
+			.map_err(|error| {
+				CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
+			})?;
+	let observed_environment = protocol::canonical_hash(&execution.runtime_provenance)
+		.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
+	let runner_prompt = source_manifest
+		.pointer("/entries")
+		.and_then(Value::as_array)
+		.and_then(|entries| {
+			entries.iter().find(|entry| {
+				entry.pointer("/path").and_then(Value::as_str)
+					== Some("apps/aiq-runner/src/runner.rs")
+			})
+		})
+		.and_then(|entry| entry.pointer("/sha256").and_then(Value::as_str))
+		.ok_or_else(|| CorpusCommitmentError::new("runner source manifest omits runner.rs"))?;
+	let observed_tool_policy = protocol::canonical_hash(&serde_json::json!({
+		"protocol": "aiq.tool-policy.v1",
+		"evidence_class": "declared_policy_commitment",
+		"catalog": catalog.tasks.iter().map(|task| serde_json::json!({
+			"task_id": task.task_id,
+			"allowed_tools": task.allowed_tools,
+		})).collect::<Vec<_>>(),
+		"model_toolchain": model_toolchain_policy,
+	}))
+	.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
+	let observed_network_policy = protocol::canonical_hash(&serde_json::json!({
+		"protocol": "aiq.network-policy.v1",
+		"evidence_class": "declared_policy_commitment",
+		"codex_web_search": "disabled_for_controlled_corpus",
+		"codex_mcp": "disabled",
+		"evaluator_node_scenario": "network_denied_by_node_permission_model",
+	}))
+	.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
+
+	if execution.environment_sha256 != observed_environment
+		|| execution.runner_prompt_source_sha256 != runner_prompt
+		|| execution.declared_tool_policy_sha256 != observed_tool_policy
+		|| execution.declared_network_policy_sha256 != observed_network_policy
+	{
+		return Err(CorpusCommitmentError::new(
+			"corpus deterministic execution digests do not match their source values",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_header(commitment: &CorpusCommitment) -> Result<(), CorpusCommitmentError> {
+	let catalog = &commitment.catalog;
+
+	if commitment.schema_version != "aiq.corpus-commitment.v2"
+		|| !valid_release_id(&commitment.release_id)
+		|| !commitment.controlled
+		|| commitment.synthetic
+		|| catalog.schema_version != "aiq.catalog.v1"
+		|| catalog.task_set_id != "aiq-core"
+		|| catalog.task_set_version != AIQ_SCORING_VERSION
+		|| catalog.identity_sha256 != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+		|| catalog.identity_scope != "ordered_full_task_metadata"
+	{
+		return Err(CorpusCommitmentError::new("corpus commitment header is invalid"));
+	}
+
+	for digest in [
+		&commitment.execution.harness_sha256,
+		&commitment.execution.runner_prompt_source_sha256,
+		&commitment.execution.declared_tool_policy_sha256,
+		&commitment.execution.declared_network_policy_sha256,
+		&commitment.execution.environment_sha256,
+	] {
+		if !valid_digest(digest) {
+			return Err(CorpusCommitmentError::new(
+				"corpus execution identity is not a valid SHA-256 commitment",
+			));
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_source_manifest(
+	manifest: &SourceManifest,
+	source_root: &Path,
+) -> Result<(), CorpusCommitmentError> {
+	if manifest.schema_version != "aiq.runner-source-manifest.v1"
+		|| manifest.package != "aiq-runner"
+		|| manifest.scope != "cargo_build_and_test_inputs"
+		|| manifest.path_base != "repository_root"
+		|| manifest.entries.is_empty()
+		|| manifest.entries.len() > 128
+	{
+		return Err(CorpusCommitmentError::new("runner source manifest contract is invalid"));
+	}
+
+	let root_metadata = fs::symlink_metadata(source_root)
+		.map_err(|_| CorpusCommitmentError::new("runner source root is unavailable"))?;
+
+	if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+		return Err(CorpusCommitmentError::new("runner source root must be a regular directory"));
+	}
+
+	let canonical_root = fs::canonicalize(source_root)
+		.map_err(|_| CorpusCommitmentError::new("runner source root cannot be resolved"))?;
+	let mut previous = None;
+
+	for entry in &manifest.entries {
+		if !valid_source_path(&entry.path)
+			|| !valid_digest(&entry.sha256)
+			|| previous.as_ref().is_some_and(|path: &String| path >= &entry.path)
+		{
+			return Err(CorpusCommitmentError::new(
+				"runner source manifest entries are invalid or unordered",
+			));
+		}
+
+		let candidate = canonical_root.join(&entry.path);
+		let metadata = fs::symlink_metadata(&candidate)
+			.map_err(|_| CorpusCommitmentError::new("committed runner source is unavailable"))?;
+
+		if metadata.file_type().is_symlink() || !metadata.is_file() {
+			return Err(CorpusCommitmentError::new(
+				"committed runner source must be a regular file",
+			));
+		}
+
+		let canonical = fs::canonicalize(&candidate).map_err(|_| {
+			CorpusCommitmentError::new("committed runner source cannot be resolved")
+		})?;
+
+		if !canonical.starts_with(&canonical_root)
+			|| hash_bounded_file(&canonical, 16 * 1_024 * 1_024, "committed runner source")?
+				!= entry.sha256
+		{
+			return Err(CorpusCommitmentError::new(
+				"committed runner source does not match current bytes",
+			));
+		}
+
+		previous = Some(entry.path.clone());
+	}
+
+	Ok(())
+}
+
+fn hash_executable(path: &Path, label: &str) -> Result<String, CorpusCommitmentError> {
+	let canonical = fs::canonicalize(path)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be resolved")))?;
+	let mut file = File::open(&canonical)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be read")))?;
+	let metadata = file
+		.metadata()
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} metadata is unavailable")))?;
+
+	if !metadata.is_file() {
+		return Err(CorpusCommitmentError::new(format!("{label} is not a regular file")));
+	}
+	if !valid_executable_file_size(metadata.len()) {
+		return Err(CorpusCommitmentError::new(format!("{label} is empty")));
+	}
+
+	let mut hasher = Sha256::new();
+	let bytes = io::copy(&mut file, &mut hasher)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be hashed")))?;
+
+	if bytes != metadata.len() {
+		return Err(CorpusCommitmentError::new(format!("{label} changed while hashing")));
+	}
+
+	Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+}
+
+fn valid_executable_file_size(length: u64) -> bool {
+	length > 0
+}
+
+fn hash_bounded_file(
+	path: &Path,
+	max_bytes: u64,
+	label: &str,
+) -> Result<String, CorpusCommitmentError> {
+	let file = File::open(path)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be read")))?;
+	let length = file
+		.metadata()
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} metadata is unavailable")))?
+		.len();
+
+	if !valid_bounded_file_size(length, max_bytes) {
+		return Err(CorpusCommitmentError::new(format!("{label} has an invalid size")));
+	}
+
+	let mut reader: Take<File> = file.take(max_bytes + 1);
+	let mut hasher = Sha256::new();
+	let bytes = io::copy(&mut reader, &mut hasher)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be hashed")))?;
+
+	if bytes != length {
+		return Err(CorpusCommitmentError::new(format!("{label} changed while hashing")));
+	}
+
+	Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
+}
+
+fn valid_bounded_file_size(length: u64, max_bytes: u64) -> bool {
+	(1..=max_bytes).contains(&length)
+}
+
+fn valid_source_path(value: &str) -> bool {
+	(1..=240).contains(&value.len())
+		&& !value.starts_with('/')
+		&& !value.ends_with('/')
+		&& value.split('/').all(|component| {
+			!component.is_empty()
+				&& !matches!(component, "." | "..")
+				&& component
+					.bytes()
+					.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+		})
+}
+
+fn validate_catalog_tasks(tasks: &[CorpusTask]) -> Result<(), CorpusCommitmentError> {
+	let catalog: FrozenCatalog =
+		serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
+			.map_err(|error| {
+				CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
+			})?;
+	let expected = catalog
+		.tasks
+		.into_iter()
+		.map(|task| (task.task_id, task.task_version))
+		.collect::<BTreeMap<_, _>>();
+	let observed = tasks
+		.iter()
+		.map(|task| (task.task_id.clone(), task.task_version.clone()))
+		.collect::<BTreeMap<_, _>>();
+
+	if tasks.len() != 72 || expected.len() != 72 || observed.len() != 72 || observed != expected {
+		return Err(CorpusCommitmentError::new(
+			"corpus commitment does not cover the exact frozen catalog",
+		));
+	}
+
+	for task in tasks {
+		for digest in [
+			&task.task_definition_sha256,
+			&task.baseline_workspace_tree_sha256,
+			&task.fixture_bundle_sha256,
+			&task.catalog_entry_sha256,
+			&task.evaluator_runtime_executable_sha256,
+			&task.evaluator_executable_sha256,
+			&task.evaluator_configuration_sha256,
+			&task.acceptance_suite_sha256,
+			&task.leakage_review_sha256,
+		] {
+			if !valid_digest(digest) {
+				return Err(CorpusCommitmentError::new(
+					"corpus task identity is not a valid SHA-256 commitment",
+				));
+			}
+		}
+
+		if task.evaluator_runtime_kind != "node" {
+			return Err(CorpusCommitmentError::new(
+				"corpus task evaluator runtime kind is unsupported",
+			));
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_selected_tasks(
+	committed: &[CorpusTask],
+	selected: &[TaskDefinition],
+) -> Result<BTreeMap<String, String>, CorpusCommitmentError> {
+	if selected.is_empty() {
+		return Err(CorpusCommitmentError::new("selected task set is empty"));
+	}
+
+	let committed =
+		committed.iter().map(|task| (task.task_id.as_str(), task)).collect::<BTreeMap<_, _>>();
+	let mut selected_ids = BTreeSet::new();
+	let mut baseline_workspace_digests = BTreeMap::new();
+
+	for task in selected {
+		let expected = committed.get(task.task_id.as_str()).ok_or_else(|| {
+			CorpusCommitmentError::new("selected task is absent from the corpus commitment")
+		})?;
+		let external =
+			task.evaluator.as_ref().and_then(|evaluator| evaluator.external.as_ref()).ok_or_else(
+				|| CorpusCommitmentError::new("real runs require committed external evaluators"),
+			)?;
+		let task_hash = task.content_hash().map_err(|error| {
+			CorpusCommitmentError::new(format!("cannot hash selected task: {error}"))
+		})?;
+
+		if !selected_ids.insert(task.task_id.as_str())
+			|| task.visibility != Visibility::Hidden
+			|| task.task_version != expected.task_version
+			|| task_hash != expected.task_definition_sha256
+			|| task.catalog_entry_digest.as_deref() != Some(&expected.catalog_entry_sha256)
+			|| external.runtime_kind != EvaluatorRuntimeKind::Node
+			|| expected.evaluator_runtime_kind != "node"
+			|| external.runtime_executable_digest != expected.evaluator_runtime_executable_sha256
+			|| external.executable_digest != expected.evaluator_executable_sha256
+			|| external.configuration_digest != expected.evaluator_configuration_sha256
+		{
+			return Err(CorpusCommitmentError::new(
+				"selected task does not match the committed corpus commitment",
+			));
+		}
+
+		baseline_workspace_digests
+			.insert(task.task_id.clone(), expected.baseline_workspace_tree_sha256.clone());
+	}
+
+	Ok(baseline_workspace_digests)
+}
+
+fn string_at<'a>(
+	value: &'a Value,
+	pointer: &str,
+	label: &str,
+) -> Result<&'a str, CorpusCommitmentError> {
+	let value = value
+		.pointer(pointer)
+		.and_then(Value::as_str)
+		.ok_or_else(|| CorpusCommitmentError::new(format!("corpus commitment omits {label}")))?;
+
+	if !valid_digest(value) {
+		return Err(CorpusCommitmentError::new(format!(
+			"corpus commitment has an invalid {label}",
+		)));
+	}
+
+	Ok(value)
+}
+
+fn bounded_string_at<'a>(
+	value: &'a Value,
+	pointer: &str,
+	label: &str,
+) -> Result<&'a str, CorpusCommitmentError> {
+	let value = value
+		.pointer(pointer)
+		.and_then(Value::as_str)
+		.ok_or_else(|| CorpusCommitmentError::new(format!("corpus commitment omits {label}")))?;
+
+	if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+		return Err(CorpusCommitmentError::new(format!(
+			"corpus commitment has an invalid {label}",
+		)));
+	}
+
+	Ok(value)
+}
+
+fn valid_release_id(value: &str) -> bool {
+	let Some(suffix) = value.strip_prefix("corpus_") else {
+		return false;
+	};
+	let alphanumeric = |byte: u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
+
+	(1..=64).contains(&suffix.len())
+		&& suffix.bytes().next().is_some_and(alphanumeric)
+		&& suffix.bytes().last().is_some_and(alphanumeric)
+		&& suffix.bytes().all(|byte| alphanumeric(byte) || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn valid_digest(value: &str) -> bool {
+	value.len() == 71
+		&& value.starts_with("sha256:")
+		&& value[7..].bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+		&& !value[7..].bytes().all(|byte| byte == b'0')
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{env, fs, process, slice};
+	#[cfg(unix)]
+	use std::{
+		ffi::OsString,
+		os::unix::{ffi::OsStringExt as _, fs::PermissionsExt as _, net::UnixListener},
+	};
+
+	use serde_json;
+	use sha2::{Digest as _, Sha256};
+
+	use crate::{
+		corpus_commitment::{
+			self, CorpusCatalog, CorpusCommitment, CorpusExecution, SourceManifest,
+			SourceManifestEntry,
+		},
+		protocol, runner,
+		scoring::AIQ_CORE_V1_TASK_IDENTITY_SHA256,
+	};
+
+	#[test]
+	fn bounded_runtime_version_is_not_parsed_as_a_digest() {
+		let value = serde_json::json!({"node_runtime": {"version": "v24.18.0"}});
+
+		assert_eq!(
+			super::bounded_string_at(&value, "/node_runtime/version", "runtime version")
+				.expect("actual Node.js version"),
+			"v24.18.0"
+		);
+	}
+
+	#[test]
+	fn executable_size_validation_rejects_empty_files_without_a_maximum() {
+		assert!(!super::valid_executable_file_size(0));
+		assert!(super::valid_executable_file_size(270_605_984));
+		assert!(super::valid_executable_file_size(512 * 1_024 * 1_024 + 1));
+		assert!(super::valid_executable_file_size(u64::MAX));
+	}
+
+	#[test]
+	fn deterministic_execution_digests_use_full_catalog_for_calibration_subset_and_fail_closed() {
+		let policy =
+			super::fixture_model_toolchain(std::path::PathBuf::from("/toolchain")).policy().clone();
+		let runner_digest = format!("sha256:{}", "1".repeat(64));
+		let source_manifest = serde_json::json!({
+			"entries": [{
+				"path": "apps/aiq-runner/src/runner.rs",
+				"sha256": runner_digest,
+			}],
+		});
+		let runtime_provenance = serde_json::json!({
+			"runner": {"source_manifest": source_manifest},
+			"model_toolchain": policy,
+		});
+		let catalog: super::FrozenCatalog =
+			serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
+				.expect("embedded catalog");
+		let tool_digest = protocol::canonical_hash(&serde_json::json!({
+			"protocol": "aiq.tool-policy.v1",
+			"evidence_class": "declared_policy_commitment",
+			"catalog": catalog.tasks.iter().map(|task| serde_json::json!({
+				"task_id": task.task_id,
+				"allowed_tools": task.allowed_tools,
+			})).collect::<Vec<_>>(),
+			"model_toolchain": policy,
+		}))
+		.expect("tool digest");
+		let one_task_calibration_digest = protocol::canonical_hash(&serde_json::json!({
+			"protocol": "aiq.tool-policy.v1",
+			"evidence_class": "declared_policy_commitment",
+			"catalog": catalog.tasks[..1].iter().map(|task| serde_json::json!({
+				"task_id": task.task_id,
+				"allowed_tools": task.allowed_tools,
+			})).collect::<Vec<_>>(),
+			"model_toolchain": policy,
+		}))
+		.expect("one-task digest");
+
+		assert_ne!(tool_digest, one_task_calibration_digest);
+
+		let network_digest = protocol::canonical_hash(&serde_json::json!({
+			"protocol": "aiq.network-policy.v1",
+			"evidence_class": "declared_policy_commitment",
+			"codex_web_search": "disabled_for_controlled_corpus",
+			"codex_mcp": "disabled",
+			"evaluator_node_scenario": "network_denied_by_node_permission_model",
+		}))
+		.expect("network digest");
+		let execution = super::CorpusExecution {
+			harness_sha256: format!("sha256:{}", "2".repeat(64)),
+			runner_prompt_source_sha256: runner_digest,
+			declared_tool_policy_sha256: tool_digest,
+			declared_network_policy_sha256: network_digest,
+			environment_sha256: protocol::canonical_hash(&runtime_provenance)
+				.expect("environment digest"),
+			runtime_provenance,
+		};
+		let source = execution
+			.runtime_provenance
+			.pointer("/runner/source_manifest")
+			.expect("source manifest");
+
+		super::validate_deterministic_execution_digests(&execution, source, &policy)
+			.expect("valid deterministic digests");
+
+		for field in ["prompt", "tool", "network", "environment"] {
+			let digest = format!("sha256:{}", "f".repeat(64));
+			let mut mutated = execution.clone();
+
+			match field {
+				"prompt" => mutated.runner_prompt_source_sha256 = digest,
+				"tool" => mutated.declared_tool_policy_sha256 = digest,
+				"network" => mutated.declared_network_policy_sha256 = digest,
+				"environment" => mutated.environment_sha256 = digest,
+				_ => unreachable!(),
+			}
+
+			assert!(
+				super::validate_deterministic_execution_digests(&mutated, source, &policy,)
+					.is_err()
+			);
+		}
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_toolchain_rejects_policy_and_filesystem_drift() {
+		let fixture = env::temp_dir().join(format!(
+			"aiq-toolchain-validator-{}-{}",
+			process::id(),
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.expect("fixture clock")
+				.as_nanos()
+		));
+		let source = fixture.join("source");
+		let root = fixture.join("toolchain");
+
+		fs::create_dir_all(&source).expect("fixture source root");
+		fs::create_dir(&root).expect("fixture toolchain root");
+
+		for (name, version) in [("node", "v24.18.0"), ("rg", "ripgrep 15.1.0")] {
+			let path = source.join(name);
+
+			fs::write(&path, format!("#!/bin/sh\nprintf '%s\\n' '{version}'\n"))
+				.expect("fixture executable");
+			fs::set_permissions(&path, fs::Permissions::from_mode(0o700))
+				.expect("fixture executable mode");
+			fs::hard_link(&path, root.join(name)).expect("toolchain hard link");
+		}
+
+		let runtime = crate::task::EvaluatorRuntime::resolve(&root.join("node"))
+			.expect("fixture Node runtime");
+		let validated = super::fixture_validated_model_toolchain(&root, &runtime);
+		let mut wrong_platform = validated.policy().clone();
+
+		wrong_platform.platform = "win32".to_owned();
+
+		assert!(super::validate_model_toolchain(&root, &wrong_platform, &runtime).is_err());
+
+		let mut profile = validated.policy().clone();
+
+		profile.use_shell_profile = true;
+
+		assert!(super::validate_model_toolchain(&root, &profile, &runtime).is_err());
+
+		let mut tampered = validated.policy().clone();
+
+		tampered.commands[1].executable_sha256 = format!("sha256:{}", "f".repeat(64));
+
+		assert!(super::validate_model_toolchain(&root, &tampered, &runtime).is_err());
+
+		fs::write(root.join("extra"), b"extra").expect("extra fixture");
+
+		assert!(super::validate_model_toolchain(&root, validated.policy(), &runtime).is_err());
+
+		fs::remove_file(root.join("extra")).expect("extra cleanup");
+		fs::remove_file(root.join("rg")).expect("missing fixture");
+
+		assert!(super::validate_model_toolchain(&root, validated.policy(), &runtime).is_err());
+
+		std::os::unix::fs::symlink(source.join("rg"), root.join("rg")).expect("symlink fixture");
+
+		assert!(super::validate_model_toolchain(&root, validated.policy(), &runtime).is_err());
+
+		fs::remove_dir_all(fixture).expect("fixture cleanup");
+	}
+
+	fn commitment() -> CorpusCommitment {
+		let digest = format!("sha256:{}", "a".repeat(64));
+
+		CorpusCommitment {
+			schema_version: "aiq.corpus-commitment.v2".to_owned(),
+			release_id: "corpus_2026.07.30".to_owned(),
+			controlled: true,
+			synthetic: false,
+			catalog: CorpusCatalog {
+				schema_version: "aiq.catalog.v1".to_owned(),
+				task_set_id: "aiq-core".to_owned(),
+				task_set_version: "1.0.0".to_owned(),
+				identity_sha256: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+				identity_scope: "ordered_full_task_metadata".to_owned(),
+			},
+			execution: CorpusExecution {
+				harness_sha256: digest.clone(),
+				runner_prompt_source_sha256: digest.clone(),
+				declared_tool_policy_sha256: digest.clone(),
+				declared_network_policy_sha256: digest.clone(),
+				environment_sha256: digest,
+				runtime_provenance: serde_json::json!({}),
+			},
+			tasks: Vec::new(),
+		}
+	}
+
+	#[test]
+	fn current_corpus_header_is_strict() {
+		assert!(corpus_commitment::validate_header(&commitment()).is_ok());
+
+		let mut synthetic = commitment();
+
+		synthetic.synthetic = true;
+
+		assert!(corpus_commitment::validate_header(&synthetic).is_err());
+
+		let mut uncontrolled = commitment();
+
+		uncontrolled.controlled = false;
+
+		assert!(corpus_commitment::validate_header(&uncontrolled).is_err());
+	}
+	#[test]
+	fn source_manifest_is_checked_against_current_bytes_and_executables_are_hashed() {
+		let root = env::temp_dir().join(format!("aiq-source-manifest-{}", process::id()));
+		let path = root.join("apps/aiq-runner/src/lib.rs");
+		let bytes = b"committed source";
+
+		fs::create_dir_all(path.parent().expect("parent")).expect("create root");
+		fs::write(&path, bytes).expect("write source");
+
+		let manifest = SourceManifest {
+			schema_version: "aiq.runner-source-manifest.v1".to_owned(),
+			package: "aiq-runner".to_owned(),
+			scope: "cargo_build_and_test_inputs".to_owned(),
+			path_base: "repository_root".to_owned(),
+			entries: vec![SourceManifestEntry {
+				path: "apps/aiq-runner/src/lib.rs".to_owned(),
+				sha256: format!("sha256:{}", hex::encode(Sha256::digest(bytes))),
+			}],
+		};
+
+		assert!(corpus_commitment::validate_source_manifest(&manifest, &root).is_ok());
+
+		fs::write(&path, b"stale source").expect("mutate source");
+
+		assert!(corpus_commitment::validate_source_manifest(&manifest, &root).is_err());
+
+		let runner_digest =
+			corpus_commitment::runner_executable_digest().expect("runner executable digest");
+		let current = env::current_exe().expect("current executable");
+		let selected_digest =
+			corpus_commitment::codex_executable_digest(current.to_str().expect("UTF-8 path"))
+				.expect("selector digest");
+
+		assert!(super::valid_digest(&runner_digest));
+		assert_eq!(runner_digest, selected_digest);
+
+		fs::remove_dir_all(root).expect("remove root");
+	}
+
+	#[test]
+	fn selected_hidden_task_must_match_the_exact_corpus_commitment() {
+		let runtime_digest = format!("sha256:{}", "a".repeat(64));
+		let executable_digest = format!("sha256:{}", "b".repeat(64));
+		let catalog_digest = format!("sha256:{}", "c".repeat(64));
+		let configuration = std::collections::BTreeMap::new();
+		let configuration_digest =
+			protocol::canonical_hash(&configuration).expect("configuration digest");
+		let mut task = runner::synthetic_tasks().remove(0);
+
+		task.visibility = crate::task::Visibility::Hidden;
+		task.catalog_entry_digest = Some(catalog_digest.clone());
+		task.evaluator = Some(crate::task::Evaluator {
+			kind: "controlled_fixture".to_owned(),
+			expected: None,
+			case_sensitive: false,
+			external: Some(crate::task::ExternalEvaluatorBinding {
+				protocol_version: crate::task::EVALUATOR_PROTOCOL_VERSION.to_owned(),
+				scorer_version: task.scorer_version.clone(),
+				runtime_kind: crate::task::EvaluatorRuntimeKind::Node,
+				runtime_executable_digest: runtime_digest.clone(),
+				executable_ref: std::path::PathBuf::from("aiq-core-v1/evaluator"),
+				executable_digest: executable_digest.clone(),
+				configuration_digest: configuration_digest.clone(),
+				arguments: Vec::new(),
+				timeout_ms: 1_000,
+				max_input_bytes: 1_024,
+				max_output_bytes: 1_024,
+				configuration,
+			}),
+		});
+
+		let task_definition_sha256 = task.content_hash().expect("task digest");
+		let committed = super::CorpusTask {
+			task_id: task.task_id.clone(),
+			task_version: task.task_version.clone(),
+			task_definition_sha256: task_definition_sha256.clone(),
+			baseline_workspace_tree_sha256: format!("sha256:{}", "d".repeat(64)),
+			fixture_bundle_sha256: format!("sha256:{}", "e".repeat(64)),
+			catalog_entry_sha256: catalog_digest,
+			evaluator_runtime_kind: "node".to_owned(),
+			evaluator_runtime_executable_sha256: runtime_digest,
+			evaluator_executable_sha256: executable_digest,
+			evaluator_configuration_sha256: configuration_digest,
+			acceptance_suite_sha256: format!("sha256:{}", "1".repeat(64)),
+			leakage_review_sha256: format!("sha256:{}", "2".repeat(64)),
+		};
+
+		assert!(
+			super::validate_selected_tasks(slice::from_ref(&committed), slice::from_ref(&task))
+				.is_ok()
+		);
+
+		let mut mutated_task = task.clone();
+
+		mutated_task.prompt.push_str(" unexpected drift");
+
+		assert!(
+			super::validate_selected_tasks(
+				slice::from_ref(&committed),
+				slice::from_ref(&mutated_task),
+			)
+			.is_err()
+		);
+
+		let mut mutated_commitment = committed;
+
+		mutated_commitment.task_definition_sha256 = format!("sha256:{}", "f".repeat(64));
+
+		assert!(
+			super::validate_selected_tasks(
+				slice::from_ref(&mutated_commitment),
+				slice::from_ref(&task),
+			)
+			.is_err()
+		);
+	}
+
+	#[test]
+	fn source_manifest_path_grammar_matches_the_public_commitment_contract() {
+		assert!(super::valid_source_path("apps/aiq-runner/src/runner.rs"));
+		assert!(super::valid_source_path(".github/workflows/language.yml"));
+		assert!(super::valid_source_path("component.../file_name-01.rs"));
+
+		for path in [
+			"",
+			"/absolute.rs",
+			"./file.rs",
+			"dir/./file.rs",
+			"dir/../file.rs",
+			"../file.rs",
+			"dir//file.rs",
+			"dir/",
+			"dir\\file.rs",
+			"C:/file.rs",
+			"dir/file.rs\n",
+			"dir/file.rs\r\n",
+			"dir/file.rs\u{2028}",
+			"dir/file.rs\u{2029}",
+		] {
+			assert!(!super::valid_source_path(path), "{path:?} must be rejected");
+		}
+
+		assert!(!super::valid_source_path(&"a".repeat(241)));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn source_manifest_rejects_actual_terminator_non_utf8_symlink_and_special_filenames() {
+		let root = env::temp_dir().join(format!("aiq-source-filename-types-{}", process::id()));
+
+		fs::create_dir_all(&root).expect("create root");
+
+		for (index, name) in [
+			"line\nfeed.rs",
+			"carriage\r\nreturn.rs",
+			"line\u{2028}separator.rs",
+			"paragraph\u{2029}separator.rs",
+		]
+		.into_iter()
+		.enumerate()
+		{
+			let bytes = format!("source-{index}").into_bytes();
+			let path = root.join(name);
+
+			fs::write(&path, &bytes).expect("write terminator filename");
+
+			let manifest = SourceManifest {
+				schema_version: "aiq.runner-source-manifest.v1".to_owned(),
+				package: "aiq-runner".to_owned(),
+				scope: "cargo_build_and_test_inputs".to_owned(),
+				path_base: "repository_root".to_owned(),
+				entries: vec![SourceManifestEntry {
+					path: name.to_owned(),
+					sha256: format!("sha256:{}", hex::encode(Sha256::digest(&bytes))),
+				}],
+			};
+
+			assert!(corpus_commitment::validate_source_manifest(&manifest, &root).is_err());
+		}
+
+		let non_utf8 = OsString::from_vec(b"non-utf8-\xff.rs".to_vec());
+		let non_utf8_path = root.join(&non_utf8);
+		let lossy_name = non_utf8.to_string_lossy().into_owned();
+
+		assert!(!super::valid_source_path(&lossy_name));
+
+		match fs::write(&non_utf8_path, b"source") {
+			Ok(()) => {
+				let non_utf8_manifest = SourceManifest {
+					schema_version: "aiq.runner-source-manifest.v1".to_owned(),
+					package: "aiq-runner".to_owned(),
+					scope: "cargo_build_and_test_inputs".to_owned(),
+					path_base: "repository_root".to_owned(),
+					entries: vec![SourceManifestEntry {
+						path: lossy_name,
+						sha256: format!("sha256:{}", hex::encode(Sha256::digest(b"source"))),
+					}],
+				};
+
+				assert!(
+					corpus_commitment::validate_source_manifest(&non_utf8_manifest, &root).is_err()
+				);
+			},
+			Err(error) if error.raw_os_error() == Some(92) => {},
+			Err(error) => panic!("write non-UTF-8 filename: {error}"),
+		}
+
+		fs::write(root.join("target.rs"), b"source").expect("write symlink target");
+		std::os::unix::fs::symlink("target.rs", root.join("linked.rs")).expect("create symlink");
+
+		let symlink_manifest = SourceManifest {
+			schema_version: "aiq.runner-source-manifest.v1".to_owned(),
+			package: "aiq-runner".to_owned(),
+			scope: "cargo_build_and_test_inputs".to_owned(),
+			path_base: "repository_root".to_owned(),
+			entries: vec![SourceManifestEntry {
+				path: "linked.rs".to_owned(),
+				sha256: format!("sha256:{}", hex::encode(Sha256::digest(b"source"))),
+			}],
+		};
+
+		assert!(corpus_commitment::validate_source_manifest(&symlink_manifest, &root).is_err());
+
+		let listener = UnixListener::bind(root.join("special.sock")).expect("create special file");
+		let special_manifest = SourceManifest {
+			schema_version: "aiq.runner-source-manifest.v1".to_owned(),
+			package: "aiq-runner".to_owned(),
+			scope: "cargo_build_and_test_inputs".to_owned(),
+			path_base: "repository_root".to_owned(),
+			entries: vec![SourceManifestEntry {
+				path: "special.sock".to_owned(),
+				sha256: format!("sha256:{}", "a".repeat(64)),
+			}],
+		};
+
+		assert!(corpus_commitment::validate_source_manifest(&special_manifest, &root).is_err());
+
+		drop(listener);
+
+		fs::remove_dir_all(root).expect("remove root");
+	}
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "public-example-documentation-communication-01",
+  "task_version": "1.0.0",
+  "title": "Use the required synthetic label",
+  "domain": "documentation_communication",
+  "difficulty": "easy",
+  "prompt": "Synthetic example: Return the exact label that distinguishes demonstration data from measured benchmark data: `Synthetic demo data`.",
+  "allowed_tools": ["none"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
+  "tags": ["synthetic", "labeling"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
+  "fixture_refs": [
+    "repo://benchmarks/examples/tasks/public-example-documentation-communication.json"
+  ],
+  "visibility": "public_example",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": { "kind": "exact_match", "expected": "Synthetic demo data", "case_sensitive": true }
+}

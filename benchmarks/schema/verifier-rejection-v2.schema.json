@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/verifier-rejection-v2.schema.json",
+  "title": "AIQ verifier rejection v2",
+  "description": "Service-authenticated, non-publishing verifier rejection evidence. The gateway additionally enforces a 4096-byte UTF-8 reason-detail bound.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "matrix_batch_id",
+    "package_sha256",
+    "observed_at",
+    "production",
+    "reason_code",
+    "reason_detail",
+    "synthetic",
+    "verifier_node_id"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.verifier-rejection.v2" },
+    "matrix_batch_id": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "package_sha256": {
+      "type": "string",
+      "pattern": "^(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "observed_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z(?![\\s\\S])"
+    },
+    "production": { "type": "boolean" },
+    "reason_code": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]{3,64}(?![\\s\\S])"
+    },
+    "reason_detail": {
+      "type": "string",
+      "maxLength": 4096,
+      "x-aiq-max-utf8-bytes": 4096
+    },
+    "synthetic": { "type": "boolean" },
+    "verifier_node_id": {
+      "type": "string",
+      "pattern": "^node_[0-9a-f]{64}(?![\\s\\S])"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "production": { "const": false },
+        "synthetic": { "const": true }
+      }
+    },
+    {
+      "properties": {
+        "production": { "const": true },
+        "synthetic": { "const": false }
+      }
+    }
+  ]
+}

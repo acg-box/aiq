@@ -1,168 +1,155 @@
-<div align="center">
+# AIQ Wiki
 
-# name_placeholder
+AIQ Wiki records fixed-fixture AI and agent benchmark results. The repository
+contains a Rust runner, a Rust verifier, a Next.js application, the public AIQ
+Core catalog, and one declarative PostgreSQL schema.
 
-description_placeholder
+The source is ready for a new greenfield deployment, but this repository has not
+created a Supabase project, Vercel project, DNS record, production secret,
+schedule, or remote worker. All checked-in result data is synthetic. Deployment
+readiness still requires the external gates in the deployment handoff.
 
-[![License](https://img.shields.io/badge/License-GPLv3%20only-blue.svg)](https://spdx.org/licenses/GPL-3.0-only.html)
-[![Docs](https://img.shields.io/docsrs/name_placeholder)](https://docs.rs/name_placeholder)
-[![Language Checks](https://github.com/hack-ink/name_placeholder/actions/workflows/language.yml/badge.svg?branch=main)](https://github.com/hack-ink/name_placeholder/actions/workflows/language.yml)
-[![Release](https://github.com/hack-ink/name_placeholder/actions/workflows/release.yml/badge.svg)](https://github.com/hack-ink/name_placeholder/actions/workflows/release.yml)
-[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/hack-ink/name_placeholder)](https://github.com/hack-ink/name_placeholder/tags)
-[![GitHub last commit](https://img.shields.io/github/last-commit/hack-ink/name_placeholder?color=red&style=plastic)](https://github.com/hack-ink/name_placeholder)
+## Product contract
 
-</div>
+- AIQ Core `1.0.0` has 72 private controlled tasks in ten domains.
+- The public catalog contains metadata and commitments, not private task content.
+- The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
+- The runner performs capability preflight, executes tasks, scores results, and
+  creates signed `aiq.result-package.v3` envelopes.
+- The verifier reconstructs candidate workspaces and replays deterministic
+  evaluators before it signs `aiq.verifier-attestation.v3` evidence.
+- Production uses three distinct identities: runner, verifier, and publisher.
+- The Web application reads public database views and sends controlled writes
+  through server routes.
 
-## Feature Highlights
+The frozen public catalog digest is:
 
-### TODO
-
-TODO
-
-## Status
-
-TODO
-
-## Workspace Posture
-
-- `apps/name_placeholder/` owns the default Rust CLI application package.
-- `scripts/` owns repository-maintenance TypeScript programs that run directly on
-  the pinned Node.js runtime.
-- `packages/` is reserved for reusable shared packages across Rust,
-  JavaScript/TypeScript, Python, Swift, or other language toolchains.
-- The root `Cargo.toml` is a Rust workspace manifest and owns shared metadata,
-  profiles, and dependency versions.
-- The root `package.json`, `package-lock.json`, and `tsconfig.json` own the
-  TypeScript script toolchain and its exact development dependencies.
-- `openwiki/` is the authoritative repository knowledge and agent-routing surface.
-
-## Usage
-
-### Installation
-
-#### Build from Source
-
-```sh
-# Clone the repository.
-git clone https://github.com/hack-ink/name_placeholder
-cd name_placeholder
-
-# To install rustup on macOS and Unix without selecting a global default
-# toolchain, run the following command. This repository's rust-toolchain.toml
-# is authoritative for ordinary Rust commands.
-#
-# On Windows, download rustup-init.exe from `https://rustup.rs` and run it with
-# `--default-toolchain none`; rust-toolchain.toml remains authoritative.
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain none
-
-# Install the necessary dependencies. (Unix only)
-# Using Ubuntu as an example, this really depends on your distribution.
-sudo apt-get update
-sudo apt-get install <DEPENDENCIES>
-
-# Build the default Rust app, and the binary will be available at `target/release/name_placeholder`.
-cargo build --release -p name_placeholder
-
-# Install the default Rust app from the workspace.
-cargo install --path apps/name_placeholder --force
-
-# If you are a macOS user and want to have a `name_placeholder.app`, run the following command.
-# Install `cargo-bundle` to pack the binary into an app.
-cargo install cargo-bundle
-# Pack the app, and the it will be available at `target/release/bundle/osx/name_placeholder.app`.
-cd apps/name_placeholder
-cargo bundle --release
+```text
+sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
 ```
 
-#### Download Pre-built Binary
+## Repository map
 
-- **macOS**
-    - Download the latest pre-built binary from [GitHub Releases](https://github.com/hack-ink/name_placeholder/releases/latest).
-- **Windows**
-    - TODO
-- **Unix**
-    - TODO
+| Path                 | Purpose                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| `apps/aiq-runner/`   | Capability checks, task execution, scoring, packaging, and submission     |
+| `apps/aiq-verifier/` | Queue claims, artifact reconstruction, evaluator replay, and attestations |
+| `apps/web/`          | Public Next.js site and controlled server gateways                        |
+| `benchmarks/`        | Public catalog, schemas, and synthetic examples                           |
+| `databases/`         | Desired database state, fresh initializer, and disposable SQL checks      |
+| `openwiki/`          | Architecture, method, operations, and deployment handoff                  |
 
-### Configuration
+Private tasks, expected outputs, controlled evaluators, signing keys, Codex
+authentication, and production data must stay outside Git.
 
-#### TODO
+## Local synthetic demonstration
 
-TODO
-
-### Interaction
-
-TODO
-
-### Update
-
-TODO
-
-## Development
-
-Install the exact TypeScript development graph without running package lifecycle
-scripts:
+Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+locked dependencies.
 
 ```sh
 npm ci --ignore-scripts
+cargo run -p aiq-runner -- demo
+npm run dev
 ```
 
-List tracked template markers before adopting the template:
+Open `http://localhost:3000`. When both public Supabase variables are absent in
+development, the site uses checked-in synthetic data. Production fails closed
+when its configuration is incomplete.
+
+Useful runner commands:
 
 ```sh
-cargo make list-template-markers
+cargo run -p aiq-runner -- matrix
+cargo run -p aiq-runner -- validate --public-tasks benchmarks/examples/tasks
+cargo run -p aiq-runner -- --help
+cargo run -p aiq-verifier -- --help
 ```
 
-Run the complete Rust, TypeScript, and TOML validation gate:
+## Validation
+
+Run the repository tasks:
 
 ```sh
+cargo make fmt-check
 cargo make check
+cargo make lint
+cargo make test
+cargo make build
 ```
 
-### Architecture
+The two subscription smokes are ignored and opt in. Each consumes one Codex
+subscription attempt.
 
-This template starts as a workspace-first monorepo:
+```sh
+cargo make smoke-subscription
+cargo make smoke-controlled-subscription
+```
 
-- runnable products belong under `apps/`
-- repository-maintenance programs belong under `scripts/`
-- reusable packages belong under `packages/`
-- repository-native checks are exposed through `Makefile.toml`
-- durable architecture, runbook, and routing notes belong under `openwiki/`
+The public-task smoke validates a fixed example. The controlled-task smoke needs
+operator-supplied private task, evaluator, corpus, runtime, workspace, and Codex
+inputs. Neither smoke creates a benchmark result.
 
-## Support Me
+## Database initialization
 
-If you find this project helpful and would like to support its development, you can buy me a coffee!
+`databases/schema.sql` is the sole desired database state.
+`databases/init.ts` is the only production initialization entry point. It opens
+one direct PostgreSQL connection and applies the schema plus public reference
+data in one transaction. It rejects a database that already contains AIQ schema
+or roles. Create another empty project after a failed initialization.
 
-Your support is greatly appreciated and motivates me to keep improving this project.
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
+cargo make init-database
+```
 
-- **Fiat**
-    - [Ko-fi](https://ko-fi.com/hack_ink)
-    - [Afdian](https://afdian.com/a/hack_ink)
-- **Crypto**
-    - **Bitcoin**
-        - `bc1pedlrf67ss52md29qqkzr2avma6ghyrt4jx9ecp9457qsl75x247sqcp43c`
-    - **Ethereum**
-        - `0x3e25247CfF03F99a7D83b28F207112234feE73a6`
-    - **Polkadot**
-        - `156HGo9setPcU2qhFMVWLkcmtCEGySLwNqa3DaEiYSWtte4Y`
+The production reference contains one current controlled corpus commitment and
+exactly three public identities: runner, verifier, and publisher. A successful
+receipt reports 72 tasks, 17 model configurations, and three nodes.
 
-Thank you for your support!
+The SQL files in `databases/` support disposable validation:
 
-## Appreciation
+```sh
+cargo make smoke-database
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/synthetic-demo.sql
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/integration.sql
+```
 
-We would like to extend our heartfelt gratitude to the following projects and contributors:
+Do not load `synthetic-demo.sql` into production.
 
-- The Rust community for their continuous support and development of the Rust ecosystem.
+## Production data flow
 
-## Additional Acknowledgements
+1. The runner validates the controlled corpus, toolchain, and capability
+   manifest.
+2. It executes the selected tasks and writes content-addressed artifacts.
+3. It scores the run and signs one v3 result package.
+4. `POST /api/submissions` stores the exact package bytes and queues the package
+   as unverified.
+5. The verifier claims the package, reconstructs the workspaces, and replays the
+   deterministic evaluators.
+6. `POST /api/verifications` stages the normalized batch and records the signed
+   verifier attestation.
+7. A distinct publisher identity completes publication through the gateway.
+8. Public security-invoker views supply the Web application.
 
-- TODO
+Official means a complete, non-synthetic 17-by-72 run with valid current
+bindings. There is no additional provider ceremony.
 
----
+## Security boundaries
 
-<div align="right">
+- Keep runner, verifier, and publisher credentials separate.
+- Keep privileged Supabase values in server-only environment variables.
+- Keep both Storage buckets private.
+- Use RLS and the narrow database RPCs; do not write private tables from the
+  browser.
+- Put authentication, request limits, and a WAF in front of write routes.
+- Run the Storage reconciliation worker before the deletion worker.
+- Treat readiness responses as bounded dependency evidence, not deployment
+  proof.
 
-### License
-
-<sup>Licensed under [GPL-3.0-only](LICENSE).</sup>
-
-</div>
+See [OpenWiki quickstart](openwiki/quickstart.md),
+[operations](openwiki/operations.md), and
+[deployment handoff](openwiki/deployment-handoff.md) for the maintained details.
