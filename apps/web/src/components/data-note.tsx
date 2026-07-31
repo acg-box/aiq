@@ -1,0 +1,33 @@
+import type { DataProvenance } from '../data/provenance.ts';
+
+const provenanceCopy: Record<DataProvenance, { label: string; detail: string }> = {
+  synthetic: {
+    label: 'Synthetic / seed data',
+    detail:
+      'Values demonstrate the AIQ v1 product contract. They are not measured model claims. Configure the public Supabase variables to read RLS-protected views.',
+  },
+  published: {
+    label: 'Published evidence',
+    detail:
+      'Values come from RLS-protected public views. Inspect coverage, trust, scoring version, and run provenance before comparing entries.',
+  },
+  mixed: {
+    label: 'Mixed evidence',
+    detail:
+      'This view contains both synthetic demonstration data and published evidence. Each row or point identifies its own provenance.',
+  },
+  unavailable: {
+    label: 'No published evidence',
+    detail: 'The fixed model matrix is available, but this view has no scored evidence to display.',
+  },
+};
+
+export function DataNote({ provenance }: { provenance: DataProvenance }) {
+  const copy = provenanceCopy[provenance];
+  return (
+    <aside className="data-note" aria-label="Data provenance">
+      <span className="eyebrow">{copy.label}</span>
+      <p>{copy.detail}</p>
+    </aside>
+  );
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "public-example-retrieval-verification-01",
+  "task_version": "1.0.0",
+  "title": "Select the first-party evidence class",
+  "domain": "retrieval_verification",
+  "difficulty": "easy",
+  "prompt": "Synthetic example: Choose the preferred source for a current API limit: `official documentation` or `an unsourced repost`. Return the choice exactly.",
+  "allowed_tools": ["none"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
+  "tags": ["synthetic", "evidence"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
+  "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-retrieval-verification.json"],
+  "visibility": "public_example",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": {
+    "kind": "exact_match",
+    "expected": "official documentation",
+    "case_sensitive": false
+  }
+}

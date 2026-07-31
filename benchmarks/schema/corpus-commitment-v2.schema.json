@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/corpus-commitment-v2.schema.json",
+  "title": "AIQ controlled corpus public commitment",
+  "description": "A public-safe digest contract for one controlled corpus release. This document contains commitments only. It must not contain prompts, expected answers, object paths, signed URLs, or secrets.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "controlled",
+    "synthetic",
+    "catalog",
+    "execution",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.corpus-commitment.v2" },
+    "release_id": { "$ref": "#/$defs/releaseId" },
+    "controlled": { "const": true },
+    "synthetic": { "const": false },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "task_set_id",
+        "task_set_version",
+        "identity_sha256",
+        "identity_scope"
+      ],
+      "properties": {
+        "schema_version": { "const": "aiq.catalog.v1" },
+        "task_set_id": { "const": "aiq-core" },
+        "task_set_version": { "const": "1.0.0" },
+        "identity_sha256": { "$ref": "#/$defs/digest" },
+        "identity_scope": { "const": "ordered_full_task_metadata" }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "harness_sha256",
+        "runner_prompt_source_sha256",
+        "declared_tool_policy_sha256",
+        "declared_network_policy_sha256",
+        "environment_sha256",
+        "runtime_provenance"
+      ],
+      "properties": {
+        "harness_sha256": { "$ref": "#/$defs/digest" },
+        "runner_prompt_source_sha256": { "$ref": "#/$defs/digest" },
+        "declared_tool_policy_sha256": { "$ref": "#/$defs/digest" },
+        "declared_network_policy_sha256": { "$ref": "#/$defs/digest" },
+        "environment_sha256": { "$ref": "#/$defs/digest" },
+        "runtime_provenance": { "$ref": "#/$defs/runtimeProvenance" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 72,
+      "maxItems": 72,
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "releaseId": {
+      "type": "string",
+      "pattern": "^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\\s\\S])"
+    },
+    "sourcePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)\\.{1,2}(?:/|(?![\\s\\S])))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*(?![\\s\\S])"
+    },
+    "runnerSourceManifestEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/sourcePath" },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "runnerSourceManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "package", "scope", "path_base", "entries"],
+      "properties": {
+        "schema_version": { "const": "aiq.runner-source-manifest.v1" },
+        "package": { "const": "aiq-runner" },
+        "scope": { "const": "cargo_build_and_test_inputs" },
+        "path_base": { "const": "repository_root" },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/runnerSourceManifestEntry" }
+        }
+      }
+    },
+    "nullableEnvironmentValue": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9_.@+:/=-]+(?![\\s\\S])"
+        },
+        { "type": "null" }
+      ]
+    },
+    "nullableComponentVersion": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9.+_-]+(?![\\s\\S])"
+        },
+        { "type": "null" }
+      ]
+    },
+    "toolchainCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "executable_ref", "executable_sha256", "version"],
+      "properties": {
+        "name": { "enum": ["node", "rg"] },
+        "executable_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?![\\s\\S])"
+        },
+        "executable_sha256": { "$ref": "#/$defs/digest" },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 .()+_-]{0,79}(?![\\s\\S])"
+        }
+      }
+    },
+    "modelToolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "platform",
+        "architecture",
+        "platform_minimal_path",
+        "inherit_path",
+        "use_shell_profile",
+        "commands"
+      ],
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "platform": { "const": "darwin" },
+            "platform_minimal_path": { "const": "darwin_v1" },
+            "commands": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "object", "properties": { "executable_ref": { "const": "node" } } },
+                { "type": "object", "properties": { "executable_ref": { "const": "rg" } } }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "platform": { "const": "linux" },
+            "platform_minimal_path": { "const": "linux_v1" },
+            "commands": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "object", "properties": { "executable_ref": { "const": "node" } } },
+                { "type": "object", "properties": { "executable_ref": { "const": "rg" } } }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "properties": {
+            "platform": { "const": "win32" },
+            "platform_minimal_path": { "const": "windows_v1" },
+            "commands": {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "object",
+                  "properties": { "executable_ref": { "const": "node.exe" } }
+                },
+                {
+                  "type": "object",
+                  "properties": { "executable_ref": { "const": "rg.exe" } }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "schema_version": { "const": "aiq.execution-tool-policy.v1" },
+        "platform": { "enum": ["darwin", "linux", "win32"] },
+        "architecture": { "enum": ["arm64", "x64"] },
+        "platform_minimal_path": { "enum": ["darwin_v1", "linux_v1", "windows_v1"] },
+        "inherit_path": { "const": false },
+        "use_shell_profile": { "const": false },
+        "commands": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            {
+              "allOf": [
+                { "$ref": "#/$defs/toolchainCommand" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": { "const": "node" },
+                    "executable_ref": { "enum": ["node", "node.exe"] }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/$defs/toolchainCommand" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": { "const": "rg" },
+                    "executable_ref": { "enum": ["rg", "rg.exe"] }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "runtimeProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "operating_system",
+        "locale_and_timezone",
+        "node_runtime",
+        "model_toolchain",
+        "evaluator",
+        "runner",
+        "codex"
+      ],
+      "properties": {
+        "schema_version": { "const": "aiq.execution-provenance.v1" },
+        "operating_system": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["platform", "architecture", "type", "release"],
+          "properties": {
+            "platform": {
+              "enum": ["aix", "darwin", "freebsd", "linux", "openbsd", "sunos", "win32"]
+            },
+            "architecture": { "enum": ["arm64", "x64"] },
+            "type": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[A-Za-z0-9_. -]+(?![\\s\\S])"
+            },
+            "release": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "pattern": "^[A-Za-z0-9._+-]+(?![\\s\\S])"
+            }
+          }
+        },
+        "locale_and_timezone": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["environment", "resolved_locale", "resolved_time_zone"],
+          "properties": {
+            "environment": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["LANG", "LC_ALL", "TZ"],
+              "properties": {
+                "LANG": { "$ref": "#/$defs/nullableEnvironmentValue" },
+                "LC_ALL": { "$ref": "#/$defs/nullableEnvironmentValue" },
+                "TZ": { "$ref": "#/$defs/nullableEnvironmentValue" }
+              }
+            },
+            "resolved_locale": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 40,
+              "pattern": "^[A-Za-z0-9-]+(?![\\s\\S])"
+            },
+            "resolved_time_zone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "pattern": "^[A-Za-z0-9_+./-]+(?![\\s\\S])"
+            }
+          }
+        },
+        "node_runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["executable_sha256", "version", "release", "components"],
+          "properties": {
+            "executable_sha256": { "$ref": "#/$defs/digest" },
+            "version": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?(?![\\s\\S])"
+            },
+            "release": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "source_url", "headers_url"],
+              "properties": {
+                "name": { "const": "node" },
+                "source_url": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^https://nodejs\\.org/download/release/v[0-9]+\\.[0-9]+\\.[0-9]+/node-v[0-9]+\\.[0-9]+\\.[0-9]+\\.tar\\.gz(?![\\s\\S])"
+                    },
+                    { "type": "null" }
+                  ]
+                },
+                "headers_url": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200,
+                      "pattern": "^https://nodejs\\.org/download/release/v[0-9]+\\.[0-9]+\\.[0-9]+/node-v[0-9]+\\.[0-9]+\\.[0-9]+-headers\\.tar\\.gz(?![\\s\\S])"
+                    },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            },
+            "components": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["icu", "tz", "unicode", "v8", "modules", "openssl", "zlib"],
+              "properties": {
+                "icu": { "$ref": "#/$defs/nullableComponentVersion" },
+                "tz": { "$ref": "#/$defs/nullableComponentVersion" },
+                "unicode": { "$ref": "#/$defs/nullableComponentVersion" },
+                "v8": { "$ref": "#/$defs/nullableComponentVersion" },
+                "modules": { "$ref": "#/$defs/nullableComponentVersion" },
+                "openssl": { "$ref": "#/$defs/nullableComponentVersion" },
+                "zlib": { "$ref": "#/$defs/nullableComponentVersion" }
+              }
+            }
+          }
+        },
+        "model_toolchain": { "$ref": "#/$defs/modelToolchain" },
+        "evaluator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executable_sha256",
+            "dependency_model",
+            "acceptance_invocation",
+            "scenario_invocation"
+          ],
+          "properties": {
+            "executable_sha256": { "$ref": "#/$defs/digest" },
+            "dependency_model": { "const": "node_builtin_modules_only" },
+            "acceptance_invocation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["executable", "arguments", "cwd", "environment"],
+              "properties": {
+                "executable": { "const": "committed_node_runtime" },
+                "arguments": { "const": ["<committed-evaluator-script>"] },
+                "cwd": { "const": "repository_root" },
+                "environment": { "const": "empty" }
+              }
+            },
+            "scenario_invocation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "executable",
+                "arguments",
+                "hidden_source_transport",
+                "authentication_transport",
+                "trusted_completion_transport",
+                "optional_write_argument",
+                "environment"
+              ],
+              "properties": {
+                "executable": { "const": "committed_node_runtime" },
+                "arguments": {
+                  "const": [
+                    "--no-warnings",
+                    "--abort-on-uncaught-exception",
+                    "--unhandled-rejections=strict",
+                    "--disable-sigusr1",
+                    "--experimental-vm-modules",
+                    "--max-old-space-size=128",
+                    "--permission",
+                    "--allow-fs-read=<candidate-workspace>",
+                    "<scenario-launcher-in-disposable-workspace>"
+                  ]
+                },
+                "hidden_source_transport": {
+                  "const": "inherited descriptor 3 consumed by the launcher before candidate import"
+                },
+                "authentication_transport": {
+                  "const": "random HMAC key and nonce on inherited descriptor 4 consumed before candidate import"
+                },
+                "trusted_completion_transport": {
+                  "const": "HMAC-SHA-256 completion record on inherited descriptor 5"
+                },
+                "optional_write_argument": {
+                  "const": "--allow-fs-write=<candidate-workspace>"
+                },
+                "environment": { "const": "empty" }
+              }
+            }
+          }
+        },
+        "runner": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "identity_kind",
+            "source_manifest",
+            "source_manifest_sha256",
+            "built_binary_sha256"
+          ],
+          "properties": {
+            "identity_kind": { "const": "source_only" },
+            "source_manifest": { "$ref": "#/$defs/runnerSourceManifest" },
+            "source_manifest_sha256": { "$ref": "#/$defs/digest" },
+            "built_binary_sha256": { "type": "null" }
+          }
+        },
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["invoked", "binary_sha256", "version"],
+          "properties": {
+            "invoked": { "const": false },
+            "binary_sha256": { "type": "null" },
+            "version": { "type": "null" }
+          }
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "task_version",
+        "task_definition_sha256",
+        "catalog_entry_sha256",
+        "baseline_workspace_tree_sha256",
+        "fixture_bundle_sha256",
+        "evaluator_executable_sha256",
+        "evaluator_runtime_kind",
+        "evaluator_runtime_executable_sha256",
+        "evaluator_configuration_sha256",
+        "acceptance_suite_sha256",
+        "leakage_review_sha256"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
+        },
+        "task_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?![\\s\\S])"
+        },
+        "task_definition_sha256": { "$ref": "#/$defs/digest" },
+        "catalog_entry_sha256": { "$ref": "#/$defs/digest" },
+        "baseline_workspace_tree_sha256": { "$ref": "#/$defs/digest" },
+        "fixture_bundle_sha256": { "$ref": "#/$defs/digest" },
+        "evaluator_executable_sha256": { "$ref": "#/$defs/digest" },
+        "evaluator_runtime_kind": { "const": "node" },
+        "evaluator_runtime_executable_sha256": { "$ref": "#/$defs/digest" },
+        "evaluator_configuration_sha256": { "$ref": "#/$defs/digest" },
+        "acceptance_suite_sha256": { "$ref": "#/$defs/digest" },
+        "leakage_review_sha256": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}
