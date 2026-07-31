@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { scanTemplateMarkers } from './list-template-markers.ts';
 
 await test('the marker scan reports tracked files but not untracked files', async (context) => {
-  const repositoryRoot = await mkdtemp(join(tmpdir(), 'vibe-mono-template-markers-'));
+  const repositoryRoot = await mkdtemp(join(tmpdir(), 'aiq-template-markers-'));
   context.after(() => rm(repositoryRoot, { recursive: true, force: true }));
 
   const markers = [
@@ -34,7 +34,7 @@ await test('the marker scan reports tracked files but not untracked files', asyn
 });
 
 await test('the marker scan reports Git failures', async (context) => {
-  const repositoryRoot = await mkdtemp(join(tmpdir(), 'vibe-mono-template-markers-error-'));
+  const repositoryRoot = await mkdtemp(join(tmpdir(), 'aiq-template-markers-error-'));
   context.after(() => rm(repositoryRoot, { recursive: true, force: true }));
 
   throws(() => scanTemplateMarkers(repositoryRoot), /Failed to scan template markers/);

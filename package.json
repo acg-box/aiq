@@ -1,8 +1,28 @@
 {
-  "name": "name-placeholder-workspace",
+  "name": "aiq-wiki-workspace",
   "private": true,
+  "description": "Transparent, reproducible benchmarks for practical AI and agent work",
+  "homepage": "https://aiq.wiki",
   "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/acg-box/aiq.git"
+  },
+  "workspaces": [
+    "apps/web"
+  ],
   "type": "module",
+  "scripts": {
+    "build": "npm run build --workspace @aiq/wiki-web",
+    "check": "tsc --project tsconfig.json && npm run check --workspace @aiq/wiki-web",
+    "dev": "npm run dev --workspace @aiq/wiki-web",
+    "format": "oxfmt --check scripts databases apps/web package.json vercel.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
+    "format:fix": "oxfmt --write scripts databases apps/web package.json vercel.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
+    "lint": "oxlint . --type-aware",
+    "storage:lifecycle": "node scripts/storage-object-lifecycle.ts",
+    "start": "npm run start --workspace @aiq/wiki-web",
+    "test": "node --test scripts/*.test.ts databases/*.test.ts && npm run test --workspace @aiq/wiki-web"
+  },
   "devDependencies": {
     "@types/node": "24.13.3",
     "oxfmt": "0.60.0",
@@ -10,21 +30,27 @@
     "oxlint-tsgolint": "7.0.2001",
     "typescript": "7.0.2"
   },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.22",
+      "sharp": "0.35.3"
+    }
+  },
   "devEngines": {
     "packageManager": {
       "name": "npm",
-      "version": "11.16.0",
+      "version": "11.17.0",
       "onFail": "error"
     },
     "runtime": {
       "name": "node",
-      "version": "24.18.0",
+      "version": ">=24.18.0",
       "onFail": "error"
     }
   },
   "engines": {
-    "node": "24.18.0",
-    "npm": "11.16.0"
+    "node": ">=24.18.0",
+    "npm": ">=11.17.0"
   },
-  "packageManager": "npm@11.16.0"
+  "packageManager": "npm@11.17.0"
 }
