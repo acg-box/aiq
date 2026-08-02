@@ -157,7 +157,8 @@ fixture in production.
 
 ## Web configuration
 
-For the disposable ACGbox read-only preview, set only:
+For the disposable AIQ Wiki read-only preview in the personal Vercel `acgbox`
+scope/account and Supabase `ACG Box` organization, set only:
 
 ```text
 AIQ_DEPLOYMENT_PROFILE=preview

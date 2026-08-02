@@ -120,11 +120,12 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
 
 Do not load `synthetic-demo.sql` into production.
 
-## Disposable ACGbox free preview
+## Disposable AIQ Wiki free preview
 
-The first hosted review can use one new personal Supabase Free project and one
-personal Vercel Hobby project. It does not need a runner, verifier, Storage
-bucket, write-route secret, schedule, domain, or DNS change.
+The first hosted review can use one new Supabase Free project in the personal
+`ACG Box` organization and one Vercel Hobby project in the personal `acgbox`
+scope/account. It does not need a runner, verifier, Storage bucket, write-route
+secret, schedule, domain, or DNS change.
 
 Initialize the new disposable database once:
 
@@ -145,7 +146,7 @@ The preview requires the live Supabase schema and RLS read path to work. One
 bounded status view returns a row only when the required preview matrix,
 cardinalities, scoring definition, synthetic boundary, and empty publication
 surface are valid. The Web application then shows the full checked-in synthetic
-demonstration. Every page has a persistent ACGbox preview banner, synthetic
+demonstration. Every page has a persistent AIQ Wiki preview banner, synthetic
 complete runs say `not Official`, and search indexing is disabled.
 `/api/readiness` returns `503` until the later production write and verifier
 gateways are configured; this is expected for this read-only preview. Discard

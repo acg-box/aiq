@@ -33,10 +33,10 @@ separate deployable. Distributed remote nodes are not part of the first launch.
 
 ## Personal free-tier preview
 
-The approved first review scope is `ACGbox`: use only the personal ACGbox
-Vercel Hobby scope and the personal ACGbox Supabase Free organization. Do not
-select, import into, or bill a company team. Use the project name `aiq` in both
-Vercel and Supabase.
+The approved first review uses only the personal Vercel Hobby scope/account
+`acgbox` and the personal Supabase Free organization `ACG Box`. Do not select,
+import into, or bill a company team. Use the project name `aiq` in both Vercel
+and Supabase.
 
 This preview is disposable and read-only. It needs no Storage bucket, runner,
 verifier, publisher, schedule, custom domain, DNS change, WAF, or server secret.

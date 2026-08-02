@@ -642,7 +642,7 @@ export class PreviewAiqRepository implements AiqRepository {
 
   constructor(liveRepository: PreviewStatusSource) {
     if (liveRepository.mode !== 'live' || liveRepository.configuration !== 'live') {
-      throw new Error('ACGbox preview requires one valid live public-data repository.');
+      throw new Error('AIQ Wiki preview requires one valid live public-data repository.');
     }
     this.#liveRepository = liveRepository;
   }
@@ -650,7 +650,7 @@ export class PreviewAiqRepository implements AiqRepository {
   #assertPreviewStatus(): Promise<void> {
     this.#previewStatusCheck ??= this.#liveRepository.readPreviewStatusRows().then((value) => {
       if (!Array.isArray(value) || value.length !== 1) {
-        throw new Error('ACGbox preview requires exactly one preview-status row.');
+        throw new Error('AIQ Wiki preview requires exactly one preview-status row.');
       }
       const row: unknown = value[0];
       const expectedEntries = Object.entries(EXPECTED_PREVIEW_STATUS);
@@ -659,7 +659,7 @@ export class PreviewAiqRepository implements AiqRepository {
         Object.keys(row).length !== expectedEntries.length ||
         expectedEntries.some(([key, expected]) => Reflect.get(row, key) !== expected)
       ) {
-        throw new Error('ACGbox preview status does not match the required fixture contract.');
+        throw new Error('AIQ Wiki preview status does not match the required fixture contract.');
       }
       return undefined;
     });
@@ -1323,7 +1323,7 @@ export function createAiqRepository(
   if (deploymentProfile.profile === 'preview') {
     return new InvalidLiveAiqRepository([
       ...configuration.issues,
-      'ACGbox preview requires both browser-safe Supabase variables',
+      'AIQ Wiki preview requires both browser-safe Supabase variables',
     ]);
   }
   if (configuration.state === 'invalid') {
