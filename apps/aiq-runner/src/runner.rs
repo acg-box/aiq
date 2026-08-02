@@ -1707,7 +1707,7 @@ fn merge_provider_counter(
 	};
 
 	*accumulator = match *accumulator {
-		Some(current) => Some(current.checked_add(observed).unwrap_or(u64::MAX)),
+		Some(current) => Some(current.saturating_add(observed)),
 		None => Some(observed),
 	};
 }
@@ -2860,6 +2860,10 @@ fn restore_checkpoint_results(
 	Ok(committed)
 }
 
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the record constructor keeps each independently validated run commitment explicit"
+)]
 fn selected_run_record(
 	tasks: &[TaskDefinition],
 	models: &[ModelConfig],
