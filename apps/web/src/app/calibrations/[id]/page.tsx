@@ -26,42 +26,41 @@ export default async function CalibrationDetailPage({
   searchParams: Promise<CalibrationDetailSearchParams>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
-  const defaultSelection = CALIBRATION_MODEL_CONFIGURATIONS[0];
-  if (!defaultSelection || Array.isArray(query.configuration)) notFound();
-  const selection =
-    query.configuration === undefined
-      ? defaultSelection
-      : parseCalibrationConfiguration(query.configuration);
-  if (!selection) notFound();
+  if (Array.isArray(query.configuration)) notFound();
 
   const repository = createAiqRepository();
-  const [scores, result] = await Promise.all([
-    readPublicData(
-      repository,
-      () => repository.listCalibrationScores(id),
-      [],
-      (value) => value.length === 0,
-      (value) => value.map((score) => score.synthetic),
-    ),
-    readPublicData(
-      repository,
-      () => repository.getCalibrationRun(id, selection),
-      null,
-      (value) => value === null,
-      (value) => (value ? [value.synthetic] : []),
-    ),
-  ]);
-  if (scores.state === 'empty' || result.state === 'empty') notFound();
+  const scores = await readPublicData(
+    repository,
+    () => repository.listCalibrationScores(id),
+    [],
+    (value) => value.length === 0,
+    (value) => value.map((score) => score.synthetic),
+  );
+  const firstScore = scores.data[0];
+  const selection =
+    query.configuration === undefined
+      ? firstScore && {
+          modelFamily: firstScore.modelFamily,
+          reasoningEffort: firstScore.reasoningEffort,
+        }
+      : parseCalibrationConfiguration(query.configuration);
   if (
-    scores.state !== 'unavailable' &&
+    !selection ||
     !scores.data.some(
       (score) =>
         score.modelFamily === selection.modelFamily &&
         score.reasoningEffort === selection.reasoningEffort,
     )
-  ) {
+  )
     notFound();
-  }
+  const result = await readPublicData(
+    repository,
+    () => repository.getCalibrationRun(id, selection),
+    null,
+    (value) => value === null,
+    (value) => (value ? [value.synthetic] : []),
+  );
+  if (result.state === 'empty') notFound();
   const run = result.data;
   const selectedKey = calibrationConfigurationKey(selection);
   const supportedConfigurations = CALIBRATION_MODEL_CONFIGURATIONS.filter((configuration) =>
@@ -128,7 +127,7 @@ export default async function CalibrationDetailPage({
                 );
               })}
             </select>
-            <button type="submit">Show 72-task slice</button>
+            <button type="submit">Show {run.selectedTaskCount}-task subset</button>
           </form>
           <p className="calibration-slice-count" role="status">
             Showing {run.results.length.toLocaleString()} of {run.resultCount.toLocaleString()}{' '}
