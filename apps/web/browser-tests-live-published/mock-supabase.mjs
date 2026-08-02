@@ -97,6 +97,7 @@ const runRows = matrix.map((entry, index) => ({
 }));
 
 const calibrationRunId = `run_${'8'.repeat(64)}`;
+const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
 const pricingSource = 'https://developers.openai.com/api/docs/pricing';
 const pricingLimitation =
   'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.';
@@ -116,6 +117,18 @@ const calibrationRun = {
   ranking_eligible: false,
   pricing_currency: 'USD',
   pricing_processing_tier: 'standard',
+};
+
+const subsetCalibrationRun = {
+  ...calibrationRun,
+  run_id: subsetCalibrationRunId,
+  selected_task_count: 5,
+  selected_model_count: 1,
+  result_count: 5,
+  started_at: '2026-07-31T12:00:00.000Z',
+  completed_at: '2026-07-31T12:10:00.000Z',
+  verified_at: '2026-07-31T12:15:00.000Z',
+  published_at: '2026-07-31T12:20:00.000Z',
 };
 
 const calibrationScores = matrix.map((entry, index) => {
@@ -171,7 +184,24 @@ const calibrationScores = matrix.map((entry, index) => {
   };
 });
 
+const subsetCalibrationScore = {
+  ...calibrationScores[7],
+  run_id: subsetCalibrationRunId,
+  result_count: 5,
+  sample_size: 5,
+  coverage_percent: 100,
+  observed_time_sample_count: 5,
+  token_usage_sample_count: 5,
+  estimated_cost_sample_count: 5,
+  attempted_result_count: 5,
+  invoked_result_count: 5,
+  adapter_elapsed_observed_result_count: 5,
+  token_observed_result_count: 5,
+  priced_result_count: 5,
+};
+
 const historicalCalibrationScores = [
+  subsetCalibrationScore,
   ...calibrationScores,
   { ...calibrationScores[0], run_id: 'run-stale-calibration-history' },
 ];
@@ -224,6 +254,17 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       pricing_processing_tier: 'standard',
     };
   }),
+);
+
+calibrationResults.push(
+  ...calibrationResults
+    .filter((result) => result.model_family === 'terra' && result.reasoning_effort === 'medium')
+    .slice(0, 5)
+    .map((result, index) => ({
+      ...result,
+      result_id: `subset_result_${String(index).padStart(2, '0')}`,
+      run_id: subsetCalibrationRunId,
+    })),
 );
 
 const modelEfficiency = calibrationScores.map((score, index) => ({
@@ -524,7 +565,13 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === '/rest/v1/public_calibration_runs') {
     const exactId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
-    json(response, limited(url, exactId && exactId !== calibrationRunId ? [] : [calibrationRun]));
+    const exactStartedAt = url.searchParams.get('started_at')?.replace(/^eq\./, '');
+    const rows = [subsetCalibrationRun, calibrationRun].filter(
+      (run) =>
+        (!exactId || run.run_id === exactId) &&
+        (!exactStartedAt || run.started_at === exactStartedAt),
+    );
+    json(response, limited(url, rows));
     return;
   }
   if (url.pathname === '/rest/v1/public_calibration_results') {
