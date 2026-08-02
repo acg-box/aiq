@@ -1,14 +1,43 @@
 ---
 type: 'Handoff'
 title: 'Deployment Handoff'
-description: 'Greenfield Supabase, Vercel, runner, verifier, and publication handoff.'
+description: 'Current hosted foundation state and remaining Supabase, Vercel, runner, verifier, publication, and release-acceptance work.'
 tags: ['deployment', 'handoff', 'supabase', 'vercel']
 ---
 
 # Deployment Handoff
 
-This repository has not deployed production infrastructure. The deployment
-owner must create and operate every external resource.
+The production Web and database foundations are deployed, but the launch
+checklist is not accepted. The deployment owner must complete and record the
+remaining external resources and evidence.
+
+## Verified deployment state
+
+This public-safe state was verified on 2026-08-02:
+
+| Surface | Current state |
+| ------- | ------------- |
+| Web and gateway | Personal Vercel scope `acgbox`, project `aiq`, production origin `https://aiq.wiki` |
+| Domain and DNS | Vercel has only `aiq.wiki` for Production and `www.aiq.wiki` as a `308` redirect to the apex; both domains report `configured_correctly` |
+| Cloudflare | Zone `aiq.wiki` in account `Cloudflare@acg.box` has exactly two DNS-only CNAMEs, `@` and `www`, both targeting `87af8e493f03b965.vercel-dns-017.com` |
+| Web configuration | The production environment-name set in [Vercel setup](#vercel-setup) is configured; secret values remain outside Git |
+| Database | Personal Supabase organization `ACG Box`, project `aiq`, reference `xxnszykaeapolqdnhalx`; one-shot production schema and reference initialization completed |
+| Reference state | 17 model configurations, three production nodes, and no published runs |
+| Storage | Private buckets `private-packages` and `private-artifacts` exist |
+| Runtime | `https://aiq.wiki/` returns `200`; `/api/readiness` returns `200` with `bounded_dependency_probe_passed`, `scope_ready: true`, and production mode |
+
+`https://www.aiq.wiki` preserves the request path and returns a `308` redirect
+to the apex domain. The removed Vercel project domain
+`aiq-acgbox.vercel.app` returns `404 DEPLOYMENT_NOT_FOUND` and is not a public
+origin.
+
+No benchmark or Storage schedule and no cloud runner or verifier worker exist.
+A full real run has not been published. Official dispatch is blocked by the
+managed-policy gate: `Official runs require an exclusive managed aiq_benchmark
+allowlist and managed default; no model was invoked`. Current run work is
+calibration-only; calibration evidence is non-Official and cannot satisfy the
+Official publication gate. These facts do not establish final release
+acceptance.
 
 ## Release topology
 
@@ -73,11 +102,12 @@ run. Record Vercel and Supabase usage after the review window. Upgrade only if
 measured limits require it. Delete or retain the disposable projects by an
 explicit owner decision, but never convert this database into production.
 
-## Required external inputs
+## Required and remaining external inputs
 
-- one new Supabase project with PostgreSQL 17;
-- one Vercel project and the selected public origin;
-- two private Storage buckets, one for packages and one for runner artifacts;
+- the provisioned Supabase project with PostgreSQL 17 and its initialization
+  receipt;
+- the provisioned Vercel project and approved public origin;
+- the provisioned private package and runner-artifact Storage buckets;
 - the current 72-task private corpus and controlled evaluator registry;
 - the current public-safe corpus commitment;
 - the exact Node.js runtime and controlled Node.js/ripgrep toolchain;
@@ -112,6 +142,13 @@ in the runner environment.
 
 ## Supabase setup
 
+The current personal project `ACG Box/aiq` (`xxnszykaeapolqdnhalx`) has already
+completed the one-shot production initialization. Do not rerun the initializer
+against it. Retain its receipt and confirm the deployed state through the
+bounded readiness checks.
+
+Use the following procedure only for a replacement empty project:
+
 1. Create a new project.
 2. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
@@ -139,6 +176,10 @@ cargo make smoke-database
 Do not load the synthetic demonstration SQL into production.
 
 ## Vercel setup
+
+The production environment-name set below is configured for `acgbox/aiq`.
+Values remain outside Git. Preserve the browser-safe and server-only boundary
+when rotating or replacing a value.
 
 Configure browser-safe values:
 
@@ -280,7 +321,7 @@ public-read failures.
 - [ ] One complete non-synthetic 17-by-72 run is verified, published, and visible
       in the overview, trends, run history, and run detail pages.
 - [ ] Monitoring and Storage lifecycle owners are active.
-- [ ] DNS and TLS resolve to the approved Vercel deployment.
+- [x] DNS and TLS resolve to the approved Vercel deployment.
 - [ ] The acceptance window records health, user-visible checks, worker progress,
       and restart deltas.
 
