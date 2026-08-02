@@ -200,7 +200,8 @@ export default async function OverviewPage() {
               <CalibrationEfficiency scores={calibrationScoresResult.data} />
             )}
             <Link className="text-link" href={`/calibrations/${latestCalibration.id}`}>
-              Inspect the bounded 72-task slices <span aria-hidden="true">→</span>
+              Inspect the bounded {latestCalibration.selectedTaskCount}-task subsets{' '}
+              <span aria-hidden="true">→</span>
             </Link>
           </>
         ) : (
