@@ -20,6 +20,16 @@ function checkSecurityDefinerSearchPaths(schema: string): void {
 }
 
 function checkWorkspaceIntegrityFailureClassification(schema: string): void {
+  const adapterValidator =
+    schema.match(
+      /create function aiq_private\.dto_adapter_failure_is_valid[\s\S]*?\n\$_\$;/i,
+    )?.[0] ?? '';
+  assert.match(
+    adapterValidator,
+    /'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'/,
+    'The adapter-failure validator must accept workspace_integrity after paid execution.',
+  );
+
   const resultValidator =
     schema.match(/create function aiq_private\.dto_result_is_valid[\s\S]*?\n\$_\$;/i)?.[0] ?? '';
   assert.match(
@@ -50,7 +60,7 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
   );
   for (const filter of unattemptedSets) {
     assert.equal(
-      filter.groups?.tail.trim(),
+      filter.groups?.tail?.trim() ?? '',
       '',
       'workspace_integrity is attempted and must not enter an unattempted filter.',
     );
@@ -78,6 +88,63 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
     schema,
     /outcome='invalid'[\s\S]{0,100}failure_code in \(\s*'evaluator_failure','workspace_unavailable','workspace_integrity','missing_evaluator','spawn'/,
     'The calibration result constraint must accept the normalized workspace_integrity code.',
+  );
+}
+
+function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
+  const catalogDigest = 'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+  const staleCatalogDigest = 'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+  const databaseSources = `${schema}\n${syntheticDemo}`;
+
+  assert.doesNotMatch(databaseSources, new RegExp(staleCatalogDigest));
+  assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.0/);
+  assert.match(schema, new RegExp(`sha256:${catalogDigest}`));
+  assert.match(schema, new RegExp(`catalog_sha256 =\\s*'${catalogDigest}'`));
+  assert.match(schema, /task_set\.task_set_version = '1\.0\.1'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.0'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.1'/);
+  assert.match(syntheticDemo, /'aiq-core@1\.0\.1'/);
+  assert.match(
+    syntheticDemo,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.1', '1\.0\.0'/,
+  );
+
+  const pricingValidator =
+    schema.match(
+      /create function aiq_private\.efficiency_pricing_v1_is_valid[\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+  for (const contract of [
+    /https:\/\/developers\.openai\.com\/api\/docs\/pricing/,
+    /'gpt-5\.6-sol'[\s\S]{0,240}5000[\s\S]{0,120}500[\s\S]{0,160}6250[\s\S]{0,120}30000/,
+    /'gpt-5\.6-terra'[\s\S]{0,240}2000[\s\S]{0,120}200[\s\S]{0,160}2500[\s\S]{0,120}12000/,
+    /'gpt-5\.6-luna'[\s\S]{0,240}200[\s\S]{0,120}20[\s\S]{0,160}250[\s\S]{0,120}1200/,
+    /Standard short-context API-equivalent comparison only\.[\s\S]{0,240}272000 aggregate input tokens[\s\S]{0,240}This is not actual subscription spend\./,
+  ]) {
+    assert.match(
+      pricingValidator,
+      contract,
+      'The fixed Standard short-context pricing record drifted.',
+    );
+  }
+
+  const resultEfficiencyValidator =
+    schema.match(
+      /create function aiq_private\.result_efficiency_v1_is_valid[\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+  assert.match(
+    resultEfficiencyValidator,
+    /if input_tokens>272000\s*then return candidate->>'cost_status'='unavailable_context_band'/,
+    'Aggregate input above the short-context boundary must be unpriced.',
+  );
+  assert.match(
+    resultEfficiencyValidator,
+    /\(candidate->>'cost_status'='estimated'\)[\s\S]{0,160}\(candidate->'standard_api_equivalent_usd_nanos'<>'null'::jsonb\)/,
+    'Only estimated results can retain a cost.',
+  );
+  assert.match(
+    resultEfficiencyValidator,
+    /\(candidate->'standard_api_equivalent_usd_nanos'='null'::jsonb\)[\s\S]{0,160}\(candidate->'cost_evidence_level'='null'::jsonb\)/,
+    'Unavailable costs must not retain cost authority.',
   );
 }
 
@@ -227,6 +294,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   );
   checkSecurityDefinerSearchPaths(schema);
   checkWorkspaceIntegrityFailureClassification(schema);
+  checkCurrentReleaseAndPricing(schema, syntheticDemo);
 
   for (const requiredName of [
     'aiq_enqueue_submission',
