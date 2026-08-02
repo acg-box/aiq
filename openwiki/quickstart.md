@@ -23,9 +23,23 @@ distinct identities: runner, verifier, and publisher.
 
 ## Deployment status
 
-The repository has not created a Supabase project, Vercel project, DNS record,
-production secret, external schedule, Storage bucket, or remote worker. All
-checked-in result and radar data is synthetic.
+The production Web and database foundations are provisioned, but release
+acceptance is not complete. The personal Vercel scope `acgbox` hosts project
+`aiq` at `https://aiq.wiki`, and `https://www.aiq.wiki` preserves the request
+path and redirects to the apex domain. HTTPS and Vercel domain verification
+pass. The production environment-name contract is configured. The personal
+Supabase organization `ACG Box` hosts project `aiq`
+(`xxnszykaeapolqdnhalx`). Its one-shot production schema and reference
+initialization completed, and the real database has 17 model configurations,
+three production nodes, no published runs, and private `private-packages` and
+`private-artifacts` buckets. Bounded runtime readiness and the empty real-data
+read path pass.
+
+No benchmark or Storage schedule and no cloud runner or verifier worker exist.
+A full real run has not been published. Official dispatch is blocked by the
+managed-policy gate: `Official runs require an exclusive managed aiq_benchmark
+allowlist and managed default; no model was invoked`. Current run work is
+calibration-only; calibration evidence is non-Official.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
@@ -72,7 +86,8 @@ They are diagnostics, not benchmark results.
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` connects directly to one new Supabase PostgreSQL database and
 applies the schema plus public reference data in one transaction. It rejects an
-existing AIQ database.
+existing AIQ database. The production project is already initialized; use this
+command only for a replacement empty project, not for the current project.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
