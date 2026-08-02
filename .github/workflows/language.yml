@@ -200,6 +200,13 @@ jobs:
           AIQ_DATABASE_INIT_TEST_URL: postgresql://postgres:aiq-contract-local-only@127.0.0.1:5432/aiq_initializer
         run: node --test databases/init.test.ts
 
+      - name: Exercise the calibration publication lifecycle
+        run: >-
+          docker exec --interactive "${{ job.services.postgres.id }}"
+          psql --username postgres --dbname aiq_initializer --set ON_ERROR_STOP=1
+          --file -
+          < databases/calibration-integration.sql
+
       - name: Remove initializer test database and roles
         if: always()
         run: |

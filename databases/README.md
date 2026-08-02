@@ -184,8 +184,16 @@ and not disclose its connection string. The same test requires both browser
 roles to see the complete 17-model, three-node, one-scoring-version, and
 ten-domain public reference shape.
 
-Run the last two files only in a disposable database. Do not load synthetic data
-into production.
+Run the rollback-only calibration publication proof against the same freshly
+initialized disposable database. It uses the initializer-owned exact catalog
+and does not add or replace catalog rows.
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-calibration-database
+```
+
+Run `synthetic-demo.sql`, `integration.sql`, and `calibration-integration.sql`
+only in disposable databases. Do not load synthetic data into production.
 
 ## Real public-read chain
 
