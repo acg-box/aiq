@@ -448,12 +448,12 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     "candidate->>'method'='standard_api_equivalent_text_token_estimate'",
     "candidate->>'version'='aiq.standard-api-equivalent-usd.v1'",
     "candidate->>'as_of'='2026-08-02'",
-    "candidate->>'source'='https://developers.openai.com/api/docs/models/compare'",
+    "candidate->>'source'='https://developers.openai.com/api/docs/pricing'",
     "candidate->>'currency'='USD'",
     "candidate->>'processing_tier'='standard'",
     "candidate->'hosted_tool_fees_included'='false'::jsonb",
     "'(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again'",
-    "'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.'",
+    "'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.'",
   ]) {
     assert.ok(
       schema.includes(pricingContract),
@@ -576,7 +576,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     /outcome='tool_failure'[\s\S]{0,140}'unsupported_model','non_zero_exit'/,
     /outcome='policy_failure'[\s\S]{0,120}failure_code='output_truncated'/,
     /outcome='wrong_artifact'[\s\S]{0,120}failure_code='missing_response'/,
-    /outcome='invalid'[\s\S]{0,260}'evaluator_failure','workspace_unavailable','missing_evaluator','spawn',[\s\S]{0,160}'authentication','subscription_limit','capability_validation_failed'/,
+    /outcome='invalid'[\s\S]{0,260}'evaluator_failure','workspace_unavailable','workspace_integrity','missing_evaluator','spawn',[\s\S]{0,160}'authentication','subscription_limit','capability_validation_failed'/,
     /outcome='not_applicable'[\s\S]{0,140}failure_code='capability_unavailable'/,
   ]) {
     assert.match(
