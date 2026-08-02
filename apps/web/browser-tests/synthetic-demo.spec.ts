@@ -1,9 +1,21 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
+const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
+
 const routes = [
   { path: '/', heading: 'A score is only useful', navigation: 'Overview' },
   { path: '/runs', heading: 'Every public run stays inspectable.', navigation: 'Runs' },
+  {
+    path: '/calibrations',
+    heading: 'Verified provenance',
+    navigation: 'Calibrations',
+  },
+  {
+    path: `/calibrations/${seedCalibrationRunId}`,
+    heading: 'Verified provenance',
+    navigation: 'Calibrations',
+  },
   { path: '/compare', heading: 'One model is not one behavior.', navigation: 'Compare' },
   { path: '/trends', heading: 'The past remains part of the record.', navigation: 'Trends' },
   { path: '/radar', heading: 'Know the runner behind the result.', navigation: 'Radar' },
@@ -117,6 +129,28 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   await expectNoDocumentOverflow(page, testInfo);
   await expectAccessible(page);
   expect(runtimeFailures).toEqual([]);
+});
+
+test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
+  await expect(
+    page.getByText('not Official / not ranking eligible', { exact: false }),
+  ).toBeVisible();
+
+  await page.goto('/calibrations');
+  const register = page.getByRole('region', { name: 'Public calibration register' });
+  await expect(register.getByRole('row')).toHaveCount(2);
+  await expect(register).toContainText('Synthetic seed');
+  await register.getByRole('link', { name: 'Inspect calibration' }).click();
+  await expect(page).toHaveURL(`/calibrations/${seedCalibrationRunId}`);
+  await expect(page.getByLabel('Model and reasoning configuration').locator('option')).toHaveCount(
+    1,
+  );
+  await expect(page.getByRole('status')).toContainText('Showing 1 of 1 result cells');
+  await expect(
+    page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
+  ).toHaveCount(2);
 });
 
 test('radar separates synthetic registry, observation, and aggregation evidence', async ({

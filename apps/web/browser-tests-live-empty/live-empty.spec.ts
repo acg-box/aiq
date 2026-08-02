@@ -34,6 +34,7 @@ const test = base.extend<LiveEmptyFixtures>({
 const routes = [
   '/',
   '/runs',
+  '/calibrations',
   '/compare',
   '/trends?range=day',
   '/trends?range=week',
@@ -86,7 +87,7 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
 }) => {
   const response = await page.goto('/');
   expectPrivateNoStore(response);
-  await expect(page.getByText('No published evidence', { exact: true })).toBeVisible();
+  await expect(page.getByText('No published evidence', { exact: true }).first()).toBeVisible();
   const table = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
@@ -99,6 +100,17 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   await expect(meanCoverage.getByText('Unknown', { exact: true })).toBeVisible();
   await expect(meanCoverage.getByText('not measured', { exact: true })).toBeVisible();
   await expect(meanCoverage.getByText('0.0%', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
+  await expect(
+    page.getByText('No verified calibration matrix is available.', { exact: false }),
+  ).toBeVisible();
+});
+
+test('the live empty calibration register does not substitute seed evidence', async ({ page }) => {
+  await page.goto('/calibrations');
+  await expect(page.getByRole('region', { name: 'Public calibration register' })).toHaveCount(0);
+  await expect(page.getByText('No published evidence', { exact: true })).toBeVisible();
+  await expect(page.getByText('Synthetic seed', { exact: true })).toHaveCount(0);
 });
 
 test('the live empty trends page reports matrix and point reads separately', async ({ page }) => {

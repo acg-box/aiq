@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
 
-import { isOfficialRunProvenance, type RunProvenance } from './run-provenance.ts';
+import { isOfficialRunProvenance, isRunProvenance, type RunProvenance } from './run-provenance.ts';
 
 /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/restrict-template-expressions -- Exact validators narrow untrusted JSON one field at a time. */
 
@@ -8,6 +8,7 @@ export const MAX_RAW_SUBMISSION_BYTES = 4 * 1024 * 1024;
 export const MAX_SIGNED_PACKAGE_BYTES = 3_948_544;
 export const RESULT_PACKAGE_SCHEMA = 'aiq.result-package.v3';
 export const RUN_PAYLOAD_TYPE = 'aiq.run.v3';
+export const CALIBRATION_RUN_PAYLOAD_TYPE = 'aiq.calibration-run.v3';
 export const RESULT_SCHEMA = 'aiq.result.v2';
 export const EVALUATOR_RESULTS_ARTIFACT_MAX_BYTES = 3_948_544;
 export const MAX_RESULTS = 1_224;
@@ -64,6 +65,7 @@ const taskResultKeys = [
 const runPayloadKeys = [
   'capability_validation',
   'evaluator_results_artifact',
+  'execution_concurrency',
   'finished_unix_ms',
   'models',
   'provenance',
@@ -74,6 +76,24 @@ const runPayloadKeys = [
   'scoring_version',
   'started_unix_ms',
   'synthetic',
+  'task_set_hash',
+] as const;
+const calibrationRunPayloadKeys = [
+  'capability_validation',
+  'classification',
+  'evaluator_results_artifact',
+  'execution_concurrency',
+  'finished_unix_ms',
+  'models',
+  'official_eligible',
+  'provenance',
+  'results',
+  'run_id',
+  'schedule_slot',
+  'schema_version',
+  'scoring_version',
+  'started_unix_ms',
+  'task_ids',
   'task_set_hash',
 ] as const;
 const scheduleSlotKeys = ['local_date', 'local_time', 'occurrence', 'timezone'] as const;
@@ -221,7 +241,7 @@ export interface SignedTaskResult {
   }>;
 }
 
-export interface ResultPackageEnvelope {
+export interface OfficialResultPackageEnvelope {
   readonly schema_version: typeof RESULT_PACKAGE_SCHEMA;
   readonly idempotency_key: string;
   readonly payload_type: typeof RUN_PAYLOAD_TYPE;
@@ -237,11 +257,38 @@ export interface ResultPackageEnvelope {
     readonly synthetic: boolean;
     readonly provenance: RunProvenance | null;
     readonly evaluator_results_artifact: EvaluatorResultsArtifactReference;
+    readonly execution_concurrency: number;
     readonly models: readonly SignedModelConfig[];
     readonly results: readonly SignedTaskResult[];
   };
   readonly signature: string;
 }
+
+export interface CalibrationResultPackageEnvelope {
+  readonly schema_version: typeof RESULT_PACKAGE_SCHEMA;
+  readonly idempotency_key: string;
+  readonly payload_type: typeof CALIBRATION_RUN_PAYLOAD_TYPE;
+  readonly content_hash: string;
+  readonly signer: { readonly node_id: string; readonly public_key: string };
+  readonly claimed_trust: 'untrusted';
+  readonly payload: Readonly<Record<string, unknown>> & {
+    readonly schema_version: typeof CALIBRATION_RUN_PAYLOAD_TYPE;
+    readonly official_eligible: false;
+    readonly classification: 'local_calibration_non_official';
+    readonly run_id: string;
+    readonly provenance: RunProvenance & { readonly run_class: 'calibration' };
+    readonly evaluator_results_artifact: EvaluatorResultsArtifactReference;
+    readonly execution_concurrency: number;
+    readonly models: readonly SignedModelConfig[];
+    readonly task_ids: readonly string[];
+    readonly results: readonly SignedTaskResult[];
+  };
+  readonly signature: string;
+}
+
+export type ResultPackageEnvelope =
+  | OfficialResultPackageEnvelope
+  | CalibrationResultPackageEnvelope;
 
 function evaluatorResultsArtifactReference(
   value: unknown,
@@ -916,7 +963,10 @@ function validateTaskResult(
   };
 }
 
-function validateRunPayload(payload: Record<string, unknown>, signerNodeId: string): boolean {
+function validateOfficialRunPayload(
+  payload: Record<string, unknown>,
+  signerNodeId: string,
+): boolean {
   if (
     payload.schema_version !== RUN_PAYLOAD_TYPE ||
     !isScheduleSlot(payload.schedule_slot) ||
@@ -927,6 +977,9 @@ function validateRunPayload(payload: Record<string, unknown>, signerNodeId: stri
     !isSafeUnsignedInteger(payload.started_unix_ms) ||
     !isSafeUnsignedInteger(payload.finished_unix_ms) ||
     payload.finished_unix_ms < payload.started_unix_ms ||
+    !isSafeUnsignedInteger(payload.execution_concurrency) ||
+    payload.execution_concurrency < 1 ||
+    payload.execution_concurrency > 32 ||
     typeof payload.synthetic !== 'boolean' ||
     !Array.isArray(payload.results) ||
     payload.results.length !== MAX_RESULTS
@@ -1011,6 +1064,126 @@ function validateRunPayload(payload: Record<string, unknown>, signerNodeId: stri
   const classifiedIdentity = {
     schema_version: 'aiq.run-identity.v3',
     run_class: 'official',
+    slot: payload.schedule_slot,
+    task_set_hash: payload.task_set_hash,
+    corpus_commitment_sha256: provenance.corpus_commitment_sha256,
+    models: payload.models,
+    scoring_version: '1.0.0',
+  };
+  return payload.run_id === `run_${sha256Hex(canonicalJson(classifiedIdentity))}`;
+}
+
+function validateCalibrationRunPayload(
+  payload: Record<string, unknown>,
+  signerNodeId: string,
+): boolean {
+  if (
+    payload.schema_version !== CALIBRATION_RUN_PAYLOAD_TYPE ||
+    payload.official_eligible !== false ||
+    payload.classification !== 'local_calibration_non_official' ||
+    !isScheduleSlot(payload.schedule_slot) ||
+    typeof payload.task_set_hash !== 'string' ||
+    !contentHashPattern.test(payload.task_set_hash) ||
+    payload.scoring_version !== '1.0.0' ||
+    !Array.isArray(payload.models) ||
+    payload.models.length < 1 ||
+    payload.models.length > MAX_MODELS ||
+    !Array.isArray(payload.task_ids) ||
+    payload.task_ids.length < 1 ||
+    payload.task_ids.length > 72 ||
+    !isSafeUnsignedInteger(payload.started_unix_ms) ||
+    !isSafeUnsignedInteger(payload.finished_unix_ms) ||
+    payload.finished_unix_ms < payload.started_unix_ms ||
+    !isSafeUnsignedInteger(payload.execution_concurrency) ||
+    payload.execution_concurrency < 1 ||
+    payload.execution_concurrency > 32 ||
+    !Array.isArray(payload.results) ||
+    payload.results.length !== payload.models.length * payload.task_ids.length ||
+    !isCapabilityReport(payload.capability_validation) ||
+    !isRunProvenance(payload.provenance) ||
+    payload.provenance.run_class !== 'calibration' ||
+    payload.provenance.task_set_digest !== payload.task_set_hash ||
+    payload.provenance.preflight_digest !==
+      `sha256:${sha256Hex(canonicalJson(payload.capability_validation))}` ||
+    payload.capability_validation.node_id !== signerNodeId
+  ) {
+    return false;
+  }
+
+  const selectedModels: string[] = [];
+  let previousModelIndex = -1;
+  for (const model of payload.models) {
+    const key = modelKey(model);
+    const index = key === null ? -1 : modelMatrixKeys.indexOf(key);
+    if (key === null || index <= previousModelIndex) return false;
+    selectedModels.push(key);
+    previousModelIndex = index;
+  }
+  const taskIds: string[] = [];
+  for (const taskId of payload.task_ids) {
+    if (!isBoundedIdentifier(taskId, 64)) return false;
+    taskIds.push(taskId);
+  }
+  if (new Set(taskIds).size !== taskIds.length) return false;
+
+  const capabilityByModel = new Map<string, string>();
+  for (const entry of payload.capability_validation.models as readonly Record<string, unknown>[]) {
+    const key = modelKey(entry.model);
+    if (key) capabilityByModel.set(key, entry.status as string);
+  }
+  if (selectedModels.some((key) => !capabilityByModel.has(key))) return false;
+  if (evaluatorResultsArtifactReference(payload.evaluator_results_artifact) === null) return false;
+
+  const selectedTaskIds = new Set(taskIds);
+  const metadata = new Map<string, { version: string; hash: string }>();
+  const pairs = new Set<string>();
+  const validationContext = { ...payload, synthetic: false };
+  for (const result of payload.results) {
+    const validated = validateTaskResult(
+      result,
+      validationContext,
+      capabilityByModel,
+      signerNodeId,
+    );
+    if (
+      !validated ||
+      !selectedTaskIds.has(validated.taskId) ||
+      !selectedModels.includes(validated.model)
+    ) {
+      return false;
+    }
+    const existing = metadata.get(validated.taskId);
+    if (
+      existing &&
+      (existing.version !== validated.taskVersion || existing.hash !== validated.taskHash)
+    ) {
+      return false;
+    }
+    metadata.set(validated.taskId, { version: validated.taskVersion, hash: validated.taskHash });
+    const pair = `${validated.taskId}\0${validated.model}`;
+    if (pairs.has(pair)) return false;
+    pairs.add(pair);
+  }
+  if (metadata.size !== taskIds.length) return false;
+  for (const taskId of taskIds) {
+    if (selectedModels.some((key) => !pairs.has(`${taskId}\0${key}`))) return false;
+  }
+  const hashes: string[] = [];
+  for (const taskId of taskIds) {
+    const hash = metadata.get(taskId)?.hash;
+    if (hash === undefined) return false;
+    hashes.push(hash);
+  }
+  if (
+    `sha256:${sha256Hex(canonicalJson(hashes.toSorted((left, right) => left.localeCompare(right))))}` !==
+    payload.task_set_hash
+  ) {
+    return false;
+  }
+  const provenance = payload.provenance;
+  const classifiedIdentity = {
+    schema_version: 'aiq.run-identity.v3',
+    run_class: 'calibration',
     slot: payload.schedule_slot,
     task_set_hash: payload.task_set_hash,
     corpus_commitment_sha256: provenance.corpus_commitment_sha256,
@@ -1158,11 +1331,14 @@ export function validateSubmission(value: unknown): ValidationResult {
       message: 'idempotency_key must be run_ followed by 64 lowercase hexadecimal characters.',
     };
   }
-  if (value.payload_type !== RUN_PAYLOAD_TYPE) {
+  if (
+    value.payload_type !== RUN_PAYLOAD_TYPE &&
+    value.payload_type !== CALIBRATION_RUN_PAYLOAD_TYPE
+  ) {
     return {
       ok: false,
       code: 'INVALID_PAYLOAD_TYPE',
-      message: `payload_type must be ${RUN_PAYLOAD_TYPE}.`,
+      message: `payload_type must be ${RUN_PAYLOAD_TYPE} or ${CALIBRATION_RUN_PAYLOAD_TYPE}.`,
     };
   }
   if (typeof value.content_hash !== 'string' || !contentHashPattern.test(value.content_hash)) {
@@ -1205,13 +1381,28 @@ export function validateSubmission(value: unknown): ValidationResult {
       message: 'claimed_trust must be trusted or untrusted.',
     };
   }
-  if (!isRecord(value.payload) || !hasExactKeys(value.payload, runPayloadKeys)) {
+  if (!isRecord(value.payload)) {
     return { ok: false, code: 'INVALID_PAYLOAD', message: 'payload must be an object.' };
   }
+  const calibration = value.payload_type === CALIBRATION_RUN_PAYLOAD_TYPE;
   if (
-    value.payload.schema_version !== RUN_PAYLOAD_TYPE ||
+    !(calibration
+      ? hasExactKeys(value.payload, calibrationRunPayloadKeys)
+      : hasExactKeys(value.payload, runPayloadKeys)) ||
+    (calibration && value.claimed_trust !== 'untrusted')
+  ) {
+    return {
+      ok: false,
+      code: calibration ? 'INVALID_CALIBRATION_ADMISSION' : 'INVALID_PAYLOAD',
+      message: calibration
+        ? 'Calibration packages require the exact v3 shape and untrusted handling.'
+        : 'payload must be an object.',
+    };
+  }
+  if (
+    value.payload.schema_version !== value.payload_type ||
     value.payload.run_id !== value.idempotency_key ||
-    typeof value.payload.synthetic !== 'boolean' ||
+    (!calibration && typeof value.payload.synthetic !== 'boolean') ||
     !Array.isArray(value.payload.results)
   ) {
     return {
@@ -1221,7 +1412,19 @@ export function validateSubmission(value: unknown): ValidationResult {
     };
   }
   let provenance: RunProvenance | null;
-  if (value.payload.synthetic) {
+  if (calibration) {
+    if (
+      !isRunProvenance(value.payload.provenance) ||
+      value.payload.provenance.run_class !== 'calibration'
+    ) {
+      return {
+        ok: false,
+        code: 'INVALID_PROVENANCE',
+        message: 'Calibration runs require exact calibration aiq.run-provenance.v2 commitments.',
+      };
+    }
+    provenance = value.payload.provenance;
+  } else if (value.payload.synthetic) {
     if (value.payload.provenance !== null) {
       return {
         ok: false,
@@ -1241,7 +1444,11 @@ export function validateSubmission(value: unknown): ValidationResult {
         'Synthetic runs require null provenance; non-synthetic runs require exact Official aiq.run-provenance.v2 commitments.',
     };
   }
-  if (!validateRunPayload(value.payload, value.signer.node_id)) {
+  if (
+    !(calibration
+      ? validateCalibrationRunPayload(value.payload, value.signer.node_id)
+      : validateOfficialRunPayload(value.payload, value.signer.node_id))
+  ) {
     return {
       ok: false,
       code: 'INVALID_PAYLOAD',
@@ -1288,7 +1495,7 @@ export function validateSubmission(value: unknown): ValidationResult {
       envelope: {
         schema_version: RESULT_PACKAGE_SCHEMA,
         idempotency_key: value.idempotency_key,
-        payload_type: RUN_PAYLOAD_TYPE,
+        payload_type: value.payload_type,
         content_hash: value.content_hash,
         signer: {
           node_id: value.signer.node_id,
@@ -1297,16 +1504,15 @@ export function validateSubmission(value: unknown): ValidationResult {
         claimed_trust: value.claimed_trust,
         payload: {
           ...value.payload,
-          schema_version: RUN_PAYLOAD_TYPE,
+          schema_version: value.payload_type,
           run_id: value.idempotency_key,
-          synthetic: value.payload.synthetic,
           provenance,
           evaluator_results_artifact: evaluatorResultsArtifact,
           models: value.payload.models as readonly SignedModelConfig[],
           results: value.payload.results as readonly SignedTaskResult[],
-        },
+        } as ResultPackageEnvelope['payload'],
         signature: value.signature,
-      },
+      } as ResultPackageEnvelope,
     },
   };
 }
