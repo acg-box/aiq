@@ -33,13 +33,55 @@ expected outputs, signing keys, tokens, or database credentials.
 ## Security model
 
 The schema stores AIQ tables in `aiq_private`, enables and forces RLS, and
-exposes nine security-invoker public views plus narrow RPCs. Browser roles have
+exposes 13 security-invoker public views plus narrow RPCs. Browser roles have
 read-only access. Server gateways control submission, verification, publication,
 and private Storage operations.
 
 Runner packages enter an unverified inbox. A verifier identity records the
 normalized v3 stage and attestation. A separate publisher identity completes
 publication.
+
+Calibration packages use the same content-addressed package ingress and claim
+lifecycle. The envelope has `payload_type: aiq.calibration-run.v3`, and the
+payload has `schema_version: aiq.calibration-run.v3`. The database accepts only
+`claimed_trust: untrusted`, `classification: local_calibration_non_official`,
+`provenance.run_class: calibration`, and `official_eligible: false`.
+
+The verifier uses these calibration-only RPCs in order:
+
+1. `aiq_stage_calibration_verification(stage, target_inbox_id,
+supplied_lease_token, supplied_attempt)` records one
+   `aiq.calibration-verified-stage.v1` document.
+2. `aiq_record_calibration_attestation(attestation, target_inbox_id,
+supplied_lease_token, supplied_attempt)` records one
+   `aiq.calibration-verifier-attestation.v1` document. The replay status must be
+   `evaluator_replayed`.
+3. The distinct publisher uses `aiq_publish_calibration_evidence(target_run_id,
+target_package_sha256, target_inbox_id, supplied_lease_token,
+supplied_attempt)`.
+
+The RPCs return `recorded`, `published`, or `duplicate`. A different retry for
+the same identity is a conflict. Calibration evidence is append-only and uses
+a durable Storage reference. It cannot write Official batch, package, run,
+score, leaderboard, or trend data.
+
+Browser roles can read published rows from `public_calibration_runs`,
+`public_calibration_results`, and `public_calibration_scores`. These
+security-invoker views do not expose package identities, digests, node
+identities, envelopes, raw responses, private artifacts, or failure details.
+Efficiency values distinguish runner-observed duration, provider-reported token
+usage, and verifier-recomputed API-equivalent estimates. Unknown values are
+`NULL`. The method says that actual subscription spend is not measured; the
+database does not store or infer that value.
+
+`public_model_efficiency` is the separate published Official efficiency
+aggregate. It does not change AIQ scores or ranking. Duration columns aggregate
+per-task `adapter.invoke` wall time; they are not batch makespan. Token counters
+keep the provider values. Reasoning output is a subset of output and is not
+added twice. Cost uses exact integer `standard_api_equivalent_usd_nanos` values
+and an immutable pricing-method digest. The pricing record keeps its method,
+version, observation date, source, rates, formula, and limitation. Missing or
+inconsistent usage keeps the cost `NULL` and records an unavailable status.
 
 ## Disposable validation
 
