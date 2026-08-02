@@ -139,9 +139,9 @@ export default async function OverviewPage() {
             <h2>Public index</h2>
           </div>
           <p>
-            Official results include all 72 committed fixtures. Bounds are task-resampling
-            sensitivity intervals, not general capability confidence intervals. The table order is
-            descriptive and does not establish a winner.
+            Official results require non-synthetic evidence for all 72 committed fixtures. Bounds
+            are task-resampling sensitivity intervals, not general capability confidence intervals.
+            The table order is descriptive and does not establish a winner.
           </p>
         </div>
         <ReadStateNote result={leaderboardResult} />

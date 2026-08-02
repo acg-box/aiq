@@ -120,6 +120,37 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
 
 Do not load `synthetic-demo.sql` into production.
 
+## Disposable ACGbox free preview
+
+The first hosted review can use one new personal Supabase Free project and one
+personal Vercel Hobby project. It does not need a runner, verifier, Storage
+bucket, write-route secret, schedule, domain, or DNS change.
+
+Initialize the new disposable database once:
+
+```sh
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
+cargo make init-preview-database
+```
+
+Configure only these Vercel values:
+
+```text
+AIQ_DEPLOYMENT_PROFILE=preview
+NEXT_PUBLIC_SUPABASE_URL=<project API origin>
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
+```
+
+The preview requires the live Supabase schema and RLS read path to work. One
+bounded status view returns a row only when the required preview matrix,
+cardinalities, scoring definition, synthetic boundary, and empty publication
+surface are valid. The Web application then shows the full checked-in synthetic
+demonstration. Every page has a persistent ACGbox preview banner, synthetic
+complete runs say `not Official`, and search indexing is disabled.
+`/api/readiness` returns `503` until the later production write and verifier
+gateways are configured; this is expected for this read-only preview. Discard
+this database before production initialization.
+
 ## Production data flow
 
 1. The runner validates the controlled corpus, toolchain, and capability
@@ -136,7 +167,9 @@ Do not load `synthetic-demo.sql` into production.
 8. Public security-invoker views supply the Web application.
 
 Official means a complete, non-synthetic 17-by-72 run with valid current
-bindings. There is no additional provider ceremony.
+bindings. A complete synthetic fixture uses the `synthetic_complete`
+classification, has no Official AIQ value, and is never ranking eligible. There
+is no additional provider ceremony.
 
 ## Security boundaries
 

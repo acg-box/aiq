@@ -216,20 +216,27 @@ command = "node"
 args = ["scripts/list-template-markers.ts"]
 
 # Initialize
-# | task          | type    | cwd |
-# | ------------- | ------- | --- |
-# | init-database | command |     |
+# | task                  | type    | cwd |
+# | --------------------- | ------- | --- |
+# | init-database         | command |     |
+# | init-preview-database | command |     |
 
 [tasks.init-database]
 workspace = false
 command = "node"
 args = ["databases/init.ts"]
 
+[tasks.init-preview-database]
+workspace = false
+command = "node"
+args = ["databases/preview-init.ts"]
+
 # Smoke
 # | task                      | type    | cwd |
 # | ------------------------- | ------- | --- |
 # | smoke-database            | command |     |
 # | smoke-live-web            | command |     |
+# | smoke-preview-web         | command |     |
 # | smoke-subscription        | command |     |
 # | smoke-controlled-subscription | command |     |
 
@@ -247,6 +254,11 @@ exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/smoke.sq
 workspace = false
 command = "npm"
 args = ["run", "test:browser:live-stack", "--workspace", "@aiq/wiki-web"]
+
+[tasks.smoke-preview-web]
+workspace = false
+command = "npm"
+args = ["run", "test:browser:preview-stack", "--workspace", "@aiq/wiki-web"]
 
 [tasks.require-subscription-smoke-platform]
 private = true

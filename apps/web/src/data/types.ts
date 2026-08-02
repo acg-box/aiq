@@ -3,7 +3,12 @@ import type { PublicDataConfiguration } from './public-configuration.ts';
 export type ReasoningTier = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 export type ModelFamily = 'Sol' | 'Terra' | 'Luna';
 export type RunStatus = 'passed' | 'failed' | 'invalid' | 'missing' | 'not_applicable';
-export type LeaderboardStatus = 'official' | 'not_applicable' | 'missing' | 'unpublished';
+export type LeaderboardStatus =
+  | 'official'
+  | 'synthetic_complete'
+  | 'not_applicable'
+  | 'missing'
+  | 'unpublished';
 export type TrustLevel =
   | 'unverified'
   | 'signed_community'
@@ -34,7 +39,7 @@ export interface LeaderboardEntry {
   synthetic: boolean | null;
 }
 
-export type ScoredLeaderboardEntry = LeaderboardEntry & {
+type ScoredLeaderboardValues = LeaderboardEntry & {
   score: number;
   ciLow: number;
   ciHigh: number;
@@ -43,14 +48,18 @@ export type ScoredLeaderboardEntry = LeaderboardEntry & {
   failures: number;
   missing: number;
   scoringVersion: string;
-  scoreStatus: 'official';
   runId: string;
-  synthetic: boolean;
 };
+
+export type ScoredLeaderboardEntry = ScoredLeaderboardValues &
+  (
+    | { scoreStatus: 'official'; synthetic: false }
+    | { scoreStatus: 'synthetic_complete'; synthetic: true }
+  );
 
 export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is ScoredLeaderboardEntry {
   return (
-    entry.scoreStatus === 'official' &&
+    (entry.scoreStatus === 'official' || entry.scoreStatus === 'synthetic_complete') &&
     entry.score !== null &&
     entry.ciLow !== null &&
     entry.ciHigh !== null &&
@@ -60,7 +69,8 @@ export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is Scor
     entry.missing !== null &&
     entry.scoringVersion !== null &&
     entry.runId !== null &&
-    entry.synthetic !== null
+    ((entry.scoreStatus === 'official' && entry.synthetic === false) ||
+      (entry.scoreStatus === 'synthetic_complete' && entry.synthetic === true))
   );
 }
 

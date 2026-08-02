@@ -72,7 +72,7 @@ export default async function MethodPage() {
             </article>
             <article>
               <span className="eyebrow">03 · Completeness and validity</span>
-              <h2>Official, provisional, or coverage-only</h2>
+              <h2>Official, complete synthetic, provisional, or coverage-only</h2>
               <dl className="policy-list">
                 <div>
                   <dt>Attempted failure</dt>
@@ -96,8 +96,8 @@ export default async function MethodPage() {
               <h2>What the interval can and cannot say</h2>
               <p>{result.data.confidencePolicy}</p>
               <div className="formula">
-                <span>Official score</span>
-                <strong>mean of 10 complete frozen-fixture domain means</strong>
+                <span>Fixed-fixture or conditional AIQ</span>
+                <strong>equal-weight mean of 10 frozen-fixture domain means</strong>
               </div>
             </article>
           </div>

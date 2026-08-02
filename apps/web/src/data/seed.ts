@@ -66,8 +66,8 @@ const seedLeaderboardBase = modelConfig
         failures,
         missing: 0,
         scoringVersion: '1.0.0',
-        scoreStatus: 'official' as const,
-        synthetic: true,
+        scoreStatus: 'synthetic_complete' as const,
+        synthetic: true as const,
       };
     }),
   )
@@ -119,7 +119,7 @@ const toolSets = [
 ] as const;
 const failureCodes = ['AGENT_TIMEOUT', 'MODEL_TIMEOUT', 'TOOL_TIMEOUT'] as const;
 
-function buildOfficialTasks(
+function buildSyntheticCompleteTasks(
   entry: ScoredLeaderboardEntry,
   entryIndex: number,
 ): readonly TaskResult[] {
@@ -197,7 +197,7 @@ function buildCoverageOnlyTasks(): readonly TaskResult[] {
   );
 }
 
-const officialRuns: readonly BenchmarkRun[] = seedLeaderboard.map((entry, index) => ({
+const syntheticCompleteRuns: readonly BenchmarkRun[] = seedLeaderboard.map((entry, index) => ({
   id: entry.runId ?? `run-missing-${entry.id}`,
   entryId: entry.id,
   startedAt: `2026-07-${String(22 - (index % 17)).padStart(2, '0')}T13:00:00.000Z`,
@@ -216,11 +216,11 @@ const officialRuns: readonly BenchmarkRun[] = seedLeaderboard.map((entry, index)
   runtimeDigest: null,
   runClass: null,
   permissionEvidenceDigest: null,
-  tasks: [...buildOfficialTasks(entry, index)],
+  tasks: [...buildSyntheticCompleteTasks(entry, index)],
 }));
 
 export const seedRuns: readonly BenchmarkRun[] = [
-  ...officialRuns,
+  ...syntheticCompleteRuns,
   {
     id: 'run-2026-07-05-coverage-only-sol-ultra',
     entryId: 'sol-ultra',
@@ -255,12 +255,12 @@ export const seedMethodology: Methodology = {
   })),
   principles: [
     'Estimate performance on the committed AIQ v1 fixed-fixture set. Do not claim general intelligence or universal capability.',
-    'For Official, score each domain over its frozen tasks, then take an equal-weight macro average across all 10 domains.',
+    'For non-synthetic Official evidence, score each domain over its frozen tasks, then take an equal-weight macro average across all 10 domains.',
     'Keep hidden fixture payloads behind the commitment boundary. Publish versions, counts, outcomes, and provenance.',
     'Do not fabricate or substitute work when a required capability is unavailable.',
   ],
   missingPolicy:
-    'Missing and invalid results block Official and remain in completion accounting. A Provisional point estimate averages valid observed tasks within each domain; fixed-fixture completion bounds retain every planned task and assign unobserved tasks zero or one. Provisional requires at least 60 results and at least 4 in every domain, and is not ranked.',
+    'Missing and invalid results block Official and remain in completion accounting. A complete synthetic fixture is descriptive, never Official, and not ranked. A Provisional point estimate averages valid observed tasks within each domain; fixed-fixture completion bounds retain every planned task and assign unobserved tasks zero or one. Provisional requires at least 60 results and at least 4 in every domain, and is not ranked.',
   failurePolicy:
     'Agent, model, tool, timeout, budget, unsupported-runtime, and wrong-artifact failures during a valid attempt score zero. Invalid infrastructure attempts are audited and rerun. A whole configuration can be N/A only when preflight proves it unavailable; partial capability gaps score zero.',
   confidencePolicy:

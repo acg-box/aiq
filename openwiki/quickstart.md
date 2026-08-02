@@ -84,6 +84,28 @@ The expected receipt contains 72 tasks, 17 model configurations, and three
 nodes. The catalog digest is
 `sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
 
+## ACGbox free-tier preview
+
+Before production, one disposable personal Supabase Free project and one
+personal Vercel Hobby project can host the read-only review build. Initialize
+the empty preview database once:
+
+```sh
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
+cargo make init-preview-database
+```
+
+Set `AIQ_DEPLOYMENT_PROFILE=preview` and the two browser-safe Supabase values in
+Vercel. Do not set server write, runner, verifier, publisher, or Storage secrets.
+One bounded live status view returns a row only when the required preview
+matrix, cardinalities, scoring definition, synthetic boundary, and empty
+publication surface are valid. The application then displays explicit
+checked-in synthetic fixtures. It adds a persistent preview banner, marks
+complete synthetic runs as not Official, and emits `noindex`. A `503` from
+`/api/readiness` is expected because that endpoint measures the absent
+production write and verification path. Discard the preview database before
+production initialization.
+
 ## Next reading
 
 - [Architecture and runtime](architecture-and-runtime.md)
