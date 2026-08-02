@@ -9,6 +9,7 @@ import type { DeploymentProfile } from '../data/deployment-profile.ts';
 const navigation = [
   ['Overview', '/'],
   ['Runs', '/runs'],
+  ['Calibrations', '/calibrations'],
   ['Compare', '/compare'],
   ['Trends', '/trends'],
   ['Method', '/method'],

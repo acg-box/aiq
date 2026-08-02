@@ -70,7 +70,7 @@ const runRows = matrix.map((entry, index) => ({
   matrix_id: entry.id,
   started_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:00:00.000Z`,
   completed_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:27:00.000Z`,
-  benchmark_version: 'aiq-core@1.0.0',
+  benchmark_version: 'aiq-core@1.0.1',
   scoring_version: '1.0.0',
   prompt_set_digest: `sha256:${'2'.repeat(64)}`,
   runner_commit: '7a0c4d1',
@@ -78,7 +78,7 @@ const runRows = matrix.map((entry, index) => ({
   synthetic: false,
   corpus_release_id: 'corpus_2026.07.29',
   corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
-  catalog_digest: `sha256:${'4'.repeat(64)}`,
+  catalog_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
   task_set_digest: `sha256:${'5'.repeat(64)}`,
   preflight_digest: `sha256:${'6'.repeat(64)}`,
   runtime_digest: `sha256:${'7'.repeat(64)}`,
@@ -95,6 +95,172 @@ const runRows = matrix.map((entry, index) => ({
   covered_domain_count: 10,
   provisional_domain_count: 10,
 }));
+
+const calibrationRunId = `run_${'8'.repeat(64)}`;
+const pricingSource = 'https://developers.openai.com/api/docs/pricing';
+const pricingLimitation =
+  'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.';
+const calibrationRun = {
+  run_id: calibrationRunId,
+  classification: 'local_calibration_non_official',
+  scoring_version: '1.0.0',
+  selected_task_count: 72,
+  selected_model_count: 17,
+  result_count: 1_224,
+  started_at: '2026-07-30T12:00:00.000Z',
+  completed_at: '2026-07-30T14:00:00.000Z',
+  verified_at: '2026-07-30T14:05:00.000Z',
+  published_at: '2026-07-30T14:10:00.000Z',
+  replay_status: 'evaluator_replayed',
+  official: false,
+  ranking_eligible: false,
+  pricing_currency: 'USD',
+  pricing_processing_tier: 'standard',
+};
+
+const calibrationScores = matrix.map((entry, index) => {
+  const aiq = Number((82.5 - index * 0.6).toFixed(2));
+  const unavailableContextBand = index === 1;
+  const inputTokens = unavailableContextBand ? 344_001 : 72_000 + index * 1_000;
+  const outputTokens = 36_000 + index * 800;
+  return {
+    run_id: calibrationRunId,
+    model_family: entry.model_family.toLowerCase(),
+    reasoning_effort: entry.reasoning_tier,
+    descriptive_status: index === 0 ? 'conditional_observed' : 'complete_fixture',
+    aiq,
+    task_resampling_sensitivity_lower: Number((aiq - 1.5).toFixed(2)),
+    task_resampling_sensitivity_upper: Number((aiq + 1.5).toFixed(2)),
+    task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
+    result_count: 72,
+    sample_size: index === 0 ? 71 : 72,
+    coverage_percent: index === 0 ? (71 / 72) * 100 : 100,
+    observed_total_wall_ms: 720_000 + index * 36_000,
+    observed_median_wall_ms: 10_000 + index * 500,
+    observed_p95_wall_ms: 12_000 + index * 550,
+    observed_time_sample_count: 72,
+    observed_time_coverage_percent: 100,
+    duration_evidence_level: 'runner_observed',
+    input_tokens: inputTokens,
+    cached_input_tokens: 12_000,
+    cache_write_input_tokens: 2_000,
+    output_tokens: outputTokens,
+    reasoning_output_tokens: 18_000 + index * 400,
+    total_tokens: inputTokens + outputTokens,
+    token_usage_sample_count: 72,
+    token_usage_source_level: 'provider_reported',
+    token_usage_evidence_level: 'verifier_recomputed',
+    standard_api_equivalent_usd_nanos: unavailableContextBand
+      ? null
+      : 48_000_000 + index * 2_000_000,
+    estimated_cost_sample_count: unavailableContextBand ? 71 : 72,
+    cost_estimator_status: unavailableContextBand ? 'unavailable_context_band' : 'estimated',
+    cost_evidence_level: unavailableContextBand ? null : 'verifier_recomputed',
+    cost_estimator_limitations: [pricingLimitation],
+    token_usage_coverage_percent: 100,
+    pricing_source: pricingSource,
+    pricing_as_of: '2026-08-02',
+    pricing_version: 'aiq.standard-api-equivalent-usd.v1',
+    pricing_currency: 'USD',
+    pricing_processing_tier: 'standard',
+    attempted_result_count: 72,
+    invoked_result_count: 72,
+    adapter_elapsed_observed_result_count: 72,
+    token_observed_result_count: 72,
+    priced_result_count: unavailableContextBand ? 71 : 72,
+  };
+});
+
+const historicalCalibrationScores = [
+  ...calibrationScores,
+  { ...calibrationScores[0], run_id: 'run-stale-calibration-history' },
+];
+
+const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
+  Array.from({ length: 72 }, (_, taskIndex) => {
+    const unavailableContextBand = configurationIndex === 0 && taskIndex === 1;
+    const inputTokens = unavailableContextBand
+      ? 272_001
+      : 1_000 + configurationIndex * 10 + taskIndex;
+    const outputTokens = 500 + taskIndex;
+    const workspaceIntegrity = configurationIndex === 0 && taskIndex === 0;
+    return {
+      result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
+      run_id: calibrationRunId,
+      task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
+      task_version: '1.0.1',
+      domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
+      model_family: entry.model_family.toLowerCase(),
+      reasoning_effort: entry.reasoning_tier,
+      outcome: workspaceIntegrity ? 'invalid' : 'correct',
+      status: workspaceIntegrity ? 'invalid' : 'passed',
+      failure_code: workspaceIntegrity ? 'workspace_integrity' : null,
+      explanation_code: workspaceIntegrity ? 'workspace_integrity' : null,
+      explanation_summary: workspaceIntegrity
+        ? 'Benchmark infrastructure invalidated this result; an audited rerun is required.'
+        : null,
+      task_score: workspaceIntegrity ? null : 1,
+      latency_ms: 8_000 + taskIndex * 50,
+      latency_evidence_level: 'runner_observed',
+      input_tokens: inputTokens,
+      cached_input_tokens: 200,
+      cache_write_input_tokens: 50,
+      output_tokens: outputTokens,
+      reasoning_output_tokens: 250,
+      total_tokens: inputTokens + outputTokens,
+      token_usage_source_level: 'provider_reported',
+      token_usage_evidence_level: 'verifier_recomputed',
+      standard_api_equivalent_usd_nanos: unavailableContextBand
+        ? null
+        : 650_000 + taskIndex * 1_000,
+      cost_estimator_status: unavailableContextBand ? 'unavailable_context_band' : 'estimated',
+      cost_evidence_level: unavailableContextBand ? null : 'verifier_recomputed',
+      cost_estimator_limitations: [pricingLimitation],
+      cost_method: 'standard_api_equivalent_text_token_estimate',
+      cost_version: 'aiq.standard-api-equivalent-usd.v1',
+      cost_as_of: '2026-08-02',
+      cost_source: pricingSource,
+      pricing_currency: 'USD',
+      pricing_processing_tier: 'standard',
+    };
+  }),
+);
+
+const modelEfficiency = calibrationScores.map((score, index) => ({
+  run_id: leaderboard[index]?.run_id ?? `run-live-${matrix[index]?.id ?? index}`,
+  model_family: score.model_family,
+  reasoning_effort: score.reasoning_effort,
+  observed_total_wall_ms: score.observed_total_wall_ms,
+  observed_median_wall_ms: score.observed_median_wall_ms,
+  observed_p95_wall_ms: score.observed_p95_wall_ms,
+  observed_time_sample_count: score.observed_time_sample_count,
+  observed_time_coverage_percent: score.observed_time_coverage_percent,
+  duration_evidence_level: score.duration_evidence_level,
+  input_tokens: score.input_tokens,
+  cached_input_tokens: score.cached_input_tokens,
+  cache_write_input_tokens: score.cache_write_input_tokens,
+  output_tokens: score.output_tokens,
+  reasoning_output_tokens: score.reasoning_output_tokens,
+  total_tokens: score.total_tokens,
+  token_usage_sample_count: score.token_usage_sample_count,
+  token_usage_coverage_percent: score.token_usage_coverage_percent,
+  token_usage_source_level: score.token_usage_source_level,
+  token_usage_evidence_level: score.token_usage_evidence_level,
+  standard_api_equivalent_usd_nanos: score.standard_api_equivalent_usd_nanos,
+  cost_estimator_status: score.cost_estimator_status,
+  cost_evidence_level: score.cost_evidence_level,
+  cost_method: 'standard_api_equivalent_text_token_estimate',
+  pricing_source: score.pricing_source,
+  pricing_as_of: score.pricing_as_of,
+  pricing_version: score.pricing_version,
+  pricing_currency: score.pricing_currency,
+  pricing_processing_tier: score.pricing_processing_tier,
+}));
+
+const historicalModelEfficiency = [
+  ...modelEfficiency,
+  { ...modelEfficiency[0], run_id: 'run-stale-official-history' },
+];
 
 /** @type {Array<{ run_id: string; [key: string]: unknown }>} */
 const runResults = [];
@@ -122,7 +288,7 @@ for (const run of runRows) {
 }
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.0',
+  benchmark_version: 'aiq-core@1.0.1',
   scoring_version: '1.0.0',
   published_at: '2026-07-29T16:00:00.000Z',
   principles: [
@@ -354,6 +520,48 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === '/rest/v1/public_task_coverage') {
     json(response, limited(url, taskCoverage));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_calibration_runs') {
+    const exactId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
+    json(response, limited(url, exactId && exactId !== calibrationRunId ? [] : [calibrationRun]));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_calibration_results') {
+    const exactRunId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
+    const family = url.searchParams.get('model_family')?.replace(/^eq\./, '');
+    const effort = url.searchParams.get('reasoning_effort')?.replace(/^eq\./, '');
+    const rows = calibrationResults.filter(
+      (result) =>
+        (!exactRunId || result.run_id === exactRunId) &&
+        (!family || result.model_family === family) &&
+        (!effort || result.reasoning_effort === effort),
+    );
+    json(response, limited(url, rows));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_calibration_scores') {
+    const exactRunId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
+    const rows = exactRunId
+      ? historicalCalibrationScores.filter((score) => score.run_id === exactRunId)
+      : historicalCalibrationScores;
+    json(response, limited(url, rows));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_model_efficiency') {
+    const runIdFilter = url.searchParams.get('run_id') ?? '';
+    const selectedIds = new Set(
+      runIdFilter
+        .replace(/^in\.\(/, '')
+        .replace(/\)$/, '')
+        .split(',')
+        .filter(Boolean),
+    );
+    const rows =
+      selectedIds.size === 0
+        ? historicalModelEfficiency
+        : historicalModelEfficiency.filter((entry) => selectedIds.has(entry.run_id));
+    json(response, limited(url, rows));
     return;
   }
   if (url.pathname === '/rest/v1/public_distributed_radar') {

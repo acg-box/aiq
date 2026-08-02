@@ -18,8 +18,14 @@ import {
 } from './seed.ts';
 import type {
   BenchmarkRun,
+  CalibrationModelSelection,
+  CalibrationRunPage,
+  CalibrationRunPageRequest,
   LeaderboardEntry,
   Methodology,
+  PublicCalibrationRun,
+  PublicCalibrationScore,
+  PublicModelEfficiency,
   RadarNode,
   RunHistoryPage,
   RunHistoryPageRequest,
@@ -41,6 +47,9 @@ const validStatus = {
   published_run_count: 0,
   published_leaderboard_count: 0,
   published_trend_point_count: 0,
+  calibration_run_count: 0,
+  calibration_result_count: 0,
+  calibration_score_count: 0,
   non_synthetic_evidence_count: 0,
 } as const satisfies PreviewStatusRow;
 
@@ -77,6 +86,25 @@ class LivePreviewFixtureRepository implements PreviewStatusSource {
     this.publicDataReads += 1;
     throw new Error('preview must not read live run detail');
   }
+  async listCalibrationRunPage(_request?: CalibrationRunPageRequest): Promise<CalibrationRunPage> {
+    this.publicDataReads += 1;
+    throw new Error('preview must not read live calibration rows');
+  }
+  async getCalibrationRun(
+    _id: string,
+    _selection: CalibrationModelSelection,
+  ): Promise<PublicCalibrationRun | null> {
+    this.publicDataReads += 1;
+    throw new Error('preview must not read live calibration detail');
+  }
+  async listCalibrationScores(_runId: string): Promise<readonly PublicCalibrationScore[]> {
+    this.publicDataReads += 1;
+    throw new Error('preview must not read live calibration scores');
+  }
+  async listModelEfficiency(_runIds: readonly string[]): Promise<readonly PublicModelEfficiency[]> {
+    this.publicDataReads += 1;
+    throw new Error('preview must not read live model efficiency rows');
+  }
 
   async getMethodology(): Promise<Methodology> {
     this.publicDataReads += 1;
@@ -106,6 +134,20 @@ void describe('AIQ Wiki preview repository', () => {
     assert.deepEqual(await preview.listTrendPoints('all'), seedTrendPoints);
     assert.deepEqual(await preview.getMethodology(), seedMethodology);
     assert.deepEqual(await preview.listRadarNodes(), seedRadarNodes);
+    assert.deepEqual(await preview.listCalibrationRunPage(), {
+      runs: [],
+      newerCursor: null,
+      olderCursor: null,
+    });
+    assert.equal(
+      await preview.getCalibrationRun('missing', {
+        modelFamily: 'sol',
+        reasoningEffort: 'low',
+      }),
+      null,
+    );
+    assert.deepEqual(await preview.listCalibrationScores('missing'), []);
+    assert.deepEqual(await preview.listModelEfficiency([]), []);
     assert.equal(live.statusReads, 1);
     assert.equal(live.publicDataReads, 0);
   });

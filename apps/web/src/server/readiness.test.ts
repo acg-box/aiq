@@ -170,7 +170,7 @@ async function withDependencyFetch(
           reliability_recovery: 7,
         },
         catalog_identity_sha256:
-          'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3',
+          'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
         frozen_catalog_valid: true,
         production_node_count: 3,
         distinct_production_node_count: 3,
@@ -218,6 +218,10 @@ async function withDependencyFetch(
         'public_distributed_radar',
         'public_scoring_versions',
         'public_task_coverage',
+        'public_calibration_runs',
+        'public_calibration_results',
+        'public_calibration_scores',
+        'public_model_efficiency',
       ]),
     );
     assert.equal(trendProbeCount, 1);
@@ -499,7 +503,7 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('keeps empty public views ready and uses exact required-column selects', async () => {
-    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 8);
+    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 12);
     assert.ok(Object.values(PUBLIC_VIEW_SELECTS).every((select) => select !== '*'));
     await withDependencyFetch();
   });

@@ -1,0 +1,105 @@
+{
+  "schema_version": "aiq.result-package.v3",
+  "idempotency_key": "run_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "payload_type": "aiq.calibration-run.v3",
+  "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "signer": {
+    "node_id": "node_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "public_key": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "claimed_trust": "untrusted",
+  "payload": {
+    "schema_version": "aiq.calibration-run.v3",
+    "official_eligible": false,
+    "classification": "local_calibration_non_official",
+    "run_id": "run_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "schedule_slot": {
+      "local_date": "2026-07-27",
+      "occurrence": "day",
+      "local_time": "12:00",
+      "timezone": "UTC"
+    },
+    "task_set_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "scoring_version": "1.0.0",
+    "execution_concurrency": 1,
+    "models": [{ "family": "sol", "reasoning_effort": "low" }],
+    "task_ids": ["example-task"],
+    "started_unix_ms": 1785153600000,
+    "finished_unix_ms": 1785153601000,
+    "capability_validation": {
+      "schema_version": "aiq.capability-validation.v2",
+      "node_id": "node_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "manifest_issues": [],
+      "cli_probe": { "status": "available", "version": "codex-example", "failure": null },
+      "authentication_probe": {
+        "status": "available",
+        "mode": "chatgpt_subscription",
+        "failure": null
+      },
+      "models": []
+    },
+    "provenance": {
+      "schema_version": "aiq.run-provenance.v2",
+      "run_class": "calibration",
+      "corpus_release_id": "corpus_example",
+      "corpus_commitment_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "catalog_digest": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3",
+      "task_set_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "evaluator_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "runtime_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "preflight_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "harness_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "prompt_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "tool_policy_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "network_policy_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "environment_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "source_manifest_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "runner_executable_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "codex_executable_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "permission_evidence_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "evaluator_results_artifact": {
+      "kind": "evaluator-results.json",
+      "content_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "uri": "aiq-artifact://sha256/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/evaluator-results.json",
+      "bytes": 1
+    },
+    "results": [
+      {
+        "schema_version": "aiq.result.v2",
+        "result_id": "result_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "run_id": "run_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "task_id": "example-task",
+        "task_version": "1",
+        "task_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "model": { "family": "sol", "reasoning_effort": "low" },
+        "status": "failed",
+        "evaluation": "not_evaluated",
+        "task_score": 0,
+        "response": null,
+        "response_sha256": null,
+        "evaluator_result_sha256": null,
+        "evaluator_stdout_sha256": null,
+        "artifacts": [],
+        "failure": {
+          "kind": "capability_validation_failed",
+          "message": "Public example",
+          "exit_code": null,
+          "retryable": false
+        },
+        "latency": { "wall_ms": 0 },
+        "tool_usage": { "steps": 0, "total_calls": 0, "by_tool": {} },
+        "workspace_manifest": null,
+        "provenance": {
+          "node_id": "node_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "runner_version": "0.1.0",
+          "codex_version": "codex-example",
+          "observed_at": "unix-ms:1785153600000",
+          "synthetic": false,
+          "local_trust": "untrusted"
+        }
+      }
+    ]
+  },
+  "signature": "12121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212121212"
+}

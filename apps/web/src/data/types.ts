@@ -3,6 +3,21 @@ import type { PublicDataConfiguration } from './public-configuration.ts';
 export type ReasoningTier = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 export type ModelFamily = 'Sol' | 'Terra' | 'Luna';
 export type RunStatus = 'passed' | 'failed' | 'invalid' | 'missing' | 'not_applicable';
+export type CalibrationModelFamily = 'sol' | 'terra' | 'luna';
+export const CALIBRATION_OUTCOMES = [
+  'correct',
+  'partial',
+  'incorrect',
+  'timeout',
+  'budget_exhausted',
+  'tool_failure',
+  'policy_failure',
+  'wrong_artifact',
+  'invalid',
+  'missing',
+  'not_applicable',
+] as const;
+export type CalibrationOutcome = (typeof CALIBRATION_OUTCOMES)[number];
 export type LeaderboardStatus =
   | 'official'
   | 'synthetic_complete'
@@ -126,6 +141,177 @@ export interface BenchmarkRun {
   tasks: TaskResult[];
 }
 
+export interface PublicCalibrationResult {
+  id: string;
+  runId: string;
+  taskId: string;
+  taskVersion: string;
+  domain: string;
+  modelFamily: CalibrationModelFamily;
+  reasoningEffort: ReasoningTier;
+  outcome: CalibrationOutcome;
+  status: RunStatus;
+  failureCode: string | null;
+  explanationCode: string | null;
+  explanationSummary: string | null;
+  taskScore: number | null;
+  latencyMs: number | null;
+  latencyEvidenceLevel: 'runner_observed' | null;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteInputTokens: number | null;
+  outputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  totalTokens: number | null;
+  tokenUsageSourceLevel: 'provider_reported' | null;
+  tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
+  standardApiEquivalentUsdNanos: number | null;
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
+  costEvidenceLevel: 'verifier_recomputed' | null;
+  costEstimatorLimitations: readonly string[];
+  costMethod: string | null;
+  costVersion: string | null;
+  costAsOf: string | null;
+  costSource: string | null;
+  pricingCurrency: 'USD';
+  pricingProcessingTier: 'standard';
+}
+
+export interface PublicCalibrationRun {
+  id: string;
+  classification: 'local_calibration_non_official';
+  scoringVersion: string;
+  selectedTaskCount: number;
+  selectedModelCount: number;
+  resultCount: number;
+  startedAt: string;
+  completedAt: string;
+  verifiedAt: string;
+  publishedAt: string;
+  replayStatus: 'evaluator_replayed';
+  official: false;
+  rankingEligible: false;
+  pricingCurrency: 'USD';
+  pricingProcessingTier: 'standard';
+  synthetic: boolean;
+  selectedConfiguration: CalibrationModelSelection;
+  results: readonly PublicCalibrationResult[];
+}
+
+export interface PublicCalibrationScore {
+  runId: string;
+  modelFamily: CalibrationModelFamily;
+  reasoningEffort: ReasoningTier;
+  descriptiveStatus:
+    | 'complete_fixture'
+    | 'conditional_observed'
+    | 'coverage_only'
+    | 'not_applicable';
+  aiq: number | null;
+  taskResamplingSensitivityLower: number | null;
+  taskResamplingSensitivityUpper: number | null;
+  taskResamplingSensitivityMethod: string | null;
+  resultCount: number;
+  sampleSize: number;
+  coveragePercent: number;
+  observedTotalWallMs: number | null;
+  observedMedianWallMs: number | null;
+  observedP95WallMs: number | null;
+  observedTimeSampleCount: number;
+  observedTimeCoveragePercent: number;
+  durationEvidenceLevel: 'runner_observed' | null;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteInputTokens: number | null;
+  outputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  totalTokens: number | null;
+  tokenUsageSampleCount: number;
+  tokenUsageSourceLevel: 'provider_reported' | null;
+  tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
+  standardApiEquivalentUsdNanos: number | null;
+  estimatedCostSampleCount: number;
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
+  costEvidenceLevel: 'verifier_recomputed' | null;
+  costEstimatorLimitations: readonly string[];
+  tokenUsageCoveragePercent: number | null;
+  pricingSource: string | null;
+  pricingAsOf: string | null;
+  pricingVersion: string | null;
+  pricingCurrency: 'USD';
+  pricingProcessingTier: 'standard';
+  attemptedResultCount: number;
+  invokedResultCount: number;
+  adapterElapsedObservedResultCount: number;
+  tokenObservedResultCount: number;
+  pricedResultCount: number;
+  synthetic: boolean;
+}
+
+export interface PublicModelEfficiency {
+  runId: string;
+  modelFamily: CalibrationModelFamily;
+  reasoningEffort: ReasoningTier;
+  observedTotalWallMs: number | null;
+  observedMedianWallMs: number | null;
+  observedP95WallMs: number | null;
+  observedTimeSampleCount: number;
+  observedTimeCoveragePercent: number;
+  durationEvidenceLevel: 'runner_observed' | null;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteInputTokens: number | null;
+  outputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  totalTokens: number | null;
+  tokenUsageSampleCount: number;
+  tokenUsageSourceLevel: 'provider_reported' | null;
+  standardApiEquivalentUsdNanos: number | null;
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
+  tokenUsageCoveragePercent: number;
+  tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
+  costEvidenceLevel: 'verifier_recomputed' | null;
+  costMethod: string | null;
+  pricingSource: string | null;
+  pricingAsOf: string | null;
+  pricingVersion: string | null;
+  pricingCurrency: 'USD' | null;
+  pricingProcessingTier: 'standard' | null;
+}
+
+export type PublicCalibrationRunSummary = Omit<
+  PublicCalibrationRun,
+  'results' | 'selectedConfiguration'
+>;
+
+export interface CalibrationModelSelection {
+  modelFamily: CalibrationModelFamily;
+  reasoningEffort: ReasoningTier;
+}
+
+export interface CalibrationRunPageRequest {
+  direction?: 'older' | 'newer';
+  cursor?: string;
+}
+
+export interface CalibrationRunPage {
+  runs: readonly PublicCalibrationRunSummary[];
+  newerCursor: string | null;
+  olderCursor: string | null;
+}
+
 export interface RunResultSummary {
   resultCount: number;
   observedCount: number;
@@ -228,6 +414,13 @@ export interface AiqRepository {
   listTrendPoints(range?: TrendRange): Promise<readonly TrendPoint[]>;
   listRunPage(request?: RunHistoryPageRequest): Promise<RunHistoryPage>;
   getRun(id: string): Promise<BenchmarkRun | null>;
+  listCalibrationRunPage(request?: CalibrationRunPageRequest): Promise<CalibrationRunPage>;
+  getCalibrationRun(
+    id: string,
+    selection: CalibrationModelSelection,
+  ): Promise<PublicCalibrationRun | null>;
+  listCalibrationScores(runId: string): Promise<readonly PublicCalibrationScore[]>;
+  listModelEfficiency(runIds: readonly string[]): Promise<readonly PublicModelEfficiency[]>;
   getMethodology(): Promise<Methodology>;
   listRadarNodes(): Promise<readonly RadarNode[]>;
 }
