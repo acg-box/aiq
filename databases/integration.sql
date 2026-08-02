@@ -33,7 +33,7 @@ as $$
     'method', 'standard_api_equivalent_text_token_estimate',
     'version', 'aiq.standard-api-equivalent-usd.v1',
     'as_of', '2026-08-02',
-    'source', 'https://developers.openai.com/api/docs/models/compare',
+    'source', 'https://developers.openai.com/api/docs/pricing',
     'currency', 'USD',
     'processing_tier', 'standard',
     'rates', jsonb_build_array(
@@ -46,24 +46,103 @@ as $$
       ),
       jsonb_build_object(
         'model', 'gpt-5.6-terra',
-        'input_usd_nanos_per_token', 2500,
-        'cached_input_usd_nanos_per_token', 250,
-        'cache_write_input_usd_nanos_per_token', 3125,
-        'output_usd_nanos_per_token', 15000
+        'input_usd_nanos_per_token', 2000,
+        'cached_input_usd_nanos_per_token', 200,
+        'cache_write_input_usd_nanos_per_token', 2500,
+        'output_usd_nanos_per_token', 12000
       ),
       jsonb_build_object(
         'model', 'gpt-5.6-luna',
-        'input_usd_nanos_per_token', 1000,
-        'cached_input_usd_nanos_per_token', 100,
-        'cache_write_input_usd_nanos_per_token', 1250,
-        'output_usd_nanos_per_token', 6000
+        'input_usd_nanos_per_token', 200,
+        'cached_input_usd_nanos_per_token', 20,
+        'cache_write_input_usd_nanos_per_token', 250,
+        'output_usd_nanos_per_token', 1200
       )
     ),
     'formula', '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
     'hosted_tool_fees_included', false,
-    'limitation', 'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.'
+    'limitation', 'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.'
   );
 $$;
+
+select pg_temp.aiq_assert(
+  aiq_private.dto_adapter_failure_is_valid(jsonb_build_object(
+    'artifacts', '[]'::jsonb,
+    'exit_code', 0,
+    'kind', 'workspace_integrity',
+    'message', 'post-invocation output evidence retention failed',
+    'stderr', '',
+    'stderr_truncated', false,
+    'stdout_truncated', false
+  )),
+  'adapter failure must accept the paid workspace-integrity classification'
+);
+
+select pg_temp.aiq_assert(
+  aiq_private.result_efficiency_v1_is_valid(jsonb_build_object(
+    'cost_evidence_level', null,
+    'cost_status', 'unavailable_context_band',
+    'model', jsonb_build_object('family', 'luna', 'reasoning_effort', 'low'),
+    'observed_wall_ms', 1,
+    'provider_tokens', jsonb_build_object(
+      'input', 272001,
+      'cached_input', 0,
+      'cache_write_input', 0,
+      'output', 0
+    ),
+    'provider_tokens_evidence_level', 'verifier_recomputed',
+    'provider_tokens_source', 'provider_reported',
+    'source_result_id', 'result_' || repeat('a', 64),
+    'standard_api_equivalent_usd_nanos', null,
+    'task_id', 'coding-01',
+    'wall_time_evidence_level', 'runner_observed'
+  )),
+  'aggregate input above 272000 must use the unavailable context-band shape'
+);
+
+select pg_temp.aiq_assert(
+  aiq_private.result_efficiency_v1_is_valid(jsonb_build_object(
+    'cost_evidence_level', 'verifier_recomputed',
+    'cost_status', 'estimated',
+    'model', jsonb_build_object('family', 'luna', 'reasoning_effort', 'low'),
+    'observed_wall_ms', 1,
+    'provider_tokens', jsonb_build_object(
+      'input', 272000,
+      'cached_input', 0,
+      'cache_write_input', 0,
+      'output', 0
+    ),
+    'provider_tokens_evidence_level', 'verifier_recomputed',
+    'provider_tokens_source', 'provider_reported',
+    'source_result_id', 'result_' || repeat('b', 64),
+    'standard_api_equivalent_usd_nanos', 54400000,
+    'task_id', 'coding-01',
+    'wall_time_evidence_level', 'runner_observed'
+  )),
+  'the exact 272000 short-context boundary must remain priced'
+);
+
+select pg_temp.aiq_assert(
+  not aiq_private.result_efficiency_v1_is_valid(jsonb_build_object(
+    'cost_evidence_level', 'verifier_recomputed',
+    'cost_status', 'unavailable_context_band',
+    'model', jsonb_build_object('family', 'luna', 'reasoning_effort', 'low'),
+    'observed_wall_ms', 1,
+    'provider_tokens', jsonb_build_object(
+      'input', 272001,
+      'cached_input', 0,
+      'cache_write_input', 0,
+      'output', 0
+    ),
+    'provider_tokens_evidence_level', 'verifier_recomputed',
+    'provider_tokens_source', 'provider_reported',
+    'source_result_id', 'result_' || repeat('c', 64),
+    'standard_api_equivalent_usd_nanos', 1,
+    'task_id', 'coding-01',
+    'wall_time_evidence_level', 'runner_observed'
+  )),
+  'unavailable context-band evidence must not retain a cost or cost authority'
+);
 
 -- Build one valid signed-package shape for the ingress and lease checks. The
 -- signature is structural test data; this check does not claim cryptographic
@@ -153,7 +232,7 @@ begin
         'schema_version', 'aiq.result.v2',
         'run_id', run_id,
         'task_id', 'task-' || lpad(task_number::text, 2, '0'),
-        'task_version', '1.0.0',
+        'task_version', '1.0.1',
         'task_hash', task_hash,
         'model', model,
         'status', 'completed',
@@ -415,12 +494,12 @@ select
     'content_hash', input.envelope ->> 'content_hash',
     'signer', input.envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.0',
+    'task_set_version', '1.0.1',
     'task_set_hash', input.envelope #>> '{payload,task_set_hash}',
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.0',
+    'benchmark_version', 'aiq-core@1.0.1',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
     'scoring_version', '1.0.0',
     'runner_commit', 'a7d91f4',
@@ -511,8 +590,8 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   run_id, package_sha256, envelope ->> 'content_hash',
-  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.0', '1.0.0',
-  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.0',
+  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.1', '1.0.0',
+  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.1',
   stage ->> 'prompt_set_digest', '1.0.0', 'a7d91f4', 'integration',
   1785164400000, 1785164400000, 1785164400001, 1, stage
 from aiq_stage_resume_input;

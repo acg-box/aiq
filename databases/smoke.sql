@@ -8,6 +8,9 @@ declare
   private_table_count integer;
   public_view_count integer;
   security_invoker_view_count integer;
+  current_scoring_count integer;
+  current_task_count integer;
+  current_task_set_count integer;
 begin
   select count(*) into private_table_count
   from pg_catalog.pg_class relation
@@ -141,6 +144,31 @@ begin
 
   if hardened_role_count <> 2 then
     raise exception 'the verifier and publisher roles are not hardened';
+  end if;
+
+  select count(*) into current_task_set_count
+  from aiq_private.aiq_task_sets task_set
+  where task_set.task_set_id = 'aiq-core'
+    and task_set.task_set_version = '1.0.1';
+
+  select count(*) into current_task_count
+  from aiq_private.aiq_task_catalog task
+  where task.task_set_id = 'aiq-core'
+    and task.task_set_version = '1.0.1'
+    and task.task_version = '1.0.1'
+    and task.scorer_version = '1.0.0';
+
+  select count(*) into current_scoring_count
+  from aiq_private.aiq_scoring_versions scoring
+  where scoring.scoring_version = '1.0.0'
+    and scoring.benchmark_version = 'aiq-core@1.0.1';
+
+  if current_task_set_count <> 1
+    or current_task_count <> 72
+    or current_scoring_count <> 1
+  then
+    raise exception
+      'expected AIQ Core 1.0.1 with 72 task 1.0.1 rows and scorer 1.0.0';
   end if;
 
   if not pg_catalog.has_function_privilege(

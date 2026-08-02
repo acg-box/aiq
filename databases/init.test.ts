@@ -235,7 +235,7 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.0',
+        task_set_version: '1.0.1',
         identity_sha256: object(catalog.identity_commitment).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
@@ -363,7 +363,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.0', '1\.0\.0'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.1', '1\.0\.0'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 
 type JsonObject = Record<string, unknown>;
 
-const CATALOG_IDENTITY = 'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+const CATALOG_IDENTITY = 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
 const DIGEST_PATTERN = /^sha256:(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
 const HEX_PATTERN = /^(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
 const RELEASE_ID_PATTERN = /^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\s\S])/;
@@ -322,7 +322,7 @@ function validateCommitment(
   if (
     bindingCatalog.schema_version !== 'aiq.catalog.v1' ||
     bindingCatalog.task_set_id !== 'aiq-core' ||
-    bindingCatalog.task_set_version !== '1.0.0' ||
+    bindingCatalog.task_set_version !== '1.0.1' ||
     bindingCatalog.identity_sha256 !== CATALOG_IDENTITY ||
     bindingCatalog.identity_scope !== 'ordered_full_task_metadata'
   ) {
@@ -604,7 +604,7 @@ function scoringRows(reviewedAt: string): JsonObject[] {
     {
       scoring_version: '1.0.0',
       schema_version: 'aiq.score-snapshot.v1',
-      benchmark_version: 'aiq-core@1.0.0',
+      benchmark_version: 'aiq-core@1.0.1',
       name: 'AIQ fixed-fixture score 1.0.0',
       fixed_fixture_estimand:
         'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
@@ -677,7 +677,7 @@ function referenceRows(
     taskSets: [
       {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.0',
+        task_set_version: '1.0.1',
         title: 'AIQ Core 72',
         task_count: 72,
         domain_count: 10,
@@ -704,7 +704,7 @@ function referenceRows(
       if (binding === undefined) throw new Error('task binding is missing');
       return {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.0',
+        task_set_version: '1.0.1',
         task_id: task.task_id,
         task_version: task.task_version,
         title: task.title,
@@ -853,7 +853,7 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.0', '1.0.0')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.1', '1.0.0')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
@@ -917,7 +917,7 @@ export function prepareInitialization(
   if (
     catalog.schema_version !== 'aiq.catalog.v1' ||
     catalog.task_set_id !== 'aiq-core' ||
-    catalog.task_set_version !== '1.0.0' ||
+    catalog.task_set_version !== '1.0.1' ||
     object(catalog.identity_commitment, 'catalog.identity_commitment').digest !== CATALOG_IDENTITY
   ) {
     throw new Error('checked-in catalog authority is invalid');

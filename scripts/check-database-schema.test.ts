@@ -246,3 +246,27 @@ await test('checker rejects workspace integrity in an unattempted filter', async
     /workspace_integrity is attempted/,
   );
 });
+
+await test('checker rejects stale release, pricing, and adapter-failure contracts', async () => {
+  const [schema, syntheticDemo] = await sources();
+  for (const [changed, expected] of [
+    [
+      schema.replace(
+        "'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'",
+        "'non_zero_exit','budget_exceeded','output_truncated'",
+      ),
+      /adapter-failure validator must accept workspace_integrity/,
+    ],
+    [schema.replace('aiq-core@1.0.1', 'aiq-core@1.0.0'), /expected to not match/],
+    [
+      schema.replace(
+        'https://developers.openai.com/api/docs/pricing',
+        'https://developers.openai.com/api/docs/models/compare',
+      ),
+      /pricing record drifted/,
+    ],
+  ] as const) {
+    assert.notEqual(changed, schema);
+    assert.throws(() => checkDatabaseSchemaSources(changed, syntheticDemo), expected);
+  }
+});
