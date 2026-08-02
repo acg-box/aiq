@@ -251,16 +251,16 @@ await test('the frozen identity commitment covers ordered full task metadata', (
   throws(() => assertCatalogInvariants(reordered), /identity commitment does not match/);
 });
 
-await test('the current catalog freezes every benchmark version at 1.0.0', () => {
+await test('the current catalog binds task release 1.0.1 to scorer 1.0.0', () => {
   const catalog = buildCatalog();
 
-  strictEqual(catalog.task_set_version, '1.0.0');
+  strictEqual(catalog.task_set_version, '1.0.1');
   for (const task of catalog.tasks) {
-    strictEqual(task.task_version, '1.0.0', task.task_id);
+    strictEqual(task.task_version, '1.0.1', task.task_id);
     strictEqual(task.evaluator.scorer_version, '1.0.0', task.task_id);
     strictEqual(
       task.input_contract.content_handle,
-      `aiq-controlled-task://aiq-core/1.0.0/${task.task_id}`,
+      `aiq-controlled-task://aiq-core/1.0.1/${task.task_id}`,
       task.task_id,
     );
   }
@@ -270,7 +270,7 @@ await test('the current catalog freezes every benchmark version at 1.0.0', () =>
     throw new Error('Catalog must contain a task.');
   }
   throws(
-    () => assertCatalogInvariants(replaceFirstTask(catalog, { ...first, task_version: '1.0.1' })),
+    () => assertCatalogInvariants(replaceFirstTask(catalog, { ...first, task_version: '1.0.0' })),
     /current AIQ Core catalog requires/,
   );
 });
@@ -593,7 +593,7 @@ await test('catalog machine tokens, versions, fixtures, and acceptance handles a
       ...first,
       input_contract: {
         ...first.input_contract,
-        content_handle: `aiq-controlled-task://other/1.0.0/${first.task_id}`,
+        content_handle: `aiq-controlled-task://other/1.0.1/${first.task_id}`,
       },
     },
     {
@@ -704,9 +704,9 @@ await test('task schema keeps human text multiline and rejects unsafe machine fi
     `repo://fixture.json\r\n`,
     `repo://fixture.json\u2028`,
     `repo://fixture.json\u2029`,
-    'aiq-controlled-fixture://aiq-core/1.0.0/coding-1',
-    'aiq-controlled-fixture://other/1.0.0/coding-01',
-    'aiq-controlled-acceptance://aiq-core/1.0.1/coding-01',
+    'aiq-controlled-fixture://aiq-core/1.0.1/coding-1',
+    'aiq-controlled-fixture://other/1.0.1/coding-01',
+    'aiq-controlled-acceptance://aiq-core/1.0.0/coding-01',
   ]) {
     const changed = structuredClone(task);
     changed.fixture_refs = [reference];

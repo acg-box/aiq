@@ -1,13 +1,13 @@
 {
   "schema_version": "aiq.catalog.v1",
   "task_set_id": "aiq-core",
-  "task_set_version": "1.0.0",
+  "task_set_version": "1.0.1",
   "title": "AIQ Core Daily Work Benchmark",
   "status": "public_designs_versioned_private_content_required",
   "generated_from": "scripts/generate-benchmark-catalog.ts",
   "identity_commitment": {
     "algorithm": "sha256",
-    "digest": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3",
+    "digest": "sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc",
     "scope": "ordered_full_task_metadata"
   },
   "content_policy": {
@@ -90,7 +90,7 @@
   "tasks": [
     {
       "task_id": "coding-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Add a validated configuration field",
       "domain": "coding",
       "difficulty": "easy",
@@ -98,7 +98,7 @@
       "input_contract": {
         "kind": "small_repository_patch",
         "fixture_profile": "aiq-fixture://coding-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-01"
       },
       "cluster_id": "coding_validation_mutation-cluster-01",
       "allowed_tools": [
@@ -169,7 +169,7 @@
     },
     {
       "task_id": "coding-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Implement a stable pagination helper",
       "domain": "coding",
       "difficulty": "medium",
@@ -177,7 +177,7 @@
       "input_contract": {
         "kind": "library_function_patch",
         "fixture_profile": "aiq-fixture://coding-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-02"
       },
       "cluster_id": "coding_api_state-cluster-02",
       "allowed_tools": [
@@ -248,7 +248,7 @@
     },
     {
       "task_id": "coding-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Complete a bounded retry utility",
       "domain": "coding",
       "difficulty": "medium",
@@ -256,7 +256,7 @@
       "input_contract": {
         "kind": "library_function_patch",
         "fixture_profile": "aiq-fixture://coding-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-03"
       },
       "cluster_id": "stateful_progress-cluster-01",
       "allowed_tools": [
@@ -327,7 +327,7 @@
     },
     {
       "task_id": "coding-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Implement an atomic owned-file update helper",
       "domain": "coding",
       "difficulty": "medium",
@@ -335,7 +335,7 @@
       "input_contract": {
         "kind": "library_function_patch",
         "fixture_profile": "aiq-fixture://coding-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-04"
       },
       "cluster_id": "coding_validation_mutation-cluster-01",
       "allowed_tools": [
@@ -406,7 +406,7 @@
     },
     {
       "task_id": "coding-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Implement deterministic record deduplication",
       "domain": "coding",
       "difficulty": "medium",
@@ -414,7 +414,7 @@
       "input_contract": {
         "kind": "data_library_patch",
         "fixture_profile": "aiq-fixture://coding-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-05"
       },
       "cluster_id": "coding_data_transform-cluster-03",
       "allowed_tools": [
@@ -485,7 +485,7 @@
     },
     {
       "task_id": "coding-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Extend an API client with conditional requests",
       "domain": "coding",
       "difficulty": "medium",
@@ -493,7 +493,7 @@
       "input_contract": {
         "kind": "http_client_patch",
         "fixture_profile": "aiq-fixture://coding-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-06"
       },
       "cluster_id": "coding_api_state-cluster-02",
       "allowed_tools": [
@@ -564,7 +564,7 @@
     },
     {
       "task_id": "coding-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Implement a streaming event parser",
       "domain": "coding",
       "difficulty": "hard",
@@ -572,7 +572,7 @@
       "input_contract": {
         "kind": "stream_parser_patch",
         "fixture_profile": "aiq-fixture://coding-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-07"
       },
       "cluster_id": "coding_data_transform-cluster-03",
       "allowed_tools": [
@@ -643,7 +643,7 @@
     },
     {
       "task_id": "coding-08",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Add a resumable batch processor",
       "domain": "coding",
       "difficulty": "hard",
@@ -651,7 +651,7 @@
       "input_contract": {
         "kind": "service_repository_patch",
         "fixture_profile": "aiq-fixture://coding-08/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/coding-08"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/coding-08"
       },
       "cluster_id": "stateful_progress-cluster-01",
       "allowed_tools": [
@@ -722,7 +722,7 @@
     },
     {
       "task_id": "debugging-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Fix a boundary-condition regression",
       "domain": "debugging",
       "difficulty": "easy",
@@ -730,7 +730,7 @@
       "input_contract": {
         "kind": "failing_unit_test_repository",
         "fixture_profile": "aiq-fixture://debugging-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-01"
       },
       "cluster_id": "debugging-cluster-01",
       "allowed_tools": [
@@ -801,7 +801,7 @@
     },
     {
       "task_id": "debugging-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Diagnose an environment precedence defect",
       "domain": "debugging",
       "difficulty": "medium",
@@ -809,7 +809,7 @@
       "input_contract": {
         "kind": "configuration_repository",
         "fixture_profile": "aiq-fixture://debugging-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-02"
       },
       "cluster_id": "debugging-cluster-01",
       "allowed_tools": [
@@ -880,7 +880,7 @@
     },
     {
       "task_id": "debugging-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Repair a stale-cache race",
       "domain": "debugging",
       "difficulty": "medium",
@@ -888,7 +888,7 @@
       "input_contract": {
         "kind": "concurrent_service_repository",
         "fixture_profile": "aiq-fixture://debugging-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-03"
       },
       "cluster_id": "debugging-cluster-02",
       "allowed_tools": [
@@ -959,7 +959,7 @@
     },
     {
       "task_id": "debugging-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Fix malformed Unicode truncation",
       "domain": "debugging",
       "difficulty": "medium",
@@ -967,7 +967,7 @@
       "input_contract": {
         "kind": "text_utility_repository",
         "fixture_profile": "aiq-fixture://debugging-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-04"
       },
       "cluster_id": "debugging-cluster-02",
       "allowed_tools": [
@@ -1038,7 +1038,7 @@
     },
     {
       "task_id": "debugging-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Resolve duplicate event delivery",
       "domain": "debugging",
       "difficulty": "medium",
@@ -1046,7 +1046,7 @@
       "input_contract": {
         "kind": "event_worker_repository",
         "fixture_profile": "aiq-fixture://debugging-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-05"
       },
       "cluster_id": "debugging-cluster-03",
       "allowed_tools": [
@@ -1117,7 +1117,7 @@
     },
     {
       "task_id": "debugging-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Correct an incorrect timezone window",
       "domain": "debugging",
       "difficulty": "medium",
@@ -1125,7 +1125,7 @@
       "input_contract": {
         "kind": "scheduling_repository",
         "fixture_profile": "aiq-fixture://debugging-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-06"
       },
       "cluster_id": "debugging-cluster-03",
       "allowed_tools": [
@@ -1196,7 +1196,7 @@
     },
     {
       "task_id": "debugging-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Find a connection-pool starvation path",
       "domain": "debugging",
       "difficulty": "hard",
@@ -1204,7 +1204,7 @@
       "input_contract": {
         "kind": "async_service_repository",
         "fixture_profile": "aiq-fixture://debugging-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-07"
       },
       "cluster_id": "debugging-cluster-04",
       "allowed_tools": [
@@ -1275,7 +1275,7 @@
     },
     {
       "task_id": "debugging-08",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Repair cross-platform archive extraction",
       "domain": "debugging",
       "difficulty": "hard",
@@ -1283,7 +1283,7 @@
       "input_contract": {
         "kind": "cross_platform_repository",
         "fixture_profile": "aiq-fixture://debugging-08/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/debugging-08"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/debugging-08"
       },
       "cluster_id": "debugging-cluster-04",
       "allowed_tools": [
@@ -1355,7 +1355,7 @@
     },
     {
       "task_id": "repository-understanding-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Locate the owner of a CLI flag",
       "domain": "repository_understanding",
       "difficulty": "easy",
@@ -1363,7 +1363,7 @@
       "input_contract": {
         "kind": "repository_question",
         "fixture_profile": "aiq-fixture://repository-understanding-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-01"
       },
       "cluster_id": "repository_understanding-cluster-01",
       "allowed_tools": [
@@ -1433,7 +1433,7 @@
     },
     {
       "task_id": "repository-understanding-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Trace a request through three layers",
       "domain": "repository_understanding",
       "difficulty": "medium",
@@ -1441,7 +1441,7 @@
       "input_contract": {
         "kind": "repository_question",
         "fixture_profile": "aiq-fixture://repository-understanding-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-02"
       },
       "cluster_id": "repository_understanding-cluster-01",
       "allowed_tools": [
@@ -1511,7 +1511,7 @@
     },
     {
       "task_id": "repository-understanding-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Explain a generated-code boundary",
       "domain": "repository_understanding",
       "difficulty": "medium",
@@ -1519,7 +1519,7 @@
       "input_contract": {
         "kind": "repository_question",
         "fixture_profile": "aiq-fixture://repository-understanding-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-03"
       },
       "cluster_id": "repository_understanding-cluster-02",
       "allowed_tools": [
@@ -1589,7 +1589,7 @@
     },
     {
       "task_id": "repository-understanding-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Assess the impact of a schema rename",
       "domain": "repository_understanding",
       "difficulty": "medium",
@@ -1597,7 +1597,7 @@
       "input_contract": {
         "kind": "change_impact_question",
         "fixture_profile": "aiq-fixture://repository-understanding-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-04"
       },
       "cluster_id": "repository_understanding-cluster-02",
       "allowed_tools": [
@@ -1667,7 +1667,7 @@
     },
     {
       "task_id": "repository-understanding-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Reconstruct a failed release path",
       "domain": "repository_understanding",
       "difficulty": "medium",
@@ -1675,7 +1675,7 @@
       "input_contract": {
         "kind": "workflow_question",
         "fixture_profile": "aiq-fixture://repository-understanding-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-05"
       },
       "cluster_id": "repository_understanding-cluster-03",
       "allowed_tools": [
@@ -1745,7 +1745,7 @@
     },
     {
       "task_id": "repository-understanding-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Find an implicit configuration contract",
       "domain": "repository_understanding",
       "difficulty": "medium",
@@ -1753,7 +1753,7 @@
       "input_contract": {
         "kind": "repository_question",
         "fixture_profile": "aiq-fixture://repository-understanding-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-06"
       },
       "cluster_id": "repository_understanding-cluster-03",
       "allowed_tools": [
@@ -1823,7 +1823,7 @@
     },
     {
       "task_id": "repository-understanding-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Map a workspace boundary change",
       "domain": "repository_understanding",
       "difficulty": "hard",
@@ -1831,7 +1831,7 @@
       "input_contract": {
         "kind": "architecture_change_question",
         "fixture_profile": "aiq-fixture://repository-understanding-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/repository-understanding-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/repository-understanding-07"
       },
       "cluster_id": "repository_understanding-cluster-04",
       "allowed_tools": [
@@ -1901,7 +1901,7 @@
     },
     {
       "task_id": "data-processing-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Normalize a small CSV export",
       "domain": "data_processing",
       "difficulty": "easy",
@@ -1909,7 +1909,7 @@
       "input_contract": {
         "kind": "tabular_file_transform",
         "fixture_profile": "aiq-fixture://data-processing-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-01"
       },
       "cluster_id": "data_processing-cluster-01",
       "allowed_tools": [
@@ -1980,7 +1980,7 @@
     },
     {
       "task_id": "data-processing-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Join two keyed datasets safely",
       "domain": "data_processing",
       "difficulty": "easy",
@@ -1988,7 +1988,7 @@
       "input_contract": {
         "kind": "multi_file_transform",
         "fixture_profile": "aiq-fixture://data-processing-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-02"
       },
       "cluster_id": "data_processing-cluster-01",
       "allowed_tools": [
@@ -2059,7 +2059,7 @@
     },
     {
       "task_id": "data-processing-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Compute a cohort retention table",
       "domain": "data_processing",
       "difficulty": "medium",
@@ -2067,7 +2067,7 @@
       "input_contract": {
         "kind": "event_table_analysis",
         "fixture_profile": "aiq-fixture://data-processing-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-03"
       },
       "cluster_id": "data_processing-cluster-02",
       "allowed_tools": [
@@ -2138,7 +2138,7 @@
     },
     {
       "task_id": "data-processing-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Reconcile a ledger extract",
       "domain": "data_processing",
       "difficulty": "medium",
@@ -2146,7 +2146,7 @@
       "input_contract": {
         "kind": "financial_table_analysis",
         "fixture_profile": "aiq-fixture://data-processing-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-04"
       },
       "cluster_id": "data_processing-cluster-02",
       "allowed_tools": [
@@ -2217,7 +2217,7 @@
     },
     {
       "task_id": "data-processing-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Summarize nested event JSON",
       "domain": "data_processing",
       "difficulty": "medium",
@@ -2225,7 +2225,7 @@
       "input_contract": {
         "kind": "jsonl_transform",
         "fixture_profile": "aiq-fixture://data-processing-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-05"
       },
       "cluster_id": "data_processing-cluster-03",
       "allowed_tools": [
@@ -2296,7 +2296,7 @@
     },
     {
       "task_id": "data-processing-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Detect a metric discontinuity",
       "domain": "data_processing",
       "difficulty": "medium",
@@ -2304,7 +2304,7 @@
       "input_contract": {
         "kind": "time_series_analysis",
         "fixture_profile": "aiq-fixture://data-processing-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-06"
       },
       "cluster_id": "data_processing-cluster-03",
       "allowed_tools": [
@@ -2375,7 +2375,7 @@
     },
     {
       "task_id": "data-processing-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Build a stratified sample",
       "domain": "data_processing",
       "difficulty": "medium",
@@ -2383,7 +2383,7 @@
       "input_contract": {
         "kind": "dataset_sampling",
         "fixture_profile": "aiq-fixture://data-processing-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-07"
       },
       "cluster_id": "data_processing-cluster-04",
       "allowed_tools": [
@@ -2454,7 +2454,7 @@
     },
     {
       "task_id": "data-processing-08",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Repair a slowly changing dimension snapshot",
       "domain": "data_processing",
       "difficulty": "hard",
@@ -2462,7 +2462,7 @@
       "input_contract": {
         "kind": "temporal_table_transform",
         "fixture_profile": "aiq-fixture://data-processing-08/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/data-processing-08"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/data-processing-08"
       },
       "cluster_id": "data_processing-cluster-04",
       "allowed_tools": [
@@ -2533,7 +2533,7 @@
     },
     {
       "task_id": "retrieval-verification-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Decide whether a request plan fits a captured limit",
       "domain": "retrieval_verification",
       "difficulty": "easy",
@@ -2541,7 +2541,7 @@
       "input_contract": {
         "kind": "captured_limit_decision",
         "fixture_profile": "aiq-fixture://retrieval-verification-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-01"
       },
       "cluster_id": "factual_source_family-cluster-01",
       "allowed_tools": [
@@ -2612,7 +2612,7 @@
     },
     {
       "task_id": "retrieval-verification-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Reconstruct a feature-default timeline",
       "domain": "retrieval_verification",
       "difficulty": "medium",
@@ -2620,7 +2620,7 @@
       "input_contract": {
         "kind": "captured_release_timeline",
         "fixture_profile": "aiq-fixture://retrieval-verification-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-02"
       },
       "cluster_id": "factual_source_family-cluster-01",
       "allowed_tools": [
@@ -2691,7 +2691,7 @@
     },
     {
       "task_id": "retrieval-verification-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Issue a standards interpretation note",
       "domain": "retrieval_verification",
       "difficulty": "medium",
@@ -2699,7 +2699,7 @@
       "input_contract": {
         "kind": "captured_standard_interpretation",
         "fixture_profile": "aiq-fixture://retrieval-verification-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-03"
       },
       "cluster_id": "factual_source_family-cluster-01",
       "allowed_tools": [
@@ -2770,7 +2770,7 @@
     },
     {
       "task_id": "retrieval-verification-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Confirm a dependency compatibility claim",
       "domain": "retrieval_verification",
       "difficulty": "medium",
@@ -2778,7 +2778,7 @@
       "input_contract": {
         "kind": "captured_compatibility_snapshot",
         "fixture_profile": "aiq-fixture://retrieval-verification-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-04"
       },
       "cluster_id": "factual_source_family-cluster-01",
       "allowed_tools": [
@@ -2849,7 +2849,7 @@
     },
     {
       "task_id": "retrieval-verification-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Reconstruct a dated policy change",
       "domain": "retrieval_verification",
       "difficulty": "medium",
@@ -2857,7 +2857,7 @@
       "input_contract": {
         "kind": "captured_policy_timeline",
         "fixture_profile": "aiq-fixture://retrieval-verification-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-05"
       },
       "cluster_id": "retrieval_policy_timeline-cluster-02",
       "allowed_tools": [
@@ -2928,7 +2928,7 @@
     },
     {
       "task_id": "retrieval-verification-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Validate a quoted statistic",
       "domain": "retrieval_verification",
       "difficulty": "medium",
@@ -2936,7 +2936,7 @@
       "input_contract": {
         "kind": "captured_dataset_provenance",
         "fixture_profile": "aiq-fixture://retrieval-verification-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-06"
       },
       "cluster_id": "retrieval_statistics-cluster-03",
       "allowed_tools": [
@@ -3007,7 +3007,7 @@
     },
     {
       "task_id": "retrieval-verification-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Audit a multi-claim technical brief",
       "domain": "retrieval_verification",
       "difficulty": "hard",
@@ -3015,7 +3015,7 @@
       "input_contract": {
         "kind": "captured_claim_audit",
         "fixture_profile": "aiq-fixture://retrieval-verification-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/retrieval-verification-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/retrieval-verification-07"
       },
       "cluster_id": "factual_source_family-cluster-01",
       "allowed_tools": [
@@ -3086,7 +3086,7 @@
     },
     {
       "task_id": "documentation-communication-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Write a concise operator notice",
       "domain": "documentation_communication",
       "difficulty": "easy",
@@ -3094,7 +3094,7 @@
       "input_contract": {
         "kind": "structured_writing",
         "fixture_profile": "aiq-fixture://documentation-communication-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-01"
       },
       "cluster_id": "documentation_communication-cluster-01",
       "allowed_tools": [
@@ -3165,7 +3165,7 @@
     },
     {
       "task_id": "documentation-communication-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Rewrite setup steps for direct use",
       "domain": "documentation_communication",
       "difficulty": "easy",
@@ -3173,7 +3173,7 @@
       "input_contract": {
         "kind": "documentation_edit",
         "fixture_profile": "aiq-fixture://documentation-communication-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-02"
       },
       "cluster_id": "documentation_communication-cluster-01",
       "allowed_tools": [
@@ -3244,7 +3244,7 @@
     },
     {
       "task_id": "documentation-communication-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Produce a migration handoff",
       "domain": "documentation_communication",
       "difficulty": "medium",
@@ -3252,7 +3252,7 @@
       "input_contract": {
         "kind": "structured_writing",
         "fixture_profile": "aiq-fixture://documentation-communication-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-03"
       },
       "cluster_id": "documentation_communication-cluster-02",
       "allowed_tools": [
@@ -3323,7 +3323,7 @@
     },
     {
       "task_id": "documentation-communication-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Explain a scoring method to two audiences",
       "domain": "documentation_communication",
       "difficulty": "medium",
@@ -3331,7 +3331,7 @@
       "input_contract": {
         "kind": "dual_audience_writing",
         "fixture_profile": "aiq-fixture://documentation-communication-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-04"
       },
       "cluster_id": "documentation_communication-cluster-02",
       "allowed_tools": [
@@ -3402,7 +3402,7 @@
     },
     {
       "task_id": "documentation-communication-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Repair a misleading changelog entry",
       "domain": "documentation_communication",
       "difficulty": "medium",
@@ -3410,7 +3410,7 @@
       "input_contract": {
         "kind": "documentation_edit",
         "fixture_profile": "aiq-fixture://documentation-communication-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-05"
       },
       "cluster_id": "documentation_communication-cluster-03",
       "allowed_tools": [
@@ -3481,7 +3481,7 @@
     },
     {
       "task_id": "documentation-communication-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Draft a decision record",
       "domain": "documentation_communication",
       "difficulty": "medium",
@@ -3489,7 +3489,7 @@
       "input_contract": {
         "kind": "structured_writing",
         "fixture_profile": "aiq-fixture://documentation-communication-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-06"
       },
       "cluster_id": "documentation_communication-cluster-03",
       "allowed_tools": [
@@ -3560,7 +3560,7 @@
     },
     {
       "task_id": "documentation-communication-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Consolidate conflicting runbooks",
       "domain": "documentation_communication",
       "difficulty": "hard",
@@ -3568,7 +3568,7 @@
       "input_contract": {
         "kind": "multi_document_edit",
         "fixture_profile": "aiq-fixture://documentation-communication-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/documentation-communication-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/documentation-communication-07"
       },
       "cluster_id": "documentation_communication-cluster-04",
       "allowed_tools": [
@@ -3639,7 +3639,7 @@
     },
     {
       "task_id": "planning-execution-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Schedule a constrained maintenance window",
       "domain": "planning_execution",
       "difficulty": "easy",
@@ -3647,7 +3647,7 @@
       "input_contract": {
         "kind": "maintenance_scheduling",
         "fixture_profile": "aiq-fixture://planning-execution-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-01"
       },
       "cluster_id": "planning_capacity-cluster-01",
       "allowed_tools": [
@@ -3718,7 +3718,7 @@
     },
     {
       "task_id": "planning-execution-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Execute a deployable contract migration",
       "domain": "planning_execution",
       "difficulty": "medium",
@@ -3726,7 +3726,7 @@
       "input_contract": {
         "kind": "repository_migration",
         "fixture_profile": "aiq-fixture://planning-execution-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-02"
       },
       "cluster_id": "planning_reversible_change-cluster-02",
       "allowed_tools": [
@@ -3797,7 +3797,7 @@
     },
     {
       "task_id": "planning-execution-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Staff a coverage plan without double booking",
       "domain": "planning_execution",
       "difficulty": "medium",
@@ -3805,7 +3805,7 @@
       "input_contract": {
         "kind": "staffing_allocation",
         "fixture_profile": "aiq-fixture://planning-execution-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-03"
       },
       "cluster_id": "planning_capacity-cluster-01",
       "allowed_tools": [
@@ -3876,7 +3876,7 @@
     },
     {
       "task_id": "planning-execution-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Stop a staged rollout at the correct gate",
       "domain": "planning_execution",
       "difficulty": "medium",
@@ -3884,7 +3884,7 @@
       "input_contract": {
         "kind": "staged_rollout_state",
         "fixture_profile": "aiq-fixture://planning-execution-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-04"
       },
       "cluster_id": "planning_rollout_gate-cluster-03",
       "allowed_tools": [
@@ -3955,7 +3955,7 @@
     },
     {
       "task_id": "planning-execution-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Prove a reversible local data change",
       "domain": "planning_execution",
       "difficulty": "medium",
@@ -3963,7 +3963,7 @@
       "input_contract": {
         "kind": "migration_design_and_patch",
         "fixture_profile": "aiq-fixture://planning-execution-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-05"
       },
       "cluster_id": "planning_reversible_change-cluster-02",
       "allowed_tools": [
@@ -4034,7 +4034,7 @@
     },
     {
       "task_id": "planning-execution-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Close a local dependency update lane",
       "domain": "planning_execution",
       "difficulty": "medium",
@@ -4042,7 +4042,7 @@
       "input_contract": {
         "kind": "dependency_repository_change",
         "fixture_profile": "aiq-fixture://planning-execution-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-06"
       },
       "cluster_id": "planning_build_supply_chain-cluster-04",
       "allowed_tools": [
@@ -4113,7 +4113,7 @@
     },
     {
       "task_id": "planning-execution-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Repair a cross-platform packaging matrix",
       "domain": "planning_execution",
       "difficulty": "hard",
@@ -4121,7 +4121,7 @@
       "input_contract": {
         "kind": "workflow_and_build_change",
         "fixture_profile": "aiq-fixture://planning-execution-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/planning-execution-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/planning-execution-07"
       },
       "cluster_id": "planning_build_supply_chain-cluster-04",
       "allowed_tools": [
@@ -4192,7 +4192,7 @@
     },
     {
       "task_id": "tool-use-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Find and edit the exact owned file",
       "domain": "tool_use",
       "difficulty": "easy",
@@ -4200,7 +4200,7 @@
       "input_contract": {
         "kind": "repository_ownership_task",
         "fixture_profile": "aiq-fixture://tool-use-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-01"
       },
       "cluster_id": "constraint_boundary-cluster-01",
       "allowed_tools": [
@@ -4274,7 +4274,7 @@
     },
     {
       "task_id": "tool-use-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Run a bounded local document extractor",
       "domain": "tool_use",
       "difficulty": "medium",
@@ -4282,7 +4282,7 @@
       "input_contract": {
         "kind": "task_local_document_cli",
         "fixture_profile": "aiq-fixture://tool-use-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-02"
       },
       "cluster_id": "local_tool_execution-cluster-04",
       "allowed_tools": [
@@ -4356,7 +4356,7 @@
     },
     {
       "task_id": "tool-use-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Repair configuration with a local validator",
       "domain": "tool_use",
       "difficulty": "medium",
@@ -4364,7 +4364,7 @@
       "input_contract": {
         "kind": "multi_tool_validation_task",
         "fixture_profile": "aiq-fixture://tool-use-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-03"
       },
       "cluster_id": "local_tool_execution-cluster-04",
       "allowed_tools": [
@@ -4438,7 +4438,7 @@
     },
     {
       "task_id": "tool-use-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Verify linked local evidence",
       "domain": "tool_use",
       "difficulty": "medium",
@@ -4446,7 +4446,7 @@
       "input_contract": {
         "kind": "linked_local_evidence_task",
         "fixture_profile": "aiq-fixture://tool-use-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-04"
       },
       "cluster_id": "local_evidence-cluster-02",
       "allowed_tools": [
@@ -4519,7 +4519,7 @@
     },
     {
       "task_id": "tool-use-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Apply a structured patch and validate it",
       "domain": "tool_use",
       "difficulty": "medium",
@@ -4527,7 +4527,7 @@
       "input_contract": {
         "kind": "shell_and_patch_task",
         "fixture_profile": "aiq-fixture://tool-use-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-05"
       },
       "cluster_id": "constraint_boundary-cluster-01",
       "allowed_tools": [
@@ -4600,7 +4600,7 @@
     },
     {
       "task_id": "tool-use-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Compose two local command outputs",
       "domain": "tool_use",
       "difficulty": "medium",
@@ -4608,7 +4608,7 @@
       "input_contract": {
         "kind": "shell_data_task",
         "fixture_profile": "aiq-fixture://tool-use-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-06"
       },
       "cluster_id": "local_evidence-cluster-02",
       "allowed_tools": [
@@ -4681,7 +4681,7 @@
     },
     {
       "task_id": "tool-use-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Coordinate a tool failure fallback",
       "domain": "tool_use",
       "difficulty": "hard",
@@ -4689,7 +4689,7 @@
       "input_contract": {
         "kind": "multi_tool_failure_task",
         "fixture_profile": "aiq-fixture://tool-use-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/tool-use-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/tool-use-07"
       },
       "cluster_id": "tool_failure_recovery-cluster-03",
       "allowed_tools": [
@@ -4762,7 +4762,7 @@
     },
     {
       "task_id": "instruction-following-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Honor an exact output schema",
       "domain": "instruction_following",
       "difficulty": "easy",
@@ -4770,7 +4770,7 @@
       "input_contract": {
         "kind": "constrained_response",
         "fixture_profile": "aiq-fixture://instruction-following-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/instruction-following-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/instruction-following-01"
       },
       "cluster_id": "instruction_following-cluster-01",
       "allowed_tools": [
@@ -4841,7 +4841,7 @@
     },
     {
       "task_id": "instruction-following-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Preserve an explicit file boundary",
       "domain": "instruction_following",
       "difficulty": "medium",
@@ -4849,7 +4849,7 @@
       "input_contract": {
         "kind": "bounded_repository_change",
         "fixture_profile": "aiq-fixture://instruction-following-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/instruction-following-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/instruction-following-02"
       },
       "cluster_id": "constraint_boundary-cluster-01",
       "allowed_tools": [
@@ -4920,7 +4920,7 @@
     },
     {
       "task_id": "instruction-following-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Apply precedence among nested requirements",
       "domain": "instruction_following",
       "difficulty": "medium",
@@ -4928,7 +4928,7 @@
       "input_contract": {
         "kind": "constraint_resolution",
         "fixture_profile": "aiq-fixture://instruction-following-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/instruction-following-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/instruction-following-03"
       },
       "cluster_id": "instruction_following-cluster-02",
       "allowed_tools": [
@@ -4999,7 +4999,7 @@
     },
     {
       "task_id": "instruction-following-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Avoid a prohibited external action",
       "domain": "instruction_following",
       "difficulty": "medium",
@@ -5007,7 +5007,7 @@
       "input_contract": {
         "kind": "local_implementation_task",
         "fixture_profile": "aiq-fixture://instruction-following-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/instruction-following-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/instruction-following-04"
       },
       "cluster_id": "instruction_following-cluster-02",
       "allowed_tools": [
@@ -5078,7 +5078,7 @@
     },
     {
       "task_id": "instruction-following-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Keep synthetic and measured data separate",
       "domain": "instruction_following",
       "difficulty": "medium",
@@ -5086,7 +5086,7 @@
       "input_contract": {
         "kind": "data_and_ui_change",
         "fixture_profile": "aiq-fixture://instruction-following-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/instruction-following-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/instruction-following-05"
       },
       "cluster_id": "instruction_following-cluster-03",
       "allowed_tools": [
@@ -5157,7 +5157,7 @@
     },
     {
       "task_id": "instruction-following-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Complete a dense multi-constraint edit",
       "domain": "instruction_following",
       "difficulty": "hard",
@@ -5165,7 +5165,7 @@
       "input_contract": {
         "kind": "multi_file_constrained_change",
         "fixture_profile": "aiq-fixture://instruction-following-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/instruction-following-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/instruction-following-06"
       },
       "cluster_id": "constraint_boundary-cluster-01",
       "allowed_tools": [
@@ -5236,7 +5236,7 @@
     },
     {
       "task_id": "reliability-recovery-01",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Recover an interrupted run from capability evidence",
       "domain": "reliability_recovery",
       "difficulty": "easy",
@@ -5244,7 +5244,7 @@
       "input_contract": {
         "kind": "interrupted_capability_state",
         "fixture_profile": "aiq-fixture://reliability-recovery-01/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-01"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-01"
       },
       "cluster_id": "reliability_capability_isolation-cluster-01",
       "allowed_tools": [
@@ -5316,7 +5316,7 @@
     },
     {
       "task_id": "reliability-recovery-02",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Resume an interrupted local run",
       "domain": "reliability_recovery",
       "difficulty": "medium",
@@ -5324,7 +5324,7 @@
       "input_contract": {
         "kind": "checkpoint_recovery_scenario",
         "fixture_profile": "aiq-fixture://reliability-recovery-02/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-02"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-02"
       },
       "cluster_id": "stateful_progress-cluster-01",
       "allowed_tools": [
@@ -5395,7 +5395,7 @@
     },
     {
       "task_id": "reliability-recovery-03",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Resolve a partial attachment integrity incident",
       "domain": "reliability_recovery",
       "difficulty": "medium",
@@ -5403,7 +5403,7 @@
       "input_contract": {
         "kind": "integrity_failure_scenario",
         "fixture_profile": "aiq-fixture://reliability-recovery-03/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-03"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-03"
       },
       "cluster_id": "reliability_artifact_delivery-cluster-02",
       "allowed_tools": [
@@ -5474,7 +5474,7 @@
     },
     {
       "task_id": "reliability-recovery-04",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Recover from a partial submission",
       "domain": "reliability_recovery",
       "difficulty": "medium",
@@ -5482,7 +5482,7 @@
       "input_contract": {
         "kind": "captured_submission_recovery",
         "fixture_profile": "aiq-fixture://reliability-recovery-04/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-04"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-04"
       },
       "cluster_id": "reliability_artifact_delivery-cluster-02",
       "allowed_tools": [
@@ -5553,7 +5553,7 @@
     },
     {
       "task_id": "reliability-recovery-05",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Resume after an output-checkpoint interruption",
       "domain": "reliability_recovery",
       "difficulty": "medium",
@@ -5561,7 +5561,7 @@
       "input_contract": {
         "kind": "partial_operational_state",
         "fixture_profile": "aiq-fixture://reliability-recovery-05/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-05"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-05"
       },
       "cluster_id": "stateful_progress-cluster-01",
       "allowed_tools": [
@@ -5633,7 +5633,7 @@
     },
     {
       "task_id": "reliability-recovery-06",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Continue after one malformed task",
       "domain": "reliability_recovery",
       "difficulty": "medium",
@@ -5641,7 +5641,7 @@
       "input_contract": {
         "kind": "batch_isolation_scenario",
         "fixture_profile": "aiq-fixture://reliability-recovery-06/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-06"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-06"
       },
       "cluster_id": "reliability_capability_isolation-cluster-01",
       "allowed_tools": [
@@ -5712,7 +5712,7 @@
     },
     {
       "task_id": "reliability-recovery-07",
-      "task_version": "1.0.0",
+      "task_version": "1.0.1",
       "title": "Reconcile two signed result claims",
       "domain": "reliability_recovery",
       "difficulty": "hard",
@@ -5720,7 +5720,7 @@
       "input_contract": {
         "kind": "distributed_conflict_scenario",
         "fixture_profile": "aiq-fixture://reliability-recovery-07/v1",
-        "content_handle": "aiq-controlled-task://aiq-core/1.0.0/reliability-recovery-07"
+        "content_handle": "aiq-controlled-task://aiq-core/1.0.1/reliability-recovery-07"
       },
       "cluster_id": "reliability_claim_conflict-cluster-03",
       "allowed_tools": [

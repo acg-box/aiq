@@ -32,7 +32,7 @@
       "properties": {
         "schema_version": { "const": "aiq.catalog.v1" },
         "task_set_id": { "const": "aiq-core" },
-        "task_set_version": { "const": "1.0.0" },
+        "task_set_version": { "const": "1.0.1" },
         "identity_sha256": { "$ref": "#/$defs/digest" },
         "identity_scope": { "const": "ordered_full_task_metadata" }
       }
