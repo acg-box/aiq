@@ -14,7 +14,8 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- AIQ Core `1.0.0`, with 72 private tasks and a public catalog;
+- AIQ Core benchmark release `aiq-core@1.0.1`, with 72 private tasks, a public
+  catalog, and independently versioned scoring at `1.0.0`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
@@ -39,7 +40,9 @@ No benchmark or Storage schedule and no cloud runner or verifier worker exist.
 A full real run has not been published. Official dispatch is blocked by the
 managed-policy gate: `Official runs require an exclusive managed aiq_benchmark
 allowlist and managed default; no model was invoked`. Current run work is
-calibration-only; calibration evidence is non-Official.
+calibration-only. The repository now supports signed, replay-verified calibration
+evidence and bounded `/calibrations` views, but calibration remains untrusted,
+non-Official, and ineligible for ranking.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
@@ -97,7 +100,7 @@ cargo make init-database
 
 The expected receipt contains 72 tasks, 17 model configurations, and three
 nodes. The catalog digest is
-`sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
+`sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
 
 ## AIQ Wiki free-tier preview
 
@@ -128,5 +131,7 @@ production initialization.
 - [Benchmark method](benchmark-method.md)
 - [Operations](operations.md)
 - [Deployment handoff](deployment-handoff.md)
+- [Template adoption](template-adoption.md)
+- [Knowledge maintenance](knowledge-maintenance.md)
 
 Source and tests take priority if these pages drift.

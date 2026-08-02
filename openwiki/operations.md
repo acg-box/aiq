@@ -97,7 +97,7 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the catalog digest is
-   `sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
+   `sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
 3. Create distinct runner, verifier, and publisher Ed25519 identities.
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
@@ -121,9 +121,12 @@ Run preflight first. Store its authenticated report at a durable path. The run
 can use that report until it expires or can refresh it explicitly.
 
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
-The current managed policy has not passed the Official admission gate. Use
-calibration for a bounded diagnostic subset, and do not classify or publish its
-evidence as Official.
+The current managed policy has not passed the Official admission gate. The `run`
+command defaults to calibration and accepts repeated `--task` and `--model`
+arguments for a deterministic bounded subset. Calibration can be replay-verified
+and published to its separate public register, but never classify or publish it
+as Official or ranking eligible. Use `run --help` for the complete controlled
+input contract.
 
 ## Score, package, and submit
 
@@ -135,9 +138,17 @@ cargo run -p aiq-runner -- package --help
 cargo run -p aiq-runner -- submit --help
 ```
 
-Keep `AIQ_RUNNER_SIGNING_KEY` only in the runner environment. `package` creates
-one signed v3 envelope. `submit` uploads required artifacts and sends the package
-to `/api/submissions`. A queue receipt is not verification or publication.
+Keep `AIQ_RUNNER_SIGNING_KEY` only in the runner environment. `score` emits a
+non-Official calibration score bundle when its saved run is calibration.
+`package` binds the run's execution concurrency, signs the calibration payload,
+and rejects a conflicting concurrency declaration. `submit` validates and
+uploads every signed content-addressed artifact before sending the package to
+`/api/submissions`. A queue receipt is not verification or publication.
+
+`aiq-runner normalize` remains the Official-run normalization path. Calibration
+must instead pass through `aiq-verifier`, which reconstructs the selected
+workspaces, replays evaluators, recomputes scores and efficiency evidence, and
+emits the calibration stage and attestation contracts from [Benchmark Method](benchmark-method.md).
 
 ## Verifier worker
 
@@ -151,7 +162,12 @@ cargo run -p aiq-verifier -- --help
 
 The worker claims bounded leases from `/api/claims`, reconstructs workspaces,
 replays evaluators, and posts the stage and attestation to
-`/api/verifications`. Production requires `evaluator_replayed`.
+`/api/verifications`. Production requires `evaluator_replayed`. For calibration,
+the gateway stages the replayed evidence and immutable attestation under the
+verifier role, then uses the distinct publisher role to reconcile retained
+package and artifact evidence and publish only the non-Official calibration
+marker. Public pages appear at `/calibrations` and `/calibrations/[id]`; absence
+of rows is valid until a verified calibration has completed this transition.
 
 ## Fresh database initialization
 
@@ -184,10 +200,10 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
 ```
 
 `cargo make smoke-database` checks more than catalog grants: it switches to both
-`anon` and `authenticated` and reads all nine security-invoker views plus the
-bounded trend RPC. This exercises the public-read path described in
-[Architecture and Runtime](architecture-and-runtime.md). Do not run the synthetic
-fixture in production.
+`anon` and `authenticated` and reads the security-invoker public views plus the
+bounded trend RPC, including the bounded calibration evidence surfaces. This
+exercises the public-read path described in [Architecture and Runtime](architecture-and-runtime.md).
+Do not run the synthetic fixture in production.
 
 ## Web configuration
 

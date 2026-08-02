@@ -64,7 +64,7 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
+sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
 ```
 
 ## Execution and evidence
@@ -77,6 +77,12 @@ Capability preflight records the exact local model support state. The run binds
 the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,
 network policy, environment, source manifest, executables, and permission
 evidence in `aiq.run-provenance.v2`.
+
+Each attempted result records runner-observed wall time. When Codex reports
+token counters, the verifier parses the retained evidence again and records the
+provider-reported input, cache, output, and reasoning counters. The versioned
+cost field is a Standard short-context API-equivalent estimate. It is not the
+actual cost of a ChatGPT or Codex subscription.
 
 Task workspaces are fresh copies. The runner stores content-addressed workspace
 and evaluator artifacts under the controlled artifact root. It writes a durable
