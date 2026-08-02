@@ -191,6 +191,9 @@ export default async function CalibrationDetailPage({
                         ? 'Unavailable'
                         : `$${(item.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(6)}`}
                       <small>{item.costEstimatorStatus.replaceAll('_', ' ')}</small>
+                      {item.costEstimatorLimitations.length > 0 ? (
+                        <small>{item.costEstimatorLimitations.join(' ')}</small>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

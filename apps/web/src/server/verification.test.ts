@@ -71,7 +71,7 @@ function productionProvenance(
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
-    catalog_digest: 'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3',
+    catalog_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
     task_set_digest: digest('4'),
     evaluator_digest: digest('3'),
     runtime_digest: digest('7'),
@@ -107,13 +107,13 @@ function pricing() {
     method: 'standard_api_equivalent_text_token_estimate',
     version: 'aiq.standard-api-equivalent-usd.v1',
     as_of: '2026-08-02',
-    source: 'https://developers.openai.com/api/docs/models/compare',
+    source: 'https://developers.openai.com/api/docs/pricing',
     currency: 'USD',
     processing_tier: 'standard',
     rates: [
       ['sol', 5_000, 500, 6_250, 30_000],
-      ['terra', 2_500, 250, 3_125, 15_000],
-      ['luna', 1_000, 100, 1_250, 6_000],
+      ['terra', 2_000, 200, 2_500, 12_000],
+      ['luna', 200, 20, 250, 1_200],
     ].map(([family, input, cached, cacheWrite, output]) => ({
       model: `gpt-5.6-${String(family)}`,
       input_usd_nanos_per_token: input,
@@ -125,7 +125,7 @@ function pricing() {
       '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
     hosted_tool_fees_included: false,
     limitation:
-      'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.',
+      'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.',
   };
 }
 
@@ -133,24 +133,25 @@ function efficiency(
   model: { family: string; reasoning_effort: string },
   selectedTasks: number,
   populated = false,
+  aggregateCostOverflow = false,
 ) {
-  const maximum = 9_007_199_254_740_991;
+  const priced = populated ? pricedUsage(model, aggregateCostOverflow) : null;
   return {
     schema_version: 'aiq.calibration-efficiency.v1',
     model,
     selected_tasks: selectedTasks,
     observed_wall_tasks: populated ? selectedTasks : 0,
-    total_observed_wall_ms: populated ? maximum : null,
-    median_observed_wall_ms: populated ? maximum : null,
-    p95_observed_wall_ms: populated ? maximum : null,
+    total_observed_wall_ms: populated ? selectedTasks : null,
+    median_observed_wall_ms: populated ? 1 : null,
+    p95_observed_wall_ms: populated ? 1 : null,
     provider_token_totals: populated
       ? {
-          input: maximum,
-          cached_input: maximum,
-          cache_write_input: maximum,
-          output: maximum,
-          reasoning: maximum,
-          total: maximum,
+          input: 272_000 * selectedTasks,
+          cached_input: 0,
+          cache_write_input: 0,
+          output: (priced?.output ?? 0) * selectedTasks,
+          reasoning: 0,
+          total: (272_000 + (priced?.output ?? 0)) * selectedTasks,
         }
       : {},
     provider_token_coverage: {
@@ -163,39 +164,57 @@ function efficiency(
       total_tasks: populated ? selectedTasks : 0,
     },
     estimated_cost_tasks: populated ? selectedTasks : 0,
-    standard_api_equivalent_usd_nanos: populated ? maximum : null,
+    standard_api_equivalent_usd_nanos:
+      populated && !aggregateCostOverflow ? (priced?.cost ?? 0) * selectedTasks : null,
   };
+}
+
+function pricedUsage(
+  model: { family: string },
+  aggregateCostOverflow: boolean,
+): { cost: number; output: number } {
+  const [inputRate, outputRate, overflowOutput] =
+    model.family === 'sol'
+      ? [5_000, 30_000, 4_200_000_000]
+      : model.family === 'terra'
+        ? [2_000, 12_000, 10_500_000_000]
+        : [200, 1_200, 105_000_000_000];
+  const output = aggregateCostOverflow ? overflowOutput : 0;
+  return { cost: 272_000 * inputRate + output * outputRate, output };
 }
 
 function resultEfficiency(
   models: readonly { family: string; reasoning_effort: string }[],
   taskIds: readonly string[],
   populated = false,
+  aggregateCostOverflow = false,
 ) {
-  const maximum = 9_007_199_254_740_991;
   return models.flatMap((model) =>
-    taskIds.map((taskId) => ({
-      source_result_id: `result_${sha256Hex(`${model.family}:${model.reasoning_effort}:${taskId}`)}`,
-      task_id: taskId,
-      model,
-      observed_wall_ms: populated ? maximum : null,
-      wall_time_evidence_level: populated ? 'runner_observed' : null,
-      provider_tokens: populated
-        ? {
-            input: maximum,
-            cached_input: maximum,
-            cache_write_input: maximum,
-            output: maximum,
-            reasoning: maximum,
-            total: maximum,
-          }
-        : {},
-      provider_tokens_source: populated ? 'provider_reported' : null,
-      provider_tokens_evidence_level: populated ? 'verifier_recomputed' : null,
-      standard_api_equivalent_usd_nanos: populated ? maximum : null,
-      cost_status: populated ? 'estimated' : 'unavailable_missing_usage',
-      cost_evidence_level: populated ? 'verifier_recomputed' : null,
-    })),
+    taskIds.map((taskId) => {
+      const priced = pricedUsage(model, aggregateCostOverflow);
+      return {
+        source_result_id: `result_${sha256Hex(`${model.family}:${model.reasoning_effort}:${taskId}`)}`,
+        task_id: taskId,
+        model,
+        observed_wall_ms: populated ? 1 : null,
+        wall_time_evidence_level: populated ? 'runner_observed' : null,
+        provider_tokens: populated
+          ? {
+              input: 272_000,
+              cached_input: 0,
+              cache_write_input: 0,
+              output: priced.output,
+              reasoning: 0,
+              total: 272_000 + priced.output,
+            }
+          : {},
+        provider_tokens_source: populated ? 'provider_reported' : null,
+        provider_tokens_evidence_level: populated ? 'verifier_recomputed' : null,
+        standard_api_equivalent_usd_nanos: populated ? priced.cost : null,
+        cost_status: populated ? 'estimated' : 'unavailable_missing_usage',
+        cost_evidence_level: populated ? 'verifier_recomputed' : null,
+      };
+    }),
   );
 }
 
@@ -237,12 +256,12 @@ function signedVerification(
     content_hash: digest('3'),
     signer: runnerIdentity.node,
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.0',
+    task_set_version: '1.0.1',
     task_set_hash: digest('4'),
     capability_validation_digest: capabilityValidationDigest,
     provenance,
     run_class: synthetic ? null : 'official',
-    benchmark_version: 'aiq-core@1.0.0',
+    benchmark_version: 'aiq-core@1.0.1',
     prompt_set_digest: digest('5'),
     scoring_version: '1.0.0',
     runner_commit: 'a'.repeat(40),
@@ -297,7 +316,12 @@ function signedVerification(
 }
 
 function signedCalibrationVerification(
-  options: Readonly<{ maximumSelection?: boolean; aggregateCostOverflow?: boolean }> = {},
+  options: Readonly<{
+    maximumSelection?: boolean;
+    aggregateCostOverflow?: boolean;
+    contextBandViolation?: 'cost' | 'evidence' | 'missing' | 'status' | 'threshold';
+    unavailableContextBand?: boolean;
+  }> = {},
 ) {
   const runnerIdentity = signingIdentity();
   const verifierIdentity = signingIdentity();
@@ -329,11 +353,45 @@ function signedCalibrationVerification(
   const scores = scoreReports.map((score, index) => {
     const model = models[index];
     assert.ok(model);
-    const aggregate = efficiency(model, taskIds.length, options.maximumSelection);
-    if (options.aggregateCostOverflow) aggregate.standard_api_equivalent_usd_nanos = null;
+    const aggregate = efficiency(
+      model,
+      taskIds.length,
+      options.maximumSelection,
+      options.aggregateCostOverflow,
+    );
     return { model: models[index], score, efficiency: aggregate };
   });
-  const calibrationResultEfficiency = resultEfficiency(models, taskIds, options.maximumSelection);
+  const calibrationResultEfficiency = resultEfficiency(
+    models,
+    taskIds,
+    options.maximumSelection,
+    options.aggregateCostOverflow,
+  );
+  if (options.unavailableContextBand) {
+    const result = calibrationResultEfficiency[0];
+    assert.ok(result);
+    if (options.contextBandViolation !== 'missing') {
+      result.provider_tokens = {
+        input: options.contextBandViolation === 'threshold' ? 272_000 : 272_001,
+        cached_input: 0,
+        cache_write_input: 0,
+        output: 0,
+        reasoning: 0,
+        total: options.contextBandViolation === 'threshold' ? 272_000 : 272_001,
+      };
+      result.provider_tokens_source = 'provider_reported';
+      result.provider_tokens_evidence_level = 'verifier_recomputed';
+    }
+    result.cost_status =
+      options.contextBandViolation === 'status'
+        ? 'unavailable_invalid_usage'
+        : 'unavailable_context_band';
+    if (options.contextBandViolation === 'cost') {
+      result.standard_api_equivalent_usd_nanos = 1;
+    } else if (options.contextBandViolation === 'evidence') {
+      result.cost_evidence_level = 'verifier_recomputed';
+    }
+  }
   const provenance = productionProvenance({ run_class: 'calibration' });
   const stage: Record<string, unknown> = {
     schema_version: CALIBRATION_VERIFIED_STAGE_SCHEMA,
@@ -367,8 +425,8 @@ function signedCalibrationVerification(
     result_efficiency: calibrationResultEfficiency,
     pricing: pricing(),
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.0',
-    benchmark_version: 'aiq-core@1.0.0',
+    task_set_version: '1.0.1',
+    benchmark_version: 'aiq-core@1.0.1',
     prompt_set_digest: digest('5'),
     runner_commit: 'a'.repeat(40),
     region: 'test',
@@ -559,6 +617,27 @@ void describe('verifier ingress contract', () => {
       aggregateCostOverflow: true,
     });
     assert.equal(validateVerification(calibration).ok, true);
+  });
+
+  void it('accepts context-band unavailable cost only with null cost and evidence', () => {
+    assert.equal(
+      validateVerification(signedCalibrationVerification({ unavailableContextBand: true })).ok,
+      true,
+    );
+    for (const contextBandViolation of [
+      'cost',
+      'evidence',
+      'missing',
+      'status',
+      'threshold',
+    ] as const) {
+      assert.equal(
+        validateVerification(
+          signedCalibrationVerification({ unavailableContextBand: true, contextBandViolation }),
+        ).ok,
+        false,
+      );
+    }
   });
 
   void it('requires evaluator replay for production v3 attestations', () => {

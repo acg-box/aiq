@@ -703,9 +703,12 @@ function isCalibrationResultRow(value: unknown): value is CalibrationResultRow {
         value.token_usage_evidence_level === 'verifier_recomputed')) &&
     (value.standard_api_equivalent_usd_nanos === null ||
       isCount(value.standard_api_equivalent_usd_nanos)) &&
-    ['estimated', 'unavailable_missing_usage', 'unavailable_invalid_usage'].includes(
-      String(value.cost_estimator_status),
-    ) &&
+    [
+      'estimated',
+      'unavailable_missing_usage',
+      'unavailable_invalid_usage',
+      'unavailable_context_band',
+    ].includes(String(value.cost_estimator_status)) &&
     (value.cost_evidence_level === null || value.cost_evidence_level === 'verifier_recomputed') &&
     Array.isArray(value.cost_estimator_limitations) &&
     value.cost_estimator_limitations.every(isBoundedText) &&
@@ -724,7 +727,29 @@ function isCalibrationResultRow(value: unknown): value is CalibrationResultRow {
       value.cost_evidence_level === 'verifier_recomputed') ||
       (value.cost_estimator_status !== 'estimated' &&
         value.standard_api_equivalent_usd_nanos === null &&
-        value.cost_evidence_level === null))
+        value.cost_evidence_level === null)) &&
+    (value.cost_estimator_status === 'unavailable_context_band') ===
+      isUnavailableContextBandUsage(
+        value.input_tokens,
+        value.cached_input_tokens,
+        value.cache_write_input_tokens,
+        value.output_tokens,
+      )
+  );
+}
+
+function isUnavailableContextBandUsage(
+  inputTokens: unknown,
+  cachedInputTokens: unknown,
+  cacheWriteInputTokens: unknown,
+  outputTokens: unknown,
+): boolean {
+  return (
+    isFiniteNumber(inputTokens) &&
+    isFiniteNumber(cachedInputTokens) &&
+    isFiniteNumber(cacheWriteInputTokens) &&
+    isFiniteNumber(outputTokens) &&
+    inputTokens > 272_000
   );
 }
 
@@ -833,9 +858,12 @@ function isCalibrationScoreRow(value: unknown): value is CalibrationScoreRow {
       isCount(value.standard_api_equivalent_usd_nanos)) &&
     isCount(value.estimated_cost_sample_count) &&
     typeof value.cost_estimator_status === 'string' &&
-    ['estimated', 'unavailable_missing_usage', 'unavailable_invalid_usage'].includes(
-      value.cost_estimator_status,
-    ) &&
+    [
+      'estimated',
+      'unavailable_missing_usage',
+      'unavailable_invalid_usage',
+      'unavailable_context_band',
+    ].includes(value.cost_estimator_status) &&
     (value.cost_evidence_level === null || value.cost_evidence_level === 'verifier_recomputed') &&
     Array.isArray(value.cost_estimator_limitations) &&
     value.cost_estimator_limitations.every(isBoundedText) &&
@@ -913,7 +941,8 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       isCount(value.standard_api_equivalent_usd_nanos)) &&
     (value.cost_estimator_status === 'estimated' ||
       value.cost_estimator_status === 'unavailable_missing_usage' ||
-      value.cost_estimator_status === 'unavailable_invalid_usage') &&
+      value.cost_estimator_status === 'unavailable_invalid_usage' ||
+      value.cost_estimator_status === 'unavailable_context_band') &&
     ((value.cost_estimator_status === 'estimated' &&
       value.standard_api_equivalent_usd_nanos !== null) ||
       (value.cost_estimator_status !== 'estimated' &&
@@ -1147,7 +1176,7 @@ const seedCalibrationRun: PublicCalibrationRun = {
       id: `result_${'d'.repeat(64)}`,
       runId: `run_${'c'.repeat(64)}`,
       taskId: 'synthetic-calibration-task',
-      taskVersion: '1',
+      taskVersion: '1.0.1',
       domain: 'coding',
       modelFamily: 'sol',
       reasoningEffort: 'low',

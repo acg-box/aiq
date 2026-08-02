@@ -104,9 +104,18 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     page.getByText('not Official / not ranking eligible', { exact: false }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'Calibration model efficiency' }).getByRole('row'),
-  ).toHaveCount(18);
+  const calibrationEfficiency = page.getByRole('region', {
+    name: 'Calibration model efficiency',
+  });
+  await expect(calibrationEfficiency.getByRole('row')).toHaveCount(18);
+  const contextBandScore = calibrationEfficiency
+    .getByRole('row')
+    .filter({ hasText: 'sol · medium' });
+  await expect(contextBandScore).toContainText('Unavailable');
+  await expect(contextBandScore).toContainText('unavailable context band');
+  await expect(contextBandScore).toContainText(
+    'A result above 272000 aggregate input tokens is unpriced',
+  );
 });
 
 test('calibration history and detail keep one run and one 72-task slice bounded', async ({
@@ -141,6 +150,14 @@ test('calibration history and detail keep one run and one 72-task slice bounded'
   );
   await expect(workspaceIntegrity).toContainText('8.0 s');
   await expect(workspaceIntegrity).toContainText('$0.000650');
+  const contextBandResult = results
+    .getByRole('row')
+    .filter({ hasText: 'aiq-v1-calibration-task-02' });
+  await expect(contextBandResult).toContainText('Unavailable');
+  await expect(contextBandResult).toContainText('unavailable context band');
+  await expect(contextBandResult).toContainText(
+    'A result above 272000 aggregate input tokens is unpriced',
+  );
 
   await selector.selectOption('terra:medium');
   await page.getByRole('button', { name: 'Show 72-task slice' }).click();
@@ -163,6 +180,9 @@ test('Official compare efficiency is limited to current leaderboard run identiti
   await expect(efficiency.getByRole('row')).toHaveCount(18);
   await expect(efficiency).toContainText('run-live-sol-low');
   await expect(efficiency).not.toContainText(calibrationRunId);
+  const contextBandEfficiency = efficiency.getByRole('row').filter({ hasText: 'sol · medium' });
+  await expect(contextBandEfficiency).toContainText('Unavailable');
+  await expect(contextBandEfficiency).toContainText('unavailable context band');
 });
 
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {
@@ -177,8 +197,12 @@ test('the published run exposes complete task and provenance evidence', async ({
 
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {
   await page.goto('/method');
-  await expect(page.getByText('aiq-core@1.0.0', { exact: true })).toBeVisible();
+  await expect(page.getByText('aiq-core@1.0.1', { exact: true })).toBeVisible();
   await expect(page.getByText('1.0.0', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
+  ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
+  await expect(page.getByText('unavailable context band status', { exact: false })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();

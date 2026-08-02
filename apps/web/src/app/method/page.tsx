@@ -15,7 +15,7 @@ function EfficiencyMethod() {
       <p>
         Time is observed Codex adapter elapsed time. Cost is a versioned estimate from covered token
         aggregate usage and the{' '}
-        <a href="https://developers.openai.com/api/docs/models/compare">
+        <a href="https://developers.openai.com/api/docs/pricing">
           official OpenAI API pricing documentation
         </a>
         , accessed 2026-08-02. It is not actual Codex subscription billing or necessarily an exact
@@ -44,8 +44,9 @@ function EfficiencyMethod() {
             Raw token counters are provider-reported. The verifier recomputes aggregates and the
             cost estimate from those counters. USD displays only when estimator status is estimated
             and token coverage is complete. Missing, invalid, or JCS-overflowed aggregate usage
-            displays as unavailable, never zero. Aggregated turn usage cannot identify per-request
-            long-context multipliers.
+            displays as unavailable, never zero. A result above 272,000 aggregate input tokens uses
+            the unavailable context band status and is not priced because aggregate turn usage
+            cannot identify per-request context bands.
           </dd>
         </div>
         <div>
