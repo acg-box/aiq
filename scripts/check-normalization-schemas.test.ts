@@ -75,6 +75,12 @@ function matchesSchema(value: unknown, schema: JsonObject, root: JsonObject): bo
     return false;
   }
   if (
+    Array.isArray(schema.anyOf) &&
+    !schema.anyOf.some((candidate) => isObject(candidate) && matchesSchema(value, candidate, root))
+  ) {
+    return false;
+  }
+  if (
     Array.isArray(schema.allOf) &&
     !schema.allOf.every((candidate) => isObject(candidate) && matchesSchema(value, candidate, root))
   ) {
@@ -496,7 +502,7 @@ function pricing(): JsonObject {
     method: 'standard_api_equivalent_text_token_estimate',
     version: 'aiq.standard-api-equivalent-usd.v1',
     as_of: '2026-08-02',
-    source: 'https://developers.openai.com/api/docs/models/compare',
+    source: 'https://developers.openai.com/api/docs/pricing',
     currency: 'USD',
     processing_tier: 'standard',
     rates: [
@@ -509,24 +515,24 @@ function pricing(): JsonObject {
       },
       {
         model: 'gpt-5.6-terra',
-        input_usd_nanos_per_token: 2_500,
-        cached_input_usd_nanos_per_token: 250,
-        cache_write_input_usd_nanos_per_token: 3_125,
-        output_usd_nanos_per_token: 15_000,
+        input_usd_nanos_per_token: 2_000,
+        cached_input_usd_nanos_per_token: 200,
+        cache_write_input_usd_nanos_per_token: 2_500,
+        output_usd_nanos_per_token: 12_000,
       },
       {
         model: 'gpt-5.6-luna',
-        input_usd_nanos_per_token: 1_000,
-        cached_input_usd_nanos_per_token: 100,
-        cache_write_input_usd_nanos_per_token: 1_250,
-        output_usd_nanos_per_token: 6_000,
+        input_usd_nanos_per_token: 200,
+        cached_input_usd_nanos_per_token: 20,
+        cache_write_input_usd_nanos_per_token: 250,
+        output_usd_nanos_per_token: 1_200,
       },
     ],
     formula:
       '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
     hosted_tool_fees_included: false,
     limitation:
-      'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.',
+      'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.',
   };
 }
 
@@ -1114,6 +1120,41 @@ await test('result package v3 schema accepts the golden fixture and rejects a no
   }
 });
 
+await test('capability validation accepts the serialized workspace-integrity adapter failure', async () => {
+  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const report = capabilityValidation();
+  const entry = requireObjectAt(requireArrayProperty(report, 'models'), 0, 'models');
+  const probe = requireObjectProperty(entry, 'probe');
+
+  entry.status = 'unavailable';
+  entry.reason = 'workspace integrity evidence unavailable';
+  probe.status = 'failed';
+  probe.result_digest = null;
+  probe.result_preview = null;
+  probe.failure = {
+    kind: 'workspace_integrity',
+    exit_code: null,
+    stderr: '',
+    message: 'workspace integrity evidence unavailable',
+    stdout_truncated: false,
+    stderr_truncated: false,
+    artifacts: [],
+  };
+
+  const reportSchema = resolveReference(schema, '#/$defs/capabilityValidationReport');
+  strictEqual(matchesSchema(report, reportSchema, schema), true);
+
+  const unknown = structuredClone(report);
+  requireObjectProperty(
+    requireObjectProperty(
+      requireObjectAt(requireArrayProperty(unknown, 'models'), 0, 'models'),
+      'probe',
+    ),
+    'failure',
+  ).kind = 'unknown_adapter_failure';
+  strictEqual(matchesSchema(unknown, reportSchema, schema), false);
+});
+
 await test('result submission schema rejects matrix, pair, status, byte, artifact, and tool mutations', async () => {
   const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
   const fixture = requireObject(
@@ -1209,6 +1250,10 @@ await test('workspace integrity is a failed post-invocation result taxonomy', as
   retainedResponse.response = 'must not survive workspace-integrity failure';
   retainedResponse.response_sha256 = sha256(9_003);
   strictEqual(matchesSchema(retainedResponse, taskResultSchema, resultSchema), false);
+
+  const adapterOnlyFailure = structuredClone(result);
+  requireObjectProperty(adapterOnlyFailure, 'failure').kind = 'usage_limit';
+  strictEqual(matchesSchema(adapterOnlyFailure, taskResultSchema, resultSchema), false);
 
   const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
   const normalized = normalizedResult({ family: 'sol', reasoning_effort: 'low' }, 0, 0);
@@ -1458,6 +1503,66 @@ await test('normalized efficiency evidence preserves required and nullable autho
   pricedEvidence.cost_evidence_level = 'verifier_recomputed';
   strictEqual(matchesSchema(priced, schema, schema), true);
 
+  const contextBand = structuredClone(batch);
+  const contextBandEvidence = requireObjectAt(
+    requireArrayProperty(contextBand, 'result_efficiency'),
+    0,
+    'result_efficiency',
+  );
+  contextBandEvidence.provider_tokens = {
+    input: 272_001,
+    cached_input: 0,
+    cache_write_input: 0,
+    output: 1,
+  };
+  contextBandEvidence.provider_tokens_source = 'provider_reported';
+  contextBandEvidence.provider_tokens_evidence_level = 'verifier_recomputed';
+  contextBandEvidence.standard_api_equivalent_usd_nanos = null;
+  contextBandEvidence.cost_status = 'unavailable_context_band';
+  contextBandEvidence.cost_evidence_level = null;
+  strictEqual(matchesSchema(contextBand, schema, schema), true);
+
+  for (const [label, mutate] of [
+    [
+      'context-band status with a cost',
+      (evidence: JsonObject) => {
+        evidence.standard_api_equivalent_usd_nanos = 1;
+      },
+    ],
+    [
+      'context-band status with cost authority',
+      (evidence: JsonObject) => {
+        evidence.cost_evidence_level = 'verifier_recomputed';
+      },
+    ],
+    [
+      'context-band status at the short-context boundary',
+      (evidence: JsonObject) => {
+        requireObjectProperty(evidence, 'provider_tokens').input = 272_000;
+      },
+    ],
+    [
+      'context-band status without every required counter',
+      (evidence: JsonObject) => {
+        delete requireObjectProperty(evidence, 'provider_tokens').output;
+      },
+    ],
+    [
+      'long-context aggregate marked estimated',
+      (evidence: JsonObject) => {
+        evidence.standard_api_equivalent_usd_nanos = 1;
+        evidence.cost_status = 'estimated';
+        evidence.cost_evidence_level = 'verifier_recomputed';
+      },
+    ],
+  ] as const) {
+    const changed = structuredClone(contextBand);
+    mutate(
+      requireObjectAt(requireArrayProperty(changed, 'result_efficiency'), 0, 'result_efficiency'),
+    );
+    strictEqual(matchesSchema(changed, schema, schema), false, label);
+  }
+
   for (const [label, mutate] of [
     [
       'observed time without authority',
@@ -1534,6 +1639,8 @@ await test('normalized aggregate and pricing evidence retain their fixed contrac
   const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
   const batch = normalizedBatch();
 
+  strictEqual(matchesSchema(batch, schema, schema), true);
+
   for (const [label, mutate] of [
     [
       'zero observations with totals',
@@ -1586,13 +1693,139 @@ await test('normalized aggregate and pricing evidence retain their fixed contrac
   requireObjectProperty(extraPricing, 'pricing').unexpected = true;
   strictEqual(matchesSchema(extraPricing, schema, schema), false);
 
-  const changedRate = structuredClone(batch);
-  requireObjectAt(
-    requireArrayProperty(requireObjectProperty(changedRate, 'pricing'), 'rates'),
-    0,
-    'rates',
-  ).input_usd_nanos_per_token = 5_001;
-  strictEqual(matchesSchema(changedRate, schema, schema), false);
+  for (const [field, value] of [
+    ['source', 'https://developers.openai.com/api/docs/models/compare'],
+    ['limitation', 'Standard API-equivalent comparison only.'],
+  ] as const) {
+    const changed = structuredClone(batch);
+    requireObjectProperty(changed, 'pricing')[field] = value;
+    strictEqual(matchesSchema(changed, schema, schema), false, field);
+  }
+
+  for (const rateIndex of [0, 1, 2]) {
+    for (const field of [
+      'input_usd_nanos_per_token',
+      'cached_input_usd_nanos_per_token',
+      'cache_write_input_usd_nanos_per_token',
+      'output_usd_nanos_per_token',
+    ]) {
+      const changed = structuredClone(batch);
+      const rate = requireObjectAt(
+        requireArrayProperty(requireObjectProperty(changed, 'pricing'), 'rates'),
+        rateIndex,
+        'rates',
+      );
+      const value = rate[field];
+      if (typeof value !== 'number') {
+        throw new Error(`pricing rate ${String(rateIndex)} ${field} must be numeric`);
+      }
+      rate[field] = value + 1;
+      strictEqual(matchesSchema(changed, schema, schema), false, `${String(rateIndex)} ${field}`);
+    }
+  }
+});
+
+await test('calibration stage pricing and context-band evidence mirror the normalized contract', async () => {
+  const schema = await parseSchema('benchmarks/schema/calibration-verified-stage-v1.schema.json');
+  const pricingSchema = resolveReference(schema, '#/$defs/pricing');
+
+  strictEqual(matchesSchema(pricing(), pricingSchema, schema), true);
+
+  for (const [field, value] of [
+    ['source', 'https://developers.openai.com/api/docs/models/compare'],
+    ['limitation', 'Standard API-equivalent comparison only.'],
+  ] as const) {
+    const changed = pricing();
+    changed[field] = value;
+    strictEqual(matchesSchema(changed, pricingSchema, schema), false, field);
+  }
+
+  for (const rateIndex of [0, 1, 2]) {
+    for (const field of [
+      'input_usd_nanos_per_token',
+      'cached_input_usd_nanos_per_token',
+      'cache_write_input_usd_nanos_per_token',
+      'output_usd_nanos_per_token',
+    ]) {
+      const changed = pricing();
+      const rate = requireObjectAt(requireArrayProperty(changed, 'rates'), rateIndex, 'rates');
+      const value = rate[field];
+      if (typeof value !== 'number') {
+        throw new Error(`pricing rate ${String(rateIndex)} ${field} must be numeric`);
+      }
+      rate[field] = value + 1;
+      strictEqual(
+        matchesSchema(changed, pricingSchema, schema),
+        false,
+        `${String(rateIndex)} ${field}`,
+      );
+    }
+  }
+
+  const resultSchema = structuredClone(resolveReference(schema, '#/$defs/resultEfficiency'));
+  requireObjectProperty(resultSchema, 'properties').model = { type: 'object' };
+  const contextBand = resultEfficiency({ family: 'sol', reasoning_effort: 'low' }, 0, 0);
+  contextBand.provider_tokens = {
+    input: 272_001,
+    cached_input: 0,
+    cache_write_input: 0,
+    output: 1,
+  };
+  contextBand.provider_tokens_source = 'provider_reported';
+  contextBand.provider_tokens_evidence_level = 'verifier_recomputed';
+  contextBand.standard_api_equivalent_usd_nanos = null;
+  contextBand.cost_status = 'unavailable_context_band';
+  contextBand.cost_evidence_level = null;
+
+  strictEqual(matchesSchema(contextBand, resultSchema, schema), true);
+
+  for (const [label, mutate] of [
+    [
+      'calibration context-band status with a cost',
+      (evidence: JsonObject) => {
+        evidence.standard_api_equivalent_usd_nanos = 1;
+      },
+    ],
+    [
+      'calibration context-band status with cost authority',
+      (evidence: JsonObject) => {
+        evidence.cost_evidence_level = 'verifier_recomputed';
+      },
+    ],
+    [
+      'calibration context-band status at the short-context boundary',
+      (evidence: JsonObject) => {
+        requireObjectProperty(evidence, 'provider_tokens').input = 272_000;
+      },
+    ],
+    [
+      'calibration long-context aggregate marked estimated',
+      (evidence: JsonObject) => {
+        evidence.standard_api_equivalent_usd_nanos = 1;
+        evidence.cost_status = 'estimated';
+        evidence.cost_evidence_level = 'verifier_recomputed';
+      },
+    ],
+  ] as const) {
+    const changed = structuredClone(contextBand);
+    mutate(changed);
+    strictEqual(matchesSchema(changed, resultSchema, schema), false, label);
+  }
+});
+
+await test('verifier environment example binds the current public task release', async () => {
+  const environment = requireObject(
+    JSON.parse(await readFile('config/verifier-environment.example.json', 'utf8')),
+    'verifier environment example',
+  );
+
+  strictEqual(environment.task_set_id, 'aiq-core');
+  strictEqual(environment.task_set_version, '1.0.1');
+  strictEqual(environment.benchmark_version, 'aiq-core@1.0.1');
+  strictEqual(
+    requireObjectProperty(environment, 'expected_provenance').catalog_digest,
+    catalogDigest,
+  );
 });
 
 await test('normalized result and score schemas enforce exact payload fields and bounds', async () => {
