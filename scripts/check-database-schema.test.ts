@@ -219,3 +219,30 @@ await test('checker rejects nonterminal or unlabeled demonstration data', async 
     /explicitly synthetic/,
   );
 });
+
+await test('checker rejects a missing workspace-integrity acceptance path', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "'workspace_unavailable','workspace_integrity'\n    )",
+    "'workspace_unavailable'\n    )",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /accept workspace_integrity as a failure kind/,
+  );
+});
+
+await test('checker rejects workspace integrity in an unattempted filter', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "'capability_unavailable','capability_validation_failed','workspace_unavailable'\n  );",
+    "'capability_unavailable','capability_validation_failed','workspace_unavailable',\n" +
+      "    'workspace_integrity'\n  );",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /workspace_integrity is attempted/,
+  );
+});
