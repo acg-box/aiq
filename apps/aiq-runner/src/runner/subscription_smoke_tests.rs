@@ -4,7 +4,7 @@ use std::{
 	env,
 	fs::{self, DirEntry, File, OpenOptions, Permissions, TryLockError},
 	io::Write as _,
-	os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
+	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
 	process,
 	rc::Rc,
@@ -25,14 +25,14 @@ use crate::schedule::ScheduleConfig;
 use crate::schedule::ScheduleOccurrence;
 use crate::{
 	adapter::{
-		CodexAdapter, CodexEgressProxyEndpoint, CodexExecutionConfig, CommandRequest,
+		ArtifactSink, CodexAdapter, CodexEgressProxyEndpoint, CodexExecutionConfig, CommandRequest,
 		ExecutionCapture, Executor, ExecutorError, LocalArtifactSink, SandboxPolicy,
 		SystemExecutor,
 	},
 	corpus_commitment::{self, ValidatedModelToolchain},
 	isolation::{self, ProtectedBenchmarkPath},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
-	pinned_path::PinnedPathIdentity,
+	pinned_path::{PinnedDirectoryIdentity, PinnedPathIdentity},
 	protocol,
 	runner::{
 		self, EvaluationOutcome, LocalDirectoryWorkspaceProvider, ResultStatus,
@@ -49,7 +49,7 @@ const PUBLIC_TASK_BYTES_SHA256: &str =
 const PUBLIC_TASK_ID: &str = "public-example-instruction-following-01";
 const PUBLIC_RUN_ID: &str = "subscription_smoke_fixed_public_example";
 const CONTROLLED_TASK_ID: &str = "documentation-communication-01";
-const CONTROLLED_TASK_VERSION: &str = "1.0.0";
+const CONTROLLED_TASK_VERSION: &str = "1.0.1";
 const CONTROLLED_RUN_ID: &str = "controlled_subscription_smoke_fixed_hidden_task";
 
 static SMOKE_TEMP_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -169,6 +169,7 @@ impl Executor for CountingExecutor {
 
 struct RecordingExecutor {
 	requests: Rc<RefCell<Vec<CommandRequest>>>,
+	exit_code: i32,
 	stdout: Vec<u8>,
 }
 impl Executor for RecordingExecutor {
@@ -176,7 +177,7 @@ impl Executor for RecordingExecutor {
 		self.requests.borrow_mut().push(request.clone());
 
 		Ok(ExecutionCapture {
-			exit_code: Some(0),
+			exit_code: Some(self.exit_code),
 			stdout: self.stdout.clone(),
 			stderr: Vec::new(),
 			timed_out: false,
@@ -186,6 +187,7 @@ impl Executor for RecordingExecutor {
 		})
 	}
 }
+
 struct SmokeExecutionLock {
 	file: File,
 	path: PathBuf,
@@ -272,11 +274,258 @@ impl Drop for SmokeTempRoot {
 	}
 }
 
+struct ControlledSmokeArtifactCanary {
+	path: PathBuf,
+	file: File,
+	identity: PinnedPathIdentity,
+}
+impl ControlledSmokeArtifactCanary {
+	fn create(artifact_root: &Path) -> Result<Self, String> {
+		let path = artifact_root.join(".aiq-controlled-smoke-denied-canary");
+		let parent_identity = PinnedDirectoryIdentity::capture(artifact_root).map_err(|error| {
+			format!("cannot pin controlled smoke artifact root before canary creation: {error}")
+		})?;
+		let mut options = OpenOptions::new();
+
+		options.read(true).write(true).create_new(true).mode(0o600).custom_flags(O_NOFOLLOW);
+
+		let file = options
+			.open(&path)
+			.map_err(|error| format!("cannot create controlled smoke artifact canary: {error}"))?;
+		let identity = match PinnedPathIdentity::capture(&path, &file) {
+			Ok(identity) => identity,
+			Err(error) => {
+				let primary = format!("cannot pin controlled smoke artifact canary: {error}");
+
+				return Err(
+					match cleanup_exact_empty_created_file(&parent_identity, &path, &file) {
+						Ok(()) => primary,
+						Err(cleanup_error) => format!("{primary}; cleanup failed: {cleanup_error}"),
+					},
+				);
+			},
+		};
+		let canary = Self { path, file, identity };
+
+		if let Err(error) = canary
+			.file
+			.try_clone()
+			.and_then(|mut file| file.write_all(b"AIQ_DENIED\n").and_then(|()| file.sync_all()))
+		{
+			let primary = format!("cannot persist controlled smoke artifact canary: {error}");
+
+			return Err(match canary.cleanup_allowing_prefix() {
+				Ok(()) => primary,
+				Err(cleanup_error) => format!("{primary}; cleanup failed: {cleanup_error}"),
+			});
+		}
+
+		Ok(canary)
+	}
+
+	fn cleanup(self) -> Result<(), String> {
+		self.cleanup_inner(false)
+	}
+
+	fn cleanup_allowing_prefix(self) -> Result<(), String> {
+		self.cleanup_inner(true)
+	}
+
+	fn cleanup_inner(self, allow_prefix: bool) -> Result<(), String> {
+		self.identity
+			.verify(&self.path, &self.file)
+			.map_err(|error| format!("cannot verify controlled smoke artifact canary: {error}"))?;
+
+		let bytes = fs::read(&self.path)
+			.map_err(|error| format!("cannot read controlled smoke artifact canary: {error}"))?;
+
+		if (allow_prefix && !b"AIQ_DENIED\n".starts_with(&bytes))
+			|| (!allow_prefix && bytes != b"AIQ_DENIED\n")
+		{
+			return Err("controlled smoke artifact canary changed before cleanup".to_owned());
+		}
+
+		self.identity.verify(&self.path, &self.file).map_err(|error| {
+			format!("cannot reverify controlled smoke artifact canary: {error}")
+		})?;
+
+		fs::remove_file(&self.path)
+			.map_err(|error| format!("cannot remove controlled smoke artifact canary: {error}"))
+	}
+}
+
+struct ControlledSmokePermissionWorkspace {
+	path: PathBuf,
+	identity: PinnedDirectoryIdentity,
+	allowed_path: PathBuf,
+	allowed_file: File,
+	allowed_identity: PinnedPathIdentity,
+}
+impl ControlledSmokePermissionWorkspace {
+	fn create(execution_root: &Path) -> Result<Self, String> {
+		let path = execution_root.join(".permission-admission");
+
+		fs::create_dir(&path)
+			.map_err(|error| format!("cannot create permission workspace: {error}"))?;
+
+		if let Err(error) = fs::set_permissions(&path, Permissions::from_mode(0o700)) {
+			return Err(cleanup_new_directory_error(
+				&path,
+				format!("cannot set permission workspace mode: {error}"),
+			));
+		}
+
+		let identity = PinnedDirectoryIdentity::capture(&path).map_err(|error| {
+			cleanup_new_directory_error(
+				&path,
+				format!("cannot pin controlled smoke permission workspace: {error}"),
+			)
+		})?;
+		let allowed_path = path.join("allowed.txt");
+		let mut options = OpenOptions::new();
+
+		options.read(true).write(true).create_new(true).mode(0o600).custom_flags(O_NOFOLLOW);
+
+		let allowed_file = match options.open(&allowed_path) {
+			Ok(file) => file,
+			Err(error) => {
+				return Err(cleanup_pinned_directory_error(
+					&identity,
+					format!("cannot create allowed permission canary: {error}"),
+				));
+			},
+		};
+		let allowed_identity = match PinnedPathIdentity::capture(&allowed_path, &allowed_file) {
+			Ok(identity) => identity,
+			Err(error) => {
+				let primary =
+					format!("cannot pin controlled smoke allowed permission canary: {error}");
+				let cleanup =
+					cleanup_exact_empty_created_file(&identity, &allowed_path, &allowed_file)
+						.and_then(|()| identity.verify())
+						.and_then(|()| fs::remove_dir(&path).map_err(|error| error.to_string()));
+
+				return Err(match cleanup {
+					Ok(()) => primary,
+					Err(cleanup_error) => format!("{primary}; cleanup failed: {cleanup_error}"),
+				});
+			},
+		};
+		let workspace = Self { path, identity, allowed_path, allowed_file, allowed_identity };
+
+		if let Err(error) = workspace
+			.allowed_file
+			.try_clone()
+			.and_then(|mut file| file.write_all(b"AIQ_ALLOWED\n").and_then(|()| file.sync_all()))
+		{
+			let primary = format!("cannot persist allowed permission canary: {error}");
+
+			return Err(match workspace.cleanup_allowing_prefix() {
+				Ok(()) => primary,
+				Err(cleanup_error) => format!("{primary}; cleanup failed: {cleanup_error}"),
+			});
+		}
+
+		Ok(workspace)
+	}
+
+	fn allowed_path(&self) -> &Path {
+		&self.allowed_path
+	}
+
+	fn writable_path(&self) -> PathBuf {
+		self.path.join("writable.txt")
+	}
+
+	fn cleanup(self) -> Result<(), String> {
+		self.cleanup_inner(false)
+	}
+
+	fn cleanup_allowing_prefix(self) -> Result<(), String> {
+		self.cleanup_inner(true)
+	}
+
+	fn cleanup_inner(self, allow_prefix: bool) -> Result<(), String> {
+		self.identity.verify().map_err(|error| {
+			format!("cannot verify controlled smoke permission workspace: {error}")
+		})?;
+		self.allowed_identity.verify(&self.allowed_path, &self.allowed_file).map_err(|error| {
+			format!("cannot verify controlled smoke allowed permission canary: {error}")
+		})?;
+
+		let bytes = fs::read(&self.allowed_path).map_err(|error| {
+			format!("cannot read controlled smoke allowed permission canary: {error}")
+		})?;
+
+		if (allow_prefix && !b"AIQ_ALLOWED\n".starts_with(&bytes))
+			|| (!allow_prefix && bytes != b"AIQ_ALLOWED\n")
+		{
+			return Err(
+				"controlled smoke allowed permission canary changed before cleanup".to_owned()
+			);
+		}
+
+		self.allowed_identity.verify(&self.allowed_path, &self.allowed_file).map_err(|error| {
+			format!("cannot reverify controlled smoke allowed permission canary: {error}")
+		})?;
+
+		fs::remove_file(&self.allowed_path).map_err(|error| {
+			format!("cannot remove controlled smoke allowed permission canary: {error}")
+		})?;
+
+		self.identity.verify().map_err(|error| {
+			format!("cannot reverify controlled smoke permission workspace: {error}")
+		})?;
+
+		fs::remove_dir(&self.path).map_err(|error| {
+			format!("cannot remove controlled smoke permission workspace: {error}")
+		})
+	}
+}
+
 #[derive(Clone, Copy)]
 enum InputKind {
 	Directory,
 	Executable,
 	RegularFile,
+}
+
+fn cleanup_exact_empty_created_file(
+	parent_identity: &PinnedDirectoryIdentity,
+	path: &Path,
+	file: &File,
+) -> Result<(), String> {
+	parent_identity
+		.verify()
+		.map_err(|error| format!("created file parent identity changed: {error}"))?;
+
+	if path.parent() != Some(parent_identity.path()) {
+		return Err("created file parent path changed".to_owned());
+	}
+
+	let held = file.metadata().map_err(|error| format!("cannot inspect created file: {error}"))?;
+	let current = fs::symlink_metadata(path)
+		.map_err(|error| format!("cannot inspect created file path: {error}"))?;
+
+	if !held.is_file()
+		|| !current.is_file()
+		|| current.file_type().is_symlink()
+		|| held.len() != 0
+		|| current.len() != 0
+		|| held.nlink() != 1
+		|| current.nlink() != 1
+		|| held.dev() != current.dev()
+		|| held.ino() != current.ino()
+	{
+		return Err("created empty file identity changed before cleanup".to_owned());
+	}
+
+	parent_identity
+		.verify()
+		.map_err(|error| format!("created file parent identity changed before cleanup: {error}"))?;
+
+	fs::remove_file(path)
+		.map_err(|error| format!("cannot remove exact created empty file: {error}"))
 }
 
 fn require_chatgpt_subscription(
@@ -566,33 +815,27 @@ fn controlled_smoke_denied_roots(
 fn controlled_smoke_denied_canaries(
 	denied_roots: &[PathBuf],
 	artifact_root: &Path,
-) -> Result<(Vec<PathBuf>, PathBuf), String> {
-	let artifact_canary = artifact_root.join(".aiq-controlled-smoke-denied-canary");
-	let mut options = OpenOptions::new();
-
-	options.write(true).create_new(true).mode(0o600).custom_flags(O_NOFOLLOW);
-
-	let mut file = options
-		.open(&artifact_canary)
-		.map_err(|error| format!("cannot create controlled smoke artifact canary: {error}"))?;
-
-	file.write_all(b"AIQ_DENIED\n")
-		.and_then(|()| file.sync_all())
-		.map_err(|error| format!("cannot persist controlled smoke artifact canary: {error}"))?;
-
+) -> Result<(Vec<PathBuf>, ControlledSmokeArtifactCanary), String> {
+	let artifact_canary = ControlledSmokeArtifactCanary::create(artifact_root)?;
 	let canaries = denied_roots
 		.iter()
 		.map(|root| {
 			if root == artifact_root {
-				fs::canonicalize(&artifact_canary)
+				fs::canonicalize(&artifact_canary.path)
 					.map_err(|error| format!("cannot resolve artifact canary: {error}"))
 			} else {
 				find_controlled_smoke_canary(root)
 			}
 		})
-		.collect::<Result<Vec<_>, _>>()?;
+		.collect::<Result<Vec<_>, _>>();
 
-	Ok((canaries, artifact_canary))
+	match canaries {
+		Ok(canaries) => Ok((canaries, artifact_canary)),
+		Err(error) => match artifact_canary.cleanup() {
+			Ok(()) => Err(error),
+			Err(cleanup_error) => Err(format!("{error}; cleanup failed: {cleanup_error}")),
+		},
+	}
 }
 
 fn find_controlled_smoke_canary(root: &Path) -> Result<PathBuf, String> {
@@ -645,6 +888,24 @@ fn find_controlled_smoke_canary(root: &Path) -> Result<PathBuf, String> {
 	}
 
 	Err(format!("controlled smoke denied root has no regular file: {}", root.display()))
+}
+
+fn cleanup_new_directory_error(path: &Path, primary: String) -> String {
+	match fs::remove_dir(path) {
+		Ok(()) => primary,
+		Err(error) => format!("{primary}; cleanup failed: {error}"),
+	}
+}
+
+fn cleanup_pinned_directory_error(identity: &PinnedDirectoryIdentity, primary: String) -> String {
+	let cleanup = identity
+		.verify()
+		.and_then(|()| fs::remove_dir(identity.path()).map_err(|error| error.to_string()));
+
+	match cleanup {
+		Ok(()) => primary,
+		Err(error) => format!("{primary}; cleanup failed: {error}"),
+	}
 }
 
 fn load_controlled_task(task_root: &Path) -> Result<TaskDefinition, String> {
@@ -895,34 +1156,66 @@ fn verify_controlled_smoke_permission_admission(
 		);
 	}
 
-	let (denied_canaries, artifact_canary) =
-		controlled_smoke_denied_canaries(&execution_config.denied_roots, &config.artifact_root)?;
-	let permission_workspace = config.execution_root.join(".permission-admission");
-	let allowed_file = permission_workspace.join("allowed.txt");
-	let writable_file = permission_workspace.join("writable.txt");
-
-	fs::create_dir(&permission_workspace)
-		.map_err(|error| format!("cannot create permission workspace: {error}"))?;
-	fs::set_permissions(&permission_workspace, Permissions::from_mode(0o700))
-		.map_err(|error| format!("cannot set permission workspace mode: {error}"))?;
-	fs::write(&allowed_file, b"AIQ_ALLOWED\n")
-		.map_err(|error| format!("cannot create allowed permission canary: {error}"))?;
-
-	permission_adapter
-		.verify_permission_boundary(
-			&permission_workspace,
-			&allowed_file,
-			&denied_canaries,
-			&writable_file,
-		)
-		.map_err(|error| error.to_string())?;
-
-	fs::remove_dir_all(&permission_workspace)
-		.map_err(|error| format!("cannot remove permission workspace: {error}"))?;
-	fs::remove_file(&artifact_canary)
-		.map_err(|error| format!("cannot remove artifact canary: {error}"))?;
+	verify_controlled_smoke_permission_canaries(
+		&permission_adapter,
+		&execution_config.denied_roots,
+		&config.artifact_root,
+		&config.execution_root,
+	)?;
 
 	Ok(codex_version)
+}
+
+fn verify_controlled_smoke_permission_canaries<E, S>(
+	adapter: &CodexAdapter<E, S>,
+	denied_roots: &[PathBuf],
+	artifact_root: &Path,
+	execution_root: &Path,
+) -> Result<(), String>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
+	let (denied_canaries, artifact_canary) =
+		controlled_smoke_denied_canaries(denied_roots, artifact_root)?;
+	let workspace = match ControlledSmokePermissionWorkspace::create(execution_root) {
+		Ok(workspace) => workspace,
+		Err(error) => {
+			return combine_operation_and_cleanup(Err(error), [artifact_canary.cleanup()]);
+		},
+	};
+	let writable_path = workspace.writable_path();
+	let operation = adapter
+		.verify_permission_boundary(
+			&workspace.path,
+			workspace.allowed_path(),
+			&denied_canaries,
+			&writable_path,
+		)
+		.map_err(|error| error.to_string());
+	let workspace_cleanup = workspace.cleanup();
+	let artifact_cleanup = artifact_canary.cleanup();
+
+	combine_operation_and_cleanup(operation, [workspace_cleanup, artifact_cleanup])
+}
+
+fn combine_operation_and_cleanup(
+	operation: Result<(), String>,
+	cleanups: impl IntoIterator<Item = Result<(), String>>,
+) -> Result<(), String> {
+	let mut failures = Vec::new();
+
+	if let Err(error) = operation {
+		failures.push(error);
+	}
+
+	for cleanup in cleanups {
+		if let Err(error) = cleanup {
+			failures.push(format!("cleanup failed: {error}"));
+		}
+	}
+
+	if failures.is_empty() { Ok(()) } else { Err(failures.join("; ")) }
 }
 
 fn write_summary(output: &Path, summary: &SmokeSummary) -> Result<(), String> {
@@ -1030,6 +1323,8 @@ fn smoke_guards_require_exact_opt_in_and_fixed_model() {
 	}
 
 	assert_fixed_model();
+
+	assert_eq!(CONTROLLED_TASK_VERSION, crate::scoring::AIQ_TASK_SET_VERSION);
 }
 
 #[test]
@@ -1038,7 +1333,11 @@ fn controlled_smoke_preserves_sanitized_environment_and_exact_proxy() {
 	let proxy = CodexEgressProxyEndpoint::parse("http://10.20.30.40:8080")
 		.expect("canonical private proxy");
 	let adapter = CodexAdapter::new(
-		RecordingExecutor { requests: Rc::clone(&requests), stdout: b"codex-cli 0.146.0".to_vec() },
+		RecordingExecutor {
+			requests: Rc::clone(&requests),
+			exit_code: 0,
+			stdout: b"codex-cli 0.146.0".to_vec(),
+		},
 		TestArtifactSink,
 		"codex",
 		CodexExecutionConfig::isolated("/controlled/codex-home").with_egress_proxy(proxy),
@@ -1063,6 +1362,148 @@ fn controlled_smoke_preserves_sanitized_environment_and_exact_proxy() {
 	}
 
 	assert_eq!(requests.len(), 1, "the continuity check must not invoke a model");
+}
+
+#[test]
+fn controlled_smoke_canary_discovery_failure_cleans_the_artifact_canary() {
+	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+		.expect("repository root");
+	let temp = SmokeTempRoot::create(&repository_root).expect("temporary root");
+	let artifact_root = temp.path().join("artifacts");
+	let missing_root = temp.path().join("missing-denied-root");
+
+	fs::create_dir(&artifact_root).expect("artifact root fixture");
+
+	let error =
+		controlled_smoke_denied_canaries(&[artifact_root.clone(), missing_root], &artifact_root)
+			.err()
+			.expect("missing denied root must fail discovery");
+
+	assert!(error.contains("denied root is unavailable"));
+	assert!(!artifact_root.join(".aiq-controlled-smoke-denied-canary").exists());
+}
+
+#[test]
+fn controlled_smoke_permission_boundary_failure_cleans_both_owned_canaries() {
+	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+		.expect("repository root");
+	let temp = SmokeTempRoot::create(&repository_root).expect("temporary root");
+	let execution_root = temp.path().join("execution");
+	let artifact_root = temp.path().join("artifacts");
+	let codex_home = temp.path().join("codex-home");
+	let toolchain = temp.path().join("toolchain");
+
+	for directory in [&execution_root, &artifact_root, &codex_home, &toolchain] {
+		fs::create_dir(directory).expect("permission failure fixture directory");
+	}
+
+	fs::write(toolchain.join("node"), b"node").expect("toolchain canary fixture");
+
+	let requests = Rc::new(RefCell::new(Vec::new()));
+	let adapter = CodexAdapter::new(
+		RecordingExecutor { requests: Rc::clone(&requests), exit_code: 1, stdout: Vec::new() },
+		TestArtifactSink,
+		"codex",
+		CodexExecutionConfig::isolated(codex_home)
+			.with_denied_roots(vec![artifact_root.clone()])
+			.with_permission_probe_executable(env::current_exe().expect("test executable"))
+			.with_model_toolchain(corpus_commitment::fixture_model_toolchain(toolchain)),
+	);
+	let error = verify_controlled_smoke_permission_canaries(
+		&adapter,
+		slice::from_ref(&artifact_root),
+		&artifact_root,
+		&execution_root,
+	)
+	.expect_err("failed boundary must remain a failure");
+
+	assert!(!error.is_empty());
+	assert!(!error.contains("cleanup failed"), "owned cleanup unexpectedly failed: {error}");
+	assert!(!artifact_root.join(".aiq-controlled-smoke-denied-canary").exists());
+	assert!(!execution_root.join(".permission-admission").exists());
+	assert_eq!(requests.borrow().len(), 1, "the model-free boundary executes once");
+}
+
+#[test]
+fn controlled_smoke_cleanup_refuses_replaced_targets() {
+	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+		.expect("repository root");
+	let temp = SmokeTempRoot::create(&repository_root).expect("temporary root");
+	let artifact_root = temp.path().join("artifacts");
+	let execution_root = temp.path().join("execution");
+
+	fs::create_dir(&artifact_root).expect("artifact root fixture");
+	fs::create_dir(&execution_root).expect("execution root fixture");
+
+	let (_, artifact_canary) =
+		controlled_smoke_denied_canaries(slice::from_ref(&artifact_root), &artifact_root)
+			.expect("artifact canary fixture");
+	let artifact_path = artifact_canary.path.clone();
+
+	fs::remove_file(&artifact_path).expect("replace artifact canary");
+	fs::create_dir(&artifact_path).expect("artifact canary replacement");
+
+	assert!(artifact_canary.cleanup().is_err());
+	assert!(artifact_path.is_dir(), "cleanup must not remove a replacement directory");
+
+	let workspace =
+		ControlledSmokePermissionWorkspace::create(&execution_root).expect("workspace fixture");
+	let allowed_path = workspace.allowed_path().to_owned();
+
+	fs::remove_file(&allowed_path).expect("replace allowed canary");
+	fs::write(&allowed_path, b"replacement").expect("allowed canary replacement");
+
+	assert!(workspace.cleanup().is_err());
+	assert_eq!(fs::read(&allowed_path).expect("retained replacement"), b"replacement");
+
+	fs::remove_dir(&artifact_path).expect("artifact replacement cleanup");
+	fs::remove_file(&allowed_path).expect("allowed replacement cleanup");
+	fs::remove_dir(execution_root.join(".permission-admission"))
+		.expect("workspace replacement cleanup");
+}
+
+#[test]
+fn capture_failure_fallback_removes_only_the_exact_empty_created_file() {
+	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+		.expect("repository root");
+	let temp = SmokeTempRoot::create(&repository_root).expect("temporary root");
+	let parent = temp.path().join("parent");
+
+	fs::create_dir(&parent).expect("fallback parent fixture");
+
+	let parent_identity = PinnedDirectoryIdentity::capture(&parent).expect("pinned parent fixture");
+	let exact_path = parent.join("exact");
+	let exact_file = OpenOptions::new()
+		.read(true)
+		.write(true)
+		.create_new(true)
+		.mode(0o600)
+		.custom_flags(O_NOFOLLOW)
+		.open(&exact_path)
+		.expect("exact empty fixture");
+
+	cleanup_exact_empty_created_file(&parent_identity, &exact_path, &exact_file)
+		.expect("exact empty file cleanup");
+
+	assert!(!exact_path.exists());
+
+	let replaced_path = parent.join("replaced");
+	let replaced_file = OpenOptions::new()
+		.read(true)
+		.write(true)
+		.create_new(true)
+		.mode(0o600)
+		.custom_flags(O_NOFOLLOW)
+		.open(&replaced_path)
+		.expect("replaceable empty fixture");
+
+	fs::remove_file(&replaced_path).expect("unlink exact fixture");
+	fs::write(&replaced_path, b"replacement").expect("replacement fixture");
+
+	assert!(
+		cleanup_exact_empty_created_file(&parent_identity, &replaced_path, &replaced_file).is_err()
+	);
+	assert_eq!(fs::read(&replaced_path).expect("retained replacement"), b"replacement");
 }
 
 #[test]
