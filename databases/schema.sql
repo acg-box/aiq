@@ -1382,7 +1382,7 @@ begin
     and jsonb_typeof(candidate -> 'kind') = 'string'
     and candidate ->> 'kind' in (
       'spawn','timeout','unsupported','authentication','usage_limit',
-      'non_zero_exit','budget_exceeded','output_truncated'
+      'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'
     )
     and (
       candidate -> 'exit_code' = 'null'::jsonb
@@ -1934,7 +1934,7 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3'
+      'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
     or candidate ->> 'preflight_digest' is distinct from preflight_digest
   then return false;
@@ -2360,9 +2360,9 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
     where task_set.task_set_id = target_task_set_id
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.0'
+      and task_set.task_set_version = '1.0.1'
       and scoring.scoring_version = '1.0.0'
-      and scoring.benchmark_version = 'aiq-core@1.0.0'
+      and scoring.benchmark_version = 'aiq-core@1.0.1'
       and scoring.is_published
       and not scoring.synthetic
       and task_set.task_count = 72
@@ -2372,7 +2372,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3'
+        'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
@@ -3700,24 +3700,24 @@ begin
     and candidate->>'method'='standard_api_equivalent_text_token_estimate'
     and candidate->>'version'='aiq.standard-api-equivalent-usd.v1'
     and candidate->>'as_of'='2026-08-02'
-    and candidate->>'source'='https://developers.openai.com/api/docs/models/compare'
+    and candidate->>'source'='https://developers.openai.com/api/docs/pricing'
     and candidate->>'currency'='USD'
     and candidate->>'processing_tier'='standard'
     and candidate->'hosted_tool_fees_included'='false'::jsonb
     and candidate->>'formula'=
       '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again'
     and candidate->>'limitation'=
-      'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.'
+      'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.'
     and candidate->'rates'=jsonb_build_array(
       jsonb_build_object('model','gpt-5.6-sol','input_usd_nanos_per_token',5000,
         'cached_input_usd_nanos_per_token',500,'cache_write_input_usd_nanos_per_token',6250,
         'output_usd_nanos_per_token',30000),
-      jsonb_build_object('model','gpt-5.6-terra','input_usd_nanos_per_token',2500,
-        'cached_input_usd_nanos_per_token',250,'cache_write_input_usd_nanos_per_token',3125,
-        'output_usd_nanos_per_token',15000),
-      jsonb_build_object('model','gpt-5.6-luna','input_usd_nanos_per_token',1000,
-        'cached_input_usd_nanos_per_token',100,'cache_write_input_usd_nanos_per_token',1250,
-        'output_usd_nanos_per_token',6000)
+      jsonb_build_object('model','gpt-5.6-terra','input_usd_nanos_per_token',2000,
+        'cached_input_usd_nanos_per_token',200,'cache_write_input_usd_nanos_per_token',2500,
+        'output_usd_nanos_per_token',12000),
+      jsonb_build_object('model','gpt-5.6-luna','input_usd_nanos_per_token',200,
+        'cached_input_usd_nanos_per_token',20,'cache_write_input_usd_nanos_per_token',250,
+        'output_usd_nanos_per_token',1200)
     );
 exception when others then return false;
 end;
@@ -3765,7 +3765,8 @@ begin
       or aiq_private.dto_uint_is_valid(candidate->'observed_wall_ms',9007199254740991))
     and aiq_private.provider_token_usage_is_valid(candidate->'provider_tokens')
     and candidate->>'cost_status' in (
-      'estimated','unavailable_missing_usage','unavailable_invalid_usage'
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
     )
     and ((candidate->'observed_wall_ms'='null'::jsonb)
       = (candidate->'wall_time_evidence_level'='null'::jsonb))
@@ -3800,6 +3801,8 @@ begin
   cached_input_tokens := (candidate#>>'{provider_tokens,cached_input}')::numeric;
   cache_write_input_tokens := (candidate#>>'{provider_tokens,cache_write_input}')::numeric;
   output_tokens := (candidate#>>'{provider_tokens,output}')::numeric;
+  if input_tokens>272000
+  then return candidate->>'cost_status'='unavailable_context_band'; end if;
   if input_tokens<cached_input_tokens+cache_write_input_tokens
   then return candidate->>'cost_status'='unavailable_invalid_usage'; end if;
 
@@ -3808,11 +3811,11 @@ begin
       input_rate:=5000; cached_input_rate:=500; cache_write_input_rate:=6250;
       output_rate:=30000;
     when 'terra' then
-      input_rate:=2500; cached_input_rate:=250; cache_write_input_rate:=3125;
-      output_rate:=15000;
+      input_rate:=2000; cached_input_rate:=200; cache_write_input_rate:=2500;
+      output_rate:=12000;
     when 'luna' then
-      input_rate:=1000; cached_input_rate:=100; cache_write_input_rate:=1250;
-      output_rate:=6000;
+      input_rate:=200; cached_input_rate:=20; cache_write_input_rate:=250;
+      output_rate:=1200;
     else return false;
   end case;
   expected_cost := (input_tokens-cached_input_tokens-cache_write_input_tokens)*input_rate
@@ -4285,7 +4288,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+    'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
 end;
 $_$;
 
@@ -5368,6 +5371,16 @@ begin
         and (efficiency_entry->>'estimated_cost_tasks')::integer=72 then 'estimated'
         when (efficiency_entry->>'estimated_cost_tasks')::integer=72
           then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=child->'model'
+            and evidence->>'cost_status'='unavailable_invalid_usage'
+        ) then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=child->'model'
+            and evidence->>'cost_status'='unavailable_context_band'
+        ) then 'unavailable_context_band'
         else 'unavailable_missing_usage' end,
       case when efficiency_entry->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
         then 'verifier_recomputed' end,
@@ -7317,7 +7330,7 @@ begin
     select
       count(*)::integer as scoring_count,
       count(*) filter (
-        where scoring.benchmark_version = 'aiq-core@1.0.0'
+        where scoring.benchmark_version = 'aiq-core@1.0.1'
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
@@ -7376,7 +7389,7 @@ begin
         as reliability_recovery_count
     from aiq_private.aiq_task_catalog task
     where task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.0'
+      and task.task_set_version = '1.0.1'
   ),
   catalog_facts as (
     select
@@ -7386,7 +7399,7 @@ begin
       end as catalog_identity_sha256
     from aiq_private.aiq_task_sets task_set
     where task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.0'
+      and task_set.task_set_version = '1.0.1'
   ),
   eligible_nodes as (
     select node.node_id, 'runner'::text as approved_role
@@ -7489,7 +7502,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.0', '1.0.0'
+        'aiq-core', '1.0.1', '1.0.0'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
@@ -9274,11 +9287,18 @@ create table aiq_private.aiq_task_results (
         = (token_usage_evidence_level is null))
     )
     ,constraint aiq_task_results_cost_status check (
-      cost_estimator_status in ('estimated','unavailable_missing_usage','unavailable_invalid_usage')
+      cost_estimator_status in (
+        'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+        'unavailable_context_band'
+      )
       and (cost_estimator_status <> 'estimated' or standard_api_equivalent_usd_nanos is not null)
       and (cost_estimator_status = 'estimated' or standard_api_equivalent_usd_nanos is null)
       and (cost_evidence_level is null or cost_evidence_level = 'verifier_recomputed')
       and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
+      and ((cost_estimator_status = 'unavailable_context_band') = coalesce((
+        input_tokens > 272000 and cached_input_tokens is not null
+        and cache_write_input_tokens is not null and output_tokens is not null
+      ), false))
     )
 );
 
@@ -9719,7 +9739,7 @@ begin
     from aiq_private.aiq_scoring_versions scoring
     where scoring.scoring_version = '1.0.0'
       and scoring.schema_version = 'aiq.score-snapshot.v1'
-      and scoring.benchmark_version = 'aiq-core@1.0.0'
+      and scoring.benchmark_version = 'aiq-core@1.0.1'
       and scoring.synthetic
       and scoring.is_published
       and scoring.formula = '{
@@ -13885,7 +13905,10 @@ create table aiq_private.efficiency_official_models (
       or reasoning_output_tokens<=output_tokens)
   ),
   constraint efficiency_official_models_cost check (
-    cost_estimator_status in ('estimated','unavailable_missing_usage','unavailable_invalid_usage')
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
     and ((cost_estimator_status='estimated')=(standard_api_equivalent_usd_nanos is not null))
     and (cost_estimator_status<>'estimated' or priced_result_count=result_count)
     and (standard_api_equivalent_usd_nanos is null
@@ -13983,7 +14006,7 @@ create table aiq_private.calibration_runs (
   cost_method text not null default 'standard_api_equivalent_text_token_estimate',
   cost_version text not null default 'aiq.standard-api-equivalent-usd.v1',
   cost_as_of date not null default date '2026-08-02',
-  cost_source text not null default 'https://developers.openai.com/api/docs/models/compare',
+  cost_source text not null default 'https://developers.openai.com/api/docs/pricing',
   started_at timestamptz not null,
   completed_at timestamptz not null,
   verified_at timestamptz not null default clock_timestamp(),
@@ -14034,7 +14057,10 @@ create table aiq_private.calibration_runs (
     and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
   )
   ,constraint calibration_runs_cost_metadata check (
-    cost_estimator_status in ('estimated','unavailable_missing_usage','unavailable_invalid_usage')
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
     and cost_method is not null and cost_version is not null
     and cost_as_of is not null and cost_source is not null
     and (cost_estimator_status <> 'estimated'
@@ -14337,7 +14363,7 @@ create table aiq_private.calibration_model_scores (
   cost_estimator_status text not null default 'unavailable_missing_usage',
   cost_evidence_level text,
   cost_estimator_limitations text[] not null default array['per_request_long_context_unknown']::text[],
-  pricing_source text not null default 'https://developers.openai.com/api/docs/models/compare',
+  pricing_source text not null default 'https://developers.openai.com/api/docs/pricing',
   pricing_as_of date not null default date '2026-08-02',
   pricing_version text not null default 'aiq.standard-api-equivalent-usd.v1',
   pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
@@ -14389,7 +14415,10 @@ create table aiq_private.calibration_model_scores (
     and ((observed_time_sample_count = 0) = (duration_evidence_level is null))
   ),
   constraint calibration_model_scores_pricing check (
-    cost_estimator_status in ('estimated','unavailable_missing_usage','unavailable_invalid_usage')
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
     and (cost_estimator_status = 'estimated') =
       (standard_api_equivalent_usd_nanos is not null)
     and (cost_estimator_status <> 'estimated'
@@ -14440,7 +14469,7 @@ create table aiq_private.calibration_task_results (
   cost_method text not null default 'standard_api_equivalent_text_token_estimate',
   cost_version text not null default 'aiq.standard-api-equivalent-usd.v1',
   cost_as_of date not null default date '2026-08-02',
-  cost_source text not null default 'https://developers.openai.com/api/docs/models/compare',
+  cost_source text not null default 'https://developers.openai.com/api/docs/pricing',
   pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
   unique (run_id, task_id, task_version, model_family, reasoning_effort),
   foreign key (run_id,task_set_id,task_set_version)
@@ -14506,11 +14535,18 @@ create table aiq_private.calibration_task_results (
     and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
   )
   ,constraint calibration_task_results_cost_metadata check (
-    cost_estimator_status in ('estimated','unavailable_missing_usage','unavailable_invalid_usage')
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
     and cost_method is not null and cost_version is not null
     and cost_as_of is not null and cost_source is not null
     and (cost_estimator_status <> 'estimated' or standard_api_equivalent_usd_nanos is not null)
     and (cost_estimator_status = 'estimated' or standard_api_equivalent_usd_nanos is null)
+    and ((cost_estimator_status = 'unavailable_context_band') = coalesce((
+      input_tokens > 272000 and cached_input_tokens is not null
+      and cache_write_input_tokens is not null and output_tokens is not null
+    ), false))
   )
 );
 
@@ -14994,6 +15030,8 @@ begin
         where value->>'cost_status'<>'estimated') then 'unavailable_invalid_usage'
       when exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
       where value->>'cost_status'='unavailable_invalid_usage') then 'unavailable_invalid_usage'
+      when exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
+      where value->>'cost_status'='unavailable_context_band') then 'unavailable_context_band'
       else 'unavailable_missing_usage' end,
     case when not exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
       where value->>'cost_status'<>'estimated')
@@ -15107,6 +15145,16 @@ begin
         and score_efficiency->'standard_api_equivalent_usd_nanos'<>'null'::jsonb then 'estimated'
         when (score_efficiency->>'estimated_cost_tasks')::integer=
           (score_efficiency->>'selected_tasks')::integer then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=score->'model'
+            and evidence->>'cost_status'='unavailable_invalid_usage'
+        ) then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=score->'model'
+            and evidence->>'cost_status'='unavailable_context_band'
+        ) then 'unavailable_context_band'
         else 'unavailable_missing_usage' end,
       case when score_efficiency->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
         then 'verifier_recomputed' end,
@@ -15130,7 +15178,8 @@ begin
       or result->>'provider_tokens_evidence_level'<>'verifier_recomputed'
       or result->>'cost_evidence_level'<>'verifier_recomputed'
       or result->>'cost_status' not in (
-        'estimated','unavailable_missing_usage','unavailable_invalid_usage'
+        'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+        'unavailable_context_band'
       )
       or (result->>'cost_status'='estimated') is distinct from
         (result->'standard_api_equivalent_usd_nanos'<>'null'::jsonb)

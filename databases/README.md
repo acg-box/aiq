@@ -21,6 +21,7 @@ public identities: runner, verifier, and publisher.
 
 A successful receipt reports:
 
+- AIQ Core task release `1.0.1` with benchmark identifier `aiq-core@1.0.1`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
@@ -28,7 +29,7 @@ A successful receipt reports:
 - 13 security-invoker public views;
 - two hardened, non-login gateway roles;
 - catalog digest
-  `sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
+  `sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.
@@ -80,8 +81,12 @@ messages. Calibration results keep the normalized outcome and expose a bounded
 failure code, the five-state public status, and a fixed explanation summary.
 Efficiency values distinguish observed Codex adapter invocation elapsed time,
 provider-reported token usage, and verifier-recomputed API-equivalent
-estimates. Unknown values are `NULL`. The method says that actual subscription
-spend is not measured. The database does not store or infer that value.
+estimates. Unknown values are `NULL`. Standard short-context rates come from
+`https://developers.openai.com/api/docs/pricing`. A result with more than
+272000 aggregate input tokens has status `unavailable_context_band` and no cost
+or cost-evidence authority because aggregate turn usage cannot identify
+per-request context bands. The method says that actual subscription spend is
+not measured. The database does not store or infer that value.
 
 `public_model_efficiency` is the separate published Official efficiency
 aggregate. It does not change AIQ scores or ranking. Elapsed columns aggregate
