@@ -102,7 +102,11 @@ interface AcceptanceFixtureCommitment {
 }
 
 export const AIQ_CORE_V1_TASK_IDENTITY_SHA256 =
-  'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+  'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+
+const TASK_SET_VERSION = '1.0.1';
+const TASK_VERSION = '1.0.1';
+const SCORER_VERSION = '1.0.0';
 
 export const COMMAND_EXECUTION_DISCLOSURE =
   'Runner/verifier telemetry records at least one command_execution event; this proves presence, not causality, while independently checked artifacts and, where present, receipts prove final-state correctness.';
@@ -110,7 +114,7 @@ export const COMMAND_EXECUTION_DISCLOSURE =
 export interface Catalog {
   readonly schema_version: 'aiq.catalog.v1';
   readonly task_set_id: 'aiq-core';
-  readonly task_set_version: '1.0.0';
+  readonly task_set_version: typeof TASK_SET_VERSION;
   readonly title: string;
   readonly status: 'public_designs_versioned_private_content_required';
   readonly generated_from: string;
@@ -1313,7 +1317,7 @@ export function buildCatalog(): Catalog {
 
     return {
       task_id: taskId,
-      task_version: '1.0.0',
+      task_version: TASK_VERSION,
       title: draft.title,
       domain: draft.domain,
       difficulty: draft.difficulty,
@@ -1321,7 +1325,7 @@ export function buildCatalog(): Catalog {
       input_contract: {
         kind: draft.inputKind,
         fixture_profile: `aiq-fixture://${taskId}/v1`,
-        content_handle: `aiq-controlled-task://aiq-core/1.0.0/${taskId}`,
+        content_handle: `aiq-controlled-task://aiq-core/${TASK_VERSION}/${taskId}`,
       },
       cluster_id:
         CLUSTER_OVERRIDES[taskId] ??
@@ -1330,7 +1334,7 @@ export function buildCatalog(): Catalog {
       budget,
       evaluator: {
         kind: draft.scorer,
-        scorer_version: '1.0.0',
+        scorer_version: SCORER_VERSION,
         execution_protocol: 'aiq.evaluator-protocol.v1',
         binding_requirement: 'controlled_hidden_task_required',
         deterministic: true,
@@ -1364,7 +1368,7 @@ export function buildCatalog(): Catalog {
   return {
     schema_version: 'aiq.catalog.v1',
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.0',
+    task_set_version: TASK_SET_VERSION,
     title: 'AIQ Core Daily Work Benchmark',
     status: 'public_designs_versioned_private_content_required',
     generated_from: 'scripts/generate-benchmark-catalog.ts',
@@ -1395,17 +1399,17 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     throw new Error(`The catalog must contain 72 tasks; found ${String(catalog.tasks.length)}.`);
   }
   if (
-    catalog.task_set_version !== '1.0.0' ||
+    catalog.task_set_version !== TASK_SET_VERSION ||
     catalog.tasks.some(
       (catalogTask) =>
-        catalogTask.task_version !== '1.0.0' ||
-        catalogTask.evaluator.scorer_version !== '1.0.0' ||
+        catalogTask.task_version !== TASK_VERSION ||
+        catalogTask.evaluator.scorer_version !== SCORER_VERSION ||
         catalogTask.input_contract.content_handle !==
-          `aiq-controlled-task://aiq-core/1.0.0/${catalogTask.task_id}`,
+          `aiq-controlled-task://aiq-core/${TASK_VERSION}/${catalogTask.task_id}`,
     )
   ) {
     throw new Error(
-      'The current AIQ Core catalog requires task-set, task, scorer, and content-handle version 1.0.0.',
+      'The current AIQ Core catalog requires task-set, task, and content-handle version 1.0.1 with scorer version 1.0.0.',
     );
   }
 
@@ -1552,7 +1556,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   }
   if (observedIdentity !== AIQ_CORE_V1_TASK_IDENTITY_SHA256) {
     throw new Error(
-      `AIQ Core 1.0.0 task identity changed without a versioned commitment update: ${observedIdentity}.`,
+      `AIQ Core 1.0.1 task identity changed without a versioned commitment update: ${observedIdentity}.`,
     );
   }
 }

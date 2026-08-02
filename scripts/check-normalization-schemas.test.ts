@@ -317,7 +317,7 @@ const resultId = (value: number) => `result_${hex(value)}`;
 const nodeId = `node_${'a'.repeat(64)}`;
 const publicKey = 'b'.repeat(64);
 const syntheticSourceNodeId = 'node_synthetic_demo';
-const catalogDigest = 'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+const catalogDigest = 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
 
 const matrix = [
   ['sol', 'low'],
@@ -419,7 +419,7 @@ function normalizedResult(
     matrix_batch_id: runId(1),
     run_id: runId(modelIndex + 2),
     task_id: `task-${String(taskIndex + 1).padStart(2, '0')}`,
-    task_version: '1.0.0',
+    task_version: '1.0.1',
     task_hash: sha256(taskIndex + 1),
     domain: domains[taskIndex % domains.length],
     scorer_version: '1.0.0',
@@ -538,12 +538,12 @@ function normalizedBatch(): JsonObject {
     content_hash: sha256(2),
     signer: { node_id: nodeId, public_key: publicKey },
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.0',
+    task_set_version: '1.0.1',
     task_set_hash: sha256(3),
     capability_validation_digest: null,
     provenance: null,
     run_class: null,
-    benchmark_version: 'aiq-core@1.0.0',
+    benchmark_version: 'aiq-core@1.0.1',
     prompt_set_digest: sha256(4),
     scoring_version: '1.0.0',
     runner_commit: 'd'.repeat(40),
@@ -672,7 +672,7 @@ function attestation(): JsonObject {
     task_set_hash: sha256(3),
     capability_validation_digest: null,
     provenance: null,
-    benchmark_version: 'aiq-core@1.0.0',
+    benchmark_version: 'aiq-core@1.0.1',
     prompt_set_digest: sha256(4),
     scoring_version: '1.0.0',
     verifier: { node_id: nodeId, public_key: publicKey },
@@ -895,6 +895,13 @@ await test('the current corpus commitment has one direct state', async () => {
   strictEqual(
     requireObjectProperty(properties, 'schema_version').const,
     'aiq.corpus-commitment.v2',
+  );
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(requireObjectProperty(properties, 'catalog'), 'properties'),
+      'task_set_version',
+    ).const,
+    '1.0.1',
   );
   strictEqual(schema.additionalProperties, false);
 
