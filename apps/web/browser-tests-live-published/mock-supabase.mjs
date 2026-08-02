@@ -260,11 +260,12 @@ calibrationResults.push(
   ...calibrationResults
     .filter((result) => result.model_family === 'terra' && result.reasoning_effort === 'medium')
     .slice(0, 5)
-    .map((result, index) => ({
-      ...result,
-      result_id: `subset_result_${String(index).padStart(2, '0')}`,
-      run_id: subsetCalibrationRunId,
-    })),
+    .map((result, index) =>
+      Object.assign({}, result, {
+        result_id: `subset_result_${String(index).padStart(2, '0')}`,
+        run_id: subsetCalibrationRunId,
+      }),
+    ),
 );
 
 const modelEfficiency = calibrationScores.map((score, index) => ({
