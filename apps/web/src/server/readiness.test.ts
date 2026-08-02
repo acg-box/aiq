@@ -218,6 +218,10 @@ async function withDependencyFetch(
         'public_distributed_radar',
         'public_scoring_versions',
         'public_task_coverage',
+        'public_calibration_runs',
+        'public_calibration_results',
+        'public_calibration_scores',
+        'public_model_efficiency',
       ]),
     );
     assert.equal(trendProbeCount, 1);
@@ -499,7 +503,7 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('keeps empty public views ready and uses exact required-column selects', async () => {
-    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 8);
+    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 12);
     assert.ok(Object.values(PUBLIC_VIEW_SELECTS).every((select) => select !== '*'));
     await withDependencyFetch();
   });
