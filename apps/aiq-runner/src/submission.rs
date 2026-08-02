@@ -17,7 +17,7 @@ use crate::{
 	adapter::ArtifactReference,
 	protocol::{self, SubmissionEnvelope},
 	run_validation,
-	runner::{MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord},
+	runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult},
 };
 
 /// Maximum signed package size accepted for submission.
@@ -26,6 +26,40 @@ pub const MAX_SUBMISSION_BYTES: usize = 4 * 1_024 * 1_024;
 pub const MAX_SIGNED_PACKAGE_BYTES: usize = MAX_SUBMISSION_BYTES - 240 * 1_024;
 /// Maximum retained artifact accepted through the Vercel ingress boundary.
 pub const MAX_ARTIFACT_BYTES: usize = 4 * 1_024 * 1_024;
+
+/// Strictly decoded and semantically validated signed-package payload.
+///
+/// Calibration remains a separate type so callers cannot accidentally pass it
+/// to Official normalization or publication code as a [`RunRecord`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValidatedSubmissionPayload {
+	/// Existing `aiq.run.v3` payload.
+	Official(RunRecord),
+	/// Explicitly non-Official `aiq.calibration-run.v3` payload.
+	Calibration(CalibrationRunRecord),
+}
+impl ValidatedSubmissionPayload {
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		match self {
+			Self::Official(run) => &run.evaluator_results_artifact,
+			Self::Calibration(run) => &run.evaluator_results_artifact,
+		}
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		match self {
+			Self::Official(run) => &run.results,
+			Self::Calibration(run) => &run.results,
+		}
+	}
+
+	fn capability_validation(&self) -> Option<&crate::adapter::CapabilityValidationReport> {
+		match self {
+			Self::Official(run) => run.capability_validation.as_ref(),
+			Self::Calibration(run) => Some(&run.capability_validation),
+		}
+	}
+}
 
 /// Injectable outbound submission transport.
 pub trait SubmissionTransport {
@@ -298,21 +332,7 @@ pub fn serialize_signed_package(envelope: &SubmissionEnvelope) -> Result<Vec<u8>
 		)
 	})?;
 
-	let run: RunRecord = serde_json::from_value(envelope.payload.clone()).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package payload is not a RunRecord: {error}"),
-		)
-	})?;
-
-	run_validation::validate_run_record(&run, None).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package RunRecord validation failed: {error}"),
-		)
-	})?;
-
-	validate_run_signer_binding(&run, &envelope.signer.node_id)?;
+	decode_validated_payload(envelope)?;
 
 	let bytes = protocol::canonical_json(envelope).map_err(|error| {
 		SubmissionError::new(
@@ -381,6 +401,26 @@ pub fn validate_run_signer_binding(
 		return Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
 			"signed package signer does not match run provenance and preflight node_id",
+		));
+	}
+
+	Ok(())
+}
+
+/// Confirms that a signed calibration's preflight and result provenance name
+/// its package signer.
+pub fn validate_calibration_signer_binding(
+	run: &CalibrationRunRecord,
+	signer_node_id: &str,
+) -> Result<(), SubmissionError> {
+	let provenance_matches =
+		run.results.iter().all(|result| result.provenance.node_id == signer_node_id);
+	let preflight_matches = run.capability_validation.node_id == signer_node_id;
+
+	if !provenance_matches || !preflight_matches {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"signed calibration package signer does not match run provenance and preflight node_id",
 		));
 	}
 
@@ -465,9 +505,69 @@ pub fn read_evaluator_results_artifact(
 	read_artifact(&root, &artifact.kind, digest, artifact.bytes)
 }
 
+/// Recomputes provider token usage from exact retained stdout artifacts.
+///
+/// Packaging always uses this path. Every referenced stdout object is
+/// content-address checked before its numeric usage metadata can become signed
+/// result evidence. A retained run can therefore be packaged without another
+/// model invocation.
+pub fn enrich_provider_usage_from_artifacts(
+	results: &mut [TaskResult],
+	artifact_root: &Path,
+) -> Result<(), SubmissionError> {
+	let root = canonical_artifact_root(artifact_root)?;
+
+	for result in results {
+		let stdout = result.artifacts.iter().find(|artifact| artifact.kind == "stdout.jsonl");
+		let Some(reference) = stdout else {
+			continue;
+		};
+		let digest = reference.content_hash.strip_prefix("sha256:").ok_or_else(|| {
+			SubmissionError::new(
+				SubmissionOutcomeKind::Configuration,
+				"stdout artifact hash is not a SHA-256 address",
+			)
+		})?;
+		let bytes = read_artifact(&root, &reference.kind, digest, reference.bytes)?;
+		let stdout = std::str::from_utf8(&bytes).map_err(|_| {
+			SubmissionError::new(
+				SubmissionOutcomeKind::Configuration,
+				"stdout artifact is not UTF-8",
+			)
+		})?;
+		let observed = crate::runner::parse_codex_tool_usage(stdout);
+
+		if observed.steps != result.tool_usage.steps
+			|| observed.total_calls != result.tool_usage.total_calls
+			|| observed.by_tool != result.tool_usage.by_tool
+		{
+			return Err(SubmissionError::new(
+				SubmissionOutcomeKind::Configuration,
+				"stdout artifact tool counters differ from the saved result",
+			));
+		}
+
+		result.tool_usage.provider_tokens = observed.provider_tokens;
+		result.result_id = format!(
+			"result_{}",
+			result
+				.content_hash()
+				.map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("provider usage result identity failed: {error}"),
+					)
+				})?
+				.trim_start_matches("sha256:")
+		);
+	}
+
+	Ok(())
+}
+
 fn validate_signed_package(
 	body: &[u8],
-) -> Result<(SubmissionEnvelope, RunRecord), SubmissionError> {
+) -> Result<(SubmissionEnvelope, ValidatedSubmissionPayload), SubmissionError> {
 	if body.len() > MAX_SIGNED_PACKAGE_BYTES {
 		return Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
@@ -489,23 +589,67 @@ fn validate_signed_package(
 		)
 	})?;
 
-	let run: RunRecord = serde_json::from_value(envelope.payload.clone()).map_err(|error| {
-		SubmissionError::new(
+	let payload = decode_validated_payload(&envelope)?;
+
+	Ok((envelope, payload))
+}
+
+fn decode_validated_payload(
+	envelope: &SubmissionEnvelope,
+) -> Result<ValidatedSubmissionPayload, SubmissionError> {
+	match envelope.payload_type.as_str() {
+		protocol::RUN_PAYLOAD_TYPE => {
+			let run: RunRecord =
+				serde_json::from_value(envelope.payload.clone()).map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("signed package payload is not a RunRecord: {error}"),
+					)
+				})?;
+
+			run_validation::validate_run_record(&run, None).map_err(|error| {
+				SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					format!("signed package RunRecord validation failed: {error}"),
+				)
+			})?;
+
+			validate_run_signer_binding(&run, &envelope.signer.node_id)?;
+
+			Ok(ValidatedSubmissionPayload::Official(run))
+		},
+		protocol::CALIBRATION_RUN_PAYLOAD_TYPE => {
+			if envelope.claimed_trust != protocol::TrustTier::Untrusted {
+				return Err(SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					"calibration packages must claim untrusted handling",
+				));
+			}
+
+			let run: CalibrationRunRecord = serde_json::from_value(envelope.payload.clone())
+				.map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("signed package payload is not a CalibrationRunRecord: {error}"),
+					)
+				})?;
+
+			run_validation::validate_calibration_run_record(&run).map_err(|error| {
+				SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					format!("signed package CalibrationRunRecord validation failed: {error}"),
+				)
+			})?;
+
+			validate_calibration_signer_binding(&run, &envelope.signer.node_id)?;
+
+			Ok(ValidatedSubmissionPayload::Calibration(run))
+		},
+		_ => Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
-			format!("signed package payload is not a RunRecord: {error}"),
-		)
-	})?;
-
-	run_validation::validate_run_record(&run, None).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package RunRecord validation failed: {error}"),
-		)
-	})?;
-
-	validate_run_signer_binding(&run, &envelope.signer.node_id)?;
-
-	Ok((envelope, run))
+			"signed package payload type is unsupported",
+		)),
+	}
 }
 
 fn artifact_kind_limit(kind: &str) -> Option<usize> {
@@ -518,18 +662,18 @@ fn artifact_kind_limit(kind: &str) -> Option<usize> {
 }
 
 fn collect_artifact_references(
-	run: &RunRecord,
+	payload: &ValidatedSubmissionPayload,
 ) -> Result<BTreeMap<(String, String), u64>, SubmissionError> {
-	let result_artifacts = run
-		.results
+	let result_artifacts = payload
+		.results()
 		.iter()
 		.flat_map(|result| result.artifacts.iter().chain(result.workspace_manifest.iter()));
-	let preflight_artifacts = run.capability_validation.iter().flat_map(|report| {
+	let preflight_artifacts = payload.capability_validation().into_iter().flat_map(|report| {
 		report.models.iter().flat_map(|validation| validation.probe.artifacts.iter())
 	});
 	let mut references = BTreeMap::new();
 
-	for artifact in iter::once(&run.evaluator_results_artifact)
+	for artifact in iter::once(payload.evaluator_results_artifact())
 		.chain(result_artifacts)
 		.chain(preflight_artifacts)
 	{
@@ -685,9 +829,9 @@ where
 {
 	validate_endpoint(endpoint, allow_loopback_http)?;
 
-	let (envelope, run) = validate_signed_package(&body)?;
+	let (envelope, payload) = validate_signed_package(&body)?;
 	let root = canonical_artifact_root(artifact_root)?;
-	let references = collect_artifact_references(&run)?;
+	let references = collect_artifact_references(&payload)?;
 	let mut stored = 0;
 	let mut duplicate = 0;
 
@@ -1229,6 +1373,7 @@ mod tests {
 				(format!("c{}", "c".repeat(31)), u32::MAX),
 				(format!("d{}", "d".repeat(31)), u32::MAX),
 			]),
+			provider_tokens: runner::ProviderTokenUsage::default(),
 		};
 		result.latency.wall_ms = 9_007_199_254_740_991;
 		result.evaluator_checks = (0..6)
@@ -1400,6 +1545,7 @@ mod tests {
 			schedule_slot: failed_run.schedule_slot.clone(),
 			task_set_hash: failed_run.task_set_hash.clone(),
 			scoring_version: failed_run.scoring_version.clone(),
+			execution_concurrency: failed_run.execution_concurrency,
 			models: failed_run.models.clone(),
 			task_ids: task_ids.into_values().collect(),
 			started_unix_ms: failed_run.started_unix_ms,
@@ -2044,8 +2190,18 @@ mod tests {
 		run_validation::validate_calibration_run_record(&calibration_record)
 			.expect("maximum calibration record must validate");
 
-		let calibration_bytes =
-			protocol::canonical_json(&calibration_envelope).expect("canonical calibration");
+		let calibration_bytes = submission::serialize_signed_package(&calibration_envelope)
+			.expect("valid calibration package must enter artifact submission");
+		let transport = FakeTransport { status: 202, request: RefCell::new(None) };
+		let calibration_submission = submission::submit_signed_package(
+			&transport,
+			"https://example.vercel.app",
+			calibration_bytes.clone(),
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+		)
+		.expect("valid calibration package submission");
+
+		assert_eq!(calibration_submission.kind, SubmissionOutcomeKind::Accepted);
 
 		assert_eq!(bytes.len(), 3_746_328);
 		assert_eq!(evaluator_results_bytes, 2_310_969);
@@ -2170,7 +2326,7 @@ mod tests {
 	}
 
 	#[test]
-	fn calibration_packages_are_locally_signable_but_not_submittable() {
+	fn structurally_incomplete_calibration_packages_are_not_submittable() {
 		let run_id = "run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 		let payload = serde_json::json!({
 			"schema_version": protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
