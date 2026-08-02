@@ -14,10 +14,12 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'aiq_private'
     and relation.relkind in ('r', 'p')
-    and relation.relname like 'aiq\_%' escape '\';
+    and (relation.relname like 'aiq\_%' escape '\'
+      or relation.relname like 'calibration\_%' escape '\'
+      or relation.relname like 'efficiency\_%' escape '\');
 
-  if private_table_count <> 31 then
-    raise exception 'expected 31 private AIQ tables, found %', private_table_count;
+  if private_table_count <> 38 then
+    raise exception 'expected 38 private AIQ, pricing, and calibration tables, found %', private_table_count;
   end if;
 
   select count(*) into forced_rls_count
@@ -25,7 +27,9 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'aiq_private'
     and relation.relkind in ('r', 'p')
-    and relation.relname like 'aiq\_%' escape '\'
+    and (relation.relname like 'aiq\_%' escape '\'
+      or relation.relname like 'calibration\_%' escape '\'
+      or relation.relname like 'efficiency\_%' escape '\')
     and relation.relrowsecurity
     and relation.relforcerowsecurity;
 
@@ -49,9 +53,9 @@ begin
       or relation.relname = 'aiq_preview_status_v1'
     );
 
-  if public_view_count <> 9 or security_invoker_view_count <> 9 then
+  if public_view_count <> 13 or security_invoker_view_count <> 13 then
     raise exception
-      'expected 9 security-invoker public views, found % views and % invoker views',
+      'expected 13 security-invoker public views, found % views and % invoker views',
       public_view_count, security_invoker_view_count;
   end if;
 
@@ -166,6 +170,31 @@ begin
       'EXECUTE'
     )
     or not pg_catalog.has_function_privilege(
+      'aiq_verifier',
+      'public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'aiq_verifier',
+      'public.aiq_record_calibration_attestation(jsonb,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or pg_catalog.has_function_privilege(
+      'aiq_publisher',
+      'public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'aiq_publisher',
+      'public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or pg_catalog.has_function_privilege(
+      'aiq_verifier',
+      'public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
       'service_role',
       'public.aiq_enqueue_submission(jsonb,jsonb,jsonb)',
       'EXECUTE'
@@ -194,6 +223,10 @@ select
   (select count(*) from public.public_runs) as run_count,
   (select count(*) from public.public_scoring_versions) as scoring_version_count,
   (select count(*) from public.public_task_coverage) as task_coverage_count,
+  (select count(*) from public.public_calibration_runs) as calibration_run_count,
+  (select count(*) from public.public_calibration_results) as calibration_result_count,
+  (select count(*) from public.public_calibration_scores) as calibration_score_count,
+  (select count(*) from public.public_model_efficiency) as model_efficiency_count,
   (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
@@ -208,6 +241,10 @@ select
   (select count(*) from public.public_runs) as run_count,
   (select count(*) from public.public_scoring_versions) as scoring_version_count,
   (select count(*) from public.public_task_coverage) as task_coverage_count,
+  (select count(*) from public.public_calibration_runs) as calibration_run_count,
+  (select count(*) from public.public_calibration_results) as calibration_result_count,
+  (select count(*) from public.public_calibration_scores) as calibration_score_count,
+  (select count(*) from public.public_model_efficiency) as model_efficiency_count,
   (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
