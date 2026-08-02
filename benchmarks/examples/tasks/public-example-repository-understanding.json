@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "public-example-repository-understanding-01",
+  "task_version": "1.0.0",
+  "title": "Identify the workspace manifest",
+  "domain": "repository_understanding",
+  "difficulty": "easy",
+  "prompt": "Synthetic example: Return the repository-relative file that owns the Rust workspace member list.",
+  "allowed_tools": ["filesystem_read"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 2 },
+  "tags": ["synthetic", "workspace"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
+  "fixture_refs": ["repo://Cargo.toml"],
+  "visibility": "public_example",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": { "kind": "exact_match", "expected": "Cargo.toml", "case_sensitive": true }
+}

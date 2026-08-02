@@ -1,0 +1,41 @@
+[package]
+authors.workspace    = true
+description          = "Local AIQ benchmark runner, scoring library, and result protocol"
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "aiq-runner"
+repository.workspace = true
+version.workspace    = true
+
+[lib]
+name = "aiq_runner"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aiq-runner"
+path = "src/main.rs"
+
+[dependencies]
+# crates.io
+clap                     = { workspace = true }
+ed25519-dalek            = { workspace = true }
+hex                      = { workspace = true }
+jiff                     = { workspace = true }
+jiff-tzdb                = { workspace = true }
+serde                    = { workspace = true }
+serde_json               = { workspace = true }
+serde_json_canonicalizer = { workspace = true }
+sha2                     = { workspace = true }
+ureq                     = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+# crates.io
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# crates.io
+windows-sys = { version = "0.61.2", features = [
+	"Win32_Security_Authorization",
+	"Win32_Storage_FileSystem",
+] }

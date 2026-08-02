@@ -1,0 +1,1442 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/normalized-batch-v3.schema.json",
+  "title": "AIQ normalized database batch v3",
+  "description": "One verifier-normalized 17-model matrix batch. The Rust verifier additionally checks deterministic identities, matrix order, unique task identities, cross-field bindings, score recomputation, digest commitments, timestamp order, and the four MiB canonical representation bound.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "matrix_batch_id",
+    "package_sha256",
+    "content_hash",
+    "signer",
+    "task_set_id",
+    "task_set_version",
+    "task_set_hash",
+    "capability_validation_digest",
+    "provenance",
+    "run_class",
+    "benchmark_version",
+    "prompt_set_digest",
+    "scoring_version",
+    "runner_commit",
+    "region",
+    "scheduled_unix_ms",
+    "started_unix_ms",
+    "finished_unix_ms",
+    "synthetic",
+    "runs",
+    "normalization_digest"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.normalized-batch.v3"
+    },
+    "matrix_batch_id": {
+      "$ref": "#/$defs/runId"
+    },
+    "package_sha256": {
+      "$ref": "#/$defs/unprefixedSha256"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "signer": {
+      "$ref": "#/$defs/nodeIdentity"
+    },
+    "task_set_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "task_set_version": {
+      "$ref": "#/$defs/semanticVersion"
+    },
+    "task_set_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "capability_validation_digest": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/sha256"
+        }
+      ]
+    },
+    "provenance": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/runProvenance"
+        }
+      ]
+    },
+    "run_class": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "const": "official"
+        }
+      ]
+    },
+    "benchmark_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_set_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "scoring_version": {
+      "const": "1.0.0"
+    },
+    "runner_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}(?![\\s\\S])"
+    },
+    "region": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "scheduled_unix_ms": {
+      "$ref": "#/$defs/safeUnsignedInteger"
+    },
+    "started_unix_ms": {
+      "$ref": "#/$defs/safeUnsignedInteger"
+    },
+    "finished_unix_ms": {
+      "$ref": "#/$defs/safeUnsignedInteger"
+    },
+    "synthetic": {
+      "type": "boolean"
+    },
+    "runs": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "items": {
+        "$ref": "#/$defs/normalizedModelRun"
+      }
+    },
+    "normalization_digest": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": ["synthetic"]
+      },
+      "then": {
+        "properties": {
+          "capability_validation_digest": {
+            "$ref": "#/$defs/sha256"
+          },
+          "provenance": {
+            "$ref": "#/$defs/runProvenance"
+          },
+          "run_class": {
+            "const": "official"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "tier": {
+                      "not": {
+                        "const": "synthetic_complete"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "capability_validation_digest": {
+            "type": "null"
+          },
+          "provenance": {
+            "type": "null"
+          },
+          "run_class": {
+            "type": "null"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "tier": {
+                      "not": {
+                        "const": "official"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "runProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_class",
+        "corpus_release_id",
+        "corpus_commitment_sha256",
+        "catalog_digest",
+        "task_set_digest",
+        "evaluator_digest",
+        "runtime_digest",
+        "preflight_digest",
+        "harness_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "network_policy_digest",
+        "environment_digest",
+        "source_manifest_digest",
+        "runner_executable_digest",
+        "codex_executable_digest",
+        "permission_evidence_digest"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.run-provenance.v2"
+        },
+        "run_class": {
+          "const": "official"
+        },
+        "corpus_release_id": {
+          "type": "string",
+          "pattern": "^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\\s\\S])"
+        },
+        "corpus_commitment_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "catalog_digest": {
+          "const": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3"
+        },
+        "task_set_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evaluator_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "preflight_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "harness_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "prompt_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tool_policy_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "network_policy_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "environment_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "source_manifest_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runner_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "codex_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "permission_evidence_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "safeUnsignedInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "i32OrNull": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "integer",
+          "minimum": -2147483648,
+          "maximum": 2147483647
+        }
+      ]
+    },
+    "unitInterval": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "aiqScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "nullableUnitInterval": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/unitInterval"
+        }
+      ]
+    },
+    "nullableAiqScore": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/aiqScore"
+        }
+      ]
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "resultId": {
+      "type": "string",
+      "pattern": "^result_[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "unprefixedSha256": {
+      "type": "string",
+      "pattern": "^(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "semanticVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?![\\s\\S])"
+    },
+    "nodeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "public_key"],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^node_[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        }
+      }
+    },
+    "modelConfig": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["family", "reasoning_effort"],
+          "properties": {
+            "family": {
+              "const": "sol"
+            },
+            "reasoning_effort": {
+              "enum": ["low", "medium", "high", "xhigh", "max", "ultra"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["family", "reasoning_effort"],
+          "properties": {
+            "family": {
+              "const": "terra"
+            },
+            "reasoning_effort": {
+              "enum": ["low", "medium", "high", "xhigh", "max", "ultra"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["family", "reasoning_effort"],
+          "properties": {
+            "family": {
+              "const": "luna"
+            },
+            "reasoning_effort": {
+              "enum": ["low", "medium", "high", "xhigh", "max"]
+            }
+          }
+        }
+      ]
+    },
+    "normalizedModelRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "matrix_batch_id",
+        "model_config_id",
+        "model",
+        "score",
+        "results"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.normalized-model-run.v1"
+        },
+        "run_id": {
+          "$ref": "#/$defs/runId"
+        },
+        "matrix_batch_id": {
+          "$ref": "#/$defs/runId"
+        },
+        "model_config_id": {
+          "enum": [
+            "sol-low",
+            "sol-medium",
+            "sol-high",
+            "sol-xhigh",
+            "sol-max",
+            "sol-ultra",
+            "terra-low",
+            "terra-medium",
+            "terra-high",
+            "terra-xhigh",
+            "terra-max",
+            "terra-ultra",
+            "luna-low",
+            "luna-medium",
+            "luna-high",
+            "luna-xhigh",
+            "luna-max"
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/modelConfig"
+        },
+        "score": {
+          "$ref": "#/$defs/scoreReport"
+        },
+        "results": {
+          "type": "array",
+          "minItems": 72,
+          "maxItems": 72,
+          "items": {
+            "$ref": "#/$defs/normalizedTaskResult"
+          }
+        }
+      }
+    },
+    "scoreReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "scoring_version",
+        "model",
+        "tier",
+        "official_aiq",
+        "conditional_observed_aiq",
+        "ranking_eligible",
+        "completion_bounds",
+        "task_resampling_sensitivity_interval",
+        "binary_micro_diagnostic",
+        "coverage",
+        "difficulty_coverage",
+        "duplicate_results",
+        "domains",
+        "rule"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.score-report.v1"
+        },
+        "scoring_version": {
+          "const": "1.0.0"
+        },
+        "model": {
+          "$ref": "#/$defs/modelConfig"
+        },
+        "tier": {
+          "enum": [
+            "official",
+            "synthetic_complete",
+            "provisional",
+            "coverage_only",
+            "not_applicable"
+          ]
+        },
+        "official_aiq": {
+          "$ref": "#/$defs/nullableAiqScore"
+        },
+        "conditional_observed_aiq": {
+          "$ref": "#/$defs/nullableAiqScore"
+        },
+        "ranking_eligible": {
+          "const": false
+        },
+        "completion_bounds": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/completionBounds"
+            }
+          ]
+        },
+        "task_resampling_sensitivity_interval": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/taskResamplingSensitivityInterval"
+            }
+          ]
+        },
+        "binary_micro_diagnostic": {
+          "$ref": "#/$defs/binaryMicroDiagnostic"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverageSummary"
+        },
+        "difficulty_coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "maxProperties": 3,
+          "properties": {
+            "easy": {
+              "$ref": "#/$defs/difficultyCoverage"
+            },
+            "medium": {
+              "$ref": "#/$defs/difficultyCoverage"
+            },
+            "hard": {
+              "$ref": "#/$defs/difficultyCoverage"
+            }
+          }
+        },
+        "duplicate_results": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1223
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/domainScore"
+          }
+        },
+        "rule": {
+          "const": "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "official"
+              }
+            },
+            "required": ["tier"]
+          },
+          "then": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/completeScoreConstraints"
+              }
+            ],
+            "properties": {
+              "official_aiq": {
+                "$ref": "#/$defs/aiqScore"
+              },
+              "conditional_observed_aiq": {
+                "$ref": "#/$defs/aiqScore"
+              },
+              "completion_bounds": {
+                "$ref": "#/$defs/completionBounds"
+              },
+              "task_resampling_sensitivity_interval": {
+                "$ref": "#/$defs/taskResamplingSensitivityInterval"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "synthetic_complete"
+              }
+            },
+            "required": ["tier"]
+          },
+          "then": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/completeScoreConstraints"
+              }
+            ],
+            "properties": {
+              "official_aiq": {
+                "type": "null"
+              },
+              "conditional_observed_aiq": {
+                "$ref": "#/$defs/aiqScore"
+              },
+              "ranking_eligible": {
+                "const": false
+              },
+              "completion_bounds": {
+                "$ref": "#/$defs/completionBounds"
+              },
+              "task_resampling_sensitivity_interval": {
+                "$ref": "#/$defs/taskResamplingSensitivityInterval"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "provisional"
+              }
+            },
+            "required": ["tier"]
+          },
+          "then": {
+            "properties": {
+              "official_aiq": {
+                "type": "null"
+              },
+              "conditional_observed_aiq": {
+                "$ref": "#/$defs/aiqScore"
+              },
+              "completion_bounds": {
+                "$ref": "#/$defs/completionBounds"
+              },
+              "task_resampling_sensitivity_interval": {
+                "$ref": "#/$defs/taskResamplingSensitivityInterval"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "enum": ["coverage_only", "not_applicable"]
+              }
+            },
+            "required": ["tier"]
+          },
+          "then": {
+            "properties": {
+              "official_aiq": {
+                "type": "null"
+              },
+              "conditional_observed_aiq": {
+                "type": "null"
+              },
+              "completion_bounds": {
+                "type": "null"
+              },
+              "task_resampling_sensitivity_interval": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "completeScoreConstraints": {
+      "type": "object",
+      "properties": {
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "expected_tasks": {
+              "const": 72
+            },
+            "valid_tasks": {
+              "const": 72
+            },
+            "invalid_tasks": {
+              "const": 0
+            },
+            "missing_tasks": {
+              "const": 0
+            },
+            "not_applicable_tasks": {
+              "const": 0
+            },
+            "expected_domains": {
+              "const": 10
+            },
+            "covered_domains": {
+              "const": 10
+            }
+          },
+          "required": [
+            "expected_tasks",
+            "valid_tasks",
+            "invalid_tasks",
+            "missing_tasks",
+            "not_applicable_tasks",
+            "expected_domains",
+            "covered_domains"
+          ]
+        },
+        "duplicate_results": {
+          "const": 0
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "properties": {
+              "invalid_tasks": {
+                "const": 0
+              },
+              "missing_tasks": {
+                "const": 0
+              },
+              "not_applicable_tasks": {
+                "const": 0
+              },
+              "score": {
+                "$ref": "#/$defs/unitInterval"
+              }
+            },
+            "required": [
+              "invalid_tasks",
+              "missing_tasks",
+              "not_applicable_tasks",
+              "score"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "coding"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "debugging"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "repository_understanding"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "data_processing"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "retrieval_verification"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "documentation_communication"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "planning_execution"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "tool_use"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "instruction_following"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "reliability_recovery"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      },
+      "required": ["coverage", "duplicate_results", "domains"]
+    },
+    "completionBounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "upper"],
+      "properties": {
+        "lower": {
+          "$ref": "#/$defs/aiqScore"
+        },
+        "upper": {
+          "$ref": "#/$defs/aiqScore"
+        }
+      }
+    },
+    "taskResamplingSensitivityInterval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "lower", "upper", "central_mass", "samples", "seed"],
+      "properties": {
+        "method": {
+          "const": "finite_cluster_calibrated_percentile_sensitivity_v1"
+        },
+        "lower": {
+          "$ref": "#/$defs/aiqScore"
+        },
+        "upper": {
+          "$ref": "#/$defs/aiqScore"
+        },
+        "central_mass": {
+          "const": 0.95
+        },
+        "samples": {
+          "const": 10000
+        },
+        "seed": {
+          "const": 71783153620529
+        }
+      }
+    },
+    "binaryMicroDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sample_size", "successes", "proportion", "wilson_lower", "wilson_upper"],
+      "properties": {
+        "sample_size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "successes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "proportion": {
+          "$ref": "#/$defs/nullableUnitInterval"
+        },
+        "wilson_lower": {
+          "$ref": "#/$defs/nullableUnitInterval"
+        },
+        "wilson_upper": {
+          "$ref": "#/$defs/nullableUnitInterval"
+        }
+      }
+    },
+    "coverageSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_tasks",
+        "valid_tasks",
+        "invalid_tasks",
+        "missing_tasks",
+        "not_applicable_tasks",
+        "expected_domains",
+        "covered_domains"
+      ],
+      "properties": {
+        "expected_tasks": {
+          "const": 72
+        },
+        "valid_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "invalid_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "missing_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "not_applicable_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "expected_domains": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "covered_domains": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "difficultyCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_tasks", "valid_tasks"],
+      "properties": {
+        "expected_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "valid_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        }
+      }
+    },
+    "domainScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "expected_tasks",
+        "valid_tasks",
+        "invalid_tasks",
+        "missing_tasks",
+        "not_applicable_tasks",
+        "zero_failure_tasks",
+        "score"
+      ],
+      "properties": {
+        "domain": {
+          "enum": [
+            "coding",
+            "debugging",
+            "repository_understanding",
+            "data_processing",
+            "retrieval_verification",
+            "documentation_communication",
+            "planning_execution",
+            "tool_use",
+            "instruction_following",
+            "reliability_recovery"
+          ]
+        },
+        "expected_tasks": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 72
+        },
+        "valid_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "invalid_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "missing_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "not_applicable_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "zero_failure_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "score": {
+          "$ref": "#/$defs/nullableUnitInterval"
+        }
+      }
+    },
+    "normalizedTaskResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "source_result_id",
+        "matrix_batch_id",
+        "run_id",
+        "task_id",
+        "task_version",
+        "task_hash",
+        "domain",
+        "scorer_version",
+        "model",
+        "source_status",
+        "source_evaluation",
+        "outcome",
+        "task_score",
+        "failure_responsibility",
+        "failure",
+        "response",
+        "response_sha256",
+        "evaluator_stdout_sha256",
+        "artifacts",
+        "latency",
+        "tool_usage",
+        "provenance"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.normalized-result.v1"
+        },
+        "source_result_id": {
+          "$ref": "#/$defs/resultId"
+        },
+        "matrix_batch_id": {
+          "$ref": "#/$defs/runId"
+        },
+        "run_id": {
+          "$ref": "#/$defs/runId"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_version": {
+          "$ref": "#/$defs/semanticVersion"
+        },
+        "task_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "domain": {
+          "enum": [
+            "coding",
+            "debugging",
+            "repository_understanding",
+            "data_processing",
+            "retrieval_verification",
+            "documentation_communication",
+            "planning_execution",
+            "tool_use",
+            "instruction_following",
+            "reliability_recovery"
+          ]
+        },
+        "scorer_version": {
+          "$ref": "#/$defs/semanticVersion"
+        },
+        "model": {
+          "$ref": "#/$defs/modelConfig"
+        },
+        "source_status": {
+          "enum": ["completed", "failed", "unsupported", "unevaluated"]
+        },
+        "source_evaluation": {
+          "enum": ["correct", "incorrect", "not_evaluated", "partial"]
+        },
+        "outcome": {
+          "enum": [
+            "correct",
+            "partial",
+            "incorrect",
+            "timeout",
+            "budget_exhausted",
+            "tool_failure",
+            "policy_failure",
+            "wrong_artifact",
+            "invalid",
+            "not_applicable"
+          ]
+        },
+        "task_score": {
+          "$ref": "#/$defs/nullableUnitInterval"
+        },
+        "failure_responsibility": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "agent",
+                "model",
+                "tool",
+                "timeout",
+                "budget",
+                "wrong_artifact",
+                "benchmark_infrastructure",
+                "platform"
+              ]
+            }
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/resultFailure"
+            }
+          ]
+        },
+        "response": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "maxLength": 1024
+            }
+          ]
+        },
+        "response_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
+          ]
+        },
+        "evaluator_stdout_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
+          ]
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifactReference"
+          }
+        },
+        "latency": {
+          "$ref": "#/$defs/latency"
+        },
+        "tool_usage": {
+          "$ref": "#/$defs/toolUsage"
+        },
+        "provenance": {
+          "$ref": "#/$defs/resultProvenance"
+        }
+      }
+    },
+    "resultFailure": {
+      "type": "object",
+      "required": ["kind", "message", "exit_code", "retryable"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "spawn",
+            "timeout",
+            "unsupported_model",
+            "authentication",
+            "subscription_limit",
+            "non_zero_exit",
+            "capability_unavailable",
+            "capability_validation_failed",
+            "missing_evaluator",
+            "missing_response",
+            "evaluator_failure",
+            "budget_exceeded",
+            "output_truncated",
+            "workspace_unavailable"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "exit_code": {
+          "$ref": "#/$defs/i32OrNull"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "content_hash", "uri", "bytes"],
+      "properties": {
+        "kind": {
+          "enum": ["stdout.jsonl", "stderr.txt", "final-response.txt", "workspace-snapshot.json"]
+        },
+        "content_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^aiq-artifact://sha256/[0-9a-f]{64}/(?:stdout\\.jsonl|stderr\\.txt|final-response\\.txt|workspace-snapshot\\.json)(?![\\s\\S])"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["kind", "uri"],
+          "properties": {
+            "kind": {
+              "const": "stdout.jsonl"
+            },
+            "uri": {
+              "type": "string",
+              "pattern": "^aiq-artifact://sha256/[0-9a-f]{64}/stdout\\.jsonl(?![\\s\\S])"
+            }
+          }
+        },
+        {
+          "required": ["kind", "uri"],
+          "properties": {
+            "kind": {
+              "const": "stderr.txt"
+            },
+            "uri": {
+              "type": "string",
+              "pattern": "^aiq-artifact://sha256/[0-9a-f]{64}/stderr\\.txt(?![\\s\\S])"
+            }
+          }
+        },
+        {
+          "required": ["kind", "uri"],
+          "properties": {
+            "kind": {
+              "const": "final-response.txt"
+            },
+            "uri": {
+              "type": "string",
+              "pattern": "^aiq-artifact://sha256/[0-9a-f]{64}/final-response\\.txt(?![\\s\\S])"
+            }
+          }
+        },
+        {
+          "required": ["kind", "uri"],
+          "properties": {
+            "kind": {
+              "const": "workspace-snapshot.json"
+            },
+            "uri": {
+              "type": "string",
+              "pattern": "^aiq-artifact://sha256/[0-9a-f]{64}/workspace-snapshot\\.json(?![\\s\\S])"
+            }
+          }
+        }
+      ]
+    },
+    "latency": {
+      "type": "object",
+      "required": ["wall_ms"],
+      "properties": {
+        "wall_ms": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        }
+      }
+    },
+    "toolUsage": {
+      "type": "object",
+      "required": ["steps", "total_calls", "by_tool"],
+      "properties": {
+        "steps": {
+          "$ref": "#/$defs/u32"
+        },
+        "total_calls": {
+          "$ref": "#/$defs/u32"
+        },
+        "by_tool": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/u32"
+          }
+        }
+      }
+    },
+    "resultProvenance": {
+      "type": "object",
+      "required": [
+        "node_id",
+        "runner_version",
+        "codex_version",
+        "observed_at",
+        "synthetic",
+        "local_trust"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string"
+        },
+        "runner_version": {
+          "type": "string"
+        },
+        "codex_version": {
+          "type": "string"
+        },
+        "observed_at": {
+          "type": "string"
+        },
+        "synthetic": {
+          "type": "boolean"
+        },
+        "local_trust": {
+          "enum": ["untrusted", "trusted"]
+        }
+      }
+    }
+  },
+  "x-aiq-limits": {
+    "canonical_stage_bytes": 4194304,
+    "model_runs": 17,
+    "results_per_model_run": 72,
+    "result_response_preview_utf8_bytes": 1024
+  }
+}

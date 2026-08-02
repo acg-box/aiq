@@ -1,0 +1,25 @@
+[package]
+authors.workspace    = true
+description          = "Bounded verifier worker for queued AIQ result packages"
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "aiq-verifier"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+# workspace
+aiq-runner = { path = "../aiq-runner" }
+
+# crates.io
+clap       = { workspace = true }
+hex        = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+sha2       = { workspace = true }
+ureq       = { workspace = true }
+
+[[bin]]
+name = "aiq-verifier"
+path = "src/main.rs"
