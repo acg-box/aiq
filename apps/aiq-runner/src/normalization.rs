@@ -408,7 +408,7 @@ impl NormalizedBatchStage {
 				.ok_or_else(|| {
 					NormalizationError::new("source result lacks efficiency evidence")
 				})?;
-			let attempted = !self.synthetic
+			let adapter_invoked = !self.synthetic
 				&& !matches!(
 					source.failure.as_ref().map(|failure| failure.kind),
 					Some(
@@ -417,7 +417,7 @@ impl NormalizedBatchStage {
 							| FailureKind::WorkspaceUnavailable
 					)
 				);
-			let expected_wall_ms = attempted.then_some(source.latency.wall_ms);
+			let expected_wall_ms = adapter_invoked.then_some(source.latency.wall_ms);
 
 			if evidence.observed_wall_ms != expected_wall_ms {
 				return Err(NormalizationError::new(

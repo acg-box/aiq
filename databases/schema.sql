@@ -5348,11 +5348,20 @@ begin
       token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
       cost_estimator_status,cost_evidence_level,pricing_digest,efficiency_record
     ) values(
-      child_id,72,72,(stage->>'execution_concurrency')::integer,
-      (select count(*)::integer from jsonb_array_elements(normalized_results) result
-        where coalesce(result#>>'{failure,kind}','') not in (
-          'capability_unavailable','capability_validation_failed','workspace_unavailable'
-        )),
+      child_id,72,
+      case when is_synthetic then 0 else
+        (select count(*)::integer from jsonb_array_elements(normalized_results) result
+          where coalesce(result#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed'
+          ))
+      end,
+      (stage->>'execution_concurrency')::integer,
+      case when is_synthetic then 0 else
+        (select count(*)::integer from jsonb_array_elements(normalized_results) result
+          where coalesce(result#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed','workspace_unavailable'
+          ))
+      end,
       (efficiency_entry->>'observed_wall_tasks')::integer,
       (efficiency_entry->>'total_observed_wall_ms')::bigint,
       (efficiency_entry->>'median_observed_wall_ms')::bigint,
@@ -13881,9 +13890,9 @@ create table aiq_private.efficiency_official_models (
   efficiency_record jsonb not null,
   recorded_at timestamptz not null default clock_timestamp(),
   constraint efficiency_official_models_counts check (
-    result_count = 72 and attempted_result_count = result_count
+    result_count = 72 and attempted_result_count between 0 and result_count
     and execution_concurrency between 1 and 32
-    and invoked_result_count between 0 and result_count
+    and invoked_result_count between 0 and attempted_result_count
     and adapter_elapsed_observed_result_count between 0 and invoked_result_count
     and token_observed_result_count between 0 and result_count
     and priced_result_count between 0 and result_count
@@ -13947,6 +13956,10 @@ create table aiq_private.efficiency_official_models (
 
 comment on table aiq_private.efficiency_official_models IS
   'Immutable verifier-recomputed Official efficiency aggregates. These values do not affect AIQ ranking.';
+comment on column aiq_private.efficiency_official_models.attempted_result_count IS
+  'Selected cells that passed capability admission and entered task preparation.';
+comment on column aiq_private.efficiency_official_models.invoked_result_count IS
+  'Attempted cells that reached the Codex adapter after workspace preparation.';
 comment on column aiq_private.efficiency_official_models.observed_total_wall_ms IS
   'Sum of observed Codex adapter invocation elapsed milliseconds.';
 comment on column aiq_private.efficiency_official_models.observed_median_wall_ms IS
@@ -13991,6 +14004,7 @@ create table aiq_private.calibration_runs (
   selected_model_count integer not null,
   result_count integer not null,
   execution_concurrency integer not null,
+  attempted_result_count integer not null,
   invoked_result_count integer not null,
   observed_duration_total_ms bigint,
   observed_duration_median_ms bigint,
@@ -14033,7 +14047,8 @@ create table aiq_private.calibration_runs (
     and selected_model_count between 1 and 17
     and result_count=selected_task_count*selected_model_count
     and execution_concurrency between 1 and 32
-    and invoked_result_count between 0 and result_count
+    and attempted_result_count between 0 and result_count
+    and invoked_result_count between 0 and attempted_result_count
   ),
   constraint calibration_runs_time check (completed_at >= started_at)
   ,constraint calibration_runs_efficiency_nonnegative check (
@@ -14069,6 +14084,10 @@ create table aiq_private.calibration_runs (
 );
 
 comment on table aiq_private.calibration_runs IS 'Append-only verifier-normalized local calibration evidence. It is untrusted, non-Official, and never ranking eligible.';
+comment on column aiq_private.calibration_runs.attempted_result_count IS
+  'Selected cells that passed capability admission and entered task preparation.';
+comment on column aiq_private.calibration_runs.invoked_result_count IS
+  'Attempted cells that reached the Codex adapter after workspace preparation.';
 comment on column aiq_private.calibration_runs.observed_duration_total_ms IS
   'Sum of observed Codex adapter invocation elapsed milliseconds.';
 comment on column aiq_private.calibration_runs.observed_duration_median_ms IS
@@ -14347,6 +14366,7 @@ create table aiq_private.calibration_model_scores (
   observed_median_wall_ms bigint,
   observed_p95_wall_ms bigint,
   observed_time_sample_count integer not null default 0,
+  attempted_result_count integer not null,
   invoked_result_count integer not null,
   observed_time_coverage_percent numeric(7,4) not null default 0,
   duration_evidence_level text,
@@ -14388,7 +14408,8 @@ create table aiq_private.calibration_model_scores (
     and (observed_total_wall_ms is null or observed_total_wall_ms >= 0)
     and (observed_median_wall_ms is null or observed_median_wall_ms >= 0)
     and (observed_p95_wall_ms is null or observed_p95_wall_ms >= 0)
-    and invoked_result_count between 0 and result_count
+    and attempted_result_count between 0 and result_count
+    and invoked_result_count between 0 and attempted_result_count
     and observed_time_sample_count between 0 and invoked_result_count
     and estimated_cost_sample_count between 0 and result_count
     and token_usage_sample_count between 0 and result_count
@@ -14431,6 +14452,10 @@ create table aiq_private.calibration_model_scores (
   )
 );
 
+comment on column aiq_private.calibration_model_scores.attempted_result_count IS
+  'Selected cells that passed capability admission and entered task preparation.';
+comment on column aiq_private.calibration_model_scores.invoked_result_count IS
+  'Attempted cells that reached the Codex adapter after workspace preparation.';
 comment on column aiq_private.calibration_model_scores.observed_total_wall_ms IS
   'Sum of observed Codex adapter invocation elapsed milliseconds.';
 comment on column aiq_private.calibration_model_scores.observed_median_wall_ms IS
@@ -14840,6 +14865,7 @@ declare
   provider_tokens jsonb;
   pricing jsonb;
   pricing_digest text;
+  attempted_count integer;
   invoked_count integer;
   inserted_rows integer;
   stored_result_count integer;
@@ -14954,6 +14980,11 @@ begin
   if not exists(select 1 from aiq_private.efficiency_pricing_methods method
     where method.pricing_digest=pricing_digest and method.pricing_record=pricing)
   then raise exception 'conflicting calibration pricing evidence' using errcode='23505'; end if;
+  select count(*)::integer into attempted_count
+  from jsonb_array_elements(payload->'results') source
+  where coalesce(source#>>'{failure,kind}','') not in (
+    'capability_unavailable','capability_validation_failed'
+  );
   select count(*)::integer into invoked_count
   from jsonb_array_elements(payload->'results') source
   where coalesce(source#>>'{failure,kind}','') not in (
@@ -14995,7 +15026,8 @@ begin
     run_id,inbox_id,package_sha256,content_hash,normalization_digest,runner_node_id,
     verifier_node_id,task_set_id,task_set_version,task_set_hash,scoring_version,
     replay_status,selected_task_count,
-    selected_model_count,result_count,execution_concurrency,invoked_result_count,
+    selected_model_count,result_count,execution_concurrency,
+    attempted_result_count,invoked_result_count,
     observed_duration_total_ms,observed_duration_median_ms,
     observed_duration_p95_ms,duration_evidence_level,duration_coverage_count,started_at,completed_at,
     standard_api_equivalent_usd_nanos,estimated_cost_coverage_count,token_usage_coverage_count,
@@ -15007,7 +15039,7 @@ begin
     stage->>'task_set_hash',stage->>'scoring_version',
     'evaluator_replayed',jsonb_array_length(stage->'task_ids'),jsonb_array_length(stage->'models'),
     jsonb_array_length(payload->'results'),(stage->>'execution_concurrency')::integer,
-    invoked_count,
+    attempted_count,invoked_count,
     duration_total,duration_median,duration_p95,
     case when duration_count=0 then null else 'runner_observed' end,duration_count,
     to_timestamp((stage->>'started_unix_ms')::numeric/1000),
@@ -15094,7 +15126,8 @@ begin
       task_resampling_sensitivity_method,result_count,
       scored_result_count,coverage_percent,observed_total_wall_ms,
       observed_median_wall_ms,observed_p95_wall_ms,observed_time_sample_count,
-      invoked_result_count,observed_time_coverage_percent,duration_evidence_level,
+      attempted_result_count,invoked_result_count,
+      observed_time_coverage_percent,duration_evidence_level,
       standard_api_equivalent_usd_nanos,
       estimated_cost_sample_count,input_tokens,cached_input_tokens,cache_write_input_tokens,
       output_tokens,reasoning_output_tokens,total_tokens,token_usage_sample_count,
@@ -15116,6 +15149,11 @@ begin
       (score_efficiency->>'median_observed_wall_ms')::bigint,
       (score_efficiency->>'p95_observed_wall_ms')::bigint,
       (score_efficiency->>'observed_wall_tasks')::integer,
+      (select count(*)::integer from jsonb_array_elements(payload->'results') source
+        where source->'model'=score->'model'
+          and coalesce(source#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed'
+          )),
       (select count(*)::integer from jsonb_array_elements(payload->'results') source
         where source->'model'=score->'model'
           and coalesce(source#>>'{failure,kind}','') not in (
@@ -15369,7 +15407,7 @@ select run.run_id,
   run.selected_task_count,
   run.selected_model_count,
   run.result_count,
-  run.result_count as attempted_result_count,
+  run.attempted_result_count,
   run.invoked_result_count,
   run.duration_coverage_count as adapter_elapsed_observed_result_count,
   run.token_usage_coverage_count as token_observed_result_count,
@@ -15523,7 +15561,7 @@ select score.run_id,
   score.task_resampling_sensitivity_upper,
   score.task_resampling_sensitivity_method,
   score.result_count,
-  score.result_count as attempted_result_count,
+  score.attempted_result_count,
   score.invoked_result_count,
   score.observed_time_sample_count as adapter_elapsed_observed_result_count,
   score.token_usage_sample_count as token_observed_result_count,
@@ -15659,7 +15697,7 @@ grant select on table public.public_calibration_results to anon, authenticated;
 grant select on table public.public_calibration_scores to anon, authenticated;
 grant select on table public.public_model_efficiency to anon, authenticated;
 grant select(run_id,classification,scoring_version,selected_task_count,selected_model_count,
-  result_count,execution_concurrency,invoked_result_count,
+  result_count,execution_concurrency,attempted_result_count,invoked_result_count,
   observed_duration_total_ms,observed_duration_median_ms,
   observed_duration_p95_ms,duration_evidence_level,duration_coverage_count,
   standard_api_equivalent_usd_nanos,
@@ -15683,7 +15721,7 @@ grant select(run_id,model_family,reasoning_effort,descriptive_status,score,resul
   task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,
   task_resampling_sensitivity_method,
   scored_result_count,coverage_percent,observed_total_wall_ms,observed_median_wall_ms,
-  observed_p95_wall_ms,observed_time_sample_count,invoked_result_count,
+  observed_p95_wall_ms,observed_time_sample_count,attempted_result_count,invoked_result_count,
   observed_time_coverage_percent,
   duration_evidence_level,
   standard_api_equivalent_usd_nanos,estimated_cost_sample_count,input_tokens,
