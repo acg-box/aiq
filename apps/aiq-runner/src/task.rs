@@ -87,7 +87,7 @@ pub enum Visibility {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskBudgets {
-	/// Maximum wall-clock runtime.
+	/// Maximum Codex adapter elapsed time.
 	pub wall_seconds: u64,
 	/// Maximum agent steps.
 	pub max_steps: u32,
