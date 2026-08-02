@@ -4,6 +4,51 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 const schema = await readFile(resolve(import.meta.dirname, 'schema.sql'), 'utf8');
+const calibrationIntegration = await readFile(
+  resolve(import.meta.dirname, 'calibration-integration.sql'),
+  'utf8',
+);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+void test('escapes every regular-expression metacharacter', () => {
+  assert.equal(escapeRegExp('a.b(c)[d]\\e'), 'a\\.b\\(c\\)\\[d\\]\\\\e');
+});
+
+void test('accepts both provenance classes but keeps caller class gates exact', () => {
+  const provenanceValidator =
+    schema.match(/create function aiq_private\.run_provenance_v2_is_valid[\s\S]*?\n\$_\$;/)?.[0] ??
+    '';
+  const officialPackageValidator =
+    schema.match(/create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/)?.[0] ??
+    '';
+  const officialStageValidator =
+    schema.match(
+      /create function aiq_private\.run_provenance_v2_matches_stage[\s\S]*?\n\$\$;/,
+    )?.[0] ?? '';
+  const calibrationPackageValidator =
+    schema.match(
+      /create function aiq_private\.calibration_package_v3_is_valid[\s\S]*?\n\$\$;/,
+    )?.[0] ?? '';
+
+  assert.match(provenanceValidator, /run_class' not in \('official', 'calibration'\)/);
+  assert.match(officialPackageValidator, /run_class' <> 'official'/);
+  assert.match(officialStageValidator, /stage ->> 'run_class' is distinct from 'official'/);
+  assert.match(
+    officialStageValidator,
+    /candidate ->> 'run_class' is distinct from stage ->> 'run_class'/,
+  );
+  assert.match(calibrationPackageValidator, /provenance ->> 'run_class' <> 'calibration'/);
+  assert.doesNotMatch(calibrationPackageValidator, /provenance ->> 'runner_node_id'/);
+});
+
+void test('runs calibration against the production initializer catalog authority', () => {
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.1'\)/);
+  assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
+  assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
+});
 
 void test('keeps calibration evidence separate from Official publication tables', () => {
   for (const table of [
@@ -80,7 +125,7 @@ void test('separates verifier and publisher RPC authority', () => {
     assert.match(
       schema,
       new RegExp(
-        `grant execute on function public\\.${rpc.replace(/[()]/g, '\\$&')}[\\s\\S]{0,80}to aiq_verifier`,
+        `grant execute on function public\\.${escapeRegExp(rpc)}[\\s\\S]{0,80}to aiq_verifier`,
       ),
     );
   }
