@@ -959,6 +959,7 @@ mod tests {
 	use serde_json;
 	use sha2::{Digest, Sha256};
 
+	use crate::scoring;
 	use crate::{
 		adapter::{
 			self, ArtifactReference, ArtifactSink, AuthenticationProbe, CapabilityValidation,
@@ -974,7 +975,7 @@ mod tests {
 			ResultFailure, ResultStatus, ToolUsage,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
-		scoring::{self, AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_VERSION},
+		scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_VERSION},
 		submission::{
 			self, ArtifactUploadRequest, ArtifactUploadTransport, MAX_SUBMISSION_BYTES,
 			SecretToken, SubmissionOutcomeKind, SubmissionRequest, SubmissionTransport,
