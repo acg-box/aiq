@@ -308,7 +308,8 @@ pub struct ResultFailure {
 	pub retryable: bool,
 }
 
-/// Measured execution latency.
+/// Measured Codex invocation latency. It includes model and local tool execution
+/// and excludes workspace setup, workspace sealing, and evaluator replay.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Latency {
@@ -326,6 +327,46 @@ pub struct ToolUsage {
 	pub total_calls: u32,
 	/// Calls grouped by stable Codex item type.
 	pub by_tool: BTreeMap<String, u32>,
+	/// Provider-reported token metadata from `turn.completed`, when present.
+	#[serde(skip)]
+	pub provider_tokens: ProviderTokenUsage,
+}
+
+/// Provider-reported token usage. Missing counters remain unknown and are not
+/// replaced with zero or derived from other counters.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderTokenUsage {
+	/// Total input tokens reported by the provider, including cached input.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub input: Option<u64>,
+	/// Cached subset of the reported input tokens.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub cached_input: Option<u64>,
+	/// Input tokens written to provider prompt cache, when reported.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub cache_write_input: Option<u64>,
+	/// Total output tokens reported by the provider, including reasoning output.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub output: Option<u64>,
+	/// Reasoning subset of the reported output tokens.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub reasoning: Option<u64>,
+	/// Provider-reported total tokens. This value is never derived locally.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub total: Option<u64>,
+}
+impl ProviderTokenUsage {
+	/// Returns true when the provider reported no supported counters.
+	#[must_use]
+	pub const fn is_empty(&self) -> bool {
+		self.input.is_none()
+			&& self.cached_input.is_none()
+			&& self.cache_write_input.is_none()
+			&& self.output.is_none()
+			&& self.reasoning.is_none()
+			&& self.total.is_none()
+	}
 }
 
 /// Deterministic post-run manifest of a candidate workspace tree.
@@ -742,6 +783,9 @@ pub struct RunRecord {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Maximum concurrent task executions, when recorded by the producing runner.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub execution_concurrency: Option<usize>,
 	/// Exact 17-entry model matrix.
 	pub models: Vec<ModelConfig>,
 	/// Start time as Unix milliseconds.
@@ -778,6 +822,9 @@ pub struct CalibrationRunRecord {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Maximum concurrent task executions, when recorded by the producing runner.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub execution_concurrency: Option<usize>,
 	/// Ordered selected models.
 	pub models: Vec<ModelConfig>,
 	/// Selected task identifiers in deterministic order.
@@ -910,56 +957,57 @@ where
 	) -> Result<Vec<(usize, usize, usize)>, RunnerError> {
 		let mut live_cells = Vec::new();
 
-		for (model_index, model) in self.models.iter().enumerate() {
+		for (task_index, model_index) in
+			task_major_execution_order(self.tasks.len(), self.models.len())
+		{
+			let model = &self.models[model_index];
 			let model_validation = self.validation.model(*model).ok_or_else(|| {
 				RunnerError::new("capability validation omitted a selected entry")
 			})?;
+			let task = &self.tasks[task_index];
+			let index = model_index * self.tasks.len() + task_index;
 
-			for (task_index, task) in self.tasks.iter().enumerate() {
-				let index = model_index * self.tasks.len() + task_index;
-
-				if committed.contains_key(&index) {
-					continue;
-				}
-				if model_validation.status == CapabilityValidationStatus::Available {
-					self.workspace_provider
-						.quarantine_interrupted(&self.commitments.run_id, *model, task)
-						.map_err(|error| RunnerError::new(error.to_string()))?;
-					live_cells.push((index, model_index, task_index));
-
-					continue;
-				}
-
-				let mut result = match model_validation.status {
-					CapabilityValidationStatus::Unsupported => unavailable_result(
-						self.manifest,
-						task,
-						*model,
-						&self.commitments.run_id,
-						self.codex_version,
-						self.observed_at,
-						ResultStatus::Unsupported,
-						FailureKind::CapabilityUnavailable,
-						&model_validation.reason,
-					)?,
-					CapabilityValidationStatus::Unavailable => unavailable_result(
-						self.manifest,
-						task,
-						*model,
-						&self.commitments.run_id,
-						self.codex_version,
-						self.observed_at,
-						ResultStatus::Failed,
-						FailureKind::CapabilityValidationFailed,
-						&model_validation.reason,
-					)?,
-					CapabilityValidationStatus::Available => unreachable!(),
-				};
-
-				result.assign_result_id()?;
-				committed.insert(index, result);
-				self.persist_checkpoint(checkpoint, committed)?;
+			if committed.contains_key(&index) {
+				continue;
 			}
+			if model_validation.status == CapabilityValidationStatus::Available {
+				self.workspace_provider
+					.quarantine_interrupted(&self.commitments.run_id, *model, task)
+					.map_err(|error| RunnerError::new(error.to_string()))?;
+				live_cells.push((index, model_index, task_index));
+
+				continue;
+			}
+
+			let mut result = match model_validation.status {
+				CapabilityValidationStatus::Unsupported => unavailable_result(
+					self.manifest,
+					task,
+					*model,
+					&self.commitments.run_id,
+					self.codex_version,
+					self.observed_at,
+					ResultStatus::Unsupported,
+					FailureKind::CapabilityUnavailable,
+					&model_validation.reason,
+				)?,
+				CapabilityValidationStatus::Unavailable => unavailable_result(
+					self.manifest,
+					task,
+					*model,
+					&self.commitments.run_id,
+					self.codex_version,
+					self.observed_at,
+					ResultStatus::Failed,
+					FailureKind::CapabilityValidationFailed,
+					&model_validation.reason,
+				)?,
+				CapabilityValidationStatus::Available => unreachable!(),
+			};
+
+			result.assign_result_id()?;
+			committed.insert(index, result);
+			self.persist_checkpoint(checkpoint, committed)?;
 		}
 
 		Ok(live_cells)
@@ -1162,6 +1210,15 @@ where
 			.persist(self.checkpoint_path)
 			.map_err(|error| RunnerError::new(error.to_string()))
 	}
+}
+
+fn task_major_execution_order(
+	task_count: usize,
+	model_count: usize,
+) -> impl Iterator<Item = (usize, usize)> {
+	(0..task_count).flat_map(move |task_index| {
+		(0..model_count).map(move |model_index| (task_index, model_index))
+	})
 }
 
 struct SealedWorkspace {
@@ -1518,6 +1575,7 @@ where
 		schedule_slot: slot,
 		task_set_hash: set_hash,
 		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		execution_concurrency: None,
 		models: MODEL_MATRIX.to_vec(),
 		started_unix_ms: scheduled_unix_ms,
 		finished_unix_ms: scheduled_unix_ms,
@@ -1591,6 +1649,30 @@ pub fn parse_codex_tool_usage(stdout: &str) -> ToolUsage {
 	let mut usage = ToolUsage::default();
 
 	for line in stdout.lines() {
+		if let Ok(event) = serde_json::from_str::<Value>(line)
+			&& event.get("type").and_then(Value::as_str) == Some("turn.completed")
+			&& let Some(provider) = event.get("usage").and_then(Value::as_object)
+		{
+			merge_provider_counter(&mut usage.provider_tokens.input, provider, "input_tokens");
+			merge_provider_counter(
+				&mut usage.provider_tokens.cached_input,
+				provider,
+				"cached_input_tokens",
+			);
+			merge_provider_counter(
+				&mut usage.provider_tokens.cache_write_input,
+				provider,
+				"cache_write_input_tokens",
+			);
+			merge_provider_counter(&mut usage.provider_tokens.output, provider, "output_tokens");
+			merge_provider_counter(
+				&mut usage.provider_tokens.reasoning,
+				provider,
+				"reasoning_output_tokens",
+			);
+			merge_provider_counter(&mut usage.provider_tokens.total, provider, "total_tokens");
+		}
+
 		let Some(item) = adapter::normalize_codex_item(line.as_bytes()) else {
 			continue;
 		};
@@ -1613,6 +1695,21 @@ pub fn parse_codex_tool_usage(stdout: &str) -> ToolUsage {
 	}
 
 	usage
+}
+
+fn merge_provider_counter(
+	accumulator: &mut Option<u64>,
+	usage: &serde_json::Map<String, Value>,
+	field: &str,
+) {
+	let Some(observed) = usage.get(field).and_then(Value::as_u64) else {
+		return;
+	};
+
+	*accumulator = match *accumulator {
+		Some(current) => Some(current.checked_add(observed).unwrap_or(u64::MAX)),
+		None => Some(observed),
+	};
 }
 
 /// Executes a deterministic selected matrix through the normal local runner.
@@ -1822,6 +1919,7 @@ where
 		commitments,
 		checkpoint,
 		evaluator_results_artifact,
+		local.jobs,
 	))
 }
 
@@ -2770,6 +2868,7 @@ fn selected_run_record(
 	commitments: RunCommitments,
 	checkpoint: RunCheckpoint,
 	evaluator_results_artifact: ArtifactReference,
+	execution_concurrency: usize,
 ) -> SelectedRun {
 	let finished_unix_ms = unix_ms();
 
@@ -2780,6 +2879,7 @@ fn selected_run_record(
 			schedule_slot: slot,
 			task_set_hash: commitments.task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			execution_concurrency: Some(execution_concurrency),
 			models: MODEL_MATRIX.to_vec(),
 			started_unix_ms: checkpoint.started_unix_ms,
 			finished_unix_ms,
@@ -2798,6 +2898,7 @@ fn selected_run_record(
 			schedule_slot: slot,
 			task_set_hash: commitments.task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			execution_concurrency: Some(execution_concurrency),
 			models: models.to_vec(),
 			task_ids: tasks.iter().map(|task| task.task_id.clone()).collect(),
 			started_unix_ms: checkpoint.started_unix_ms,
@@ -4151,6 +4252,7 @@ mod tests {
 			commitments,
 			checkpoint,
 			evaluator_results_artifact,
+			1,
 		);
 		let SelectedRun::Calibration(run) = selected else {
 			panic!("full calibration must not emit an Official RunRecord")
@@ -5263,6 +5365,18 @@ mod tests {
 	}
 
 	#[test]
+	fn pending_execution_is_task_major_round_robin_but_keeps_model_major_indexes() {
+		let order = super::task_major_execution_order(3, 2).collect::<Vec<_>>();
+		let canonical_indexes = order
+			.iter()
+			.map(|(task_index, model_index)| model_index * 3 + task_index)
+			.collect::<Vec<_>>();
+
+		assert_eq!(order, vec![(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]);
+		assert_eq!(canonical_indexes, vec![0, 3, 1, 4, 2, 5]);
+	}
+
+	#[test]
 	fn full_matrix_worst_case_inline_results_fit_the_signed_submission_bound() {
 		let (_, _, _, capability_validation, _, _) = selected_fixture(1, MODEL_MATRIX.len());
 		let node_id = capability_validation.node_id.clone();
@@ -5310,6 +5424,7 @@ mod tests {
 					("mcp_tool_call".to_owned(), u32::MAX),
 					("web_search".to_owned(), u32::MAX),
 				]),
+				provider_tokens: runner::ProviderTokenUsage::default(),
 			};
 			result.provenance.node_id = node_id.clone();
 			result.provenance.codex_version = "codex fixture".to_owned();
