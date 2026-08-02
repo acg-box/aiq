@@ -206,6 +206,7 @@ Use the CLI help from the built binary as the exact argument contract:
 
 ```sh
 cargo run -p aiq-runner -- preflight --help
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- run --help
 ```
 
@@ -216,6 +217,11 @@ timer owner must invoke both approved daily occurrences with the schedule's loca
 schedule file. Dispatch outside that occurrence's exact window fails closed.
 Preserve the checkpoint and artifact root after interruption so an operator can
 resume the same attempt rather than discard completed evidence.
+
+Run `admit-permissions` with the exact planned Official paths before dispatch.
+It returns model-free managed-profile and sandbox-canary evidence without
+reserving the create-once Official output. A successful receipt is only the
+permission gate; `run` still owns schedule, capacity, and execution admission.
 
 Use non-synthetic evidence and the complete 17-by-72 shape for an Official run.
 Score, package, and submit only after all required artifacts and bindings
