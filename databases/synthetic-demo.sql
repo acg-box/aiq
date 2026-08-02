@@ -307,7 +307,7 @@ insert into aiq_private.aiq_task_results (
   result_id, source_result_id, run_id, task_id, task_version, domain,
   attempt_number, outcome,
   task_score, scorer_version, failure_code, failure_responsibility,
-  failure_detail, failure_retryable, latency_ms, tool_usage, usage,
+  failure_detail, failure_retryable, latency_ms, latency_evidence_level, tool_usage, usage,
   result_package_sha256, provenance
 )
 select
@@ -348,6 +348,7 @@ select
   case when (task.task_number + model.matrix_order) % 19 = 0
     then true end,
   9000 + task.task_number * 137,
+  'runner_observed',
   '{
     "steps":4,
     "total_calls":3,

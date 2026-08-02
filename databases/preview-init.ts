@@ -71,6 +71,9 @@ begin
       and status.published_run_count = 0
       and status.published_leaderboard_count = 0
       and status.published_trend_point_count = 0
+      and status.calibration_run_count = 0
+      and status.calibration_result_count = 0
+      and status.calibration_score_count = 0
       and status.non_synthetic_evidence_count = 0
       and status.canonical_model_matrix
   )

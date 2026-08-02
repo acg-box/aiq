@@ -25,6 +25,9 @@ const expectedPreviewStatus = {
   published_run_count: 0,
   published_leaderboard_count: 0,
   published_trend_point_count: 0,
+  calibration_run_count: 0,
+  calibration_result_count: 0,
+  calibration_score_count: 0,
   non_synthetic_evidence_count: 0,
   canonical_model_matrix: true,
 };
@@ -105,6 +108,9 @@ void test('prepares schema and synthetic data in one greenfield transaction', as
   assert.match(sql, /from public\.aiq_preview_status_v1 status/);
   assert.match(sql, /status\.synthetic_task_result_count = 1224/);
   assert.match(sql, /status\.non_synthetic_evidence_count = 0/);
+  assert.match(sql, /status\.calibration_run_count = 0/);
+  assert.match(sql, /status\.calibration_result_count = 0/);
+  assert.match(sql, /status\.calibration_score_count = 0/);
   assert.match(sql, /status\.canonical_model_matrix/);
 });
 
