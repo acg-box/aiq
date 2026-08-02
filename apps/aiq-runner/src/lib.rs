@@ -28,11 +28,10 @@ pub use self::{
 	},
 };
 
+#[cfg(test)]
+use std::sync::{PoisonError, RwLockReadGuard};
+
 use clap as _;
-#[cfg(test)]
-use std::sync::PoisonError;
-#[cfg(test)]
-use std::sync::RwLockReadGuard;
 
 #[cfg(test)]
 static PROCESS_TEST_ISOLATION: std::sync::RwLock<()> = std::sync::RwLock::new(());
