@@ -21,11 +21,15 @@ public identities: runner, verifier, and publisher.
 
 A successful receipt reports:
 
+- AIQ Core task release `1.0.1` with benchmark identifier `aiq-core@1.0.1`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
+- 40 private tables with enabled and forced RLS;
+- 13 security-invoker public views;
+- two hardened, non-login gateway roles;
 - catalog digest
-  `sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
+  `sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.
@@ -33,13 +37,87 @@ expected outputs, signing keys, tokens, or database credentials.
 ## Security model
 
 The schema stores AIQ tables in `aiq_private`, enables and forces RLS, and
-exposes nine security-invoker public views plus narrow RPCs. Browser roles have
+exposes 13 security-invoker public views plus narrow RPCs. Browser roles have
 read-only access. Server gateways control submission, verification, publication,
 and private Storage operations.
 
 Runner packages enter an unverified inbox. A verifier identity records the
 normalized v3 stage and attestation. A separate publisher identity completes
 publication.
+
+Calibration packages use the same content-addressed package ingress and claim
+lifecycle. The envelope has `payload_type: aiq.calibration-run.v3`, and the
+payload has `schema_version: aiq.calibration-run.v3`. The database accepts only
+`claimed_trust: untrusted`, `classification: local_calibration_non_official`,
+`provenance.run_class: calibration`, and `official_eligible: false`.
+
+The verifier uses these calibration-only RPCs in order:
+
+1. `aiq_stage_calibration_verification(stage, target_inbox_id,
+supplied_lease_token, supplied_attempt)` records one
+   `aiq.calibration-verified-stage.v1` document.
+2. `aiq_record_calibration_attestation(attestation, target_inbox_id,
+supplied_lease_token, supplied_attempt)` records one
+   `aiq.calibration-verifier-attestation.v1` document. The replay status must be
+   `evaluator_replayed`.
+3. The distinct publisher uses `aiq_publish_calibration_evidence(target_run_id,
+target_package_sha256, target_inbox_id, supplied_lease_token,
+supplied_attempt)`.
+
+The RPCs return `recorded`, `published`, or `duplicate`. A different retry for
+the same identity is a conflict. Calibration evidence is append-only and uses
+durable Storage ownership references. Official publication uses the same
+append-only ownership map. Each path attaches a durable reference to the
+submitted package and every claim-bound audit artifact before it retires claim
+references. Generic reference deactivation cannot release publication-owned
+objects. Calibration cannot write Official batch, package, run, score,
+leaderboard, or trend data.
+
+Browser roles can read published rows from `public_calibration_runs`,
+`public_calibration_results`, and `public_calibration_scores`. These
+security-invoker views do not expose package identities, digests, node
+identities, envelopes, raw responses, private artifacts, or raw failure
+messages. Calibration results keep the normalized outcome and expose a bounded
+failure code, the five-state public status, and a fixed explanation summary.
+Efficiency values distinguish observed Codex adapter invocation elapsed time,
+provider-reported token usage, and verifier-recomputed API-equivalent
+estimates. Unknown values are `NULL`. Standard short-context rates come from
+`https://developers.openai.com/api/docs/pricing`. A result with more than
+272000 aggregate input tokens has status `unavailable_context_band` and no cost
+or cost-evidence authority because aggregate turn usage cannot identify
+per-request context bands. The method says that actual subscription spend is
+not measured. The database does not store or infer that value.
+
+`public_model_efficiency` is the separate published Official efficiency
+aggregate. It does not change AIQ scores or ranking. Elapsed columns aggregate
+observed Codex adapter invocation elapsed time. They do not represent batch
+makespan. The persisted Rust aggregate supplies the median and p95. An even
+sample median is the integer average of the two middle values. The p95 uses the
+nearest-rank value. Token counters keep the raw provider values. Reasoning
+output is a subset of output and is not added twice. Cost uses exact integer
+`standard_api_equivalent_usd_nanos` values and an immutable pricing-method
+digest. The pricing record keeps its method, version, observation date, source,
+currency, Standard processing tier, rates, formula, and limitation. Missing or
+inconsistent usage keeps the cost `NULL` and records an unavailable status.
+
+The aggregate views expose attempted-result, adapter-invoked,
+elapsed-observed, token-observed, and priced counts. A cost total is available
+only when all results have an estimate. The retained verified stage keeps the
+raw provider counters and the immutable pricing record. This evidence supports
+later contemporaneous and rebased price views without changing the recorded
+estimate.
+
+An attempted result is a selected cell with signed result evidence. The
+adapter-invoked count excludes cells stopped by capability validation or
+workspace preflight. The elapsed-observed count can be lower than the
+adapter-invoked count when the verifier has no bounded elapsed value.
+
+Calibration publication creates durable `calibration_run` ownership for the
+submitted package and every claim-bound audit artifact. This includes declared
+evaluator results, result and capability-probe output, final response, workspace
+manifest, and workspace snapshot artifacts. The publisher reconciles these
+references before it retires the temporary claim references. An exact publisher
+retry reconciles them again.
 
 ## Disposable validation
 
@@ -88,6 +166,15 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
 - `synthetic-demo.sql` loads deterministic non-production data.
 - `integration.sql` checks queue, lease, stage, attestation, publication, and
   Storage state flows.
+
+Storage deletion leasing is DB-gated. The service must record a successful full
+inventory epoch with `aiq_record_storage_inventory_epoch(count, digest)` after
+it resolves every mismatch. The supplied count and canonical object-identity
+digest must match the live registry. The digest is the JCS SHA-256 of an array
+ordered bytewise by bucket and key. Each item has `bucket`, `key`,
+`content_sha256`, and `bytes`. Deleted registry objects are not in the array. An
+epoch is valid for 24 hours. Any later mismatch requires another successful
+epoch before the database leases more deletions.
 
 The opt-in PostgreSQL 17 initializer test also runs the initializer twice. The
 first call must produce the complete production reference receipt. The second

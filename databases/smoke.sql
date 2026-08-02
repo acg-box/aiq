@@ -8,16 +8,18 @@ declare
   private_table_count integer;
   public_view_count integer;
   security_invoker_view_count integer;
+  current_scoring_count integer;
+  current_task_count integer;
+  current_task_set_count integer;
 begin
   select count(*) into private_table_count
   from pg_catalog.pg_class relation
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'aiq_private'
-    and relation.relkind in ('r', 'p')
-    and relation.relname like 'aiq\_%' escape '\';
+    and relation.relkind in ('r', 'p');
 
-  if private_table_count <> 31 then
-    raise exception 'expected 31 private AIQ tables, found %', private_table_count;
+  if private_table_count <> 40 then
+    raise exception 'expected 40 private AIQ, pricing, and calibration tables, found %', private_table_count;
   end if;
 
   select count(*) into forced_rls_count
@@ -25,7 +27,6 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'aiq_private'
     and relation.relkind in ('r', 'p')
-    and relation.relname like 'aiq\_%' escape '\'
     and relation.relrowsecurity
     and relation.relforcerowsecurity;
 
@@ -49,9 +50,9 @@ begin
       or relation.relname = 'aiq_preview_status_v1'
     );
 
-  if public_view_count <> 9 or security_invoker_view_count <> 9 then
+  if public_view_count <> 13 or security_invoker_view_count <> 13 then
     raise exception
-      'expected 9 security-invoker public views, found % views and % invoker views',
+      'expected 13 security-invoker public views, found % views and % invoker views',
       public_view_count, security_invoker_view_count;
   end if;
 
@@ -138,10 +139,36 @@ begin
     and not rolreplication
     and not rolbypassrls
     and not rolcanlogin
-    and not rolinherit;
+    and not rolinherit
+    and pg_catalog.pg_has_role('authenticator',rolname,'MEMBER');
 
   if hardened_role_count <> 2 then
     raise exception 'the verifier and publisher roles are not hardened';
+  end if;
+
+  select count(*) into current_task_set_count
+  from aiq_private.aiq_task_sets task_set
+  where task_set.task_set_id = 'aiq-core'
+    and task_set.task_set_version = '1.0.1';
+
+  select count(*) into current_task_count
+  from aiq_private.aiq_task_catalog task
+  where task.task_set_id = 'aiq-core'
+    and task.task_set_version = '1.0.1'
+    and task.task_version = '1.0.1'
+    and task.scorer_version = '1.0.0';
+
+  select count(*) into current_scoring_count
+  from aiq_private.aiq_scoring_versions scoring
+  where scoring.scoring_version = '1.0.0'
+    and scoring.benchmark_version = 'aiq-core@1.0.1';
+
+  if current_task_set_count <> 1
+    or current_task_count <> 72
+    or current_scoring_count <> 1
+  then
+    raise exception
+      'expected AIQ Core 1.0.1 with 72 task 1.0.1 rows and scorer 1.0.0';
   end if;
 
   if not pg_catalog.has_function_privilege(
@@ -166,6 +193,31 @@ begin
       'EXECUTE'
     )
     or not pg_catalog.has_function_privilege(
+      'aiq_verifier',
+      'public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'aiq_verifier',
+      'public.aiq_record_calibration_attestation(jsonb,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or pg_catalog.has_function_privilege(
+      'aiq_publisher',
+      'public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'aiq_publisher',
+      'public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or pg_catalog.has_function_privilege(
+      'aiq_verifier',
+      'public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
       'service_role',
       'public.aiq_enqueue_submission(jsonb,jsonb,jsonb)',
       'EXECUTE'
@@ -173,6 +225,11 @@ begin
     or not pg_catalog.has_function_privilege(
       'service_role',
       'public.aiq_register_storage_object(text,text,text,text,text,bigint,text,timestamp with time zone)',
+      'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'service_role',
+      'public.aiq_record_storage_inventory_epoch(bigint,text)',
       'EXECUTE'
     )
   then
@@ -194,6 +251,12 @@ select
   (select count(*) from public.public_runs) as run_count,
   (select count(*) from public.public_scoring_versions) as scoring_version_count,
   (select count(*) from public.public_task_coverage) as task_coverage_count,
+  (select count(*) from public.public_calibration_runs) as calibration_run_count,
+  (select count(*) from public.public_calibration_results) as calibration_result_count,
+  (select concat_ws(':',status,failure_code,explanation_code,explanation_summary)
+   from public.public_calibration_results limit 1) as calibration_result_failure_shape,
+  (select count(*) from public.public_calibration_scores) as calibration_score_count,
+  (select count(*) from public.public_model_efficiency) as model_efficiency_count,
   (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
@@ -208,6 +271,12 @@ select
   (select count(*) from public.public_runs) as run_count,
   (select count(*) from public.public_scoring_versions) as scoring_version_count,
   (select count(*) from public.public_task_coverage) as task_coverage_count,
+  (select count(*) from public.public_calibration_runs) as calibration_run_count,
+  (select count(*) from public.public_calibration_results) as calibration_result_count,
+  (select concat_ws(':',status,failure_code,explanation_code,explanation_summary)
+   from public.public_calibration_results limit 1) as calibration_result_failure_shape,
+  (select count(*) from public.public_calibration_scores) as calibration_score_count,
+  (select count(*) from public.public_model_efficiency) as model_efficiency_count,
   (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;

@@ -235,7 +235,7 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.0',
+        task_set_version: '1.0.1',
         identity_sha256: object(catalog.identity_commitment).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
@@ -363,7 +363,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.0', '1\.0\.0'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.1', '1\.0\.0'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -379,8 +379,22 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       task_count: prepared.receipt.task_count,
       model_config_count: prepared.receipt.model_config_count,
       public_node_count: prepared.receipt.public_node_count,
+      private_table_count: prepared.receipt.private_table_count,
+      forced_rls_table_count: prepared.receipt.forced_rls_table_count,
+      public_view_count: prepared.receipt.public_view_count,
+      security_invoker_view_count: prepared.receipt.security_invoker_view_count,
+      hardened_gateway_role_count: prepared.receipt.hardened_gateway_role_count,
     },
-    { task_count: 72, model_config_count: 17, public_node_count: 3 },
+    {
+      task_count: 72,
+      model_config_count: 17,
+      public_node_count: 3,
+      private_table_count: 40,
+      forced_rls_table_count: 40,
+      public_view_count: 13,
+      security_invoker_view_count: 13,
+      hardened_gateway_role_count: 2,
+    },
   );
   strictEqual(
     prepared.receipt.corpus_commitment_sha256,
@@ -480,6 +494,11 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(receipt.task_count, 72);
   strictEqual(receipt.model_config_count, 17);
   strictEqual(receipt.public_node_count, 3);
+  strictEqual(receipt.private_table_count, 40);
+  strictEqual(receipt.forced_rls_table_count, 40);
+  strictEqual(receipt.public_view_count, 13);
+  strictEqual(receipt.security_invoker_view_count, 13);
+  strictEqual(receipt.hardened_gateway_role_count, 2);
   strictEqual(Object.keys(receipt.node_ids).length, 3);
 });
 
@@ -831,10 +850,20 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(receipt.task_count, 72);
     strictEqual(receipt.model_config_count, 17);
     strictEqual(receipt.public_node_count, 3);
+    strictEqual(receipt.private_table_count, 40);
+    strictEqual(receipt.forced_rls_table_count, 40);
+    strictEqual(receipt.public_view_count, 13);
+    strictEqual(receipt.security_invoker_view_count, 13);
+    strictEqual(receipt.hardened_gateway_role_count, 2);
     strictEqual(readiness.initialized, true);
     strictEqual(readiness.task_count, 72);
     strictEqual(readiness.model_config_count, 17);
     strictEqual(readiness.production_node_count, 3);
+    strictEqual(readiness.private_table_count, 40);
+    strictEqual(readiness.forced_rls_table_count, 40);
+    strictEqual(readiness.public_view_count, 13);
+    strictEqual(readiness.security_invoker_view_count, 13);
+    strictEqual(readiness.hardened_gateway_role_count, 2);
 
     const expectedPublicShape = {
       distributed_radar_count: 3,
