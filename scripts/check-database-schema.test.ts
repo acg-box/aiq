@@ -61,7 +61,7 @@ await test('checker rejects an exposed base table or missing forced RLS', async 
         schema.replace('create table aiq_private.aiq_runs', 'create table public.aiq_runs'),
         syntheticDemo,
       ),
-    /31 AIQ base tables|public\.aiq_/,
+    /40 private base tables|public\.aiq_/,
   );
   assert.throws(
     () =>
@@ -127,7 +127,7 @@ await test('checker rejects an extra public view or transaction-start claim leas
         ),
         syntheticDemo,
       ),
-    /nine read views/,
+    /13 read views/,
   );
   const changed = schema.replace(
     'claim_expires_at = database_now + make_interval(secs => requested_lease_seconds)',
@@ -148,5 +148,32 @@ await test('checker rejects nonterminal or unlabeled demonstration data', async 
   assert.throws(
     () => checkDatabaseSchemaSources(schema, syntheticDemo.replace('explicitly synthetic', '')),
     /explicitly synthetic/,
+  );
+});
+
+await test('checker rejects a missing workspace-integrity acceptance path', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "'workspace_unavailable','workspace_integrity'\n    )",
+    "'workspace_unavailable'\n    )",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /accept workspace_integrity as a failure kind/,
+  );
+});
+
+await test('checker rejects workspace integrity in an unattempted filter', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "'capability_unavailable','capability_validation_failed','workspace_unavailable'\n  );",
+    "'capability_unavailable','capability_validation_failed','workspace_unavailable',\n" +
+      "    'workspace_integrity'\n  );",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /workspace_integrity is attempted/,
   );
 });

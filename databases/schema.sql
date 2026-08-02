@@ -1744,7 +1744,7 @@ begin
       'spawn','timeout','unsupported_model','authentication','subscription_limit','non_zero_exit',
       'capability_unavailable','capability_validation_failed','missing_evaluator',
       'missing_response','evaluator_failure','budget_exceeded','output_truncated',
-      'workspace_unavailable'
+      'workspace_unavailable','workspace_integrity'
     )
     or not aiq_private.dto_ascii_is_valid(failure -> 'message', 128)
     or jsonb_typeof(failure -> 'retryable') <> 'boolean'
@@ -1825,7 +1825,7 @@ begin
       or (
         failure ->> 'kind' in (
           'spawn','authentication','subscription_limit','capability_validation_failed',
-          'evaluator_failure','workspace_unavailable'
+          'evaluator_failure','workspace_unavailable','workspace_integrity'
         ) and candidate -> 'task_score' <> 'null'::jsonb
       )
       or failure ->> 'kind' in ('capability_unavailable','missing_evaluator')
@@ -1853,12 +1853,26 @@ begin
     'capability_unavailable','capability_validation_failed','workspace_unavailable'
   );
   if attempted then
-    if candidate -> 'workspace_manifest' = 'null'::jsonb
+    if failure ->> 'kind' = 'workspace_integrity' then
+      if not (
+        (candidate -> 'workspace_manifest' = 'null'::jsonb
+          and (select count(*) from jsonb_array_elements(candidate -> 'artifacts') item
+            where item ->> 'kind' = 'workspace-snapshot.json') = 0)
+        or (
+          candidate -> 'workspace_manifest' <> 'null'::jsonb
+          and aiq_private.dto_artifact_is_valid(
+            candidate -> 'workspace_manifest', array['workspace-manifest.json'], 4194304
+          )
+          and (select count(*) from jsonb_array_elements(candidate -> 'artifacts') item
+            where item ->> 'kind' = 'workspace-snapshot.json') = 1
+        )
+      ) then return false; end if;
+    elsif candidate -> 'workspace_manifest' = 'null'::jsonb
       or not aiq_private.dto_artifact_is_valid(
         candidate -> 'workspace_manifest', array['workspace-manifest.json'], 4194304
       )
       or (select count(*) from jsonb_array_elements(candidate -> 'artifacts') item
-          where item ->> 'kind' = 'workspace-snapshot.json') <> 1
+        where item ->> 'kind' = 'workspace-snapshot.json') <> 1
     then return false; end if;
   elsif candidate -> 'workspace_manifest' <> 'null'::jsonb
     or exists (
@@ -3071,7 +3085,7 @@ begin
   elsif (
     status in ('failed', 'unevaluated')
     and failure_kind in (
-      'evaluator_failure', 'workspace_unavailable', 'missing_evaluator',
+      'evaluator_failure', 'workspace_unavailable', 'workspace_integrity', 'missing_evaluator',
       'spawn', 'authentication', 'subscription_limit', 'capability_validation_failed'
     )
   )
@@ -3101,7 +3115,7 @@ create function aiq_private.normalized_responsibility_from_source(source jsonb, 
     when source -> 'failure' ->> 'kind' in ('missing_response', 'output_truncated')
       then 'wrong_artifact'
     when source -> 'failure' ->> 'kind' in (
-      'evaluator_failure', 'workspace_unavailable', 'missing_evaluator'
+      'evaluator_failure', 'workspace_unavailable', 'workspace_integrity', 'missing_evaluator'
     ) then 'benchmark_infrastructure'
     when source -> 'failure' ->> 'kind' in (
       'spawn', 'authentication', 'subscription_limit', 'capability_validation_failed'
@@ -14460,7 +14474,7 @@ create table aiq_private.calibration_task_results (
     or (outcome='wrong_artifact' and failure_code is not null
       and failure_code='missing_response')
     or (outcome='invalid' and failure_code is not null and failure_code in (
-      'evaluator_failure','workspace_unavailable','missing_evaluator','spawn',
+      'evaluator_failure','workspace_unavailable','workspace_integrity','missing_evaluator','spawn',
       'authentication','subscription_limit','capability_validation_failed'
     ))
     or (outcome='not_applicable' and failure_code is not null
