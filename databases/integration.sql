@@ -713,4 +713,50 @@ select pg_temp.aiq_assert(
 );
 reset role;
 
+-- Calibration uses a separate forced-RLS, published-only surface. The
+-- existing Official integration flow must not create calibration evidence.
+select pg_temp.aiq_assert(
+  (select count(*) = 6
+   from pg_catalog.pg_class relation
+   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+   where namespace.nspname = 'aiq_private'
+     and relation.relname like 'calibration\_%' escape '\'
+     and relation.relkind = 'r'
+     and relation.relrowsecurity
+     and relation.relforcerowsecurity),
+  'every calibration evidence table must enable and force RLS'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 0 from public.public_calibration_runs)
+  and (select count(*) = 0 from public.public_calibration_results)
+  and (select count(*) = 0 from public.public_calibration_scores),
+  'Official verification must never enter public calibration views'
+);
+select pg_temp.aiq_assert(
+  not pg_catalog.has_function_privilege(
+    'anon','public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)','EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'authenticated','public.aiq_record_calibration_attestation(jsonb,uuid,uuid,integer)','EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'service_role','public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)','EXECUTE'
+  ),
+  'browser and service roles must not cross calibration verifier or publisher boundaries'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name in (
+        'public_calibration_runs','public_calibration_results','public_calibration_scores'
+      )
+      and column_name in (
+        'package_sha256','content_hash','stage_digest','runner_node_id','verifier_node_id',
+        'publisher_node_id','verification_record','verifier_attestation','failure_code'
+      )
+  ),
+  'public calibration views must not expose private evidence fields'
+);
+
 rollback;
