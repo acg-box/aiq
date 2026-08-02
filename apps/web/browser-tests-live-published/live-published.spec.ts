@@ -31,10 +31,14 @@ const test = base.extend<LivePublishedFixtures>({
   ],
 });
 
+const calibrationRunId = `run_${'8'.repeat(64)}`;
+
 const routes = [
   '/',
   '/runs',
   '/runs/run-live-sol-ultra',
+  '/calibrations',
+  `/calibrations/${calibrationRunId}`,
   '/compare',
   '/trends?range=day',
   '/trends?range=week',
@@ -96,6 +100,59 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     page.getByRole('region', { name: 'Index summary' }).getByText('17', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
+  await expect(
+    page.getByText('not Official / not ranking eligible', { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Calibration model efficiency' }).getByRole('row'),
+  ).toHaveCount(18);
+});
+
+test('calibration history and detail keep one run and one 72-task slice bounded', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/calibrations');
+  const register = page.getByRole('region', { name: 'Public calibration register' });
+  await expect(register.getByRole('row')).toHaveCount(2);
+  await expect(register).toContainText('1,224 retained result cells');
+  await expect(
+    page.getByRole('region', { name: 'Calibration model efficiency' }).getByRole('row'),
+  ).toHaveCount(18);
+  await register.getByRole('link', { name: 'Inspect calibration' }).click();
+
+  await expect(page).toHaveURL(`/calibrations/${calibrationRunId}`);
+  await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
+    'sol · low',
+  );
+  await expect(page.getByRole('status')).toContainText('Showing 72 of 1,224 result cells');
+  const selector = page.getByLabel('Model and reasoning configuration');
+  await expect(selector.locator('option')).toHaveCount(17);
+  const results = page.getByRole('region', { name: 'Calibration results' });
+  await expect(results.getByRole('row')).toHaveCount(73);
+
+  await selector.selectOption('terra:medium');
+  await page.getByRole('button', { name: 'Show 72-task slice' }).click();
+  await expect(page).toHaveURL(`/calibrations/${calibrationRunId}?configuration=terra%3Amedium`);
+  await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
+    'terra · medium',
+  );
+  await expect(results.getByRole('row')).toHaveCount(73);
+
+  const invalid = await request.get(`/calibrations/${calibrationRunId}?configuration=luna%3Aultra`);
+  expect(invalid.status()).toBe(404);
+  expectNoStore(invalid);
+});
+
+test('Official compare efficiency is limited to current leaderboard run identities', async ({
+  page,
+}) => {
+  await page.goto('/compare');
+  const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
+  await expect(efficiency.getByRole('row')).toHaveCount(18);
+  await expect(efficiency).toContainText('run-live-sol-low');
+  await expect(efficiency).not.toContainText(calibrationRunId);
 });
 
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {

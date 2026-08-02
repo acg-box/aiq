@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/calibration-run-v3.schema.json",
+  "title": "AIQ non-Official calibration run v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "official_eligible",
+    "classification",
+    "run_id",
+    "schedule_slot",
+    "task_set_hash",
+    "scoring_version",
+    "execution_concurrency",
+    "models",
+    "task_ids",
+    "started_unix_ms",
+    "finished_unix_ms",
+    "capability_validation",
+    "provenance",
+    "evaluator_results_artifact",
+    "results"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.calibration-run.v3" },
+    "official_eligible": { "const": false },
+    "classification": { "const": "local_calibration_non_official" },
+    "run_id": { "$ref": "#/$defs/runId" },
+    "schedule_slot": { "$ref": "result-package-v3.schema.json#/$defs/scheduleSlot" },
+    "task_set_hash": { "$ref": "#/$defs/sha256" },
+    "scoring_version": { "const": "1.0.0" },
+    "execution_concurrency": { "type": "integer", "minimum": 1, "maximum": 32 },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 17,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/model" }
+    },
+    "task_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 72,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" }
+    },
+    "started_unix_ms": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "finished_unix_ms": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "capability_validation": {
+      "$ref": "result-package-v3.schema.json#/$defs/capabilityValidationReport"
+    },
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "evaluator_results_artifact": {
+      "$ref": "result-package-v3.schema.json#/$defs/evaluatorResultsArtifact"
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1224,
+      "uniqueItems": true,
+      "items": {
+        "allOf": [
+          { "$ref": "result-package-v3.schema.json#/$defs/taskResult" },
+          {
+            "type": "object",
+            "properties": {
+              "task_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
+              "model": { "$ref": "#/$defs/model" }
+            },
+            "required": ["task_id", "model"]
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "runId": { "type": "string", "pattern": "^run_[a-f0-9]{64}(?![\\s\\S])" },
+    "model": {
+      "oneOf": [
+        { "$ref": "result-package-v3.schema.json#/$defs/solLow" },
+        { "$ref": "result-package-v3.schema.json#/$defs/solMedium" },
+        { "$ref": "result-package-v3.schema.json#/$defs/solHigh" },
+        { "$ref": "result-package-v3.schema.json#/$defs/solXhigh" },
+        { "$ref": "result-package-v3.schema.json#/$defs/solMax" },
+        { "$ref": "result-package-v3.schema.json#/$defs/solUltra" },
+        { "$ref": "result-package-v3.schema.json#/$defs/terraLow" },
+        { "$ref": "result-package-v3.schema.json#/$defs/terraMedium" },
+        { "$ref": "result-package-v3.schema.json#/$defs/terraHigh" },
+        { "$ref": "result-package-v3.schema.json#/$defs/terraXhigh" },
+        { "$ref": "result-package-v3.schema.json#/$defs/terraMax" },
+        { "$ref": "result-package-v3.schema.json#/$defs/terraUltra" },
+        { "$ref": "result-package-v3.schema.json#/$defs/lunaLow" },
+        { "$ref": "result-package-v3.schema.json#/$defs/lunaMedium" },
+        { "$ref": "result-package-v3.schema.json#/$defs/lunaHigh" },
+        { "$ref": "result-package-v3.schema.json#/$defs/lunaXhigh" },
+        { "$ref": "result-package-v3.schema.json#/$defs/lunaMax" }
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_class",
+        "corpus_release_id",
+        "corpus_commitment_sha256",
+        "catalog_digest",
+        "task_set_digest",
+        "evaluator_digest",
+        "runtime_digest",
+        "preflight_digest",
+        "harness_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "network_policy_digest",
+        "environment_digest",
+        "source_manifest_digest",
+        "runner_executable_digest",
+        "codex_executable_digest",
+        "permission_evidence_digest"
+      ],
+      "properties": {
+        "schema_version": { "const": "aiq.run-provenance.v2" },
+        "run_class": { "const": "calibration" },
+        "corpus_release_id": {
+          "type": "string",
+          "maxLength": 71,
+          "pattern": "^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\\s\\S])"
+        },
+        "corpus_commitment_sha256": { "$ref": "#/$defs/sha256" },
+        "catalog_digest": { "$ref": "#/$defs/sha256" },
+        "task_set_digest": { "$ref": "#/$defs/sha256" },
+        "evaluator_digest": { "$ref": "#/$defs/sha256" },
+        "runtime_digest": { "$ref": "#/$defs/sha256" },
+        "preflight_digest": { "$ref": "#/$defs/sha256" },
+        "harness_digest": { "$ref": "#/$defs/sha256" },
+        "prompt_digest": { "$ref": "#/$defs/sha256" },
+        "tool_policy_digest": { "$ref": "#/$defs/sha256" },
+        "network_policy_digest": { "$ref": "#/$defs/sha256" },
+        "environment_digest": { "$ref": "#/$defs/sha256" },
+        "source_manifest_digest": { "$ref": "#/$defs/sha256" },
+        "runner_executable_digest": { "$ref": "#/$defs/sha256" },
+        "codex_executable_digest": { "$ref": "#/$defs/sha256" },
+        "permission_evidence_digest": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "x-aiq-cross-field": [
+    "results cardinality equals models times task_ids",
+    "task/model cells are unique",
+    "task_set_hash and run_id are recomputed",
+    "preflight covers the selected models",
+    "signer binds preflight and every result"
+  ]
+}

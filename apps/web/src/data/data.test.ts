@@ -17,13 +17,21 @@ import {
 } from './format.ts';
 import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
 import {
+  CALIBRATION_MODEL_CONFIGURATIONS,
+  CALIBRATION_RUN_PAGE_SIZE,
   CANONICAL_MODEL_MATRIX_IDS,
-  createAiqRepository,
+  buildSeedCalibrationRunPage,
   buildSeedRunHistoryPage,
+  calibrationExplanationSummaryForOutcome,
+  calibrationFailureCodeForOutcome,
+  calibrationStatusForOutcome,
   classifyPublicDataConfiguration,
   collectPaginatedRows,
+  createAiqRepository,
+  decodeCalibrationRunCursor,
   joinModelMatrixWithLeaderboard,
   decodeRunHistoryCursor,
+  encodeCalibrationRunCursor,
   encodeRunHistoryCursor,
   mapRunRow,
   parseDistributedRadarRows,
@@ -51,7 +59,13 @@ import {
 } from './seed.ts';
 import { TREND_SERIES_STYLES } from './trend-styles.ts';
 import { classifyDataProvenance } from './provenance.ts';
-import { isScoredLeaderboardEntry, type RadarNode } from './types.ts';
+import {
+  CALIBRATION_OUTCOMES,
+  isScoredLeaderboardEntry,
+  type PublicCalibrationResult,
+  type PublicCalibrationRunSummary,
+  type RadarNode,
+} from './types.ts';
 
 function distributedRadarRowFromNode(node: RadarNode): DistributedRadarRow {
   return {
@@ -183,6 +197,10 @@ void describe('seed repository', () => {
       'public_distributed_radar',
       'public_scoring_versions',
       'public_task_coverage',
+      'public_calibration_runs',
+      'public_calibration_results',
+      'public_calibration_scores',
+      'public_model_efficiency',
     ]);
   });
 
@@ -772,6 +790,202 @@ void describe('presentation aggregates', () => {
     ]);
   });
 
+  void it('reads only one stable 72-task slice from a 1,224-cell calibration run', async () => {
+    const runId = `run_${'c'.repeat(64)}`;
+    const run = {
+      run_id: runId,
+      classification: 'local_calibration_non_official',
+      scoring_version: '1.0.0',
+      selected_task_count: 72,
+      selected_model_count: 17,
+      result_count: 1_224,
+      started_at: '2026-08-02T12:00:00Z',
+      completed_at: '2026-08-02T13:00:00Z',
+      verified_at: '2026-08-02T13:01:00Z',
+      published_at: '2026-08-02T13:02:00Z',
+      replay_status: 'evaluator_replayed',
+      official: false,
+      ranking_eligible: false,
+      pricing_currency: 'USD',
+      pricing_processing_tier: 'standard',
+    };
+    const rows = CALIBRATION_MODEL_CONFIGURATIONS.flatMap((configuration, configurationIndex) =>
+      Array.from({ length: 72 }, (_, taskIndex) => {
+        const outcome = CALIBRATION_OUTCOMES[taskIndex % CALIBRATION_OUTCOMES.length] ?? 'correct';
+        const explanationSummary = calibrationExplanationSummaryForOutcome(outcome);
+        const failureCode = calibrationFailureCodeForOutcome(outcome);
+        const index = configurationIndex * 72 + taskIndex;
+        return {
+          result_id: `result_${index.toString(16).padStart(64, '0')}`,
+          run_id: runId,
+          task_id: `task-${String(taskIndex).padStart(2, '0')}`,
+          task_version: '1',
+          domain: 'coding',
+          model_family: configuration.modelFamily,
+          reasoning_effort: configuration.reasoningEffort,
+          outcome,
+          status: calibrationStatusForOutcome(outcome),
+          failure_code: failureCode,
+          explanation_code: failureCode,
+          explanation_summary: explanationSummary,
+          task_score:
+            outcome === 'correct'
+              ? 1
+              : outcome === 'partial'
+                ? 0.5
+                : outcome === 'invalid' || outcome === 'missing' || outcome === 'not_applicable'
+                  ? null
+                  : 0,
+          latency_ms: null,
+          latency_evidence_level: null,
+          input_tokens: null,
+          cached_input_tokens: null,
+          cache_write_input_tokens: null,
+          output_tokens: null,
+          reasoning_output_tokens: null,
+          total_tokens: null,
+          token_usage_source_level: null,
+          token_usage_evidence_level: null,
+          standard_api_equivalent_usd_nanos: null,
+          cost_estimator_status: 'unavailable_missing_usage',
+          cost_evidence_level: null,
+          cost_estimator_limitations: ['Provider usage is unavailable.'],
+          cost_method: 'standard_api_equivalent_text_token_estimate',
+          cost_version: 'aiq.standard-api-equivalent-usd.v1',
+          cost_as_of: '2026-08-02',
+          cost_source: 'https://developers.openai.com/api/docs/models/compare',
+          pricing_currency: 'USD',
+          pricing_processing_tier: 'standard',
+        };
+      }),
+    );
+    const resultRequests: Request[] = [];
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname.endsWith('/public_calibration_runs')) return Response.json([run]);
+        resultRequests.push(request.clone());
+        const family = url.searchParams.get('model_family')?.replace(/^eq\./, '');
+        const effort = url.searchParams.get('reasoning_effort')?.replace(/^eq\./, '');
+        return Response.json(
+          rows.filter((row) => row.model_family === family && row.reasoning_effort === effort),
+        );
+      },
+    );
+
+    const calibration = await repository.getCalibrationRun(runId, {
+      modelFamily: 'sol',
+      reasoningEffort: 'low',
+    });
+    assert.ok(calibration);
+    assert.equal(rows.length, 1_224);
+    assert.equal(calibration.resultCount, 1_224);
+    assert.equal(calibration.results.length, 72);
+    assert.equal(new Set(calibration.results.map((result) => result.taskId)).size, 72);
+    assert.deepEqual(
+      new Set(calibration.results.map((result) => result.outcome)),
+      new Set(CALIBRATION_OUTCOMES),
+    );
+    assert.ok(
+      calibration.results.every(
+        (result) => result.status === calibrationStatusForOutcome(result.outcome),
+      ),
+    );
+    for (const outcome of ['incorrect', 'missing'] as const) {
+      const outcomeResult: PublicCalibrationResult | undefined = calibration.results.find(
+        (result) => result.outcome === outcome,
+      );
+      assert.ok(outcomeResult);
+      assert.equal(outcomeResult.failureCode, null);
+      assert.equal(outcomeResult.explanationCode, null);
+      assert.equal(
+        outcomeResult.explanationSummary,
+        calibrationExplanationSummaryForOutcome(outcome),
+      );
+    }
+    assert.equal(resultRequests.length, 1);
+    const resultUrl = new URL(resultRequests[0]?.url ?? 'invalid:');
+    assert.equal(resultUrl.searchParams.get('run_id'), `eq.${runId}`);
+    assert.equal(resultUrl.searchParams.get('model_family'), 'eq.sol');
+    assert.equal(resultUrl.searchParams.get('reasoning_effort'), 'eq.low');
+    assert.equal(resultUrl.searchParams.get('limit'), '73');
+    assert.equal(resultRequests[0]?.headers.get('range'), null);
+
+    const selectedRows = rows.slice(0, 72);
+    const duplicateRows = [...selectedRows];
+    const duplicatedRow = duplicateRows[0];
+    assert.ok(duplicatedRow);
+    duplicateRows[1] = duplicatedRow;
+    const duplicateRepository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname.endsWith('/public_calibration_runs')) return Response.json([run]);
+        return Response.json(duplicateRows);
+      },
+    );
+    await assert.rejects(
+      duplicateRepository.getCalibrationRun(runId, {
+        modelFamily: 'sol',
+        reasoningEffort: 'low',
+      }),
+      /incomplete or unstable result ordering/,
+    );
+
+    await assert.rejects(
+      repository.getCalibrationRun(runId, {
+        modelFamily: 'luna',
+        reasoningEffort: 'ultra',
+      }),
+      /unsupported calibration model configuration/,
+    );
+
+    const invalidRows = [
+      selectedRows.map((row, index) => (index === 2 ? { ...row, status: 'passed' } : row)),
+      selectedRows.map((row, index) =>
+        index === 2 ? { ...row, explanation_summary: 'An internal detail leaked.' } : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 3
+          ? Object.assign({}, row, {
+              failure_code: 'unsafe code',
+              explanation_code: 'unsafe code',
+            })
+          : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 3 ? Object.assign({}, row, { failure_code: null, explanation_code: null }) : row,
+      ),
+    ];
+    await Promise.all(
+      invalidRows.map(async (invalidResultRows) => {
+        const invalidRepository = new SupabaseAiqRepository(
+          'https://example.supabase.co',
+          'sb_publishable_public_example',
+          async (input, init) => {
+            const request = input instanceof Request ? input : new Request(input, init);
+            const url = new URL(request.url);
+            return Response.json(
+              url.pathname.endsWith('/public_calibration_runs') ? [run] : invalidResultRows,
+            );
+          },
+        );
+        await assert.rejects(
+          invalidRepository.getCalibrationRun(runId, {
+            modelFamily: 'sol',
+            reasoningEffort: 'low',
+          }),
+          /public_calibration_results: invalid response shape/,
+        );
+      }),
+    );
+  });
+
   void it('uses stable keyset cursors to navigate all run-history pages', async () => {
     const first = buildSeedRunHistoryPage(seedRuns);
     assert.equal(first.runs.length, RUN_HISTORY_PAGE_SIZE);
@@ -811,6 +1025,67 @@ void describe('presentation aggregates', () => {
       id: firstRun.id,
     });
     assert.throws(() => decodeRunHistoryCursor('not-json'), /Invalid run-history cursor/);
+  });
+
+  void it('retains more than 1,000 calibration runs behind 20-row keyset pages', () => {
+    const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `calibration-${String(index).padStart(4, '0')}`,
+      classification: 'local_calibration_non_official',
+      scoringVersion: '1.0.0',
+      selectedTaskCount: 72,
+      selectedModelCount: 17,
+      resultCount: 1_224,
+      startedAt: '2026-08-02T12:00:00.000Z',
+      completedAt: '2026-08-02T13:00:00.000Z',
+      verifiedAt: '2026-08-02T13:01:00.000Z',
+      publishedAt: '2026-08-02T13:02:00.000Z',
+      replayStatus: 'evaluator_replayed',
+      official: false,
+      rankingEligible: false,
+      pricingCurrency: 'USD',
+      pricingProcessingTier: 'standard',
+      synthetic: false,
+    }));
+    const expectedIds = runs.map((run) => run.id);
+    const pages = [];
+    let page = buildSeedCalibrationRunPage(runs);
+    for (;;) {
+      pages.push(page);
+      assert.ok(page.runs.length <= CALIBRATION_RUN_PAGE_SIZE);
+      if (!page.olderCursor) break;
+      page = buildSeedCalibrationRunPage(runs, {
+        direction: 'older',
+        cursor: page.olderCursor,
+      });
+    }
+    assert.equal(pages.length, Math.ceil(runs.length / CALIBRATION_RUN_PAGE_SIZE));
+    assert.deepEqual(
+      pages.flatMap((candidate) => candidate.runs.map((run) => run.id)),
+      expectedIds,
+    );
+
+    const newerIds: string[] = [];
+    page = pages.at(-1) ?? page;
+    newerIds.unshift(...page.runs.map((run) => run.id));
+    while (page.newerCursor) {
+      page = buildSeedCalibrationRunPage(runs, {
+        direction: 'newer',
+        cursor: page.newerCursor,
+      });
+      newerIds.unshift(...page.runs.map((run) => run.id));
+    }
+    assert.deepEqual(newerIds, expectedIds);
+    assert.equal(new Set(newerIds).size, 1_001);
+
+    const boundary = runs[0];
+    assert.ok(boundary);
+    assert.deepEqual(
+      decodeCalibrationRunCursor(
+        encodeCalibrationRunCursor({ startedAt: boundary.startedAt, id: boundary.id }),
+      ),
+      { startedAt: boundary.startedAt, id: boundary.id },
+    );
+    assert.throws(() => decodeCalibrationRunCursor('not-json'), /Invalid calibration-run cursor/);
   });
 
   void it('preserves every tie-heavy seed run while paging older and newer', () => {
@@ -1122,6 +1397,26 @@ void describe('presentation aggregates', () => {
         assert.equal(result.state, expected);
       }),
     );
+  });
+
+  void it('preserves a mixed calibration matrix provenance state', async () => {
+    const liveRepository = createAiqRepository({
+      NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
+    });
+    const scoreProvenance = Array.from({ length: 17 }, (_, index) => ({
+      configuration: CALIBRATION_MODEL_CONFIGURATIONS[index],
+      synthetic: index === 0,
+    }));
+    const result = await readPublicData(
+      liveRepository,
+      () => Promise.resolve(scoreProvenance),
+      [],
+      (value) => value.length === 0,
+      (value) => value.map((score) => score.synthetic),
+    );
+    assert.equal(result.state, 'mixed');
+    assert.equal(result.data.length, 17);
   });
 
   void it('formats never-seen and stale registry observations without liveness claims', () => {

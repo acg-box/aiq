@@ -55,6 +55,7 @@
         "schedule_slot",
         "task_set_hash",
         "scoring_version",
+        "execution_concurrency",
         "models",
         "started_unix_ms",
         "finished_unix_ms",
@@ -79,6 +80,11 @@
         },
         "scoring_version": {
           "const": "1.0.0"
+        },
+        "execution_concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
         },
         "models": {
           "type": "array",
