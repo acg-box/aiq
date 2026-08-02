@@ -219,7 +219,8 @@ export interface SignedTaskResult {
       | 'evaluator_failure'
       | 'budget_exceeded'
       | 'output_truncated'
-      | 'workspace_unavailable';
+      | 'workspace_unavailable'
+      | 'workspace_integrity';
     readonly message: string;
     readonly exit_code: number | null;
     readonly retryable: boolean;
@@ -714,6 +715,7 @@ function isResultFailure(value: unknown): value is Record<string, unknown> {
       'budget_exceeded',
       'output_truncated',
       'workspace_unavailable',
+      'workspace_integrity',
     ].includes(value.kind as string) &&
     isBoundedSafeAscii(value.message, 128) &&
     (value.exit_code === null ||
@@ -822,6 +824,7 @@ function resultHasValidStatus(
       'capability_validation_failed',
       'evaluator_failure',
       'workspace_unavailable',
+      'workspace_integrity',
     ]);
     if (
       (zeroScoreKinds.has(failure.kind as string) && result.task_score !== 0) ||
@@ -907,8 +910,13 @@ function validateTaskResult(
   const snapshots = artifacts.filter(
     (artifact) => artifact.kind === 'workspace-snapshot.json',
   ).length;
+  const workspaceIntegrity = failure?.kind === 'workspace_integrity';
   if (
-    (executionAttempted && (snapshots !== 1 || value.workspace_manifest === null)) ||
+    (executionAttempted &&
+      !workspaceIntegrity &&
+      (snapshots !== 1 || value.workspace_manifest === null)) ||
+    (workspaceIntegrity &&
+      (snapshots > 1 || (value.workspace_manifest !== null) !== (snapshots === 1))) ||
     (!executionAttempted && (snapshots !== 0 || value.workspace_manifest !== null))
   ) {
     return null;

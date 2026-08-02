@@ -813,7 +813,10 @@ void describe('presentation aggregates', () => {
       Array.from({ length: 72 }, (_, taskIndex) => {
         const outcome = CALIBRATION_OUTCOMES[taskIndex % CALIBRATION_OUTCOMES.length] ?? 'correct';
         const explanationSummary = calibrationExplanationSummaryForOutcome(outcome);
-        const failureCode = calibrationFailureCodeForOutcome(outcome);
+        const failureCode =
+          outcome === 'invalid' && taskIndex === 8
+            ? 'workspace_integrity'
+            : calibrationFailureCodeForOutcome(outcome);
         const index = configurationIndex * 72 + taskIndex;
         return {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
@@ -906,6 +909,18 @@ void describe('presentation aggregates', () => {
         calibrationExplanationSummaryForOutcome(outcome),
       );
     }
+    const workspaceIntegrity = calibration.results.find(
+      (result) => result.failureCode === 'workspace_integrity',
+    );
+    assert.ok(workspaceIntegrity);
+    assert.equal(workspaceIntegrity.outcome, 'invalid');
+    assert.equal(workspaceIntegrity.status, 'invalid');
+    assert.equal(workspaceIntegrity.taskScore, null);
+    assert.equal(workspaceIntegrity.explanationCode, 'workspace_integrity');
+    assert.equal(
+      workspaceIntegrity.explanationSummary,
+      'Benchmark infrastructure invalidated this result; an audited rerun is required.',
+    );
     assert.equal(resultRequests.length, 1);
     const resultUrl = new URL(resultRequests[0]?.url ?? 'invalid:');
     assert.equal(resultUrl.searchParams.get('run_id'), `eq.${runId}`);

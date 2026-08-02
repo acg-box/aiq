@@ -428,6 +428,7 @@ function hasValidCalibrationFailureCode(
       'authentication',
       'subscription_limit',
       'capability_validation_failed',
+      'workspace_integrity',
     ].includes(failureCode);
   }
   return failureCode === calibrationFailureCodeForOutcome(outcome);

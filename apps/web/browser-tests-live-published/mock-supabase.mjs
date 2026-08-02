@@ -122,14 +122,14 @@ const calibrationScores = matrix.map((entry, index) => {
     run_id: calibrationRunId,
     model_family: entry.model_family.toLowerCase(),
     reasoning_effort: entry.reasoning_tier,
-    descriptive_status: 'complete_fixture',
+    descriptive_status: index === 0 ? 'conditional_observed' : 'complete_fixture',
     aiq,
     task_resampling_sensitivity_lower: Number((aiq - 1.5).toFixed(2)),
     task_resampling_sensitivity_upper: Number((aiq + 1.5).toFixed(2)),
     task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
     result_count: 72,
-    sample_size: 72,
-    coverage_percent: 100,
+    sample_size: index === 0 ? 71 : 72,
+    coverage_percent: index === 0 ? (71 / 72) * 100 : 100,
     observed_total_wall_ms: 720_000 + index * 36_000,
     observed_median_wall_ms: 10_000 + index * 500,
     observed_p95_wall_ms: 12_000 + index * 550,
@@ -175,6 +175,7 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
   Array.from({ length: 72 }, (_, taskIndex) => {
     const inputTokens = 1_000 + configurationIndex * 10 + taskIndex;
     const outputTokens = 500 + taskIndex;
+    const workspaceIntegrity = configurationIndex === 0 && taskIndex === 0;
     return {
       result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
       run_id: calibrationRunId,
@@ -183,12 +184,14 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
-      outcome: 'correct',
-      status: 'passed',
-      failure_code: null,
-      explanation_code: null,
-      explanation_summary: null,
-      task_score: 1,
+      outcome: workspaceIntegrity ? 'invalid' : 'correct',
+      status: workspaceIntegrity ? 'invalid' : 'passed',
+      failure_code: workspaceIntegrity ? 'workspace_integrity' : null,
+      explanation_code: workspaceIntegrity ? 'workspace_integrity' : null,
+      explanation_summary: workspaceIntegrity
+        ? 'Benchmark infrastructure invalidated this result; an audited rerun is required.'
+        : null,
+      task_score: workspaceIntegrity ? null : 1,
       latency_ms: 8_000 + taskIndex * 50,
       latency_evidence_level: 'runner_observed',
       input_tokens: inputTokens,

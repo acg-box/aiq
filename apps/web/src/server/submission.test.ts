@@ -733,6 +733,61 @@ void describe('shared result-package contract', () => {
     assert.equal(validateSubmission(resignPackage(brokenEvidence)).ok, false);
   });
 
+  void it('accepts attempted workspace-integrity failures with exact safe semantics', () => {
+    const workspaceIntegrityPackage = (retainCommitments: boolean) => {
+      const candidate = calibrationPackage();
+      const result = firstResult(candidate);
+      Object.assign(result, {
+        status: 'failed',
+        evaluation: 'not_evaluated',
+        task_score: null,
+        response: null,
+        response_sha256: null,
+        evaluator_result_sha256: null,
+        evaluator_stdout_sha256: null,
+        latency: { wall_ms: 250 },
+        tool_usage: { steps: 1, total_calls: 1, by_tool: { command_execution: 1 } },
+        failure: {
+          kind: 'workspace_integrity',
+          message: 'post-invocation workspace integrity failed',
+          exit_code: 0,
+          retryable: true,
+        },
+      });
+      if (!retainCommitments) {
+        result.artifacts = [artifact('stdout.jsonl', 'workspace-integrity-stdout')];
+        result.workspace_manifest = null;
+      }
+      rehashResult(result);
+      return resignPackage(candidate);
+    };
+
+    assert.equal(validateSubmission(workspaceIntegrityPackage(true)).ok, true);
+    assert.equal(validateSubmission(workspaceIntegrityPackage(false)).ok, true);
+
+    const manifestOnly = workspaceIntegrityPackage(true);
+    firstResult(manifestOnly).artifacts = [];
+    rehashResult(firstResult(manifestOnly));
+    assert.equal(validateSubmission(resignPackage(manifestOnly)).ok, false);
+
+    const snapshotOnly = workspaceIntegrityPackage(true);
+    firstResult(snapshotOnly).workspace_manifest = null;
+    rehashResult(firstResult(snapshotOnly));
+    assert.equal(validateSubmission(resignPackage(snapshotOnly)).ok, false);
+
+    for (const mutate of [
+      (result: Record<string, unknown>) => void (result.status = 'completed'),
+      (result: Record<string, unknown>) => void (result.evaluation = 'correct'),
+      (result: Record<string, unknown>) => void (result.task_score = 0),
+      (result: Record<string, unknown>) => void (result.response = 'private response'),
+    ]) {
+      const invalid = workspaceIntegrityPackage(false);
+      mutate(firstResult(invalid));
+      rehashResult(firstResult(invalid));
+      assert.equal(validateSubmission(resignPackage(invalid)).ok, false);
+    }
+  });
+
   void it('accepts exact completed, unevaluated, failed, and unsupported status semantics', () => {
     const unevaluated = officialPackage();
     const unevaluatedResult = firstResult(unevaluated);

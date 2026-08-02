@@ -131,6 +131,16 @@ test('calibration history and detail keep one run and one 72-task slice bounded'
   await expect(selector.locator('option')).toHaveCount(17);
   const results = page.getByRole('region', { name: 'Calibration results' });
   await expect(results.getByRole('row')).toHaveCount(73);
+  const workspaceIntegrity = results
+    .getByRole('row')
+    .filter({ hasText: 'aiq-v1-calibration-task-01' });
+  await expect(workspaceIntegrity).toContainText('invalid');
+  await expect(workspaceIntegrity).toContainText('workspace_integrity');
+  await expect(workspaceIntegrity).toContainText(
+    'Benchmark infrastructure invalidated this result; an audited rerun is required.',
+  );
+  await expect(workspaceIntegrity).toContainText('8.0 s');
+  await expect(workspaceIntegrity).toContainText('$0.000650');
 
   await selector.selectOption('terra:medium');
   await page.getByRole('button', { name: 'Show 72-task slice' }).click();
