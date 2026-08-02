@@ -447,6 +447,89 @@ function normalizedResult(
   };
 }
 
+function resultEfficiency(
+  model: { family: string; reasoning_effort: string },
+  modelIndex: number,
+  taskIndex: number,
+): JsonObject {
+  return {
+    source_result_id: resultId(modelIndex * 72 + taskIndex + 1),
+    task_id: `task-${String(taskIndex + 1).padStart(2, '0')}`,
+    model,
+    observed_wall_ms: 1,
+    wall_time_evidence_level: 'runner_observed',
+    provider_tokens: {},
+    provider_tokens_source: null,
+    provider_tokens_evidence_level: null,
+    standard_api_equivalent_usd_nanos: null,
+    cost_status: 'unavailable_missing_usage',
+    cost_evidence_level: null,
+  };
+}
+
+function efficiency(model: { family: string; reasoning_effort: string }): JsonObject {
+  return {
+    schema_version: 'aiq.calibration-efficiency.v1',
+    model,
+    selected_tasks: 72,
+    observed_wall_tasks: 72,
+    total_observed_wall_ms: 72,
+    median_observed_wall_ms: 1,
+    p95_observed_wall_ms: 1,
+    provider_token_totals: {},
+    provider_token_coverage: {
+      selected_tasks: 72,
+      input_tasks: 0,
+      cached_input_tasks: 0,
+      cache_write_input_tasks: 0,
+      output_tasks: 0,
+      reasoning_tasks: 0,
+      total_tasks: 0,
+    },
+    estimated_cost_tasks: 0,
+    standard_api_equivalent_usd_nanos: null,
+  };
+}
+
+function pricing(): JsonObject {
+  return {
+    method: 'standard_api_equivalent_text_token_estimate',
+    version: 'aiq.standard-api-equivalent-usd.v1',
+    as_of: '2026-08-02',
+    source: 'https://developers.openai.com/api/docs/models/compare',
+    currency: 'USD',
+    processing_tier: 'standard',
+    rates: [
+      {
+        model: 'gpt-5.6-sol',
+        input_usd_nanos_per_token: 5_000,
+        cached_input_usd_nanos_per_token: 500,
+        cache_write_input_usd_nanos_per_token: 6_250,
+        output_usd_nanos_per_token: 30_000,
+      },
+      {
+        model: 'gpt-5.6-terra',
+        input_usd_nanos_per_token: 2_500,
+        cached_input_usd_nanos_per_token: 250,
+        cache_write_input_usd_nanos_per_token: 3_125,
+        output_usd_nanos_per_token: 15_000,
+      },
+      {
+        model: 'gpt-5.6-luna',
+        input_usd_nanos_per_token: 1_000,
+        cached_input_usd_nanos_per_token: 100,
+        cache_write_input_usd_nanos_per_token: 1_250,
+        output_usd_nanos_per_token: 6_000,
+      },
+    ],
+    formula:
+      '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
+    hosted_tool_fees_included: false,
+    limitation:
+      'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.',
+  };
+}
+
 function normalizedBatch(): JsonObject {
   return {
     schema_version: 'aiq.normalized-batch.v3',
@@ -483,6 +566,17 @@ function normalizedBatch(): JsonObject {
         ),
       };
     }),
+    execution_concurrency: 17,
+    result_efficiency: matrix.flatMap(([family, reasoning_effort], modelIndex) => {
+      const model = { family, reasoning_effort };
+      return Array.from({ length: 72 }, (_, taskIndex) =>
+        resultEfficiency(model, modelIndex, taskIndex),
+      );
+    }),
+    efficiency: matrix.map(([family, reasoning_effort]) =>
+      efficiency({ family, reasoning_effort }),
+    ),
+    pricing: pricing(),
     normalization_digest: sha256(5),
   };
 }
@@ -1181,6 +1275,19 @@ await test('normalized batch schema enforces closed records and exact matrix car
   const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
   const batch = normalizedBatch();
 
+  strictEqual(batch.execution_concurrency, 17);
+  strictEqual(requireArrayProperty(batch, 'result_efficiency').length, 1_224);
+  strictEqual(requireArrayProperty(batch, 'efficiency').length, 17);
+  deepStrictEqual(requireObjectProperty(schema, 'x-aiq-limits'), {
+    canonical_stage_bytes: 4_194_304,
+    model_runs: 17,
+    results_per_model_run: 72,
+    execution_concurrency: 32,
+    result_efficiency: 1_224,
+    efficiency_aggregates: 17,
+    result_response_preview_utf8_bytes: 1_024,
+  });
+
   const missing = structuredClone(batch);
   delete missing.normalization_digest;
   strictEqual(matchesSchema(missing, schema, schema), false);
@@ -1203,6 +1310,225 @@ await test('normalized batch schema enforces closed records and exact matrix car
   const child = structuredClone(batch);
   requireObjectAt(requireArrayProperty(child, 'runs'), 0, 'runs').unexpected = true;
   strictEqual(matchesSchema(child, schema, schema), false);
+
+  const invalidEvidence = structuredClone(batch);
+  requireObjectAt(
+    requireArrayProperty(invalidEvidence, 'result_efficiency'),
+    0,
+    'result_efficiency',
+  ).provider_tokens_source = 'runner_observed';
+  strictEqual(matchesSchema(invalidEvidence, schema, schema), false);
+
+  const wrongRateOrder = structuredClone(batch);
+  requireArrayProperty(requireObjectProperty(wrongRateOrder, 'pricing'), 'rates').reverse();
+  strictEqual(matchesSchema(wrongRateOrder, schema, schema), false);
+
+  for (const concurrency of [0, 33, null]) {
+    const changed = structuredClone(batch);
+    changed.execution_concurrency = concurrency;
+    strictEqual(matchesSchema(changed, schema, schema), false, `concurrency ${concurrency}`);
+  }
+
+  const duplicateSource = structuredClone(batch);
+  const duplicateSourceResults = requireArrayProperty(duplicateSource, 'result_efficiency');
+  requireObjectAt(duplicateSourceResults, 1, 'result_efficiency').source_result_id =
+    requireObjectAt(duplicateSourceResults, 0, 'result_efficiency').source_result_id;
+  strictEqual(matchesSchema(duplicateSource, schema, schema), false);
+
+  const duplicateCell = structuredClone(batch);
+  const duplicateCellResults = requireArrayProperty(duplicateCell, 'result_efficiency');
+  const firstCell = requireObjectAt(duplicateCellResults, 0, 'result_efficiency');
+  const secondCell = requireObjectAt(duplicateCellResults, 1, 'result_efficiency');
+  secondCell.task_id = firstCell.task_id;
+  secondCell.model = structuredClone(requireObjectProperty(firstCell, 'model'));
+  strictEqual(matchesSchema(duplicateCell, schema, schema), false);
+
+  const wrongEfficiencyOrder = structuredClone(batch);
+  requireArrayProperty(wrongEfficiencyOrder, 'efficiency').reverse();
+  strictEqual(matchesSchema(wrongEfficiencyOrder, schema, schema), false);
+});
+
+await test('normalized efficiency evidence preserves required and nullable authority fields', async () => {
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const batch = normalizedBatch();
+
+  const nonInvoked = structuredClone(batch);
+  const nonInvokedEvidence = requireObjectAt(
+    requireArrayProperty(nonInvoked, 'result_efficiency'),
+    0,
+    'result_efficiency',
+  );
+  nonInvokedEvidence.observed_wall_ms = null;
+  nonInvokedEvidence.wall_time_evidence_level = null;
+  strictEqual(matchesSchema(nonInvoked, schema, schema), true);
+
+  const partialUsage = structuredClone(batch);
+  const partialUsageEvidence = requireObjectAt(
+    requireArrayProperty(partialUsage, 'result_efficiency'),
+    0,
+    'result_efficiency',
+  );
+  partialUsageEvidence.provider_tokens = { input: 10 };
+  partialUsageEvidence.provider_tokens_source = 'provider_reported';
+  partialUsageEvidence.provider_tokens_evidence_level = 'verifier_recomputed';
+  strictEqual(matchesSchema(partialUsage, schema, schema), true);
+
+  const priced = structuredClone(batch);
+  const pricedEvidence = requireObjectAt(
+    requireArrayProperty(priced, 'result_efficiency'),
+    0,
+    'result_efficiency',
+  );
+  pricedEvidence.provider_tokens = {
+    input: 10,
+    cached_input: 2,
+    cache_write_input: 1,
+    output: 3,
+    reasoning: 1,
+    total: 13,
+  };
+  pricedEvidence.provider_tokens_source = 'provider_reported';
+  pricedEvidence.provider_tokens_evidence_level = 'verifier_recomputed';
+  pricedEvidence.standard_api_equivalent_usd_nanos = 126_250;
+  pricedEvidence.cost_status = 'estimated';
+  pricedEvidence.cost_evidence_level = 'verifier_recomputed';
+  strictEqual(matchesSchema(priced, schema, schema), true);
+
+  for (const [label, mutate] of [
+    [
+      'observed time without authority',
+      (evidence: JsonObject) => {
+        evidence.wall_time_evidence_level = null;
+      },
+    ],
+    [
+      'null time with authority',
+      (evidence: JsonObject) => {
+        evidence.observed_wall_ms = null;
+      },
+    ],
+    [
+      'empty token evidence with authority',
+      (evidence: JsonObject) => {
+        evidence.provider_tokens_source = 'provider_reported';
+      },
+    ],
+    [
+      'partial counters marked estimated',
+      (evidence: JsonObject) => {
+        evidence.provider_tokens = { input: 10 };
+        evidence.provider_tokens_source = 'provider_reported';
+        evidence.provider_tokens_evidence_level = 'verifier_recomputed';
+        evidence.standard_api_equivalent_usd_nanos = 1;
+        evidence.cost_status = 'estimated';
+        evidence.cost_evidence_level = 'verifier_recomputed';
+      },
+    ],
+    [
+      'cost without verifier authority',
+      (evidence: JsonObject) => {
+        evidence.provider_tokens = {
+          input: 10,
+          cached_input: 0,
+          cache_write_input: 0,
+          output: 1,
+        };
+        evidence.provider_tokens_source = 'provider_reported';
+        evidence.provider_tokens_evidence_level = 'verifier_recomputed';
+        evidence.standard_api_equivalent_usd_nanos = 1;
+        evidence.cost_status = 'estimated';
+      },
+    ],
+    [
+      'unsafe integer',
+      (evidence: JsonObject) => {
+        evidence.observed_wall_ms = 9_007_199_254_740_992;
+      },
+    ],
+    [
+      'missing required field',
+      (evidence: JsonObject) => {
+        delete evidence.cost_status;
+      },
+    ],
+    [
+      'unexpected field',
+      (evidence: JsonObject) => {
+        evidence.unexpected = true;
+      },
+    ],
+  ] as const) {
+    const changed = structuredClone(batch);
+    mutate(
+      requireObjectAt(requireArrayProperty(changed, 'result_efficiency'), 0, 'result_efficiency'),
+    );
+    strictEqual(matchesSchema(changed, schema, schema), false, label);
+  }
+});
+
+await test('normalized aggregate and pricing evidence retain their fixed contracts', async () => {
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const batch = normalizedBatch();
+
+  for (const [label, mutate] of [
+    [
+      'zero observations with totals',
+      (aggregate: JsonObject) => {
+        aggregate.observed_wall_tasks = 0;
+      },
+    ],
+    [
+      'observations without totals',
+      (aggregate: JsonObject) => {
+        aggregate.total_observed_wall_ms = null;
+      },
+    ],
+    [
+      'partial estimates with total cost',
+      (aggregate: JsonObject) => {
+        aggregate.estimated_cost_tasks = 71;
+        aggregate.standard_api_equivalent_usd_nanos = 1;
+      },
+    ],
+    [
+      'wrong selected count',
+      (aggregate: JsonObject) => {
+        aggregate.selected_tasks = 71;
+      },
+    ],
+    [
+      'coverage above selected count',
+      (aggregate: JsonObject) => {
+        requireObjectProperty(aggregate, 'provider_token_coverage').input_tasks = 73;
+      },
+    ],
+    [
+      'unexpected aggregate field',
+      (aggregate: JsonObject) => {
+        aggregate.unexpected = true;
+      },
+    ],
+  ] as const) {
+    const changed = structuredClone(batch);
+    mutate(requireObjectAt(requireArrayProperty(changed, 'efficiency'), 0, 'efficiency'));
+    strictEqual(matchesSchema(changed, schema, schema), false, label);
+  }
+
+  const missingPricing = structuredClone(batch);
+  delete requireObjectProperty(missingPricing, 'pricing').limitation;
+  strictEqual(matchesSchema(missingPricing, schema, schema), false);
+
+  const extraPricing = structuredClone(batch);
+  requireObjectProperty(extraPricing, 'pricing').unexpected = true;
+  strictEqual(matchesSchema(extraPricing, schema, schema), false);
+
+  const changedRate = structuredClone(batch);
+  requireObjectAt(
+    requireArrayProperty(requireObjectProperty(changedRate, 'pricing'), 'rates'),
+    0,
+    'rates',
+  ).input_usd_nanos_per_token = 5_001;
+  strictEqual(matchesSchema(changedRate, schema, schema), false);
 });
 
 await test('normalized result and score schemas enforce exact payload fields and bounds', async () => {
