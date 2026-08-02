@@ -25,7 +25,8 @@ mod pinned_path;
 pub use self::{
 	model::{MODEL_MATRIX, ModelConfig},
 	scoring::{
-		AIQ_SCORING_VERSION, ScoreContext, ScoreReport, score_model, score_model_with_context,
+		AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
+		ScoreContext, ScoreReport, score_model, score_model_with_context,
 	},
 };
 
