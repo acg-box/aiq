@@ -52,6 +52,68 @@ function checkSecurityDefinerSearchPaths(schema: string): void {
   }
 }
 
+function checkWorkspaceIntegrityFailureClassification(schema: string): void {
+  const resultValidator =
+    schema.match(/create function aiq_private\.dto_result_is_valid[\s\S]*?\n\$_\$;/i)?.[0] ?? '';
+  assert.match(
+    resultValidator,
+    /'missing_response','evaluator_failure','budget_exceeded','output_truncated',\s*'workspace_unavailable','workspace_integrity'\s*\)/,
+    'The task-result validator must accept workspace_integrity as a failure kind.',
+  );
+  assert.match(
+    resultValidator,
+    /'evaluator_failure','workspace_unavailable','workspace_integrity'\s*\) and candidate -> 'task_score' <> 'null'::jsonb/,
+    'A workspace_integrity failure must use the infrastructure null-score shape.',
+  );
+  assert.match(
+    resultValidator,
+    /if failure ->> 'kind' = 'workspace_integrity' then[\s\S]{0,1200}workspace_manifest[\s\S]{0,1200}workspace-snapshot\.json/,
+    'An attempted workspace_integrity result must retain both workspace commitments or neither.',
+  );
+
+  const unattemptedSets = [
+    ...schema.matchAll(
+      /(?:in|not in)\s*\(\s*'capability_unavailable'\s*,\s*'capability_validation_failed'\s*,\s*'workspace_unavailable'(?<tail>[\s\S]*?)\)/g,
+    ),
+  ];
+  assert.equal(
+    unattemptedSets.length,
+    9,
+    'The database must retain all nine explicit pre-invocation or unattempted filters.',
+  );
+  for (const filter of unattemptedSets) {
+    assert.equal(
+      filter.groups?.tail.trim(),
+      '',
+      'workspace_integrity is attempted and must not enter an unattempted filter.',
+    );
+  }
+
+  const outcomeNormalizer =
+    schema.match(
+      /create function aiq_private\.normalized_outcome_from_source[\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+  assert.match(
+    outcomeNormalizer,
+    /'evaluator_failure', 'workspace_unavailable', 'workspace_integrity', 'missing_evaluator'/,
+    'workspace_integrity must normalize to the invalid infrastructure outcome.',
+  );
+  const responsibilityNormalizer =
+    schema.match(
+      /create function aiq_private\.normalized_responsibility_from_source[\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+  assert.match(
+    responsibilityNormalizer,
+    /'evaluator_failure', 'workspace_unavailable', 'workspace_integrity', 'missing_evaluator'[\s\S]{0,80}'benchmark_infrastructure'/,
+    'workspace_integrity must retain benchmark-infrastructure responsibility.',
+  );
+  assert.match(
+    schema,
+    /outcome='invalid'[\s\S]{0,100}failure_code in \(\s*'evaluator_failure','workspace_unavailable','workspace_integrity','missing_evaluator','spawn'/,
+    'The calibration result constraint must accept the normalized workspace_integrity code.',
+  );
+}
+
 export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string): void {
   assert.match(schema, /^begin;\n/);
   assert.match(schema, /\ncommit;\s*$/);
@@ -153,9 +215,11 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /grant all on function aiq_private\.preview_status_v1\(\) to authenticated/);
   assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to anon/);
   assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to authenticated/);
-  const browserReadSurfaceRevocation = schema.match(
-    /revoke all on table\s+([\s\S]*?)\s+from public, anon, authenticated;/,
-  )?.[1];
+  const browserReadSurfaceRevocation = [
+    ...schema.matchAll(/revoke all on table\s+([\s\S]*?)\s+from public, anon, authenticated;/gi),
+  ]
+    .map((match) => match[1])
+    .join('\n');
   assert.ok(
     browserReadSurfaceRevocation,
     'The public read surface must remove provider default grants before granting SELECT.',
@@ -163,7 +227,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   for (const viewName of corePublicViews) {
     assert.match(
       browserReadSurfaceRevocation,
-      new RegExp(`public\\.${viewName}(?:,|$)`),
+      new RegExp(`public\\.${viewName}(?:,|\\s|$)`),
       `The public read surface must revoke provider defaults from ${viewName}.`,
     );
   }
@@ -242,6 +306,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     /revoke create on schema public[\s\S]{0,160}from public, anon, authenticated, service_role, aiq_verifier, aiq_publisher/,
   );
   checkSecurityDefinerSearchPaths(schema);
+  checkWorkspaceIntegrityFailureClassification(schema);
 
   for (const requiredName of [
     'aiq_enqueue_submission',
