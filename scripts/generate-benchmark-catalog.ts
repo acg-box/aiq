@@ -18,6 +18,7 @@ export const DOMAINS = [
 
 type Domain = (typeof DOMAINS)[number];
 type Difficulty = 'easy' | 'medium' | 'hard';
+type RevisionKind = 'replacement' | 'retargeted' | 'rebalanced';
 
 interface TaskDraft {
   readonly domain: Domain;
@@ -47,6 +48,13 @@ export interface CatalogTask {
   readonly domain: Domain;
   readonly difficulty: Difficulty;
   readonly summary: string;
+  readonly design_revision: {
+    readonly supersedes_task_version: '1.0.1';
+    readonly kind: RevisionKind;
+    readonly objective: string;
+    readonly task_specific_delta: string;
+    readonly controlled_corpus_requirements: readonly string[];
+  };
   readonly input_contract: {
     readonly kind: string;
     readonly fixture_profile: string;
@@ -67,6 +75,20 @@ export interface CatalogTask {
     readonly deterministic: true;
     readonly partial_credit: true;
     readonly pass_conditions: readonly string[];
+    readonly scoring_contract: {
+      readonly aggregation: 'weighted_assertion_fraction';
+      readonly assertion_scoring: 'binary_equal_weight_within_component';
+      readonly missing_or_error_score: 0;
+      readonly rounding: 'no_intermediate_rounding_final_six_decimals';
+      readonly formula: 'sum(component_weight_basis_points / 10000 * passed_assertions / total_assertions)';
+      readonly score_range: readonly [0, 1];
+      readonly minimum_assertions_per_component: 3;
+      readonly components: readonly {
+        readonly component_id: string;
+        readonly weight_basis_points: number;
+        readonly criterion: string;
+      }[];
+    };
     readonly acceptance_fixture_commitments: Readonly<
       Record<AcceptanceFixtureClass, AcceptanceFixtureCommitment>
     >;
@@ -74,9 +96,10 @@ export interface CatalogTask {
   readonly tags: readonly string[];
   readonly visibility: 'hidden';
   readonly provenance: {
-    readonly origin: 'original_benchmark_design';
+    readonly origin: 'calibration_driven_redesign';
     readonly owner: 'AIQ benchmark maintainers';
-    readonly recorded_date: '2026-07-24';
+    readonly recorded_date: '2026-08-02';
+    readonly predecessor_task_version: '1.0.1';
     readonly source: 'scripts/generate-benchmark-catalog.ts';
   };
   readonly leakage_review: {
@@ -90,7 +113,10 @@ export interface CatalogTask {
 type AcceptanceFixtureClass =
   | 'gold'
   | 'alternate_correct'
-  | 'partial'
+  | 'partial_low'
+  | 'partial_high'
+  | 'near_miss'
+  | 'paired_contrast'
   // This combined class covers adversarial content and output-format attacks.
   | 'adversarial_format'
   | 'empty'
@@ -101,8 +127,12 @@ interface AcceptanceFixtureCommitment {
   readonly status: 'required_in_controlled_source';
 }
 
-export const AIQ_CORE_V1_TASK_IDENTITY_SHA256 =
-  'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+export const AIQ_CORE_V1_CATALOG_IDENTITY_SHA256 =
+  'sha256:efe6cec623c140cbb6a4c96583a5d0aed24ec856d7792301d1543bd1f9b90db5';
+
+const TASK_SET_VERSION = '1.0.2';
+const TASK_VERSION = '1.0.2';
+const SCORER_VERSION = '1.0.2';
 
 export const COMMAND_EXECUTION_DISCLOSURE =
   'Runner/verifier telemetry records at least one command_execution event; this proves presence, not causality, while independently checked artifacts and, where present, receipts prove final-state correctness.';
@@ -110,14 +140,20 @@ export const COMMAND_EXECUTION_DISCLOSURE =
 export interface Catalog {
   readonly schema_version: 'aiq.catalog.v1';
   readonly task_set_id: 'aiq-core';
-  readonly task_set_version: '1.0.0';
+  readonly task_set_version: typeof TASK_SET_VERSION;
   readonly title: string;
-  readonly status: 'public_designs_versioned_private_content_required';
+  readonly status: 'candidate_requires_controlled_release_gate';
   readonly generated_from: string;
+  readonly predecessor_catalog: {
+    readonly task_set_version: '1.0.1';
+    readonly task_identity_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+    readonly digest_scope: 'ordered_full_task_metadata';
+    readonly source_commit: '4700e4c6e5e46ff9b3451d87b8761fb8da8365a0';
+  };
   readonly identity_commitment: {
     readonly algorithm: 'sha256';
     readonly digest: string;
-    readonly scope: 'ordered_full_task_metadata';
+    readonly scope: 'ordered_full_task_metadata_release_policy_and_predecessor';
   };
   readonly content_policy: {
     readonly public_repository: string;
@@ -130,7 +166,100 @@ export interface Catalog {
     readonly domain_difficulty: Readonly<Record<Domain, Readonly<Record<Difficulty, number>>>>;
     readonly difficulty_role: string;
   };
+  readonly release_gate_policy: ReleaseGatePolicy;
   readonly tasks: readonly CatalogTask[];
+}
+
+export interface ReleaseGatePolicy {
+  readonly policy_version: 'aiq.release-gate.v1';
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly state: 'preregistered_not_evaluated';
+  readonly evidence_requirement: 'new_controlled_hidden_corpus';
+  readonly score_bands: {
+    readonly floor_max: 0.1;
+    readonly mid_min: 0.2;
+    readonly mid_max: 0.8;
+    readonly ceiling_min: 0.9;
+    readonly invariant_range_max: 0.05;
+  };
+  readonly aggregate_thresholds: {
+    readonly infrastructure_failures_max: 0;
+    readonly evaluator_failures_max: 0;
+    readonly floor_tasks_max: 7;
+    readonly ceiling_tasks_max: 7;
+    readonly mid_band_tasks_min: 43;
+    readonly invariant_tasks_max: 14;
+  };
+  readonly domain_thresholds: {
+    readonly mid_band_share_min: 0.5;
+    readonly floor_share_max: 0.3;
+    readonly ceiling_share_max: 0.3;
+  };
+  readonly paired_contrast_thresholds: {
+    readonly predeclared_contrasts_min: 3;
+    readonly absolute_difference_aiq_min: 3;
+    readonly adjusted_lower_bound_must_exclude_zero: true;
+    readonly adjusted_lower_bound_method: 'one_sided_bonferroni_normal_approximation';
+    readonly familywise_alpha: 0.05;
+    readonly one_sided_critical_value: 2.128;
+  };
+  readonly predeclared_contrasts: readonly {
+    readonly contrast_id: string;
+    readonly paired_factor: string;
+    readonly controlled_pair_requirement: string;
+  }[];
+  readonly stability_thresholds: {
+    readonly complete_repeats_min: 3;
+    readonly aggregate_sd_aiq_max: 2;
+    readonly median_cell_range_max: 0.1;
+    readonly icc_min: 0.75;
+  };
+}
+
+export interface ReleaseGateEvidence {
+  readonly schema_version: 'aiq.release-gate-evidence.v1';
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly catalog_identity_digest: string;
+  readonly corpus_commitment_digest: string;
+  readonly model_matrix_digest: string;
+  readonly source_observations_digest: string;
+  readonly repeat_ids: readonly string[];
+  readonly raw_cells: readonly {
+    readonly repeat_id: string;
+    readonly task_id: string;
+    readonly domain: Domain;
+    readonly model_id: string;
+    readonly status: 'completed' | 'infrastructure_failure' | 'evaluator_failure';
+    readonly score: number | null;
+  }[];
+  readonly paired_contrasts: readonly {
+    readonly contrast_id: string;
+    readonly reference_variant_digest: string;
+    readonly challenge_variant_digest: string;
+    readonly pairs: readonly {
+      readonly repeat_id: string;
+      readonly model_id: string;
+      readonly reference_score: number;
+      readonly challenge_score: number;
+    }[];
+  }[];
+}
+
+export interface ReleaseGateAuthority {
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly catalog_identity_digest: string;
+  readonly corpus_commitment_digest: string;
+  readonly model_matrix_digest: string;
+  readonly contrast_bindings: readonly {
+    readonly contrast_id: string;
+    readonly reference_variant_digest: string;
+    readonly challenge_variant_digest: string;
+  }[];
+}
+
+export interface ReleaseGateResult {
+  readonly passed: boolean;
+  readonly failures: readonly string[];
 }
 
 const PROFILES: Readonly<Record<Domain, DomainProfile>> = {
@@ -148,11 +277,456 @@ const PROFILES: Readonly<Record<Domain, DomainProfile>> = {
   reliability_recovery: { allowedTools: ['filesystem_read', 'filesystem_write'] },
 };
 
-const DIFFICULTY_BUDGETS: Readonly<Record<Difficulty, TaskBudget>> = {
-  easy: { wall_seconds: 240, max_steps: 18, max_tool_calls: 12 },
-  medium: { wall_seconds: 360, max_steps: 28, max_tool_calls: 18 },
-  hard: { wall_seconds: 540, max_steps: 40, max_tool_calls: 26 },
+const PRIOR_FLOOR_TASKS = new Set([
+  'data-processing-02',
+  'debugging-02',
+  'debugging-05',
+  'documentation-communication-03',
+  'documentation-communication-04',
+  'documentation-communication-05',
+  'documentation-communication-06',
+  'documentation-communication-07',
+  'instruction-following-03',
+  'instruction-following-04',
+  'reliability-recovery-04',
+  'reliability-recovery-06',
+  'repository-understanding-01',
+  'repository-understanding-05',
+  'repository-understanding-06',
+  'repository-understanding-07',
+  'retrieval-verification-02',
+  'retrieval-verification-05',
+  'tool-use-01',
+  'tool-use-07',
+]);
+
+const PRIOR_CEILING_TASKS = new Set([
+  'planning-execution-05',
+  'data-processing-05',
+  'repository-understanding-03',
+  'coding-03',
+  'data-processing-04',
+  'instruction-following-06',
+  'planning-execution-07',
+  'tool-use-03',
+  'tool-use-05',
+  'debugging-08',
+  'instruction-following-05',
+  'reliability-recovery-05',
+  'coding-01',
+  'coding-02',
+  'coding-05',
+  'coding-06',
+  'coding-07',
+  'debugging-01',
+  'debugging-03',
+  'debugging-04',
+  'instruction-following-01',
+  'instruction-following-02',
+  'planning-execution-01',
+  'planning-execution-03',
+  'planning-execution-06',
+  'reliability-recovery-01',
+  'reliability-recovery-03',
+]);
+
+const DISCRIMINATION_CHECK: Readonly<Record<Domain, string>> = {
+  coding:
+    'Seeded near-miss implementations separate core correctness, boundary behavior, and regression preservation.',
+  debugging:
+    'Seeded plausible fixes separate symptom suppression, root-cause repair, and preservation of adjacent behavior.',
+  repository_understanding:
+    'Seeded partial inventories separate locally plausible answers from complete, source-linked ownership traces.',
+  data_processing:
+    'Seeded partial outputs separate row-level correctness, reconciliation, and policy-compliant edge handling.',
+  retrieval_verification:
+    'Seeded claim variants separate source selection, exact support, scope preservation, and calibrated uncertainty.',
+  documentation_communication:
+    'Seeded drafts separate factual completeness, audience fit, operational usability, and unsupported claims.',
+  planning_execution:
+    'Seeded plans separate feasibility, dependency safety, rollback preservation, and executable evidence.',
+  tool_use:
+    'Seeded traces separate tool invocation from correct selection, bounded execution, and artifact-backed results.',
+  instruction_following:
+    'Seeded outputs separate primary-task success, constraint coverage, precedence handling, and prohibited actions.',
+  reliability_recovery:
+    'Seeded states separate safe continuation, identity preservation, reconciliation, and replay correctness.',
 };
+
+export const RELEASE_GATE_POLICY: ReleaseGatePolicy = {
+  policy_version: 'aiq.release-gate.v1',
+  release_identity: 'aiq-core/1.0.2',
+  state: 'preregistered_not_evaluated',
+  evidence_requirement: 'new_controlled_hidden_corpus',
+  score_bands: {
+    floor_max: 0.1,
+    mid_min: 0.2,
+    mid_max: 0.8,
+    ceiling_min: 0.9,
+    invariant_range_max: 0.05,
+  },
+  aggregate_thresholds: {
+    infrastructure_failures_max: 0,
+    evaluator_failures_max: 0,
+    floor_tasks_max: 7,
+    ceiling_tasks_max: 7,
+    mid_band_tasks_min: 43,
+    invariant_tasks_max: 14,
+  },
+  domain_thresholds: {
+    mid_band_share_min: 0.5,
+    floor_share_max: 0.3,
+    ceiling_share_max: 0.3,
+  },
+  paired_contrast_thresholds: {
+    predeclared_contrasts_min: 3,
+    absolute_difference_aiq_min: 3,
+    adjusted_lower_bound_must_exclude_zero: true,
+    adjusted_lower_bound_method: 'one_sided_bonferroni_normal_approximation',
+    familywise_alpha: 0.05,
+    one_sided_critical_value: 2.128,
+  },
+  predeclared_contrasts: [
+    {
+      contrast_id: 'coupled_constraints',
+      paired_factor:
+        'One controlled pair adds interacting constraints while keeping the core work and scoring scale fixed.',
+      controlled_pair_requirement:
+        'Bind matched task variants, randomize their order, and compute the paired AIQ difference across the fixed model matrix.',
+    },
+    {
+      contrast_id: 'ambiguous_recovery_state',
+      paired_factor:
+        'One controlled pair changes a complete checkpoint into an ambiguous but recoverable state.',
+      controlled_pair_requirement:
+        'Keep the intended final state fixed and score safe state reconciliation separately from core task completion.',
+    },
+    {
+      contrast_id: 'plausible_incomplete_evidence',
+      paired_factor:
+        'One controlled pair replaces complete evidence with a plausible but materially incomplete evidence set.',
+      controlled_pair_requirement:
+        'Keep requested claims fixed and score unsupported inference separately from citation and artifact format.',
+    },
+  ],
+  stability_thresholds: {
+    complete_repeats_min: 3,
+    aggregate_sd_aiq_max: 2,
+    median_cell_range_max: 0.1,
+    icc_min: 0.75,
+  },
+};
+
+export const PREDECESSOR_CATALOG: Catalog['predecessor_catalog'] = {
+  task_set_version: '1.0.1',
+  task_identity_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
+  digest_scope: 'ordered_full_task_metadata',
+  source_commit: '4700e4c6e5e46ff9b3451d87b8761fb8da8365a0',
+};
+
+function mean(values: readonly number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function sampleStandardDeviation(values: readonly number[]): number {
+  if (values.length < 2) return 0;
+  const average = mean(values);
+  return Math.sqrt(
+    values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1),
+  );
+}
+
+function median(values: readonly number[]): number {
+  const sorted = values.toSorted((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
+    : (sorted[middle] ?? 0);
+}
+
+function validUnitInterval(value: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+function absoluteAgreementIcc(rows: readonly (readonly number[])[]): number {
+  const targetCount = rows.length;
+  const repeatCount = rows[0]?.length ?? 0;
+  if (targetCount < 2 || repeatCount < 2 || rows.some((row) => row.length !== repeatCount)) {
+    return Number.NaN;
+  }
+  const rowMeans = rows.map(mean);
+  const columnMeans = Array.from({ length: repeatCount }, (_, column) =>
+    mean(rows.map((row) => row[column] ?? 0)),
+  );
+  const grandMean = mean(rowMeans);
+  const rowMeanSquare =
+    (repeatCount * rowMeans.reduce((sum, value) => sum + (value - grandMean) ** 2, 0)) /
+    (targetCount - 1);
+  const columnMeanSquare =
+    (targetCount * columnMeans.reduce((sum, value) => sum + (value - grandMean) ** 2, 0)) /
+    (repeatCount - 1);
+  const errorMeanSquare =
+    rows.reduce(
+      (sum, row, rowIndex) =>
+        sum +
+        row.reduce(
+          (rowSum, value, columnIndex) =>
+            rowSum +
+            (value - (rowMeans[rowIndex] ?? 0) - (columnMeans[columnIndex] ?? 0) + grandMean) ** 2,
+          0,
+        ),
+      0,
+    ) /
+    ((targetCount - 1) * (repeatCount - 1));
+  const denominator =
+    rowMeanSquare +
+    (repeatCount - 1) * errorMeanSquare +
+    (repeatCount * (columnMeanSquare - errorMeanSquare)) / targetCount;
+  return denominator === 0 ? Number.NaN : (rowMeanSquare - errorMeanSquare) / denominator;
+}
+
+export function releaseEvidenceSourceDigest(
+  rawCells: ReleaseGateEvidence['raw_cells'],
+  pairedContrasts: ReleaseGateEvidence['paired_contrasts'],
+): string {
+  return `sha256:${createHash('sha256')
+    .update(JSON.stringify({ raw_cells: rawCells, paired_contrasts: pairedContrasts }))
+    .digest('hex')}`;
+}
+
+export function releaseEvidenceModelMatrixDigest(modelIds: readonly string[]): string {
+  const orderedModelIds = modelIds.toSorted();
+  return `sha256:${createHash('sha256').update(JSON.stringify(orderedModelIds)).digest('hex')}`;
+}
+
+export function evaluateReleaseGate(
+  evidence: ReleaseGateEvidence,
+  authority: ReleaseGateAuthority,
+): ReleaseGateResult {
+  const failures: string[] = [];
+  const policy = RELEASE_GATE_POLICY;
+  const scoreEpsilon = 1e-12;
+  const isFloor = (score: number): boolean => score <= policy.score_bands.floor_max + scoreEpsilon;
+  const isCeiling = (score: number): boolean =>
+    score >= policy.score_bands.ceiling_min - scoreEpsilon;
+  const isMid = (score: number): boolean =>
+    score >= policy.score_bands.mid_min - scoreEpsilon &&
+    score <= policy.score_bands.mid_max + scoreEpsilon;
+  const catalog = buildCatalog();
+  const expectedTasks = new Map(
+    catalog.tasks.map(({ task_id: taskId, domain }) => [taskId, domain]),
+  );
+  const repeatIds = new Set(evidence.repeat_ids);
+  const modelIds = new Set(evidence.raw_cells.map(({ model_id: modelId }) => modelId));
+  const digestPattern = /^sha256:[a-f0-9]{64}$/u;
+  const authorityContrastBindings = new Map(
+    authority.contrast_bindings.map((binding) => [binding.contrast_id, binding]),
+  );
+  const boundVariantDigests = authority.contrast_bindings.flatMap(
+    ({ reference_variant_digest: reference, challenge_variant_digest: challenge }) => [
+      reference,
+      challenge,
+    ],
+  );
+  const cellKeys = evidence.raw_cells.map(
+    ({ repeat_id: repeatId, task_id: taskId, model_id: modelId }) =>
+      `${repeatId}\u0000${taskId}\u0000${modelId}`,
+  );
+  const expectedCellCount = evidence.repeat_ids.length * expectedTasks.size * 17;
+  const invalidRawCell = evidence.raw_cells.some(
+    ({ repeat_id: repeatId, task_id: taskId, domain, model_id: modelId, status, score }) =>
+      !repeatIds.has(repeatId) ||
+      expectedTasks.get(taskId) !== domain ||
+      modelId.length === 0 ||
+      (status === 'completed' ? score === null || !validUnitInterval(score) : score !== null),
+  );
+  if (
+    evidence.schema_version !== 'aiq.release-gate-evidence.v1' ||
+    authority.release_identity !== policy.release_identity ||
+    authority.catalog_identity_digest !== catalog.identity_commitment.digest ||
+    evidence.release_identity !== authority.release_identity ||
+    evidence.catalog_identity_digest !== authority.catalog_identity_digest ||
+    !digestPattern.test(authority.corpus_commitment_digest) ||
+    evidence.corpus_commitment_digest !== authority.corpus_commitment_digest ||
+    !digestPattern.test(authority.model_matrix_digest) ||
+    evidence.model_matrix_digest !== authority.model_matrix_digest ||
+    evidence.model_matrix_digest !== releaseEvidenceModelMatrixDigest([...modelIds]) ||
+    authority.contrast_bindings.length !== policy.predeclared_contrasts.length ||
+    authorityContrastBindings.size !== policy.predeclared_contrasts.length ||
+    new Set(boundVariantDigests).size !== policy.predeclared_contrasts.length * 2 ||
+    boundVariantDigests.some((digest) => !digestPattern.test(digest)) ||
+    evidence.source_observations_digest !==
+      releaseEvidenceSourceDigest(evidence.raw_cells, evidence.paired_contrasts) ||
+    evidence.repeat_ids.length < policy.stability_thresholds.complete_repeats_min ||
+    repeatIds.size !== evidence.repeat_ids.length ||
+    modelIds.size !== 17 ||
+    evidence.raw_cells.length !== expectedCellCount ||
+    new Set(cellKeys).size !== expectedCellCount ||
+    invalidRawCell
+  ) {
+    failures.push('invalid_evidence');
+  }
+
+  const infrastructureFailures = evidence.raw_cells.filter(
+    ({ status }) => status === 'infrastructure_failure',
+  ).length;
+  const evaluatorFailures = evidence.raw_cells.filter(
+    ({ status }) => status === 'evaluator_failure',
+  ).length;
+  const taskStatistics = catalog.tasks.map(({ task_id: taskId, domain }) => {
+    const scores = evidence.raw_cells
+      .filter((cell) => cell.task_id === taskId && cell.status === 'completed')
+      .flatMap(({ score }) => (score === null ? [] : [score]));
+    return {
+      task_id: taskId,
+      domain,
+      mean_score: scores.length === 0 ? Number.NaN : mean(scores),
+      score_range: scores.length === 0 ? Number.NaN : Math.max(...scores) - Math.min(...scores),
+    };
+  });
+  const floorTasks = taskStatistics.filter(({ mean_score: meanScore }) => isFloor(meanScore));
+  const ceilingTasks = taskStatistics.filter(({ mean_score: meanScore }) => isCeiling(meanScore));
+  const midTasks = taskStatistics.filter(({ mean_score: meanScore }) => isMid(meanScore));
+  const invariantTasks = taskStatistics.filter(
+    ({ score_range: scoreRange }) =>
+      scoreRange <= policy.score_bands.invariant_range_max + scoreEpsilon,
+  );
+
+  if (infrastructureFailures > policy.aggregate_thresholds.infrastructure_failures_max) {
+    failures.push('infrastructure_failures');
+  }
+  if (evaluatorFailures > policy.aggregate_thresholds.evaluator_failures_max) {
+    failures.push('evaluator_failures');
+  }
+  if (floorTasks.length > policy.aggregate_thresholds.floor_tasks_max) failures.push('floor_tasks');
+  if (ceilingTasks.length > policy.aggregate_thresholds.ceiling_tasks_max) {
+    failures.push('ceiling_tasks');
+  }
+  if (midTasks.length < policy.aggregate_thresholds.mid_band_tasks_min) {
+    failures.push('mid_band_tasks');
+  }
+  if (invariantTasks.length > policy.aggregate_thresholds.invariant_tasks_max) {
+    failures.push('invariant_tasks');
+  }
+
+  for (const domain of DOMAINS) {
+    const domainTasks = taskStatistics.filter((taskStatistic) => taskStatistic.domain === domain);
+    const share = (predicate: (candidate: (typeof domainTasks)[number]) => boolean): number =>
+      domainTasks.filter(predicate).length / domainTasks.length;
+    if (
+      share(({ mean_score: meanScore }) => isMid(meanScore)) <
+      policy.domain_thresholds.mid_band_share_min
+    ) {
+      failures.push(`domain_mid_band:${domain}`);
+    }
+    if (
+      share(({ mean_score: meanScore }) => isFloor(meanScore)) >
+      policy.domain_thresholds.floor_share_max
+    ) {
+      failures.push(`domain_floor:${domain}`);
+    }
+    if (
+      share(({ mean_score: meanScore }) => isCeiling(meanScore)) >
+      policy.domain_thresholds.ceiling_share_max
+    ) {
+      failures.push(`domain_ceiling:${domain}`);
+    }
+  }
+
+  const expectedPairCount = evidence.repeat_ids.length * 17;
+  const requiredContrastIds = policy.predeclared_contrasts.map(
+    ({ contrast_id: contrastId }) => contrastId,
+  );
+  const passingContrasts = evidence.paired_contrasts.filter((contrast) => {
+    const authorityBinding = authorityContrastBindings.get(contrast.contrast_id);
+    const pairKeys = contrast.pairs.map(
+      ({ repeat_id: repeatId, model_id: modelId }) => `${repeatId}\u0000${modelId}`,
+    );
+    const validPairs =
+      contrast.pairs.length === expectedPairCount &&
+      new Set(pairKeys).size === expectedPairCount &&
+      contrast.pairs.every(
+        ({
+          repeat_id: repeatId,
+          model_id: modelId,
+          reference_score: reference,
+          challenge_score: challenge,
+        }) =>
+          repeatIds.has(repeatId) &&
+          modelIds.has(modelId) &&
+          validUnitInterval(reference) &&
+          validUnitInterval(challenge),
+      );
+    if (!validPairs) return false;
+    const differences = contrast.pairs.map(
+      ({ reference_score: reference, challenge_score: challenge }) => (challenge - reference) * 100,
+    );
+    const absoluteDifferenceAiQ = Math.abs(mean(differences));
+    const adjustedLowerBound =
+      absoluteDifferenceAiQ -
+      (policy.paired_contrast_thresholds.one_sided_critical_value *
+        sampleStandardDeviation(differences)) /
+        Math.sqrt(differences.length);
+    return (
+      requiredContrastIds.includes(contrast.contrast_id) &&
+      authorityBinding?.reference_variant_digest === contrast.reference_variant_digest &&
+      authorityBinding.challenge_variant_digest === contrast.challenge_variant_digest &&
+      absoluteDifferenceAiQ >=
+        policy.paired_contrast_thresholds.absolute_difference_aiq_min - 1e-12 &&
+      adjustedLowerBound > scoreEpsilon
+    );
+  });
+  if (
+    evidence.paired_contrasts.length !== requiredContrastIds.length ||
+    new Set(evidence.paired_contrasts.map(({ contrast_id: contrastId }) => contrastId)).size !==
+      requiredContrastIds.length ||
+    passingContrasts.length !== requiredContrastIds.length
+  ) {
+    failures.push('paired_contrasts');
+  }
+
+  const completedCells = evidence.raw_cells.filter(
+    (cell): cell is typeof cell & { readonly score: number } =>
+      cell.status === 'completed' && cell.score !== null,
+  );
+  const repeatAggregatesAiQ = evidence.repeat_ids.map(
+    (repeatId) =>
+      mean(completedCells.filter((cell) => cell.repeat_id === repeatId).map(({ score }) => score)) *
+      100,
+  );
+  const targetRows = [...expectedTasks.keys()].flatMap((taskId) =>
+    [...modelIds].map((modelId) =>
+      evidence.repeat_ids.map(
+        (repeatId) =>
+          completedCells.find(
+            (cell) =>
+              cell.task_id === taskId && cell.model_id === modelId && cell.repeat_id === repeatId,
+          )?.score ?? Number.NaN,
+      ),
+    ),
+  );
+  const aggregateSdAiQ = sampleStandardDeviation(repeatAggregatesAiQ);
+  const medianCellRange = median(
+    targetRows.map((scores) => Math.max(...scores) - Math.min(...scores)),
+  );
+  const icc = absoluteAgreementIcc(targetRows);
+  if (evidence.repeat_ids.length < policy.stability_thresholds.complete_repeats_min) {
+    failures.push('stability_repeats');
+  }
+  if (aggregateSdAiQ > policy.stability_thresholds.aggregate_sd_aiq_max + scoreEpsilon) {
+    failures.push('stability_aggregate_sd');
+  }
+  if (medianCellRange > policy.stability_thresholds.median_cell_range_max + scoreEpsilon) {
+    failures.push('stability_cell_range');
+  }
+  if (!Number.isFinite(icc) || icc < policy.stability_thresholds.icc_min - scoreEpsilon) {
+    failures.push('stability_icc');
+  }
+
+  return { passed: failures.length === 0, failures };
+}
+
+const BASE_TASK_BUDGET: TaskBudget = { wall_seconds: 360, max_steps: 28, max_tool_calls: 18 };
 
 const COMPLEX_INPUT_PATTERN =
   /(?:architecture_change|claim_audit|concurrent|cross_platform|distributed|migration_design|multi_(?:document|file|tool)|service_repository|temporal|workflow_and_build)/u;
@@ -160,10 +734,9 @@ const COMPACT_INPUT_PATTERN =
   /(?:captured_limit|constrained_response|interrupted_capability|maintenance_scheduling|repository_question|structured_writing)/u;
 
 function taskBudget(draft: TaskDraft, allowedTools: readonly string[]): TaskBudget {
-  const base = DIFFICULTY_BUDGETS[draft.difficulty];
-  let wallSeconds = base.wall_seconds;
-  let maxSteps = base.max_steps;
-  let maxToolCalls = base.max_tool_calls;
+  let wallSeconds = BASE_TASK_BUDGET.wall_seconds;
+  let maxSteps = BASE_TASK_BUDGET.max_steps;
+  let maxToolCalls = BASE_TASK_BUDGET.max_tool_calls;
 
   if (!allowedTools.includes('filesystem_write')) {
     wallSeconds -= 30;
@@ -1246,14 +1819,17 @@ function acceptanceFixtureCommitments(
   taskId: string,
 ): Readonly<Record<AcceptanceFixtureClass, AcceptanceFixtureCommitment>> {
   const commitment = (fixtureClass: AcceptanceFixtureClass): AcceptanceFixtureCommitment => ({
-    handle: `aiq-acceptance://${taskId}/v1/${fixtureClass.replaceAll('_', '-')}`,
+    handle: `aiq-acceptance://${taskId}/v2/${fixtureClass.replaceAll('_', '-')}`,
     status: 'required_in_controlled_source',
   });
 
   return {
     gold: commitment('gold'),
     alternate_correct: commitment('alternate_correct'),
-    partial: commitment('partial'),
+    partial_low: commitment('partial_low'),
+    partial_high: commitment('partial_high'),
+    near_miss: commitment('near_miss'),
+    paired_contrast: commitment('paired_contrast'),
     adversarial_format: commitment('adversarial_format'),
     empty: commitment('empty'),
     timeout: commitment('timeout'),
@@ -1310,18 +1886,47 @@ export function buildCatalog(): Catalog {
     const profile = PROFILES[draft.domain];
     const allowedTools = profile.allowedTools;
     const budget = taskBudget(draft, allowedTools);
+    const revisionKind: RevisionKind = PRIOR_FLOOR_TASKS.has(taskId)
+      ? 'replacement'
+      : PRIOR_CEILING_TASKS.has(taskId)
+        ? 'retargeted'
+        : 'rebalanced';
+    const rubricCriteria = [...draft.checks, DISCRIMINATION_CHECK[draft.domain]];
+    const rubricWeights = [3000, 2500, 2500, 2000] as const;
 
     return {
       task_id: taskId,
-      task_version: '1.0.0',
+      task_version: TASK_VERSION,
       title: draft.title,
       domain: draft.domain,
       difficulty: draft.difficulty,
-      summary: draft.summary,
+      summary: `${draft.summary} Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.`,
+      design_revision: {
+        supersedes_task_version: '1.0.1',
+        kind: revisionKind,
+        objective:
+          revisionKind === 'replacement'
+            ? 'Replace the predecessor floor behavior with bounded entry points, staged partial outcomes, and independently measurable checks.'
+            : revisionKind === 'retargeted'
+              ? 'Retarget the predecessor ceiling behavior with coupled constraints, seeded near misses, and independently measurable checks.'
+              : 'Rebalance the predecessor design around staged partial outcomes and a deterministic middle-discrimination rubric.',
+        task_specific_delta:
+          revisionKind === 'replacement'
+            ? `Replace the prior controlled scenario with two independently attainable stages: first "${draft.checks[0]}", then "${draft.checks[1]}"; reserve full credit for also satisfying "${draft.checks[2]}" and the domain discrimination check.`
+            : revisionKind === 'retargeted'
+              ? `Add matched near-miss variants where "${draft.checks[0]}" holds while either "${draft.checks[1]}" or "${draft.checks[2]}" fails; score each outcome independently before the domain discrimination check.`
+              : `Split the controlled scenario into task-specific evidence for "${draft.checks[0]}", "${draft.checks[1]}", and "${draft.checks[2]}" before applying the domain discrimination check.`,
+        controlled_corpus_requirements: [
+          'Provide at least three deterministic assertions for each published scoring component.',
+          'Include low-partial, high-partial, near-miss, alternate-correct, empty, timeout, and paired-contrast cases.',
+          'Ensure no single assertion or output-format check contributes more than 0.20 to the task score.',
+          'Document exact expected score vectors for every acceptance case before model execution.',
+        ],
+      },
       input_contract: {
         kind: draft.inputKind,
         fixture_profile: `aiq-fixture://${taskId}/v1`,
-        content_handle: `aiq-controlled-task://aiq-core/1.0.0/${taskId}`,
+        content_handle: `aiq-controlled-task://aiq-core/${TASK_VERSION}/${taskId}`,
       },
       cluster_id:
         CLUSTER_OVERRIDES[taskId] ??
@@ -1330,23 +1935,39 @@ export function buildCatalog(): Catalog {
       budget,
       evaluator: {
         kind: draft.scorer,
-        scorer_version: '1.0.0',
+        scorer_version: SCORER_VERSION,
         execution_protocol: 'aiq.evaluator-protocol.v1',
         binding_requirement: 'controlled_hidden_task_required',
         deterministic: true,
         partial_credit: true,
         pass_conditions:
           draft.domain === 'tool_use'
-            ? [...draft.checks, COMMAND_EXECUTION_DISCLOSURE]
-            : draft.checks,
+            ? [...rubricCriteria, COMMAND_EXECUTION_DISCLOSURE]
+            : rubricCriteria,
+        scoring_contract: {
+          aggregation: 'weighted_assertion_fraction',
+          assertion_scoring: 'binary_equal_weight_within_component',
+          missing_or_error_score: 0,
+          rounding: 'no_intermediate_rounding_final_six_decimals',
+          formula:
+            'sum(component_weight_basis_points / 10000 * passed_assertions / total_assertions)',
+          score_range: [0, 1],
+          minimum_assertions_per_component: 3,
+          components: rubricCriteria.map((criterion, componentIndex) => ({
+            component_id: `component_${String(componentIndex + 1).padStart(2, '0')}`,
+            weight_basis_points: rubricWeights[componentIndex] ?? 0,
+            criterion,
+          })),
+        },
         acceptance_fixture_commitments: acceptanceFixtureCommitments(taskId),
       },
       tags: draft.tags,
       visibility: 'hidden',
       provenance: {
-        origin: 'original_benchmark_design',
+        origin: 'calibration_driven_redesign',
         owner: 'AIQ benchmark maintainers',
-        recorded_date: '2026-07-24',
+        recorded_date: '2026-08-02',
+        predecessor_task_version: '1.0.1',
         source: 'scripts/generate-benchmark-catalog.ts',
       },
       leakage_review: {
@@ -1364,14 +1985,15 @@ export function buildCatalog(): Catalog {
   return {
     schema_version: 'aiq.catalog.v1',
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.0',
+    task_set_version: TASK_SET_VERSION,
     title: 'AIQ Core Daily Work Benchmark',
-    status: 'public_designs_versioned_private_content_required',
+    status: 'candidate_requires_controlled_release_gate',
     generated_from: 'scripts/generate-benchmark-catalog.ts',
+    predecessor_catalog: PREDECESSOR_CATALOG,
     identity_commitment: {
       algorithm: 'sha256',
-      digest: taskIdentityDigest(tasks),
-      scope: 'ordered_full_task_metadata',
+      digest: catalogIdentityDigest(tasks, RELEASE_GATE_POLICY, PREDECESSOR_CATALOG),
+      scope: 'ordered_full_task_metadata_release_policy_and_predecessor',
     },
     content_policy: {
       public_repository: 'Metadata, schemas, public examples, and synthetic scoring fixtures only.',
@@ -1384,8 +2006,9 @@ export function buildCatalog(): Catalog {
       difficulties: DIFFICULTY_QUOTAS,
       domain_difficulty: DOMAIN_DIFFICULTY_QUOTAS,
       difficulty_role:
-        'Difficulty is a provisional coverage label. AIQ v1 does not apply a separate difficulty weight; labels require real-model calibration before use.',
+        'Difficulty is a provisional, non-ordinal coverage label. It is not an empirical rank, does not set score weight, and must not be interpreted as calibrated until the 1.0.2 controlled release gate passes.',
     },
+    release_gate_policy: RELEASE_GATE_POLICY,
     tasks,
   };
 }
@@ -1395,23 +2018,30 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     throw new Error(`The catalog must contain 72 tasks; found ${String(catalog.tasks.length)}.`);
   }
   if (
-    catalog.task_set_version !== '1.0.0' ||
+    catalog.task_set_version !== TASK_SET_VERSION ||
     catalog.tasks.some(
       (catalogTask) =>
-        catalogTask.task_version !== '1.0.0' ||
-        catalogTask.evaluator.scorer_version !== '1.0.0' ||
+        catalogTask.task_version !== TASK_VERSION ||
+        catalogTask.evaluator.scorer_version !== SCORER_VERSION ||
         catalogTask.input_contract.content_handle !==
-          `aiq-controlled-task://aiq-core/1.0.0/${catalogTask.task_id}`,
+          `aiq-controlled-task://aiq-core/${TASK_VERSION}/${catalogTask.task_id}`,
     )
   ) {
     throw new Error(
-      'The current AIQ Core catalog requires task-set, task, scorer, and content-handle version 1.0.0.',
+      'The current AIQ Core catalog requires task-set, task, content-handle, and scorer version 1.0.2.',
     );
   }
 
   const identifiers = new Set(catalog.tasks.map(({ task_id: taskId }) => taskId));
   if (identifiers.size !== catalog.tasks.length) {
     throw new Error('Every benchmark task ID must be unique.');
+  }
+  if (
+    JSON.stringify(catalog.release_gate_policy) !== JSON.stringify(RELEASE_GATE_POLICY) ||
+    JSON.stringify(catalog.predecessor_catalog) !== JSON.stringify(PREDECESSOR_CATALOG) ||
+    catalog.status !== 'candidate_requires_controlled_release_gate'
+  ) {
+    throw new Error('AIQ Core 1.0.2 requires the preregistered controlled release gate.');
   }
   for (const domain of DOMAINS) {
     const count = catalog.tasks.filter((candidate) => candidate.domain === domain).length;
@@ -1454,11 +2084,15 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   const acceptanceClasses: readonly AcceptanceFixtureClass[] = [
     'gold',
     'alternate_correct',
-    'partial',
+    'partial_low',
+    'partial_high',
+    'near_miss',
+    'paired_contrast',
     'adversarial_format',
     'empty',
     'timeout',
   ];
+  const taskSpecificDeltas = new Set<string>();
   for (const catalogTask of catalog.tasks) {
     if (
       JSON.stringify(Object.keys(catalogTask.evaluator.acceptance_fixture_commitments)) !==
@@ -1471,6 +2105,21 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     if (!/^[a-z_]+-cluster-[0-9]{2}$/u.test(catalogTask.cluster_id)) {
       throw new Error(`Task ${catalogTask.task_id} has an invalid cluster identity.`);
     }
+    if (
+      catalogTask.design_revision.supersedes_task_version !== '1.0.1' ||
+      !catalogTask.design_revision.task_specific_delta.includes(
+        catalogTask.evaluator.pass_conditions[0] ?? '',
+      ) ||
+      catalogTask.design_revision.controlled_corpus_requirements.length !== 4 ||
+      catalogTask.evaluator.scoring_contract.components.length !== 4 ||
+      catalogTask.evaluator.scoring_contract.components.reduce(
+        (sum, component) => sum + component.weight_basis_points,
+        0,
+      ) !== 10_000
+    ) {
+      throw new Error(`Task ${catalogTask.task_id} does not have the required 1.0.2 redesign.`);
+    }
+    taskSpecificDeltas.add(catalogTask.design_revision.task_specific_delta);
     const allowedToolTokens = new Set([
       'none',
       'filesystem_read',
@@ -1506,6 +2155,9 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
       throw new Error(`Task ${catalogTask.task_id} has a stale calibrated budget.`);
     }
   }
+  if (taskSpecificDeltas.size !== catalog.tasks.length) {
+    throw new Error('Every AIQ Core 1.0.2 task requires a distinct task-specific design delta.');
+  }
 
   const clusterCounts = DOMAINS.map((domain) => {
     const clusters = new Set(
@@ -1528,7 +2180,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     catalog.tasks.map((catalogTask) => JSON.stringify(catalogTask.budget)),
   );
   if (
-    distinctBudgets.size < 12 ||
+    distinctBudgets.size < 9 ||
     catalog.tasks.some(
       ({ budget }) =>
         budget.wall_seconds < 150 ||
@@ -1540,25 +2192,41 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     )
   ) {
     throw new Error(
-      'Task budgets are not sufficiently calibrated or are outside the frozen bounds.',
+      'Task budgets do not reflect enough input/tool scope variation or are outside the frozen bounds.',
     );
   }
 
-  const observedIdentity = taskIdentityDigest(catalog.tasks);
+  const observedIdentity = catalogIdentityDigest(
+    catalog.tasks,
+    catalog.release_gate_policy,
+    catalog.predecessor_catalog,
+  );
   if (catalog.identity_commitment.digest !== observedIdentity) {
     throw new Error(
       `Catalog identity commitment does not match its ordered task metadata: ${observedIdentity}.`,
     );
   }
-  if (observedIdentity !== AIQ_CORE_V1_TASK_IDENTITY_SHA256) {
+  if (observedIdentity !== AIQ_CORE_V1_CATALOG_IDENTITY_SHA256) {
     throw new Error(
-      `AIQ Core 1.0.0 task identity changed without a versioned commitment update: ${observedIdentity}.`,
+      `AIQ Core 1.0.2 catalog identity changed without a versioned commitment update: ${observedIdentity}.`,
     );
   }
 }
 
-export function taskIdentityDigest(tasks: readonly CatalogTask[]): string {
-  return `sha256:${createHash('sha256').update(JSON.stringify(tasks)).digest('hex')}`;
+export function catalogIdentityDigest(
+  tasks: readonly CatalogTask[],
+  releaseGatePolicy: ReleaseGatePolicy,
+  predecessorCatalog: Catalog['predecessor_catalog'],
+): string {
+  return `sha256:${createHash('sha256')
+    .update(
+      JSON.stringify({
+        tasks,
+        release_gate_policy: releaseGatePolicy,
+        predecessor_catalog: predecessorCatalog,
+      }),
+    )
+    .digest('hex')}`;
 }
 
 export async function writeCatalog(outputPath: string): Promise<void> {
