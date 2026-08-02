@@ -84,11 +84,19 @@ Use CLI help as the exact command authority:
 
 ```sh
 cargo run -p aiq-runner -- preflight --help
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- run --help
 ```
 
 Run preflight first. Store its authenticated report at a durable path. The run
 can use that report until it expires or can refresh it explicitly.
+
+Before an Official occurrence, run `admit-permissions` with the exact planned
+run paths. The bounded command invokes no model. It fails closed unless the
+managed `aiq_benchmark` allowlist and default are exact and the same filesystem
+and network canaries used by the live runtime pass. Its machine-readable receipt
+does not reserve the planned Official output. Schedule and capacity admission
+remain owned by `run`.
 
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
 Use calibration for a bounded diagnostic subset.

@@ -31,6 +31,7 @@ Show the exact arguments for live commands:
 
 ```sh
 cargo run -p aiq-runner -- preflight --help
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- run --help
 cargo run -p aiq-runner -- score --help
 cargo run -p aiq-runner -- package --help
@@ -53,6 +54,13 @@ A live preflight requires:
 A live run also requires controlled task, workspace, evaluator, schedule,
 execution, artifact, preflight-cache, and checkpoint paths. The CLI checks path
 separation and commitments before it starts task processes.
+
+Run `admit-permissions` before an Official occurrence. It uses the exact planned
+run paths to verify the exclusive managed `aiq_benchmark` profile and the Codex
+sandbox canaries. It emits `aiq.official-permission-admission.v1` JSON and does
+not invoke a model, create a checkpoint, or reserve the planned Official output.
+The command is a permission gate only. The `run` command still validates the
+schedule, capacity, and complete execution contract.
 
 The credential source must stay unchanged during controlled work. On Linux,
 put `auth.json` on a read-only file-system mount. For local macOS validation,
