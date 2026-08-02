@@ -1,155 +1,269 @@
 ---
-type: "Reference"
-title: "Operations And Validation"
-openwiki_generated: true
+type: 'Operations'
+title: 'Operations and Validation'
+description: 'Local validation, runner, verifier, database, Web, and Storage procedures.'
+tags: ['operations', 'validation', 'runbook']
 ---
 
-# Operations And Validation
+# Operations and Validation
 
-## Preconditions
+## Toolchain
 
-Repository-native tasks are declared in `Makefile.toml` and invoked with `cargo make <task>`. Install only what the selected task needs:
-
-| Tool | Needed by |
-| --- | --- |
-| Project Rust toolchain from `rust-toolchain.toml` | Rust check, lint, test, and build tasks |
-| Nightly toolchain with rustfmt | `fmt-rust`, `fmt-rust-check` |
-| Node.js/npm from `.node-version` | TypeScript check, format, lint, test, and template-marker tasks |
-| `cargo-make` | Every `cargo make` entrypoint |
-| `taplo` | TOML format tasks |
-| `cargo-vstyle` | vstyle tasks and the composite lint/full gates |
-| `cargo-nextest` | test tasks |
-
-`rust-toolchain.toml` is the sole selector for ordinary Rust commands. It selects stable with the minimal profile and adds Clippy; Cargo and rustc come from that profile. Rust formatting is the only explicit toolchain exception: `fmt-rust` and `fmt-rust-check` run nightly rustfmt because `.rustfmt.toml` uses nightly features. Third-party Cargo tools remain separate prerequisites. `.node-version`, `package.json`, and `package-lock.json` pin Node.js, npm, and the TypeScript development graph. Run `npm ci --ignore-scripts` before a TypeScript task or the full aggregate; repository tasks validate but do not install dependencies. CI reads the ordinary Rust toolchain and components from `rust-toolchain.toml`, installs nightly rustfmt separately, installs Taplo for the TOML job, and performs the locked npm install for the TypeScript job.
-
-Sources: `rust-toolchain.toml`, `Makefile.toml`, `.node-version`, `package.json`, `package-lock.json`, `.github/workflows/language.yml`, `.github/workflows/release.yml`.
-
-## Public Check Aggregate
-
-```sh
-cargo make check
-```
-
-`check` is a cargo-make composite whose dependencies are `check-rust`, `check-typescript`, `fmt-check`, `lint`, and `test`. `Makefile.toml` establishes the dependency set but does not state a runtime ordering contract. When deterministic, fail-fast diagnosis matters, invoke the targeted commands explicitly in this recommended sequence:
-
-```sh
-cargo make fmt-check
-cargo make check-rust
-cargo make check-typescript
-cargo make lint
-cargo make test
-```
-
-This diagnostic order catches mechanical formatting drift before compilation/lint/test analysis; it does not change the task definitions. `check` is the public aggregate for source validation, but it no longer includes the deleted Decodex `check-docs` task. Review OpenWiki separately with the focused checks in [Knowledge Maintenance](knowledge-maintenance.md#openwiki-drift-check).
-
-## Complete Task Matrix
-
-| Task | Exact behavior | Mutates files? |
-| --- | --- | --- |
-| `check` | Composite: `check-rust`, `check-typescript`, `fmt-check`, `lint`, `test` | Build/tool caches only |
-| `check-rust` | `cargo check --all-features --all-targets --workspace` | Build cache only |
-| `check-typescript` | Run the installed TypeScript compiler with `--noEmit --project tsconfig.json` | Tool cache only |
-| `fmt` | Composite: `fmt-rust`, `fmt-toml`, `fmt-typescript` | Yes |
-| `fmt-check` | Composite: `fmt-rust-check`, `fmt-toml-check`, `fmt-typescript-check` | No |
-| `fmt-rust` | `rustup run nightly cargo fmt --all` | Yes |
-| `fmt-rust-check` | Same with `-- --check` | No |
-| `fmt-toml` | `taplo fmt` | Yes |
-| `fmt-toml-check` | `taplo fmt --check` | No |
-| `fmt-typescript` | Oxfmt over `scripts/` and the owned TypeScript JSON configuration files | Yes |
-| `fmt-typescript-check` | Same Oxfmt scope with `--check` | No |
-| `lint` | Composite: `lint-rust`, `lint-typescript`, `lint-vstyle` | No |
-| `lint-fix` | Composite: `lint-fix-rust`, `lint-fix-typescript`, `lint-fix-vstyle` | Yes |
-| `lint-rust` | Workspace/all-target/all-feature Clippy with repository deny policy | Build cache only |
-| `lint-fix-rust` | Same Clippy policy with `--fix --allow-dirty` | Yes |
-| `lint-typescript` | Oxlint over `scripts/` with the checked-in type-aware deny policy | No |
-| `lint-fix-typescript` | Same Oxlint policy with safe `--fix`; suggestions and dangerous fixes remain disabled | Yes |
-| `lint-vstyle` | Composite: `lint-vstyle-rust` | No |
-| `lint-vstyle-rust` | `cargo vstyle curate --language rust --workspace --all-features --strict` | No |
-| `lint-fix-vstyle` | Composite: `lint-fix-vstyle-rust` | Yes |
-| `lint-fix-vstyle-rust` | `cargo vstyle tune --language rust --workspace --all-features --strict` | Yes |
-| `list-template-markers` | Run the tracked-file marker inventory through Node.js | No |
-| `test` | Composite: `test-rust`, `test-typescript` | Build/tool caches only |
-| `test-rust` | `cargo nextest run --workspace --all-targets --all-features` | Build cache only |
-| `test-typescript` | `node --test` over the discovered `*.test.ts` files | Tool cache only |
-
-The Clippy tasks deny `clippy::all`, `clippy::too_many_lines`, `clippy::unwrap_used`, `clippy::use_self`, `clippy::wildcard_imports`, `missing-docs`, `unused-crate-dependencies`, and all warnings. `clippy.toml` allows unwrap only in tests, sets a 120-line threshold, and warns on wildcard imports. Rust formatting intentionally uses nightly features from `.rustfmt.toml`; Taplo excludes `Makefile.toml` and generated/local trees.
-
-The TypeScript compiler enables strict checking, indexed-access uncertainty, exact optional-property semantics, control-flow checks, and Node-erasable syntax. Oxlint denies correctness, suspicious, and performance diagnostics plus explicit `any`, unsafe type operations, non-null assertions, unhandled or misused promises, non-`Error` throws, and non-exhaustive switches. Warnings and unused suppression directives fail the task. Oxfmt is the sole TypeScript formatter; the prior root Prettier files were unused and are removed. The npm lock contains platform-specific optional binary packages for TypeScript and Oxc; `.npmrc` disables lifecycle scripts and requires exact saved versions.
-
-History: commit `452039e` separated `cargo check` from Clippy and made task contracts explicit; `b250fc0` split vstyle wrappers by language for monorepo extension.
-
-Sources: `Makefile.toml`, `clippy.toml`, `.rustfmt.toml`, `.taplo.toml`, `tsconfig.json`, `.oxfmtrc.json`, `.oxlintrc.json`, `.npmrc`; history: commits `452039e`, `b250fc0`.
-
-## TypeScript Template Maintenance
-
-Install the exact development graph and list every tracked template marker:
+Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+locked dependencies.
 
 ```sh
 npm ci --ignore-scripts
-cargo make list-template-markers
 ```
 
-The marker script forwards `git grep` output as `path:line:text` records. A marker record means the repository still contains template identity. No marker records means no configured marker was found; cargo-make can still print its own task status. Both inventory results are successful; inability to execute Git or another Git failure fails the task. The helper scans all tracked files, so it does not read untracked or ignored secret-bearing files.
-
-Before Node/npm is installed, use the equivalent scoped `rg` fallback from [Template Adoption](template-adoption.md#1-establish-identity-and-inventory). Keep that fallback for bootstrap only; `list-template-markers` owns the installed repository command.
-
-Sources: `scripts/list-template-markers.ts`, `scripts/list-template-markers.test.ts`, `Makefile.toml`, `openwiki/template-adoption.md`.
-
-## Build, Install, Run, And Bundle
-
-Common Cargo commands are not cargo-make tasks:
+The aggregate repository checks are:
 
 ```sh
-cargo build -p name_placeholder
-cargo build --release -p name_placeholder
-cargo build -p name_placeholder --profile final-release --locked
-cargo install --path apps/name_placeholder --force
-cargo run -p name_placeholder -- --help
+cargo make fmt-check
+cargo make check
+cargo make lint
+cargo make test
+cargo make build
 ```
 
-- Default release output: `target/release/name_placeholder` (or `.exe`).
-- `final-release` output: `target/final-release/name_placeholder` unless `--target` adds a target-triple directory.
-- macOS app bundling is optional and requires `cargo-bundle`; run it from `apps/name_placeholder/` as documented in the README.
-- Release reproducibility relies on `--locked`; an out-of-date lockfile is a release blocker rather than permission to omit the flag.
+## Local synthetic demonstration
 
-Sources: `README.md`, `Cargo.toml`, `.github/workflows/release.yml`.
+```sh
+cargo run -p aiq-runner -- demo
+npm run dev
+```
 
-## CI Checks
+Open `http://localhost:3000`. The development server uses synthetic seed data
+when both browser-safe Supabase values are absent.
 
-Current `.github/workflows/language.yml` runs on pushes and pull requests targeting `main`, plus merge queues. It has no path filters, so documentation-only changes trigger the language checks too.
+Validate the public examples:
 
-Three jobs run independently:
+```sh
+cargo run -p aiq-runner -- matrix
+cargo run -p aiq-runner -- validate \
+  --public-tasks benchmarks/examples/tasks
+```
 
-- **Rust check:** rustfmt check → Cargo check → vstyle action → Clippy → nextest. The setup action reads the ordinary toolchain and Clippy component from `rust-toolchain.toml`; the job installs nightly rustfmt with the minimal profile, installs cargo-make and nextest separately, and gets vstyle from `hack-ink/vibe-style`.
-- **TOML check:** installs cargo-make and Taplo, then runs `fmt-toml-check`.
-- **TypeScript check:** reads the exact Node.js version from `.node-version`, installs the locked npm graph without lifecycle scripts, then runs TypeScript format, compiler, type-aware lint, and test tasks through cargo-make.
+## Subscription smokes
 
-CI does **not** invoke `cargo make check` or validate OpenWiki. Running on a documentation-only diff does not turn this workflow into a documentation-readiness gate: green proves only the listed Rust/TOML/TypeScript checks. The former CodeQL workflow—push/PR analysis for `main` plus weekly Actions/Rust scans—has been removed, so no tracked workflow currently provides that security-analysis coverage. Actions are SHA-pinned in current tracked workflows; preserve that supply-chain posture when updating them. Dependabot covers Cargo, root npm, and GitHub Actions; the TypeScript compiler, types, formatter, linter, and type-aware backend update as one review group.
+The smokes are ignored and opt in. Each consumes one Codex subscription attempt.
 
-Source: `.github/workflows/language.yml`.
+```sh
+cargo make smoke-subscription
+cargo make smoke-controlled-subscription
+```
 
-## Release Pipeline
+The public smoke uses a fixed checked-in example. The controlled smoke requires
+operator-supplied private task, baseline, evaluator, corpus, runtime, toolchain,
+workspace, artifact, and Codex inputs. Keep its public-safe summary separate from
+private artifacts. Set `AIQ_CONTROLLED_SUBSCRIPTION_SMOKE_EXECUTION_ROOT` to a
+new private absolute path outside the repository, Codex home, controlled inputs,
+artifact root, and model toolchain.
 
-A tag matching `v<major>.<minor>.<patch>` triggers `.github/workflows/release.yml`:
+## Controlled runner preparation
 
-1. Build `name_placeholder` with locked `final-release` for Apple arm64, Linux x86_64 GNU, and Windows x86_64 MSVC.
-2. Package macOS/Windows as ZIP and Linux as tar.gz; upload one-day intermediate artifacts.
-3. After all builds, combine and publish artifacts to a GitHub Release with generated notes.
-4. Independently publish package `name_placeholder` to crates.io using the configured repository secret.
+Before a live run:
 
-The crates.io job does not depend on the build or GitHub release jobs; GitHub Actions may run it concurrently. A failure in one branch does not imply the other branch never ran. All names, package selectors, and archive paths are still template placeholders and must change together during adoption.
+1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
+   corpus commitment, Node.js runtime, and toolchain in controlled storage.
+2. Verify the catalog digest is
+   `sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
+3. Create distinct runner, verifier, and publisher Ed25519 identities.
+4. Select separate absolute roots for source, task input, baseline workspaces,
+   execution copies, evaluator files, replay, artifacts, checkpoints, and
+   preflight output.
+5. Configure the exact Codex executable, Codex home, private proxy, capability
+   manifest, and approved schedule.
 
-Sources: `.github/workflows/release.yml`, `Cargo.toml`, `apps/name_placeholder/Cargo.toml`.
+Use a protected credential source. Linux requires `auth.json` on a read-only
+file-system mount. Local macOS validation requires a separate private Codex
+home whose copied `auth.json` is owner immutable with `uchg`. Do not make the
+active Codex profile immutable.
 
-## Failure Interpretation
+Use CLI help as the exact command authority:
 
-- Missing command/tool: satisfy the prerequisite; do not rewrite the task to bypass the expected tool without a deliberate contract change.
-- Format failure: run `cargo make fmt`, inspect changes, then rerun `fmt-check`.
-- Cargo check failure: resolve compilation/features/targets before interpreting downstream lint/test noise.
-- TypeScript check failure: resolve compiler diagnostics under the pinned Node/TypeScript versions before interpreting type-aware lint noise.
-- Clippy/vstyle failure: fix directly or use the matching `lint-fix*` task, then review all mutations before rerunning read-only gates.
-- Oxlint failure: fix the diagnostic directly or use `lint-fix-typescript` for safe fixes only; review every mutation before rerunning compiler, lint, and tests.
-- Test failure: treat as a regression or broken assumption in the current diff until evidence shows an environment/tool issue.
-- Release failure: distinguish build, packaging/path, GitHub publication, and crates.io publication; they have different ownership and dependency edges.
+```sh
+cargo run -p aiq-runner -- preflight --help
+cargo run -p aiq-runner -- run --help
+```
 
-Before merge, prefer `cargo make check` plus the focused OpenWiki drift checks and any release-specific dry checks justified by the changed surface. Record unavailable tools and unrun checks explicitly rather than claiming readiness.
+Run preflight first. Store its authenticated report at a durable path. The run
+can use that report until it expires or can refresh it explicitly.
+
+An Official run must be non-synthetic and select the complete 17-by-72 matrix.
+Use calibration for a bounded diagnostic subset.
+
+## Score, package, and submit
+
+After execution:
+
+```sh
+cargo run -p aiq-runner -- score --help
+cargo run -p aiq-runner -- package --help
+cargo run -p aiq-runner -- submit --help
+```
+
+Keep `AIQ_RUNNER_SIGNING_KEY` only in the runner environment. `package` creates
+one signed v3 envelope. `submit` uploads required artifacts and sends the package
+to `/api/submissions`. A queue receipt is not verification or publication.
+
+## Verifier worker
+
+Keep `AIQ_VERIFIER_SIGNING_KEY` and `AIQ_VERIFIER_INGRESS_TOKEN` only in the
+verifier environment. Provide the private tasks, evaluator registry, corpus
+commitment, toolchain, runtime, environment metadata, and a fresh replay root.
+
+```sh
+cargo run -p aiq-verifier -- --help
+```
+
+The worker claims bounded leases from `/api/claims`, reconstructs workspaces,
+replays evaluators, and posts the stage and attestation to
+`/api/verifications`. Production requires `evaluator_replayed`.
+
+## Fresh database initialization
+
+Create a new Supabase project. Do not apply AIQ objects before initialization.
+Use a direct PostgreSQL URL, not the public Data API URL.
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
+cargo make init-database
+```
+
+The command uses one connection and one transaction. It rejects existing AIQ
+schema or roles. The receipt must report 72 tasks, 17 model configurations, and
+three production nodes. This one-shot behavior enforces the database boundary in
+[Architecture and Runtime](architecture-and-runtime.md); the opt-in PostgreSQL 17
+test also runs initialization twice and requires the second attempt to fail
+without exposing the connection URL.
+
+For a disposable database, run:
+
+```sh
+cargo make smoke-database
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/synthetic-demo.sql
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/integration.sql
+```
+
+`cargo make smoke-database` checks more than catalog grants: it switches to both
+`anon` and `authenticated` and reads all nine security-invoker views plus the
+bounded trend RPC. This exercises the public-read path described in
+[Architecture and Runtime](architecture-and-runtime.md). Do not run the synthetic
+fixture in production.
+
+## Web configuration
+
+For the disposable ACGbox read-only preview, set only:
+
+```text
+AIQ_DEPLOYMENT_PROFILE=preview
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
+
+Initialize that database with `cargo make init-preview-database`. The preview
+profile fails closed unless Supabase exposes one exact preview-status row. That
+row verifies the required 17-configuration shape, cardinalities, scoring
+definition, synthetic-only boundary, and empty publication surface. The
+application then serves explicitly synthetic checked-in fixtures. Do not set
+production gateway variables for this stage. `/api/readiness` remains `503` by
+design because it checks the production write and verification dependencies. The
+complete setup and disposal boundary are in [Deployment Handoff](deployment-handoff.md).
+
+To test the initialized database through loopback PostgREST and the built Next.js
+application, run:
+
+```sh
+AIQ_PREVIEW_POSTGREST_URL='http://127.0.0.1:4180' \
+cargo make smoke-preview-web
+```
+
+The smoke requires one canonical loopback HTTP origin. It checks the live anon
+read path, all public pages and trend ranges, the 17 configurations, one 72-task
+synthetic run, mobile overflow, accessibility, preview labels, `noindex`, and the
+expected readiness `503`. The database initializer's real PostgreSQL 17 test is
+separately opt in through `AIQ_DATABASE_PREVIEW_TEST_URL` and
+`AIQ_DATABASE_PREVIEW_TEST_PSQL`.
+
+For production, leave `AIQ_DEPLOYMENT_PROFILE` absent.
+
+Set browser-safe values:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
+
+Set server-only values:
+
+```text
+SUPABASE_URL
+SUPABASE_SECRET_KEY
+AIQ_RUNNER_SUBMISSION_TOKEN
+AIQ_SUBMISSION_PACKAGE_BUCKET
+AIQ_RUNNER_ARTIFACT_BUCKET
+AIQ_VERIFIER_INGRESS_TOKEN
+AIQ_SUPABASE_PUBLISHABLE_KEY
+AIQ_SUPABASE_JWT_PRIVATE_JWK
+AIQ_PUBLISHER_NODE_ID
+```
+
+Never add a `NEXT_PUBLIC_` alias for a server value.
+
+Validate the Web application. On a fresh host, install the pinned Playwright
+browsers first, as the checked-in CI job does:
+
+```sh
+npm exec --workspace @aiq/wiki-web -- \
+  playwright install --with-deps chromium firefox webkit
+npm run check
+npm run lint
+npm run test --workspace @aiq/wiki-web
+npm run build --workspace @aiq/wiki-web
+npm run test:browser --workspace @aiq/wiki-web
+```
+
+To validate a real PostgREST-to-Next public-read chain against a freshly
+initialized disposable database, supply its loopback PostgREST origin:
+
+```sh
+AIQ_LIVE_POSTGREST_URL='http://127.0.0.1:4178' \
+cargo make smoke-live-web
+```
+
+Local PostgREST must expose only `public` and use `anon` as its anonymous role.
+The test harness supplies a fixed non-secret publishable-key-shaped value. Its
+loopback proxy supplies the `/rest/v1` prefix that Supabase adds in production.
+
+## Storage lifecycle
+
+Both configured buckets must be private. The submission gateway registers exact
+object digests and byte counts before queueing. The verifier resolves only
+claim-bound objects.
+
+Run one explicit lifecycle mode per invocation:
+
+```sh
+AIQ_STORAGE_LIFECYCLE_MODE=reconcile npm run storage:lifecycle
+AIQ_STORAGE_LIFECYCLE_MODE=delete npm run storage:lifecycle
+```
+
+Run reconciliation first. Inspect unresolved mismatches before deletion. Active
+references and legal holds block deletion.
+
+## Failure handling
+
+- If fresh database initialization fails after work starts, do not reuse the
+  target. Inspect protected PostgreSQL logs, correct the input, and create a new
+  empty project.
+- If initialization rejects existing AIQ objects, the rejected attempt made no
+  changes. Use a new project for the greenfield launch.
+- If submission fails after Storage upload, preserve the object and run
+  reconciliation.
+- If a verifier lease expires, let the bounded claim protocol retry it.
+- If a run stops, preserve the checkpoint and artifact root before resuming.
+- Do not publish incomplete, synthetic, or identity-colliding production data.

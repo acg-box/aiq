@@ -1,72 +1,116 @@
 ---
-type: "Reference"
-title: "Repository Quickstart"
-openwiki_generated: true
+type: 'Quickstart'
+title: 'AIQ Wiki Quickstart'
+description: 'Product scope, local demonstration, validation, and deployment status.'
+tags: ['quickstart', 'navigation', 'aiq']
 ---
 
-# Repository Quickstart
+# AIQ Wiki Quickstart
 
-## What This Repository Is
+AIQ Wiki publishes transparent records for a fixed AI and agent benchmark. It
+contains:
 
-This is a Rust 2024, workspace-first monorepo **template**, not an adopted product. Its runnable Rust example is still named `name_placeholder`, its private npm tool package is still named `name-placeholder-workspace`, public metadata still says `description_placeholder`, and the README contains unfinished product, dependency, configuration, and platform sections. Treat those values as replacement markers, not product facts.
+- a Next.js site for results, trends, run details, method, and distributed radar;
+- a Rust runner for capability checks, task execution, scoring, signing, and
+  submission;
+- a Rust verifier for artifact reconstruction and deterministic evaluator replay;
+- AIQ Core `1.0.0`, with 72 private tasks and a public catalog;
+- one PostgreSQL desired state with RLS, public reads, controlled writes, and
+  private Storage lifecycle records.
 
-The root workspace currently includes every Cargo package under `apps/*`. The only package is the placeholder CLI in `apps/name_placeholder/`; `packages/` is reserved for reusable libraries but contains no package yet. `scripts/` owns Node.js-executed TypeScript maintenance programs and currently contains the tracked template-marker inventory helper and its integration test. The source of truth is the implementation and configuration, with this OpenWiki as its retrieval and maintenance layer.
+The fixed model matrix has 17 configurations. Production has exactly three
+distinct identities: runner, verifier, and publisher.
 
-Sources: `README.md`, `Cargo.toml`, `rust-toolchain.toml`, `package.json`, `tsconfig.json`, `apps/name_placeholder/Cargo.toml`, `apps/name_placeholder/README.md`, `scripts/list-template-markers.ts`.
+## Deployment status
 
-## Start Here
+The repository has not created a Supabase project, Vercel project, DNS record,
+production secret, external schedule, Storage bucket, or remote worker. All
+checked-in result and radar data is synthetic.
 
-Prerequisites for the common local path:
+Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
+authentication stay outside Git.
 
-- Rust via `rust-toolchain.toml` (stable, minimal profile, with Clippy).
-- Node.js via `.node-version` and npm; `npm ci --ignore-scripts` installs the exact TypeScript tool graph from `package-lock.json`.
-- `cargo-make` to invoke repository-native tasks.
-- Nightly rustfmt, Taplo, `cargo-vstyle`, and `cargo-nextest` for the complete gate.
+## Local demonstration
 
-Build and run the template CLI:
-
-```sh
-cargo build -p name_placeholder
-cargo run -p name_placeholder -- --help
-cargo run -p name_placeholder -- --placeholder example
-```
-
-List tracked template markers through the TypeScript adoption helper:
+Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, and the locked
+dependencies.
 
 ```sh
 npm ci --ignore-scripts
-cargo make list-template-markers
+cargo run -p aiq-runner -- demo
+npm run dev
 ```
 
-Run the complete repository-defined source-validation aggregate:
+Open `http://localhost:3000`. Development uses synthetic seed data when both
+public Supabase variables are absent. Production fails closed when configuration
+is incomplete.
+
+## Basic validation
 
 ```sh
+cargo run -p aiq-runner -- matrix
+cargo run -p aiq-runner -- validate \
+  --public-tasks benchmarks/examples/tasks
+cargo make fmt-check
 cargo make check
+cargo make lint
+cargo make test
+cargo make build
 ```
 
-The gate covers Rust and TypeScript compilation, Rust/TypeScript/TOML formatting, Clippy, type-aware Oxlint, vstyle, and Rust/TypeScript tests. `Makefile.toml` declares these as composite dependencies but does not itself document their runtime ordering; use the explicit diagnostic sequence in [Operations](operations.md) when order matters. OpenWiki is reviewed with the focused drift checks in [Knowledge Maintenance](knowledge-maintenance.md#openwiki-drift-check).
+The opt-in subscription smokes each consume one Codex subscription attempt:
 
-## Wiki Map
+```sh
+cargo make smoke-subscription
+cargo make smoke-controlled-subscription
+```
 
-- [Architecture and Runtime](architecture-and-runtime.md) — workspace ownership, CLI/bootstrap behavior, build metadata, placeholders, and generated/local state.
-- [Operations](operations.md) — every repo-native validation and build command, tooling, CI coverage, and failure interpretation.
-- [Template Adoption](template-adoption.md) — the ordered procedure for turning this template into a real repository.
-- [Knowledge Maintenance](knowledge-maintenance.md) — OpenWiki routing, claim ownership, evidence/drift rules, the migrated documentation decision, and historical context.
+They are diagnostics, not benchmark results.
 
-## Repository Status And Boundaries
+## Database authority
 
-- `apps/` owns runnable products; `packages/` owns reusable packages shared by products. A Rust package under `packages/` is **not** a workspace member until root `Cargo.toml` deliberately includes it.
-- `scripts/` owns repository-maintenance TypeScript programs. Root `package.json`, `package-lock.json`, `tsconfig.json`, `.oxfmtrc.json`, and `.oxlintrc.json` own their runtime and validation policy.
-- Root `Cargo.toml` owns workspace membership, common package metadata, profiles, and dependency versions. Each app manifest owns package-specific metadata and dependency selection.
-- `Makefile.toml` owns local task names. `.github/workflows/language.yml` and `.github/workflows/release.yml` own current CI and release orchestration.
-- `openwiki/` is the sole maintained repository knowledge surface. Do not create a competing `docs/` or wiki root.
+`databases/schema.sql` is the sole desired database state.
+`databases/init.ts` connects directly to one new Supabase PostgreSQL database and
+applies the schema plus public reference data in one transaction. It rejects an
+existing AIQ database.
 
-## Before Changing Anything
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
+cargo make init-database
+```
 
-1. Read the page that owns the affected contract.
-2. Verify exact behavior in the cited source/config; prefer source when prose conflicts.
-3. Preserve ownership boundaries and replace template placeholders consistently.
-4. Run the narrowest relevant checks, then `cargo make check` when the required external tools are available.
-5. Update the owning OpenWiki page when behavior, commands, layout, status, or workflows change; record durable rationale or drift evidence when appropriate.
+The expected receipt contains 72 tasks, 17 model configurations, and three
+nodes. The catalog digest is
+`sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
 
-Use this page as the agent router and [Knowledge Maintenance](knowledge-maintenance.md) for the full update policy.
+## ACGbox free-tier preview
+
+Before production, one disposable personal Supabase Free project and one
+personal Vercel Hobby project can host the read-only review build. Initialize
+the empty preview database once:
+
+```sh
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
+cargo make init-preview-database
+```
+
+Set `AIQ_DEPLOYMENT_PROFILE=preview` and the two browser-safe Supabase values in
+Vercel. Do not set server write, runner, verifier, publisher, or Storage secrets.
+One bounded live status view returns a row only when the required preview
+matrix, cardinalities, scoring definition, synthetic boundary, and empty
+publication surface are valid. The application then displays explicit
+checked-in synthetic fixtures. It adds a persistent preview banner, marks
+complete synthetic runs as not Official, and emits `noindex`. A `503` from
+`/api/readiness` is expected because that endpoint measures the absent
+production write and verification path. Discard the preview database before
+production initialization.
+
+## Next reading
+
+- [Architecture and runtime](architecture-and-runtime.md)
+- [Benchmark method](benchmark-method.md)
+- [Operations](operations.md)
+- [Deployment handoff](deployment-handoff.md)
+
+Source and tests take priority if these pages drift.

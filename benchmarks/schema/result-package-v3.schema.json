@@ -1,0 +1,1852 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/result-package-v3.schema.json",
+  "title": "AIQ full result submission package v3",
+  "description": "The bounded full-run envelope accepted by the AIQ submission boundary. Local calibration packages are not valid submissions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "idempotency_key",
+    "payload_type",
+    "content_hash",
+    "signer",
+    "claimed_trust",
+    "payload",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.result-package.v3"
+    },
+    "idempotency_key": {
+      "$ref": "#/$defs/runId"
+    },
+    "payload_type": {
+      "const": "aiq.run.v3"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "public_key"],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^node_[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}(?![\\s\\S])"
+        }
+      }
+    },
+    "claimed_trust": {
+      "enum": ["trusted", "untrusted"]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "schedule_slot",
+        "task_set_hash",
+        "scoring_version",
+        "models",
+        "started_unix_ms",
+        "finished_unix_ms",
+        "synthetic",
+        "capability_validation",
+        "provenance",
+        "evaluator_results_artifact",
+        "results"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.run.v3"
+        },
+        "run_id": {
+          "$ref": "#/$defs/runId"
+        },
+        "schedule_slot": {
+          "$ref": "#/$defs/scheduleSlot"
+        },
+        "task_set_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "scoring_version": {
+          "const": "1.0.0"
+        },
+        "models": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/solLow"
+            },
+            {
+              "$ref": "#/$defs/solMedium"
+            },
+            {
+              "$ref": "#/$defs/solHigh"
+            },
+            {
+              "$ref": "#/$defs/solXhigh"
+            },
+            {
+              "$ref": "#/$defs/solMax"
+            },
+            {
+              "$ref": "#/$defs/solUltra"
+            },
+            {
+              "$ref": "#/$defs/terraLow"
+            },
+            {
+              "$ref": "#/$defs/terraMedium"
+            },
+            {
+              "$ref": "#/$defs/terraHigh"
+            },
+            {
+              "$ref": "#/$defs/terraXhigh"
+            },
+            {
+              "$ref": "#/$defs/terraMax"
+            },
+            {
+              "$ref": "#/$defs/terraUltra"
+            },
+            {
+              "$ref": "#/$defs/lunaLow"
+            },
+            {
+              "$ref": "#/$defs/lunaMedium"
+            },
+            {
+              "$ref": "#/$defs/lunaHigh"
+            },
+            {
+              "$ref": "#/$defs/lunaXhigh"
+            },
+            {
+              "$ref": "#/$defs/lunaMax"
+            }
+          ],
+          "items": false
+        },
+        "started_unix_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "finished_unix_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "synthetic": {
+          "type": "boolean"
+        },
+        "capability_validation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/capabilityValidationReport"
+            }
+          ]
+        },
+        "provenance": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/runProvenance"
+            }
+          ]
+        },
+        "evaluator_results_artifact": {
+          "$ref": "#/$defs/evaluatorResultsArtifact"
+        },
+        "results": {
+          "type": "array",
+          "minItems": 1224,
+          "maxItems": 1224,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/taskResult"
+          },
+          "x-aiq-uniqueTuple": ["task_id", "model.family", "model.reasoning_effort"],
+          "x-aiq-distinctCount": {
+            "path": "task_id",
+            "equals": 72
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{128}(?![\\s\\S])"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "synthetic": {
+                "const": true
+              }
+            },
+            "required": ["synthetic"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "capability_validation": {
+                "type": "null"
+              },
+              "provenance": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "capability_validation": {
+                "$ref": "#/$defs/capabilityValidationReport"
+              },
+              "provenance": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/runProvenance"
+                  },
+                  {
+                    "properties": {
+                      "run_class": {
+                        "const": "official"
+                      }
+                    },
+                    "required": ["run_class"]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "runId": {
+      "type": "string",
+      "pattern": "^run_[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "evaluatorResultsArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "content_hash", "uri", "bytes"],
+      "properties": {
+        "kind": {
+          "const": "evaluator-results.json"
+        },
+        "content_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^aiq-artifact://sha256/[a-f0-9]{64}/evaluator-results\\.json(?![\\s\\S])"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3948544
+        }
+      }
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._-]+(?![\\s\\S])"
+    },
+    "taskVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[A-Za-z0-9._-]+(?![\\s\\S])"
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "reasoning_effort"],
+      "properties": {
+        "family": {
+          "enum": ["sol", "terra", "luna"]
+        },
+        "reasoning_effort": {
+          "enum": ["low", "medium", "high", "xhigh", "max", "ultra"]
+        }
+      }
+    },
+    "solLow": {
+      "const": {
+        "family": "sol",
+        "reasoning_effort": "low"
+      }
+    },
+    "solMedium": {
+      "const": {
+        "family": "sol",
+        "reasoning_effort": "medium"
+      }
+    },
+    "solHigh": {
+      "const": {
+        "family": "sol",
+        "reasoning_effort": "high"
+      }
+    },
+    "solXhigh": {
+      "const": {
+        "family": "sol",
+        "reasoning_effort": "xhigh"
+      }
+    },
+    "solMax": {
+      "const": {
+        "family": "sol",
+        "reasoning_effort": "max"
+      }
+    },
+    "solUltra": {
+      "const": {
+        "family": "sol",
+        "reasoning_effort": "ultra"
+      }
+    },
+    "terraLow": {
+      "const": {
+        "family": "terra",
+        "reasoning_effort": "low"
+      }
+    },
+    "terraMedium": {
+      "const": {
+        "family": "terra",
+        "reasoning_effort": "medium"
+      }
+    },
+    "terraHigh": {
+      "const": {
+        "family": "terra",
+        "reasoning_effort": "high"
+      }
+    },
+    "terraXhigh": {
+      "const": {
+        "family": "terra",
+        "reasoning_effort": "xhigh"
+      }
+    },
+    "terraMax": {
+      "const": {
+        "family": "terra",
+        "reasoning_effort": "max"
+      }
+    },
+    "terraUltra": {
+      "const": {
+        "family": "terra",
+        "reasoning_effort": "ultra"
+      }
+    },
+    "lunaLow": {
+      "const": {
+        "family": "luna",
+        "reasoning_effort": "low"
+      }
+    },
+    "lunaMedium": {
+      "const": {
+        "family": "luna",
+        "reasoning_effort": "medium"
+      }
+    },
+    "lunaHigh": {
+      "const": {
+        "family": "luna",
+        "reasoning_effort": "high"
+      }
+    },
+    "lunaXhigh": {
+      "const": {
+        "family": "luna",
+        "reasoning_effort": "xhigh"
+      }
+    },
+    "lunaMax": {
+      "const": {
+        "family": "luna",
+        "reasoning_effort": "max"
+      }
+    },
+    "scheduleSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_date", "occurrence", "local_time", "timezone"],
+      "properties": {
+        "local_date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+        },
+        "occurrence": {
+          "enum": ["day", "night"]
+        },
+        "local_time": {
+          "type": "string",
+          "pattern": "^[0-9]{2}:[0-9]{2}(?![\\s\\S])"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      }
+    },
+    "artifactBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "content_hash", "uri", "bytes"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "stdout.jsonl",
+            "stderr.txt",
+            "final-response.txt",
+            "workspace-snapshot.json",
+            "workspace-manifest.json"
+          ]
+        },
+        "content_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^aiq-artifact://sha256/[a-f0-9]{64}/[A-Za-z0-9._-]+(?![\\s\\S])"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4194304
+        }
+      },
+      "x-aiq-uriBinds": ["content_hash", "kind"]
+    },
+    "preflightArtifact": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifactBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": ["stdout.jsonl", "stderr.txt"]
+            }
+          },
+          "required": ["kind"]
+        }
+      ]
+    },
+    "resultArtifact": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifactBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": [
+                "stdout.jsonl",
+                "stderr.txt",
+                "final-response.txt",
+                "workspace-snapshot.json"
+              ]
+            }
+          },
+          "required": ["kind"]
+        }
+      ]
+    },
+    "workspaceManifestArtifact": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifactBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "workspace-manifest.json"
+            }
+          },
+          "required": ["kind"]
+        }
+      ]
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message", "exit_code", "retryable"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "spawn",
+            "timeout",
+            "unsupported_model",
+            "authentication",
+            "subscription_limit",
+            "non_zero_exit",
+            "capability_unavailable",
+            "capability_validation_failed",
+            "missing_evaluator",
+            "missing_response",
+            "evaluator_failure",
+            "budget_exceeded",
+            "output_truncated",
+            "workspace_unavailable"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?!.*[\"\\\\])[ -~]+(?![\\s\\S])"
+        },
+        "exit_code": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            }
+          ]
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wall_ms"],
+      "properties": {
+        "wall_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "toolUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps", "total_calls", "by_tool"],
+      "properties": {
+        "steps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "total_calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "by_tool": {
+          "type": "object",
+          "maxProperties": 4,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 32,
+            "pattern": "^[A-Za-z0-9._-]+(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          }
+        }
+      },
+      "x-aiq-saturatingSum": {
+        "source": "by_tool",
+        "equals": "total_calls",
+        "maximum": 4294967295
+      }
+    },
+    "resultProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "runner_version",
+        "codex_version",
+        "observed_at",
+        "synthetic",
+        "local_trust"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^node_[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "runner_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^(?!.*[\"\\\\])[ -~]+(?![\\s\\S])"
+        },
+        "codex_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[^\"\\\\\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
+        },
+        "observed_at": {
+          "type": "string",
+          "pattern": "^(?:synthetic|unix-ms:[0-9]{1,39})(?![\\s\\S])"
+        },
+        "synthetic": {
+          "type": "boolean"
+        },
+        "local_trust": {
+          "enum": ["trusted", "untrusted"]
+        }
+      }
+    },
+    "adapterFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "exit_code",
+        "stderr",
+        "message",
+        "stdout_truncated",
+        "stderr_truncated",
+        "artifacts"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "spawn",
+            "timeout",
+            "unsupported",
+            "authentication",
+            "usage_limit",
+            "non_zero_exit",
+            "budget_exceeded",
+            "output_truncated"
+          ]
+        },
+        "exit_code": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            }
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "maxLength": 64,
+          "x-aiq-maxUtf8Bytes": 64
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?!.*[\"\\\\])[ -~]+(?![\\s\\S])"
+        },
+        "stdout_truncated": {
+          "type": "boolean"
+        },
+        "stderr_truncated": {
+          "type": "boolean"
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/preflightArtifact"
+          }
+        }
+      }
+    },
+    "nullableAdapterFailure": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/adapterFailure"
+        }
+      ]
+    },
+    "capabilityValidationReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "node_id",
+        "manifest_issues",
+        "cli_probe",
+        "authentication_probe",
+        "models"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.capability-validation.v2"
+        },
+        "node_id": {
+          "type": "string",
+          "pattern": "^node_[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "manifest_issues": {
+          "type": "array",
+          "maxItems": 17,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^(?!.*[\"\\\\])[ -~]+(?![\\s\\S])"
+          }
+        },
+        "cli_probe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "version", "failure"],
+          "properties": {
+            "status": {
+              "enum": ["available", "unavailable"]
+            },
+            "version": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32,
+                  "pattern": "^[^\"\\\\\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
+                }
+              ]
+            },
+            "failure": {
+              "$ref": "#/$defs/nullableAdapterFailure"
+            }
+          }
+        },
+        "authentication_probe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "mode", "failure"],
+          "properties": {
+            "status": {
+              "enum": ["available", "unavailable"]
+            },
+            "mode": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "const": "chatgpt_subscription"
+                }
+              ]
+            },
+            "failure": {
+              "$ref": "#/$defs/nullableAdapterFailure"
+            }
+          }
+        },
+        "models": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/solLowCapability"
+            },
+            {
+              "$ref": "#/$defs/solMediumCapability"
+            },
+            {
+              "$ref": "#/$defs/solHighCapability"
+            },
+            {
+              "$ref": "#/$defs/solXhighCapability"
+            },
+            {
+              "$ref": "#/$defs/solMaxCapability"
+            },
+            {
+              "$ref": "#/$defs/solUltraCapability"
+            },
+            {
+              "$ref": "#/$defs/terraLowCapability"
+            },
+            {
+              "$ref": "#/$defs/terraMediumCapability"
+            },
+            {
+              "$ref": "#/$defs/terraHighCapability"
+            },
+            {
+              "$ref": "#/$defs/terraXhighCapability"
+            },
+            {
+              "$ref": "#/$defs/terraMaxCapability"
+            },
+            {
+              "$ref": "#/$defs/terraUltraCapability"
+            },
+            {
+              "$ref": "#/$defs/lunaLowCapability"
+            },
+            {
+              "$ref": "#/$defs/lunaMediumCapability"
+            },
+            {
+              "$ref": "#/$defs/lunaHighCapability"
+            },
+            {
+              "$ref": "#/$defs/lunaXhighCapability"
+            },
+            {
+              "$ref": "#/$defs/lunaMaxCapability"
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "capabilityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "status", "reason", "probe"],
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "status": {
+          "enum": ["available", "unsupported", "unavailable"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?!.*[\"\\\\])[ -~]+(?![\\s\\S])"
+        },
+        "probe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "codex_version",
+            "observed_at",
+            "result_digest",
+            "result_preview",
+            "artifacts",
+            "evidence_digest",
+            "failure"
+          ],
+          "properties": {
+            "status": {
+              "enum": ["available", "observed_unsupported", "failed"]
+            },
+            "codex_version": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 32,
+                  "pattern": "^[^\"\\\\\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
+                }
+              ]
+            },
+            "observed_at": {
+              "type": "string",
+              "pattern": "^unix-ms:[0-9]{1,39}(?![\\s\\S])"
+            },
+            "result_digest": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/sha256"
+                }
+              ]
+            },
+            "result_preview": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "x-aiq-maxUtf8Bytes": 64
+                }
+              ]
+            },
+            "artifacts": {
+              "type": "array",
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/preflightArtifact"
+              }
+            },
+            "evidence_digest": {
+              "$ref": "#/$defs/sha256"
+            },
+            "failure": {
+              "$ref": "#/$defs/nullableAdapterFailure"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "available"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "probe": {
+                "properties": {
+                  "status": {
+                    "const": "available"
+                  },
+                  "result_digest": {
+                    "$ref": "#/$defs/sha256"
+                  },
+                  "result_preview": {
+                    "type": "string"
+                  },
+                  "failure": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unsupported"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "probe": {
+                "properties": {
+                  "status": {
+                    "const": "observed_unsupported"
+                  },
+                  "result_digest": {
+                    "type": "null"
+                  },
+                  "result_preview": {
+                    "type": "null"
+                  },
+                  "failure": {
+                    "$ref": "#/$defs/adapterFailure"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "probe": {
+                "properties": {
+                  "status": {
+                    "const": "available"
+                  }
+                },
+                "required": ["status"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "available"
+              }
+            }
+          },
+          "else": {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "unavailable"
+                }
+              },
+              "required": ["status"]
+            },
+            "then": true
+          }
+        }
+      ]
+    },
+    "solLowCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/solLow"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "solMediumCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/solMedium"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "solHighCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/solHigh"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "solXhighCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/solXhigh"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "solMaxCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/solMax"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "solUltraCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/solUltra"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "terraLowCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/terraLow"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "terraMediumCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/terraMedium"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "terraHighCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/terraHigh"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "terraXhighCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/terraXhigh"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "terraMaxCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/terraMax"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "terraUltraCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/terraUltra"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "lunaLowCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/lunaLow"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "lunaMediumCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/lunaMedium"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "lunaHighCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/lunaHigh"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "lunaXhighCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/lunaXhigh"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "lunaMaxCapability": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/capabilityEntry"
+        },
+        {
+          "properties": {
+            "model": {
+              "$ref": "#/$defs/lunaMax"
+            }
+          },
+          "required": ["model"]
+        }
+      ]
+    },
+    "runProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_class",
+        "corpus_release_id",
+        "corpus_commitment_sha256",
+        "catalog_digest",
+        "task_set_digest",
+        "evaluator_digest",
+        "runtime_digest",
+        "preflight_digest",
+        "harness_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "network_policy_digest",
+        "environment_digest",
+        "source_manifest_digest",
+        "runner_executable_digest",
+        "codex_executable_digest",
+        "permission_evidence_digest"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.run-provenance.v2"
+        },
+        "run_class": {
+          "const": "official"
+        },
+        "corpus_release_id": {
+          "type": "string",
+          "maxLength": 71,
+          "pattern": "^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\\s\\S])"
+        },
+        "corpus_commitment_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "catalog_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "task_set_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evaluator_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "preflight_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "harness_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "prompt_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tool_policy_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "network_policy_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "environment_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "source_manifest_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runner_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "codex_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "permission_evidence_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "taskResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "result_id",
+        "run_id",
+        "task_id",
+        "task_version",
+        "task_hash",
+        "model",
+        "status",
+        "evaluation",
+        "task_score",
+        "response",
+        "response_sha256",
+        "evaluator_result_sha256",
+        "evaluator_stdout_sha256",
+        "artifacts",
+        "failure",
+        "latency",
+        "tool_usage",
+        "workspace_manifest",
+        "provenance"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.result.v2"
+        },
+        "result_id": {
+          "type": "string",
+          "pattern": "^result_[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "run_id": {
+          "$ref": "#/$defs/runId"
+        },
+        "task_id": {
+          "$ref": "#/$defs/taskId"
+        },
+        "task_version": {
+          "$ref": "#/$defs/taskVersion"
+        },
+        "task_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "status": {
+          "enum": ["completed", "failed", "unsupported", "unevaluated"]
+        },
+        "evaluation": {
+          "enum": ["correct", "partial", "incorrect", "not_evaluated"]
+        },
+        "task_score": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          ]
+        },
+        "response": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "maxLength": 64,
+              "x-aiq-maxUtf8Bytes": 64
+            }
+          ]
+        },
+        "response_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
+          ]
+        },
+        "evaluator_result_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
+          ]
+        },
+        "evaluator_stdout_sha256": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
+          ]
+        },
+        "artifacts": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/resultArtifact"
+          },
+          "x-aiq-uniqueBy": ["kind", "uri"]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/failure"
+            }
+          ]
+        },
+        "latency": {
+          "$ref": "#/$defs/latency"
+        },
+        "tool_usage": {
+          "$ref": "#/$defs/toolUsage"
+        },
+        "workspace_manifest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/workspaceManifestArtifact"
+            }
+          ]
+        },
+        "provenance": {
+          "$ref": "#/$defs/resultProvenance"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "response": {
+                "type": "string"
+              },
+              "response_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "evaluator_result_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "failure": {
+                "type": "null"
+              }
+            },
+            "oneOf": [
+              {
+                "properties": {
+                  "evaluation": {
+                    "const": "correct"
+                  },
+                  "task_score": {
+                    "const": 1
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "evaluation": {
+                    "const": "incorrect"
+                  },
+                  "task_score": {
+                    "const": 0
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "evaluation": {
+                    "const": "partial"
+                  },
+                  "task_score": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "exclusiveMaximum": 1
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unevaluated"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evaluation": {
+                "const": "not_evaluated"
+              },
+              "task_score": {
+                "type": "null"
+              },
+              "response": {
+                "type": "string"
+              },
+              "response_sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "evaluator_result_sha256": {
+                "type": "null"
+              },
+              "failure": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/failure"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "const": "missing_evaluator"
+                      }
+                    },
+                    "required": ["kind"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unsupported"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evaluation": {
+                "const": "not_evaluated"
+              },
+              "task_score": {
+                "type": "null"
+              },
+              "response": {
+                "type": "null"
+              },
+              "response_sha256": {
+                "type": "null"
+              },
+              "evaluator_result_sha256": {
+                "type": "null"
+              },
+              "failure": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/failure"
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "const": "capability_unavailable"
+                      }
+                    },
+                    "required": ["kind"]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evaluation": {
+                "const": "not_evaluated"
+              },
+              "evaluator_result_sha256": {
+                "type": "null"
+              },
+              "failure": {
+                "$ref": "#/$defs/failure"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "failure": {
+                      "properties": {
+                        "kind": {
+                          "const": "evaluator_failure"
+                        }
+                      },
+                      "required": ["kind"]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "task_score": {
+                      "type": "null"
+                    },
+                    "response": {
+                      "type": "string"
+                    },
+                    "response_sha256": {
+                      "$ref": "#/$defs/sha256"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "response": {
+                      "type": "null"
+                    },
+                    "response_sha256": {
+                      "type": "null"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "failure": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "timeout",
+                            "unsupported_model",
+                            "non_zero_exit",
+                            "missing_response",
+                            "budget_exceeded",
+                            "output_truncated"
+                          ]
+                        }
+                      },
+                      "required": ["kind"]
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "task_score": {
+                      "const": 0
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "task_score": {
+                      "type": "null"
+                    }
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "failure": {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "spawn",
+                          "timeout",
+                          "unsupported_model",
+                          "authentication",
+                          "subscription_limit",
+                          "non_zero_exit",
+                          "capability_validation_failed",
+                          "missing_response",
+                          "evaluator_failure",
+                          "budget_exceeded",
+                          "output_truncated",
+                          "workspace_unavailable"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            },
+            "required": ["status"]
+          },
+          "else": {
+            "properties": {
+              "evaluator_result_sha256": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "x-aiq-runtimeBindings": [
+        "result_id",
+        "run_id",
+        "task_hash",
+        "response_sha256",
+        "workspace_manifest",
+        "provenance",
+        "preflight_status"
+      ]
+    }
+  },
+  "x-aiq-wire": {
+    "encoding": "RFC 8785 JSON Canonicalization Scheme",
+    "request_body_limit": "The request_body_bytes value is a pre-parse hard ceiling on received wire bytes.",
+    "signed_package_limit": "The signed_package_bytes value applies after strict parsing. The received wire bytes must exactly equal the RFC 8785 canonical UTF-8 encoding, and the receipt digest and byte count use those exact bytes.",
+    "runtime_bindings": "Runtime validation measures response and preview limits in UTF-8 bytes, requires every artifact URI digest and terminal kind to equal its sibling fields, and enforces tool-count sums and status-dependent result fields."
+  },
+  "x-aiq-limits": {
+    "request_body_bytes": 4194304,
+    "signed_package_bytes": 3948544,
+    "evaluator_results_artifact_bytes": 3948544,
+    "evaluator_checks_per_result": 16,
+    "result_preview_utf8_bytes": 64,
+    "result_artifact_references": 4,
+    "result_artifact_references_including_workspace_manifest": 5,
+    "artifact_reference_bytes": 4194304,
+    "maximum_depth": 32,
+    "maximum_nodes": 100000,
+    "maximum_string_characters": 65536,
+    "maximum_array_items": 1224,
+    "maximum_object_properties": 256,
+    "maximum_property_name_characters": 256
+  }
+}

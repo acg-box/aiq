@@ -1,0 +1,31 @@
+{
+  "schema_version": "aiq.verifier-environment.v2",
+  "task_set_id": "aiq-core",
+  "task_set_version": "1.0.0",
+  "benchmark_version": "aiq-core@1.0.0",
+  "prompt_set_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+  "expected_provenance": {
+    "schema_version": "aiq.run-provenance.v2",
+    "run_class": "official",
+    "corpus_release_id": "REPLACE_WITH_CURRENT_CORPUS_RELEASE_ID",
+    "corpus_commitment_sha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "catalog_digest": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3",
+    "task_set_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "evaluator_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "runtime_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "preflight_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "harness_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "prompt_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "tool_policy_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "network_policy_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "environment_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "source_manifest_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "runner_executable_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "codex_executable_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
+    "permission_evidence_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS"
+  },
+  "runner_commit": "REPLACE_WITH_7_TO_40_HEX_CHARACTERS",
+  "region": "REPLACE_WITH_DEPLOYMENT_REGION",
+  "synthetic_test": false,
+  "artifact_resolver_endpoint": null
+}

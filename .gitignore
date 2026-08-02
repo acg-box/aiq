@@ -1,6 +1,15 @@
 # AI
 .agent
 .codex
+.aiq-artifacts/
+.aiq-checkpoints/
+.aiq-codex-home/
+.aiq-evaluators/
+.aiq-executions/
+.aiq-preflight*.json
+.aiq-run-checkpoint*.json
+.aiq-runs/
+.aiq-workspaces/
 
 # Editor
 .vscode
@@ -11,9 +20,23 @@
 *.log
 .config
 .env*
+!.env.example
+!**/.env.example
+*.key
+*.p12
+*.pem
+*.pfx
+auth.json
+credentials.json
+secrets.json
 .turbo
 model
 tmp
+
+# Controlled benchmark content must never enter Git.
+/.controlled/
+/benchmarks/hidden/
+/benchmarks/private/
 
 # Kubernetes
 .kube
@@ -42,6 +65,11 @@ npm-debug.log*
 out/
 yarn-debug.log*
 yarn-error.log*
+
+## JavaScript/TypeScript test output
+playwright-report/
+test-results/
+blob-report/
 
 ## Python
 .pytest_cache

@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/evaluator-results-v1.schema.json",
+  "title": "AIQ positional evaluator results v1",
+  "description": "Canonical run-level evaluator evidence. The results array is positional: its length and order must equal the signed run results, completed positions contain an evaluator result, and every other status contains null. Runtime validation recomputes RFC 8785 canonical bytes, the artifact SHA-256 and byte length, each completed evaluator_result_sha256 binding, and weighted outcome/score reduction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "results"],
+  "properties": {
+    "schema_version": { "const": "aiq.evaluator-results.v1" },
+    "results": {
+      "type": "array",
+      "maxItems": 1224,
+      "items": {
+        "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/evaluationResult" }]
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "evaluationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "outcome", "score", "checks"],
+      "properties": {
+        "schema_version": { "const": "aiq.evaluator-result.v3" },
+        "outcome": { "enum": ["correct", "partial", "incorrect"] },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "raw_stdout_sha256": { "$ref": "#/$defs/sha256" },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/check" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "correct" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "score": { "const": 1 },
+              "checks": {
+                "not": {
+                  "contains": {
+                    "properties": { "passed": { "const": false } },
+                    "required": ["passed"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "partial" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "score": {
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "incorrect" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": { "score": { "const": 0 } }
+          }
+        }
+      ]
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "weight", "passed", "failure_class", "evidence_digest"],
+      "properties": {
+        "check_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+(?![\\s\\S])"
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "passed": { "type": "boolean" },
+        "failure_class": {
+          "enum": ["none", "value", "structural"]
+        },
+        "evidence_digest": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "passed": { "const": true } },
+            "required": ["passed"]
+          },
+          "then": {
+            "properties": { "failure_class": { "const": "none" } }
+          },
+          "else": {
+            "properties": {
+              "failure_class": { "enum": ["value", "structural"] }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-aiq-wire": {
+    "encoding": "RFC 8785 JSON Canonicalization Scheme",
+    "digest_binding": "Each non-null item hashes to the signed result evaluator_result_sha256 at the same position.",
+    "status_binding": "Completed signed results require a non-null item; failed, unsupported, and unevaluated signed results require null."
+  },
+  "x-aiq-limits": {
+    "artifact_bytes": 3948544,
+    "results": 1224,
+    "checks_per_result": 16
+  }
+}

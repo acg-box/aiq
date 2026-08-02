@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/verifier-attestation-v3.schema.json",
+  "title": "AIQ verifier attestation v3",
+  "description": "A signed verifier attestation over one aiq.normalized-batch.v3 stage. The production evaluator_replayed status means candidate workspace reconstruction and deterministic evaluator replay, not a model rerun. Cryptographic signature, key derivation, cross-field bindings, and policy bindings require the Rust verifier.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "signature_algorithm",
+    "signature_version",
+    "matrix_batch_id",
+    "package_sha256",
+    "content_hash",
+    "normalization_digest",
+    "task_set_hash",
+    "capability_validation_digest",
+    "provenance",
+    "benchmark_version",
+    "prompt_set_digest",
+    "scoring_version",
+    "verifier",
+    "observed_unix_ms",
+    "replay_status",
+    "policy",
+    "synthetic",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.verifier-attestation.v3"
+    },
+    "signature_algorithm": {
+      "const": "ed25519"
+    },
+    "signature_version": {
+      "const": "aiq.ed25519-jcs.v1"
+    },
+    "matrix_batch_id": {
+      "$ref": "#/$defs/runId"
+    },
+    "package_sha256": {
+      "$ref": "#/$defs/unprefixedSha256"
+    },
+    "content_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "normalization_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "task_set_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "capability_validation_digest": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/sha256"
+        }
+      ]
+    },
+    "provenance": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/runProvenance"
+        }
+      ]
+    },
+    "benchmark_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_set_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "scoring_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verifier": {
+      "$ref": "#/$defs/nodeIdentity"
+    },
+    "observed_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "replay_status": {
+      "enum": ["evaluator_replayed", "commitments_verified", "failed"]
+    },
+    "policy": {
+      "enum": ["production", "synthetic_test"]
+    },
+    "synthetic": {
+      "type": "boolean"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}(?![\\s\\S])"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "synthetic": {
+            "const": false
+          }
+        },
+        "required": ["synthetic"]
+      },
+      "then": {
+        "properties": {
+          "capability_validation_digest": {
+            "$ref": "#/$defs/sha256"
+          },
+          "provenance": {
+            "$ref": "#/$defs/runProvenance"
+          },
+          "policy": {
+            "const": "production"
+          },
+          "replay_status": {
+            "const": "evaluator_replayed"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "capability_validation_digest": {
+            "type": "null"
+          },
+          "provenance": {
+            "type": "null"
+          },
+          "policy": {
+            "const": "synthetic_test"
+          },
+          "replay_status": {
+            "enum": ["commitments_verified", "evaluator_replayed"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "runProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_class",
+        "corpus_release_id",
+        "corpus_commitment_sha256",
+        "catalog_digest",
+        "task_set_digest",
+        "evaluator_digest",
+        "runtime_digest",
+        "preflight_digest",
+        "harness_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "network_policy_digest",
+        "environment_digest",
+        "source_manifest_digest",
+        "runner_executable_digest",
+        "codex_executable_digest",
+        "permission_evidence_digest"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.run-provenance.v2"
+        },
+        "run_class": {
+          "const": "official"
+        },
+        "corpus_release_id": {
+          "type": "string",
+          "pattern": "^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\\s\\S])"
+        },
+        "corpus_commitment_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "catalog_digest": {
+          "const": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3"
+        },
+        "task_set_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evaluator_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runtime_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "preflight_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "harness_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "prompt_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "tool_policy_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "network_policy_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "environment_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "source_manifest_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "runner_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "codex_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "permission_evidence_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "runId": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "unprefixedSha256": {
+      "type": "string",
+      "pattern": "^(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "nodeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "public_key"],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^node_[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+        }
+      }
+    }
+  }
+}

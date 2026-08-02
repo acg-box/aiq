@@ -1,26 +1,25 @@
 [workspace]
-members  = ["apps/*"]
+members  = ["apps/aiq-runner", "apps/aiq-verifier"]
 resolver = "3"
 
 [workspace.package]
 authors     = ["acgxv <xv@acg.box>"]
-description = "description_placeholder"
+description = "Transparent, reproducible benchmarks for practical AI and agent work"
 edition     = "2024"
-homepage    = "https://hack.ink/name_placeholder"
+homepage    = "https://aiq.wiki"
 license     = "GPL-3.0-only"
-repository  = "https://github.com/hack-ink/name_placeholder"
+repository  = "https://github.com/acg-box/aiq"
 version     = "0.1.0"
-
-[profile.final-release]
-inherits = "release"
-lto      = true
 
 [workspace.dependencies]
 # crates.io
-clap               = { version = "4.6", features = ["derive"] }
-color-eyre         = { version = "0.6" }
-directories        = { version = "6.0" }
-tracing            = { version = "0.1" }
-tracing-appender   = { version = "0.2" }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-vergen-gitcl       = { version = "10.0", features = ["cargo", "vcs_info"] }
+clap                     = { version = "4.6", features = ["derive"] }
+ed25519-dalek            = { version = "2.2" }
+hex                      = { version = "0.4" }
+jiff                     = { version = "0.2.35", default-features = false, features = ["tzdb-bundle-always"] }
+jiff-tzdb                = { version = "0.1.8" }
+serde                    = { version = "1.0", features = ["derive"] }
+serde_json               = { version = "1.0" }
+serde_json_canonicalizer = { version = "0.3.2" }
+sha2                     = { version = "0.10" }
+ureq                     = { version = "3.3", default-features = false, features = ["rustls"] }

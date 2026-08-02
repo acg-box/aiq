@@ -1,0 +1,295 @@
+//! Deterministic direct capacity metadata for one benchmark run.
+
+use std::{
+	error::Error,
+	fmt::{Display, Formatter},
+};
+
+use serde::{Deserialize, Serialize};
+
+use crate::{
+	model::{MODEL_MATRIX, ModelConfig},
+	protocol,
+	runner::MAX_RUN_JOBS,
+	task::TaskDefinition,
+};
+
+/// Direct capacity estimate schema version.
+pub const CAPACITY_ADMISSION_SCHEMA_VERSION: &str = "aiq.capacity-admission.v1";
+
+/// Deterministic capacity data for one selected run.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapacityAdmission {
+	/// Capacity estimate schema version.
+	pub schema_version: String,
+	/// Digest of the active capability report.
+	pub capability_validation_digest: String,
+	/// Ordered actively available model configurations.
+	pub available_models: Vec<ModelConfig>,
+	/// Ordered actively observed-unsupported model configurations.
+	pub observed_unsupported_models: Vec<ModelConfig>,
+	/// Operator-selected worker count.
+	pub configured_jobs: usize,
+	/// Workers that can execute actively available cells.
+	pub effective_jobs: usize,
+	/// Number of selected task and model cells.
+	pub selected_cells: usize,
+	/// Number of selected cells that invoke an available model.
+	pub runnable_cell_count: usize,
+	/// Sum of declared wall budgets for available cells.
+	pub declared_wall_budget_sum_seconds: u64,
+	/// Maximum declared wall budget for one available cell.
+	pub maximum_cell_wall_budget_seconds: u64,
+	/// Exact interval from this slot to the next configured slot.
+	pub seconds_until_next_slot: u64,
+	/// Deterministic conservative list-scheduling estimate.
+	pub conservative_bound_seconds: u64,
+}
+impl CapacityAdmission {
+	/// Returns the canonical estimate content address.
+	pub fn digest(&self) -> Result<String, CapacityError> {
+		protocol::canonical_hash(self).map_err(|error| CapacityError::new(error.to_string()))
+	}
+
+	/// Converts this estimate to the immutable checkpoint and provenance binding.
+	pub fn commitment(&self) -> Result<CapacityCommitment, CapacityError> {
+		Ok(CapacityCommitment {
+			capability_validation_digest: self.capability_validation_digest.clone(),
+			runnable_cell_count: self.runnable_cell_count,
+			admission_digest: self.digest()?,
+			configured_jobs: self.configured_jobs,
+			effective_jobs: self.effective_jobs,
+			seconds_until_next_slot: self.seconds_until_next_slot,
+			conservative_bound_seconds: self.conservative_bound_seconds,
+		})
+	}
+}
+
+/// Immutable checkpoint and provenance binding for direct capacity data.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CapacityCommitment {
+	/// Digest of the active capability report.
+	pub capability_validation_digest: String,
+	/// Number of selected cells that invoke an available model.
+	pub runnable_cell_count: usize,
+	/// Canonical capacity estimate content address.
+	pub admission_digest: String,
+	/// Operator-selected worker count.
+	pub configured_jobs: usize,
+	/// Workers that can execute actively available cells.
+	pub effective_jobs: usize,
+	/// Exact interval to the next configured slot.
+	pub seconds_until_next_slot: u64,
+	/// Deterministic conservative list-scheduling estimate.
+	pub conservative_bound_seconds: u64,
+}
+
+/// Capacity arithmetic or input failure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CapacityError {
+	message: String,
+}
+impl CapacityError {
+	fn new(message: impl Into<String>) -> Self {
+		Self { message: message.into() }
+	}
+}
+
+impl Error for CapacityError {}
+
+impl Display for CapacityError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(&self.message)
+	}
+}
+
+/// Builds direct capacity data from active support and `--jobs`.
+pub fn assess_capacity(
+	tasks: &[TaskDefinition],
+	selected_models: &[ModelConfig],
+	available_models: &[ModelConfig],
+	observed_unsupported_models: &[ModelConfig],
+	capability_validation_digest: &str,
+	configured_jobs: usize,
+	seconds_until_next_slot: u64,
+) -> Result<CapacityAdmission, CapacityError> {
+	if tasks.is_empty() || selected_models.is_empty() {
+		return Err(CapacityError::new("capacity selection cannot be empty"));
+	}
+	if !(1..=MAX_RUN_JOBS).contains(&configured_jobs) {
+		return Err(CapacityError::new("configured jobs are outside the accepted range"));
+	}
+	if seconds_until_next_slot == 0 {
+		return Err(CapacityError::new("next schedule interval is unknown or zero"));
+	}
+	if !valid_digest(capability_validation_digest)
+		|| !valid_support_partition(available_models, observed_unsupported_models)
+	{
+		return Err(CapacityError::new("active capability partition is invalid"));
+	}
+
+	let active_models =
+		selected_models.iter().filter(|model| available_models.contains(model)).count();
+	let selected_cells = tasks
+		.len()
+		.checked_mul(selected_models.len())
+		.ok_or_else(|| CapacityError::new("selected cell count overflows"))?;
+	let runnable_cell_count = tasks
+		.len()
+		.checked_mul(active_models)
+		.ok_or_else(|| CapacityError::new("runnable cell count overflows"))?;
+	let effective_jobs = configured_jobs.min(runnable_cell_count);
+	let one_model_sum = tasks.iter().try_fold(0_u64, |sum, task| {
+		sum.checked_add(task.budgets.wall_seconds)
+			.ok_or_else(|| CapacityError::new("declared wall budget sum overflows"))
+	})?;
+	let active_model_count = u64::try_from(active_models)
+		.map_err(|_| CapacityError::new("available model count overflows"))?;
+	let declared_wall_budget_sum_seconds = one_model_sum
+		.checked_mul(active_model_count)
+		.ok_or_else(|| CapacityError::new("declared wall budget sum overflows"))?;
+	let maximum_cell_wall_budget_seconds = if runnable_cell_count == 0 {
+		0
+	} else {
+		tasks.iter().map(|task| task.budgets.wall_seconds).max().unwrap_or(0)
+	};
+	let conservative_bound_seconds = if effective_jobs == 0 {
+		0
+	} else {
+		let workers = u64::try_from(effective_jobs)
+			.map_err(|_| CapacityError::new("effective jobs overflow"))?;
+
+		declared_wall_budget_sum_seconds
+			.checked_add(workers - 1)
+			.map(|sum| sum / workers)
+			.and_then(|bound| bound.checked_add(maximum_cell_wall_budget_seconds))
+			.ok_or_else(|| CapacityError::new("capacity bound overflows"))?
+	};
+
+	Ok(CapacityAdmission {
+		schema_version: CAPACITY_ADMISSION_SCHEMA_VERSION.to_owned(),
+		capability_validation_digest: capability_validation_digest.to_owned(),
+		available_models: available_models.to_vec(),
+		observed_unsupported_models: observed_unsupported_models.to_vec(),
+		configured_jobs,
+		effective_jobs,
+		selected_cells,
+		runnable_cell_count,
+		declared_wall_budget_sum_seconds,
+		maximum_cell_wall_budget_seconds,
+		seconds_until_next_slot,
+		conservative_bound_seconds,
+	})
+}
+
+fn valid_support_partition(
+	available_models: &[ModelConfig],
+	observed_unsupported_models: &[ModelConfig],
+) -> bool {
+	let mut available_index = 0;
+	let mut unsupported_index = 0;
+
+	for model in MODEL_MATRIX {
+		if available_models.get(available_index) == Some(&model) {
+			available_index += 1;
+		} else if observed_unsupported_models.get(unsupported_index) == Some(&model) {
+			unsupported_index += 1;
+		} else {
+			return false;
+		}
+	}
+
+	available_index == available_models.len()
+		&& unsupported_index == observed_unsupported_models.len()
+}
+
+fn valid_digest(value: &str) -> bool {
+	value.strip_prefix("sha256:").is_some_and(|hex| {
+		hex.len() == 64
+			&& hex.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+			&& hex.bytes().any(|byte| byte != b'0')
+	})
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::{model::MODEL_MATRIX, runner};
+
+	fn digest() -> String {
+		format!("sha256:{}", "a".repeat(64))
+	}
+
+	#[test]
+	fn direct_capacity_uses_available_cells_and_jobs() {
+		let tasks = runner::synthetic_demo_tasks();
+		let available = MODEL_MATRIX[..2].to_vec();
+		let unsupported = MODEL_MATRIX[2..].to_vec();
+		let estimate = super::assess_capacity(
+			&tasks[..2],
+			&MODEL_MATRIX,
+			&available,
+			&unsupported,
+			&digest(),
+			3,
+			43_200,
+		)
+		.expect("capacity estimate");
+
+		assert_eq!(estimate.selected_cells, 34);
+		assert_eq!(estimate.runnable_cell_count, 4);
+		assert_eq!(estimate.effective_jobs, 3);
+		assert_eq!(estimate.commitment().expect("commitment").configured_jobs, 3);
+	}
+
+	#[test]
+	fn unsupported_cells_have_zero_execution_capacity() {
+		let tasks = runner::synthetic_demo_tasks();
+		let estimate = super::assess_capacity(
+			&tasks[..1],
+			&MODEL_MATRIX,
+			&[],
+			&MODEL_MATRIX,
+			&digest(),
+			1,
+			43_200,
+		)
+		.expect("capacity estimate");
+
+		assert_eq!(estimate.selected_cells, 17);
+		assert_eq!(estimate.runnable_cell_count, 0);
+		assert_eq!(estimate.effective_jobs, 0);
+		assert_eq!(estimate.conservative_bound_seconds, 0);
+	}
+
+	#[test]
+	fn invalid_jobs_and_partitions_fail() {
+		let tasks = runner::synthetic_demo_tasks();
+
+		assert!(
+			super::assess_capacity(
+				&tasks[..1],
+				&MODEL_MATRIX,
+				&MODEL_MATRIX,
+				&[],
+				&digest(),
+				0,
+				43_200,
+			)
+			.is_err()
+		);
+		assert!(
+			super::assess_capacity(
+				&tasks[..1],
+				&MODEL_MATRIX,
+				&MODEL_MATRIX[..1],
+				&[],
+				&digest(),
+				1,
+				43_200,
+			)
+			.is_err()
+		);
+	}
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "public-example-coding-01",
+  "task_version": "1.0.0",
+  "title": "Return the normalized feature flag",
+  "domain": "coding",
+  "difficulty": "easy",
+  "prompt": "Synthetic example: Return exactly `enabled` after normalizing the input ` ENABLED `.",
+  "allowed_tools": ["none"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
+  "tags": ["synthetic", "normalization"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
+  "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-coding.json"],
+  "visibility": "public_example",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": { "kind": "exact_match", "expected": "enabled", "case_sensitive": true }
+}

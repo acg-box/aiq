@@ -1,0 +1,93 @@
+{
+  "schema_version": "aiq.capabilities.v1",
+  "node_id": "node_0000000000000000000000000000000000000000000000000000000000000000",
+  "observed_at": "2000-01-01T00:00:00Z",
+  "codex_version": "replace-with-local-codex-version",
+  "models": [
+    {
+      "model": { "family": "sol", "reasoning_effort": "low" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "sol", "reasoning_effort": "medium" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "sol", "reasoning_effort": "high" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "sol", "reasoning_effort": "xhigh" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "sol", "reasoning_effort": "max" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "sol", "reasoning_effort": "ultra" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "terra", "reasoning_effort": "low" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "terra", "reasoning_effort": "medium" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "terra", "reasoning_effort": "high" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "terra", "reasoning_effort": "xhigh" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "terra", "reasoning_effort": "max" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "terra", "reasoning_effort": "ultra" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "luna", "reasoning_effort": "low" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "luna", "reasoning_effort": "medium" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "luna", "reasoning_effort": "high" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "luna", "reasoning_effort": "xhigh" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    },
+    {
+      "model": { "family": "luna", "reasoning_effort": "max" },
+      "status": "unsupported",
+      "reason": "Example only. Validate this entry in the local subscription environment."
+    }
+  ]
+}

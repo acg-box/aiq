@@ -1,0 +1,20 @@
+{
+  "schema_version": "aiq.evaluator-results.v1",
+  "results": [
+    {
+      "schema_version": "aiq.evaluator-result.v3",
+      "outcome": "correct",
+      "score": 1,
+      "checks": [
+        {
+          "check_id": "exact_match",
+          "weight": 1,
+          "passed": true,
+          "failure_class": "none",
+          "evidence_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ]
+    },
+    null
+  ]
+}
