@@ -1,11 +1,14 @@
 use std::{
+	cell::RefCell,
 	collections::BTreeMap,
 	env,
-	fs::{self, File, OpenOptions, Permissions, TryLockError},
+	fs::{self, DirEntry, File, OpenOptions, Permissions, TryLockError},
 	io::Write as _,
 	os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
-	process, slice,
+	process,
+	rc::Rc,
+	slice,
 	sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
@@ -22,8 +25,9 @@ use crate::schedule::ScheduleConfig;
 use crate::schedule::ScheduleOccurrence;
 use crate::{
 	adapter::{
-		CodexAdapter, CodexExecutionConfig, CommandRequest, ExecutionCapture, Executor,
-		ExecutorError, LocalArtifactSink, SandboxPolicy, SystemExecutor,
+		CodexAdapter, CodexEgressProxyEndpoint, CodexExecutionConfig, CommandRequest,
+		ExecutionCapture, Executor, ExecutorError, LocalArtifactSink, SandboxPolicy,
+		SystemExecutor,
 	},
 	corpus_commitment::{self, ValidatedModelToolchain},
 	isolation::{self, ProtectedBenchmarkPath},
@@ -68,6 +72,8 @@ struct ControlledSmokeConfig {
 	corpus_commitment: PathBuf,
 	codex_binary: PathBuf,
 	codex_home: PathBuf,
+	codex_egress_proxy: CodexEgressProxyEndpoint,
+	permission_probe_binary: PathBuf,
 	toolchain_root: PathBuf,
 	execution_lock: PathBuf,
 	execution_root: PathBuf,
@@ -161,6 +167,25 @@ impl Executor for CountingExecutor {
 	}
 }
 
+struct RecordingExecutor {
+	requests: Rc<RefCell<Vec<CommandRequest>>>,
+	stdout: Vec<u8>,
+}
+impl Executor for RecordingExecutor {
+	fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+		self.requests.borrow_mut().push(request.clone());
+
+		Ok(ExecutionCapture {
+			exit_code: Some(0),
+			stdout: self.stdout.clone(),
+			stderr: Vec::new(),
+			timed_out: false,
+			stdout_truncated: false,
+			stderr_truncated: false,
+			budget_exceeded: None,
+		})
+	}
+}
 struct SmokeExecutionLock {
 	file: File,
 	path: PathBuf,
@@ -257,10 +282,23 @@ enum InputKind {
 fn require_chatgpt_subscription(
 	codex_binary: &Path,
 	config: &CodexExecutionConfig,
+	egress_proxy: Option<&CodexEgressProxyEndpoint>,
 ) -> Result<(), String> {
 	let mut environment = config.allowed_environment.clone();
 
 	environment.insert("CODEX_HOME".to_owned(), config.codex_home.display().to_string());
+
+	for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
+	{
+		environment.remove(key);
+
+		if let Some(endpoint) = egress_proxy {
+			environment.insert(key.to_owned(), endpoint.as_str());
+		}
+	}
+
+	environment.remove("NO_PROXY");
+	environment.remove("no_proxy");
 
 	let capture = SystemExecutor
 		.execute(&CommandRequest {
@@ -426,6 +464,13 @@ fn controlled_smoke_guard(
 	)?;
 	let codex_binary = executable("AIQ_REAL_CODEX_BINARY")?;
 	let codex_home = directory("AIQ_REAL_CODEX_HOME")?;
+	let codex_egress_proxy = values
+		.get("AIQ_REAL_CODEX_EGRESS_PROXY")
+		.ok_or_else(|| "AIQ_REAL_CODEX_EGRESS_PROXY is required".to_owned())
+		.and_then(|value| {
+			CodexEgressProxyEndpoint::parse(value).map_err(|error| error.to_string())
+		})?;
+	let permission_probe_binary = executable("AIQ_REAL_PERMISSION_PROBE_BINARY")?;
 	let toolchain_root = directory("AIQ_REAL_CODEX_TOOLCHAIN_ROOT")?;
 	let execution_lock = canonical_output(values, "AIQ_SUBSCRIPTION_SMOKE_EXECUTION_LOCK", false)?;
 	let execution_root =
@@ -451,6 +496,8 @@ fn controlled_smoke_guard(
 		corpus_commitment,
 		codex_binary,
 		codex_home,
+		codex_egress_proxy,
+		permission_probe_binary,
 		toolchain_root,
 		execution_lock,
 		execution_root,
@@ -514,6 +561,90 @@ fn controlled_smoke_denied_roots(
 	.map_err(|error| format!("controlled smoke isolation layout is invalid: {error}"))?;
 
 	Ok(protected.into_iter().map(|entry| entry.path).collect())
+}
+
+fn controlled_smoke_denied_canaries(
+	denied_roots: &[PathBuf],
+	artifact_root: &Path,
+) -> Result<(Vec<PathBuf>, PathBuf), String> {
+	let artifact_canary = artifact_root.join(".aiq-controlled-smoke-denied-canary");
+	let mut options = OpenOptions::new();
+
+	options.write(true).create_new(true).mode(0o600).custom_flags(O_NOFOLLOW);
+
+	let mut file = options
+		.open(&artifact_canary)
+		.map_err(|error| format!("cannot create controlled smoke artifact canary: {error}"))?;
+
+	file.write_all(b"AIQ_DENIED\n")
+		.and_then(|()| file.sync_all())
+		.map_err(|error| format!("cannot persist controlled smoke artifact canary: {error}"))?;
+
+	let canaries = denied_roots
+		.iter()
+		.map(|root| {
+			if root == artifact_root {
+				fs::canonicalize(&artifact_canary)
+					.map_err(|error| format!("cannot resolve artifact canary: {error}"))
+			} else {
+				find_controlled_smoke_canary(root)
+			}
+		})
+		.collect::<Result<Vec<_>, _>>()?;
+
+	Ok((canaries, artifact_canary))
+}
+
+fn find_controlled_smoke_canary(root: &Path) -> Result<PathBuf, String> {
+	let metadata = fs::symlink_metadata(root)
+		.map_err(|error| format!("controlled smoke denied root is unavailable: {error}"))?;
+
+	if metadata.file_type().is_symlink() {
+		return Err("controlled smoke denied root must not be a symlink".to_owned());
+	}
+	if metadata.is_file() {
+		return fs::canonicalize(root)
+			.map_err(|error| format!("cannot resolve controlled smoke denied file: {error}"));
+	}
+
+	let mut pending = vec![(root.to_owned(), 0_u8)];
+	let mut inspected = 0_usize;
+
+	while let Some((directory, depth)) = pending.pop() {
+		let mut entries = fs::read_dir(&directory)
+			.map_err(|error| format!("cannot inspect controlled smoke denied root: {error}"))?
+			.collect::<Result<Vec<_>, _>>()
+			.map_err(|error| format!("cannot inspect controlled smoke denied root: {error}"))?;
+
+		entries.sort_by_key(DirEntry::file_name);
+
+		for entry in entries {
+			inspected = inspected
+				.checked_add(1)
+				.ok_or_else(|| "controlled smoke canary traversal overflowed".to_owned())?;
+
+			if inspected > 4_096 {
+				return Err("controlled smoke canary traversal exceeded 4,096 entries".to_owned());
+			}
+
+			let path = entry.path();
+			let metadata = fs::symlink_metadata(&path)
+				.map_err(|error| format!("cannot inspect controlled smoke canary: {error}"))?;
+
+			if metadata.file_type().is_symlink() {
+				continue;
+			}
+			if metadata.is_file() {
+				return fs::canonicalize(path)
+					.map_err(|error| format!("cannot resolve controlled smoke canary: {error}"));
+			}
+			if metadata.is_dir() && depth < 8 {
+				pending.push((path, depth + 1));
+			}
+		}
+	}
+
+	Err(format!("controlled smoke denied root has no regular file: {}", root.display()))
 }
 
 fn load_controlled_task(task_root: &Path) -> Result<TaskDefinition, String> {
@@ -731,6 +862,69 @@ fn controlled_summary(
 	})
 }
 
+fn verify_controlled_smoke_permission_admission(
+	config: &ControlledSmokeConfig,
+	execution_config: &CodexExecutionConfig,
+	artifacts: &LocalArtifactSink,
+) -> Result<String, String> {
+	require_chatgpt_subscription(
+		&config.codex_binary,
+		execution_config,
+		Some(&config.codex_egress_proxy),
+	)?;
+
+	let permission_adapter = CodexAdapter::new(
+		SystemExecutor,
+		artifacts.clone(),
+		config.codex_binary.display().to_string(),
+		execution_config.clone(),
+	);
+	let codex_version = permission_adapter.probe_version().map_err(|error| error.to_string())?;
+	let managed_profile = permission_adapter
+		.verify_managed_permission_profile(&config.execution_root)
+		.map_err(|error| error.to_string())?;
+
+	if !managed_profile.official_eligible
+		|| managed_profile.managed_requirements_status != "exact"
+		|| managed_profile.default_permissions != "aiq_benchmark"
+		|| managed_profile.allowed_permission_profile != "aiq_benchmark"
+		|| managed_profile.active_permission_profile != "aiq_benchmark"
+	{
+		return Err(
+			"controlled smoke did not observe the exact Official managed requirements".to_owned()
+		);
+	}
+
+	let (denied_canaries, artifact_canary) =
+		controlled_smoke_denied_canaries(&execution_config.denied_roots, &config.artifact_root)?;
+	let permission_workspace = config.execution_root.join(".permission-admission");
+	let allowed_file = permission_workspace.join("allowed.txt");
+	let writable_file = permission_workspace.join("writable.txt");
+
+	fs::create_dir(&permission_workspace)
+		.map_err(|error| format!("cannot create permission workspace: {error}"))?;
+	fs::set_permissions(&permission_workspace, Permissions::from_mode(0o700))
+		.map_err(|error| format!("cannot set permission workspace mode: {error}"))?;
+	fs::write(&allowed_file, b"AIQ_ALLOWED\n")
+		.map_err(|error| format!("cannot create allowed permission canary: {error}"))?;
+
+	permission_adapter
+		.verify_permission_boundary(
+			&permission_workspace,
+			&allowed_file,
+			&denied_canaries,
+			&writable_file,
+		)
+		.map_err(|error| error.to_string())?;
+
+	fs::remove_dir_all(&permission_workspace)
+		.map_err(|error| format!("cannot remove permission workspace: {error}"))?;
+	fs::remove_file(&artifact_canary)
+		.map_err(|error| format!("cannot remove artifact canary: {error}"))?;
+
+	Ok(codex_version)
+}
+
 fn write_summary(output: &Path, summary: &SmokeSummary) -> Result<(), String> {
 	let mut bytes = protocol::canonical_json(summary).map_err(|error| error.to_string())?;
 
@@ -755,6 +949,8 @@ fn environment() -> BTreeMap<String, String> {
 		"AIQ_ALLOW_PAID_CONTROLLED_SUBSCRIPTION_SMOKE",
 		"AIQ_REAL_CODEX_BINARY",
 		"AIQ_REAL_CODEX_HOME",
+		"AIQ_REAL_CODEX_EGRESS_PROXY",
+		"AIQ_REAL_PERMISSION_PROBE_BINARY",
 		"AIQ_REAL_CODEX_TOOLCHAIN_ROOT",
 		"AIQ_SUBSCRIPTION_SMOKE_EXECUTION_LOCK",
 		"AIQ_SUBSCRIPTION_SMOKE_OUTPUT",
@@ -837,6 +1033,39 @@ fn smoke_guards_require_exact_opt_in_and_fixed_model() {
 }
 
 #[test]
+fn controlled_smoke_preserves_sanitized_environment_and_exact_proxy() {
+	let requests = Rc::new(RefCell::new(Vec::new()));
+	let proxy = CodexEgressProxyEndpoint::parse("http://10.20.30.40:8080")
+		.expect("canonical private proxy");
+	let adapter = CodexAdapter::new(
+		RecordingExecutor { requests: Rc::clone(&requests), stdout: b"codex-cli 0.146.0".to_vec() },
+		TestArtifactSink,
+		"codex",
+		CodexExecutionConfig::isolated("/controlled/codex-home").with_egress_proxy(proxy),
+	);
+
+	adapter.probe_version().expect("version probe");
+
+	let requests = requests.borrow();
+	let request = requests.first().expect("captured version request");
+
+	assert!(request.clear_environment);
+
+	for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
+	{
+		assert_eq!(
+			request.environment.get(key).map(String::as_str),
+			Some("http://10.20.30.40:8080")
+		);
+	}
+	for forbidden in ["NO_PROXY", "no_proxy", "OPENAI_API_KEY", "CODEX_API_KEY"] {
+		assert!(!request.environment.contains_key(forbidden));
+	}
+
+	assert_eq!(requests.len(), 1, "the continuity check must not invoke a model");
+}
+
+#[test]
 fn smoke_paths_and_private_outputs_reject_aliases_and_reuse() {
 	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
 		.expect("repository root");
@@ -908,6 +1137,9 @@ fn controlled_smoke_layout_separates_execution_from_every_protected_root() {
 		corpus_commitment,
 		codex_binary: temp.path().join("codex"),
 		codex_home,
+		codex_egress_proxy: CodexEgressProxyEndpoint::parse("http://10.20.30.40:8080")
+			.expect("proxy fixture"),
+		permission_probe_binary: temp.path().join("aiq-runner"),
 		toolchain_root: toolchain_root.clone(),
 		execution_lock: temp.path().join("execution.lock"),
 		execution_root: temp.path().join("execution"),
@@ -1101,7 +1333,7 @@ fn real_codex_subscription_smoke_executes_fixed_public_example_once() {
 			.with_denied_roots(vec![repository_root.clone(), config.codex_home.clone()])
 			.with_model_toolchain(toolchain);
 
-		require_chatgpt_subscription(&config.codex_binary, &execution_config)?;
+		require_chatgpt_subscription(&config.codex_binary, &execution_config, None)?;
 
 		let codex_version = CodexAdapter::new(
 			SystemExecutor,
@@ -1185,20 +1417,13 @@ fn real_codex_controlled_subscription_smoke_executes_fixed_hidden_task_once() {
 		LocalDirectoryWorkspaceProvider::new(&config.baseline_root, execution, baseline_digests)
 			.expect("controlled workspace provider");
 	let execution_config = CodexExecutionConfig::isolated(config.codex_home.clone())
+		.with_egress_proxy(config.codex_egress_proxy.clone())
 		.with_denied_roots(denied_roots)
+		.with_permission_probe_executable(config.permission_probe_binary.clone())
 		.with_model_toolchain(corpus.model_toolchain);
-
-	require_chatgpt_subscription(&config.codex_binary, &execution_config)
-		.expect("ChatGPT subscription login");
-
-	let codex_version = CodexAdapter::new(
-		SystemExecutor,
-		artifacts.clone(),
-		config.codex_binary.display().to_string(),
-		execution_config.clone(),
-	)
-	.probe_version()
-	.expect("controlled smoke Codex version");
+	let codex_version =
+		verify_controlled_smoke_permission_admission(&config, &execution_config, &artifacts)
+			.expect("model-free controlled smoke permission admission");
 	let adapter = CodexAdapter::new(
 		CountingExecutor { attempts: Arc::clone(&attempts) },
 		artifacts,
