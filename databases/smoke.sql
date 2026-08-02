@@ -13,13 +13,10 @@ begin
   from pg_catalog.pg_class relation
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'aiq_private'
-    and relation.relkind in ('r', 'p')
-    and (relation.relname like 'aiq\_%' escape '\'
-      or relation.relname like 'calibration\_%' escape '\'
-      or relation.relname like 'efficiency\_%' escape '\');
+    and relation.relkind in ('r', 'p');
 
-  if private_table_count <> 38 then
-    raise exception 'expected 38 private AIQ, pricing, and calibration tables, found %', private_table_count;
+  if private_table_count <> 40 then
+    raise exception 'expected 40 private AIQ, pricing, and calibration tables, found %', private_table_count;
   end if;
 
   select count(*) into forced_rls_count
@@ -27,9 +24,6 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'aiq_private'
     and relation.relkind in ('r', 'p')
-    and (relation.relname like 'aiq\_%' escape '\'
-      or relation.relname like 'calibration\_%' escape '\'
-      or relation.relname like 'efficiency\_%' escape '\')
     and relation.relrowsecurity
     and relation.relforcerowsecurity;
 
@@ -142,7 +136,8 @@ begin
     and not rolreplication
     and not rolbypassrls
     and not rolcanlogin
-    and not rolinherit;
+    and not rolinherit
+    and pg_catalog.pg_has_role('authenticator',rolname,'MEMBER');
 
   if hardened_role_count <> 2 then
     raise exception 'the verifier and publisher roles are not hardened';
@@ -204,6 +199,11 @@ begin
       'public.aiq_register_storage_object(text,text,text,text,text,bigint,text,timestamp with time zone)',
       'EXECUTE'
     )
+    or not pg_catalog.has_function_privilege(
+      'service_role',
+      'public.aiq_record_storage_inventory_epoch(bigint,text)',
+      'EXECUTE'
+    )
   then
     raise exception 'a key gateway role grant is missing or too broad';
   end if;
@@ -225,6 +225,8 @@ select
   (select count(*) from public.public_task_coverage) as task_coverage_count,
   (select count(*) from public.public_calibration_runs) as calibration_run_count,
   (select count(*) from public.public_calibration_results) as calibration_result_count,
+  (select concat_ws(':',status,failure_code,explanation_code,explanation_summary)
+   from public.public_calibration_results limit 1) as calibration_result_failure_shape,
   (select count(*) from public.public_calibration_scores) as calibration_score_count,
   (select count(*) from public.public_model_efficiency) as model_efficiency_count,
   (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
@@ -243,6 +245,8 @@ select
   (select count(*) from public.public_task_coverage) as task_coverage_count,
   (select count(*) from public.public_calibration_runs) as calibration_run_count,
   (select count(*) from public.public_calibration_results) as calibration_result_count,
+  (select concat_ws(':',status,failure_code,explanation_code,explanation_summary)
+   from public.public_calibration_results limit 1) as calibration_result_failure_shape,
   (select count(*) from public.public_calibration_scores) as calibration_score_count,
   (select count(*) from public.public_model_efficiency) as model_efficiency_count,
   (select count(*) from public.aiq_preview_status_v1) as preview_status_count,

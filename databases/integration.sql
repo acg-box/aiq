@@ -23,6 +23,48 @@ begin
 end;
 $$;
 
+create or replace function pg_temp.aiq_efficiency_pricing()
+returns jsonb
+language sql
+immutable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'method', 'standard_api_equivalent_text_token_estimate',
+    'version', 'aiq.standard-api-equivalent-usd.v1',
+    'as_of', '2026-08-02',
+    'source', 'https://developers.openai.com/api/docs/models/compare',
+    'currency', 'USD',
+    'processing_tier', 'standard',
+    'rates', jsonb_build_array(
+      jsonb_build_object(
+        'model', 'gpt-5.6-sol',
+        'input_usd_nanos_per_token', 5000,
+        'cached_input_usd_nanos_per_token', 500,
+        'cache_write_input_usd_nanos_per_token', 6250,
+        'output_usd_nanos_per_token', 30000
+      ),
+      jsonb_build_object(
+        'model', 'gpt-5.6-terra',
+        'input_usd_nanos_per_token', 2500,
+        'cached_input_usd_nanos_per_token', 250,
+        'cache_write_input_usd_nanos_per_token', 3125,
+        'output_usd_nanos_per_token', 15000
+      ),
+      jsonb_build_object(
+        'model', 'gpt-5.6-luna',
+        'input_usd_nanos_per_token', 1000,
+        'cached_input_usd_nanos_per_token', 100,
+        'cache_write_input_usd_nanos_per_token', 1250,
+        'output_usd_nanos_per_token', 6000
+      )
+    ),
+    'formula', '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
+    'hosted_tool_fees_included', false,
+    'limitation', 'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.'
+  );
+$$;
+
 -- Build one valid signed-package shape for the ingress and lease checks. The
 -- signature is structural test data; this check does not claim cryptographic
 -- verification.
@@ -155,6 +197,7 @@ begin
     'task_set_hash', task_set_hash,
     'scoring_version', '1.0.0',
     'models', models,
+    'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
     'finished_unix_ms', 1785164400001,
     'synthetic', true,
@@ -385,7 +428,56 @@ select
     'scheduled_unix_ms', 1785164400000,
     'started_unix_ms', 1785164400000,
     'finished_unix_ms', 1785164400001,
+    'execution_concurrency', 1,
     'synthetic', true,
+    'result_efficiency', (
+      select jsonb_agg(
+        jsonb_build_object(
+          'cost_evidence_level', null,
+          'cost_status', 'unavailable_missing_usage',
+          'model', result -> 'model',
+          'observed_wall_ms', result #> '{latency,wall_ms}',
+          'provider_tokens', '{}'::jsonb,
+          'provider_tokens_evidence_level', null,
+          'provider_tokens_source', null,
+          'source_result_id', result ->> 'result_id',
+          'standard_api_equivalent_usd_nanos', null,
+          'task_id', result ->> 'task_id',
+          'wall_time_evidence_level', 'runner_observed'
+        )
+        order by result -> 'model', result ->> 'task_id'
+      )
+      from jsonb_array_elements(input.envelope #> '{payload,results}') result
+    ),
+    'efficiency', (
+      select jsonb_agg(
+        jsonb_build_object(
+          'schema_version', 'aiq.calibration-efficiency.v1',
+          'model', model.value,
+          'selected_tasks', 72,
+          'observed_wall_tasks', 72,
+          'total_observed_wall_ms', 72,
+          'median_observed_wall_ms', 1,
+          'p95_observed_wall_ms', 1,
+          'provider_token_totals', '{}'::jsonb,
+          'provider_token_coverage', jsonb_build_object(
+            'selected_tasks', 72,
+            'input_tasks', 0,
+            'cached_input_tasks', 0,
+            'cache_write_input_tasks', 0,
+            'output_tasks', 0,
+            'reasoning_tasks', 0,
+            'total_tasks', 0
+          ),
+          'estimated_cost_tasks', 0,
+          'standard_api_equivalent_usd_nanos', null
+        )
+        order by model.ordinality
+      )
+      from jsonb_array_elements(input.envelope #> '{payload,models}')
+        with ordinality model(value, ordinality)
+    ),
+    'pricing', pg_temp.aiq_efficiency_pricing(),
     'runs', (
       select jsonb_agg('{}'::jsonb order by number)
       from generate_series(1, 17) number
@@ -414,14 +506,15 @@ insert into aiq_private.aiq_matrix_batches (
   source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
   task_set_hash, capability_validation_digest, benchmark_version,
   prompt_set_digest, source_scoring_version, runner_commit, region,
-  scheduled_unix_ms, started_unix_ms, finished_unix_ms, normalized_stage
+  scheduled_unix_ms, started_unix_ms, finished_unix_ms,
+  execution_concurrency, normalized_stage
 )
 select
   run_id, package_sha256, envelope ->> 'content_hash',
   stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.0', '1.0.0',
   true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.0',
   stage ->> 'prompt_set_digest', '1.0.0', 'a7d91f4', 'integration',
-  1785164400000, 1785164400000, 1785164400001, stage
+  1785164400000, 1785164400000, 1785164400001, 1, stage
 from aiq_stage_resume_input;
 insert into aiq_private.aiq_result_packages (
   package_sha256, schema_version, idempotency_key, run_id, node_id,
@@ -680,6 +773,37 @@ select public.aiq_attach_storage_reference(
   object_id, 'artifact_ingress_claim', 'integration/run/artifact'
 )
 from aiq_storage_fixture;
+do $$
+begin
+  begin
+    perform public.aiq_claim_storage_deletions(10,60);
+    raise exception 'deletion leasing bypassed the inventory epoch gate';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
+do $$
+declare
+  status jsonb:=public.aiq_storage_lifecycle_status();
+begin
+  begin
+    perform public.aiq_record_storage_inventory_epoch(
+      (status ->> 'active_objects')::bigint+(status ->> 'pending_objects')::bigint,
+      'sha256:'||repeat('0',64)
+    );
+    raise exception 'inventory epoch accepted a conflicting object digest';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
+with inventory as (
+  select public.aiq_storage_lifecycle_status() as status
+)
+select public.aiq_record_storage_inventory_epoch(
+  (status ->> 'active_objects')::bigint+(status ->> 'pending_objects')::bigint,
+  status ->> 'registry_inventory_digest'
+)
+from inventory;
 select pg_temp.aiq_assert(
   (select count(*) = 0
    from public.aiq_claim_storage_deletions(10, 60)),
@@ -753,10 +877,20 @@ select pg_temp.aiq_assert(
       )
       and column_name in (
         'package_sha256','content_hash','stage_digest','runner_node_id','verifier_node_id',
-        'publisher_node_id','verification_record','verifier_attestation','failure_code'
+        'publisher_node_id','verification_record','verifier_attestation','failure_detail'
       )
   ),
   'public calibration views must not expose private evidence fields'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 4
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_calibration_results'
+     and column_name in (
+       'status','failure_code','explanation_code','explanation_summary'
+     )),
+  'public calibration results must expose bounded failure classification'
 );
 
 rollback;
