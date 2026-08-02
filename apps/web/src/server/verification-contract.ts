@@ -111,11 +111,12 @@ const rateKeys = [
 const pricingFormula =
   '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again';
 const pricingLimitation =
-  'Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.';
+  'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.';
+const maxShortContextInputTokens = 272_000;
 const pricingRates = [
   ['gpt-5.6-sol', 5_000, 500, 6_250, 30_000],
-  ['gpt-5.6-terra', 2_500, 250, 3_125, 15_000],
-  ['gpt-5.6-luna', 1_000, 100, 1_250, 6_000],
+  ['gpt-5.6-terra', 2_000, 200, 2_500, 12_000],
+  ['gpt-5.6-luna', 200, 20, 250, 1_200],
 ] as const;
 const tokenKeys = [
   'cache_write_input',
@@ -517,6 +518,17 @@ function isProviderTokens(value: unknown): value is JsonRecord {
   );
 }
 
+function isUnavailableContextBandUsage(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isSafeCount(value.input) &&
+    isSafeCount(value.cached_input) &&
+    isSafeCount(value.cache_write_input) &&
+    isSafeCount(value.output) &&
+    value.input > maxShortContextInputTokens
+  );
+}
+
 function isCalibrationEfficiency(
   value: unknown,
   expectedModel: unknown,
@@ -596,14 +608,19 @@ function isResultEfficiency(value: unknown): boolean {
         value.provider_tokens_evidence_level === 'verifier_recomputed')) &&
     (value.standard_api_equivalent_usd_nanos === null ||
       isSafeCount(value.standard_api_equivalent_usd_nanos)) &&
-    ['estimated', 'unavailable_missing_usage', 'unavailable_invalid_usage'].includes(
-      String(value.cost_status),
-    ) &&
+    [
+      'estimated',
+      'unavailable_missing_usage',
+      'unavailable_invalid_usage',
+      'unavailable_context_band',
+    ].includes(String(value.cost_status)) &&
     ((value.standard_api_equivalent_usd_nanos === null && value.cost_evidence_level === null) ||
       (value.standard_api_equivalent_usd_nanos !== null &&
         value.cost_evidence_level === 'verifier_recomputed')) &&
     ((value.cost_status === 'estimated' && value.standard_api_equivalent_usd_nanos !== null) ||
-      (value.cost_status !== 'estimated' && value.standard_api_equivalent_usd_nanos === null))
+      (value.cost_status !== 'estimated' && value.standard_api_equivalent_usd_nanos === null)) &&
+    (value.cost_status === 'unavailable_context_band') ===
+      isUnavailableContextBandUsage(value.provider_tokens)
   );
 }
 
@@ -614,7 +631,7 @@ function isPricing(value: unknown): value is JsonRecord {
     value.method === 'standard_api_equivalent_text_token_estimate' &&
     value.version === 'aiq.standard-api-equivalent-usd.v1' &&
     value.as_of === '2026-08-02' &&
-    value.source === 'https://developers.openai.com/api/docs/models/compare' &&
+    value.source === 'https://developers.openai.com/api/docs/pricing' &&
     value.currency === 'USD' &&
     value.processing_tier === 'standard' &&
     value.hosted_tool_fees_included === false &&

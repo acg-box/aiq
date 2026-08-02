@@ -166,7 +166,11 @@ export interface PublicCalibrationResult {
   tokenUsageSourceLevel: 'provider_reported' | null;
   tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
   standardApiEquivalentUsdNanos: number | null;
-  costEstimatorStatus: 'estimated' | 'unavailable_missing_usage' | 'unavailable_invalid_usage';
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
   costEvidenceLevel: 'verifier_recomputed' | null;
   costEstimatorLimitations: readonly string[];
   costMethod: string | null;
@@ -231,7 +235,11 @@ export interface PublicCalibrationScore {
   tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
   standardApiEquivalentUsdNanos: number | null;
   estimatedCostSampleCount: number;
-  costEstimatorStatus: 'estimated' | 'unavailable_missing_usage' | 'unavailable_invalid_usage';
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
   costEvidenceLevel: 'verifier_recomputed' | null;
   costEstimatorLimitations: readonly string[];
   tokenUsageCoveragePercent: number | null;
@@ -267,7 +275,11 @@ export interface PublicModelEfficiency {
   tokenUsageSampleCount: number;
   tokenUsageSourceLevel: 'provider_reported' | null;
   standardApiEquivalentUsdNanos: number | null;
-  costEstimatorStatus: 'estimated' | 'unavailable_missing_usage' | 'unavailable_invalid_usage';
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
   tokenUsageCoveragePercent: number;
   tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
   costEvidenceLevel: 'verifier_recomputed' | null;
