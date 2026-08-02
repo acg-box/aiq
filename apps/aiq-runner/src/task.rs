@@ -3,10 +3,14 @@
 pub(crate) mod evaluator;
 
 pub use evaluator::{
-	CheckedEvaluatorObservation, EVALUATOR_PROTOCOL_VERSION, EVALUATOR_RESULT_SCHEMA_VERSION,
-	EvaluationError, EvaluationErrorKind, EvaluationResult, EvaluatorCheck,
-	EvaluatorCheckFailureClass, EvaluatorContext, EvaluatorOutcome, EvaluatorRuntime,
-	EvaluatorRuntimeKind, ExternalEvaluatorBinding, NormalizedToolEvidence,
+	CheckedEvaluatorObservation, EVALUATOR_CONFIG_SCHEMA_VERSION, EVALUATOR_PROTOCOL_VERSION,
+	EVALUATOR_RESULT_SCHEMA_VERSION, EXTERNAL_EVALUATOR_REPLAY_PASSES, EvaluationError,
+	EvaluationErrorKind, EvaluationResult, EvaluatorCheck, EvaluatorCheckFailureClass,
+	EvaluatorContext, EvaluatorOutcome, EvaluatorRuntime, EvaluatorRuntimeKind,
+	ExternalEvaluatorBinding, MAX_EVALUATOR_TIMEOUT_MS, MAX_PARALLEL_EXTERNAL_EVALUATORS,
+	NODE_SCENARIO_CLEANUP_RESERVE_MS, NODE_SCENARIO_COPY_RESERVE_MS,
+	NODE_SCENARIO_PASS_OVERHEAD_MS, NODE_SCENARIO_SPAWN_RESERVE_MS, NormalizedToolEvidence,
+	minimum_node_scenario_evaluator_timeout_ms,
 };
 
 #[cfg(unix)]
@@ -87,7 +91,7 @@ pub enum Visibility {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskBudgets {
-	/// Maximum wall-clock runtime.
+	/// Maximum Codex adapter elapsed time.
 	pub wall_seconds: u64,
 	/// Maximum agent steps.
 	pub max_steps: u32,

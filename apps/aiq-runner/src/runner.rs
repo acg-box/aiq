@@ -26,6 +26,7 @@ use std::{fs::Permissions, os::unix::fs::PermissionsExt};
 #[cfg(unix)]
 use libc::O_NOFOLLOW;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Map;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 #[cfg(windows)]
@@ -308,11 +309,12 @@ pub struct ResultFailure {
 	pub retryable: bool,
 }
 
-/// Measured execution latency.
+/// Measured Codex adapter elapsed time. It includes model and local tool execution
+/// and excludes workspace setup, workspace sealing, and evaluator replay.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Latency {
-	/// Wall-clock milliseconds.
+	/// Codex adapter elapsed time in wall-clock milliseconds.
 	pub wall_ms: u64,
 }
 
@@ -326,6 +328,46 @@ pub struct ToolUsage {
 	pub total_calls: u32,
 	/// Calls grouped by stable Codex item type.
 	pub by_tool: BTreeMap<String, u32>,
+	/// Provider-reported token metadata from `turn.completed`, when present.
+	#[serde(skip)]
+	pub provider_tokens: ProviderTokenUsage,
+}
+
+/// Provider-reported token usage. Missing counters remain unknown and are not
+/// replaced with zero or derived from other counters.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderTokenUsage {
+	/// Total input tokens reported by the provider, including cached input.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub input: Option<u64>,
+	/// Cached subset of the reported input tokens.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub cached_input: Option<u64>,
+	/// Input tokens written to provider prompt cache, when reported.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub cache_write_input: Option<u64>,
+	/// Total output tokens reported by the provider, including reasoning output.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub output: Option<u64>,
+	/// Reasoning subset of the reported output tokens.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub reasoning: Option<u64>,
+	/// Provider-reported total tokens. This value is never derived locally.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub total: Option<u64>,
+}
+impl ProviderTokenUsage {
+	/// Returns true when the provider reported no supported counters.
+	#[must_use]
+	pub const fn is_empty(&self) -> bool {
+		self.input.is_none()
+			&& self.cached_input.is_none()
+			&& self.cache_write_input.is_none()
+			&& self.output.is_none()
+			&& self.reasoning.is_none()
+			&& self.total.is_none()
+	}
 }
 
 /// Deterministic post-run manifest of a candidate workspace tree.
@@ -660,7 +702,7 @@ pub struct TaskResult {
 	pub artifacts: Vec<ArtifactReference>,
 	/// Structured failure when execution did not produce a scored result.
 	pub failure: Option<ResultFailure>,
-	/// Execution latency.
+	/// Codex adapter elapsed time.
 	pub latency: Latency,
 	/// Captured tool usage.
 	pub tool_usage: ToolUsage,
@@ -742,6 +784,9 @@ pub struct RunRecord {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Maximum concurrent task executions, when recorded by the producing runner.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub execution_concurrency: Option<usize>,
 	/// Exact 17-entry model matrix.
 	pub models: Vec<ModelConfig>,
 	/// Start time as Unix milliseconds.
@@ -778,6 +823,9 @@ pub struct CalibrationRunRecord {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Maximum concurrent task executions, when recorded by the producing runner.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub execution_concurrency: Option<usize>,
 	/// Ordered selected models.
 	pub models: Vec<ModelConfig>,
 	/// Selected task identifiers in deterministic order.
@@ -890,7 +938,7 @@ where
 		}
 		if checkpoint.results.iter().any(aborts_paid_run) {
 			return Err(RunnerError::new(
-				"checkpoint records a provider account failure; paid execution remains aborted",
+				"checkpoint records a paid-run boundary failure; paid execution remains aborted",
 			));
 		}
 
@@ -910,56 +958,57 @@ where
 	) -> Result<Vec<(usize, usize, usize)>, RunnerError> {
 		let mut live_cells = Vec::new();
 
-		for (model_index, model) in self.models.iter().enumerate() {
+		for (task_index, model_index) in
+			task_major_execution_order(self.tasks.len(), self.models.len())
+		{
+			let model = &self.models[model_index];
 			let model_validation = self.validation.model(*model).ok_or_else(|| {
 				RunnerError::new("capability validation omitted a selected entry")
 			})?;
+			let task = &self.tasks[task_index];
+			let index = model_index * self.tasks.len() + task_index;
 
-			for (task_index, task) in self.tasks.iter().enumerate() {
-				let index = model_index * self.tasks.len() + task_index;
-
-				if committed.contains_key(&index) {
-					continue;
-				}
-				if model_validation.status == CapabilityValidationStatus::Available {
-					self.workspace_provider
-						.quarantine_interrupted(&self.commitments.run_id, *model, task)
-						.map_err(|error| RunnerError::new(error.to_string()))?;
-					live_cells.push((index, model_index, task_index));
-
-					continue;
-				}
-
-				let mut result = match model_validation.status {
-					CapabilityValidationStatus::Unsupported => unavailable_result(
-						self.manifest,
-						task,
-						*model,
-						&self.commitments.run_id,
-						self.codex_version,
-						self.observed_at,
-						ResultStatus::Unsupported,
-						FailureKind::CapabilityUnavailable,
-						&model_validation.reason,
-					)?,
-					CapabilityValidationStatus::Unavailable => unavailable_result(
-						self.manifest,
-						task,
-						*model,
-						&self.commitments.run_id,
-						self.codex_version,
-						self.observed_at,
-						ResultStatus::Failed,
-						FailureKind::CapabilityValidationFailed,
-						&model_validation.reason,
-					)?,
-					CapabilityValidationStatus::Available => unreachable!(),
-				};
-
-				result.assign_result_id()?;
-				committed.insert(index, result);
-				self.persist_checkpoint(checkpoint, committed)?;
+			if committed.contains_key(&index) {
+				continue;
 			}
+			if model_validation.status == CapabilityValidationStatus::Available {
+				self.workspace_provider
+					.quarantine_interrupted(&self.commitments.run_id, *model, task)
+					.map_err(|error| RunnerError::new(error.to_string()))?;
+				live_cells.push((index, model_index, task_index));
+
+				continue;
+			}
+
+			let mut result = match model_validation.status {
+				CapabilityValidationStatus::Unsupported => unavailable_result(
+					self.manifest,
+					task,
+					*model,
+					&self.commitments.run_id,
+					self.codex_version,
+					self.observed_at,
+					ResultStatus::Unsupported,
+					FailureKind::CapabilityUnavailable,
+					&model_validation.reason,
+				)?,
+				CapabilityValidationStatus::Unavailable => unavailable_result(
+					self.manifest,
+					task,
+					*model,
+					&self.commitments.run_id,
+					self.codex_version,
+					self.observed_at,
+					ResultStatus::Failed,
+					FailureKind::CapabilityValidationFailed,
+					&model_validation.reason,
+				)?,
+				CapabilityValidationStatus::Available => unreachable!(),
+			};
+
+			result.assign_result_id()?;
+			committed.insert(index, result);
+			self.persist_checkpoint(checkpoint, committed)?;
 		}
 
 		Ok(live_cells)
@@ -1140,7 +1189,7 @@ where
 
 				if aborts_paid_run(committed.get(&index).expect("just inserted result")) {
 					return Err(RunnerError::new(
-						"provider account failure aborted the remaining paid cells",
+						"paid-run boundary failure aborted the remaining paid cells",
 					));
 				}
 
@@ -1307,6 +1356,32 @@ struct SyntheticCatalogEvaluator {
 	scorer_version: String,
 }
 
+#[derive(Clone, Debug)]
+struct InvocationEvidence {
+	wall_ms: u64,
+	exit_code: Option<i32>,
+	artifacts: Vec<ArtifactReference>,
+	tool_usage: ToolUsage,
+}
+impl InvocationEvidence {
+	fn capture(invocation: &Result<CodexOutput, AdapterFailure>, wall_ms: u64) -> Self {
+		match invocation {
+			Ok(output) => Self {
+				wall_ms,
+				exit_code: output.exit_code,
+				artifacts: output.artifacts.clone(),
+				tool_usage: retained_stdout_tool_usage(&output.stdout_full, &output.artifacts),
+			},
+			Err(failure) => Self {
+				wall_ms,
+				exit_code: failure.exit_code,
+				artifacts: failure.artifacts.clone(),
+				tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts),
+			},
+		}
+	}
+}
+
 /// Run, task, model, and result status.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1367,6 +1442,9 @@ pub enum FailureKind {
 	OutputTruncated,
 	/// The controlled task workspace could not be prepared.
 	WorkspaceUnavailable,
+	/// A paid invocation completed or failed, but post-invocation workspace
+	/// sealing, evidence retention, integrity validation, or cleanup failed.
+	WorkspaceIntegrity,
 }
 
 /// Full Official-shaped output or an explicitly non-Official calibration output.
@@ -1376,6 +1454,28 @@ pub enum SelectedRun {
 	OfficialShape(RunRecord),
 	/// Selected subset protocol.
 	Calibration(CalibrationRunRecord),
+}
+
+#[derive(Clone, Copy, Debug)]
+enum WorkspaceIntegrityFailure {
+	Sealing,
+	EvidenceRetention,
+	PostEvaluationIntegrity,
+	PostEvaluationCleanup,
+}
+impl WorkspaceIntegrityFailure {
+	fn message(self) -> &'static str {
+		match self {
+			Self::Sealing => "post-invocation workspace sealing failed",
+			Self::EvidenceRetention => {
+				"post-invocation workspace evidence retention or cleanup failed"
+			},
+			Self::PostEvaluationIntegrity => {
+				"post-evaluation workspace integrity or cleanup failed"
+			},
+			Self::PostEvaluationCleanup => "post-evaluation workspace cleanup failed",
+		}
+	}
 }
 
 enum SelectedWorkerEvent {
@@ -1518,6 +1618,7 @@ where
 		schedule_slot: slot,
 		task_set_hash: set_hash,
 		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		execution_concurrency: Some(1),
 		models: MODEL_MATRIX.to_vec(),
 		started_unix_ms: scheduled_unix_ms,
 		finished_unix_ms: scheduled_unix_ms,
@@ -1591,6 +1692,30 @@ pub fn parse_codex_tool_usage(stdout: &str) -> ToolUsage {
 	let mut usage = ToolUsage::default();
 
 	for line in stdout.lines() {
+		if let Ok(event) = serde_json::from_str::<Value>(line)
+			&& event.get("type").and_then(Value::as_str) == Some("turn.completed")
+			&& let Some(provider) = event.get("usage").and_then(Value::as_object)
+		{
+			merge_provider_counter(&mut usage.provider_tokens.input, provider, "input_tokens");
+			merge_provider_counter(
+				&mut usage.provider_tokens.cached_input,
+				provider,
+				"cached_input_tokens",
+			);
+			merge_provider_counter(
+				&mut usage.provider_tokens.cache_write_input,
+				provider,
+				"cache_write_input_tokens",
+			);
+			merge_provider_counter(&mut usage.provider_tokens.output, provider, "output_tokens");
+			merge_provider_counter(
+				&mut usage.provider_tokens.reasoning,
+				provider,
+				"reasoning_output_tokens",
+			);
+			merge_provider_counter(&mut usage.provider_tokens.total, provider, "total_tokens");
+		}
+
 		let Some(item) = adapter::normalize_codex_item(line.as_bytes()) else {
 			continue;
 		};
@@ -1716,6 +1841,34 @@ pub(crate) fn extract_final_response(stdout: &str) -> Option<String> {
 	response
 }
 
+fn retained_stdout_tool_usage(stdout: &str, artifacts: &[ArtifactReference]) -> ToolUsage {
+	if artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl") {
+		parse_codex_tool_usage(stdout)
+	} else {
+		ToolUsage::default()
+	}
+}
+
+fn task_major_execution_order(
+	task_count: usize,
+	model_count: usize,
+) -> impl Iterator<Item = (usize, usize)> {
+	(0..task_count).flat_map(move |task_index| {
+		(0..model_count).map(move |model_index| (task_index, model_index))
+	})
+}
+
+fn merge_provider_counter(accumulator: &mut Option<u64>, usage: &Map<String, Value>, field: &str) {
+	let Some(observed) = usage.get(field).and_then(Value::as_u64) else {
+		return;
+	};
+
+	*accumulator = match *accumulator {
+		Some(current) => Some(current.saturating_add(observed)),
+		None => Some(observed),
+	};
+}
+
 fn execute_selected_run_inner<E, S, P>(
 	adapter: &CodexAdapter<E, S>,
 	workspace_provider: &P,
@@ -1822,6 +1975,7 @@ where
 		commitments,
 		checkpoint,
 		evaluator_results_artifact,
+		local.jobs,
 	))
 }
 
@@ -1902,7 +2056,12 @@ fn validate_selected_run_commitments(
 
 fn aborts_paid_run(result: &TaskResult) -> bool {
 	result.failure.as_ref().is_some_and(|failure| {
-		matches!(failure.kind, FailureKind::Authentication | FailureKind::SubscriptionLimit)
+		matches!(
+			failure.kind,
+			FailureKind::Authentication
+				| FailureKind::SubscriptionLimit
+				| FailureKind::WorkspaceIntegrity
+		)
 	})
 }
 
@@ -2338,6 +2497,7 @@ fn finish_sealed_task_result(
 	result: Result<TaskResult, RunnerError>,
 	sealed_workspace: SealedWorkspace,
 	sealed_manifest_sha256: &str,
+	invocation_evidence: &InvocationEvidence,
 ) -> Result<TaskResult, RunnerError> {
 	let integrity =
 		verify_sealed_workspace_unchanged(sealed_workspace.path(), sealed_manifest_sha256);
@@ -2345,35 +2505,27 @@ fn finish_sealed_task_result(
 
 	match (integrity, cleanup) {
 		(Ok(()), Ok(())) => result,
-		(Err(error), cleanup) => {
-			let detail = cleanup.err().map_or_else(
-				|| format!("post-evaluation sealed workspace integrity failed: {error}"),
-				|cleanup| {
-					format!(
-						"post-evaluation sealed workspace integrity failed: {error}; \
-						 sealed workspace cleanup failed: {cleanup}"
-					)
-				},
-			);
-
-			workspace_unavailable_result(
-				manifest,
-				task,
-				model,
-				run_id,
-				codex_version,
-				observed_at,
-				&detail,
-			)
-		},
-		(Ok(()), Err(error)) => workspace_unavailable_result(
+		(Err(_), _) => workspace_integrity_result(
 			manifest,
 			task,
 			model,
 			run_id,
 			codex_version,
 			observed_at,
-			&format!("sealed workspace cleanup failed after evaluation: {error}"),
+			invocation_evidence,
+			result.ok(),
+			WorkspaceIntegrityFailure::PostEvaluationIntegrity,
+		),
+		(Ok(()), Err(_)) => workspace_integrity_result(
+			manifest,
+			task,
+			model,
+			run_id,
+			codex_version,
+			observed_at,
+			invocation_evidence,
+			result.ok(),
+			WorkspaceIntegrityFailure::PostEvaluationCleanup,
 		),
 	}
 }
@@ -2762,6 +2914,10 @@ fn restore_checkpoint_results(
 	Ok(committed)
 }
 
+#[allow(
+	clippy::too_many_arguments,
+	reason = "the record constructor keeps each independently validated run commitment explicit"
+)]
 fn selected_run_record(
 	tasks: &[TaskDefinition],
 	models: &[ModelConfig],
@@ -2770,6 +2926,7 @@ fn selected_run_record(
 	commitments: RunCommitments,
 	checkpoint: RunCheckpoint,
 	evaluator_results_artifact: ArtifactReference,
+	execution_concurrency: usize,
 ) -> SelectedRun {
 	let finished_unix_ms = unix_ms();
 
@@ -2780,6 +2937,7 @@ fn selected_run_record(
 			schedule_slot: slot,
 			task_set_hash: commitments.task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			execution_concurrency: Some(execution_concurrency),
 			models: MODEL_MATRIX.to_vec(),
 			started_unix_ms: checkpoint.started_unix_ms,
 			finished_unix_ms,
@@ -2798,6 +2956,7 @@ fn selected_run_record(
 			schedule_slot: slot,
 			task_set_hash: commitments.task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			execution_concurrency: Some(execution_concurrency),
 			models: models.to_vec(),
 			task_ids: tasks.iter().map(|task| task.task_id.clone()).collect(),
 			started_unix_ms: checkpoint.started_unix_ms,
@@ -2846,43 +3005,39 @@ where
 	let invocation_request = task_invocation_request(task, model, &context);
 	let invocation = adapter.invoke(&invocation_request);
 	let wall_ms = elapsed_ms(started);
+	let invocation_evidence = InvocationEvidence::capture(&invocation, wall_ms);
 	let sealed_workspace = match SealedWorkspace::create(&context.workspace_dir) {
 		Ok(workspace) => workspace,
-		Err(error) => {
-			return workspace_unavailable_result(
+		Err(_) => {
+			return workspace_integrity_result(
 				manifest,
 				task,
 				model,
 				run_id,
 				codex_version,
 				observed_at,
-				&format!("post-run workspace sealing failed: {error}"),
+				&invocation_evidence,
+				None,
+				WorkspaceIntegrityFailure::Sealing,
 			);
 		},
 	};
 	let (workspace_manifest, workspace_snapshot) =
 		match retain_workspace_evidence(adapter, sealed_workspace.path()) {
 			Ok(evidence) => evidence,
-			Err(error) => {
-				let cleanup_error = sealed_workspace.cleanup().err();
-				let detail = cleanup_error.map_or_else(
-					|| format!("post-run workspace integrity failed: {error}"),
-					|cleanup| {
-						format!(
-							"post-run workspace integrity failed: {error}; \
-							 sealed workspace cleanup failed: {cleanup}"
-						)
-					},
-				);
+			Err(_) => {
+				let _ = sealed_workspace.cleanup();
 
-				return workspace_unavailable_result(
+				return workspace_integrity_result(
 					manifest,
 					task,
 					model,
 					run_id,
 					codex_version,
 					observed_at,
-					&detail,
+					&invocation_evidence,
+					None,
+					WorkspaceIntegrityFailure::EvidenceRetention,
 				);
 			},
 		};
@@ -2928,6 +3083,7 @@ where
 		result,
 		sealed_workspace,
 		&sealed_manifest_sha256,
+		&invocation_evidence,
 	)
 }
 
@@ -3013,7 +3169,7 @@ where
 		artifacts,
 		failure: evaluated.failure,
 		latency: Latency { wall_ms },
-		tool_usage: if budget_failure.is_some() { ToolUsage::default() } else { tool_usage },
+		tool_usage,
 		evaluator_checks: evaluated.checks,
 		workspace_manifest: Some(workspace_manifest.clone()),
 		provenance: provenance(manifest, codex_version, observed_at, false),
@@ -3230,6 +3386,73 @@ fn evaluation_fields(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn workspace_integrity_result(
+	manifest: &CapabilityManifest,
+	task: &TaskDefinition,
+	model: ModelConfig,
+	run_id: &str,
+	codex_version: &str,
+	observed_at: &str,
+	invocation: &InvocationEvidence,
+	prior_result: Option<TaskResult>,
+	failure: WorkspaceIntegrityFailure,
+) -> Result<TaskResult, RunnerError> {
+	let message = failure.message();
+
+	if let Some(mut result) = prior_result {
+		result.status = ResultStatus::Failed;
+		result.evaluation = EvaluationOutcome::NotEvaluated;
+		result.task_score = None;
+		result.response = None;
+		result.response_sha256 = None;
+		result.evaluator_result_sha256 = None;
+		result.evaluator_stdout_sha256 = None;
+
+		result.artifacts.retain(|artifact| artifact.kind != "final-response.txt");
+
+		result.failure = Some(ResultFailure {
+			kind: FailureKind::WorkspaceIntegrity,
+			message: message.to_owned(),
+			exit_code: invocation.exit_code,
+			retryable: true,
+		});
+
+		result.evaluator_checks.clear();
+
+		return Ok(result);
+	}
+
+	Ok(TaskResult {
+		schema_version: RESULT_SCHEMA_VERSION.to_owned(),
+		result_id: String::new(),
+		run_id: run_id.to_owned(),
+		task_id: task.task_id.clone(),
+		task_version: task.task_version.clone(),
+		task_hash: task.content_hash()?,
+		model,
+		status: ResultStatus::Failed,
+		evaluation: EvaluationOutcome::NotEvaluated,
+		task_score: None,
+		response: None,
+		response_sha256: None,
+		evaluator_result_sha256: None,
+		evaluator_stdout_sha256: None,
+		artifacts: invocation.artifacts.clone(),
+		failure: Some(ResultFailure {
+			kind: FailureKind::WorkspaceIntegrity,
+			message: message.to_owned(),
+			exit_code: invocation.exit_code,
+			retryable: true,
+		}),
+		latency: Latency { wall_ms: invocation.wall_ms },
+		tool_usage: invocation.tool_usage.clone(),
+		evaluator_checks: Vec::new(),
+		workspace_manifest: None,
+		provenance: provenance(manifest, codex_version, observed_at, false),
+	})
+}
+
+#[allow(clippy::too_many_arguments)]
 fn failed_result(
 	manifest: &CapabilityManifest,
 	task: &TaskDefinition,
@@ -3251,6 +3474,7 @@ fn failed_result(
 		AdapterFailureKind::NonZeroExit => FailureKind::NonZeroExit,
 		AdapterFailureKind::BudgetExceeded => FailureKind::BudgetExceeded,
 		AdapterFailureKind::OutputTruncated => FailureKind::OutputTruncated,
+		AdapterFailureKind::WorkspaceIntegrity => FailureKind::WorkspaceIntegrity,
 	};
 
 	Ok(TaskResult {
@@ -3296,10 +3520,11 @@ fn failed_result(
 					| AdapterFailureKind::Timeout
 					| AdapterFailureKind::UsageLimit
 					| AdapterFailureKind::NonZeroExit
+					| AdapterFailureKind::WorkspaceIntegrity
 			),
 		}),
 		latency: Latency { wall_ms },
-		tool_usage: ToolUsage::default(),
+		tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts),
 		evaluator_checks: Vec::new(),
 		workspace_manifest: Some(workspace_manifest),
 		provenance: provenance(manifest, codex_version, observed_at, false),
@@ -3491,6 +3716,7 @@ mod tests {
 	struct UsageLimitExecutor(Arc<AtomicUsize>);
 
 	struct MemorySink;
+	struct FailingSink;
 
 	struct TamperingSink {
 		workspace_parent: PathBuf,
@@ -3507,6 +3733,10 @@ mod tests {
 		stats: Arc<ExecutionStats>,
 		delay_ms: u64,
 		panic_at: Option<usize>,
+	}
+	struct EvidenceExecutor;
+	struct FailureEvidenceExecutor {
+		timed_out: bool,
 	}
 
 	struct ExecutionStats {
@@ -3553,6 +3783,12 @@ mod tests {
 				content_hash,
 				bytes: bytes.len() as u64,
 			})
+		}
+	}
+
+	impl ArtifactSink for FailingSink {
+		fn put(&self, _kind: &str, _bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
+			Err(ExecutorError::new("synthetic sink failure"))
 		}
 	}
 
@@ -3667,6 +3903,50 @@ mod tests {
 					.to_vec(),
 				stderr: Vec::new(),
 				timed_out: false,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
+	impl Executor for EvidenceExecutor {
+		fn execute(&self, _request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			thread::sleep(Duration::from_millis(2));
+
+			Ok(ExecutionCapture {
+				exit_code: Some(0),
+				stdout: concat!(
+					r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"pwd"}}"#,
+					"\n",
+					r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
+					"\n",
+					r#"{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}"#
+				)
+				.as_bytes()
+				.to_vec(),
+				stderr: Vec::new(),
+				timed_out: false,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
+	impl Executor for FailureEvidenceExecutor {
+		fn execute(&self, _request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			Ok(ExecutionCapture {
+				exit_code: (!self.timed_out).then_some(17),
+				stdout: concat!(
+					r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
+					"\n",
+					r#"{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":2,"cache_write_input_tokens":1,"output_tokens":5,"reasoning_output_tokens":3,"total_tokens":16}}"#
+				)
+				.as_bytes()
+				.to_vec(),
+				stderr: Vec::new(),
+				timed_out: self.timed_out,
 				budget_exceeded: None,
 				stdout_truncated: false,
 				stderr_truncated: false,
@@ -4007,6 +4287,18 @@ mod tests {
 			run_validation::validate_calibration_run_record_with_tasks(run, &catalog_drifted_tasks)
 				.is_err()
 		);
+
+		let mut permuted = run.clone();
+
+		permuted.results.swap(0, 1);
+
+		assert!(run_validation::validate_calibration_run_record(&permuted).is_err());
+
+		let mut reversed_models = run.clone();
+
+		reversed_models.models.reverse();
+
+		assert!(run_validation::validate_calibration_run_record(&reversed_models).is_err());
 	}
 
 	#[test]
@@ -4019,6 +4311,7 @@ mod tests {
 		let tasks = super::synthetic_demo_tasks();
 
 		assert!(run.synthetic);
+		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(run.started_unix_ms, scheduled_unix_ms);
 		assert_eq!(run.finished_unix_ms, scheduled_unix_ms);
 		assert_eq!(run.models, MODEL_MATRIX);
@@ -4151,6 +4444,7 @@ mod tests {
 			commitments,
 			checkpoint,
 			evaluator_results_artifact,
+			1,
 		);
 		let SelectedRun::Calibration(run) = selected else {
 			panic!("full calibration must not emit an Official RunRecord")
@@ -4196,6 +4490,7 @@ mod tests {
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts: Vec::new(),
+			stdout_full: String::new(),
 		});
 
 		assert!(run_validation::validate_calibration_run_record(&oversized_failure).is_err());
@@ -4224,6 +4519,7 @@ mod tests {
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts: Vec::new(),
+			stdout_full: String::new(),
 		};
 		let observed_at = "unix-ms:1".to_owned();
 		let evidence_digest = adapter::configuration_evidence_digest(
@@ -4356,7 +4652,7 @@ mod tests {
 		)
 		.expect_err("usage limit must abort the selected run");
 
-		assert!(first.to_string().contains("provider account failure"));
+		assert!(first.to_string().contains("paid-run boundary failure"));
 
 		let checkpoint =
 			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
@@ -4385,8 +4681,61 @@ mod tests {
 		)
 		.expect_err("provider account checkpoint must remain aborted");
 
-		assert!(resumed.to_string().contains("provider account failure"));
+		assert!(resumed.to_string().contains("paid-run boundary failure"));
 		assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[test]
+	fn failed_stdout_retention_commits_only_replayable_default_counters_and_aborts() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-sink-failure-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let adapter = CodexAdapter::new(
+			FailureEvidenceExecutor { timed_out: false },
+			FailingSink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home")),
+		);
+		let (tasks, _models, manifest, validation, _slot, commitments) = selected_fixture(1, 1);
+
+		fs::create_dir_all(&root).expect("test root");
+
+		let error = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect_err("evidence loss must abort the paid run");
+
+		assert!(error.to_string().contains("paid-run boundary failure"));
+
+		let checkpoint =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+		let result = checkpoint.results.first().expect("workspace-integrity checkpoint result");
+
+		assert_eq!(
+			result.failure.as_ref().map(|failure| failure.kind),
+			Some(FailureKind::WorkspaceIntegrity)
+		);
+		assert_eq!(result.tool_usage, runner::ToolUsage::default());
+		assert!(result.artifacts.is_empty());
+		assert!(result.workspace_manifest.is_none());
+		assert!(runner::aborts_paid_run(result));
 
 		fs::remove_dir_all(root).expect("cleanup");
 	}
@@ -5176,9 +5525,8 @@ mod tests {
 		let task = runner::synthetic_tasks().remove(0);
 		let workspace_parent = workspace_root.join(run_id).join(MODEL_MATRIX[0].key());
 		let provider = TestWorkspace { root: workspace_root, quarantines: AtomicUsize::new(0) };
-		let (executor, _) = DeterministicExecutor::new(0, None);
 		let adapter = CodexAdapter::new(
-			executor,
+			EvidenceExecutor,
 			TamperingSink { workspace_parent: workspace_parent.clone() },
 			"codex",
 			CodexExecutionConfig::isolated(root.join("codex-home")),
@@ -5200,17 +5548,90 @@ mod tests {
 		assert_eq!(result.status, ResultStatus::Failed);
 		assert_eq!(
 			result.failure.as_ref().map(|failure| failure.kind),
-			Some(FailureKind::WorkspaceUnavailable)
+			Some(FailureKind::WorkspaceIntegrity)
 		);
-		assert!(
-			result
-				.failure
-				.as_ref()
-				.is_some_and(|failure| failure.message.contains("changed during evaluation"))
-		);
-		assert!(result.workspace_manifest.is_none());
-		assert!(result.artifacts.is_empty());
+
+		let failure = result.failure.as_ref().expect("workspace-integrity failure");
+
+		assert_eq!(failure.message, "post-evaluation workspace integrity or cleanup failed");
+		assert!(failure.message.len() <= 128);
+		assert!(failure.message.bytes().all(|byte| byte.is_ascii_graphic() || byte == b' '));
+		assert!(!failure.message.bytes().any(|byte| matches!(byte, b'"' | b'\\')));
+		assert!(result.workspace_manifest.is_some());
+		assert!(result.artifacts.iter().any(|artifact| artifact.kind == "workspace-snapshot.json"));
+		assert!(result.latency.wall_ms >= 2);
+		assert_eq!(result.tool_usage.total_calls, 1);
+		assert_eq!(result.tool_usage.by_tool.get("command_execution"), Some(&1));
+		assert!(runner::aborts_paid_run(&result));
 		assert!(sealed_siblings(&workspace_parent).is_empty());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn failed_invocations_retain_signed_tool_and_provider_usage() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-failed-evidence-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let workspace_root = root.join("workspaces");
+		let manifest = CapabilityManifest {
+			schema_version: "aiq.capabilities.v1".to_owned(),
+			node_id: "node_fixture".to_owned(),
+			observed_at: "fixture".to_owned(),
+			codex_version: "codex fixture".to_owned(),
+			models: Vec::new(),
+		};
+		let task = runner::synthetic_tasks().remove(0);
+		let provider =
+			TestWorkspace { root: workspace_root.clone(), quarantines: AtomicUsize::new(0) };
+
+		for (label, timed_out, expected_kind) in
+			[("nonzero", false, FailureKind::NonZeroExit), ("timeout", true, FailureKind::Timeout)]
+		{
+			let run_id = format!("run_failed_{label}");
+			let adapter = CodexAdapter::new(
+				FailureEvidenceExecutor { timed_out },
+				MemorySink,
+				"codex",
+				CodexExecutionConfig::isolated(root.join(format!("codex-home-{label}"))),
+			);
+			let result = runner::execute_task(
+				&adapter,
+				&provider,
+				&manifest,
+				&task,
+				MODEL_MATRIX[0],
+				&run_id,
+				"codex fixture",
+				"fixture",
+				None,
+				None,
+			)
+			.expect("failed invocation must produce signed evidence");
+
+			assert_eq!(result.status, ResultStatus::Failed);
+			assert_eq!(result.failure.as_ref().map(|failure| failure.kind), Some(expected_kind));
+			assert_eq!(result.tool_usage.steps, 1);
+			assert_eq!(result.tool_usage.total_calls, 1);
+			assert_eq!(result.tool_usage.by_tool.get("command_execution"), Some(&1));
+			assert_eq!(result.tool_usage.provider_tokens.input, Some(11));
+			assert_eq!(result.tool_usage.provider_tokens.cached_input, Some(2));
+			assert_eq!(result.tool_usage.provider_tokens.cache_write_input, Some(1));
+			assert_eq!(result.tool_usage.provider_tokens.output, Some(5));
+			assert_eq!(result.tool_usage.provider_tokens.reasoning, Some(3));
+			assert_eq!(result.tool_usage.provider_tokens.total, Some(16));
+			assert!(result.workspace_manifest.is_some());
+			assert!(result.artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl"));
+			assert!(
+				result.artifacts.iter().any(|artifact| artifact.kind == "workspace-snapshot.json")
+			);
+			assert!(
+				sealed_siblings(&workspace_root.join(&run_id).join(MODEL_MATRIX[0].key()))
+					.is_empty()
+			);
+		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
@@ -5263,6 +5684,18 @@ mod tests {
 	}
 
 	#[test]
+	fn pending_execution_is_task_major_round_robin_but_keeps_model_major_indexes() {
+		let order = super::task_major_execution_order(3, 2).collect::<Vec<_>>();
+		let canonical_indexes = order
+			.iter()
+			.map(|(task_index, model_index)| model_index * 3 + task_index)
+			.collect::<Vec<_>>();
+
+		assert_eq!(order, vec![(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]);
+		assert_eq!(canonical_indexes, vec![0, 3, 1, 4, 2, 5]);
+	}
+
+	#[test]
 	fn full_matrix_worst_case_inline_results_fit_the_signed_submission_bound() {
 		let (_, _, _, capability_validation, _, _) = selected_fixture(1, MODEL_MATRIX.len());
 		let node_id = capability_validation.node_id.clone();
@@ -5310,6 +5743,7 @@ mod tests {
 					("mcp_tool_call".to_owned(), u32::MAX),
 					("web_search".to_owned(), u32::MAX),
 				]),
+				provider_tokens: runner::ProviderTokenUsage::default(),
 			};
 			result.provenance.node_id = node_id.clone();
 			result.provenance.codex_version = "codex fixture".to_owned();
@@ -5404,7 +5838,9 @@ mod tests {
 		assert_eq!(result.task_score, Some(0.0));
 		assert!(result.response.is_none());
 		assert!(result.response_sha256.is_none());
-		assert_eq!(result.tool_usage, runner::ToolUsage::default());
+		assert_eq!(result.tool_usage.steps, 2);
+		assert_eq!(result.tool_usage.total_calls, 1);
+		assert_eq!(result.tool_usage.by_tool.get("file_change"), Some(&1));
 		assert!(result.artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl"));
 		assert!(!result.artifacts.iter().any(|artifact| artifact.kind == "final-response.txt"));
 		assert!(result.evaluator_checks.is_empty());

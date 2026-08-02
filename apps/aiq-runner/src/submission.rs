@@ -13,11 +13,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use ureq::http::{Uri, uri::PathAndQuery};
 
+use crate::adapter::CapabilityValidationReport;
+use crate::protocol::{CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, TrustTier};
+use crate::runner::MAX_RUN_JOBS;
 use crate::{
 	adapter::ArtifactReference,
 	protocol::{self, SubmissionEnvelope},
 	run_validation,
-	runner::{MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord},
+	runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult},
 };
 
 /// Maximum signed package size accepted for submission.
@@ -40,6 +43,71 @@ pub trait ArtifactUploadTransport {
 		&self,
 		request: &ArtifactUploadRequest,
 	) -> Result<TransportResponse, TransportFailure>;
+}
+
+/// Strictly decoded and semantically validated signed-package payload.
+///
+/// Calibration remains a separate type so callers cannot accidentally pass it
+/// to Official normalization or publication code as a [`RunRecord`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValidatedSubmissionPayload {
+	/// Existing `aiq.run.v3` payload.
+	Official(RunRecord),
+	/// Explicitly non-Official `aiq.calibration-run.v3` payload.
+	Calibration(CalibrationRunRecord),
+}
+impl ValidatedSubmissionPayload {
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		match self {
+			Self::Official(run) => &run.evaluator_results_artifact,
+			Self::Calibration(run) => &run.evaluator_results_artifact,
+		}
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		match self {
+			Self::Official(run) => &run.results,
+			Self::Calibration(run) => &run.results,
+		}
+	}
+
+	fn capability_validation(&self) -> Option<&CapabilityValidationReport> {
+		match self {
+			Self::Official(run) => run.capability_validation.as_ref(),
+			Self::Calibration(run) => Some(&run.capability_validation),
+		}
+	}
+}
+
+/// Low-level network failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransportFailureKind {
+	/// Connection, DNS, TLS, or protocol failure.
+	Network,
+	/// Global transport timeout.
+	Timeout,
+}
+
+/// Classified submission outcome.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmissionOutcomeKind {
+	/// Server accepted the package into the unverified queue.
+	Accepted,
+	/// Server reports that the idempotency key was already accepted.
+	Duplicate,
+	/// Server reports a conflicting idempotency key or payload.
+	Conflict,
+	/// Other client-side HTTP error.
+	ClientError,
+	/// Server-side HTTP error.
+	ServerError,
+	/// Network, DNS, TLS, or protocol failure.
+	Network,
+	/// Transport timeout.
+	Timeout,
+	/// Local configuration or package validation failure.
+	Configuration,
 }
 
 /// A bearer token that does not implement serialization and redacts debug output.
@@ -258,37 +326,6 @@ impl Display for SubmissionError {
 	}
 }
 
-/// Low-level network failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TransportFailureKind {
-	/// Connection, DNS, TLS, or protocol failure.
-	Network,
-	/// Global transport timeout.
-	Timeout,
-}
-
-/// Classified submission outcome.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SubmissionOutcomeKind {
-	/// Server accepted the package into the unverified queue.
-	Accepted,
-	/// Server reports that the idempotency key was already accepted.
-	Duplicate,
-	/// Server reports a conflicting idempotency key or payload.
-	Conflict,
-	/// Other client-side HTTP error.
-	ClientError,
-	/// Server-side HTTP error.
-	ServerError,
-	/// Network, DNS, TLS, or protocol failure.
-	Network,
-	/// Transport timeout.
-	Timeout,
-	/// Local configuration or package validation failure.
-	Configuration,
-}
-
 /// Serializes a signed package as compact JCS and enforces the transport bound.
 pub fn serialize_signed_package(envelope: &SubmissionEnvelope) -> Result<Vec<u8>, SubmissionError> {
 	envelope.verify(&BTreeSet::new()).map_err(|error| {
@@ -298,21 +335,7 @@ pub fn serialize_signed_package(envelope: &SubmissionEnvelope) -> Result<Vec<u8>
 		)
 	})?;
 
-	let run: RunRecord = serde_json::from_value(envelope.payload.clone()).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package payload is not a RunRecord: {error}"),
-		)
-	})?;
-
-	run_validation::validate_run_record(&run, None).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package RunRecord validation failed: {error}"),
-		)
-	})?;
-
-	validate_run_signer_binding(&run, &envelope.signer.node_id)?;
+	decode_validated_payload(envelope)?;
 
 	let bytes = protocol::canonical_json(envelope).map_err(|error| {
 		SubmissionError::new(
@@ -381,6 +404,26 @@ pub fn validate_run_signer_binding(
 		return Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
 			"signed package signer does not match run provenance and preflight node_id",
+		));
+	}
+
+	Ok(())
+}
+
+/// Confirms that a signed calibration's preflight and result provenance name
+/// its package signer.
+pub fn validate_calibration_signer_binding(
+	run: &CalibrationRunRecord,
+	signer_node_id: &str,
+) -> Result<(), SubmissionError> {
+	let provenance_matches =
+		run.results.iter().all(|result| result.provenance.node_id == signer_node_id);
+	let preflight_matches = run.capability_validation.node_id == signer_node_id;
+
+	if !provenance_matches || !preflight_matches {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"signed calibration package signer does not match run provenance and preflight node_id",
 		));
 	}
 
@@ -467,7 +510,7 @@ pub fn read_evaluator_results_artifact(
 
 fn validate_signed_package(
 	body: &[u8],
-) -> Result<(SubmissionEnvelope, RunRecord), SubmissionError> {
+) -> Result<(SubmissionEnvelope, ValidatedSubmissionPayload), SubmissionError> {
 	if body.len() > MAX_SIGNED_PACKAGE_BYTES {
 		return Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
@@ -489,23 +532,83 @@ fn validate_signed_package(
 		)
 	})?;
 
-	let run: RunRecord = serde_json::from_value(envelope.payload.clone()).map_err(|error| {
-		SubmissionError::new(
+	let payload = decode_validated_payload(&envelope)?;
+
+	Ok((envelope, payload))
+}
+
+fn decode_validated_payload(
+	envelope: &SubmissionEnvelope,
+) -> Result<ValidatedSubmissionPayload, SubmissionError> {
+	match envelope.payload_type.as_str() {
+		RUN_PAYLOAD_TYPE => {
+			let run: RunRecord =
+				serde_json::from_value(envelope.payload.clone()).map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("signed package payload is not a RunRecord: {error}"),
+					)
+				})?;
+
+			run_validation::validate_run_record(&run, None).map_err(|error| {
+				SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					format!("signed package RunRecord validation failed: {error}"),
+				)
+			})?;
+
+			require_packaged_execution_concurrency(run.execution_concurrency, "Official")?;
+			validate_run_signer_binding(&run, &envelope.signer.node_id)?;
+
+			Ok(ValidatedSubmissionPayload::Official(run))
+		},
+		CALIBRATION_RUN_PAYLOAD_TYPE => {
+			if envelope.claimed_trust != TrustTier::Untrusted {
+				return Err(SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					"calibration packages must claim untrusted handling",
+				));
+			}
+
+			let run: CalibrationRunRecord = serde_json::from_value(envelope.payload.clone())
+				.map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("signed package payload is not a CalibrationRunRecord: {error}"),
+					)
+				})?;
+
+			run_validation::validate_calibration_run_record(&run).map_err(|error| {
+				SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					format!("signed package CalibrationRunRecord validation failed: {error}"),
+				)
+			})?;
+
+			require_packaged_execution_concurrency(run.execution_concurrency, "calibration")?;
+			validate_calibration_signer_binding(&run, &envelope.signer.node_id)?;
+
+			Ok(ValidatedSubmissionPayload::Calibration(run))
+		},
+		_ => Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
-			format!("signed package payload is not a RunRecord: {error}"),
-		)
-	})?;
+			"signed package payload type is unsupported",
+		)),
+	}
+}
 
-	run_validation::validate_run_record(&run, None).map_err(|error| {
-		SubmissionError::new(
+fn require_packaged_execution_concurrency(
+	execution_concurrency: Option<usize>,
+	classification: &str,
+) -> Result<(), SubmissionError> {
+	if execution_concurrency.is_some_and(|jobs| (1..=MAX_RUN_JOBS).contains(&jobs)) {
+		Ok(())
+	} else {
+		Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
-			format!("signed package RunRecord validation failed: {error}"),
-		)
-	})?;
-
-	validate_run_signer_binding(&run, &envelope.signer.node_id)?;
-
-	Ok((envelope, run))
+			format!("{classification} packages require a bound execution concurrency"),
+		))
+	}
 }
 
 fn artifact_kind_limit(kind: &str) -> Option<usize> {
@@ -518,18 +621,18 @@ fn artifact_kind_limit(kind: &str) -> Option<usize> {
 }
 
 fn collect_artifact_references(
-	run: &RunRecord,
+	payload: &ValidatedSubmissionPayload,
 ) -> Result<BTreeMap<(String, String), u64>, SubmissionError> {
-	let result_artifacts = run
-		.results
+	let result_artifacts = payload
+		.results()
 		.iter()
 		.flat_map(|result| result.artifacts.iter().chain(result.workspace_manifest.iter()));
-	let preflight_artifacts = run.capability_validation.iter().flat_map(|report| {
+	let preflight_artifacts = payload.capability_validation().into_iter().flat_map(|report| {
 		report.models.iter().flat_map(|validation| validation.probe.artifacts.iter())
 	});
 	let mut references = BTreeMap::new();
 
-	for artifact in iter::once(&run.evaluator_results_artifact)
+	for artifact in iter::once(payload.evaluator_results_artifact())
 		.chain(result_artifacts)
 		.chain(preflight_artifacts)
 	{
@@ -685,9 +788,9 @@ where
 {
 	validate_endpoint(endpoint, allow_loopback_http)?;
 
-	let (envelope, run) = validate_signed_package(&body)?;
+	let (envelope, payload) = validate_signed_package(&body)?;
 	let root = canonical_artifact_root(artifact_root)?;
-	let references = collect_artifact_references(&run)?;
+	let references = collect_artifact_references(&payload)?;
 	let mut stored = 0;
 	let mut duplicate = 0;
 
@@ -1229,6 +1332,7 @@ mod tests {
 				(format!("c{}", "c".repeat(31)), u32::MAX),
 				(format!("d{}", "d".repeat(31)), u32::MAX),
 			]),
+			provider_tokens: runner::ProviderTokenUsage::default(),
 		};
 		result.latency.wall_ms = 9_007_199_254_740_991;
 		result.evaluator_checks = (0..6)
@@ -1363,7 +1467,6 @@ mod tests {
 	fn maximum_calibration_envelope(
 		identity: &SigningIdentity,
 		failed_run: &runner::RunRecord,
-		task_ids: BTreeMap<String, String>,
 	) -> SubmissionEnvelope {
 		let mut provenance = failed_run.provenance.clone().expect("maximum fixture provenance");
 
@@ -1379,6 +1482,9 @@ mod tests {
 		)
 		.expect("calibration run id");
 		let mut results = failed_run.results.clone();
+		let task_count = results.len() / failed_run.models.len();
+		let selected_task_ids =
+			results[..task_count].iter().map(|result| result.task_id.clone()).collect();
 
 		for result in &mut results {
 			result.run_id.clone_from(&run_id);
@@ -1400,8 +1506,9 @@ mod tests {
 			schedule_slot: failed_run.schedule_slot.clone(),
 			task_set_hash: failed_run.task_set_hash.clone(),
 			scoring_version: failed_run.scoring_version.clone(),
+			execution_concurrency: failed_run.execution_concurrency,
 			models: failed_run.models.clone(),
-			task_ids: task_ids.into_values().collect(),
+			task_ids: selected_task_ids,
 			started_unix_ms: failed_run.started_unix_ms,
 			finished_unix_ms: failed_run.finished_unix_ms,
 			capability_validation: failed_run
@@ -1431,7 +1538,7 @@ mod tests {
 		SubmissionEnvelope,
 		SubmissionEnvelope,
 	) {
-		let (identity, run, task_ids, evaluator_results_bytes) = maximum_completed_shape();
+		let (identity, run, _task_ids, evaluator_results_bytes) = maximum_completed_shape();
 		let completed = identity
 			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
 			.expect("completed fixture must sign");
@@ -1488,7 +1595,7 @@ mod tests {
 				TrustTier::Untrusted,
 			)
 			.expect("overbound fixture must sign");
-		let calibration = maximum_calibration_envelope(&identity, &failed_run, task_ids);
+		let calibration = maximum_calibration_envelope(&identity, &failed_run);
 
 		(
 			completed,
@@ -1991,6 +2098,22 @@ mod tests {
 	}
 
 	#[test]
+	fn packaged_official_wire_rejects_missing_execution_concurrency() {
+		let envelope: SubmissionEnvelope =
+			serde_json::from_slice(&signed_body()).expect("fixture envelope");
+		let mut run: runner::RunRecord =
+			serde_json::from_value(envelope.payload).expect("fixture run");
+
+		run.execution_concurrency = None;
+
+		let envelope = SigningIdentity::from_secret([9; 32])
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("missing-concurrency envelope remains structurally signable");
+
+		assert!(submission::serialize_signed_package(&envelope).is_err());
+	}
+
+	#[test]
 	fn checked_in_v3_fixture_is_a_canonical_rust_verified_full_package() {
 		let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 			.join("../../benchmarks/fixtures/result-package-v3.synthetic.json");
@@ -2007,6 +2130,7 @@ mod tests {
 		assert_eq!(canonical, fixture);
 		assert_eq!(run.started_unix_ms, scheduled_unix_ms);
 		assert_eq!(run.finished_unix_ms, scheduled_unix_ms);
+		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(envelope.payload["models"].as_array().map(Vec::len), Some(17));
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
 	}
@@ -2044,14 +2168,38 @@ mod tests {
 		run_validation::validate_calibration_run_record(&calibration_record)
 			.expect("maximum calibration record must validate");
 
-		let calibration_bytes =
-			protocol::canonical_json(&calibration_envelope).expect("canonical calibration");
+		let mut missing_concurrency = calibration_record.clone();
 
-		assert_eq!(bytes.len(), 3_746_328);
+		missing_concurrency.execution_concurrency = None;
+
+		let missing_concurrency_envelope = SigningIdentity::from_secret([7; 32])
+			.sign(
+				&missing_concurrency.run_id,
+				protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+				&missing_concurrency,
+				TrustTier::Untrusted,
+			)
+			.expect("missing-concurrency calibration remains structurally signable");
+
+		assert!(submission::serialize_signed_package(&missing_concurrency_envelope).is_err());
+
+		let calibration_bytes = submission::serialize_signed_package(&calibration_envelope)
+			.expect("valid calibration package must enter artifact submission");
+		let transport = FakeTransport { status: 202, request: RefCell::new(None) };
+		let calibration_submission = submission::submit_signed_package(
+			&transport,
+			"https://example.vercel.app",
+			calibration_bytes.clone(),
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+		)
+		.expect("valid calibration package submission");
+
+		assert_eq!(calibration_submission.kind, SubmissionOutcomeKind::Accepted);
+		assert_eq!(bytes.len(), 3_746_354);
 		assert_eq!(evaluator_results_bytes, 2_310_969);
 		assert_eq!(failed_bundle_bytes, 6_177);
-		assert_eq!(failed_bytes.len(), 3_920_133);
-		assert_eq!(calibration_bytes.len(), 3_925_055);
+		assert_eq!(failed_bytes.len(), 3_920_159);
+		assert_eq!(calibration_bytes.len(), 3_925_081);
 		assert!(submission::serialize_signed_package(&overbound_envelope).is_err());
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
 		assert!(
@@ -2170,7 +2318,7 @@ mod tests {
 	}
 
 	#[test]
-	fn calibration_packages_are_locally_signable_but_not_submittable() {
+	fn structurally_incomplete_calibration_packages_are_not_submittable() {
 		let run_id = "run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 		let payload = serde_json::json!({
 			"schema_version": protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
