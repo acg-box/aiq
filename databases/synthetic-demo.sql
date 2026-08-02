@@ -535,6 +535,7 @@ select
       'task_set_hash', 'sha256:' || task_set.catalog_sha256,
       'scoring_version', '1.0.0',
       'models', signed_models.value,
+      'execution_concurrency', 1,
       'started_unix_ms', 1784894400000,
       'finished_unix_ms', 1784895480000,
       'synthetic', true,
@@ -608,7 +609,8 @@ insert into aiq_private.aiq_matrix_batches (
   source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
   verified_at, published_at, task_set_hash, capability_validation_digest,
   benchmark_version, prompt_set_digest, source_scoring_version, runner_commit,
-  region, scheduled_unix_ms, started_unix_ms, finished_unix_ms
+  region, scheduled_unix_ms, started_unix_ms, finished_unix_ms,
+  execution_concurrency
 )
 select
   package.matrix_batch_id, package.package_sha256, package.content_hash,
@@ -619,7 +621,7 @@ select
     extensions.digest('aiq-core:prompt-set:1.0.0', 'sha256'), 'hex'
   ),
   '1.0.0', 'a7d91f4', 'us-east-1',
-  1784894400000, 1784894400000, 1784895480000
+  1784894400000, 1784894400000, 1784895480000, 1
 from aiq_private.aiq_result_packages package
 cross join aiq_private.aiq_task_sets task_set
 where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.0';
