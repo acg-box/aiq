@@ -90,8 +90,8 @@ cargo run -p aiq-runner -- run --help
 Run preflight first. Store its authenticated report at a durable path. The run
 can use that report until it expires or can refresh it explicitly.
 
-An Official run must select the complete 17-by-72 matrix. Use calibration for a
-bounded diagnostic subset.
+An Official run must be non-synthetic and select the complete 17-by-72 matrix.
+Use calibration for a bounded diagnostic subset.
 
 ## Score, package, and submit
 
@@ -150,12 +150,46 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
 ```
 
 `cargo make smoke-database` checks more than catalog grants: it switches to both
-`anon` and `authenticated` and reads all eight security-invoker views plus the
+`anon` and `authenticated` and reads all nine security-invoker views plus the
 bounded trend RPC. This exercises the public-read path described in
 [Architecture and Runtime](architecture-and-runtime.md). Do not run the synthetic
 fixture in production.
 
 ## Web configuration
+
+For the disposable ACGbox read-only preview, set only:
+
+```text
+AIQ_DEPLOYMENT_PROFILE=preview
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
+
+Initialize that database with `cargo make init-preview-database`. The preview
+profile fails closed unless Supabase exposes one exact preview-status row. That
+row verifies the required 17-configuration shape, cardinalities, scoring
+definition, synthetic-only boundary, and empty publication surface. The
+application then serves explicitly synthetic checked-in fixtures. Do not set
+production gateway variables for this stage. `/api/readiness` remains `503` by
+design because it checks the production write and verification dependencies. The
+complete setup and disposal boundary are in [Deployment Handoff](deployment-handoff.md).
+
+To test the initialized database through loopback PostgREST and the built Next.js
+application, run:
+
+```sh
+AIQ_PREVIEW_POSTGREST_URL='http://127.0.0.1:4180' \
+cargo make smoke-preview-web
+```
+
+The smoke requires one canonical loopback HTTP origin. It checks the live anon
+read path, all public pages and trend ranges, the 17 configurations, one 72-task
+synthetic run, mobile overflow, accessibility, preview labels, `noindex`, and the
+expected readiness `503`. The database initializer's real PostgreSQL 17 test is
+separately opt in through `AIQ_DATABASE_PREVIEW_TEST_URL` and
+`AIQ_DATABASE_PREVIEW_TEST_PSQL`.
+
+For production, leave `AIQ_DEPLOYMENT_PROFILE` absent.
 
 Set browser-safe values:
 

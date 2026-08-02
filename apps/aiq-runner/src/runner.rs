@@ -4041,7 +4041,9 @@ mod tests {
 		)
 		.expect("synthetic fixed-fixture score");
 
-		assert_eq!(score.tier, ScoreTier::Official);
+		assert_eq!(score.tier, ScoreTier::SyntheticComplete);
+		assert!(score.official_aiq.is_none());
+		assert!(score.conditional_observed_aiq.is_some());
 		assert!(!score.ranking_eligible);
 	}
 

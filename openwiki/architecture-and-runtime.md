@@ -71,8 +71,11 @@ append-only evidence, and complete run state.
 ## Database boundary
 
 `databases/schema.sql` owns the complete desired state. Private tables are in
-`aiq_private`. RLS is enabled and forced. Eight security-invoker views and one
-bounded trend RPC provide browser reads. Browser roles do not have private-table
+`aiq_private`. RLS is enabled and forced. Nine security-invoker views and one
+bounded trend RPC provide browser reads. The preview-status view returns one row
+only when the disposable database has the required matrix, cardinalities,
+scoring definition, synthetic boundary, and empty publication surface. It
+otherwise returns no private counts. Browser roles do not have private-table
 write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
@@ -89,12 +92,44 @@ held objects.
 
 ## Public application
 
-The Next.js server reads the public views through the configured Supabase API.
-In explicit development mode, missing public Supabase values select synthetic
-seed data. Production and unknown modes fail closed.
+The Next.js server reads public views through the configured Supabase API. The
+exact `AIQ_DEPLOYMENT_PROFILE=preview` branch requires both browser-safe
+Supabase values and reads one bounded status row. That row exists only when the
+17-configuration synthetic preview invariants hold and no published or
+non-synthetic evidence exists. The Web application then serves checked-in
+synthetic fixtures.
+Unexpected live evidence fails closed rather than being masked. The preview
+remains synthetic under the [Benchmark Method](benchmark-method.md): it adds a
+persistent banner, labels complete fixtures as not Official, and emits
+`noindex` metadata.
 
-`GET /api/readiness` checks configuration shape and bounded dependencies. It
-does not claim that a deployment or benchmark run is complete.
+```mermaid
+flowchart TD
+    Start["Create public data repository"] --> Profile{"Deployment profile"}
+    Profile -->|invalid value| Invalid["Fail closed"]
+    Profile -->|preview| PublicConfig{"Both public Supabase values valid"}
+    PublicConfig -->|no| Invalid
+    PublicConfig -->|yes| Live["Read live public views"]
+    Live --> Empty{"Exact preview-status row"}
+    Empty -->|no| Invalid
+    Empty -->|yes| Preview["Serve synthetic preview fixtures"]
+    Profile -->|standard| Standard{"Public Supabase configuration"}
+    Standard -->|valid| Production["Serve live public evidence"]
+    Standard -->|absent in development| Seed["Serve local seed data"]
+    Standard -->|otherwise| Invalid
+```
+
+The flow shows how standard, local seed, preview, and invalid configurations
+select a public-data repository.
+
+The repository selection flow validates the preview database before substituting
+explicit synthetic fixtures; [Operations and Validation](operations.md) owns the
+commands that initialize and smoke this path.
+
+`GET /api/readiness` checks configuration shape and bounded production
+dependencies. It does not claim that a deployment or benchmark run is complete,
+and the read-only preview returns `503` because its write and verifier gateways
+are intentionally absent.
 
 ## Distributed radar
 

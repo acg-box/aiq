@@ -19,35 +19,33 @@ values (
     'Give each of the ten domains weight 0.1.',
     'Keep the frozen domain and difficulty quotas.',
     'Keep missing and invalid tasks in completion accounting and block Official publication.',
+    'Classify complete synthetic fixtures as descriptive Synthetic Complete, never Official or ranking eligible.',
     'Treat attributable agent, model, tool, timeout, budget, and wrong-artifact failures as valid zero scores.',
     'Treat benchmark infrastructure failures as invalid and audit a rerun.'
   ],
-  'Missing and invalid tasks block Official. Provisional means average valid observed tasks within each domain; fixed-fixture completion bounds retain every planned task and assign unobserved tasks zero or one.',
-  'Agent, model, tool, timeout, budget, and wrong-artifact failures are valid zero scores. Benchmark infrastructure failures are invalid null scores and require an audited rerun.',
-  'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1. Each deterministic replicate draws committed clusters with replacement inside each domain, includes all task scores in each drawn cluster, and recomputes the equal-weight ten-domain score. The canonical endpoints expand the raw 95-percentile deviations from the observed fixed-fixture score by the versioned 1.3 correction and clamp them to 0 through 100. Development simulations selected the correction for this finite fixture during held-out calibration. This is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+  'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use descriptive observed domain means and fixed-fixture completion bounds without ranking eligibility.',
+  'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
+  'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
   '{
     "aggregate":"mean_of_domain_means",
     "coverage_multiplier":false,
     "domain_weight":0.1,
-    "official":{
+    "official_valid_task_count":72,
+    "official_covered_domain_count":10,
+    "synthetic_complete":{
       "valid_task_count":72,
-      "expected_task_count":72,
       "covered_domain_count":10,
-      "invalid_count":0,
-      "missing_count":0,
-      "not_applicable_count":0
-    },
-    "provisional":{
-      "estimand":"conditional_observed_domain_means",
-      "completion_bounds":"planned_denominator_zero_one"
+      "official_aiq":null,
+      "ranking_eligible":false
     }
   }'::jsonb,
-  '{"central_mass":0.95,"deviation_scale":1.3,"method":"finite_cluster_calibrated_percentile_sensitivity_v1","samples":10000,"scope":"fixed_fixture_calibrated_sensitivity","synthetic":true,"universal_confidence_interval":false}'::jsonb,
+  '{"central_mass":0.95,"deviation_scale":1.3,"method":"finite_cluster_calibrated_percentile_sensitivity_v1","samples":10000,"scope":"fixed_fixture_calibrated_sensitivity","synthetic":false,"universal_confidence_interval":false}'::jsonb,
   '{
-    "valid_zero":["agent","model","tool","timeout","budget","wrong_artifact"],
-    "infrastructure_invalid":{"score":null,"requires_audited_rerun":true},
-    "missing":{"score":null,"blocks_official":true},
-    "provisional_ranked":false
+    "attributable_failure_score":0,
+    "infrastructure_failure_score":null,
+    "missing_blocks_official":true,
+    "provisional_ranked":false,
+    "synthetic_complete_ranked":false
   }'::jsonb,
   true,
   true,
@@ -250,7 +248,7 @@ runs as (
         convert_to(
           'aiq.model-run-identity.v1' || chr(10)
           || 'run_' || encode(
-            extensions.digest('synthetic-official-batch', 'sha256'),
+            extensions.digest('synthetic-complete-batch', 'sha256'),
             'hex'
           ) || chr(10)
           || model.model_config_id,
@@ -273,7 +271,7 @@ insert into aiq_private.aiq_runs (
 )
 select
   run.run_id,
-  'run_' || encode(extensions.digest('synthetic-official-batch', 'sha256'), 'hex'),
+  'run_' || encode(extensions.digest('synthetic-complete-batch', 'sha256'), 'hex'),
   run.run_id,
   'manual',
   run.scheduled_for,
@@ -368,7 +366,7 @@ cross join ordered_tasks task;
 
 with constants as (
   select
-    'run_' || encode(extensions.digest('synthetic-official-batch', 'sha256'), 'hex')
+    'run_' || encode(extensions.digest('synthetic-complete-batch', 'sha256'), 'hex')
       as batch_id,
     encode(extensions.digest('synthetic-full-matrix-package', 'sha256'), 'hex')
       as package_sha256,
@@ -703,7 +701,7 @@ select
   )::uuid,
   run.run_id,
   '1.0.0',
-  'provisional',
+  'synthetic_complete',
   round(score.fixed_score, 3),
   greatest(0, round(score.fixed_score - 2, 3)),
   least(100, round(score.fixed_score + 2, 3)),

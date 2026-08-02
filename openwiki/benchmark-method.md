@@ -76,8 +76,11 @@ AIQ v1 computes each domain mean and then gives each of the ten domains weight
 fixed-fixture task-resampling sensitivity interval with 10,000 deterministic
 bootstrap samples and the checked-in correction factor.
 
-An Official result requires all 72 tasks for one model configuration and valid
-evidence for the complete 17-configuration batch. Partial data can be shown as
+An Official result requires non-synthetic evidence for all 72 tasks in one model
+configuration and valid evidence for the complete 17-configuration batch. A
+complete synthetic score uses `synthetic_complete`: it retains the descriptive
+conditional AIQ, completion bounds, and sensitivity interval, but its Official
+AIQ is null and it is never ranking eligible. Partial data can be shown as
 Provisional or coverage-only but is not ranked as Official.
 
 ## Verification
@@ -94,5 +97,6 @@ contracts and complete state.
 ## Synthetic data
 
 Synthetic tasks, runs, scores, nodes, and browser fixtures exercise the same
-public paths. They remain explicitly synthetic and unverified. They do not
-measure a real model or disclose the private corpus.
+public paths. They remain explicitly synthetic and unverified. Even complete
+synthetic fixtures are not Official. They do not measure a real model or
+disclose the private corpus.

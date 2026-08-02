@@ -31,6 +31,48 @@ Record these release identities in the deployment evidence:
 The publisher is a distinct identity used through the gateway. It is not a
 separate deployable. Distributed remote nodes are not part of the first launch.
 
+## Personal free-tier preview
+
+The approved first review scope is `ACGbox`: use only the personal ACGbox
+Vercel Hobby scope and the personal ACGbox Supabase Free organization. Do not
+select, import into, or bill a company team. Use the project names
+`acgbox-aiq-preview` in Vercel and `ACGbox AIQ Preview` in Supabase.
+
+This preview is disposable and read-only. It needs no Storage bucket, runner,
+verifier, publisher, schedule, custom domain, DNS change, WAF, or server secret.
+Create a new empty Supabase project and run:
+
+```sh
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
+cargo make init-preview-database
+```
+
+The command applies the one declarative schema and synthetic validation data in
+one transaction. It rejects reuse and leaves the Official publication views
+empty. Configure the Vercel project from the repository root with only:
+
+```text
+AIQ_DEPLOYMENT_PROFILE=preview
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+```
+
+The explicit preview Web profile reads one bounded Supabase status view through
+anon RLS. The view returns one row only when the canonical preview matrix,
+cardinalities, scoring definition, synthetic boundary, and empty publication
+surface are valid; any production or unexpected evidence returns no row. The
+Web application then serves the checked-in synthetic fixtures. The global
+banner, synthetic labels, and `noindex` metadata prevent a production claim.
+Confirm every public page, all 17 configurations, one 72-task run, all
+trend ranges, method, radar, mobile layout, and accessibility. A `503` from
+`/api/readiness` is expected because the production write and verifier gateways
+are intentionally absent.
+
+Free-tier review is a product and read-path test, not a production benchmark
+run. Record Vercel and Supabase usage after the review window. Upgrade only if
+measured limits require it. Delete or retain the disposable projects by an
+explicit owner decision, but never convert this database into production.
+
 ## Required external inputs
 
 - one new Supabase project with PostgreSQL 17;
@@ -175,10 +217,10 @@ schedule file. Dispatch outside that occurrence's exact window fails closed.
 Preserve the checkpoint and artifact root after interruption so an operator can
 resume the same attempt rather than discard completed evidence.
 
-Use the complete 17-by-72 shape for an Official run. Score, package, and submit
-only after all required artifacts and bindings validate. The controlled command
-and recovery details remain canonical in [Operations and
-Validation](operations.md).
+Use non-synthetic evidence and the complete 17-by-72 shape for an Official run.
+Score, package, and submit only after all required artifacts and bindings
+validate. The controlled command and recovery details remain canonical in
+[Operations and Validation](operations.md).
 
 ## Verifier setup
 

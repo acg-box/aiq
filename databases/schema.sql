@@ -97,6 +97,7 @@ create type aiq_private.run_status as ENUM (
 
 create type aiq_private.score_status as ENUM (
     'official',
+    'synthetic_complete',
     'provisional',
     'coverage_only',
     'not_applicable'
@@ -2427,9 +2428,33 @@ create function aiq_private.guard_score_snapshot_lifecycle() returns trigger
     language plpgsql
     SET search_path to ''
     as $$
+declare
+  run_is_synthetic boolean;
 begin
   if tg_op = 'DELETE' then
     raise exception 'score snapshot evidence is append-only' using errcode = '55000';
+  end if;
+  select run.synthetic into strict run_is_synthetic
+  from aiq_private.aiq_runs run
+  where run.run_id = new.run_id;
+  if new.published and run_is_synthetic then
+    raise exception 'synthetic score snapshots cannot be published'
+      using errcode = '55000';
+  end if;
+  if new.score_status = 'synthetic_complete' and not run_is_synthetic
+    or new.score_status = 'official' and run_is_synthetic
+    or (
+      run_is_synthetic
+      and new.valid_task_count = 72
+      and new.covered_domain_count = 10
+      and new.invalid_count = 0
+      and new.missing_count = 0
+      and new.not_applicable_count = 0
+      and new.score_status <> 'synthetic_complete'
+    )
+  then
+    raise exception 'score classification does not match synthetic completeness'
+      using errcode = '23514';
   end if;
   if tg_op = 'INSERT' then
     if exists (
@@ -3915,6 +3940,12 @@ create function aiq_private.score_tier_is_valid(claimed_status aiq_private.score
       and invalid_count = 0
       and missing_count = 0
       and not_applicable_count = 0
+    when 'synthetic_complete' then
+      valid_count = 72
+      and covered_domains = 10
+      and invalid_count = 0
+      and missing_count = 0
+      and not_applicable_count = 0
     when 'provisional' then
       valid_count between 60 and 71
       and covered_domains = 10
@@ -4507,7 +4538,7 @@ begin
       or jsonb_typeof(score -> 'tier') is distinct from 'string'
       or jsonb_typeof(score -> 'rule') is distinct from 'string'
       or score ->> 'rule' is distinct from
-        'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires 72/72 and 10/10 domains. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.'
+        'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.'
       or jsonb_typeof(score -> 'ranking_eligible') is distinct from 'boolean'
       or (
         jsonb_typeof(score -> 'official_aiq') is distinct from 'null'
@@ -4661,12 +4692,26 @@ begin
         is distinct from domain_count
       or supplied_domains is distinct from computed_domains
       or score ->> 'tier'
-        not in ('official', 'provisional', 'coverage_only', 'not_applicable')
+        not in (
+          'official', 'synthetic_complete', 'provisional',
+          'coverage_only', 'not_applicable'
+        )
       or not aiq_private.score_tier_is_valid(
         (score ->> 'tier')::aiq_private.score_status,
         valid_count, invalid_count, missing_count, na_count,
         domain_count, minimum_domain_count
       )
+      or (
+        is_synthetic
+        and valid_count = 72
+        and invalid_count = 0
+        and missing_count = 0
+        and na_count = 0
+        and domain_count = 10
+        and score ->> 'tier' <> 'synthetic_complete'
+      )
+      or (score ->> 'tier' = 'synthetic_complete' and not is_synthetic)
+      or (score ->> 'tier' = 'official' and is_synthetic)
       or (
         jsonb_typeof(score -> 'official_aiq') = 'number'
         and (score ->> 'official_aiq')::numeric not between 0 and 100
@@ -4688,7 +4733,7 @@ begin
         )
       )
       or (
-        score ->> 'tier' = 'provisional'
+        score ->> 'tier' in ('synthetic_complete', 'provisional')
         and (
           score -> 'official_aiq' is distinct from 'null'::jsonb
           or jsonb_typeof(score -> 'conditional_observed_aiq')
@@ -4706,7 +4751,7 @@ begin
         )
       )
       or (
-        score ->> 'tier' in ('official', 'provisional')
+        score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         and (
           not aiq_private.completion_bounds_jsonb_is_valid(
             score -> 'completion_bounds'
@@ -4722,7 +4767,7 @@ begin
         and score -> 'completion_bounds' is distinct from 'null'::jsonb
       )
       or (
-        score ->> 'tier' in ('official', 'provisional')
+        score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         and not aiq_private.task_resampling_interval_is_valid(
           score -> 'task_resampling_sensitivity_interval'
         )
@@ -4813,13 +4858,13 @@ begin
       normalization_digest
     ) values (
       child_id, '1.0.0', (score ->> 'tier')::aiq_private.score_status,
-      case when score ->> 'tier' in ('official', 'provisional')
+      case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round(fixed_score, 3) end,
       (score -> 'task_resampling_sensitivity_interval' ->> 'lower')::numeric,
       (score -> 'task_resampling_sensitivity_interval' ->> 'upper')::numeric,
-      case when score ->> 'tier' in ('official', 'provisional')
+      case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round(computed_completion_low, 3) else 0 end,
-      case when score ->> 'tier' in ('official', 'provisional')
+      case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round(computed_completion_high, 3) else 100 end,
       (score -> 'binary_micro_diagnostic' ->> 'proportion')::numeric,
       (score -> 'binary_micro_diagnostic' ->> 'wilson_lower')::numeric,
@@ -5138,7 +5183,7 @@ begin
     return false;
   end if;
   if batch.synthetic then
-    return true;
+    return false;
   end if;
   attestation := package.verifier_attestation;
   return exists (
@@ -5389,6 +5434,7 @@ begin
   for share;
   if batch.matrix_batch_id is null or package.package_sha256 is null
     or inbox.inbox_id is null
+    or batch.synthetic
     or batch.run_provenance is distinct from package.run_provenance
     or package.envelope is distinct from inbox.envelope
     or jsonb_typeof(package.envelope -> 'payload_type') is distinct from 'string'
@@ -6690,7 +6736,13 @@ begin
             "coverage_multiplier":false,
             "domain_weight":0.1,
             "official_valid_task_count":72,
-            "official_covered_domain_count":10
+            "official_covered_domain_count":10,
+            "synthetic_complete":{
+              "covered_domain_count":10,
+              "official_aiq":null,
+              "ranking_eligible":false,
+              "valid_task_count":72
+            }
           }'::jsonb
           and scoring.interval_method = '{
             "central_mass":0.95,
@@ -6705,7 +6757,8 @@ begin
             "attributable_failure_score":0,
             "infrastructure_failure_score":null,
             "missing_blocks_official":true,
-            "provisional_ranked":false
+            "provisional_ranked":false,
+            "synthetic_complete_ranked":false
           }'::jsonb
       )::integer as valid_scoring_count
     from aiq_private.aiq_scoring_versions scoring
@@ -8156,12 +8209,12 @@ create table aiq_private.aiq_score_snapshots (
     constraint aiq_score_snapshots_check1 check ((((completion_bound_low >= (0)::numeric) and (completion_bound_low <= (100)::numeric)) and ((completion_bound_high >= (0)::numeric) and (completion_bound_high <= (100)::numeric)) and (completion_bound_low <= completion_bound_high))),
     constraint aiq_score_snapshots_check2 check (((valid_task_count >= 0) and (expected_task_count = 72))),
     constraint aiq_score_snapshots_check3 check (((covered_domain_count >= 0) and (expected_domain_count = 10) and (covered_domain_count <= expected_domain_count))),
-    constraint aiq_score_snapshots_check4 check (((score_status <> 'official'::aiq_private.score_status) or ((valid_task_count = expected_task_count) and (covered_domain_count = expected_domain_count) and (invalid_count = 0) and (missing_count = 0) and (not_applicable_count = 0) and (fixed_fixture_aiq IS not null)))),
+    constraint aiq_score_snapshots_check4 check (((score_status <> all (ARRAY['official'::aiq_private.score_status, 'synthetic_complete'::aiq_private.score_status])) or ((valid_task_count = expected_task_count) and (covered_domain_count = expected_domain_count) and (invalid_count = 0) and (missing_count = 0) and (not_applicable_count = 0) and (fixed_fixture_aiq IS not null)))),
     constraint aiq_score_snapshots_check5 check (((score_status <> 'coverage_only'::aiq_private.score_status) or (task_resampling_low IS null))),
     constraint aiq_score_snapshots_fixed_fixture_aiq_check check (((fixed_fixture_aiq IS null) or ((fixed_fixture_aiq >= (0)::numeric) and (fixed_fixture_aiq <= (100)::numeric)))),
     constraint aiq_score_snapshots_task_resampling_high_check check (((task_resampling_high IS null) or ((task_resampling_high >= (0)::numeric) and (task_resampling_high <= (100)::numeric)))),
     constraint aiq_score_snapshots_task_resampling_low_check check (((task_resampling_low IS null) or ((task_resampling_low >= (0)::numeric) and (task_resampling_low <= (100)::numeric)))),
-    constraint aiq_score_tier_metric_nullability check ((((score_status = ANY (ARRAY['official'::aiq_private.score_status, 'provisional'::aiq_private.score_status])) and (fixed_fixture_aiq IS not null) and (task_resampling_low IS not null) and (task_resampling_high IS not null) and ((task_resampling_low >= (0)::numeric) and (task_resampling_low <= (100)::numeric)) and ((task_resampling_high >= (0)::numeric) and (task_resampling_high <= (100)::numeric)) and (task_resampling_low <= task_resampling_high)) or ((score_status = ANY (ARRAY['coverage_only'::aiq_private.score_status, 'not_applicable'::aiq_private.score_status])) and (fixed_fixture_aiq IS null) and (task_resampling_low IS null) and (task_resampling_high IS null))))
+    constraint aiq_score_tier_metric_nullability check ((((score_status = ANY (ARRAY['official'::aiq_private.score_status, 'synthetic_complete'::aiq_private.score_status, 'provisional'::aiq_private.score_status])) and (fixed_fixture_aiq IS not null) and (task_resampling_low IS not null) and (task_resampling_high IS not null) and ((task_resampling_low >= (0)::numeric) and (task_resampling_low <= (100)::numeric)) and ((task_resampling_high >= (0)::numeric) and (task_resampling_high <= (100)::numeric)) and (task_resampling_low <= task_resampling_high)) or ((score_status = ANY (ARRAY['coverage_only'::aiq_private.score_status, 'not_applicable'::aiq_private.score_status])) and (fixed_fixture_aiq IS null) and (task_resampling_low IS null) and (task_resampling_high IS null))))
 );
 
 
@@ -8852,6 +8905,248 @@ create view public.public_task_coverage with (security_invoker = true) as
 --
 
 comment on view public.public_task_coverage IS 'Published task counts and canonical equal domain weight for each scoring version.';
+
+
+--
+-- Name: preview_status_v1(); Type: FUNCTION; Schema: aiq_private; Owner: -
+--
+
+create function aiq_private.preview_status_v1() returns table(contract_version text, profile_id text, task_count bigint, model_configuration_count bigint, synthetic_run_count bigint, synthetic_task_result_count bigint, synthetic_score_snapshot_count bigint, synthetic_scoring_definition_count bigint, synthetic_radar_node_count bigint, published_run_count bigint, published_leaderboard_count bigint, published_trend_point_count bigint, non_synthetic_evidence_count bigint, canonical_model_matrix boolean)
+    language plpgsql stable security definer
+    set search_path to ''
+    as $$
+begin
+  if not exists (
+    select 1
+    from aiq_private.aiq_scoring_versions scoring
+    where scoring.scoring_version = '1.0.0'
+      and scoring.schema_version = 'aiq.score-snapshot.v1'
+      and scoring.benchmark_version = 'aiq-core@1.0.0'
+      and scoring.synthetic
+      and scoring.is_published
+      and scoring.formula = '{
+        "aggregate":"mean_of_domain_means",
+        "coverage_multiplier":false,
+        "domain_weight":0.1,
+        "official_valid_task_count":72,
+        "official_covered_domain_count":10,
+        "synthetic_complete":{
+          "covered_domain_count":10,
+          "official_aiq":null,
+          "ranking_eligible":false,
+          "valid_task_count":72
+        }
+      }'::jsonb
+      and scoring.interval_method = '{
+        "central_mass":0.95,
+        "deviation_scale":1.3,
+        "method":"finite_cluster_calibrated_percentile_sensitivity_v1",
+        "samples":10000,
+        "scope":"fixed_fixture_calibrated_sensitivity",
+        "synthetic":false,
+        "universal_confidence_interval":false
+      }'::jsonb
+      and scoring.failure_policy = '{
+        "attributable_failure_score":0,
+        "infrastructure_failure_score":null,
+        "missing_blocks_official":true,
+        "provisional_ranked":false,
+        "synthetic_complete_ranked":false
+      }'::jsonb
+  )
+  then
+    return;
+  end if;
+
+  return query
+with expected_model_matrix(id, model_family, model_name, reasoning_tier) as (
+  values
+    ('sol-low', 'Sol', 'gpt-5.6-sol', 'low'),
+    ('sol-medium', 'Sol', 'gpt-5.6-sol', 'medium'),
+    ('sol-high', 'Sol', 'gpt-5.6-sol', 'high'),
+    ('sol-xhigh', 'Sol', 'gpt-5.6-sol', 'xhigh'),
+    ('sol-max', 'Sol', 'gpt-5.6-sol', 'max'),
+    ('sol-ultra', 'Sol', 'gpt-5.6-sol', 'ultra'),
+    ('terra-low', 'Terra', 'gpt-5.6-terra', 'low'),
+    ('terra-medium', 'Terra', 'gpt-5.6-terra', 'medium'),
+    ('terra-high', 'Terra', 'gpt-5.6-terra', 'high'),
+    ('terra-xhigh', 'Terra', 'gpt-5.6-terra', 'xhigh'),
+    ('terra-max', 'Terra', 'gpt-5.6-terra', 'max'),
+    ('terra-ultra', 'Terra', 'gpt-5.6-terra', 'ultra'),
+    ('luna-low', 'Luna', 'gpt-5.6-luna', 'low'),
+    ('luna-medium', 'Luna', 'gpt-5.6-luna', 'medium'),
+    ('luna-high', 'Luna', 'gpt-5.6-luna', 'high'),
+    ('luna-xhigh', 'Luna', 'gpt-5.6-luna', 'xhigh'),
+    ('luna-max', 'Luna', 'gpt-5.6-luna', 'max')
+), actual_model_matrix as (
+  select
+    model.model_config_id as id,
+    case model.model_family
+      when 'sol' then 'Sol'
+      when 'terra' then 'Terra'
+      when 'luna' then 'Luna'
+      else null
+    end as model_family,
+    model.provider_model_id as model_name,
+    model.reasoning_effort as reasoning_tier
+  from aiq_private.aiq_model_configs model
+  where model.expected_in_matrix
+), published_trends as (
+  select count(*) as count
+  from public.public_trend_points('all')
+), non_synthetic_evidence as (
+  select count(*) as count
+  from (
+    select run.run_id as evidence_id
+    from aiq_private.aiq_runs run
+    where not run.synthetic or run.published
+    union all
+    select batch.matrix_batch_id
+    from aiq_private.aiq_matrix_batches batch
+    where not batch.synthetic
+    union all
+    select package.package_sha256
+    from aiq_private.aiq_result_packages package
+    where package.envelope #> '{payload,synthetic}' is distinct from 'true'::jsonb
+    union all
+    select inbox.inbox_id::text
+    from aiq_private.aiq_submission_inbox inbox
+    where inbox.envelope #> '{payload,synthetic}' is distinct from 'true'::jsonb
+    union all
+    select conflict.conflict_id::text
+    from aiq_private.aiq_submission_conflicts conflict
+    where conflict.envelope #> '{payload,synthetic}' is distinct from 'true'::jsonb
+    union all
+    select result.result_id::text
+    from aiq_private.aiq_task_results result
+    join aiq_private.aiq_runs run on run.run_id = result.run_id
+    where not run.synthetic
+    union all
+    select score.score_snapshot_id::text
+    from aiq_private.aiq_score_snapshots score
+    join aiq_private.aiq_runs run on run.run_id = score.run_id
+    where not run.synthetic or score.published
+    union all
+    select scoring.scoring_version
+    from aiq_private.aiq_scoring_versions scoring
+    where not scoring.synthetic
+    union all
+    select node.node_id
+    from aiq_private.aiq_nodes node
+    where not node.synthetic
+    union all
+    select declaration.declaration_id::text
+    from aiq_private.aiq_distributed_capability_declarations declaration
+    where not declaration.synthetic
+    union all
+    select observation.observation_id::text
+    from aiq_private.aiq_distributed_node_observations observation
+    where not observation.synthetic
+    union all
+    select assignment.assignment_id::text
+    from aiq_private.aiq_distributed_assignments assignment
+    where not assignment.synthetic
+    union all
+    select assignment_model.run_id || ':' || assignment_model.assignment_id
+    from aiq_private.aiq_distributed_assignment_models assignment_model
+    where not assignment_model.synthetic
+    union all
+    select receipt.receipt_id::text
+    from aiq_private.aiq_distributed_result_receipts receipt
+    where not receipt.synthetic
+    union all
+    select package.task_package_id::text
+    from aiq_private.aiq_distributed_task_packages package
+    where not package.synthetic
+    union all
+    select input.aggregation_input_id::text
+    from aiq_private.aiq_distributed_aggregation_inputs input
+    where not input.synthetic
+  ) evidence
+), status as (
+select
+  'aiq.preview-status.v1'::text as contract_version,
+  'acgbox-aiq-preview-v1'::text as profile_id,
+  (select count(*) from aiq_private.aiq_task_catalog) as task_count,
+  (select count(*) from actual_model_matrix) as model_configuration_count,
+  (select count(*) from aiq_private.aiq_runs where synthetic) as synthetic_run_count,
+  (
+    select count(*)
+    from aiq_private.aiq_task_results result
+    join aiq_private.aiq_runs run on run.run_id = result.run_id
+    where run.synthetic
+  ) as synthetic_task_result_count,
+  (
+    select count(*)
+    from aiq_private.aiq_score_snapshots score
+    join aiq_private.aiq_runs run on run.run_id = score.run_id
+    where run.synthetic
+  ) as synthetic_score_snapshot_count,
+  (
+    select count(*) from aiq_private.aiq_scoring_versions where synthetic
+  ) as synthetic_scoring_definition_count,
+  (
+    select count(*) from aiq_private.aiq_nodes where synthetic and public_visible
+  ) as synthetic_radar_node_count,
+  (select count(*) from public.public_runs) as published_run_count,
+  (select count(*) from public.public_leaderboard) as published_leaderboard_count,
+  (select count from published_trends) as published_trend_point_count,
+  (select count from non_synthetic_evidence) as non_synthetic_evidence_count,
+  not exists (
+    (select * from expected_model_matrix)
+    except
+    (select * from actual_model_matrix)
+  ) and not exists (
+    (select * from actual_model_matrix)
+    except
+    (select * from expected_model_matrix)
+  ) as canonical_model_matrix
+)
+select *
+from status
+where status.task_count = 72
+  and status.model_configuration_count = 17
+  and status.synthetic_run_count = 17
+  and status.synthetic_task_result_count = 1224
+  and status.synthetic_score_snapshot_count = 17
+  and status.synthetic_scoring_definition_count = 1
+  and status.synthetic_radar_node_count = 3
+  and status.published_run_count = 0
+  and status.published_leaderboard_count = 0
+  and status.published_trend_point_count = 0
+  and status.non_synthetic_evidence_count = 0
+  and status.canonical_model_matrix;
+end;
+$$;
+
+
+--
+-- Name: aiq_preview_status_v1; Type: VIEW; Schema: public; Owner: -
+--
+
+create view public.aiq_preview_status_v1 with (security_invoker = true) as
+ select preview_status.contract_version,
+    preview_status.profile_id,
+    preview_status.task_count,
+    preview_status.model_configuration_count,
+    preview_status.synthetic_run_count,
+    preview_status.synthetic_task_result_count,
+    preview_status.synthetic_score_snapshot_count,
+    preview_status.synthetic_scoring_definition_count,
+    preview_status.synthetic_radar_node_count,
+    preview_status.published_run_count,
+    preview_status.published_leaderboard_count,
+    preview_status.published_trend_point_count,
+    preview_status.non_synthetic_evidence_count,
+    preview_status.canonical_model_matrix
+   from aiq_private.preview_status_v1() preview_status;
+
+
+--
+-- Name: view aiq_preview_status_v1; Type: COMMENT; Schema: public; Owner: -
+--
+
+comment on view public.aiq_preview_status_v1 IS 'Bounded, read-only identity and readiness status for the disposable synthetic preview profile.';
 
 
 --
@@ -11496,6 +11791,15 @@ grant all on function public.public_trend_points(supplied_range text) to authent
 
 
 --
+-- Name: function preview_status_v1(); Type: ACL; Schema: aiq_private; Owner: -
+--
+
+revoke all on function aiq_private.preview_status_v1() from PUBLIC;
+grant all on function aiq_private.preview_status_v1() to anon;
+grant all on function aiq_private.preview_status_v1() to authenticated;
+
+
+--
 -- Name: COLUMN aiq_distributed_aggregation_inputs.node_id; Type: ACL; Schema: aiq_private; Owner: -
 --
 
@@ -12469,6 +12773,14 @@ grant select on table public.public_scoring_versions to authenticated;
 
 grant select on table public.public_task_coverage to anon;
 grant select on table public.public_task_coverage to authenticated;
+
+
+--
+-- Name: table aiq_preview_status_v1; Type: ACL; Schema: public; Owner: -
+--
+
+grant select on table public.aiq_preview_status_v1 to anon;
+grant select on table public.aiq_preview_status_v1 to authenticated;
 
 
 -- Foreign-key and RLS predicate indexes are explicit because PostgreSQL does

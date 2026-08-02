@@ -986,6 +986,14 @@ fn validate_score_report(
 		{
 			Err(NormalizationError::new("official score tier is inconsistent"))
 		},
+		ScoreTier::SyntheticComplete
+			if supplied.coverage.valid_tasks != NORMALIZED_TASK_COUNT
+				|| supplied.official_aiq.is_some()
+				|| supplied.conditional_observed_aiq.is_none()
+				|| supplied.ranking_eligible =>
+		{
+			Err(NormalizationError::new("synthetic-complete score tier is inconsistent"))
+		},
 		ScoreTier::NotApplicable
 			if supplied.coverage.not_applicable_tasks != NORMALIZED_TASK_COUNT
 				|| supplied.official_aiq.is_some()
@@ -1736,7 +1744,9 @@ mod tests {
 	fn all_score_tiers_and_lossless_outcomes_are_explicit() {
 		let (_, _, scores, _, _) = fixture();
 
-		assert_eq!(scores[0].tier, ScoreTier::Official);
+		assert_eq!(scores[0].tier, ScoreTier::SyntheticComplete);
+		assert!(scores[0].official_aiq.is_none());
+		assert!(scores[0].conditional_observed_aiq.is_some());
 
 		let mut result = crate::runner::TaskResult {
 			schema_version: String::new(),
@@ -1771,6 +1781,12 @@ mod tests {
 
 		assert_eq!(
 			normalization::map_outcome(&result, ScoreTier::Official).expect("correct").0,
+			NormalizedOutcome::Correct
+		);
+		assert_eq!(
+			normalization::map_outcome(&result, ScoreTier::SyntheticComplete)
+				.expect("synthetic correct")
+				.0,
 			NormalizedOutcome::Correct
 		);
 

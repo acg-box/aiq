@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { createBoundedSupabaseFetch, createSupabaseApiKeyFetch } from '../server/supabase-http.ts';
 import { filterTrendPoints } from './format.ts';
+import { inspectDeploymentProfile } from './deployment-profile.ts';
 import {
   inspectPublicSupabaseConfiguration,
   type PublicDataConfiguration,
@@ -46,6 +47,34 @@ export const PUBLIC_VIEW_NAMES = {
   scoringVersions: 'public_scoring_versions',
   taskCoverage: 'public_task_coverage',
 } as const;
+
+export const PREVIEW_STATUS_VIEW = 'aiq_preview_status_v1';
+
+const PREVIEW_STATUS_SELECT =
+  'contract_version,profile_id,canonical_model_matrix,task_count,model_configuration_count,synthetic_run_count,synthetic_task_result_count,synthetic_score_snapshot_count,synthetic_scoring_definition_count,synthetic_radar_node_count,published_run_count,published_leaderboard_count,published_trend_point_count,non_synthetic_evidence_count';
+
+const EXPECTED_PREVIEW_STATUS = {
+  contract_version: 'aiq.preview-status.v1',
+  profile_id: 'acgbox-aiq-preview-v1',
+  canonical_model_matrix: true,
+  task_count: 72,
+  model_configuration_count: 17,
+  synthetic_run_count: 17,
+  synthetic_task_result_count: 1_224,
+  synthetic_score_snapshot_count: 17,
+  synthetic_scoring_definition_count: 1,
+  synthetic_radar_node_count: 3,
+  published_run_count: 0,
+  published_leaderboard_count: 0,
+  published_trend_point_count: 0,
+  non_synthetic_evidence_count: 0,
+} as const;
+
+export type PreviewStatusRow = typeof EXPECTED_PREVIEW_STATUS;
+
+export interface PreviewStatusSource extends AiqRepository {
+  readPreviewStatusRows(): Promise<unknown>;
+}
 
 export interface ModelMatrixRow {
   id: string;
@@ -604,6 +633,70 @@ export class SeedAiqRepository implements AiqRepository {
   }
 }
 
+export class PreviewAiqRepository implements AiqRepository {
+  readonly mode = 'synthetic' as const;
+  readonly configuration = 'live' as const;
+  readonly #liveRepository: PreviewStatusSource;
+  readonly #seedRepository = new SeedAiqRepository();
+  #previewStatusCheck: Promise<void> | undefined;
+
+  constructor(liveRepository: PreviewStatusSource) {
+    if (liveRepository.mode !== 'live' || liveRepository.configuration !== 'live') {
+      throw new Error('ACGbox preview requires one valid live public-data repository.');
+    }
+    this.#liveRepository = liveRepository;
+  }
+
+  #assertPreviewStatus(): Promise<void> {
+    this.#previewStatusCheck ??= this.#liveRepository.readPreviewStatusRows().then((value) => {
+      if (!Array.isArray(value) || value.length !== 1) {
+        throw new Error('ACGbox preview requires exactly one preview-status row.');
+      }
+      const row: unknown = value[0];
+      const expectedEntries = Object.entries(EXPECTED_PREVIEW_STATUS);
+      if (
+        !isUnknownRecord(row) ||
+        Object.keys(row).length !== expectedEntries.length ||
+        expectedEntries.some(([key, expected]) => Reflect.get(row, key) !== expected)
+      ) {
+        throw new Error('ACGbox preview status does not match the required fixture contract.');
+      }
+      return undefined;
+    });
+    return this.#previewStatusCheck;
+  }
+
+  async listLeaderboard(): Promise<readonly LeaderboardEntry[]> {
+    await this.#assertPreviewStatus();
+    return this.#seedRepository.listLeaderboard();
+  }
+
+  async listTrendPoints(range: TrendRange = 'all'): Promise<readonly TrendPoint[]> {
+    await this.#assertPreviewStatus();
+    return this.#seedRepository.listTrendPoints(range);
+  }
+
+  async listRunPage(request: RunHistoryPageRequest = {}): Promise<RunHistoryPage> {
+    await this.#assertPreviewStatus();
+    return this.#seedRepository.listRunPage(request);
+  }
+
+  async getRun(id: string): Promise<BenchmarkRun | null> {
+    await this.#assertPreviewStatus();
+    return this.#seedRepository.getRun(id);
+  }
+
+  async getMethodology(): Promise<Methodology> {
+    await this.#assertPreviewStatus();
+    return this.#seedRepository.getMethodology();
+  }
+
+  async listRadarNodes(): Promise<readonly RadarNode[]> {
+    await this.#assertPreviewStatus();
+    return this.#seedRepository.listRadarNodes();
+  }
+}
+
 function normalizeLeaderboardStatus(row: LeaderboardRow | undefined): LeaderboardStatus {
   if (!row) {
     return 'unpublished';
@@ -661,7 +754,7 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
     isBoundedIdentifier(value.matrix_id) &&
     isBoundedIdentifier(value.run_id) &&
     isBoundedIdentifier(value.scoring_version) &&
-    typeof value.synthetic === 'boolean';
+    value.synthetic === false;
   if (!baseShape) return false;
   if (value.score_status === 'official') {
     return (
@@ -898,6 +991,18 @@ export class SupabaseAiqRepository implements AiqRepository {
         fetch: createSupabaseApiKeyFetch(publishableKey, undefined, fetchImplementation),
       },
     });
+  }
+
+  async readPreviewStatusRows(): Promise<unknown> {
+    const { data, error } = await this.#client
+      .from(PREVIEW_STATUS_VIEW)
+      .select(PREVIEW_STATUS_SELECT)
+      .limit(2)
+      .overrideTypes<unknown[], { merge: false }>();
+    if (error) {
+      throw new Error(`Cannot read ${PREVIEW_STATUS_VIEW}: ${error.message}`);
+    }
+    return data;
   }
 
   async #modelMatrix(): Promise<readonly ModelMatrixRow[]> {
@@ -1198,12 +1303,28 @@ export function createAiqRepository(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): AiqRepository {
   const configuration = inspectPublicSupabaseConfiguration(environment);
+  const deploymentProfile = inspectDeploymentProfile(environment);
+  if (deploymentProfile.profile === 'invalid') {
+    return new InvalidLiveAiqRepository(deploymentProfile.issues);
+  }
   if (configuration.state === 'live' && configuration.url && configuration.publishableKey) {
     try {
-      return new SupabaseAiqRepository(configuration.url, configuration.publishableKey);
+      const liveRepository = new SupabaseAiqRepository(
+        configuration.url,
+        configuration.publishableKey,
+      );
+      return deploymentProfile.profile === 'preview'
+        ? new PreviewAiqRepository(liveRepository)
+        : liveRepository;
     } catch {
       return new InvalidLiveAiqRepository([]);
     }
+  }
+  if (deploymentProfile.profile === 'preview') {
+    return new InvalidLiveAiqRepository([
+      ...configuration.issues,
+      'ACGbox preview requires both browser-safe Supabase variables',
+    ]);
   }
   if (configuration.state === 'invalid') {
     return new InvalidLiveAiqRepository(configuration.issues);
@@ -1214,5 +1335,11 @@ export function createAiqRepository(
 export function classifyPublicDataConfiguration(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): PublicDataConfiguration {
-  return inspectPublicSupabaseConfiguration(environment).state;
+  const deploymentProfile = inspectDeploymentProfile(environment);
+  const publicConfiguration = inspectPublicSupabaseConfiguration(environment);
+  if (deploymentProfile.profile === 'invalid') return 'invalid';
+  if (deploymentProfile.profile === 'preview' && publicConfiguration.state !== 'live') {
+    return 'invalid';
+  }
+  return publicConfiguration.state;
 }

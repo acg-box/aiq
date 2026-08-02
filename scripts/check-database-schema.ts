@@ -54,15 +54,46 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     'All AIQ base tables must force row-level security.',
   );
   assert.equal(
-    (schema.match(/create view public\.public_/g) ?? []).length,
-    8,
-    'Only the eight read views can be public.',
+    (schema.match(/create view public\.(?:public_|aiq_preview_status_v1)/g) ?? []).length,
+    9,
+    'Only the nine read views can be public.',
   );
   assert.equal(
     (schema.match(/with \(security_invoker = true\)/g) ?? []).length,
-    8,
+    9,
     'Each public view must use invoker security.',
   );
+  assert.match(schema, /create function aiq_private\.preview_status_v1\(\) returns table\(/);
+  assert.match(
+    schema,
+    /create function aiq_private\.preview_status_v1\(\)[\s\S]*?language plpgsql stable security definer[\s\S]*?scoring\.scoring_version = '1\.0\.0'[\s\S]*?and scoring\.synthetic[\s\S]*?then\s+return;/,
+  );
+  assert.match(
+    schema,
+    /create view public\.aiq_preview_status_v1 with \(security_invoker = true\)/,
+  );
+  assert.match(schema, /revoke all on function aiq_private\.preview_status_v1\(\) from PUBLIC/);
+  assert.match(schema, /grant all on function aiq_private\.preview_status_v1\(\) to anon/);
+  assert.match(schema, /grant all on function aiq_private\.preview_status_v1\(\) to authenticated/);
+  assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to anon/);
+  assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to authenticated/);
+  assert.match(schema, /'synthetic_complete'/);
+  assert.match(schema, /score ->> 'tier' = 'synthetic_complete' and not is_synthetic/);
+  assert.match(schema, /score ->> 'tier' = 'official' and is_synthetic/);
+  assert.match(schema, /batch\.synthetic[\s\S]{0,120}return false;/);
+  for (const source of [
+    'aiq_matrix_batches',
+    'aiq_result_packages',
+    'aiq_submission_inbox',
+    'aiq_submission_conflicts',
+  ]) {
+    assert.match(
+      schema,
+      new RegExp(`from aiq_private\\.${source} [\\s\\S]{0,180}where `),
+      `Preview status must reject non-synthetic evidence from ${source}.`,
+    );
+  }
+  assert.match(syntheticDemo, /'synthetic_complete'/);
   assert.doesNotMatch(schema, /create table public\.aiq_/);
   const databaseSources = `${schema}\n${syntheticDemo}`;
   for (const contractName of [

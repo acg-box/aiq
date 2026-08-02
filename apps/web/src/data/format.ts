@@ -176,7 +176,9 @@ export function classifyRunCompleteness(run: BenchmarkRun): RunCompleteness {
   return {
     label:
       validResults === 72
-        ? 'Official'
+        ? run.synthetic
+          ? 'Complete synthetic fixture · not Official'
+          : 'Official'
         : validResults >= 60 && hasMinimumDomainCoverage
           ? 'Provisional · not ranked'
           : 'Coverage-only · not ranked',
@@ -192,7 +194,9 @@ export function classifyRunSummaryCompleteness(run: BenchmarkRunSummary): RunCom
     label: notApplicable
       ? 'N/A · unsupported in a valid preflight'
       : summary.observedCount === 72
-        ? 'Official'
+        ? run.synthetic
+          ? 'Complete synthetic fixture · not Official'
+          : 'Official'
         : summary.observedCount >= 60 && summary.provisionalDomainCount === 10
           ? 'Provisional · not ranked'
           : 'Coverage-only · not ranked',

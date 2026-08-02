@@ -27,6 +27,32 @@ await test('schema and synthetic demo data have separate final-state owners', as
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
 });
 
+await test('preview status is a bounded browser-readable invoker view', async () => {
+  const [schema, syntheticDemo] = await sources();
+  assert.throws(
+    () =>
+      checkDatabaseSchemaSources(
+        schema.replace(
+          'grant select on table public.aiq_preview_status_v1 to anon;',
+          'revoke select on table public.aiq_preview_status_v1 from anon;',
+        ),
+        syntheticDemo,
+      ),
+    /aiq_preview_status_v1 to anon/,
+  );
+  assert.throws(
+    () =>
+      checkDatabaseSchemaSources(
+        schema.replace(
+          'create view public.aiq_preview_status_v1 with (security_invoker = true)',
+          'create view public.aiq_preview_status_v1',
+        ),
+        syntheticDemo,
+      ),
+    /security_invoker|invoker security/,
+  );
+});
+
 await test('checker rejects an exposed base table or missing forced RLS', async () => {
   const [schema, syntheticDemo] = await sources();
   assert.throws(
@@ -101,7 +127,7 @@ await test('checker rejects an extra public view or transaction-start claim leas
         ),
         syntheticDemo,
       ),
-    /eight read views/,
+    /nine read views/,
   );
   const changed = schema.replace(
     'claim_expires_at = database_now + make_interval(secs => requested_lease_seconds)',

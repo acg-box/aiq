@@ -607,11 +607,12 @@ function scoringRows(reviewedAt: string): JsonObject[] {
         'Give each of the ten domains weight 0.1.',
         'Keep the frozen domain and difficulty quotas.',
         'Keep missing and invalid tasks in completion accounting and block Official publication.',
+        'Classify complete synthetic fixtures as descriptive Synthetic Complete, never Official or ranking eligible.',
         'Treat attributable agent, model, tool, timeout, budget, and wrong-artifact failures as valid zero scores.',
         'Treat benchmark infrastructure failures as invalid and audit a rerun.',
       ],
       missing_policy:
-        'Missing and invalid tasks block Official. Provisional output uses observed domain means and fixed-fixture completion bounds.',
+        'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use descriptive observed domain means and fixed-fixture completion bounds without ranking eligibility.',
       failure_policy_text:
         'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
       confidence_policy:
@@ -622,6 +623,12 @@ function scoringRows(reviewedAt: string): JsonObject[] {
         domain_weight: 0.1,
         official_valid_task_count: 72,
         official_covered_domain_count: 10,
+        synthetic_complete: {
+          covered_domain_count: 10,
+          official_aiq: null,
+          ranking_eligible: false,
+          valid_task_count: 72,
+        },
       },
       interval_method: {
         central_mass: 0.95,
@@ -637,6 +644,7 @@ function scoringRows(reviewedAt: string): JsonObject[] {
         infrastructure_failure_score: null,
         missing_blocks_official: true,
         provisional_ranked: false,
+        synthetic_complete_ranked: false,
       },
       synthetic: false,
       is_published: true,
@@ -1019,7 +1027,7 @@ async function runPsql(
   });
 }
 
-function databaseConnectionEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
+export function databaseConnectionEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
   const parsed = new URL(databaseUrl);
   const database = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
 

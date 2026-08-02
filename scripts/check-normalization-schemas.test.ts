@@ -359,8 +359,8 @@ function score(model: { family: string; reasoning_effort: string }): JsonObject 
     schema_version: 'aiq.score-report.v1',
     scoring_version: '1.0.0',
     model,
-    tier: 'official',
-    official_aiq: 100,
+    tier: 'synthetic_complete',
+    official_aiq: null,
     conditional_observed_aiq: 100,
     ranking_eligible: false,
     completion_bounds: { lower: 100, upper: 100 },
@@ -404,7 +404,7 @@ function score(model: { family: string; reasoning_effort: string }): JsonObject 
       zero_failure_tasks: 0,
       score: 1,
     })),
-    rule: 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires 72/72 and 10/10 domains. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+    rule: 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
   };
 }
 
@@ -552,6 +552,17 @@ function productionBatch(): JsonObject {
   batch.provenance = runProvenance();
   batch.run_class = 'official';
 
+  for (const runValue of requireArrayProperty(batch, 'runs')) {
+    const run = requireObject(runValue, 'run');
+    const report = requireObjectProperty(run, 'score');
+    report.tier = 'official';
+    report.official_aiq = report.conditional_observed_aiq;
+    for (const resultValue of requireArrayProperty(run, 'results')) {
+      const result = requireObject(resultValue, 'result');
+      requireObjectProperty(result, 'provenance').synthetic = false;
+    }
+  }
+
   return batch;
 }
 
@@ -621,6 +632,155 @@ await test('representative normalized Rust wire objects match both public schema
 
   strictEqual(matchesSchema(normalizedBatch(), batchSchema, batchSchema), true);
   strictEqual(matchesSchema(attestation(), attestationSchema, attestationSchema), true);
+});
+
+await test('synthetic-complete scores are descriptive and never Official', async () => {
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const batch = normalizedBatch();
+  const firstRun = requireObjectAt(requireArrayProperty(batch, 'runs'), 0, 'runs');
+  const report = requireObjectProperty(firstRun, 'score');
+
+  strictEqual(report.tier, 'synthetic_complete');
+  strictEqual(report.official_aiq, null);
+  strictEqual(report.conditional_observed_aiq, 100);
+  strictEqual(report.ranking_eligible, false);
+  strictEqual(matchesSchema(batch, schema, schema), true);
+
+  const falseOfficial = structuredClone(batch);
+  const falseOfficialRun = requireObjectAt(requireArrayProperty(falseOfficial, 'runs'), 0, 'runs');
+  requireObjectProperty(falseOfficialRun, 'score').official_aiq = 100;
+  strictEqual(matchesSchema(falseOfficial, schema, schema), false);
+
+  const missingDescriptive = structuredClone(batch);
+  const missingDescriptiveRun = requireObjectAt(
+    requireArrayProperty(missingDescriptive, 'runs'),
+    0,
+    'runs',
+  );
+  requireObjectProperty(missingDescriptiveRun, 'score').conditional_observed_aiq = null;
+  strictEqual(matchesSchema(missingDescriptive, schema, schema), false);
+
+  const incompleteMutations: ReadonlyArray<readonly [string, (report: JsonObject) => void]> = [
+    [
+      'valid task count',
+      (changedReport) => {
+        requireObjectProperty(changedReport, 'coverage').valid_tasks = 71;
+      },
+    ],
+    [
+      'invalid task count',
+      (changedReport) => {
+        requireObjectProperty(changedReport, 'coverage').invalid_tasks = 1;
+      },
+    ],
+    [
+      'missing task count',
+      (changedReport) => {
+        requireObjectProperty(changedReport, 'coverage').missing_tasks = 1;
+      },
+    ],
+    [
+      'not-applicable task count',
+      (changedReport) => {
+        requireObjectProperty(changedReport, 'coverage').not_applicable_tasks = 1;
+      },
+    ],
+    [
+      'expected domain count',
+      (changedReport) => {
+        requireObjectProperty(changedReport, 'coverage').expected_domains = 9;
+      },
+    ],
+    [
+      'covered domain count',
+      (changedReport) => {
+        requireObjectProperty(changedReport, 'coverage').covered_domains = 9;
+      },
+    ],
+    ['duplicate result count', (changedReport) => void (changedReport.duplicate_results = 1)],
+    [
+      'domain cardinality',
+      (changedReport) => {
+        requireArrayProperty(changedReport, 'domains').pop();
+      },
+    ],
+    [
+      'domain identity uniqueness',
+      (changedReport) => {
+        const changedDomains = requireArrayProperty(changedReport, 'domains');
+        requireObjectAt(changedDomains, changedDomains.length - 1, 'domains').domain = 'coding';
+      },
+    ],
+    [
+      'complete domain status',
+      (changedReport) => {
+        requireObjectAt(
+          requireArrayProperty(changedReport, 'domains'),
+          0,
+          'domains',
+        ).missing_tasks = 1;
+      },
+    ],
+    [
+      'complete domain score',
+      (changedReport) => {
+        requireObjectAt(requireArrayProperty(changedReport, 'domains'), 0, 'domains').score = null;
+      },
+    ],
+  ];
+
+  for (const [label, mutate] of incompleteMutations) {
+    const changed = structuredClone(batch);
+    const changedRun = requireObjectAt(requireArrayProperty(changed, 'runs'), 0, 'runs');
+    mutate(requireObjectProperty(changedRun, 'score'));
+    strictEqual(matchesSchema(changed, schema, schema), false, label);
+  }
+});
+
+await test('batch provenance rejects contradictory score tiers and permits partial synthetic tiers', async () => {
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+
+  const syntheticOfficial = normalizedBatch();
+  const syntheticOfficialRun = requireObjectAt(
+    requireArrayProperty(syntheticOfficial, 'runs'),
+    0,
+    'runs',
+  );
+  const syntheticOfficialReport = requireObjectProperty(syntheticOfficialRun, 'score');
+  syntheticOfficialReport.tier = 'official';
+  syntheticOfficialReport.official_aiq = syntheticOfficialReport.conditional_observed_aiq;
+  strictEqual(matchesSchema(syntheticOfficial, schema, schema), false);
+
+  const productionSyntheticComplete = productionBatch();
+  const productionSyntheticCompleteRun = requireObjectAt(
+    requireArrayProperty(productionSyntheticComplete, 'runs'),
+    0,
+    'runs',
+  );
+  const productionSyntheticCompleteReport = requireObjectProperty(
+    productionSyntheticCompleteRun,
+    'score',
+  );
+  productionSyntheticCompleteReport.tier = 'synthetic_complete';
+  productionSyntheticCompleteReport.official_aiq = null;
+  strictEqual(matchesSchema(productionSyntheticComplete, schema, schema), false);
+
+  for (const tier of ['provisional', 'coverage_only', 'not_applicable']) {
+    const partialSynthetic = normalizedBatch();
+    const partialSyntheticRun = requireObjectAt(
+      requireArrayProperty(partialSynthetic, 'runs'),
+      0,
+      'runs',
+    );
+    const partialSyntheticReport = requireObjectProperty(partialSyntheticRun, 'score');
+    partialSyntheticReport.tier = tier;
+    if (tier !== 'provisional') {
+      partialSyntheticReport.conditional_observed_aiq = null;
+      partialSyntheticReport.completion_bounds = null;
+      partialSyntheticReport.task_resampling_sensitivity_interval = null;
+    }
+    strictEqual(matchesSchema(partialSynthetic, schema, schema), true, tier);
+  }
 });
 
 await test('the current corpus commitment has one direct state', async () => {

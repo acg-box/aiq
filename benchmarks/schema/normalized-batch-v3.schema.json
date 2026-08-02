@@ -149,6 +149,24 @@
           },
           "run_class": {
             "const": "official"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "tier": {
+                      "not": {
+                        "const": "synthetic_complete"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -162,6 +180,24 @@
           },
           "run_class": {
             "type": "null"
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "tier": {
+                      "not": {
+                        "const": "official"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -469,7 +505,13 @@
           "$ref": "#/$defs/modelConfig"
         },
         "tier": {
-          "enum": ["official", "provisional", "coverage_only", "not_applicable"]
+          "enum": [
+            "official",
+            "synthetic_complete",
+            "provisional",
+            "coverage_only",
+            "not_applicable"
+          ]
         },
         "official_aiq": {
           "$ref": "#/$defs/nullableAiqScore"
@@ -537,7 +579,7 @@
           }
         },
         "rule": {
-          "const": "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires 72/72 and 10/10 domains. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability."
+          "const": "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability."
         }
       },
       "allOf": [
@@ -551,12 +593,51 @@
             "required": ["tier"]
           },
           "then": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/completeScoreConstraints"
+              }
+            ],
             "properties": {
               "official_aiq": {
                 "$ref": "#/$defs/aiqScore"
               },
               "conditional_observed_aiq": {
                 "$ref": "#/$defs/aiqScore"
+              },
+              "completion_bounds": {
+                "$ref": "#/$defs/completionBounds"
+              },
+              "task_resampling_sensitivity_interval": {
+                "$ref": "#/$defs/taskResamplingSensitivityInterval"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "tier": {
+                "const": "synthetic_complete"
+              }
+            },
+            "required": ["tier"]
+          },
+          "then": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/completeScoreConstraints"
+              }
+            ],
+            "properties": {
+              "official_aiq": {
+                "type": "null"
+              },
+              "conditional_observed_aiq": {
+                "$ref": "#/$defs/aiqScore"
+              },
+              "ranking_eligible": {
+                "const": false
               },
               "completion_bounds": {
                 "$ref": "#/$defs/completionBounds"
@@ -620,6 +701,210 @@
           }
         }
       ]
+    },
+    "completeScoreConstraints": {
+      "type": "object",
+      "properties": {
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "expected_tasks": {
+              "const": 72
+            },
+            "valid_tasks": {
+              "const": 72
+            },
+            "invalid_tasks": {
+              "const": 0
+            },
+            "missing_tasks": {
+              "const": 0
+            },
+            "not_applicable_tasks": {
+              "const": 0
+            },
+            "expected_domains": {
+              "const": 10
+            },
+            "covered_domains": {
+              "const": 10
+            }
+          },
+          "required": [
+            "expected_tasks",
+            "valid_tasks",
+            "invalid_tasks",
+            "missing_tasks",
+            "not_applicable_tasks",
+            "expected_domains",
+            "covered_domains"
+          ]
+        },
+        "duplicate_results": {
+          "const": 0
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "properties": {
+              "invalid_tasks": {
+                "const": 0
+              },
+              "missing_tasks": {
+                "const": 0
+              },
+              "not_applicable_tasks": {
+                "const": 0
+              },
+              "score": {
+                "$ref": "#/$defs/unitInterval"
+              }
+            },
+            "required": [
+              "invalid_tasks",
+              "missing_tasks",
+              "not_applicable_tasks",
+              "score"
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "coding"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "debugging"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "repository_understanding"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "data_processing"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "retrieval_verification"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "documentation_communication"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "planning_execution"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "tool_use"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "instruction_following"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "domain": {
+                    "const": "reliability_recovery"
+                  }
+                },
+                "required": ["domain"]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      },
+      "required": ["coverage", "duplicate_results", "domains"]
     },
     "completionBounds": {
       "type": "object",
