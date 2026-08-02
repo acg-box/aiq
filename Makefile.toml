@@ -235,6 +235,7 @@ args = ["databases/preview-init.ts"]
 # | task                      | type    | cwd |
 # | ------------------------- | ------- | --- |
 # | smoke-database            | command |     |
+# | smoke-calibration-database | command |     |
 # | smoke-live-web            | command |     |
 # | smoke-preview-web         | command |     |
 # | smoke-subscription        | command |     |
@@ -248,6 +249,16 @@ if [ -z "${AIQ_DATABASE_URL:-}" ]; then
 	exit 2
 fi
 exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/smoke.sql
+'''
+
+[tasks.smoke-calibration-database]
+workspace = false
+script = '''
+if [ -z "${AIQ_DATABASE_URL:-}" ]; then
+	echo "AIQ_DATABASE_URL is required for smoke-calibration-database." >&2
+	exit 2
+fi
+exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/calibration-integration.sql
 '''
 
 [tasks.smoke-live-web]

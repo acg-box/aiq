@@ -4261,7 +4261,7 @@ begin
     or jsonb_typeof(candidate -> 'schema_version') is distinct from 'string'
     or candidate ->> 'schema_version' is distinct from 'aiq.run-provenance.v2'
     or jsonb_typeof(candidate -> 'run_class') is distinct from 'string'
-    or candidate ->> 'run_class' is distinct from 'official'
+    or candidate ->> 'run_class' not in ('official', 'calibration')
     or jsonb_typeof(candidate -> 'corpus_release_id') is distinct from 'string'
     or not coalesce(
       candidate ->> 'corpus_release_id'
@@ -13699,7 +13699,7 @@ declare
   provenance jsonb;
   result jsonb;
   model jsonb;
-  task_id jsonb;
+  candidate_task_id jsonb;
   expected_run_id text;
   expected_task_set_hash text;
 begin
@@ -13760,11 +13760,11 @@ begin
   if (select count(distinct value) from jsonb_array_elements(payload -> 'models'))
        <> jsonb_array_length(payload -> 'models')
   then return false; end if;
-  for task_id in select value from jsonb_array_elements(payload -> 'task_ids') loop
-    if not aiq_private.dto_identifier_is_valid(task_id,64)
+  for candidate_task_id in select value from jsonb_array_elements(payload -> 'task_ids') loop
+    if not aiq_private.dto_identifier_is_valid(candidate_task_id,64)
       or not exists (
         select 1 from aiq_private.aiq_task_catalog catalog
-        where catalog.task_id = task_id #>> '{}'
+        where catalog.task_id = candidate_task_id #>> '{}'
       )
     then return false; end if;
   end loop;
@@ -13783,7 +13783,6 @@ begin
   provenance := payload -> 'provenance';
   if aiq_private.run_provenance_v2_is_valid(provenance) is not true
     or provenance ->> 'run_class' <> 'calibration'
-    or provenance ->> 'runner_node_id' is distinct from envelope #>> '{signer,node_id}'
     or aiq_private.production_execution_identities_are_authorized(
       envelope #>> '{signer,node_id}',null
     ) is not true
@@ -13816,8 +13815,8 @@ begin
   select aiq_private.jcs_sha256(jsonb_agg(task_hash order by task_hash collate "C"))
   into expected_task_set_hash
   from (
-    select distinct result->>'task_hash' as task_hash
-    from jsonb_array_elements(payload->'results') result
+    select distinct result_entry.value->>'task_hash' as task_hash
+    from jsonb_array_elements(payload->'results') result_entry(value)
   ) hashes;
   if expected_task_set_hash is distinct from payload->>'task_set_hash'
   then return false; end if;
@@ -14662,9 +14661,9 @@ begin
   if jsonb_typeof(stage) <> 'object'
     or not aiq_private.has_exact_jsonb_keys(stage,array[
       'benchmark_version','capability_validation_digest','classification','content_hash',
-      'evaluator_results_artifact','execution_concurrency','finished_unix_ms','model_selection_digest','models',
-      'official_eligible','package_sha256','prompt_set_digest','provenance','ranking_eligible',
-      'pricing','region','result_efficiency','run_class','run_id','runner','runner_commit','scheduled_unix_ms',
+      'evaluator_results_artifact','execution_concurrency','finished_unix_ms','models','model_selection_digest',
+      'official_eligible','package_sha256','pricing','prompt_set_digest','provenance','ranking_eligible',
+      'region','result_efficiency','run_class','run_id','runner','runner_commit','scheduled_unix_ms',
       'schema_version','score_reports_digest','scores','scoring_version','stage_digest',
       'started_unix_ms','task_ids','task_selection_digest','task_set_hash','task_set_id',
       'task_set_version','telemetry_digest','trust'
@@ -14736,7 +14735,7 @@ begin
     or stage ->> 'telemetry_digest' is distinct from aiq_private.jcs_sha256(stage -> 'result_efficiency')
   then raise exception 'calibration stage digest binding is invalid' using errcode = '22023'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
-    'aiq.calibration:'||stage->>'run_id',
+    'aiq.calibration:'||(stage->>'run_id'),
     71783153620529
   ));
   select * into claimed from aiq_private.aiq_submission_inbox inbox
@@ -14750,10 +14749,10 @@ begin
     using errcode='55000'; end if;
   select * into existing_stage
   from aiq_private.calibration_verification_stages saved
-  where saved.run_id=stage->>'run_id'
+  where saved.run_id=$1->>'run_id'
   for update;
   if existing_stage.run_id is not null then
-    if existing_stage.stage=stage
+    if existing_stage.stage=$1
       and existing_stage.inbox_id=target_inbox_id
       and existing_stage.package_sha256=stage->>'package_sha256'
     then return 'duplicate'; end if;
@@ -14837,7 +14836,7 @@ begin
   insert into aiq_private.calibration_verification_stages(
     run_id,inbox_id,package_sha256,stage_digest,runner_node_id,stage
   ) values(stage->>'run_id',target_inbox_id,stage->>'package_sha256',stage->>'stage_digest',
-    stage#>>'{runner,node_id}',stage);
+    stage#>>'{runner,node_id}',$1);
   return 'recorded';
 end;
 $$;
@@ -14864,7 +14863,7 @@ declare
   normalized_outcome text;
   provider_tokens jsonb;
   pricing jsonb;
-  pricing_digest text;
+  computed_pricing_digest text;
   attempted_count integer;
   invoked_count integer;
   inserted_rows integer;
@@ -14877,8 +14876,8 @@ begin
   perform aiq_private.require_request_role('aiq_verifier');
   if jsonb_typeof(attestation) <> 'object'
     or not aiq_private.has_exact_jsonb_keys(attestation,array[
-      'capability_validation_digest','classification','content_hash','model_selection_digest',
-      'execution_concurrency','observed_unix_ms','official_eligible','package_sha256','ranking_eligible',
+      'capability_validation_digest','classification','content_hash','execution_concurrency',
+      'model_selection_digest','observed_unix_ms','official_eligible','package_sha256','ranking_eligible',
       'replay_status','run_class','run_id','runner','schema_version','score_reports_digest',
       'scoring_version','signature','signature_algorithm','signature_version','stage_digest',
       'task_selection_digest','task_set_hash','telemetry_digest','trust','verifier'
@@ -14906,7 +14905,7 @@ begin
     ) is not true
   then raise exception 'invalid calibration verifier attestation' using errcode='22023'; end if;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
-    'aiq.calibration:'||attestation->>'run_id',
+    'aiq.calibration:'||(attestation->>'run_id'),
     71783153620529
   ));
   select * into claimed from aiq_private.aiq_submission_inbox inbox
@@ -14968,17 +14967,17 @@ begin
   pricing := stage -> 'pricing';
   if aiq_private.efficiency_pricing_v1_is_valid(pricing) is not true
   then raise exception 'invalid calibration pricing evidence' using errcode='22023'; end if;
-  pricing_digest := aiq_private.jcs_sha256(pricing);
+  computed_pricing_digest := aiq_private.jcs_sha256(pricing);
   insert into aiq_private.efficiency_pricing_methods(
     pricing_digest,method,version,as_of,source,currency,processing_tier,
     rates,formula,limitations,pricing_record
-  ) values(pricing_digest,pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
+  ) values(computed_pricing_digest,pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
     pricing->>'source',pricing->>'currency',pricing->>'processing_tier',
     pricing->'rates',pricing->>'formula',
     array[pricing->>'limitation'],pricing)
-  on conflict (pricing_digest) do nothing;
+  on conflict on constraint efficiency_pricing_methods_pkey do nothing;
   if not exists(select 1 from aiq_private.efficiency_pricing_methods method
-    where method.pricing_digest=pricing_digest and method.pricing_record=pricing)
+    where method.pricing_digest=computed_pricing_digest and method.pricing_record=pricing)
   then raise exception 'conflicting calibration pricing evidence' using errcode='23505'; end if;
   select count(*)::integer into attempted_count
   from jsonb_array_elements(payload->'results') source
@@ -15071,7 +15070,7 @@ begin
         from jsonb_array_elements(stage->'result_efficiency')) <= 9007199254740991
       then 'verifier_recomputed' end,
     array[pricing->>'limitation'],pricing->>'method',pricing->>'version',
-    (pricing->>'as_of')::date,pricing->>'source',stage,attestation,pricing_digest
+    (pricing->>'as_of')::date,pricing->>'source',stage,attestation,computed_pricing_digest
   );
   for score in select value from jsonb_array_elements(stage -> 'scores') loop
     if jsonb_typeof(score) <> 'object'
@@ -15197,7 +15196,7 @@ begin
       case when score_efficiency->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
         then 'verifier_recomputed' end,
       array[pricing->>'limitation'],pricing->>'source',
-      (pricing->>'as_of')::date,pricing->>'version',pricing_digest;
+      (pricing->>'as_of')::date,pricing->>'version',computed_pricing_digest;
   end loop;
   for result in select value from jsonb_array_elements(stage -> 'result_efficiency') loop
     if not aiq_private.has_exact_jsonb_keys(result,array[
@@ -15274,7 +15273,7 @@ begin
       (result->>'standard_api_equivalent_usd_nanos')::bigint,
       result->>'cost_status',result->>'cost_evidence_level',array[pricing->>'limitation'],
       pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
-      pricing->>'source',pricing_digest
+      pricing->>'source',computed_pricing_digest
     from aiq_private.aiq_task_catalog catalog
     where catalog.task_set_id=stage->>'task_set_id'
       and catalog.task_set_version=stage->>'task_set_version'
