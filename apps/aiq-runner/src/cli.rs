@@ -109,6 +109,52 @@ struct RunOptions {
 	output: PathBuf,
 }
 
+struct PermissionAdmissionOptions {
+	public_tasks: Option<PathBuf>,
+	hidden_tasks: Option<PathBuf>,
+	corpus_commitment: PathBuf,
+	source_root: PathBuf,
+	capabilities: PathBuf,
+	workspace_root: PathBuf,
+	execution_root: PathBuf,
+	evaluator_root: PathBuf,
+	evaluator_runtime: PathBuf,
+	codex_toolchain_root: PathBuf,
+	schedule: PathBuf,
+	codex_binary: String,
+	codex_home: PathBuf,
+	codex_egress_proxy: CodexEgressProxyEndpoint,
+	artifact_root: PathBuf,
+	preflight_cache: PathBuf,
+	checkpoint: PathBuf,
+	planned_output: PathBuf,
+	report_output: PathBuf,
+}
+
+struct PreparedPermissionAdmission {
+	adapter: CodexAdapter<SystemExecutor, LocalArtifactSink>,
+	execution_root: PathBuf,
+	protected_paths: Vec<ProtectedBenchmarkPath>,
+}
+
+struct BenchmarkProtectedPathInputs<'a> {
+	public_tasks: Option<&'a Path>,
+	hidden_tasks: Option<&'a Path>,
+	source_root: &'a Path,
+	workspace_root: &'a Path,
+	evaluator_root: &'a Path,
+	artifact_root: &'a Path,
+	codex_home: &'a Path,
+	codex_binary: &'a Path,
+	corpus_commitment: &'a Path,
+	capabilities: &'a Path,
+	schedule: &'a Path,
+	preflight_cache: &'a Path,
+	checkpoint: &'a Path,
+	planned_output: &'a Path,
+	report_output: Option<&'a Path>,
+}
+
 struct ExactFileBinding {
 	path: PathBuf,
 	file: File,
@@ -467,7 +513,7 @@ struct PreparedLiveRuntime {
 	model_toolchain: ValidatedModelToolchain,
 	manifest: CapabilityManifest,
 	future_files: FutureProtectedFiles,
-	permission_evidence: PermissionEvidenceDigests,
+	permission_evidence: VerifiedPermissionEvidence,
 	runner_executable_digest: String,
 	codex_executable_digest: String,
 	codex_home_commitment: String,
@@ -485,6 +531,7 @@ struct DispatchDeadline {
 	next_slot_unix_ms: u64,
 }
 
+#[derive(Debug)]
 struct PermissionEvidenceDigests {
 	permission_policy_digest: String,
 	managed_requirements_digest: String,
@@ -503,6 +550,29 @@ impl PermissionEvidenceDigests {
 	}
 }
 
+#[derive(Debug)]
+struct VerifiedPermissionEvidence {
+	profile: ManagedPermissionProfileEvidence,
+	digests: PermissionEvidenceDigests,
+}
+impl VerifiedPermissionEvidence {
+	fn combined_digest(&self) -> Result<String, ProtocolError> {
+		self.digests.combined_digest()
+	}
+}
+
+#[derive(Debug, Serialize)]
+struct PermissionAdmissionReport {
+	schema_version: &'static str,
+	official_permission_eligible: bool,
+	model_invoked: bool,
+	observed_unix_ms: u64,
+	managed_profile: Option<ManagedPermissionProfileEvidence>,
+	permission_policy_digest: Option<String>,
+	canary_digest: Option<String>,
+	permission_evidence_digest: Option<String>,
+	failure: Option<String>,
+}
 #[derive(Default)]
 struct FutureProtectedFiles {
 	created: BTreeMap<PathBuf, FutureProtectedFile>,
@@ -803,6 +873,66 @@ enum Command {
 		#[arg(long, default_value_t = 86_400)]
 		expires_in_seconds: u64,
 		/// Machine-readable persisted preflight JSON.
+		#[arg(long)]
+		output: PathBuf,
+	},
+	/// Prove the exact Official Codex permission boundary without invoking a model.
+	AdmitPermissions {
+		/// Directory of public-example task JSON files.
+		#[arg(long)]
+		public_tasks: Option<PathBuf>,
+		/// Controlled directory of hidden task JSON files.
+		#[arg(long)]
+		hidden_tasks: Option<PathBuf>,
+		/// Current public-safe controlled-corpus commitment.
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		/// Repository root used to verify every committed runner source byte.
+		#[arg(long)]
+		source_root: PathBuf,
+		/// Capability manifest protected from benchmark children.
+		#[arg(long)]
+		capabilities: PathBuf,
+		/// Controlled root containing one workspace directory per task identifier.
+		#[arg(long)]
+		workspace_root: PathBuf,
+		/// Separate controlled root for fresh per-run, model, and task working copies.
+		#[arg(long)]
+		execution_root: PathBuf,
+		/// Controlled registry root for committed external evaluator scripts.
+		#[arg(long)]
+		evaluator_root: PathBuf,
+		/// Absolute Node.js runtime path for committed external evaluator scripts.
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		/// Absolute controlled Node.js and ripgrep toolchain root.
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
+		/// Approved schedule JSON protected from benchmark children.
+		#[arg(long)]
+		schedule: PathBuf,
+		/// Absolute executable inspected, checked for executability, and canonicalized before use.
+		#[arg(long, value_parser = parse_controlled_codex_binary)]
+		codex_binary: String,
+		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
+		#[arg(long, value_parser = parse_controlled_codex_home)]
+		codex_home: PathBuf,
+		/// Exact private HTTP proxy used only by outer Codex processes.
+		#[arg(long, value_parser = parse_codex_egress_proxy)]
+		codex_egress_proxy: CodexEgressProxyEndpoint,
+		/// Controlled local artifact sink.
+		#[arg(long)]
+		artifact_root: PathBuf,
+		/// Existing persisted preflight path protected from benchmark children.
+		#[arg(long)]
+		preflight_cache: PathBuf,
+		/// Planned durable per-attempt checkpoint. This command does not reserve it.
+		#[arg(long)]
+		checkpoint: PathBuf,
+		/// Planned create-once Official run output. This command does not reserve it.
+		#[arg(long)]
+		planned_output: PathBuf,
+		/// Durable private permission-admission JSON receipt.
 		#[arg(long)]
 		output: PathBuf,
 	},
@@ -1193,6 +1323,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			evaluator_runtime,
 			codex_toolchain_root,
 		)?,
+		command @ Command::AdmitPermissions { .. } => dispatch_permission_admission(command)?,
 		command @ Command::Run { .. } => dispatch_run(command)?,
 		Command::Score {
 			public_tasks,
@@ -1394,6 +1525,55 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 	})
 }
 
+fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::AdmitPermissions {
+		public_tasks,
+		hidden_tasks,
+		corpus_commitment,
+		source_root,
+		capabilities,
+		workspace_root,
+		execution_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		schedule,
+		codex_binary,
+		codex_home,
+		codex_egress_proxy,
+		artifact_root,
+		preflight_cache,
+		checkpoint,
+		planned_output,
+		output,
+	} = command
+	else {
+		unreachable!("permission admission dispatcher requires an admit-permissions command");
+	};
+
+	run_permission_admission(PermissionAdmissionOptions {
+		public_tasks,
+		hidden_tasks,
+		corpus_commitment,
+		source_root,
+		capabilities,
+		workspace_root,
+		execution_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		schedule,
+		codex_binary,
+		codex_home,
+		codex_egress_proxy,
+		artifact_root,
+		preflight_cache,
+		checkpoint,
+		planned_output,
+		report_output: output,
+	})
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_preflight(
 	path: PathBuf,
@@ -1467,6 +1647,256 @@ fn run_preflight(
 	)?;
 
 	Ok(())
+}
+
+fn run_permission_admission(
+	mut options: PermissionAdmissionOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+	validate_permission_admission_outputs(&options.planned_output, &options.report_output)?;
+	validate_permission_admission_output_aliases(&options)?;
+
+	let observed_unix_ms = resume::unix_ms();
+	let mut managed_profile = None;
+	let assessment = (|| {
+		let prepared = prepare_permission_admission(&mut options)?;
+		let profile =
+			prepared.adapter.verify_managed_permission_profile(&prepared.execution_root)?;
+
+		managed_profile = Some(profile.clone());
+
+		verify_permission_evidence_with_profile(
+			&prepared.adapter,
+			&prepared.execution_root,
+			&prepared.protected_paths,
+			RunClass::Official,
+			profile,
+		)
+	})();
+	let (report, denied) =
+		permission_admission_report(observed_unix_ms, managed_profile, assessment)?;
+
+	write_private_json_receipt(&options.report_output, &report)?;
+
+	if denied {
+		return Err("Official permission admission denied; no model was invoked".into());
+	}
+
+	Ok(())
+}
+
+fn permission_admission_report(
+	observed_unix_ms: u64,
+	managed_profile: Option<ManagedPermissionProfileEvidence>,
+	assessment: Result<VerifiedPermissionEvidence, Box<dyn std::error::Error>>,
+) -> Result<(PermissionAdmissionReport, bool), Box<dyn std::error::Error>> {
+	match assessment {
+		Ok(evidence) => {
+			let permission_evidence_digest = evidence.combined_digest()?;
+
+			Ok((
+				PermissionAdmissionReport {
+					schema_version: "aiq.official-permission-admission.v1",
+					official_permission_eligible: true,
+					model_invoked: false,
+					observed_unix_ms,
+					managed_profile: Some(evidence.profile),
+					permission_policy_digest: Some(evidence.digests.permission_policy_digest),
+					canary_digest: Some(evidence.digests.canary_digest),
+					permission_evidence_digest: Some(permission_evidence_digest),
+					failure: None,
+				},
+				false,
+			))
+		},
+		Err(error) => Ok((
+			PermissionAdmissionReport {
+				schema_version: "aiq.official-permission-admission.v1",
+				official_permission_eligible: false,
+				model_invoked: false,
+				observed_unix_ms,
+				managed_profile,
+				permission_policy_digest: None,
+				canary_digest: None,
+				permission_evidence_digest: None,
+				failure: Some(error.to_string()),
+			},
+			true,
+		)),
+	}
+}
+
+fn validate_permission_admission_outputs(
+	planned_output: &Path,
+	report_output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if planned_output == Path::new("-") || report_output == Path::new("-") {
+		return Err(
+			"Official permission admission requires durable planned and report outputs".into()
+		);
+	}
+
+	let planned_output = canonical_policy_path(planned_output)?;
+	let report_output = canonical_policy_path(report_output)?;
+
+	if planned_output == report_output {
+		return Err("permission admission --output must be distinct from --planned-output".into());
+	}
+
+	for (label, path) in [
+		("planned Official output", &planned_output),
+		("permission admission report", &report_output),
+	] {
+		match fs::symlink_metadata(path) {
+			Err(error) if error.kind() == ErrorKind::NotFound => {},
+			Err(error) => return Err(error.into()),
+			Ok(metadata) if metadata.file_type().is_symlink() => {
+				return Err(format!("{label} must not be a symlink").into());
+			},
+			Ok(_) => return Err(format!("{label} must not exist before admission").into()),
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_permission_admission_output_aliases(
+	options: &PermissionAdmissionOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let report = canonical_policy_path(&options.report_output)?;
+	let planned = canonical_policy_path(&options.planned_output)?;
+	let preflight_attempt = resume::preflight_attempt_path(&options.preflight_cache);
+	let mut other_paths = vec![
+		options.corpus_commitment.as_path(),
+		options.source_root.as_path(),
+		options.capabilities.as_path(),
+		options.workspace_root.as_path(),
+		options.execution_root.as_path(),
+		options.evaluator_root.as_path(),
+		options.evaluator_runtime.as_path(),
+		options.codex_toolchain_root.as_path(),
+		options.schedule.as_path(),
+		Path::new(&options.codex_binary),
+		options.codex_home.as_path(),
+		options.artifact_root.as_path(),
+		options.preflight_cache.as_path(),
+		preflight_attempt.as_path(),
+		options.checkpoint.as_path(),
+		options.planned_output.as_path(),
+	];
+
+	other_paths.extend(options.public_tasks.as_deref());
+	other_paths.extend(options.hidden_tasks.as_deref());
+
+	for path in other_paths {
+		if canonical_policy_path(path).is_ok_and(|path| path == report) {
+			return Err(
+				"permission admission --output must be distinct from every controlled path".into(),
+			);
+		}
+	}
+	for path in [&options.checkpoint, &preflight_attempt] {
+		if canonical_policy_path(path).is_ok_and(|path| path == planned) {
+			return Err(
+				"--planned-output must be distinct from checkpoint and preflight attempt paths"
+					.into(),
+			);
+		}
+	}
+
+	Ok(())
+}
+
+fn prepare_permission_admission(
+	options: &mut PermissionAdmissionOptions,
+) -> Result<PreparedPermissionAdmission, Box<dyn std::error::Error>> {
+	let task_report = load_tasks(options.public_tasks.as_deref(), options.hidden_tasks.as_deref())?;
+
+	if !task_report.issues.is_empty() {
+		return Err("Official permission admission requires valid controlled tasks".into());
+	}
+	if task_report.tasks.len() != 72 {
+		return Err("Official permission admission requires exactly 72 controlled tasks".into());
+	}
+
+	let corpus = corpus_commitment::validate_corpus_commitment(
+		&options.corpus_commitment,
+		&task_report.tasks,
+		&options.source_root,
+	)?;
+	let evaluator_root = controlled_evaluator_root(&options.evaluator_root)?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(&options.evaluator_runtime)?;
+
+	corpus.validate_evaluator_runtime(&evaluator_runtime)?;
+
+	let model_toolchain =
+		corpus.validate_model_toolchain(&options.codex_toolchain_root, &evaluator_runtime)?;
+
+	validate_external_evaluator_bindings(&task_report.tasks, &evaluator_root, &evaluator_runtime)?;
+
+	LocalDirectoryWorkspaceProvider::new(
+		&options.workspace_root,
+		&options.execution_root,
+		corpus.baseline_workspace_digests().clone(),
+	)?;
+
+	let manifest = read_json::<CapabilityManifest>(&options.capabilities)?;
+	let manifest_issues = adapter::validate_capability_manifest(&manifest);
+
+	if !manifest_issues.is_empty() {
+		return Err(
+			format!("capability manifest is invalid: {}", manifest_issues.join("; ")).into()
+		);
+	}
+
+	let _: ScheduleConfig = read_json(&options.schedule)?;
+
+	PreflightCache::load(
+		&options.preflight_cache,
+		&manifest,
+		resume::unix_ms(),
+		model_toolchain.digest(),
+	)?;
+
+	options.codex_binary = controlled_codex_binary(&options.codex_binary)?;
+
+	let artifact_sink = LocalArtifactSink::new(&options.artifact_root)?;
+	let protected_paths = benchmark_protected_paths_from(BenchmarkProtectedPathInputs {
+		public_tasks: options.public_tasks.as_deref(),
+		hidden_tasks: options.hidden_tasks.as_deref(),
+		source_root: &options.source_root,
+		workspace_root: &options.workspace_root,
+		evaluator_root: &options.evaluator_root,
+		artifact_root: &options.artifact_root,
+		codex_home: &options.codex_home,
+		codex_binary: Path::new(&options.codex_binary),
+		corpus_commitment: &options.corpus_commitment,
+		capabilities: &options.capabilities,
+		schedule: &options.schedule,
+		preflight_cache: &options.preflight_cache,
+		checkpoint: &options.checkpoint,
+		planned_output: &options.planned_output,
+		report_output: Some(&options.report_output),
+	})?;
+	let execution_root = fs::canonicalize(&options.execution_root)?;
+
+	isolation::validate_protected_layout(
+		&protected_paths,
+		Some(&execution_root),
+		&[model_toolchain.root().to_owned()],
+	)?;
+
+	let denied_roots = benchmark_denied_roots(&protected_paths)?;
+	let adapter = CodexAdapter::new(
+		SystemExecutor,
+		artifact_sink,
+		options.codex_binary.clone(),
+		CodexExecutionConfig::isolated(options.codex_home.clone())
+			.with_egress_proxy(options.codex_egress_proxy.clone())
+			.with_denied_roots(denied_roots)
+			.with_model_toolchain(model_toolchain),
+	);
+
+	Ok(PreparedPermissionAdmission { adapter, execution_root, protected_paths })
 }
 
 fn run_validation(
@@ -1937,9 +2367,9 @@ fn prepare_live_runtime(
 			.with_denied_roots(denied_roots)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
-	let future_files = FutureProtectedFiles::prepare(&future_entries)?;
 	let permission_evidence =
 		verify_permission_evidence(&adapter, &execution_root, &protected_paths, options.run_class)?;
+	let future_files = FutureProtectedFiles::prepare(&future_entries)?;
 
 	Ok(PreparedLiveRuntime {
 		adapter,
@@ -1981,24 +2411,50 @@ fn future_protected_entries(options: &RunOptions) -> Vec<(&'static str, &Path, b
 	]
 }
 
-fn verify_permission_evidence(
-	adapter: &CodexAdapter<SystemExecutor, LocalArtifactSink>,
+fn verify_permission_evidence<E, S>(
+	adapter: &CodexAdapter<E, S>,
 	execution_root: &Path,
 	protected_paths: &[ProtectedBenchmarkPath],
 	run_class: RunClass,
-) -> Result<PermissionEvidenceDigests, Box<dyn std::error::Error>> {
+) -> Result<VerifiedPermissionEvidence, Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
 	let profile = adapter.verify_managed_permission_profile(execution_root)?;
 
+	verify_permission_evidence_with_profile(
+		adapter,
+		execution_root,
+		protected_paths,
+		run_class,
+		profile,
+	)
+}
+
+fn verify_permission_evidence_with_profile<E, S>(
+	adapter: &CodexAdapter<E, S>,
+	execution_root: &Path,
+	protected_paths: &[ProtectedBenchmarkPath],
+	run_class: RunClass,
+	profile: ManagedPermissionProfileEvidence,
+) -> Result<VerifiedPermissionEvidence, Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
 	if run_class == RunClass::Official && !profile.official_eligible {
 		return Err("Official runs require an exclusive managed aiq_benchmark allowlist and managed default; no model was invoked".into());
 	}
 
-	Ok(PermissionEvidenceDigests {
+	let digests = PermissionEvidenceDigests {
 		permission_policy_digest: adapter.permission_policy_digest(execution_root)?,
 		managed_requirements_digest: profile.managed_requirements_digest().to_owned(),
 		profile_selection_digest: profile.profile_selection_digest().to_owned(),
 		canary_digest: verify_codex_permission_boundary(adapter, execution_root, protected_paths)?,
-	})
+	};
+
+	Ok(VerifiedPermissionEvidence { profile, digests })
 }
 
 fn validate_selected_run(
@@ -2279,6 +2735,28 @@ fn capability_partition(
 fn benchmark_protected_paths(
 	options: &RunOptions,
 ) -> Result<Vec<ProtectedBenchmarkPath>, Box<dyn std::error::Error>> {
+	benchmark_protected_paths_from(BenchmarkProtectedPathInputs {
+		public_tasks: options.public_tasks.as_deref(),
+		hidden_tasks: options.hidden_tasks.as_deref(),
+		source_root: &options.source_root,
+		workspace_root: &options.workspace_root,
+		evaluator_root: &options.evaluator_root,
+		artifact_root: &options.artifact_root,
+		codex_home: &options.codex_home,
+		codex_binary: Path::new(&options.codex_binary),
+		corpus_commitment: &options.corpus_commitment,
+		capabilities: &options.capabilities,
+		schedule: &options.schedule,
+		preflight_cache: &options.preflight_cache,
+		checkpoint: &options.checkpoint,
+		planned_output: &options.output,
+		report_output: None,
+	})
+}
+
+fn benchmark_protected_paths_from(
+	inputs: BenchmarkProtectedPathInputs<'_>,
+) -> Result<Vec<ProtectedBenchmarkPath>, Box<dyn std::error::Error>> {
 	let mut paths = Vec::new();
 	let mut push =
 		|category: &'static str, path: &Path| -> Result<(), Box<dyn std::error::Error>> {
@@ -2289,30 +2767,34 @@ fn benchmark_protected_paths(
 			Ok(())
 		};
 
-	push("source_root", &options.source_root)?;
-	push("workspace_baselines", &options.workspace_root)?;
-	push("evaluator_root", &options.evaluator_root)?;
-	push("artifact_root", &options.artifact_root)?;
-	push("codex_home", &options.codex_home)?;
-	push("codex_binary", Path::new(&options.codex_binary))?;
+	push("source_root", inputs.source_root)?;
+	push("workspace_baselines", inputs.workspace_root)?;
+	push("evaluator_root", inputs.evaluator_root)?;
+	push("artifact_root", inputs.artifact_root)?;
+	push("codex_home", inputs.codex_home)?;
+	push("codex_binary", inputs.codex_binary)?;
 
-	if let Some(path) = &options.public_tasks {
+	if let Some(path) = inputs.public_tasks {
 		push("public_tasks", path)?;
 	}
-	if let Some(path) = &options.hidden_tasks {
+	if let Some(path) = inputs.hidden_tasks {
 		push("hidden_tasks", path)?;
 	}
 
-	push("corpus_commitment", &options.corpus_commitment)?;
-	push("capabilities", &options.capabilities)?;
-	push("schedule", &options.schedule)?;
-	push("preflight_cache", &options.preflight_cache)?;
+	push("corpus_commitment", inputs.corpus_commitment)?;
+	push("capabilities", inputs.capabilities)?;
+	push("schedule", inputs.schedule)?;
+	push("preflight_cache", inputs.preflight_cache)?;
 
-	let preflight_attempt = resume::preflight_attempt_path(&options.preflight_cache);
+	let preflight_attempt = resume::preflight_attempt_path(inputs.preflight_cache);
 
 	push("preflight_attempt", &preflight_attempt)?;
-	push("checkpoint", &options.checkpoint)?;
-	push("output", &options.output)?;
+	push("checkpoint", inputs.checkpoint)?;
+	push("output", inputs.planned_output)?;
+
+	if let Some(path) = inputs.report_output {
+		push("permission_admission_report", path)?;
+	}
 
 	Ok(paths)
 }
@@ -2377,11 +2859,15 @@ fn canonical_policy_path(path: &Path) -> Result<PathBuf, Box<dyn std::error::Err
 	}
 }
 
-fn verify_codex_permission_boundary(
-	adapter: &CodexAdapter<SystemExecutor, LocalArtifactSink>,
+fn verify_codex_permission_boundary<E, S>(
+	adapter: &CodexAdapter<E, S>,
 	probe_parent: &Path,
 	protected_paths: &[ProtectedBenchmarkPath],
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
 	let probe_parent = fs::canonicalize(probe_parent)?;
 	let mut denied_canaries = PermissionProbeCanaries::prepare(protected_paths)?;
 	let mut probe_root = None;
@@ -3205,6 +3691,48 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Box<dyn std::er
 	Ok(())
 }
 
+fn write_private_json_receipt(
+	path: &Path,
+	value: &impl Serialize,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let path = canonical_policy_path(path)?;
+	let parent = path.parent().ok_or("permission admission report has no parent")?;
+	let mut bytes = serde_json::to_vec_pretty(value)?;
+
+	bytes.push(b'\n');
+
+	let mut options = OpenOptions::new();
+
+	options.write(true).create_new(true);
+	#[cfg(unix)]
+	options.mode(0o600).custom_flags(O_NOFOLLOW);
+
+	let mut file = options
+		.open(&path)
+		.map_err(|error| format!("cannot create permission admission report: {error}"))?;
+
+	#[cfg(unix)]
+	file.set_permissions(Permissions::from_mode(0o600))?;
+	file.write_all(&bytes)
+		.and_then(|()| file.sync_all())
+		.map_err(|error| format!("cannot persist permission admission report: {error}"))?;
+
+	#[cfg(unix)]
+	{
+		let metadata = file.metadata()?;
+
+		if metadata.permissions().mode() & 0o777 != 0o600 {
+			return Err("permission admission report must have mode 0600".into());
+		}
+
+		File::open(parent).and_then(|directory| directory.sync_all()).map_err(|error| {
+			format!("cannot sync permission admission report directory: {error}")
+		})?;
+	}
+
+	Ok(())
+}
+
 fn write_new_bytes(
 	path: &Path,
 	bytes: &[u8],
@@ -3279,6 +3807,9 @@ fn require_exact_created_file(
 
 #[cfg(test)]
 mod tests {
+	use std::env;
+	#[cfg(unix)]
+	use std::os::unix::fs::PermissionsExt as _;
 	use std::{
 		cell::RefCell,
 		fs,
@@ -3291,9 +3822,10 @@ mod tests {
 	use crate::{
 		adapter::{
 			CodexAdapter, CodexExecutionConfig, CommandRequest, ExecutionCapture, Executor,
-			ExecutorError,
+			ExecutorError, ManagedPermissionProfileEvidence,
 		},
 		cli,
+		corpus_commitment::{self, RunClass},
 		runner::TestArtifactSink,
 	};
 
@@ -3309,6 +3841,26 @@ mod tests {
 		}
 	}
 
+	struct SuccessfulBoundaryExecutor {
+		requests: Rc<RefCell<Vec<CommandRequest>>>,
+	}
+
+	impl Executor for SuccessfulBoundaryExecutor {
+		fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			self.requests.borrow_mut().push(request.clone());
+
+			Ok(ExecutionCapture {
+				exit_code: Some(0),
+				stdout: b"AIQ_ISOLATION_OK\n".to_vec(),
+				stderr: Vec::new(),
+				timed_out: false,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
 	fn fixture_root(name: &str) -> PathBuf {
 		let suffix =
 			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
@@ -3321,6 +3873,21 @@ mod tests {
 
 	fn expected_path(path: &Path) -> PathBuf {
 		cli::canonical_policy_path(path).expect("canonical policy fixture")
+	}
+
+	fn ineligible_managed_profile() -> ManagedPermissionProfileEvidence {
+		ManagedPermissionProfileEvidence {
+			schema_version: "aiq.managed-permission-profile-evidence.v1".to_owned(),
+			codex_version: "codex-cli 0.146.0".to_owned(),
+			default_permissions: "aiq_benchmark".to_owned(),
+			allowed_permission_profile: "aiq_benchmark".to_owned(),
+			active_permission_profile: "aiq_benchmark".to_owned(),
+			official_eligible: false,
+			managed_requirements_status: "allowlist_not_exclusive".to_owned(),
+			managed_requirements_digest: format!("sha256:{}", "a".repeat(64)),
+			profile_selection_digest: format!("sha256:{}", "b".repeat(64)),
+			evidence_digest: format!("sha256:{}", "c".repeat(64)),
+		}
 	}
 
 	#[test]
@@ -3444,6 +4011,238 @@ mod tests {
 		assert!(!error.to_string().contains("requires at least one protected path"));
 		assert_eq!(requests.borrow().len(), 1);
 		assert_eq!(requests.borrow()[0].args, ["--version"]);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn ineligible_official_admission_writes_denied_receipt_without_reserving_run_files() {
+		let root = fixture_root("denied-admission");
+		let workspace = root.join("workspace");
+		let codex_home = root.join("codex-home");
+		let checkpoint = root.join("checkpoint.json");
+		let planned_output = root.join("official.json");
+		let report_output = root.join("admission.json");
+
+		fs::create_dir_all(&workspace).expect("admission workspace");
+		fs::create_dir_all(&codex_home).expect("Codex home fixture");
+
+		let requests = Rc::new(RefCell::new(Vec::new()));
+		let adapter = CodexAdapter::new(
+			BoundaryExecutor { requests: Rc::clone(&requests) },
+			TestArtifactSink,
+			"codex",
+			CodexExecutionConfig::isolated(codex_home),
+		);
+		let profile = ineligible_managed_profile();
+		let assessment = cli::verify_permission_evidence_with_profile(
+			&adapter,
+			&workspace,
+			&[],
+			RunClass::Official,
+			profile.clone(),
+		);
+		let (report, denied) = cli::permission_admission_report(42, Some(profile), assessment)
+			.expect("denied admission report");
+
+		assert!(denied);
+
+		cli::write_private_json_receipt(&report_output, &report).expect("private denied receipt");
+
+		let value: serde_json::Value =
+			serde_json::from_slice(&fs::read(&report_output).expect("read denied receipt"))
+				.expect("denied receipt JSON");
+
+		assert_eq!(value["official_permission_eligible"], false);
+		assert_eq!(value["model_invoked"], false);
+		assert_eq!(
+			value["managed_profile"]["managed_requirements_status"],
+			"allowlist_not_exclusive"
+		);
+		assert!(
+			value["failure"].as_str().is_some_and(
+				|failure| failure.contains("exclusive managed aiq_benchmark allowlist")
+			)
+		);
+		assert!(requests.borrow().is_empty(), "denial must precede the sandbox canary");
+		assert!(!checkpoint.exists(), "denial must not create a checkpoint");
+		assert!(!planned_output.exists(), "denial must not reserve planned Official output");
+		#[cfg(unix)]
+		assert_eq!(
+			fs::symlink_metadata(&report_output).expect("receipt metadata").permissions().mode()
+				& 0o777,
+			0o600
+		);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn permission_admission_rejects_report_alias_existing_file_and_symlink() {
+		let root = fixture_root("admission-report-output");
+		let planned = root.join("official.json");
+		let report = root.join("admission.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		assert!(cli::validate_permission_admission_outputs(&planned, &planned).is_err());
+
+		let options = cli::PermissionAdmissionOptions {
+			public_tasks: None,
+			hidden_tasks: Some(root.join("tasks")),
+			corpus_commitment: root.join("commitment.json"),
+			source_root: root.join("source"),
+			capabilities: root.join("capabilities.json"),
+			workspace_root: root.join("baselines"),
+			execution_root: root.join("execution"),
+			evaluator_root: root.join("evaluators"),
+			evaluator_runtime: root.join("node"),
+			codex_toolchain_root: root.join("toolchain"),
+			schedule: root.join("schedule.json"),
+			codex_binary: root.join("codex").display().to_string(),
+			codex_home: root.join("codex-home"),
+			codex_egress_proxy: crate::adapter::CodexEgressProxyEndpoint::parse(
+				"http://10.20.30.40:8080",
+			)
+			.expect("proxy fixture"),
+			artifact_root: root.join("artifacts"),
+			preflight_cache: root.join("preflight.json"),
+			checkpoint: report.clone(),
+			planned_output: planned.clone(),
+			report_output: report.clone(),
+		};
+
+		assert!(cli::validate_permission_admission_output_aliases(&options).is_err());
+
+		fs::write(&report, b"existing").expect("existing report fixture");
+
+		assert!(cli::validate_permission_admission_outputs(&planned, &report).is_err());
+
+		fs::remove_file(&report).expect("remove existing report fixture");
+
+		let target = root.join("target.json");
+
+		fs::write(&target, b"target").expect("symlink target fixture");
+
+		#[cfg(unix)]
+		{
+			std::os::unix::fs::symlink(&target, &report).expect("report symlink fixture");
+
+			assert!(cli::validate_permission_admission_outputs(&planned, &report).is_err());
+			assert!(cli::write_private_json_receipt(&report, &serde_json::json!({})).is_err());
+		}
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn every_protected_path_category_reaches_the_permission_canary() {
+		let root = fixture_root("admission-canary-categories");
+		let execution = root.join("execution");
+		let toolchain = root.join("toolchain");
+		let codex_home = root.join("codex-home");
+		let probe_binary = env::current_exe().expect("test executable");
+
+		for directory in [&execution, &toolchain, &codex_home] {
+			fs::create_dir_all(directory).expect("fixture directory");
+		}
+
+		fs::write(codex_home.join("config.toml"), b"fixture").expect("Codex home fixture");
+
+		let node = toolchain.join(if cfg!(windows) { "node.exe" } else { "node" });
+
+		fs::write(&node, b"node").expect("toolchain fixture");
+
+		let source = root.join("source");
+		let baselines = root.join("baselines");
+		let evaluators = root.join("evaluators");
+		let artifacts = root.join("artifacts");
+		let tasks = root.join("tasks");
+		let codex_binary = root.join("codex");
+		let commitment = root.join("commitment.json");
+		let capabilities = root.join("capabilities.json");
+		let schedule = root.join("schedule.json");
+		let preflight = root.join("preflight.json");
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("official.json");
+		let report = root.join("admission.json");
+		let protected = cli::benchmark_protected_paths_from(cli::BenchmarkProtectedPathInputs {
+			public_tasks: None,
+			hidden_tasks: Some(&tasks),
+			source_root: &source,
+			workspace_root: &baselines,
+			evaluator_root: &evaluators,
+			artifact_root: &artifacts,
+			codex_home: &codex_home,
+			codex_binary: &codex_binary,
+			corpus_commitment: &commitment,
+			capabilities: &capabilities,
+			schedule: &schedule,
+			preflight_cache: &preflight,
+			checkpoint: &checkpoint,
+			planned_output: &output,
+			report_output: Some(&report),
+		})
+		.expect("complete permission admission protected paths");
+		let category_names = [
+			"source_root",
+			"workspace_baselines",
+			"evaluator_root",
+			"artifact_root",
+			"codex_home",
+			"codex_binary",
+			"hidden_tasks",
+			"corpus_commitment",
+			"capabilities",
+			"schedule",
+			"preflight_cache",
+			"preflight_attempt",
+			"checkpoint",
+			"output",
+			"permission_admission_report",
+		];
+
+		assert_eq!(
+			protected.iter().map(|entry| entry.category).collect::<std::collections::BTreeSet<_>>(),
+			category_names.into_iter().collect()
+		);
+
+		let requests = Rc::new(RefCell::new(Vec::new()));
+		let adapter = CodexAdapter::new(
+			SuccessfulBoundaryExecutor { requests: Rc::clone(&requests) },
+			TestArtifactSink,
+			"codex",
+			CodexExecutionConfig::isolated(codex_home)
+				.with_denied_roots(protected.iter().map(|entry| entry.path.clone()).collect())
+				.with_permission_probe_executable(probe_binary)
+				.with_model_toolchain(corpus_commitment::fixture_model_toolchain(toolchain)),
+		);
+		let digest = cli::verify_codex_permission_boundary(&adapter, &execution, &protected)
+			.expect("all protected categories reach a successful canary");
+
+		assert!(digest.starts_with("sha256:"));
+
+		let requests = requests.borrow();
+		let request = requests.first().expect("permission canary request");
+		let denied_values = request
+			.args
+			.windows(2)
+			.filter(|pair| pair[0] == "--denied-file")
+			.map(|pair| pair[1].clone())
+			.collect::<Vec<_>>();
+
+		assert_eq!(denied_values.len(), category_names.len());
+		assert_eq!(requests.len(), 1, "the canary must not invoke a model");
+
+		for entry in &protected {
+			assert!(
+				denied_values
+					.iter()
+					.any(|path| path.starts_with(entry.path.to_string_lossy().as_ref())),
+				"protected category {} did not reach the canary",
+				entry.category
+			);
+		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
 	}

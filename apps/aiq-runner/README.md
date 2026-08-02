@@ -31,6 +31,7 @@ Show the exact arguments for live commands:
 
 ```sh
 cargo run -p aiq-runner -- preflight --help
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- run --help
 cargo run -p aiq-runner -- score --help
 cargo run -p aiq-runner -- package --help
@@ -53,6 +54,19 @@ A live preflight requires:
 A live run also requires controlled task, workspace, evaluator, schedule,
 execution, artifact, preflight-cache, and checkpoint paths. The CLI checks path
 separation and commitments before it starts task processes.
+
+Run `admit-permissions` before an Official occurrence. It uses the exact planned
+run paths to verify the exclusive managed `aiq_benchmark` profile and all Codex
+sandbox canaries. It writes one private create-once
+`aiq.official-permission-admission.v1` receipt. It does not invoke a model,
+create a checkpoint, or reserve the planned Official output. The command is a
+permission gate only. The `run` command still validates the schedule, capacity,
+and complete execution contract.
+
+The non-secret [managed requirements example](../../config/codex-requirements.example.toml)
+contains the exact Official policy. Install its bytes outside the repository as
+root-owned `/etc/codex/requirements.toml`. Do not use a user-writable copy for
+Official admission.
 
 The credential source must stay unchanged during controlled work. On Linux,
 put `auth.json` on a read-only file-system mount. For local macOS validation,
@@ -113,7 +127,9 @@ example. The second uses operator-supplied controlled inputs. Their summaries
 are diagnostic evidence only. For the controlled smoke,
 `AIQ_CONTROLLED_SUBSCRIPTION_SMOKE_EXECUTION_ROOT` must name a new private
 absolute path outside the repository, Codex home, controlled inputs, artifact
-root, and model toolchain.
+root, and model toolchain. It also requires `AIQ_REAL_CODEX_EGRESS_PROXY` in
+canonical `http://<private-IPv4>:<port>` form and
+`AIQ_REAL_PERMISSION_PROBE_BINARY` naming the exact `aiq-runner` executable.
 
 ## Safety
 
