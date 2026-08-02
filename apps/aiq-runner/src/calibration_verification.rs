@@ -988,7 +988,7 @@ fn result_efficiency(
 	let provider_tokens = provider_usage.clone();
 	let (standard_api_equivalent_usd_nanos, cost_status) =
 		estimate_cost(result.model, &provider_tokens, pricing);
-	let attempted = !synthetic_uninvoked
+	let adapter_invoked = !synthetic_uninvoked
 		&& !matches!(
 			result.failure.as_ref().map(|failure| failure.kind),
 			Some(
@@ -998,13 +998,13 @@ fn result_efficiency(
 			)
 		);
 
-	if !attempted && !provider_tokens.is_empty() {
+	if !adapter_invoked && !provider_tokens.is_empty() {
 		return Err(CalibrationVerificationError::new(
-			"an uninvoked calibration result cannot report provider usage",
+			"an adapter-uninvoked calibration result cannot report provider usage",
 		));
 	}
 
-	let observed_wall_ms = attempted.then_some(result.latency.wall_ms);
+	let observed_wall_ms = adapter_invoked.then_some(result.latency.wall_ms);
 	let has_provider_usage = !provider_tokens.is_empty();
 	let observation = CalibrationResultEfficiency {
 		source_result_id: result.result_id.clone(),

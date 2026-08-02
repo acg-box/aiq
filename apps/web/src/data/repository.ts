@@ -891,8 +891,9 @@ function isCalibrationScoreRow(value: unknown): value is CalibrationScoreRow {
     isCount(value.adapter_elapsed_observed_result_count) &&
     isCount(value.token_observed_result_count) &&
     isCount(value.priced_result_count) &&
-    value.attempted_result_count === value.result_count &&
+    value.attempted_result_count <= value.result_count &&
     value.invoked_result_count <= value.attempted_result_count &&
+    value.adapter_elapsed_observed_result_count <= value.invoked_result_count &&
     value.adapter_elapsed_observed_result_count === value.observed_time_sample_count &&
     value.token_observed_result_count === value.token_usage_sample_count &&
     value.priced_result_count === value.estimated_cost_sample_count &&

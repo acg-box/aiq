@@ -201,8 +201,8 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
                 <td>
                   {score.sampleSize} / {score.coveragePercent.toFixed(1)}%
                   <small>
-                    {score.attemptedResultCount} attempted · {score.invokedResultCount} invoked ·{' '}
-                    {score.adapterElapsedObservedResultCount} elapsed-observed
+                    {score.attemptedResultCount} attempted · {score.invokedResultCount}{' '}
+                    adapter-invoked · {score.adapterElapsedObservedResultCount} elapsed-observed
                   </small>
                 </td>
                 <td>

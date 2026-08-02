@@ -126,6 +126,14 @@ function trendRow(matrixId: string, recordedAt: string): TrendRow {
   };
 }
 
+function calibrationScoreRepository(row: unknown): SupabaseAiqRepository {
+  return new SupabaseAiqRepository(
+    'https://example.supabase.co',
+    'sb_publishable_public_example',
+    async () => Response.json([row]),
+  );
+}
+
 void describe('seed repository', () => {
   void it('provides the complete 6/6/5 model and reasoning matrix', () => {
     assert.equal(seedLeaderboard.length, 17);
@@ -1026,6 +1034,75 @@ void describe('presentation aggregates', () => {
           /public_calibration_results: invalid response shape/,
         );
       }),
+    );
+  });
+
+  void it('preserves selected, attempted, adapter-invoked, and elapsed counts', async () => {
+    const runId = `run_${'e'.repeat(64)}`;
+    const scoreRow = {
+      run_id: runId,
+      model_family: 'terra',
+      reasoning_effort: 'medium',
+      descriptive_status: 'conditional_observed',
+      aiq: 57.5,
+      task_resampling_sensitivity_lower: 45,
+      task_resampling_sensitivity_upper: 68,
+      task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
+      result_count: 72,
+      sample_size: 69,
+      coverage_percent: (69 / 72) * 100,
+      observed_total_wall_ms: 700_000,
+      observed_median_wall_ms: 10_000,
+      observed_p95_wall_ms: 12_000,
+      observed_time_sample_count: 70,
+      observed_time_coverage_percent: (70 / 72) * 100,
+      duration_evidence_level: 'runner_observed',
+      input_tokens: null,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      output_tokens: null,
+      reasoning_output_tokens: null,
+      total_tokens: null,
+      token_usage_sample_count: 0,
+      token_usage_source_level: null,
+      token_usage_evidence_level: null,
+      standard_api_equivalent_usd_nanos: null,
+      estimated_cost_sample_count: 0,
+      token_usage_coverage_percent: 0,
+      cost_estimator_status: 'unavailable_missing_usage',
+      cost_evidence_level: null,
+      cost_estimator_limitations: [
+        'Standard short-context API-equivalent comparison only. This is not actual subscription spend.',
+      ],
+      pricing_source: 'https://developers.openai.com/api/docs/pricing',
+      pricing_as_of: '2026-08-02',
+      pricing_version: 'aiq.standard-api-equivalent-usd.v1',
+      pricing_currency: 'USD',
+      pricing_processing_tier: 'standard',
+      attempted_result_count: 71,
+      invoked_result_count: 70,
+      adapter_elapsed_observed_result_count: 70,
+      token_observed_result_count: 0,
+      priced_result_count: 0,
+    };
+    const scores = await calibrationScoreRepository(scoreRow).listCalibrationScores(runId);
+    assert.equal(scores.length, 1);
+    assert.equal(scores[0]?.resultCount, 72);
+    assert.equal(scores[0]?.attemptedResultCount, 71);
+    assert.equal(scores[0]?.invokedResultCount, 70);
+    assert.equal(scores[0]?.adapterElapsedObservedResultCount, 70);
+
+    await Promise.all(
+      [
+        { ...scoreRow, attempted_result_count: 73 },
+        { ...scoreRow, invoked_result_count: 72 },
+        { ...scoreRow, adapter_elapsed_observed_result_count: 71 },
+      ].map((invalid) =>
+        assert.rejects(
+          calibrationScoreRepository(invalid).listCalibrationScores(runId),
+          /public_calibration_scores: invalid response shape/,
+        ),
+      ),
     );
   });
 

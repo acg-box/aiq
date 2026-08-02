@@ -140,6 +140,13 @@ void test('keeps efficiency evidence nullable, bounded, and non-Official', () =>
   ]) {
     assert.match(schema, new RegExp(count));
   }
+  assert.match(
+    schema,
+    /attempted_result_count between 0 and result_count[\s\S]*?invoked_result_count between 0 and attempted_result_count/,
+  );
+  assert.match(schema, /run\.attempted_result_count,[\s\S]*?run\.invoked_result_count,/);
+  assert.match(schema, /score\.attempted_result_count,[\s\S]*?score\.invoked_result_count,/);
+  assert.doesNotMatch(schema, /result_count as attempted_result_count/);
   for (const total of [
     'input_tokens',
     'cached_input_tokens',
