@@ -153,7 +153,7 @@ pub struct NormalizedTaskResult {
 	pub evaluator_stdout_sha256: Option<String>,
 	/// Source artifact references.
 	pub artifacts: Vec<ArtifactReference>,
-	/// Measured latency.
+	/// Measured Codex adapter elapsed time.
 	pub latency: Latency,
 	/// Measured tool usage.
 	pub tool_usage: ToolUsage,
