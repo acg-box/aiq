@@ -28,14 +28,11 @@ pub use self::{
 	},
 };
 
+use clap as _;
 #[cfg(test)]
 use std::sync::PoisonError;
 #[cfg(test)]
 use std::sync::RwLockReadGuard;
-#[cfg(all(test, target_os = "linux"))]
-use std::sync::RwLockWriteGuard;
-
-use clap as _;
 
 #[cfg(test)]
 static PROCESS_TEST_ISOLATION: std::sync::RwLock<()> = std::sync::RwLock::new(());
@@ -43,9 +40,4 @@ static PROCESS_TEST_ISOLATION: std::sync::RwLock<()> = std::sync::RwLock::new(()
 #[cfg(test)]
 pub(crate) fn process_test_read_lock() -> RwLockReadGuard<'static, ()> {
 	PROCESS_TEST_ISOLATION.read().unwrap_or_else(PoisonError::into_inner)
-}
-
-#[cfg(all(test, target_os = "linux"))]
-pub(crate) fn process_test_write_lock() -> RwLockWriteGuard<'static, ()> {
-	PROCESS_TEST_ISOLATION.write().unwrap_or_else(PoisonError::into_inner)
 }
