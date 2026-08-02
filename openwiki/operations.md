@@ -7,6 +7,36 @@ tags: ['operations', 'validation', 'runbook']
 
 # Operations and Validation
 
+## Hosted production state
+
+The personal Vercel scope `acgbox` hosts project `aiq` at `https://aiq.wiki`.
+The only Vercel project domains are the Production apex and `www.aiq.wiki`,
+which preserves the request path and returns a `308` redirect to the apex. Both
+domains report `configured_correctly`. The Cloudflare zone `aiq.wiki` in account
+`Cloudflare@acg.box` has exactly two DNS-only CNAMEs, `@` and `www`, both
+targeting `87af8e493f03b965.vercel-dns-017.com`. The removed project domain
+`aiq-acgbox.vercel.app` returns `404 DEPLOYMENT_NOT_FOUND` and is not a public
+origin.
+
+The production environment-name set in [Web configuration](#web-configuration)
+is configured; values remain outside Git. The personal Supabase organization
+`ACG Box` hosts project `aiq`
+(`xxnszykaeapolqdnhalx`). Its one-shot production schema and reference
+initialization completed. The real database has 17 model configurations, three
+production nodes, no published runs, and private `private-packages` and
+`private-artifacts` buckets.
+
+The apex home returns `200`. The production readiness endpoint returns `200`
+with `bounded_dependency_probe_passed`, `scope_ready: true`, and production
+mode. The empty real-data read path passes.
+
+No benchmark or Storage schedule and no cloud runner or verifier worker exist.
+A full real run has not been published. Official dispatch is blocked by the
+managed-policy gate: `Official runs require an exclusive managed aiq_benchmark
+allowlist and managed default; no model was invoked`. Current run work is
+calibration-only. Calibration evidence is non-Official and cannot satisfy the
+Official publication gate. This state is not final release acceptance.
+
 ## Toolchain
 
 Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
@@ -91,7 +121,9 @@ Run preflight first. Store its authenticated report at a durable path. The run
 can use that report until it expires or can refresh it explicitly.
 
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
-Use calibration for a bounded diagnostic subset.
+The current managed policy has not passed the Official admission gate. Use
+calibration for a bounded diagnostic subset, and do not classify or publish its
+evidence as Official.
 
 ## Score, package, and submit
 
@@ -123,8 +155,10 @@ replays evaluators, and posts the stage and attestation to
 
 ## Fresh database initialization
 
-Create a new Supabase project. Do not apply AIQ objects before initialization.
-Use a direct PostgreSQL URL, not the public Data API URL.
+The current production project has already completed this one-shot
+initialization. Do not rerun it against that project. For a replacement empty
+Supabase project, do not apply AIQ objects before initialization. Use a direct
+PostgreSQL URL, not the public Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -156,6 +190,10 @@ bounded trend RPC. This exercises the public-read path described in
 fixture in production.
 
 ## Web configuration
+
+The production environment-name set below is configured for Vercel project
+`acgbox/aiq`. Values remain outside Git. Preserve this name set and the
+browser-safe/server-only boundary when rotating a value.
 
 For the disposable AIQ Wiki read-only preview in the personal Vercel `acgbox`
 scope/account and Supabase `ACG Box` organization, set only:

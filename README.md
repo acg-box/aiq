@@ -4,10 +4,18 @@ AIQ Wiki records fixed-fixture AI and agent benchmark results. The repository
 contains a Rust runner, a Rust verifier, a Next.js application, the public AIQ
 Core catalog, and one declarative PostgreSQL schema.
 
-The source is ready for a new greenfield deployment, but this repository has not
-created a Supabase project, Vercel project, DNS record, production secret,
-schedule, or remote worker. All checked-in result data is synthetic. Deployment
-readiness still requires the external gates in the deployment handoff.
+The production Web and database foundations are provisioned, but release
+acceptance is not complete. The personal Vercel scope `acgbox` hosts project
+`aiq` at `https://aiq.wiki`, with the production environment-name contract
+configured. `https://www.aiq.wiki` preserves the request path and redirects to
+the apex domain. The personal Supabase organization `ACG Box` hosts project
+`aiq` (`xxnszykaeapolqdnhalx`), initialized once with the production schema and
+reference. The live database has 17 model configurations, three production
+nodes, no published runs, and private `private-packages` and
+`private-artifacts` buckets. Bounded runtime readiness and the empty real-data
+read path pass. No benchmark or Storage schedule and no cloud runner or
+verifier worker exist. A full real run has not been published, so deployment
+readiness still requires the remaining gates in the deployment handoff.
 
 ## Product contract
 
