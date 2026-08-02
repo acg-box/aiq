@@ -675,7 +675,8 @@
             "usage_limit",
             "non_zero_exit",
             "budget_exceeded",
-            "output_truncated"
+            "output_truncated",
+            "workspace_integrity"
           ]
         },
         "exit_code": {

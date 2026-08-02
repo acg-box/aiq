@@ -572,7 +572,12 @@
           "$ref": "#/$defs/nullableSafeUnsignedInteger"
         },
         "cost_status": {
-          "enum": ["estimated", "unavailable_missing_usage", "unavailable_invalid_usage"]
+          "enum": [
+            "estimated",
+            "unavailable_missing_usage",
+            "unavailable_invalid_usage",
+            "unavailable_context_band"
+          ]
         },
         "cost_evidence_level": {
           "oneOf": [
@@ -692,7 +697,63 @@
           "else": {
             "properties": {
               "cost_status": {
-                "enum": ["estimated", "unavailable_invalid_usage"]
+                "enum": [
+                  "estimated",
+                  "unavailable_invalid_usage",
+                  "unavailable_context_band"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "cost_status": {
+                "const": "unavailable_context_band"
+              }
+            },
+            "required": ["cost_status"]
+          },
+          "then": {
+            "properties": {
+              "provider_tokens": {
+                "properties": {
+                  "input": {
+                    "type": "integer",
+                    "minimum": 272001
+                  }
+                },
+                "required": ["input", "cached_input", "cache_write_input", "output"]
+              },
+              "standard_api_equivalent_usd_nanos": {
+                "type": "null"
+              },
+              "cost_evidence_level": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider_tokens": {
+                "properties": {
+                  "input": {
+                    "type": "integer",
+                    "minimum": 272001
+                  }
+                },
+                "required": ["input", "cached_input", "cache_write_input", "output"]
+              }
+            },
+            "required": ["provider_tokens"]
+          },
+          "then": {
+            "properties": {
+              "cost_status": {
+                "const": "unavailable_context_band"
               }
             }
           }
@@ -1003,7 +1064,7 @@
           "const": "2026-08-02"
         },
         "source": {
-          "const": "https://developers.openai.com/api/docs/models/compare"
+          "const": "https://developers.openai.com/api/docs/pricing"
         },
         "currency": {
           "const": "USD"
@@ -1028,19 +1089,19 @@
             {
               "const": {
                 "model": "gpt-5.6-terra",
-                "input_usd_nanos_per_token": 2500,
-                "cached_input_usd_nanos_per_token": 250,
-                "cache_write_input_usd_nanos_per_token": 3125,
-                "output_usd_nanos_per_token": 15000
+                "input_usd_nanos_per_token": 2000,
+                "cached_input_usd_nanos_per_token": 200,
+                "cache_write_input_usd_nanos_per_token": 2500,
+                "output_usd_nanos_per_token": 12000
               }
             },
             {
               "const": {
                 "model": "gpt-5.6-luna",
-                "input_usd_nanos_per_token": 1000,
-                "cached_input_usd_nanos_per_token": 100,
-                "cache_write_input_usd_nanos_per_token": 1250,
-                "output_usd_nanos_per_token": 6000
+                "input_usd_nanos_per_token": 200,
+                "cached_input_usd_nanos_per_token": 20,
+                "cache_write_input_usd_nanos_per_token": 250,
+                "output_usd_nanos_per_token": 1200
               }
             }
           ],
@@ -1053,7 +1114,7 @@
           "const": false
         },
         "limitation": {
-          "const": "Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend."
+          "const": "Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend."
         }
       }
     },
