@@ -21,13 +21,13 @@ export const metadata: Metadata = {
   title:
     deploymentProfile.profile === 'preview'
       ? {
-          default: 'AIQ Wiki — ACGbox synthetic preview',
-          template: '%s · ACGbox preview · AIQ Wiki',
+          default: 'AIQ Wiki — synthetic preview',
+          template: '%s · Preview · AIQ Wiki',
         }
       : { default: 'AIQ Wiki — fixed-fixture agent evaluation', template: '%s · AIQ Wiki' },
   description:
     deploymentProfile.profile === 'preview'
-      ? 'ACGbox read-only preview with synthetic AIQ Wiki fixtures and live Supabase read validation.'
+      ? 'AIQ Wiki read-only preview with synthetic fixtures and live Supabase read validation.'
       : 'A transparent index of AIQ v1 fixed-fixture outcomes, sensitivity, history, and provenance.',
   robots:
     deploymentProfile.profile === 'standard'
@@ -49,7 +49,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </a>
         {currentDeploymentProfile === 'preview' ? (
           <aside className="preview-banner" aria-label="Deployment status">
-            ACGbox preview · synthetic · read-only · not production
+            AIQ Wiki preview · synthetic · read-only · not production
           </aside>
         ) : null}
         <SiteHeader
@@ -68,7 +68,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </div>
           <p className="footer-note">
             {currentDeploymentProfile === 'preview'
-              ? 'ACGbox preview · live Supabase read validation · synthetic fixtures only'
+              ? 'AIQ Wiki preview · live Supabase read validation · synthetic fixtures only'
               : publicDataConfiguration === 'live'
                 ? 'RLS-protected public views · AIQ v1 · inspect each scoring version'
                 : publicDataConfiguration === 'invalid'

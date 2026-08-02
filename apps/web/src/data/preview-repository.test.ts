@@ -89,7 +89,7 @@ class LivePreviewFixtureRepository implements PreviewStatusSource {
   }
 }
 
-void describe('ACGbox preview repository', () => {
+void describe('AIQ Wiki preview repository', () => {
   void it('validates one status row once and serves every explicit fixture without more live reads', async () => {
     const live = new LivePreviewFixtureRepository();
     const preview = new PreviewAiqRepository(live);
