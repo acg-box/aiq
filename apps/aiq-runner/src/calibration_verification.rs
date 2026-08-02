@@ -84,6 +84,8 @@ pub struct ApiEquivalentPricingModel {
 	pub source: String,
 	/// ISO currency code.
 	pub currency: String,
+	/// API processing tier used by the comparison rate card.
+	pub processing_tier: String,
 	/// Sol, Terra, and Luna standard rates.
 	pub rates: Vec<ApiEquivalentTokenRates>,
 	/// Exact formula and exclusions.
@@ -101,6 +103,7 @@ impl Default for ApiEquivalentPricingModel {
 			as_of: PRICING_AS_OF.to_owned(),
 			source: PRICING_SOURCE.to_owned(),
 			currency: "USD".to_owned(),
+			processing_tier: "standard".to_owned(),
 			rates: vec![
 				rates("gpt-5.6-sol", 5_000, 500, 6_250, 30_000),
 				rates("gpt-5.6-terra", 2_500, 250, 3_125, 15_000),
@@ -163,9 +166,9 @@ pub struct CalibrationResultEfficiency {
 	pub task_id: String,
 	/// Selected model configuration.
 	pub model: ModelConfig,
-	/// Observed task wall time. Unattempted cells remain unknown.
+	/// Observed Codex adapter elapsed time. Uninvoked cells remain unknown.
 	pub observed_wall_ms: Option<u64>,
-	/// Wall-time authority classification.
+	/// Codex adapter elapsed-time authority classification.
 	pub wall_time_evidence_level: Option<EfficiencyEvidenceLevel>,
 	/// Provider-reported counters. Missing counters remain omitted.
 	pub provider_tokens: ProviderTokenUsage,
@@ -201,9 +204,13 @@ pub struct CalibrationEfficiencyAggregate {
 	pub schema_version: String,
 	pub model: ModelConfig,
 	pub selected_tasks: usize,
+	/// Results with observed Codex adapter elapsed time.
 	pub observed_wall_tasks: usize,
+	/// Total observed Codex adapter elapsed time.
 	pub total_observed_wall_ms: Option<u64>,
+	/// Median observed Codex adapter elapsed time.
 	pub median_observed_wall_ms: Option<u64>,
+	/// 95th-percentile observed Codex adapter elapsed time.
 	pub p95_observed_wall_ms: Option<u64>,
 	pub provider_token_totals: ProviderTokenUsage,
 	pub provider_token_coverage: ProviderTokenCoverage,
@@ -744,6 +751,15 @@ fn aggregate_efficiency(
 		.iter()
 		.filter_map(|result| result.standard_api_equivalent_usd_nanos)
 		.collect::<Vec<_>>();
+	let total_estimated_cost = if estimated.len() == results.len() {
+		estimated
+			.iter()
+			.copied()
+			.try_fold(0_u64, u64::checked_add)
+			.filter(|total| *total <= MAX_JCS_SAFE_INTEGER)
+	} else {
+		None
+	};
 	let total_wall = (!walls.is_empty()).then(|| walls.iter().copied().sum());
 	let median = (!walls.is_empty()).then(|| {
 		let middle = walls.len() / 2;
@@ -775,8 +791,7 @@ fn aggregate_efficiency(
 			total_tasks: count_present(results, |usage| usage.total),
 		},
 		estimated_cost_tasks: estimated.len(),
-		standard_api_equivalent_usd_nanos: (!estimated.is_empty())
-			.then(|| estimated.iter().copied().fold(0_u64, u64::saturating_add)),
+		standard_api_equivalent_usd_nanos: total_estimated_cost,
 	}
 }
 
@@ -1037,6 +1052,47 @@ mod tests {
 		assert_eq!(
 			estimate_cost(MODEL_MATRIX[0], &invalid, &pricing),
 			(None, CostEstimateStatus::UnavailableInvalidUsage)
+		);
+	}
+
+	#[test]
+	fn aggregate_cost_is_null_until_every_selected_result_is_priced() {
+		let run = synthetic_demo(
+			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
+			&crate::runner::TestArtifactSink,
+		)
+		.expect("synthetic run");
+		let results = vec![run.results[0].clone(), run.results[0].clone()];
+		let complete_usage = ProviderTokenUsage {
+			input: Some(10),
+			cached_input: Some(0),
+			cache_write_input: Some(0),
+			output: Some(1),
+			reasoning: Some(1),
+			total: Some(11),
+		};
+		let (partial_results, partial_aggregates, pricing) = build_efficiency_evidence(
+			&results,
+			&[complete_usage.clone(), ProviderTokenUsage::default()],
+		)
+		.expect("partial efficiency evidence");
+
+		assert_eq!(pricing.currency, "USD");
+		assert_eq!(pricing.processing_tier, "standard");
+		assert_eq!(partial_aggregates[0].estimated_cost_tasks, 1);
+		assert_eq!(partial_aggregates[0].standard_api_equivalent_usd_nanos, None);
+
+		let expected_one = partial_results[0]
+			.standard_api_equivalent_usd_nanos
+			.expect("one priced result");
+		let (_, complete_aggregates, _) =
+			build_efficiency_evidence(&results, &[complete_usage.clone(), complete_usage])
+				.expect("complete efficiency evidence");
+
+		assert_eq!(complete_aggregates[0].estimated_cost_tasks, 2);
+		assert_eq!(
+			complete_aggregates[0].standard_api_equivalent_usd_nanos,
+			expected_one.checked_mul(2)
 		);
 	}
 

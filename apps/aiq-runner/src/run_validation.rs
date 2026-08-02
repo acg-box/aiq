@@ -967,7 +967,7 @@ fn validate_result_budgets(
 			|| result.tool_usage.total_calls > task.budgets.max_tool_calls
 		{
 			return Err(RunValidationError::new(
-				"result latency or live tool counters exceed the task budgets",
+				"Codex adapter elapsed time or live tool counters exceed the task budgets",
 			));
 		}
 	}

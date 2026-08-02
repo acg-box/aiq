@@ -308,12 +308,12 @@ pub struct ResultFailure {
 	pub retryable: bool,
 }
 
-/// Measured Codex invocation latency. It includes model and local tool execution
+/// Measured Codex adapter elapsed time. It includes model and local tool execution
 /// and excludes workspace setup, workspace sealing, and evaluator replay.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Latency {
-	/// Wall-clock milliseconds.
+	/// Codex adapter elapsed time in wall-clock milliseconds.
 	pub wall_ms: u64,
 }
 
@@ -701,7 +701,7 @@ pub struct TaskResult {
 	pub artifacts: Vec<ArtifactReference>,
 	/// Structured failure when execution did not produce a scored result.
 	pub failure: Option<ResultFailure>,
-	/// Execution latency.
+	/// Codex adapter elapsed time.
 	pub latency: Latency,
 	/// Captured tool usage.
 	pub tool_usage: ToolUsage,
