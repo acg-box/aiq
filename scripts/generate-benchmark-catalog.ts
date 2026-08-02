@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,8 +127,10 @@ interface AcceptanceFixtureCommitment {
   readonly status: 'required_in_controlled_source';
 }
 
-export const AIQ_CORE_V1_CATALOG_IDENTITY_SHA256 =
-  'sha256:efe6cec623c140cbb6a4c96583a5d0aed24ec856d7792301d1543bd1f9b90db5';
+export const AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256 =
+  'sha256:83440762f969c521d16144a54a1490fadba0fce22cce902fb1d30af66a1403ba';
+export const AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256 =
+  'sha256:1a29c58d23a5675c0704ed9ab5bf6a74cd267d3a82f39807f783fb05cfa7b40c';
 
 const TASK_SET_VERSION = '1.0.2';
 const TASK_VERSION = '1.0.2';
@@ -150,10 +152,17 @@ export interface Catalog {
     readonly digest_scope: 'ordered_full_task_metadata';
     readonly source_commit: '4700e4c6e5e46ff9b3451d87b8761fb8da8365a0';
   };
-  readonly identity_commitment: {
+  readonly task_metadata_identity: {
     readonly algorithm: 'sha256';
+    readonly canonicalization: 'aiq.sorted-key-json.v1';
     readonly digest: string;
-    readonly scope: 'ordered_full_task_metadata_release_policy_and_predecessor';
+    readonly scope: 'ordered_full_task_metadata';
+  };
+  readonly catalog_release_identity: {
+    readonly algorithm: 'sha256';
+    readonly canonicalization: 'aiq.sorted-key-json.v1';
+    readonly digest: string;
+    readonly scope: 'task_metadata_identity_release_policy_and_predecessor';
   };
   readonly content_policy: {
     readonly public_repository: string;
@@ -175,6 +184,7 @@ export interface ReleaseGatePolicy {
   readonly release_identity: 'aiq-core/1.0.2';
   readonly state: 'preregistered_not_evaluated';
   readonly evidence_requirement: 'new_controlled_hidden_corpus';
+  readonly trust_root_requirement: 'runtime_pinned_out_of_band_digest';
   readonly score_bands: {
     readonly floor_max: 0.1;
     readonly mid_min: 0.2;
@@ -197,14 +207,15 @@ export interface ReleaseGatePolicy {
   };
   readonly paired_contrast_thresholds: {
     readonly predeclared_contrasts_min: 3;
-    readonly absolute_difference_aiq_min: 3;
+    readonly directional_difference_aiq_min: 3;
     readonly adjusted_lower_bound_must_exclude_zero: true;
-    readonly adjusted_lower_bound_method: 'one_sided_bonferroni_normal_approximation';
+    readonly adjusted_lower_bound_method: 'model_clustered_one_sided_bonferroni_normal_approximation';
     readonly familywise_alpha: 0.05;
     readonly one_sided_critical_value: 2.128;
   };
   readonly predeclared_contrasts: readonly {
     readonly contrast_id: string;
+    readonly expected_direction: 'challenge_higher';
     readonly paired_factor: string;
     readonly controlled_pair_requirement: string;
   }[];
@@ -219,19 +230,13 @@ export interface ReleaseGatePolicy {
 export interface ReleaseGateEvidence {
   readonly schema_version: 'aiq.release-gate-evidence.v1';
   readonly release_identity: 'aiq-core/1.0.2';
-  readonly catalog_identity_digest: string;
+  readonly catalog_release_identity_digest: string;
+  readonly task_metadata_identity_digest: string;
   readonly corpus_commitment_digest: string;
   readonly model_matrix_digest: string;
   readonly source_observations_digest: string;
   readonly repeat_ids: readonly string[];
-  readonly raw_cells: readonly {
-    readonly repeat_id: string;
-    readonly task_id: string;
-    readonly domain: Domain;
-    readonly model_id: string;
-    readonly status: 'completed' | 'infrastructure_failure' | 'evaluator_failure';
-    readonly score: number | null;
-  }[];
+  readonly raw_cells: readonly ReleaseGateRawCell[];
   readonly paired_contrasts: readonly {
     readonly contrast_id: string;
     readonly reference_variant_digest: string;
@@ -245,21 +250,111 @@ export interface ReleaseGateEvidence {
   }[];
 }
 
+export interface ReleaseGateRawCell {
+  readonly repeat_id: string;
+  readonly task_id: string;
+  readonly domain: Domain;
+  readonly model_id: string;
+  readonly status: 'completed' | 'infrastructure_failure' | 'evaluator_failure';
+  readonly reported_score: number | null;
+  readonly components: readonly ComponentEvidence[] | null;
+  readonly evaluator_digest: string | null;
+  readonly result_digest: string | null;
+  readonly result_package_digest: string | null;
+  readonly verification_digest: string | null;
+  readonly cell_evidence_binding_digest: string | null;
+  readonly verification_status: 'verified' | 'failed';
+}
+
+export interface ComponentEvidence {
+  readonly component_id: 'component_01' | 'component_02' | 'component_03' | 'component_04';
+  readonly assertions: readonly {
+    readonly assertion_id: string;
+    readonly passed: boolean;
+    readonly evidence_digest: string;
+  }[];
+}
+
+export interface ModelMatrixConfiguration {
+  readonly model_id: string;
+  readonly family: string;
+  readonly reasoning_effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
+  readonly runtime_digest: string;
+  readonly tool_policy_digest: string;
+  readonly network_policy_digest: string;
+}
+
 export interface ReleaseGateAuthority {
+  readonly schema_version: 'aiq.release-gate-authority.v1';
+  readonly signature_domain: 'aiq.release-gate-authority.v1';
+  readonly signature_encoding: 'aiq.sorted-key-json.v1';
   readonly release_identity: 'aiq-core/1.0.2';
-  readonly catalog_identity_digest: string;
+  readonly catalog_release_identity_digest: string;
+  readonly task_metadata_identity_digest: string;
   readonly corpus_commitment_digest: string;
-  readonly model_matrix_digest: string;
+  readonly source_observations_digest: string;
+  readonly model_matrix: {
+    readonly digest: string;
+    readonly configurations: readonly ModelMatrixConfiguration[];
+  };
   readonly contrast_bindings: readonly {
     readonly contrast_id: string;
     readonly reference_variant_digest: string;
     readonly challenge_variant_digest: string;
   }[];
+  readonly signer: {
+    readonly key_id: string;
+    readonly algorithm: 'ed25519';
+  };
+  readonly signature: string;
+}
+
+export interface ReleaseGateTrustPolicy {
+  readonly schema_version: 'aiq.release-gate-trust.v1';
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly authority_signers: readonly TrustedSigner[];
+  readonly promotion_signers: readonly TrustedSigner[];
+}
+
+export interface ReleaseGateTrustRoot {
+  readonly schema_version: 'aiq.release-gate-trust-root.v1';
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly trust_policy_digest: string;
+}
+
+interface TrustedSigner {
+  readonly key_id: string;
+  readonly algorithm: 'ed25519';
+  readonly public_key_spki_base64: string;
+}
+
+export interface ReleaseReceipt {
+  readonly schema_version: 'aiq.release-receipt.v1';
+  readonly signature_domain: 'aiq.release-receipt.v1';
+  readonly signature_encoding: 'aiq.sorted-key-json.v1';
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly candidate_catalog_release_identity_digest: string;
+  readonly task_metadata_identity_digest: string;
+  readonly authority_digest: string;
+  readonly evidence_digest: string;
+  readonly gate_result_digest: string;
+  readonly promotion_state: 'released';
+  readonly issued_at: string;
+  readonly signer: {
+    readonly key_id: string;
+    readonly algorithm: 'ed25519';
+  };
+  readonly signature: string;
 }
 
 export interface ReleaseGateResult {
+  readonly schema_version: 'aiq.release-gate-result.v1';
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly candidate_status: 'candidate_requires_controlled_release_gate';
   readonly passed: boolean;
   readonly failures: readonly string[];
+  readonly authority_digest: string;
+  readonly evidence_digest: string;
 }
 
 const PROFILES: Readonly<Record<Domain, DomainProfile>> = {
@@ -358,6 +453,7 @@ export const RELEASE_GATE_POLICY: ReleaseGatePolicy = {
   release_identity: 'aiq-core/1.0.2',
   state: 'preregistered_not_evaluated',
   evidence_requirement: 'new_controlled_hidden_corpus',
+  trust_root_requirement: 'runtime_pinned_out_of_band_digest',
   score_bands: {
     floor_max: 0.1,
     mid_min: 0.2,
@@ -380,15 +476,16 @@ export const RELEASE_GATE_POLICY: ReleaseGatePolicy = {
   },
   paired_contrast_thresholds: {
     predeclared_contrasts_min: 3,
-    absolute_difference_aiq_min: 3,
+    directional_difference_aiq_min: 3,
     adjusted_lower_bound_must_exclude_zero: true,
-    adjusted_lower_bound_method: 'one_sided_bonferroni_normal_approximation',
+    adjusted_lower_bound_method: 'model_clustered_one_sided_bonferroni_normal_approximation',
     familywise_alpha: 0.05,
     one_sided_critical_value: 2.128,
   },
   predeclared_contrasts: [
     {
       contrast_id: 'coupled_constraints',
+      expected_direction: 'challenge_higher',
       paired_factor:
         'One controlled pair adds interacting constraints while keeping the core work and scoring scale fixed.',
       controlled_pair_requirement:
@@ -396,6 +493,7 @@ export const RELEASE_GATE_POLICY: ReleaseGatePolicy = {
     },
     {
       contrast_id: 'ambiguous_recovery_state',
+      expected_direction: 'challenge_higher',
       paired_factor:
         'One controlled pair changes a complete checkpoint into an ambiguous but recoverable state.',
       controlled_pair_requirement:
@@ -403,6 +501,7 @@ export const RELEASE_GATE_POLICY: ReleaseGatePolicy = {
     },
     {
       contrast_id: 'plausible_incomplete_evidence',
+      expected_direction: 'challenge_higher',
       paired_factor:
         'One controlled pair replaces complete evidence with a plausible but materially incomplete evidence set.',
       controlled_pair_requirement:
@@ -489,19 +588,293 @@ export function releaseEvidenceSourceDigest(
   rawCells: ReleaseGateEvidence['raw_cells'],
   pairedContrasts: ReleaseGateEvidence['paired_contrasts'],
 ): string {
-  return `sha256:${createHash('sha256')
-    .update(JSON.stringify({ raw_cells: rawCells, paired_contrasts: pairedContrasts }))
-    .digest('hex')}`;
+  return digestValue({ raw_cells: rawCells, paired_contrasts: pairedContrasts });
 }
 
-export function releaseEvidenceModelMatrixDigest(modelIds: readonly string[]): string {
-  const orderedModelIds = modelIds.toSorted();
-  return `sha256:${createHash('sha256').update(JSON.stringify(orderedModelIds)).digest('hex')}`;
+export function releaseEvidenceModelMatrixDigest(
+  configurations: readonly ModelMatrixConfiguration[],
+): string {
+  return digestValue(
+    configurations.toSorted((left, right) =>
+      left.model_id < right.model_id ? -1 : left.model_id > right.model_id ? 1 : 0,
+    ),
+  );
+}
+
+export function releaseCellEvidenceBindingDigest(cell: unknown): string {
+  return digestValue({
+    schema_version: 'aiq.release-cell-evidence-binding.v1',
+    release_identity: 'aiq-core/1.0.2',
+    cell,
+  });
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError('Canonical JSON requires finite numbers.');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value)
+      .toSorted()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(Reflect.get(value, key))}`)
+      .join(',')}}`;
+  }
+  throw new TypeError('Canonical JSON does not support this value.');
+}
+
+function digestValue(value: unknown): string {
+  return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
+}
+
+function unsignedAuthority(
+  authority: ReleaseGateAuthority,
+): Omit<ReleaseGateAuthority, 'signature'> {
+  const { signature: _signature, ...unsigned } = authority;
+  return unsigned;
+}
+
+function unsignedReceipt(receipt: ReleaseReceipt): Omit<ReleaseReceipt, 'signature'> {
+  const { signature: _signature, ...unsigned } = receipt;
+  return unsigned;
+}
+
+export function releaseAuthoritySigningBytes(authority: ReleaseGateAuthority): Buffer {
+  return Buffer.from(canonicalJson(unsignedAuthority(authority)), 'utf8');
+}
+
+export function releaseReceiptSigningBytes(receipt: ReleaseReceipt): Buffer {
+  return Buffer.from(canonicalJson(unsignedReceipt(receipt)), 'utf8');
+}
+
+export function releaseAuthorityDigest(authority: ReleaseGateAuthority): string {
+  return digestValue(authority);
+}
+
+export function releaseEvidenceDigest(evidence: ReleaseGateEvidence): string {
+  return digestValue(evidence);
+}
+
+export function releaseGateResultDigest(result: ReleaseGateResult): string {
+  return digestValue(result);
+}
+
+export function releaseGateTrustPolicyDigest(policy: ReleaseGateTrustPolicy): string {
+  return digestValue(policy);
+}
+
+function trustedSigner(
+  signers: readonly TrustedSigner[],
+  keyId: string,
+): TrustedSigner | undefined {
+  if (new Set(signers.map(({ key_id: candidate }) => candidate)).size !== signers.length) {
+    return undefined;
+  }
+  return signers.find(({ key_id: candidate }) => candidate === keyId);
+}
+
+function hasExactKeys(value: object, expected: readonly string[]): boolean {
+  return JSON.stringify(Object.keys(value).toSorted()) === JSON.stringify(expected.toSorted());
+}
+
+function signerShapeIsClosed(signer: ReleaseGateAuthority['signer'] | TrustedSigner): boolean {
+  const expected =
+    'public_key_spki_base64' in signer
+      ? ['algorithm', 'key_id', 'public_key_spki_base64']
+      : ['algorithm', 'key_id'];
+  return hasExactKeys(signer, expected);
+}
+
+function trustedSignerFingerprint(signer: TrustedSigner): string | null {
+  try {
+    const publicKey = createPublicKey({
+      key: Buffer.from(signer.public_key_spki_base64, 'base64'),
+      format: 'der',
+      type: 'spki',
+    });
+    if (publicKey.asymmetricKeyType !== 'ed25519') return null;
+    return `sha256:${createHash('sha256')
+      .update(publicKey.export({ format: 'der', type: 'spki' }))
+      .digest('hex')}`;
+  } catch {
+    return null;
+  }
+}
+
+function authorityShapeIsClosed(authority: ReleaseGateAuthority): boolean {
+  return (
+    hasExactKeys(authority, [
+      'catalog_release_identity_digest',
+      'contrast_bindings',
+      'corpus_commitment_digest',
+      'model_matrix',
+      'release_identity',
+      'schema_version',
+      'signature',
+      'signature_domain',
+      'signature_encoding',
+      'signer',
+      'source_observations_digest',
+      'task_metadata_identity_digest',
+    ]) &&
+    hasExactKeys(authority.model_matrix, ['configurations', 'digest']) &&
+    authority.model_matrix.configurations.every((configuration) =>
+      hasExactKeys(configuration, [
+        'family',
+        'model_id',
+        'network_policy_digest',
+        'reasoning_effort',
+        'runtime_digest',
+        'tool_policy_digest',
+      ]),
+    ) &&
+    authority.contrast_bindings.every((binding) =>
+      hasExactKeys(binding, [
+        'challenge_variant_digest',
+        'contrast_id',
+        'reference_variant_digest',
+      ]),
+    ) &&
+    signerShapeIsClosed(authority.signer)
+  );
+}
+
+function verifyEd25519(
+  bytes: Buffer,
+  signature: string,
+  signer: TrustedSigner | undefined,
+): boolean {
+  if (signer === undefined || signer.algorithm !== 'ed25519') return false;
+  try {
+    const publicKey = createPublicKey({
+      key: Buffer.from(signer.public_key_spki_base64, 'base64'),
+      format: 'der',
+      type: 'spki',
+    });
+    return (
+      publicKey.asymmetricKeyType === 'ed25519' &&
+      verify(null, bytes, publicKey, Buffer.from(signature, 'base64'))
+    );
+  } catch {
+    return false;
+  }
+}
+
+function authorityIsTrusted(
+  authority: ReleaseGateAuthority,
+  trustPolicy: ReleaseGateTrustPolicy,
+): boolean {
+  const authorityKeyIds = new Set(trustPolicy.authority_signers.map(({ key_id: keyId }) => keyId));
+  const authorityFingerprints = trustPolicy.authority_signers.map(trustedSignerFingerprint);
+  const promotionFingerprints = trustPolicy.promotion_signers.map(trustedSignerFingerprint);
+  return (
+    authorityShapeIsClosed(authority) &&
+    trustPolicy.schema_version === 'aiq.release-gate-trust.v1' &&
+    trustPolicy.release_identity === authority.release_identity &&
+    hasExactKeys(trustPolicy, [
+      'authority_signers',
+      'promotion_signers',
+      'release_identity',
+      'schema_version',
+    ]) &&
+    [...trustPolicy.authority_signers, ...trustPolicy.promotion_signers].every(
+      signerShapeIsClosed,
+    ) &&
+    trustPolicy.promotion_signers.every(({ key_id: keyId }) => !authorityKeyIds.has(keyId)) &&
+    authorityFingerprints.every((fingerprint) => fingerprint !== null) &&
+    promotionFingerprints.every((fingerprint) => fingerprint !== null) &&
+    new Set(authorityFingerprints).size === authorityFingerprints.length &&
+    new Set(promotionFingerprints).size === promotionFingerprints.length &&
+    promotionFingerprints.every((fingerprint) => !authorityFingerprints.includes(fingerprint)) &&
+    authority.schema_version === 'aiq.release-gate-authority.v1' &&
+    authority.signature_domain === authority.schema_version &&
+    authority.signature_encoding === 'aiq.sorted-key-json.v1' &&
+    authority.signer.algorithm === 'ed25519' &&
+    verifyEd25519(
+      releaseAuthoritySigningBytes(authority),
+      authority.signature,
+      trustedSigner(trustPolicy.authority_signers, authority.signer.key_id),
+    )
+  );
+}
+
+function trustRootIsValid(
+  trustPolicy: ReleaseGateTrustPolicy,
+  runtimePinnedTrustRoot: ReleaseGateTrustRoot,
+): boolean {
+  return (
+    hasExactKeys(runtimePinnedTrustRoot, [
+      'release_identity',
+      'schema_version',
+      'trust_policy_digest',
+    ]) &&
+    runtimePinnedTrustRoot.schema_version === 'aiq.release-gate-trust-root.v1' &&
+    runtimePinnedTrustRoot.release_identity === trustPolicy.release_identity &&
+    validDigest(runtimePinnedTrustRoot.trust_policy_digest) &&
+    runtimePinnedTrustRoot.trust_policy_digest === releaseGateTrustPolicyDigest(trustPolicy)
+  );
+}
+
+const COMPONENT_WEIGHTS = new Map([
+  ['component_01', 3000],
+  ['component_02', 2500],
+  ['component_03', 2500],
+  ['component_04', 2000],
+] as const);
+
+function derivedTaskScore(components: readonly ComponentEvidence[] | null): number | null {
+  if (
+    components === null ||
+    components.length !== COMPONENT_WEIGHTS.size ||
+    components.some(
+      ({ component_id: componentId }, index) =>
+        componentId !== [...COMPONENT_WEIGHTS.keys()][index],
+    )
+  ) {
+    return null;
+  }
+  let score = 0;
+  for (const component of components) {
+    if (!hasExactKeys(component, ['assertions', 'component_id'])) return null;
+    const assertionIds = component.assertions.map(({ assertion_id: assertionId }) => assertionId);
+    if (
+      component.assertions.length < 3 ||
+      new Set(assertionIds).size !== assertionIds.length ||
+      component.assertions.some(
+        (assertion) =>
+          !hasExactKeys(assertion, ['assertion_id', 'evidence_digest', 'passed']) ||
+          !/^[a-z0-9][a-z0-9._-]*$/u.test(assertion.assertion_id) ||
+          typeof assertion.passed !== 'boolean' ||
+          !validDigest(assertion.evidence_digest),
+      )
+    ) {
+      return null;
+    }
+    const passed = component.assertions.filter(({ passed: didPass }) => didPass).length;
+    score +=
+      ((COMPONENT_WEIGHTS.get(component.component_id) ?? 0) / 10_000) *
+      (passed / component.assertions.length);
+  }
+  return Math.round((score + Number.EPSILON) * 1_000_000) / 1_000_000;
+}
+
+function validDigest(value: string): boolean {
+  return /^sha256:(?!0{64}$)[a-f0-9]{64}$/u.test(value);
+}
+
+function validIdentifier(value: string): boolean {
+  return /^[a-z0-9][a-z0-9._-]*$/u.test(value);
 }
 
 export function evaluateReleaseGate(
   evidence: ReleaseGateEvidence,
   authority: ReleaseGateAuthority,
+  trustPolicy: ReleaseGateTrustPolicy,
+  runtimePinnedTrustRoot: ReleaseGateTrustRoot,
 ): ReleaseGateResult {
   const failures: string[] = [];
   const policy = RELEASE_GATE_POLICY;
@@ -517,8 +890,10 @@ export function evaluateReleaseGate(
     catalog.tasks.map(({ task_id: taskId, domain }) => [taskId, domain]),
   );
   const repeatIds = new Set(evidence.repeat_ids);
-  const modelIds = new Set(evidence.raw_cells.map(({ model_id: modelId }) => modelId));
-  const digestPattern = /^sha256:[a-f0-9]{64}$/u;
+  const authorityModelIds = authority.model_matrix.configurations.map(
+    ({ model_id: modelId }) => modelId,
+  );
+  const modelIds = new Set(authorityModelIds);
   const authorityContrastBindings = new Map(
     authority.contrast_bindings.map((binding) => [binding.contrast_id, binding]),
   );
@@ -533,35 +908,108 @@ export function evaluateReleaseGate(
       `${repeatId}\u0000${taskId}\u0000${modelId}`,
   );
   const expectedCellCount = evidence.repeat_ids.length * expectedTasks.size * 17;
-  const invalidRawCell = evidence.raw_cells.some(
-    ({ repeat_id: repeatId, task_id: taskId, domain, model_id: modelId, status, score }) =>
+  const invalidRawCell = evidence.raw_cells.some((cell) => {
+    const {
+      repeat_id: repeatId,
+      task_id: taskId,
+      domain,
+      model_id: modelId,
+      status,
+      reported_score: reportedScore,
+      components,
+      evaluator_digest: evaluatorDigest,
+      result_digest: resultDigest,
+      result_package_digest: resultPackageDigest,
+      verification_digest: verificationDigest,
+      cell_evidence_binding_digest: cellEvidenceBindingDigest,
+      verification_status: verificationStatus,
+      ...unrecognizedCellFields
+    } = cell;
+    const { cell_evidence_binding_digest: _bindingDigest, ...unsignedCell } = cell;
+    return (
+      Object.keys(unrecognizedCellFields).length !== 0 ||
       !repeatIds.has(repeatId) ||
       expectedTasks.get(taskId) !== domain ||
-      modelId.length === 0 ||
-      (status === 'completed' ? score === null || !validUnitInterval(score) : score !== null),
+      !modelIds.has(modelId) ||
+      (status === 'completed'
+        ? reportedScore === null ||
+          !validUnitInterval(reportedScore) ||
+          derivedTaskScore(components) !== reportedScore ||
+          evaluatorDigest === null ||
+          !validDigest(evaluatorDigest) ||
+          resultDigest === null ||
+          !validDigest(resultDigest) ||
+          resultPackageDigest === null ||
+          !validDigest(resultPackageDigest) ||
+          verificationDigest === null ||
+          !validDigest(verificationDigest) ||
+          cellEvidenceBindingDigest === null ||
+          !validDigest(cellEvidenceBindingDigest) ||
+          cellEvidenceBindingDigest !== releaseCellEvidenceBindingDigest(unsignedCell) ||
+          verificationStatus !== 'verified'
+        : reportedScore !== null ||
+          components !== null ||
+          evaluatorDigest !== null ||
+          resultDigest !== null ||
+          resultPackageDigest !== null ||
+          verificationDigest !== null ||
+          cellEvidenceBindingDigest !== null ||
+          verificationStatus !== 'failed')
+    );
+  });
+  const completedResultDigests = evidence.raw_cells.flatMap((cell) =>
+    cell.status === 'completed' && cell.result_digest !== null ? [cell.result_digest] : [],
   );
+  if (
+    !authorityIsTrusted(authority, trustPolicy) ||
+    !trustRootIsValid(trustPolicy, runtimePinnedTrustRoot)
+  ) {
+    failures.push('invalid_authority');
+  }
   if (
     evidence.schema_version !== 'aiq.release-gate-evidence.v1' ||
     authority.release_identity !== policy.release_identity ||
-    authority.catalog_identity_digest !== catalog.identity_commitment.digest ||
+    authority.catalog_release_identity_digest !== catalog.catalog_release_identity.digest ||
+    authority.task_metadata_identity_digest !== catalog.task_metadata_identity.digest ||
     evidence.release_identity !== authority.release_identity ||
-    evidence.catalog_identity_digest !== authority.catalog_identity_digest ||
-    !digestPattern.test(authority.corpus_commitment_digest) ||
+    evidence.catalog_release_identity_digest !== authority.catalog_release_identity_digest ||
+    evidence.task_metadata_identity_digest !== authority.task_metadata_identity_digest ||
+    !validDigest(authority.corpus_commitment_digest) ||
     evidence.corpus_commitment_digest !== authority.corpus_commitment_digest ||
-    !digestPattern.test(authority.model_matrix_digest) ||
-    evidence.model_matrix_digest !== authority.model_matrix_digest ||
-    evidence.model_matrix_digest !== releaseEvidenceModelMatrixDigest([...modelIds]) ||
+    authority.source_observations_digest !== evidence.source_observations_digest ||
+    !validDigest(authority.model_matrix.digest) ||
+    evidence.model_matrix_digest !== authority.model_matrix.digest ||
+    authority.model_matrix.digest !==
+      releaseEvidenceModelMatrixDigest(authority.model_matrix.configurations) ||
+    authority.model_matrix.configurations.length !== 17 ||
+    modelIds.size !== 17 ||
+    authority.model_matrix.configurations.some(
+      ({
+        model_id: modelId,
+        family,
+        reasoning_effort: effort,
+        runtime_digest: runtime,
+        tool_policy_digest: tool,
+        network_policy_digest: network,
+      }) =>
+        !validIdentifier(modelId) ||
+        !validIdentifier(family) ||
+        !['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(effort) ||
+        !validDigest(runtime) ||
+        !validDigest(tool) ||
+        !validDigest(network),
+    ) ||
     authority.contrast_bindings.length !== policy.predeclared_contrasts.length ||
     authorityContrastBindings.size !== policy.predeclared_contrasts.length ||
     new Set(boundVariantDigests).size !== policy.predeclared_contrasts.length * 2 ||
-    boundVariantDigests.some((digest) => !digestPattern.test(digest)) ||
+    boundVariantDigests.some((digest) => !validDigest(digest)) ||
     evidence.source_observations_digest !==
       releaseEvidenceSourceDigest(evidence.raw_cells, evidence.paired_contrasts) ||
     evidence.repeat_ids.length < policy.stability_thresholds.complete_repeats_min ||
     repeatIds.size !== evidence.repeat_ids.length ||
-    modelIds.size !== 17 ||
     evidence.raw_cells.length !== expectedCellCount ||
     new Set(cellKeys).size !== expectedCellCount ||
+    new Set(completedResultDigests).size !== completedResultDigests.length ||
     invalidRawCell
   ) {
     failures.push('invalid_evidence');
@@ -576,7 +1024,10 @@ export function evaluateReleaseGate(
   const taskStatistics = catalog.tasks.map(({ task_id: taskId, domain }) => {
     const scores = evidence.raw_cells
       .filter((cell) => cell.task_id === taskId && cell.status === 'completed')
-      .flatMap(({ score }) => (score === null ? [] : [score]));
+      .flatMap(({ components }) => {
+        const score = derivedTaskScore(components);
+        return score === null ? [] : [score];
+      });
     return {
       task_id: taskId,
       domain,
@@ -658,21 +1109,28 @@ export function evaluateReleaseGate(
           validUnitInterval(challenge),
       );
     if (!validPairs) return false;
-    const differences = contrast.pairs.map(
-      ({ reference_score: reference, challenge_score: challenge }) => (challenge - reference) * 100,
+    const modelClusterDifferences = authorityModelIds.map((modelId) =>
+      mean(
+        contrast.pairs
+          .filter((pair) => pair.model_id === modelId)
+          .map(
+            ({ reference_score: reference, challenge_score: challenge }) =>
+              (challenge - reference) * 100,
+          ),
+      ),
     );
-    const absoluteDifferenceAiQ = Math.abs(mean(differences));
+    const directionalDifferenceAiQ = mean(modelClusterDifferences);
     const adjustedLowerBound =
-      absoluteDifferenceAiQ -
+      directionalDifferenceAiQ -
       (policy.paired_contrast_thresholds.one_sided_critical_value *
-        sampleStandardDeviation(differences)) /
-        Math.sqrt(differences.length);
+        sampleStandardDeviation(modelClusterDifferences)) /
+        Math.sqrt(modelClusterDifferences.length);
     return (
       requiredContrastIds.includes(contrast.contrast_id) &&
       authorityBinding?.reference_variant_digest === contrast.reference_variant_digest &&
       authorityBinding.challenge_variant_digest === contrast.challenge_variant_digest &&
-      absoluteDifferenceAiQ >=
-        policy.paired_contrast_thresholds.absolute_difference_aiq_min - 1e-12 &&
+      directionalDifferenceAiQ >=
+        policy.paired_contrast_thresholds.directional_difference_aiq_min - 1e-12 &&
       adjustedLowerBound > scoreEpsilon
     );
   });
@@ -686,23 +1144,27 @@ export function evaluateReleaseGate(
   }
 
   const completedCells = evidence.raw_cells.filter(
-    (cell): cell is typeof cell & { readonly score: number } =>
-      cell.status === 'completed' && cell.score !== null,
+    (cell) => cell.status === 'completed' && derivedTaskScore(cell.components) !== null,
   );
   const repeatAggregatesAiQ = evidence.repeat_ids.map(
     (repeatId) =>
-      mean(completedCells.filter((cell) => cell.repeat_id === repeatId).map(({ score }) => score)) *
-      100,
+      mean(
+        completedCells
+          .filter((cell) => cell.repeat_id === repeatId)
+          .map((cell) => derivedTaskScore(cell.components) ?? Number.NaN),
+      ) * 100,
   );
   const targetRows = [...expectedTasks.keys()].flatMap((taskId) =>
     [...modelIds].map((modelId) =>
-      evidence.repeat_ids.map(
-        (repeatId) =>
-          completedCells.find(
-            (cell) =>
-              cell.task_id === taskId && cell.model_id === modelId && cell.repeat_id === repeatId,
-          )?.score ?? Number.NaN,
-      ),
+      evidence.repeat_ids.map((repeatId) => {
+        const cell = completedCells.find(
+          (candidate) =>
+            candidate.task_id === taskId &&
+            candidate.model_id === modelId &&
+            candidate.repeat_id === repeatId,
+        );
+        return derivedTaskScore(cell?.components ?? null) ?? Number.NaN;
+      }),
     ),
   );
   const aggregateSdAiQ = sampleStandardDeviation(repeatAggregatesAiQ);
@@ -723,7 +1185,60 @@ export function evaluateReleaseGate(
     failures.push('stability_icc');
   }
 
-  return { passed: failures.length === 0, failures };
+  return {
+    schema_version: 'aiq.release-gate-result.v1',
+    release_identity: 'aiq-core/1.0.2',
+    candidate_status: 'candidate_requires_controlled_release_gate',
+    passed: failures.length === 0,
+    failures,
+    authority_digest: releaseAuthorityDigest(authority),
+    evidence_digest: releaseEvidenceDigest(evidence),
+  };
+}
+
+export function verifyReleaseReceipt(
+  receipt: ReleaseReceipt,
+  evidence: ReleaseGateEvidence,
+  authority: ReleaseGateAuthority,
+  trustPolicy: ReleaseGateTrustPolicy,
+  runtimePinnedTrustRoot: ReleaseGateTrustRoot,
+): boolean {
+  const result = evaluateReleaseGate(evidence, authority, trustPolicy, runtimePinnedTrustRoot);
+  const signer = trustedSigner(trustPolicy.promotion_signers, receipt.signer.key_id);
+  return (
+    result.passed &&
+    hasExactKeys(receipt, [
+      'authority_digest',
+      'candidate_catalog_release_identity_digest',
+      'evidence_digest',
+      'gate_result_digest',
+      'issued_at',
+      'promotion_state',
+      'release_identity',
+      'schema_version',
+      'signature',
+      'signature_domain',
+      'signature_encoding',
+      'signer',
+      'task_metadata_identity_digest',
+    ]) &&
+    signerShapeIsClosed(receipt.signer) &&
+    receipt.schema_version === 'aiq.release-receipt.v1' &&
+    receipt.signature_domain === receipt.schema_version &&
+    receipt.signature_encoding === 'aiq.sorted-key-json.v1' &&
+    receipt.release_identity === result.release_identity &&
+    receipt.candidate_catalog_release_identity_digest ===
+      buildCatalog().catalog_release_identity.digest &&
+    receipt.task_metadata_identity_digest === buildCatalog().task_metadata_identity.digest &&
+    receipt.authority_digest === result.authority_digest &&
+    receipt.evidence_digest === result.evidence_digest &&
+    receipt.gate_result_digest === releaseGateResultDigest(result) &&
+    receipt.promotion_state === 'released' &&
+    Number.isFinite(Date.parse(receipt.issued_at)) &&
+    new Date(receipt.issued_at).toISOString() === receipt.issued_at &&
+    receipt.signer.algorithm === 'ed25519' &&
+    verifyEd25519(releaseReceiptSigningBytes(receipt), receipt.signature, signer)
+  );
 }
 
 const BASE_TASK_BUDGET: TaskBudget = { wall_seconds: 360, max_steps: 28, max_tool_calls: 18 };
@@ -1990,10 +2505,21 @@ export function buildCatalog(): Catalog {
     status: 'candidate_requires_controlled_release_gate',
     generated_from: 'scripts/generate-benchmark-catalog.ts',
     predecessor_catalog: PREDECESSOR_CATALOG,
-    identity_commitment: {
+    task_metadata_identity: {
       algorithm: 'sha256',
-      digest: catalogIdentityDigest(tasks, RELEASE_GATE_POLICY, PREDECESSOR_CATALOG),
-      scope: 'ordered_full_task_metadata_release_policy_and_predecessor',
+      canonicalization: 'aiq.sorted-key-json.v1',
+      digest: taskMetadataIdentityDigest(tasks),
+      scope: 'ordered_full_task_metadata',
+    },
+    catalog_release_identity: {
+      algorithm: 'sha256',
+      canonicalization: 'aiq.sorted-key-json.v1',
+      digest: catalogReleaseIdentityDigest(
+        taskMetadataIdentityDigest(tasks),
+        RELEASE_GATE_POLICY,
+        PREDECESSOR_CATALOG,
+      ),
+      scope: 'task_metadata_identity_release_policy_and_predecessor',
     },
     content_policy: {
       public_repository: 'Metadata, schemas, public examples, and synthetic scoring fixtures only.',
@@ -2196,37 +2722,48 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     );
   }
 
-  const observedIdentity = catalogIdentityDigest(
-    catalog.tasks,
+  const observedTaskIdentity = taskMetadataIdentityDigest(catalog.tasks);
+  if (catalog.task_metadata_identity.digest !== observedTaskIdentity) {
+    throw new Error(
+      `Task metadata identity does not match its ordered task metadata: ${observedTaskIdentity}.`,
+    );
+  }
+  if (observedTaskIdentity !== AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256) {
+    throw new Error(
+      `AIQ Core 1.0.2 task metadata identity changed without a versioned commitment update: ${observedTaskIdentity}.`,
+    );
+  }
+  const observedReleaseIdentity = catalogReleaseIdentityDigest(
+    observedTaskIdentity,
     catalog.release_gate_policy,
     catalog.predecessor_catalog,
   );
-  if (catalog.identity_commitment.digest !== observedIdentity) {
+  if (catalog.catalog_release_identity.digest !== observedReleaseIdentity) {
     throw new Error(
-      `Catalog identity commitment does not match its ordered task metadata: ${observedIdentity}.`,
+      `Catalog release identity does not match its task identity and policy: ${observedReleaseIdentity}.`,
     );
   }
-  if (observedIdentity !== AIQ_CORE_V1_CATALOG_IDENTITY_SHA256) {
+  if (observedReleaseIdentity !== AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256) {
     throw new Error(
-      `AIQ Core 1.0.2 catalog identity changed without a versioned commitment update: ${observedIdentity}.`,
+      `AIQ Core 1.0.2 catalog release identity changed without a versioned commitment update: ${observedReleaseIdentity}.`,
     );
   }
 }
 
-export function catalogIdentityDigest(
-  tasks: readonly CatalogTask[],
+export function taskMetadataIdentityDigest(tasks: readonly CatalogTask[]): string {
+  return digestValue(tasks);
+}
+
+export function catalogReleaseIdentityDigest(
+  taskMetadataIdentity: string,
   releaseGatePolicy: ReleaseGatePolicy,
   predecessorCatalog: Catalog['predecessor_catalog'],
 ): string {
-  return `sha256:${createHash('sha256')
-    .update(
-      JSON.stringify({
-        tasks,
-        release_gate_policy: releaseGatePolicy,
-        predecessor_catalog: predecessorCatalog,
-      }),
-    )
-    .digest('hex')}`;
+  return digestValue({
+    task_metadata_identity: taskMetadataIdentity,
+    release_gate_policy: releaseGatePolicy,
+    predecessor_catalog: predecessorCatalog,
+  });
 }
 
 export async function writeCatalog(outputPath: string): Promise<void> {

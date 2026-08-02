@@ -18,6 +18,13 @@ before a model run can qualify this version for release.
 - `schema/catalog.schema.json` validates the catalog.
 - `schema/release-gate-evidence.schema.json` validates controlled release-gate
   evidence.
+- `schema/release-gate-authority.schema.json` validates the signed authority
+  that binds the evidence source, complete model matrix, and contrast arms.
+- `schema/release-gate-trust-policy.schema.json` validates the out-of-band
+  trusted signer registry. Evidence cannot add a trusted key.
+- `schema/release-gate-trust-root.schema.json` validates the trust-policy digest
+  that the release runtime pins outside submitted release material.
+- `schema/release-receipt.schema.json` validates the signed promotion receipt.
 - `schema/corpus-commitment-v2.schema.json` validates the current controlled
   corpus commitment.
 - `schema/result-package-v3.schema.json` validates signed runner packages.
@@ -25,17 +32,24 @@ before a model run can qualify this version for release.
 - `schema/verifier-attestation-v3.schema.json` validates verifier evidence.
 - `examples/tasks/` contains synthetic public task examples.
 
-The catalog contains 17 model configurations and 72 ordered tasks. Its identity
-digest is:
+The catalog has 72 ordered tasks. Its task-metadata identity is:
 
 ```text
-sha256:efe6cec623c140cbb6a4c96583a5d0aed24ec856d7792301d1543bd1f9b90db5
+sha256:83440762f969c521d16144a54a1490fadba0fce22cce902fb1d30af66a1403ba
 ```
 
-The digest binds the ordered task metadata and the pre-registered release
-policy plus the predecessor lineage. A task, policy, or predecessor change
-creates a different candidate catalog identity. The catalog retains the exact
-`1.0.1` task identity digest and owning Git commit as public-safe provenance.
+Its candidate catalog-release identity is:
+
+```text
+sha256:1a29c58d23a5675c0704ed9ab5bf6a74cd267d3a82f39807f783fb05cfa7b40c
+```
+
+The first digest binds only ordered task metadata. The second digest binds that
+task identity, the pre-registered release policy, and predecessor lineage. This
+split gives runtime consumers one unambiguous task identity without weakening
+the candidate release contract. Both use SHA-256 over
+`aiq.sorted-key-json.v1` canonical UTF-8 bytes. The catalog retains the exact `1.0.1` task
+identity digest and owning Git commit as public-safe provenance.
 
 ## Candidate release gate
 
@@ -51,23 +65,41 @@ hidden-corpus evidence passes all these checks:
 - not more than 14 invariant tasks with score range at or below `0.05`;
 - in each domain, at least 50% mid-band tasks, not more than 30% floor tasks,
   and not more than 30% ceiling tasks;
-- at least 3 predeclared paired contrasts, each with an absolute difference of
-  at least 3 AIQ points and an adjusted lower bound above zero; and
+- at least 3 predeclared paired contrasts, each with a challenge-minus-reference
+  difference of at least 3 AIQ points and an adjusted lower bound above zero; and
 - at least 3 complete repeats, aggregate standard deviation not more than 2 AIQ
   points, median cell range not more than `0.10`, and ICC at least `0.75`.
 
-The generator exports an executable evaluator for this policy. It accepts only
-schema-versioned raw cells and raw paired observations that bind the catalog
-identity, corpus commitment, model matrix, repeat IDs, and a recomputed source
-observation digest. It derives failure counts, task bands, domain shares, paired
-differences, adjusted lower bounds, repeat standard deviation, median cell
-range, and absolute-agreement ICC. A caller cannot submit those aggregates as
-gate inputs. The evaluator also requires a separate trusted release authority
-with the expected catalog, corpus, model-matrix, and six distinct contrast-arm
-digests. Evidence values must match that authority. Each contrast row binds its
-reference and challenge controlled-object digests. Catalog tests exercise exact
-limits and rejection paths. No
-checked-in field claims that current evidence passes.
+The generator exports an executable evaluator for this policy. Each completed
+raw cell contains four component records, at least three deterministic binary
+assertions per component, and evaluator, result, package, and verification
+digests. A cell-binding digest covers the cell identity, four raw components,
+reported score, and all four provenance digests. Completed result digests must
+also be unique across cells. The evaluator recomputes the
+`3000/2500/2500/2000` component formula and rejects a reported score that
+differs from the six-decimal result.
+
+The separately signed authority binds the exact source-observation digest,
+corpus commitment, six contrast-arm digests, and 17 complete model
+configurations. Each model configuration includes family, reasoning effort,
+runtime, tool-policy, and network-policy identity. The trusted public key comes
+from a separate trust policy. The release runtime must pin that policy's
+canonical digest out of band and must not accept the pin from evidence, an
+authority, a receipt, or a release request. Authority and promotion roles must
+also use different Ed25519 public-key fingerprints, not only different key IDs.
+Authority and receipt signatures use Ed25519 over the declared
+`aiq.sorted-key-json.v1` signature domain bytes.
+
+Paired-contrast inference uses the 17 model configurations as independent
+clusters. It averages the three or more repeats inside each configuration,
+then applies the pre-registered one-sided Bonferroni normal approximation to
+the 17 cluster means. Repeats do not inflate the independent sample count.
+
+A passing gate result does not mutate or release the candidate catalog. Only a
+valid `aiq.release-receipt.v1` signed by a separately trusted promotion key can
+express `promotion_state: released`. The receipt binds the candidate catalog,
+task identity, signed authority, evidence, and exact gate result. No checked-in
+receipt or catalog field claims that current evidence passes.
 
 The `easy`, `medium`, and `hard` values remain only provisional, non-ordinal
 coverage labels. They are not empirical difficulty ranks and do not change score

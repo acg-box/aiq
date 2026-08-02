@@ -11,10 +11,17 @@
     "digest_scope": "ordered_full_task_metadata",
     "source_commit": "4700e4c6e5e46ff9b3451d87b8761fb8da8365a0"
   },
-  "identity_commitment": {
+  "task_metadata_identity": {
     "algorithm": "sha256",
-    "digest": "sha256:efe6cec623c140cbb6a4c96583a5d0aed24ec856d7792301d1543bd1f9b90db5",
-    "scope": "ordered_full_task_metadata_release_policy_and_predecessor"
+    "canonicalization": "aiq.sorted-key-json.v1",
+    "digest": "sha256:83440762f969c521d16144a54a1490fadba0fce22cce902fb1d30af66a1403ba",
+    "scope": "ordered_full_task_metadata"
+  },
+  "catalog_release_identity": {
+    "algorithm": "sha256",
+    "canonicalization": "aiq.sorted-key-json.v1",
+    "digest": "sha256:1a29c58d23a5675c0704ed9ab5bf6a74cd267d3a82f39807f783fb05cfa7b40c",
+    "scope": "task_metadata_identity_release_policy_and_predecessor"
   },
   "content_policy": {
     "public_repository": "Metadata, schemas, public examples, and synthetic scoring fixtures only.",
@@ -98,6 +105,7 @@
     "release_identity": "aiq-core/1.0.2",
     "state": "preregistered_not_evaluated",
     "evidence_requirement": "new_controlled_hidden_corpus",
+    "trust_root_requirement": "runtime_pinned_out_of_band_digest",
     "score_bands": {
       "floor_max": 0.1,
       "mid_min": 0.2,
@@ -120,25 +128,28 @@
     },
     "paired_contrast_thresholds": {
       "predeclared_contrasts_min": 3,
-      "absolute_difference_aiq_min": 3,
+      "directional_difference_aiq_min": 3,
       "adjusted_lower_bound_must_exclude_zero": true,
-      "adjusted_lower_bound_method": "one_sided_bonferroni_normal_approximation",
+      "adjusted_lower_bound_method": "model_clustered_one_sided_bonferroni_normal_approximation",
       "familywise_alpha": 0.05,
       "one_sided_critical_value": 2.128
     },
     "predeclared_contrasts": [
       {
         "contrast_id": "coupled_constraints",
+        "expected_direction": "challenge_higher",
         "paired_factor": "One controlled pair adds interacting constraints while keeping the core work and scoring scale fixed.",
         "controlled_pair_requirement": "Bind matched task variants, randomize their order, and compute the paired AIQ difference across the fixed model matrix."
       },
       {
         "contrast_id": "ambiguous_recovery_state",
+        "expected_direction": "challenge_higher",
         "paired_factor": "One controlled pair changes a complete checkpoint into an ambiguous but recoverable state.",
         "controlled_pair_requirement": "Keep the intended final state fixed and score safe state reconciliation separately from core task completion."
       },
       {
         "contrast_id": "plausible_incomplete_evidence",
+        "expected_direction": "challenge_higher",
         "paired_factor": "One controlled pair replaces complete evidence with a plausible but materially incomplete evidence set.",
         "controlled_pair_requirement": "Keep requested claims fixed and score unsupported inference separately from citation and artifact format."
       }

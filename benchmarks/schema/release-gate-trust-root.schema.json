@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/release-gate-trust-root.v1.json",
+  "title": "AIQ Core runtime-pinned release-gate trust root",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_identity", "trust_policy_digest"],
+  "properties": {
+    "schema_version": { "const": "aiq.release-gate-trust-root.v1" },
+    "release_identity": { "const": "aiq-core/1.0.2" },
+    "trust_policy_digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    }
+  }
+}

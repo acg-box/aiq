@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/release-receipt.v1.json",
+  "title": "Signed AIQ Core candidate promotion receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "signature_domain",
+    "signature_encoding",
+    "release_identity",
+    "candidate_catalog_release_identity_digest",
+    "task_metadata_identity_digest",
+    "authority_digest",
+    "evidence_digest",
+    "gate_result_digest",
+    "promotion_state",
+    "issued_at",
+    "signer",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.release-receipt.v1" },
+    "signature_domain": { "const": "aiq.release-receipt.v1" },
+    "signature_encoding": { "const": "aiq.sorted-key-json.v1" },
+    "release_identity": { "const": "aiq-core/1.0.2" },
+    "candidate_catalog_release_identity_digest": {
+      "const": "sha256:1a29c58d23a5675c0704ed9ab5bf6a74cd267d3a82f39807f783fb05cfa7b40c"
+    },
+    "task_metadata_identity_digest": {
+      "const": "sha256:83440762f969c521d16144a54a1490fadba0fce22cce902fb1d30af66a1403ba"
+    },
+    "authority_digest": { "$ref": "#/$defs/digest" },
+    "evidence_digest": { "$ref": "#/$defs/digest" },
+    "gate_result_digest": { "$ref": "#/$defs/digest" },
+    "promotion_state": { "const": "released" },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_id", "algorithm"],
+      "properties": {
+        "key_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])"
+        },
+        "algorithm": { "const": "ed25519" }
+      }
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==(?![\\s\\S])"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    }
+  }
+}

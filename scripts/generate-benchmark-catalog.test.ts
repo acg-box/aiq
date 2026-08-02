@@ -1,24 +1,41 @@
 import { deepStrictEqual, strictEqual, throws } from 'node:assert/strict';
+import { createHash, createPrivateKey, sign } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
-  AIQ_CORE_V1_CATALOG_IDENTITY_SHA256,
+  AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256,
+  AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256,
   COMMAND_EXECUTION_DISCLOSURE,
   DOMAINS,
   RELEASE_GATE_POLICY,
   PREDECESSOR_CATALOG,
   assertCatalogInvariants,
   buildCatalog,
-  catalogIdentityDigest,
+  catalogReleaseIdentityDigest,
   evaluateReleaseGate as evaluateReleaseGateWithAuthority,
   releaseEvidenceSourceDigest,
   releaseEvidenceModelMatrixDigest,
+  releaseCellEvidenceBindingDigest,
+  releaseAuthoritySigningBytes,
+  releaseReceiptSigningBytes,
+  releaseAuthorityDigest,
+  releaseEvidenceDigest,
+  releaseGateResultDigest,
+  releaseGateTrustPolicyDigest,
+  taskMetadataIdentityDigest,
+  verifyReleaseReceipt,
   type Catalog,
   type CatalogTask,
   type ReleaseGateEvidence,
+  type ReleaseGateRawCell,
   type ReleaseGateAuthority,
+  type ReleaseGateTrustPolicy,
+  type ReleaseGateTrustRoot,
+  type ReleaseReceipt,
+  type ModelMatrixConfiguration,
+  type ComponentEvidence,
 } from './generate-benchmark-catalog.ts';
 
 type JsonSchema = Record<string, unknown>;
@@ -83,25 +100,151 @@ interface ScoreProfile {
   readonly repeat_step?: number;
 }
 
+const AUTHORITY_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIHuaWhdSXEidbUqHPsGvweUUpoNyzilI368yi4XOXXBs
+-----END PRIVATE KEY-----`;
+const PROMOTION_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
+MC4CAQAwBQYDK2VwBCIEIM8O2C9rfJNTeo94tfhwzrNJKjxqrKqX6zEuf5DJQAHt
+-----END PRIVATE KEY-----`;
+
+const TRUST_POLICY: ReleaseGateTrustPolicy = {
+  schema_version: 'aiq.release-gate-trust.v1',
+  release_identity: 'aiq-core/1.0.2',
+  authority_signers: [
+    {
+      key_id: 'release-authority-test-2026',
+      algorithm: 'ed25519',
+      public_key_spki_base64: 'MCowBQYDK2VwAyEAHa0lq47JGowNz4pD6WqN/VjyhAuA2RjR25GdSxxFLEQ=',
+    },
+  ],
+  promotion_signers: [
+    {
+      key_id: 'release-promotion-test-2026',
+      algorithm: 'ed25519',
+      public_key_spki_base64: 'MCowBQYDK2VwAyEAin+ZDe8Q2y5Lcu+4eecR/l40Xh72ST+hfyjA7NCv0n0=',
+    },
+  ],
+};
+
+const TRUST_ROOT: ReleaseGateTrustRoot = {
+  schema_version: 'aiq.release-gate-trust-root.v1',
+  release_identity: 'aiq-core/1.0.2',
+  trust_policy_digest: releaseGateTrustPolicyDigest(TRUST_POLICY),
+};
+
+function testDigest(value: string): string {
+  return `sha256:${createHash('sha256').update(value).digest('hex')}`;
+}
+
+function bindCell(cell: ReleaseGateRawCell): ReleaseGateRawCell {
+  const { cell_evidence_binding_digest: _bindingDigest, ...unsignedCell } = cell;
+  return {
+    ...unsignedCell,
+    cell_evidence_binding_digest:
+      cell.status === 'completed' ? releaseCellEvidenceBindingDigest(unsignedCell) : null,
+  };
+}
+
+function modelMatrix(): readonly ModelMatrixConfiguration[] {
+  return Array.from({ length: 17 }, (_, index) => ({
+    model_id: `model-${String(index + 1)}`,
+    family: index < 6 ? 'sol' : index < 12 ? 'terra' : 'luna',
+    reasoning_effort: REASONING_EFFORTS[index % REASONING_EFFORTS.length] ?? 'low',
+    runtime_digest: `sha256:${'3'.repeat(63)}${(index % 16).toString(16)}`,
+    tool_policy_digest: `sha256:${'4'.repeat(63)}${(index % 16).toString(16)}`,
+    network_policy_digest: `sha256:${'5'.repeat(63)}${(index % 16).toString(16)}`,
+  }));
+}
+
+const SCORE_COMPONENT_CACHE = new Map<number, readonly number[]>();
+const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const;
+
+function componentsForScore(requestedScore: number): readonly ComponentEvidence[] {
+  const requestedUnits = Math.round(Math.max(0, Math.min(1, requestedScore)) * 200);
+  let selected = SCORE_COMPONENT_CACHE.get(requestedUnits);
+  if (selected === undefined) {
+    let candidate = [0, 0, 0, 0];
+    let selectedDistance = Number.POSITIVE_INFINITY;
+    for (let first = 0; first <= 10; first += 1) {
+      for (let second = 0; second <= 10; second += 1) {
+        for (let third = 0; third <= 10; third += 1) {
+          for (let fourth = 0; fourth <= 10; fourth += 1) {
+            const units = 6 * first + 5 * second + 5 * third + 4 * fourth;
+            const distance = Math.abs(units - requestedUnits);
+            if (distance < selectedDistance) {
+              candidate = [first, second, third, fourth];
+              selectedDistance = distance;
+            }
+          }
+        }
+      }
+    }
+    selected = candidate;
+    SCORE_COMPONENT_CACHE.set(requestedUnits, selected);
+  }
+  return (['component_01', 'component_02', 'component_03', 'component_04'] as const).map(
+    (componentId, componentIndex) => {
+      const assertionCount = 10;
+      const passedCount = selected[componentIndex] ?? 0;
+      return {
+        component_id: componentId,
+        assertions: Array.from({ length: assertionCount }, (_, index) => ({
+          assertion_id: `assertion-${String(index + 1).padStart(3, '0')}`,
+          passed: index < passedCount,
+          evidence_digest: `sha256:${((index % 9) + 1).toString().repeat(64)}`,
+        })),
+      };
+    },
+  );
+}
+
+function scoreFromComponents(components: readonly ComponentEvidence[]): number {
+  const weights = [0.3, 0.25, 0.25, 0.2];
+  const score = components.reduce(
+    (sum, component, index) =>
+      sum +
+      (weights[index] ?? 0) *
+        (component.assertions.filter(({ passed }) => passed).length / component.assertions.length),
+    0,
+  );
+  return Math.round((score + Number.EPSILON) * 1_000_000) / 1_000_000;
+}
+
 function buildReleaseEvidence(
   profiles: ReadonlyMap<string, ScoreProfile> = new Map(),
   repeatIds: readonly string[] = ['repeat-1', 'repeat-2', 'repeat-3'],
 ): ReleaseGateEvidence {
   const catalog = buildCatalog();
-  const modelIds = Array.from({ length: 17 }, (_, index) => `model-${String(index + 1)}`);
+  const configurations = modelMatrix();
+  const modelIds = configurations.map(({ model_id: modelId }) => modelId);
   const rawCells = repeatIds.flatMap((repeatId, repeatIndex) =>
     catalog.tasks.flatMap(({ task_id: taskId, domain }) => {
       const profile = profiles.get(taskId) ?? { mean: 0.5 };
       const modelStep = profile.model_step ?? 0.006;
       const repeatStep = profile.repeat_step ?? 0.005;
-      return modelIds.map((modelId, modelIndex) => ({
-        repeat_id: repeatId,
-        task_id: taskId,
-        domain,
-        model_id: modelId,
-        status: 'completed' as const,
-        score: profile.mean + (modelIndex - 8) * modelStep + (repeatIndex - 1) * repeatStep,
-      }));
+      return modelIds.map((modelId, modelIndex) => {
+        const components = componentsForScore(
+          profile.mean + (modelIndex - 8) * modelStep + (repeatIndex - 1) * repeatStep,
+        );
+        const unsignedCell = {
+          repeat_id: repeatId,
+          task_id: taskId,
+          domain,
+          model_id: modelId,
+          status: 'completed' as const,
+          reported_score: scoreFromComponents(components),
+          components,
+          evaluator_digest: testDigest(`evaluator:${taskId}`),
+          result_digest: testDigest(`result:${repeatId}:${taskId}:${modelId}`),
+          result_package_digest: testDigest(`package:${repeatId}:${modelId}`),
+          verification_digest: testDigest(`verification:${repeatId}:${modelId}`),
+          verification_status: 'verified' as const,
+        };
+        return {
+          ...unsignedCell,
+          cell_evidence_binding_digest: releaseCellEvidenceBindingDigest(unsignedCell),
+        };
+      });
     }),
   );
   const pairs = repeatIds.flatMap((repeatId) =>
@@ -128,9 +271,10 @@ function buildReleaseEvidence(
   return {
     schema_version: 'aiq.release-gate-evidence.v1',
     release_identity: 'aiq-core/1.0.2',
-    catalog_identity_digest: catalog.identity_commitment.digest,
+    catalog_release_identity_digest: catalog.catalog_release_identity.digest,
+    task_metadata_identity_digest: catalog.task_metadata_identity.digest,
     corpus_commitment_digest: `sha256:${'a'.repeat(64)}`,
-    model_matrix_digest: releaseEvidenceModelMatrixDigest(modelIds),
+    model_matrix_digest: releaseEvidenceModelMatrixDigest(configurations),
     source_observations_digest: releaseEvidenceSourceDigest(rawCells, pairedContrasts),
     repeat_ids: repeatIds,
     raw_cells: rawCells,
@@ -138,14 +282,22 @@ function buildReleaseEvidence(
   };
 }
 
-function buildReleaseAuthority(): ReleaseGateAuthority {
+function buildReleaseAuthority(evidence: ReleaseGateEvidence): ReleaseGateAuthority {
   const catalog = buildCatalog();
-  const modelIds = Array.from({ length: 17 }, (_, index) => `model-${String(index + 1)}`);
-  return {
+  const configurations = modelMatrix();
+  const unsigned: ReleaseGateAuthority = {
+    schema_version: 'aiq.release-gate-authority.v1',
+    signature_domain: 'aiq.release-gate-authority.v1',
+    signature_encoding: 'aiq.sorted-key-json.v1',
     release_identity: 'aiq-core/1.0.2',
-    catalog_identity_digest: catalog.identity_commitment.digest,
+    catalog_release_identity_digest: catalog.catalog_release_identity.digest,
+    task_metadata_identity_digest: catalog.task_metadata_identity.digest,
     corpus_commitment_digest: `sha256:${'a'.repeat(64)}`,
-    model_matrix_digest: releaseEvidenceModelMatrixDigest(modelIds),
+    source_observations_digest: evidence.source_observations_digest,
+    model_matrix: {
+      digest: releaseEvidenceModelMatrixDigest(configurations),
+      configurations,
+    },
     contrast_bindings: RELEASE_GATE_POLICY.predeclared_contrasts.map(
       ({ contrast_id: contrastId }, contrastIndex) => ({
         contrast_id: contrastId,
@@ -153,45 +305,95 @@ function buildReleaseAuthority(): ReleaseGateAuthority {
         challenge_variant_digest: `sha256:${(['d', 'f', '2'][contrastIndex] ?? '0').repeat(64)}`,
       }),
     ),
+    signer: { key_id: 'release-authority-test-2026', algorithm: 'ed25519' },
+    signature: '',
+  };
+  return {
+    ...unsigned,
+    signature: sign(
+      null,
+      releaseAuthoritySigningBytes(unsigned),
+      createPrivateKey(AUTHORITY_PRIVATE_KEY),
+    ).toString('base64'),
   };
 }
 
 function evaluateReleaseGate(evidence: ReleaseGateEvidence) {
-  return evaluateReleaseGateWithAuthority(evidence, buildReleaseAuthority());
+  return evaluateReleaseGateWithAuthority(
+    evidence,
+    buildReleaseAuthority(evidence),
+    TRUST_POLICY,
+    TRUST_ROOT,
+  );
+}
+
+function buildReleaseReceipt(
+  evidence: ReleaseGateEvidence,
+  authority: ReleaseGateAuthority,
+): ReleaseReceipt {
+  const catalog = buildCatalog();
+  const result = evaluateReleaseGateWithAuthority(evidence, authority, TRUST_POLICY, TRUST_ROOT);
+  const unsigned: ReleaseReceipt = {
+    schema_version: 'aiq.release-receipt.v1',
+    signature_domain: 'aiq.release-receipt.v1',
+    signature_encoding: 'aiq.sorted-key-json.v1',
+    release_identity: 'aiq-core/1.0.2',
+    candidate_catalog_release_identity_digest: catalog.catalog_release_identity.digest,
+    task_metadata_identity_digest: catalog.task_metadata_identity.digest,
+    authority_digest: releaseAuthorityDigest(authority),
+    evidence_digest: releaseEvidenceDigest(evidence),
+    gate_result_digest: releaseGateResultDigest(result),
+    promotion_state: 'released',
+    issued_at: '2026-08-02T12:00:00.000Z',
+    signer: { key_id: 'release-promotion-test-2026', algorithm: 'ed25519' },
+    signature: '',
+  };
+  return {
+    ...unsigned,
+    signature: sign(
+      null,
+      releaseReceiptSigningBytes(unsigned),
+      createPrivateKey(PROMOTION_PRIVATE_KEY),
+    ).toString('base64'),
+  };
 }
 
 function replaceRawCells(
   evidence: ReleaseGateEvidence,
   rawCells: ReleaseGateEvidence['raw_cells'],
 ): ReleaseGateEvidence {
-  return {
+  const replaced = {
     ...evidence,
     source_observations_digest: releaseEvidenceSourceDigest(rawCells, evidence.paired_contrasts),
     raw_cells: rawCells,
   };
+  return replaced;
 }
 
 function replacePairedContrasts(
   evidence: ReleaseGateEvidence,
   pairedContrasts: ReleaseGateEvidence['paired_contrasts'],
 ): ReleaseGateEvidence {
-  return {
+  const replaced = {
     ...evidence,
     source_observations_digest: releaseEvidenceSourceDigest(evidence.raw_cells, pairedContrasts),
     paired_contrasts: pairedContrasts,
   };
+  return replaced;
 }
 
 function contrastPairsAtLowerBound(
   pairs: ReleaseGateEvidence['paired_contrasts'][number]['pairs'],
   meanDifferenceAiQ: number,
 ) {
-  const deviationAiQ = (3 * Math.sqrt(pairs.length)) / 2.128;
-  return pairs.map((pair, pairIndex) => {
+  const modelIds = [...new Set(pairs.map(({ model_id: modelId }) => modelId))];
+  const deviationAiQ = (3 * Math.sqrt(modelIds.length)) / 2.128;
+  return pairs.map((pair) => {
+    const modelIndex = modelIds.indexOf(pair.model_id);
     const differenceAiQ =
-      pairIndex === pairs.length - 1
+      modelIndex === modelIds.length - 1
         ? meanDifferenceAiQ
-        : meanDifferenceAiQ + (pairIndex % 2 === 0 ? deviationAiQ : -deviationAiQ);
+        : meanDifferenceAiQ + (modelIndex % 2 === 0 ? deviationAiQ : -deviationAiQ);
     return {
       ...pair,
       reference_score: 0.5,
@@ -380,28 +582,37 @@ await test('the catalog contains the fixed 72-task distribution', () => {
   });
 });
 
-await test('the frozen identity commitment covers tasks and the release policy', () => {
+await test('task metadata and candidate release identities have separate scopes', () => {
   const catalog = buildCatalog();
 
-  strictEqual(catalog.identity_commitment.algorithm, 'sha256');
+  strictEqual(catalog.task_metadata_identity.algorithm, 'sha256');
+  strictEqual(catalog.task_metadata_identity.canonicalization, 'aiq.sorted-key-json.v1');
+  strictEqual(catalog.task_metadata_identity.scope, 'ordered_full_task_metadata');
+  strictEqual(catalog.task_metadata_identity.digest, taskMetadataIdentityDigest(catalog.tasks));
+  strictEqual(catalog.task_metadata_identity.digest, AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256);
   strictEqual(
-    catalog.identity_commitment.scope,
-    'ordered_full_task_metadata_release_policy_and_predecessor',
+    catalog.catalog_release_identity.scope,
+    'task_metadata_identity_release_policy_and_predecessor',
   );
+  strictEqual(catalog.catalog_release_identity.canonicalization, 'aiq.sorted-key-json.v1');
   strictEqual(
-    catalog.identity_commitment.digest,
-    catalogIdentityDigest(catalog.tasks, catalog.release_gate_policy, catalog.predecessor_catalog),
+    catalog.catalog_release_identity.digest,
+    catalogReleaseIdentityDigest(
+      catalog.task_metadata_identity.digest,
+      catalog.release_gate_policy,
+      catalog.predecessor_catalog,
+    ),
   );
-  strictEqual(catalog.identity_commitment.digest, AIQ_CORE_V1_CATALOG_IDENTITY_SHA256);
+  strictEqual(catalog.catalog_release_identity.digest, AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256);
   strictEqual(
-    catalogIdentityDigest(
-      catalog.tasks,
+    catalogReleaseIdentityDigest(
+      catalog.task_metadata_identity.digest,
       {
         ...catalog.release_gate_policy,
         predeclared_contrasts: catalog.release_gate_policy.predeclared_contrasts.toReversed(),
       },
       catalog.predecessor_catalog,
-    ) === catalog.identity_commitment.digest,
+    ) === catalog.catalog_release_identity.digest,
     false,
   );
 
@@ -414,7 +625,7 @@ await test('the frozen identity commitment covers tasks and the release policy',
     ...catalog,
     tasks: [second, first, ...catalog.tasks.slice(2)],
   };
-  throws(() => assertCatalogInvariants(reordered), /identity commitment does not match/);
+  throws(() => assertCatalogInvariants(reordered), /Task metadata identity does not match/);
 });
 
 await test('the current catalog binds the redesigned task and scorer release 1.0.2', () => {
@@ -642,10 +853,12 @@ await test('the preregistered release policy gates identity without claiming evi
 
   deepStrictEqual(catalog.release_gate_policy, RELEASE_GATE_POLICY);
   strictEqual(catalog.release_gate_policy.state, 'preregistered_not_evaluated');
-  deepStrictEqual(evaluateReleaseGate(passingEvidence), { passed: true, failures: [] });
+  const passingResult = evaluateReleaseGate(passingEvidence);
+  strictEqual(passingResult.passed, true);
+  deepStrictEqual(passingResult.failures, []);
 
   for (const invalidEvidence of [
-    { ...passingEvidence, catalog_identity_digest: `sha256:${'f'.repeat(64)}` },
+    { ...passingEvidence, catalog_release_identity_digest: `sha256:${'f'.repeat(64)}` },
     { ...passingEvidence, corpus_commitment_digest: 'missing' },
     { ...passingEvidence, model_matrix_digest: `sha256:${'f'.repeat(64)}` },
     { ...passingEvidence, repeat_ids: ['repeat-1', 'repeat-1', 'repeat-3'] },
@@ -654,15 +867,18 @@ await test('the preregistered release policy gates identity without claiming evi
   ] as const) {
     strictEqual(evaluateReleaseGate(invalidEvidence).failures.includes('invalid_evidence'), true);
   }
-  const authority = buildReleaseAuthority();
+  const authority = buildReleaseAuthority(passingEvidence);
   const firstAuthorityBinding = requireValue(
     authority.contrast_bindings[0],
     'Authority must contain the first contrast binding.',
   );
   for (const invalidAuthority of [
-    { ...authority, catalog_identity_digest: `sha256:${'f'.repeat(64)}` },
+    { ...authority, catalog_release_identity_digest: `sha256:${'f'.repeat(64)}` },
     { ...authority, corpus_commitment_digest: `sha256:${'f'.repeat(64)}` },
-    { ...authority, model_matrix_digest: `sha256:${'f'.repeat(64)}` },
+    {
+      ...authority,
+      model_matrix: { ...authority.model_matrix, digest: `sha256:${'f'.repeat(64)}` },
+    },
     {
       ...authority,
       contrast_bindings: authority.contrast_bindings.map((binding, index) =>
@@ -677,15 +893,26 @@ await test('the preregistered release policy gates identity without claiming evi
     },
   ] as const) {
     strictEqual(
-      evaluateReleaseGateWithAuthority(passingEvidence, invalidAuthority).failures.includes(
-        'invalid_evidence',
-      ),
+      evaluateReleaseGateWithAuthority(
+        passingEvidence,
+        invalidAuthority,
+        TRUST_POLICY,
+        TRUST_ROOT,
+      ).failures.includes('invalid_authority'),
       true,
     );
   }
 
   const infrastructureCells = passingEvidence.raw_cells.map((cell, index) =>
-    index === 0 ? { ...cell, status: 'infrastructure_failure' as const, score: null } : cell,
+    index === 0
+      ? {
+          ...cell,
+          status: 'infrastructure_failure' as const,
+          reported_score: null,
+          components: null,
+          verification_status: 'failed' as const,
+        }
+      : cell,
   );
   strictEqual(
     evaluateReleaseGate(replaceRawCells(passingEvidence, infrastructureCells)).failures.includes(
@@ -694,7 +921,15 @@ await test('the preregistered release policy gates identity without claiming evi
     true,
   );
   const evaluatorCells = passingEvidence.raw_cells.map((cell, index) =>
-    index === 0 ? { ...cell, status: 'evaluator_failure' as const, score: null } : cell,
+    index === 0
+      ? {
+          ...cell,
+          status: 'evaluator_failure' as const,
+          reported_score: null,
+          components: null,
+          verification_status: 'failed' as const,
+        }
+      : cell,
   );
   strictEqual(
     evaluateReleaseGate(replaceRawCells(passingEvidence, evaluatorCells)).failures.includes(
@@ -718,15 +953,31 @@ await test('the preregistered release policy gates identity without claiming evi
     evaluateReleaseGate(insufficientContrasts).failures.includes('paired_contrasts'),
     true,
   );
+  const reversedContrast = replacePairedContrasts(
+    passingEvidence,
+    passingEvidence.paired_contrasts.map((contrast, index) =>
+      index === 0
+        ? {
+            ...contrast,
+            pairs: contrast.pairs.map((pair) => ({
+              ...pair,
+              reference_score: 0.43,
+              challenge_score: 0.4,
+            })),
+          }
+        : contrast,
+    ),
+  );
+  strictEqual(evaluateReleaseGate(reversedContrast).failures.includes('paired_contrasts'), true);
   const uncertainContrast = replacePairedContrasts(
     passingEvidence,
     passingEvidence.paired_contrasts.map((contrast, contrastIndex) =>
       contrastIndex === 0
         ? {
             ...contrast,
-            pairs: contrast.pairs.map((pair, pairIndex) => ({
+            pairs: contrast.pairs.map((pair) => ({
               ...pair,
-              challenge_score: pairIndex % 2 === 0 ? 0.6 : 0.26,
+              challenge_score: Number.parseInt(pair.model_id.slice(6), 10) % 2 === 0 ? 0.6 : 0.26,
             })),
           }
         : contrast,
@@ -764,7 +1015,7 @@ await test('the preregistered release policy gates identity without claiming evi
     new Map(
       catalog.tasks.map(({ task_id: taskId }) => [
         taskId,
-        { mean: 0.5, model_step: 0.006, repeat_step: 0.051 },
+        { mean: 0.5, model_step: 0.006, repeat_step: 0.056 },
       ]),
     ),
   );
@@ -798,8 +1049,11 @@ await test('the preregistered release policy gates identity without claiming evi
   );
 
   const antiReliableCells = passingEvidence.raw_cells.map((cell) =>
-    cell.repeat_id === 'repeat-2' && cell.score !== null
-      ? { ...cell, score: 1 - cell.score }
+    cell.repeat_id === 'repeat-2' && cell.reported_score !== null
+      ? (() => {
+          const components = componentsForScore(1 - cell.reported_score);
+          return { ...cell, components, reported_score: scoreFromComponents(components) };
+        })()
       : cell,
   );
   strictEqual(
@@ -809,15 +1063,10 @@ await test('the preregistered release policy gates identity without claiming evi
     true,
   );
 
-  const modelOffsets = Array.from({ length: 17 }, (_, index) => (index - 8) * 0.006);
-  const targetVariance =
-    (catalog.tasks.length * modelOffsets.reduce((sum, value) => sum + value ** 2, 0)) /
-    (catalog.tasks.length * modelOffsets.length - 1);
-  const repeatStepAtIccBoundary = Math.sqrt(targetVariance / 3);
   const iccBoundaryProfiles = new Map(
     catalog.tasks.map(({ task_id: taskId }) => [
       taskId,
-      { mean: 0.5, model_step: 0.006, repeat_step: repeatStepAtIccBoundary },
+      { mean: 0.5, model_step: 0.005, repeat_step: 0.01 },
     ]),
   );
   strictEqual(
@@ -829,7 +1078,7 @@ await test('the preregistered release policy gates identity without claiming evi
   const belowIccProfiles = new Map(
     [...iccBoundaryProfiles].map(([taskId, profile]) => [
       taskId,
-      { ...profile, repeat_step: repeatStepAtIccBoundary * 1.001 },
+      { ...profile, repeat_step: 0.015 },
     ]),
   );
   strictEqual(
@@ -841,7 +1090,7 @@ await test('the preregistered release policy gates identity without claiming evi
   strictEqual(evaluateReleaseGate(twoRepeatEvidence).failures.includes('stability_repeats'), true);
 
   const invalidScoreCells = passingEvidence.raw_cells.map((cell, index) =>
-    index === 0 ? { ...cell, score: Number.NaN } : cell,
+    index === 0 ? { ...cell, reported_score: -0.1 } : cell,
   );
   strictEqual(
     evaluateReleaseGate({
@@ -853,6 +1102,248 @@ await test('the preregistered release policy gates identity without claiming evi
       raw_cells: invalidScoreCells,
     }).failures.includes('invalid_evidence'),
     true,
+  );
+});
+
+await test('signed authority binds source evidence and rejects caller-selected trust', () => {
+  const evidence = buildReleaseEvidence();
+  const authority = buildReleaseAuthority(evidence);
+  strictEqual(
+    evaluateReleaseGateWithAuthority(evidence, authority, TRUST_POLICY, TRUST_ROOT).passed,
+    true,
+  );
+
+  const untrustedPolicy: ReleaseGateTrustPolicy = {
+    ...TRUST_POLICY,
+    authority_signers: [],
+  };
+  strictEqual(
+    evaluateReleaseGateWithAuthority(
+      evidence,
+      authority,
+      untrustedPolicy,
+      TRUST_ROOT,
+    ).failures.includes('invalid_authority'),
+    true,
+  );
+  strictEqual(
+    evaluateReleaseGateWithAuthority(
+      evidence,
+      authority,
+      { ...TRUST_POLICY, promotion_signers: TRUST_POLICY.authority_signers },
+      TRUST_ROOT,
+    ).failures.includes('invalid_authority'),
+    true,
+  );
+  const authorityPublicKey = requireValue(
+    TRUST_POLICY.authority_signers[0],
+    'Authority signer is required.',
+  ).public_key_spki_base64;
+  const sameKeyPolicy: ReleaseGateTrustPolicy = {
+    ...TRUST_POLICY,
+    promotion_signers: [
+      {
+        key_id: 'different-id-same-key',
+        algorithm: 'ed25519',
+        public_key_spki_base64: authorityPublicKey,
+      },
+    ],
+  };
+  strictEqual(
+    evaluateReleaseGateWithAuthority(evidence, authority, sameKeyPolicy, {
+      ...TRUST_ROOT,
+      trust_policy_digest: releaseGateTrustPolicyDigest(sameKeyPolicy),
+    }).failures.includes('invalid_authority'),
+    true,
+  );
+  strictEqual(
+    evaluateReleaseGateWithAuthority(evidence, authority, TRUST_POLICY, {
+      ...TRUST_ROOT,
+      trust_policy_digest: testDigest('caller-selected-trust-policy'),
+    }).failures.includes('invalid_authority'),
+    true,
+  );
+
+  const selfSelected = {
+    ...authority,
+    signer: { key_id: 'caller-selected-key', algorithm: 'ed25519' as const },
+    signature: '',
+  };
+  const selfSigned: ReleaseGateAuthority = {
+    ...selfSelected,
+    signature: sign(
+      null,
+      releaseAuthoritySigningBytes(selfSelected),
+      createPrivateKey(AUTHORITY_PRIVATE_KEY),
+    ).toString('base64'),
+  };
+  strictEqual(
+    evaluateReleaseGateWithAuthority(
+      evidence,
+      selfSigned,
+      TRUST_POLICY,
+      TRUST_ROOT,
+    ).failures.includes('invalid_authority'),
+    true,
+  );
+
+  const firstCell = requireValue(evidence.raw_cells[0], 'Evidence requires one cell.');
+  const firstComponent = requireValue(firstCell.components?.[0], 'Cell requires one component.');
+  const changedComponents = [
+    {
+      ...firstComponent,
+      assertions: firstComponent.assertions.map((assertion, index) =>
+        index === 0 ? Object.assign({}, assertion, { passed: !assertion.passed }) : assertion,
+      ),
+    },
+    ...(firstCell.components?.slice(1) ?? []),
+  ];
+  const changedCells = evidence.raw_cells.map((cell, index) =>
+    index === 0
+      ? {
+          ...cell,
+          components: changedComponents,
+          reported_score: scoreFromComponents(changedComponents),
+        }
+      : cell,
+  );
+  const changedEvidence = replaceRawCells(evidence, changedCells);
+  strictEqual(
+    evaluateReleaseGateWithAuthority(
+      changedEvidence,
+      authority,
+      TRUST_POLICY,
+      TRUST_ROOT,
+    ).failures.includes('invalid_evidence'),
+    true,
+  );
+
+  const changedConfigurations = authority.model_matrix.configurations.map((configuration, index) =>
+    index === 0 ? { ...configuration, family: 'changed-family' } : configuration,
+  );
+  const changedMatrixUnsigned: ReleaseGateAuthority = {
+    ...authority,
+    model_matrix: {
+      configurations: changedConfigurations,
+      digest: releaseEvidenceModelMatrixDigest(changedConfigurations),
+    },
+    signature: '',
+  };
+  const changedMatrixAuthority: ReleaseGateAuthority = {
+    ...changedMatrixUnsigned,
+    signature: sign(
+      null,
+      releaseAuthoritySigningBytes(changedMatrixUnsigned),
+      createPrivateKey(AUTHORITY_PRIVATE_KEY),
+    ).toString('base64'),
+  };
+  strictEqual(
+    evaluateReleaseGateWithAuthority(
+      evidence,
+      changedMatrixAuthority,
+      TRUST_POLICY,
+      TRUST_ROOT,
+    ).failures.includes('invalid_evidence'),
+    true,
+  );
+});
+
+await test('raw component evidence is recomputed and verifier-bound', () => {
+  const evidence = buildReleaseEvidence();
+  const firstCell = requireValue(evidence.raw_cells[0], 'Evidence requires one cell.');
+  const firstComponent = requireValue(firstCell.components?.[0], 'Cell requires one component.');
+  const falseStringCell = structuredClone(firstCell);
+  const falseStringAssertion = requireValue(
+    falseStringCell.components?.[0]?.assertions[0],
+    'Cell requires one assertion.',
+  );
+  Reflect.set(falseStringAssertion, 'passed', 'false');
+  const invalidCells = [
+    evidence.raw_cells.map((cell, index) =>
+      index === 0 ? { ...cell, reported_score: (cell.reported_score ?? 0) + 0.01 } : cell,
+    ),
+    evidence.raw_cells.map((cell, index) =>
+      index === 0 ? { ...cell, verification_digest: null } : cell,
+    ),
+    evidence.raw_cells.map((cell, index) =>
+      index === 0 ? { ...cell, cell_evidence_binding_digest: testDigest('wrong-binding') } : cell,
+    ),
+    evidence.raw_cells.map((cell, index) =>
+      index === 0
+        ? {
+            ...cell,
+            components: [
+              { ...firstComponent, assertions: firstComponent.assertions.slice(0, 2) },
+              ...(cell.components?.slice(1) ?? []),
+            ],
+          }
+        : cell,
+    ),
+    evidence.raw_cells.map((cell, index) =>
+      index === 0
+        ? {
+            ...cell,
+            components: [
+              {
+                ...firstComponent,
+                assertions: firstComponent.assertions.map((assertion, assertionIndex) =>
+                  assertionIndex === 1
+                    ? Object.assign({}, assertion, {
+                        assertion_id: firstComponent.assertions[0]?.assertion_id ?? 'missing',
+                      })
+                    : assertion,
+                ),
+              },
+              ...(cell.components?.slice(1) ?? []),
+            ],
+          }
+        : cell,
+    ),
+    evidence.raw_cells.map((cell, index) => (index === 0 ? bindCell(falseStringCell) : cell)),
+  ];
+  for (const cells of invalidCells) {
+    strictEqual(
+      evaluateReleaseGate(replaceRawCells(evidence, cells)).failures.includes('invalid_evidence'),
+      true,
+    );
+  }
+  const secondCell = requireValue(evidence.raw_cells[1], 'Evidence requires a second cell.');
+  const duplicateResultCells = evidence.raw_cells.map((cell, index) =>
+    index === 0 ? bindCell({ ...cell, result_digest: secondCell.result_digest }) : cell,
+  );
+  strictEqual(
+    evaluateReleaseGate(replaceRawCells(evidence, duplicateResultCells)).failures.includes(
+      'invalid_evidence',
+    ),
+    true,
+  );
+});
+
+await test('only a separately trusted signed receipt promotes the immutable candidate', () => {
+  const evidence = buildReleaseEvidence();
+  const authority = buildReleaseAuthority(evidence);
+  const receipt = buildReleaseReceipt(evidence, authority);
+  strictEqual(buildCatalog().status, 'candidate_requires_controlled_release_gate');
+  strictEqual(verifyReleaseReceipt(receipt, evidence, authority, TRUST_POLICY, TRUST_ROOT), true);
+  strictEqual(
+    verifyReleaseReceipt(
+      { ...receipt, evidence_digest: `sha256:${'f'.repeat(64)}` },
+      evidence,
+      authority,
+      TRUST_POLICY,
+      TRUST_ROOT,
+    ),
+    false,
+  );
+  strictEqual(
+    verifyReleaseReceipt(
+      receipt,
+      evidence,
+      authority,
+      { ...TRUST_POLICY, promotion_signers: [] },
+      TRUST_ROOT,
+    ),
+    false,
   );
 });
 
@@ -931,7 +1422,9 @@ await test('release thresholds accept exact task-count limits and reject one-ste
     });
   }
   const boundaryEvidence = buildReleaseEvidence(profiles);
-  deepStrictEqual(evaluateReleaseGate(boundaryEvidence), { passed: true, failures: [] });
+  const boundaryResult = evaluateReleaseGate(boundaryEvidence);
+  strictEqual(boundaryResult.passed, true);
+  deepStrictEqual(boundaryResult.failures, []);
 
   const firstGapId = requireValue(
     catalog.tasks.find(
@@ -1166,7 +1659,7 @@ await test('release evidence schema accepts raw cells and rejects aggregate or i
   strictEqual('infrastructure_failures' in evidence, false);
 
   for (const invalid of [
-    { ...evidence, catalog_identity_digest: `sha256:${'f'.repeat(64)}` },
+    { ...evidence, catalog_release_identity_digest: `sha256:${'f'.repeat(64)}` },
     { ...evidence, repeat_ids: ['repeat-1', 'repeat-1', 'repeat-3'] },
     { ...evidence, raw_cells: evidence.raw_cells.slice(1) },
     {
@@ -1180,6 +1673,72 @@ await test('release evidence schema accepts raw cells and rejects aggregate or i
   ]) {
     strictEqual(matchesSchema(invalid, schema, schema), false);
   }
+
+  const weightedAssertion = structuredClone(evidence);
+  const weightedCell = weightedAssertion.raw_cells[0];
+  if (!isJsonObject(weightedCell)) throw new TypeError('First raw cell must be an object.');
+  const weightedComponent = arrayProperty(weightedCell, 'components')[0];
+  if (!isJsonObject(weightedComponent)) throw new TypeError('First component must be an object.');
+  const weightedEvidence = arrayProperty(weightedComponent, 'assertions')[0];
+  if (!isJsonObject(weightedEvidence)) throw new TypeError('First assertion must be an object.');
+  weightedEvidence.weight = 1;
+  strictEqual(matchesSchema(weightedAssertion, schema, schema), false);
+
+  const tooFewAssertions = structuredClone(evidence);
+  const shortCell = tooFewAssertions.raw_cells[0];
+  if (!isJsonObject(shortCell)) throw new TypeError('First raw cell must be an object.');
+  const shortComponent = arrayProperty(shortCell, 'components')[0];
+  if (!isJsonObject(shortComponent)) throw new TypeError('First component must be an object.');
+  shortComponent.assertions = arrayProperty(shortComponent, 'assertions').slice(0, 2);
+  strictEqual(matchesSchema(tooFewAssertions, schema, schema), false);
+});
+
+await test('authority, trust-root, trust-policy, and receipt schemas are closed contracts', async () => {
+  const evidence = buildReleaseEvidence();
+  const authority = buildReleaseAuthority(evidence);
+  const receipt = buildReleaseReceipt(evidence, authority);
+  const authoritySchema = parseJsonObject(
+    await readFile('benchmarks/schema/release-gate-authority.schema.json', 'utf8'),
+  );
+  const trustSchema = parseJsonObject(
+    await readFile('benchmarks/schema/release-gate-trust-policy.schema.json', 'utf8'),
+  );
+  const trustRootSchema = parseJsonObject(
+    await readFile('benchmarks/schema/release-gate-trust-root.schema.json', 'utf8'),
+  );
+  const receiptSchema = parseJsonObject(
+    await readFile('benchmarks/schema/release-receipt.schema.json', 'utf8'),
+  );
+  strictEqual(matchesSchema(authority, authoritySchema, authoritySchema), true);
+  strictEqual(matchesSchema(TRUST_POLICY, trustSchema, trustSchema), true);
+  strictEqual(matchesSchema(TRUST_ROOT, trustRootSchema, trustRootSchema), true);
+  strictEqual(matchesSchema(receipt, receiptSchema, receiptSchema), true);
+  strictEqual(
+    matchesSchema(
+      { ...authority, public_key: 'caller-selected' },
+      authoritySchema,
+      authoritySchema,
+    ),
+    false,
+  );
+  strictEqual(
+    matchesSchema(
+      {
+        ...authority,
+        model_matrix: {
+          ...authority.model_matrix,
+          configurations: authority.model_matrix.configurations.slice(1),
+        },
+      },
+      authoritySchema,
+      authoritySchema,
+    ),
+    false,
+  );
+  strictEqual(
+    matchesSchema({ ...receipt, promotion_state: 'candidate' }, receiptSchema, receiptSchema),
+    false,
+  );
 });
 
 await test('task schemas bind command execution to an explicit filesystem scope', async () => {

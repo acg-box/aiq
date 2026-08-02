@@ -12,7 +12,8 @@
     "status",
     "generated_from",
     "predecessor_catalog",
-    "identity_commitment",
+    "task_metadata_identity",
+    "catalog_release_identity",
     "content_policy",
     "distribution",
     "release_gate_policy",
@@ -43,18 +44,35 @@
         "source_commit": { "const": "4700e4c6e5e46ff9b3451d87b8761fb8da8365a0" }
       }
     },
-    "identity_commitment": {
+    "task_metadata_identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["algorithm", "digest", "scope"],
+      "required": ["algorithm", "canonicalization", "digest", "scope"],
       "properties": {
         "algorithm": { "const": "sha256" },
+        "canonicalization": { "const": "aiq.sorted-key-json.v1" },
         "digest": {
           "type": "string",
           "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
         },
         "scope": {
-          "const": "ordered_full_task_metadata_release_policy_and_predecessor"
+          "const": "ordered_full_task_metadata"
+        }
+      }
+    },
+    "catalog_release_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "canonicalization", "digest", "scope"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "canonicalization": { "const": "aiq.sorted-key-json.v1" },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "scope": {
+          "const": "task_metadata_identity_release_policy_and_predecessor"
         }
       }
     },
@@ -96,6 +114,7 @@
         "release_identity",
         "state",
         "evidence_requirement",
+        "trust_root_requirement",
         "score_bands",
         "aggregate_thresholds",
         "domain_thresholds",
@@ -108,6 +127,7 @@
         "release_identity": { "const": "aiq-core/1.0.2" },
         "state": { "const": "preregistered_not_evaluated" },
         "evidence_requirement": { "const": "new_controlled_hidden_corpus" },
+        "trust_root_requirement": { "const": "runtime_pinned_out_of_band_digest" },
         "score_bands": {
           "type": "object",
           "additionalProperties": false,
@@ -155,7 +175,7 @@
           "additionalProperties": false,
           "required": [
             "predeclared_contrasts_min",
-            "absolute_difference_aiq_min",
+            "directional_difference_aiq_min",
             "adjusted_lower_bound_must_exclude_zero",
             "adjusted_lower_bound_method",
             "familywise_alpha",
@@ -163,10 +183,10 @@
           ],
           "properties": {
             "predeclared_contrasts_min": { "const": 3 },
-            "absolute_difference_aiq_min": { "const": 3 },
+            "directional_difference_aiq_min": { "const": 3 },
             "adjusted_lower_bound_must_exclude_zero": { "const": true },
             "adjusted_lower_bound_method": {
-              "const": "one_sided_bonferroni_normal_approximation"
+              "const": "model_clustered_one_sided_bonferroni_normal_approximation"
             },
             "familywise_alpha": { "const": 0.05 },
             "one_sided_critical_value": { "const": 2.128 }
@@ -223,9 +243,15 @@
     "contrastDefinition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["contrast_id", "paired_factor", "controlled_pair_requirement"],
+      "required": [
+        "contrast_id",
+        "expected_direction",
+        "paired_factor",
+        "controlled_pair_requirement"
+      ],
       "properties": {
         "contrast_id": { "type": "string" },
+        "expected_direction": { "const": "challenge_higher" },
         "paired_factor": { "type": "string", "minLength": 80 },
         "controlled_pair_requirement": { "type": "string", "minLength": 80 }
       }

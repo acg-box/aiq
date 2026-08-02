@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/release-gate-authority.v1.json",
+  "title": "Signed AIQ Core release-gate authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "signature_domain",
+    "signature_encoding",
+    "release_identity",
+    "catalog_release_identity_digest",
+    "task_metadata_identity_digest",
+    "corpus_commitment_digest",
+    "source_observations_digest",
+    "model_matrix",
+    "contrast_bindings",
+    "signer",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.release-gate-authority.v1" },
+    "signature_domain": { "const": "aiq.release-gate-authority.v1" },
+    "signature_encoding": { "const": "aiq.sorted-key-json.v1" },
+    "release_identity": { "const": "aiq-core/1.0.2" },
+    "catalog_release_identity_digest": {
+      "const": "sha256:1a29c58d23a5675c0704ed9ab5bf6a74cd267d3a82f39807f783fb05cfa7b40c"
+    },
+    "task_metadata_identity_digest": {
+      "const": "sha256:83440762f969c521d16144a54a1490fadba0fce22cce902fb1d30af66a1403ba"
+    },
+    "corpus_commitment_digest": { "$ref": "#/$defs/digest" },
+    "source_observations_digest": { "$ref": "#/$defs/digest" },
+    "model_matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "configurations"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/digest" },
+        "configurations": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "items": { "$ref": "#/$defs/modelConfiguration" }
+        }
+      }
+    },
+    "contrast_bindings": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "$ref": "#/$defs/coupledConstraints" },
+        { "$ref": "#/$defs/ambiguousRecoveryState" },
+        { "$ref": "#/$defs/plausibleIncompleteEvidence" }
+      ],
+      "items": false
+    },
+    "signer": { "$ref": "#/$defs/signer" },
+    "signature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==(?![\\s\\S])"
+    },
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_id", "algorithm"],
+      "properties": {
+        "key_id": { "$ref": "#/$defs/identifier" },
+        "algorithm": { "const": "ed25519" }
+      }
+    },
+    "modelConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_id",
+        "family",
+        "reasoning_effort",
+        "runtime_digest",
+        "tool_policy_digest",
+        "network_policy_digest"
+      ],
+      "properties": {
+        "model_id": { "$ref": "#/$defs/identifier" },
+        "family": { "$ref": "#/$defs/identifier" },
+        "reasoning_effort": { "enum": ["low", "medium", "high", "xhigh", "max", "ultra"] },
+        "runtime_digest": { "$ref": "#/$defs/digest" },
+        "tool_policy_digest": { "$ref": "#/$defs/digest" },
+        "network_policy_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "contrastBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contrast_id", "reference_variant_digest", "challenge_variant_digest"],
+      "properties": {
+        "contrast_id": { "type": "string" },
+        "reference_variant_digest": { "$ref": "#/$defs/digest" },
+        "challenge_variant_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "coupledConstraints": {
+      "allOf": [
+        { "$ref": "#/$defs/contrastBinding" },
+        { "properties": { "contrast_id": { "const": "coupled_constraints" } } }
+      ]
+    },
+    "ambiguousRecoveryState": {
+      "allOf": [
+        { "$ref": "#/$defs/contrastBinding" },
+        { "properties": { "contrast_id": { "const": "ambiguous_recovery_state" } } }
+      ]
+    },
+    "plausibleIncompleteEvidence": {
+      "allOf": [
+        { "$ref": "#/$defs/contrastBinding" },
+        { "properties": { "contrast_id": { "const": "plausible_incomplete_evidence" } } }
+      ]
+    }
+  }
+}

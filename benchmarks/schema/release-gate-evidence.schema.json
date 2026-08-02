@@ -7,7 +7,8 @@
   "required": [
     "schema_version",
     "release_identity",
-    "catalog_identity_digest",
+    "catalog_release_identity_digest",
+    "task_metadata_identity_digest",
     "corpus_commitment_digest",
     "model_matrix_digest",
     "source_observations_digest",
@@ -18,8 +19,11 @@
   "properties": {
     "schema_version": { "const": "aiq.release-gate-evidence.v1" },
     "release_identity": { "const": "aiq-core/1.0.2" },
-    "catalog_identity_digest": {
-      "const": "sha256:efe6cec623c140cbb6a4c96583a5d0aed24ec856d7792301d1543bd1f9b90db5"
+    "catalog_release_identity_digest": {
+      "const": "sha256:1a29c58d23a5675c0704ed9ab5bf6a74cd267d3a82f39807f783fb05cfa7b40c"
+    },
+    "task_metadata_identity_digest": {
+      "const": "sha256:83440762f969c521d16144a54a1490fadba0fce22cce902fb1d30af66a1403ba"
     },
     "corpus_commitment_digest": { "$ref": "#/$defs/digest" },
     "model_matrix_digest": { "$ref": "#/$defs/digest" },
@@ -28,7 +32,7 @@
       "type": "array",
       "minItems": 3,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])" }
+      "items": { "$ref": "#/$defs/identifier" }
     },
     "raw_cells": {
       "type": "array",
@@ -52,12 +56,85 @@
       "type": "string",
       "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
     },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])"
+    },
+    "assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assertion_id", "passed", "evidence_digest"],
+      "properties": {
+        "assertion_id": { "$ref": "#/$defs/identifier" },
+        "passed": { "type": "boolean" },
+        "evidence_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component_id", "assertions"],
+      "properties": {
+        "component_id": { "type": "string" },
+        "assertions": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/assertion" }
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        {
+          "allOf": [
+            { "$ref": "#/$defs/component" },
+            { "properties": { "component_id": { "const": "component_01" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/component" },
+            { "properties": { "component_id": { "const": "component_02" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/component" },
+            { "properties": { "component_id": { "const": "component_03" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/component" },
+            { "properties": { "component_id": { "const": "component_04" } } }
+          ]
+        }
+      ],
+      "items": false
+    },
     "rawCell": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repeat_id", "task_id", "domain", "model_id", "status", "score"],
+      "required": [
+        "repeat_id",
+        "task_id",
+        "domain",
+        "model_id",
+        "status",
+        "reported_score",
+        "components",
+        "evaluator_digest",
+        "result_digest",
+        "result_package_digest",
+        "verification_digest",
+        "cell_evidence_binding_digest",
+        "verification_status"
+      ],
       "properties": {
-        "repeat_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])" },
+        "repeat_id": { "$ref": "#/$defs/identifier" },
         "task_id": { "type": "string", "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])" },
         "domain": {
           "enum": [
@@ -73,17 +150,52 @@
             "reliability_recovery"
           ]
         },
-        "model_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])" },
+        "model_id": { "$ref": "#/$defs/identifier" },
         "status": {
           "enum": ["completed", "infrastructure_failure", "evaluator_failure"]
         },
-        "score": { "type": ["number", "null"] }
+        "reported_score": { "type": ["number", "null"] },
+        "components": { "oneOf": [{ "$ref": "#/$defs/components" }, { "type": "null" }] },
+        "evaluator_digest": { "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+        "result_digest": { "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }] },
+        "result_package_digest": {
+          "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        },
+        "verification_digest": {
+          "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        },
+        "cell_evidence_binding_digest": {
+          "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+        },
+        "verification_status": { "enum": ["verified", "failed"] }
       },
       "allOf": [
         {
-          "if": { "properties": { "status": { "const": "completed" } } },
-          "then": { "properties": { "score": { "type": "number", "minimum": 0, "maximum": 1 } } },
-          "else": { "properties": { "score": { "type": "null" } } }
+          "if": { "properties": { "status": { "const": "completed" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "reported_score": { "type": "number", "minimum": 0, "maximum": 1 },
+              "components": { "$ref": "#/$defs/components" },
+              "evaluator_digest": { "$ref": "#/$defs/digest" },
+              "result_digest": { "$ref": "#/$defs/digest" },
+              "result_package_digest": { "$ref": "#/$defs/digest" },
+              "verification_digest": { "$ref": "#/$defs/digest" },
+              "cell_evidence_binding_digest": { "$ref": "#/$defs/digest" },
+              "verification_status": { "const": "verified" }
+            }
+          },
+          "else": {
+            "properties": {
+              "reported_score": { "type": "null" },
+              "components": { "type": "null" },
+              "evaluator_digest": { "type": "null" },
+              "result_digest": { "type": "null" },
+              "result_package_digest": { "type": "null" },
+              "verification_digest": { "type": "null" },
+              "cell_evidence_binding_digest": { "type": "null" },
+              "verification_status": { "const": "failed" }
+            }
+          }
         }
       ]
     },
@@ -92,8 +204,8 @@
       "additionalProperties": false,
       "required": ["repeat_id", "model_id", "reference_score", "challenge_score"],
       "properties": {
-        "repeat_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])" },
-        "model_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])" },
+        "repeat_id": { "$ref": "#/$defs/identifier" },
+        "model_id": { "$ref": "#/$defs/identifier" },
         "reference_score": { "type": "number", "minimum": 0, "maximum": 1 },
         "challenge_score": { "type": "number", "minimum": 0, "maximum": 1 }
       }
