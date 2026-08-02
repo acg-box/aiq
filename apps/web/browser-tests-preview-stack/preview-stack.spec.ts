@@ -75,7 +75,7 @@ for (const route of routes) {
     expectPrivateNoStore(response);
     await expect(page.locator('main h1')).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Deployment status' })).toHaveText(
-      'ACGbox preview · synthetic · read-only · not production',
+      'AIQ Wiki preview · synthetic · read-only · not production',
     );
     await expect(page.getByText('Synthetic / seed data', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Published evidence', { exact: true })).toHaveCount(0);
@@ -158,10 +158,10 @@ test('the preview readiness endpoint stays explicit about absent production gate
 
 test('the disposable preview cannot be indexed as production evidence', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('AIQ Wiki — ACGbox synthetic preview');
+  await expect(page).toHaveTitle('AIQ Wiki — synthetic preview');
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     'content',
-    /ACGbox read-only preview with synthetic AIQ Wiki fixtures/,
+    /AIQ Wiki read-only preview with synthetic fixtures/,
   );
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /nofollow/);
