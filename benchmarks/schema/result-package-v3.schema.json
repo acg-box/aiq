@@ -532,7 +532,8 @@
             "evaluator_failure",
             "budget_exceeded",
             "output_truncated",
-            "workspace_unavailable"
+            "workspace_unavailable",
+            "workspace_integrity"
           ]
         },
         "message": {
@@ -1788,7 +1789,8 @@
                           "evaluator_failure",
                           "budget_exceeded",
                           "output_truncated",
-                          "workspace_unavailable"
+                          "workspace_unavailable",
+                          "workspace_integrity"
                         ]
                       }
                     }

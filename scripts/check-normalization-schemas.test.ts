@@ -1168,6 +1168,63 @@ await test('result submission schema rejects matrix, pair, status, byte, artifac
   });
 });
 
+await test('workspace integrity is a failed post-invocation result taxonomy', async () => {
+  const resultSchema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const fixture = requireObject(
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    'result package fixture',
+  );
+  const result = structuredClone(
+    requireObjectAt(
+      requireArrayProperty(requireObjectProperty(fixture, 'payload'), 'results'),
+      0,
+      'results',
+    ),
+  );
+  result.status = 'failed';
+  result.evaluation = 'not_evaluated';
+  result.task_score = null;
+  result.response = null;
+  result.response_sha256 = null;
+  result.evaluator_result_sha256 = null;
+  result.failure = {
+    kind: 'workspace_integrity',
+    message: 'post-invocation workspace evidence could not be retained',
+    exit_code: 0,
+    retryable: true,
+  };
+  requireObjectProperty(result, 'provenance').synthetic = false;
+
+  const taskResultSchema = resolveReference(resultSchema, '#/$defs/taskResult');
+  strictEqual(matchesSchema(result, taskResultSchema, resultSchema), true);
+
+  const retainedResponse = structuredClone(result);
+  retainedResponse.response = 'must not survive workspace-integrity failure';
+  retainedResponse.response_sha256 = sha256(9_003);
+  strictEqual(matchesSchema(retainedResponse, taskResultSchema, resultSchema), false);
+
+  const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const normalized = normalizedResult({ family: 'sol', reasoning_effort: 'low' }, 0, 0);
+  normalized.source_status = 'failed';
+  normalized.source_evaluation = 'not_evaluated';
+  normalized.outcome = 'invalid';
+  normalized.task_score = null;
+  normalized.failure_responsibility = 'benchmark_infrastructure';
+  normalized.failure = structuredClone(result.failure);
+  normalized.response = null;
+  normalized.response_sha256 = null;
+  requireObjectProperty(normalized, 'provenance').synthetic = false;
+
+  strictEqual(
+    matchesSchema(
+      normalized,
+      resolveReference(normalizedSchema, '#/$defs/normalizedTaskResult'),
+      normalizedSchema,
+    ),
+    true,
+  );
+});
+
 await test('evaluator results v1 schema accepts positional evidence and enforces check limits', async () => {
   const schema = await parseSchema('benchmarks/schema/evaluator-results-v1.schema.json');
   const fixtureValue: unknown = JSON.parse(
