@@ -100,17 +100,18 @@ digest. The pricing record keeps its method, version, observation date, source,
 currency, Standard processing tier, rates, formula, and limitation. Missing or
 inconsistent usage keeps the cost `NULL` and records an unavailable status.
 
-The aggregate views expose attempted-result, adapter-invoked,
+The aggregate views expose selected-result, attempted-result, adapter-invoked,
 elapsed-observed, token-observed, and priced counts. A cost total is available
 only when all results have an estimate. The retained verified stage keeps the
 raw provider counters and the immutable pricing record. This evidence supports
 later contemporaneous and rebased price views without changing the recorded
 estimate.
 
-An attempted result is a selected cell with signed result evidence. The
-adapter-invoked count excludes cells stopped by capability validation or
-workspace preflight. The elapsed-observed count can be lower than the
-adapter-invoked count when the verifier has no bounded elapsed value.
+An attempted result passed capability admission and entered task preparation.
+The adapter-invoked count also excludes cells stopped by workspace preflight.
+The elapsed-observed count can be lower than the adapter-invoked count when the
+verifier has no bounded elapsed value. These counts do not infer a successful
+model response.
 
 Calibration publication creates durable `calibration_run` ownership for the
 submitted package and every claim-bound audit artifact. This includes declared

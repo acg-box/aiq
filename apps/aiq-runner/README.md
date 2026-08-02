@@ -78,11 +78,11 @@ the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,
 network policy, environment, source manifest, executables, and permission
 evidence in `aiq.run-provenance.v2`.
 
-Each attempted result records runner-observed wall time. When Codex reports
-token counters, the verifier parses the retained evidence again and records the
-provider-reported input, cache, output, and reasoning counters. The versioned
-cost field is a Standard short-context API-equivalent estimate. It is not the
-actual cost of a ChatGPT or Codex subscription.
+Each adapter-invoked result can record runner-observed wall time. When Codex
+reports token counters, the verifier parses the retained evidence again and
+records the provider-reported input, cache, output, and reasoning counters. The
+versioned cost field is a Standard short-context API-equivalent estimate. It is
+not the actual cost of a ChatGPT or Codex subscription.
 
 Task workspaces are fresh copies. The runner stores content-addressed workspace
 and evaluator artifacts under the controlled artifact root. It writes a durable

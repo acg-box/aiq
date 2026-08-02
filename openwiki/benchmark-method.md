@@ -68,18 +68,19 @@ supports interruption recovery without replacing completed evidence.
 
 ## Time, tokens, and API-equivalent cost
 
-Each result distinguishes selected, attempted, invoked, and elapsed-observed
-work. Runner-observed wall time measures the Codex adapter invocation only; it
-excludes workspace setup, artifact sealing, and evaluator replay. The verifier
-cannot reproduce the clock value, so public data labels its authority as
-`runner_observed`.
+Each result distinguishes selected, attempted, adapter-invoked, and
+elapsed-observed work. An attempt starts after capability admission. An adapter
+invocation starts after workspace preparation. Runner-observed wall time
+measures the Codex adapter invocation only; it excludes workspace setup,
+artifact sealing, and evaluator replay. The verifier cannot reproduce the
+clock value, so public data labels its authority as `runner_observed`.
 
 When Codex reports token counters, the runner retains the exact provider event.
 The verifier parses those bytes again before publishing input, cached-input,
 cache-write-input, output, reasoning-output, and total-token values. Aggregates
 publish coverage counts separately and provide total cost only when every
-selected result is estimable. Missing, non-invoked, or inconsistent counters
-stay unavailable rather than becoming zero.
+selected result is estimable. Missing, adapter-uninvoked, or inconsistent
+counters stay unavailable rather than becoming zero.
 
 The cost field uses the versioned
 `aiq.standard-api-equivalent-usd.v1` method and the Standard processing-tier
