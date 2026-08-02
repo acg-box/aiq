@@ -1,0 +1,239 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+/* oxlint-disable typescript/no-unsafe-type-assertion -- Tests preserve raw adversarial header values that Fetch normalizes or rejects. */
+
+import {
+  handleArtifactResolve,
+  type ArtifactResolveDependencies,
+} from './artifact-resolve-handler.ts';
+
+const token = 'verifier-token';
+const inboxId = '223e4567-e89b-42d3-a456-426614174000';
+const leaseToken = '123e4567-e89b-42d3-a456-426614174000';
+const digest = 'a'.repeat(64);
+const kind = 'workspace-manifest.json';
+
+function request(
+  authorization = `Bearer ${token}`,
+  body: unknown = {
+    inbox_id: inboxId,
+    lease_token: leaseToken,
+    kind,
+    digest,
+  },
+): Request {
+  return new Request('http://localhost/api/artifacts/resolve', {
+    method: 'POST',
+    headers: { authorization, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function requestWithRawContentLength(value: string): Request {
+  const base = request();
+  return {
+    arrayBuffer: () => base.arrayBuffer(),
+    headers: {
+      get(name: string) {
+        return name.toLowerCase() === 'content-length' ? value : base.headers.get(name);
+      },
+    },
+  } as Request;
+}
+
+function resolved(overrides: Readonly<Record<string, unknown>> = {}) {
+  return [
+    {
+      object_bucket: 'private-artifacts',
+      object_key: `sha256/${digest}/${kind}`,
+      artifact_kind: kind,
+      content_sha256: digest,
+      byte_size: 321,
+      lease_expires_at: '2026-07-25T12:05:00Z',
+      ...overrides,
+    },
+  ];
+}
+
+function dependencies(
+  overrides: Partial<ArtifactResolveDependencies> = {},
+): ArtifactResolveDependencies {
+  return {
+    configured: true,
+    expectedToken: token,
+    resolve: async () => resolved(),
+    createSignedUrl: async () => 'https://storage.invalid/signed',
+    now: () => Date.parse('2026-07-25T12:04:00Z'),
+    ...overrides,
+  };
+}
+
+void describe('verifier artifact resolution', () => {
+  void it('authorizes before parsing the request', async () => {
+    let resolves = 0;
+    const response = await handleArtifactResolve(
+      request('Bearer wrong', '{'),
+      dependencies({
+        resolve: async () => {
+          resolves += 1;
+        },
+      }),
+    );
+    assert.equal(response.status, 401);
+    assert.equal(resolves, 0);
+  });
+
+  void it('returns a short-lived URL without raw object identity', async () => {
+    let observedExpiry = 0;
+    const response = await handleArtifactResolve(
+      request(),
+      dependencies({
+        createSignedUrl: async (_artifact, expiry) => {
+          observedExpiry = expiry;
+          return 'https://storage.invalid/signed';
+        },
+      }),
+    );
+    assert.equal(response.status, 200);
+    assert.equal(observedExpiry, 60);
+    const value = await response.text();
+    assert.match(value, /"url_expires_in_seconds":60/);
+    assert.doesNotMatch(value, /private-artifacts|object_key|object_bucket/);
+  });
+
+  void it('permits a claim-bound workspace replay snapshot', async () => {
+    const snapshotKind = 'workspace-snapshot.json';
+    const response = await handleArtifactResolve(
+      request(`Bearer ${token}`, {
+        inbox_id: inboxId,
+        lease_token: leaseToken,
+        kind: snapshotKind,
+        digest,
+      }),
+      dependencies({
+        resolve: async () =>
+          resolved({
+            object_key: `sha256/${digest}/${snapshotKind}`,
+            artifact_kind: snapshotKind,
+          }),
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /workspace-snapshot\.json/);
+  });
+
+  void it('permits only an exactly resolved claim-bound evaluator bundle', async () => {
+    const bundleKind = 'evaluator-results.json';
+    const response = await handleArtifactResolve(
+      request(`Bearer ${token}`, {
+        inbox_id: inboxId,
+        lease_token: leaseToken,
+        kind: bundleKind,
+        digest,
+      }),
+      dependencies({
+        resolve: async () =>
+          resolved({
+            object_key: `sha256/${digest}/${bundleKind}`,
+            artifact_kind: bundleKind,
+            byte_size: 3_948_544,
+          }),
+      }),
+    );
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /evaluator-results\.json/);
+
+    const oversized = await handleArtifactResolve(
+      request(`Bearer ${token}`, {
+        inbox_id: inboxId,
+        lease_token: leaseToken,
+        kind: bundleKind,
+        digest,
+      }),
+      dependencies({
+        resolve: async () =>
+          resolved({
+            object_key: `sha256/${digest}/${bundleKind}`,
+            artifact_kind: bundleKind,
+            byte_size: 3_948_545,
+          }),
+      }),
+    );
+    assert.equal(oversized.status, 404);
+  });
+
+  void it('fails closed for an expired lease', async () => {
+    const response = await handleArtifactResolve(
+      request(),
+      dependencies({ now: () => Date.parse('2026-07-25T12:05:01Z') }),
+    );
+    assert.equal(response.status, 409);
+    assert.match(await response.text(), /CLAIM_LEASE_EXPIRED/);
+  });
+
+  void it('rejects an upstream path substitution', async () => {
+    const response = await handleArtifactResolve(
+      request(),
+      dependencies({ resolve: async () => resolved({ object_key: '../secret' }) }),
+    );
+    assert.equal(response.status, 404);
+  });
+
+  void it('rejects upstream kind, digest, and byte substitutions', async () => {
+    for (const override of [
+      { artifact_kind: 'stdout.jsonl' },
+      { content_sha256: 'b'.repeat(64) },
+      { byte_size: 0 },
+      { byte_size: 3.5 },
+    ]) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each adversarial response is independent.
+      const response = await handleArtifactResolve(
+        request(),
+        dependencies({ resolve: async () => resolved(override) }),
+      );
+      assert.equal(response.status, 404);
+    }
+  });
+
+  void it('rejects line terminators after exact claim-bound artifact identifiers', async () => {
+    for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each adversarial body is independent.
+      const response = await handleArtifactResolve(
+        request(`Bearer ${token}`, {
+          inbox_id: `${inboxId}${suffix}`,
+          lease_token: leaseToken,
+          kind,
+          digest: `${digest}${suffix}`,
+        }),
+        dependencies(),
+      );
+      assert.equal(response.status, 400);
+    }
+  });
+
+  void it('rejects line terminators after the artifact-resolution content-length header', async () => {
+    for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each raw header case owns a one-shot request body.
+      const response = await handleArtifactResolve(
+        requestWithRawContentLength(`1${suffix}`),
+        dependencies(),
+      );
+      assert.equal(response.status, 400);
+    }
+  });
+
+  void it('does not return metadata when signed URL creation fails', async () => {
+    const response = await handleArtifactResolve(
+      request(),
+      dependencies({
+        createSignedUrl: async () => {
+          throw new Error('storage unavailable');
+        },
+      }),
+    );
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'ARTIFACT_URL_FAILED' });
+  });
+});

@@ -1,0 +1,18 @@
+{
+  "schema_version": "aiq.task.v2",
+  "task_id": "hidden-exact-match-01",
+  "task_version": "1.0.0",
+  "title": "Hidden exact match negative fixture",
+  "domain": "coding",
+  "difficulty": "easy",
+  "prompt": "This fixture must not run.",
+  "allowed_tools": ["none"],
+  "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
+  "tags": ["negative"],
+  "scorer_version": "0.1.0",
+  "leakage_notes": ["Synthetic invalid fixture."],
+  "fixture_refs": ["controlled://negative"],
+  "visibility": "hidden",
+  "provenance": { "source": "synthetic", "official_score_eligible": false },
+  "evaluator": { "kind": "exact_match", "expected": "never" }
+}
