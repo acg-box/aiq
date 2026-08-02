@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use crate::adapter::ArtifactReference;
 use crate::runner::MAX_RUN_JOBS;
 use crate::runner::TaskResult;
-use crate::scoring::AIQ_SCORING_VERSION;
+use crate::scoring::{AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION};
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
@@ -1282,9 +1282,9 @@ fn validate_metadata(
 	validate_hash(&metadata.prompt_set_digest, true)?;
 
 	if metadata.synthetic_test
-		|| metadata.task_set_id != "aiq-core"
-		|| metadata.task_set_version != AIQ_SCORING_VERSION
-		|| metadata.benchmark_version != "aiq-core@1.0.0"
+		|| metadata.task_set_id != AIQ_TASK_SET_ID
+		|| metadata.task_set_version != AIQ_TASK_SET_VERSION
+		|| metadata.benchmark_version != AIQ_BENCHMARK_VERSION
 		|| metadata.prompt_set_digest != run.provenance.prompt_digest
 		|| metadata.started_unix_ms != run.started_unix_ms
 		|| metadata.finished_unix_ms != run.finished_unix_ms

@@ -17,9 +17,15 @@ use crate::{
 
 /// Current scoring implementation version.
 pub const AIQ_SCORING_VERSION: &str = "1.0.0";
-/// Frozen full-metadata commitment for AIQ Core 1.0.0.
+/// Current controlled AIQ Core task-set identifier.
+pub const AIQ_TASK_SET_ID: &str = "aiq-core";
+/// Current controlled AIQ Core task-set release.
+pub const AIQ_TASK_SET_VERSION: &str = "1.0.1";
+/// Current benchmark release identifier.
+pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.1";
+/// Frozen full-metadata commitment for AIQ Core 1.0.1.
 pub const AIQ_CORE_V1_TASK_IDENTITY_SHA256: &str =
-	"sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3";
+	"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -788,8 +794,8 @@ fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
 		return false;
 	};
 
-	if catalog.task_set_id != "aiq-core"
-		|| catalog.task_set_version != AIQ_SCORING_VERSION
+	if catalog.task_set_id != AIQ_TASK_SET_ID
+		|| catalog.task_set_version != AIQ_TASK_SET_VERSION
 		|| catalog.identity_commitment.digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
 		|| catalog.tasks.len() != 72
 		|| tasks.len() != catalog.tasks.len()
