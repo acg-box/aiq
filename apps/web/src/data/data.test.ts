@@ -563,7 +563,7 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.0');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.1');
     assert.deepEqual(
       Object.fromEntries(
         benchmarkDomainConfig.map((domain) => [
@@ -812,6 +812,7 @@ void describe('presentation aggregates', () => {
     const rows = CALIBRATION_MODEL_CONFIGURATIONS.flatMap((configuration, configurationIndex) =>
       Array.from({ length: 72 }, (_, taskIndex) => {
         const outcome = CALIBRATION_OUTCOMES[taskIndex % CALIBRATION_OUTCOMES.length] ?? 'correct';
+        const unavailableContextBand = taskIndex === 1;
         const explanationSummary = calibrationExplanationSummaryForOutcome(outcome);
         const failureCode =
           outcome === 'invalid' && taskIndex === 8
@@ -822,7 +823,7 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1',
+          task_version: '1.0.1',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
@@ -841,22 +842,26 @@ void describe('presentation aggregates', () => {
                   : 0,
           latency_ms: null,
           latency_evidence_level: null,
-          input_tokens: null,
-          cached_input_tokens: null,
-          cache_write_input_tokens: null,
-          output_tokens: null,
-          reasoning_output_tokens: null,
-          total_tokens: null,
-          token_usage_source_level: null,
-          token_usage_evidence_level: null,
+          input_tokens: unavailableContextBand ? 272_001 : null,
+          cached_input_tokens: unavailableContextBand ? 0 : null,
+          cache_write_input_tokens: unavailableContextBand ? 0 : null,
+          output_tokens: unavailableContextBand ? 0 : null,
+          reasoning_output_tokens: unavailableContextBand ? 0 : null,
+          total_tokens: unavailableContextBand ? 272_001 : null,
+          token_usage_source_level: unavailableContextBand ? 'provider_reported' : null,
+          token_usage_evidence_level: unavailableContextBand ? 'verifier_recomputed' : null,
           standard_api_equivalent_usd_nanos: null,
-          cost_estimator_status: 'unavailable_missing_usage',
+          cost_estimator_status: unavailableContextBand
+            ? 'unavailable_context_band'
+            : 'unavailable_missing_usage',
           cost_evidence_level: null,
-          cost_estimator_limitations: ['Provider usage is unavailable.'],
+          cost_estimator_limitations: [
+            'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.',
+          ],
           cost_method: 'standard_api_equivalent_text_token_estimate',
           cost_version: 'aiq.standard-api-equivalent-usd.v1',
           cost_as_of: '2026-08-02',
-          cost_source: 'https://developers.openai.com/api/docs/models/compare',
+          cost_source: 'https://developers.openai.com/api/docs/pricing',
           pricing_currency: 'USD',
           pricing_processing_tier: 'standard',
         };
@@ -921,6 +926,15 @@ void describe('presentation aggregates', () => {
       workspaceIntegrity.explanationSummary,
       'Benchmark infrastructure invalidated this result; an audited rerun is required.',
     );
+    const contextBand = calibration.results.find(
+      (result) => result.costEstimatorStatus === 'unavailable_context_band',
+    );
+    assert.ok(contextBand);
+    assert.equal(contextBand.standardApiEquivalentUsdNanos, null);
+    assert.equal(contextBand.costEvidenceLevel, null);
+    assert.deepEqual(contextBand.costEstimatorLimitations, [
+      'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.',
+    ]);
     assert.equal(resultRequests.length, 1);
     const resultUrl = new URL(resultRequests[0]?.url ?? 'invalid:');
     assert.equal(resultUrl.searchParams.get('run_id'), `eq.${runId}`);
@@ -975,6 +989,20 @@ void describe('presentation aggregates', () => {
       ),
       selectedRows.map((row, index) =>
         index === 3 ? Object.assign({}, row, { failure_code: null, explanation_code: null }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1 ? Object.assign({}, row, { standard_api_equivalent_usd_nanos: 1 }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1 ? Object.assign({}, row, { cost_evidence_level: 'verifier_recomputed' }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1 ? Object.assign({}, row, { input_tokens: 272_000 }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1
+          ? Object.assign({}, row, { cost_estimator_status: 'unavailable_invalid_usage' })
+          : row,
       ),
     ];
     await Promise.all(
@@ -1456,7 +1484,7 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.0',
+      benchmark_version: 'aiq-core@1.0.1',
       scoring_version: '1.0.0',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',

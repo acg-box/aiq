@@ -80,7 +80,7 @@ function syntheticResults(): Record<string, unknown>[] {
         result_id: '',
         run_id: fixtureRunId,
         task_id: `task-${taskIndex}`,
-        task_version: '1',
+        task_version: '1.0.1',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'failed',
@@ -185,7 +185,7 @@ function productionProvenance(
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
-    catalog_digest: 'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3',
+    catalog_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
     task_set_digest: digest('3'),
     evaluator_digest: digest('4'),
     runtime_digest: digest('5'),
@@ -228,7 +228,7 @@ function officialPackage(): Record<string, unknown> {
         result_id: '',
         run_id: runId,
         task_id: `task-${taskIndex}`,
-        task_version: '1',
+        task_version: '1.0.1',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'completed',
@@ -352,7 +352,15 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       scoring_version: '1.0.0',
     }),
   )}`;
-  const results = structuredClone(officialPayload.results as Record<string, unknown>[]);
+  const taskMajorResults = structuredClone(officialPayload.results as Record<string, unknown>[]);
+  const results = models.flatMap((selectedModel, modelIndex) =>
+    Array.from({ length: 72 }, (_, taskIndex) => {
+      const result = taskMajorResults[taskIndex * models.length + modelIndex];
+      assert.ok(result);
+      assert.deepEqual(result.model, selectedModel);
+      return result;
+    }),
+  );
   for (const result of results) {
     result.run_id = runId;
     rehashResult(result);
@@ -614,6 +622,52 @@ void describe('shared result-package contract', () => {
       mutate(candidate);
       assert.equal(validateSubmission(resignPackage(candidate)).ok, false);
     }
+  });
+
+  void it('accepts workspace integrity as an exact adapter failure kind', () => {
+    const accepted = calibrationPackage();
+    const payload = accepted.payload as Record<string, unknown>;
+    const capability = payload.capability_validation as Record<string, unknown>;
+    const cliProbe = capability.cli_probe as Record<string, unknown>;
+    cliProbe.failure = {
+      kind: 'workspace_integrity',
+      exit_code: null,
+      stderr: '',
+      message: 'workspace integrity validation failed',
+      stdout_truncated: false,
+      stderr_truncated: false,
+      artifacts: [],
+    };
+    const provenance = payload.provenance as Record<string, unknown>;
+    provenance.preflight_digest = `sha256:${sha256Hex(canonicalJson(capability))}`;
+    assert.equal(validateSubmission(resignPackage(accepted)).ok, true);
+
+    const unknown = structuredClone(accepted);
+    const unknownPayload = unknown.payload as Record<string, unknown>;
+    const unknownCapability = unknownPayload.capability_validation as Record<string, unknown>;
+    const unknownCliProbe = unknownCapability.cli_probe as Record<string, unknown>;
+    (unknownCliProbe.failure as Record<string, unknown>).kind = 'workspace_corruption';
+    (unknownPayload.provenance as Record<string, unknown>).preflight_digest =
+      `sha256:${sha256Hex(canonicalJson(unknownCapability))}`;
+    assert.equal(validateSubmission(resignPackage(unknown)).ok, false);
+  });
+
+  void it('rejects noncanonical calibration model and result ordering', () => {
+    const noncanonicalModels = maximumSelectedCalibrationPackage();
+    const modelsPayload = noncanonicalModels.payload as Record<string, unknown>;
+    modelsPayload.models = (modelsPayload.models as unknown[]).toReversed();
+    assert.equal(validateSubmission(resignPackage(noncanonicalModels)).ok, false);
+
+    const noncanonicalResults = maximumSelectedCalibrationPackage();
+    const resultsPayload = noncanonicalResults.payload as Record<string, unknown>;
+    const resultRows = resultsPayload.results as unknown[];
+    const first = resultRows[0];
+    const second = resultRows[1];
+    assert.ok(first);
+    assert.ok(second);
+    resultRows[0] = second;
+    resultRows[1] = first;
+    assert.equal(validateSubmission(resignPackage(noncanonicalResults)).ok, false);
   });
 
   void it('keeps the maximum 72-by-17 calibration package below the fixed ingress ceiling', () => {

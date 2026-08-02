@@ -572,6 +572,7 @@ function isAdapterFailure(value: unknown): boolean {
       'non_zero_exit',
       'budget_exceeded',
       'output_truncated',
+      'workspace_integrity',
     ].includes(value.kind as string) &&
     (value.exit_code === null ||
       (typeof value.exit_code === 'number' &&
@@ -1146,15 +1147,19 @@ function validateCalibrationRunPayload(
   const metadata = new Map<string, { version: string; hash: string }>();
   const pairs = new Set<string>();
   const validationContext = { ...payload, synthetic: false };
-  for (const result of payload.results) {
+  for (const [index, result] of payload.results.entries()) {
     const validated = validateTaskResult(
       result,
       validationContext,
       capabilityByModel,
       signerNodeId,
     );
+    const expectedModel = selectedModels[Math.floor(index / taskIds.length)];
+    const expectedTaskId = taskIds[index % taskIds.length];
     if (
       !validated ||
+      validated.model !== expectedModel ||
+      validated.taskId !== expectedTaskId ||
       !selectedTaskIds.has(validated.taskId) ||
       !selectedModels.includes(validated.model)
     ) {
