@@ -84,11 +84,12 @@ The expected receipt contains 72 tasks, 17 model configurations, and three
 nodes. The catalog digest is
 `sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3`.
 
-## ACGbox free-tier preview
+## AIQ Wiki free-tier preview
 
-Before production, one disposable personal Supabase Free project and one
-personal Vercel Hobby project can host the read-only review build. Initialize
-the empty preview database once:
+Before production, one disposable Supabase Free project in the personal
+`ACG Box` organization and one Vercel Hobby project in the personal `acgbox`
+scope/account can host the read-only review build. Initialize the empty preview
+database once:
 
 ```sh
 AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
