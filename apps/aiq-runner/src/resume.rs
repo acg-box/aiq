@@ -583,9 +583,9 @@ pub fn atomic_write_json(path: &Path, value: &impl Serialize) -> Result<(), Resu
 	let canonical_parent = fs::canonicalize(parent)
 		.map_err(|error| ResumeError::new(format!("cannot resolve state directory: {error}")))?;
 	let name = path.file_name().ok_or_else(|| ResumeError::new("state file name is missing"))?;
-	let nonce =
+	let unique_suffix =
 		SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
-	let temporary = temporary_state_path(&canonical_parent, name, nonce);
+	let temporary = temporary_state_path(&canonical_parent, name, unique_suffix);
 	let mut file = open_private_state_file(&temporary)
 		.map_err(|error| ResumeError::new(format!("cannot create temporary state: {error}")))?;
 	let mut bytes =
@@ -639,11 +639,11 @@ fn valid_digest(value: &str) -> bool {
 	})
 }
 
-fn temporary_state_path(parent: &Path, name: &OsStr, nonce: u128) -> PathBuf {
+fn temporary_state_path(parent: &Path, name: &OsStr, unique_suffix: u128) -> PathBuf {
 	let mut temporary_name = OsString::from(".");
 
 	temporary_name.push(name);
-	temporary_name.push(format!(".tmp-{}-{nonce}", process::id()));
+	temporary_name.push(format!(".tmp-{}-{unique_suffix}", process::id()));
 
 	parent.join(temporary_name)
 }

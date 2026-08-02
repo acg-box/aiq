@@ -12715,6 +12715,20 @@ grant select(tool_usage) on table aiq_private.aiq_task_results to authenticated;
 -- Name: table public_distributed_radar; Type: ACL; Schema: public; Owner: -
 --
 
+-- Supabase can grant broad public-schema defaults to browser roles. Remove
+-- those inherited grants before adding the exact read-only surface.
+revoke all on table
+  public.public_distributed_radar,
+  public.public_leaderboard,
+  public.public_model_matrix,
+  public.public_nodes,
+  public.public_run_results,
+  public.public_runs,
+  public.public_scoring_versions,
+  public.public_task_coverage,
+  public.aiq_preview_status_v1
+from public, anon, authenticated;
+
 grant select on table public.public_distributed_radar to anon;
 grant select on table public.public_distributed_radar to authenticated;
 

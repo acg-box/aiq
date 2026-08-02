@@ -275,7 +275,9 @@ void test(
 create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin;
-grant anon, authenticated to authenticator;`,
+grant anon, authenticated to authenticator;
+alter default privileges for role postgres in schema public
+  grant all on tables to anon, authenticated, service_role;`,
       ],
       { env: environment },
     );
@@ -285,6 +287,19 @@ grant anon, authenticated to authenticator;`,
       psqlCommand: integrationPsql,
       environment: { ...process.env, AIQ_DATABASE_URL: integrationDatabaseUrl },
     });
+    await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--quiet',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--file',
+        resolve(repositoryRoot, 'databases/smoke.sql'),
+      ],
+      { env: environment },
+    );
     assert.deepEqual(
       await previewStatus(integrationPsql, integrationDatabaseUrl, 'anon'),
       expectedPreviewStatus,

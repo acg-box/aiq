@@ -77,6 +77,30 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /grant all on function aiq_private\.preview_status_v1\(\) to authenticated/);
   assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to anon/);
   assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to authenticated/);
+  const browserReadSurfaceRevocation = schema.match(
+    /revoke all on table\s+([\s\S]*?)\s+from public, anon, authenticated;/,
+  )?.[1];
+  assert.ok(
+    browserReadSurfaceRevocation,
+    'The public read surface must remove provider default grants before granting SELECT.',
+  );
+  for (const viewName of [
+    'public_distributed_radar',
+    'public_leaderboard',
+    'public_model_matrix',
+    'public_nodes',
+    'public_run_results',
+    'public_runs',
+    'public_scoring_versions',
+    'public_task_coverage',
+    'aiq_preview_status_v1',
+  ]) {
+    assert.match(
+      browserReadSurfaceRevocation,
+      new RegExp(`public\\.${viewName}(?:,|$)`),
+      `The public read surface must revoke provider defaults from ${viewName}.`,
+    );
+  }
   assert.match(schema, /'synthetic_complete'/);
   assert.match(schema, /score ->> 'tier' = 'synthetic_complete' and not is_synthetic/);
   assert.match(schema, /score ->> 'tier' = 'official' and is_synthetic/);
