@@ -974,12 +974,13 @@ mod tests {
 			ResultFailure, ResultStatus, ToolUsage,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
+		scoring::{self, AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_VERSION},
 		submission::{
 			self, ArtifactUploadRequest, ArtifactUploadTransport, MAX_SUBMISSION_BYTES,
 			SecretToken, SubmissionOutcomeKind, SubmissionRequest, SubmissionTransport,
 			TransportFailure, TransportFailureKind, TransportResponse,
 		},
-		task::{EvaluatorCheck, EvaluatorCheckFailureClass},
+		task::{self, EvaluatorCheck, EvaluatorCheckFailureClass},
 	};
 
 	struct FakeTransport {
@@ -2124,15 +2125,43 @@ mod tests {
 			.expect("checked-in fixture must verify");
 		let run: runner::RunRecord =
 			serde_json::from_value(envelope.payload.clone()).expect("checked-in fixture run");
+		let tasks = runner::synthetic_demo_tasks();
 		let scheduled_unix_ms =
 			run.schedule_slot.scheduled_unix_ms().expect("checked-in fixture schedule");
 
 		assert_eq!(canonical, fixture);
+		assert_eq!(canonical, signed_body());
 		assert_eq!(run.started_unix_ms, scheduled_unix_ms);
 		assert_eq!(run.finished_unix_ms, scheduled_unix_ms);
 		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(envelope.payload["models"].as_array().map(Vec::len), Some(17));
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
+		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.1");
+		assert_eq!(
+			AIQ_CORE_V1_TASK_IDENTITY_SHA256,
+			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc"
+		);
+		assert!(tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION));
+		assert!(scoring::task_bindings_match_frozen_catalog(&tasks));
+		assert_eq!(
+			run.task_set_hash,
+			task::task_set_hash(&tasks).expect("current synthetic task-set hash")
+		);
+
+		for result in &run.results {
+			let expected = tasks
+				.iter()
+				.find(|task| {
+					task.task_id == result.task_id && task.task_version == result.task_version
+				})
+				.expect("fixture result must bind a current catalog task");
+
+			assert_eq!(result.task_version, AIQ_TASK_SET_VERSION);
+			assert_eq!(
+				result.task_hash,
+				expected.content_hash().expect("current synthetic task hash")
+			);
+		}
 	}
 
 	#[test]
