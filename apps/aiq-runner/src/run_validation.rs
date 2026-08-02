@@ -70,6 +70,9 @@ pub fn validate_calibration_run_record(
 		|| run.classification != "local_calibration_non_official"
 		|| run.scoring_version != AIQ_SCORING_VERSION
 		|| run.models.is_empty()
+		|| run
+			.execution_concurrency
+			.is_some_and(|jobs| !(1..=crate::runner::MAX_RUN_JOBS).contains(&jobs))
 		|| run.task_ids.is_empty()
 		|| run.finished_unix_ms < run.started_unix_ms
 		|| run.started_unix_ms > MAX_JCS_SAFE_INTEGER
@@ -213,6 +216,12 @@ pub fn validate_run_record(
 
 	if run.scoring_version != AIQ_SCORING_VERSION {
 		return Err(RunValidationError::new("run scoring version is not current"));
+	}
+	if run
+		.execution_concurrency
+		.is_some_and(|jobs| !(1..=crate::runner::MAX_RUN_JOBS).contains(&jobs))
+	{
+		return Err(RunValidationError::new("run execution concurrency is invalid"));
 	}
 	if run.models != MODEL_MATRIX {
 		return Err(RunValidationError::new("run models must equal the ordered 17-entry matrix"));
@@ -909,8 +918,24 @@ fn validate_result_budgets(
 	result: &TaskResult,
 	tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), RunValidationError> {
+	let provider_tokens = &result.tool_usage.provider_tokens;
+	let provider_counters = [
+		provider_tokens.input,
+		provider_tokens.cached_input,
+		provider_tokens.cache_write_input,
+		provider_tokens.output,
+		provider_tokens.reasoning,
+		provider_tokens.total,
+	];
+
 	if result.tool_usage.by_tool.len() > MAX_TOOL_USAGE_KINDS
 		|| result.latency.wall_ms > MAX_JCS_SAFE_INTEGER
+		|| provider_counters.into_iter().flatten().any(|value| value > MAX_JCS_SAFE_INTEGER)
+		|| matches!((provider_tokens.input, provider_tokens.cached_input), (Some(input), Some(cached)) if cached > input)
+		|| matches!(
+			(provider_tokens.input, provider_tokens.cached_input, provider_tokens.cache_write_input),
+			(Some(input), Some(cached), Some(cache_write)) if cached.saturating_add(cache_write) > input
+		) || matches!((provider_tokens.output, provider_tokens.reasoning), (Some(output), Some(reasoning)) if reasoning > output)
 		|| result
 			.tool_usage
 			.by_tool
@@ -1364,6 +1389,7 @@ mod tests {
 				schedule_slot: slot,
 				task_set_hash: set_hash,
 				scoring_version: AIQ_SCORING_VERSION.to_owned(),
+				execution_concurrency: None,
 				models: MODEL_MATRIX.to_vec(),
 				started_unix_ms: 0,
 				finished_unix_ms: 0,

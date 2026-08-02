@@ -199,6 +199,7 @@ mod tests {
 					.expect("slot"),
 				task_set_hash: format!("sha256:{}", "4".repeat(64)),
 				scoring_version: "1.0.0".to_owned(),
+				execution_concurrency: None,
 				models: vec![model],
 				started_unix_ms: 1,
 				finished_unix_ms: 2,
@@ -230,6 +231,7 @@ mod tests {
 				&self.replay_root,
 				"123e4567-e89b-42d3-a456-426614174000",
 			)
+			.map(drop)
 		}
 
 		fn replace_snapshot(&mut self, snapshot: WorkspaceSnapshot) {
@@ -1254,8 +1256,8 @@ use aiq_runner::{
 	adapter::ArtifactReference,
 	protocol, run_validation,
 	runner::{
-		self, EvaluationOutcome, EvaluatorResultsBundle, FailureKind, ResultStatus, RunRecord,
-		TaskResult, ToolUsage, WorkspaceSnapshot,
+		self, CalibrationRunRecord, EvaluationOutcome, EvaluatorResultsBundle, FailureKind,
+		ResultStatus, RunRecord, TaskResult, ToolUsage, WorkspaceSnapshot,
 	},
 	submission::MAX_ARTIFACT_BYTES,
 	task::{
@@ -1266,6 +1268,56 @@ use aiq_runner::{
 
 /// Successful production replay scope recorded by the worker.
 pub(crate) const PRODUCTION_REPLAY_SCOPE: &str = "candidate_reconstructed_and_evaluator_replayed";
+
+pub(crate) trait ReplayRun {
+	fn run_id(&self) -> &str;
+	fn results(&self) -> &[TaskResult];
+	fn evaluator_results_artifact(&self) -> &ArtifactReference;
+	fn validate_evaluator_results(
+		&self,
+		bytes: &[u8],
+	) -> Result<EvaluatorResultsBundle, aiq_runner::run_validation::RunValidationError>;
+}
+impl ReplayRun for RunRecord {
+	fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		&self.results
+	}
+
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		&self.evaluator_results_artifact
+	}
+
+	fn validate_evaluator_results(
+		&self,
+		bytes: &[u8],
+	) -> Result<EvaluatorResultsBundle, aiq_runner::run_validation::RunValidationError> {
+		run_validation::validate_evaluator_results_bundle(self, bytes)
+	}
+}
+impl ReplayRun for CalibrationRunRecord {
+	fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		&self.results
+	}
+
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		&self.evaluator_results_artifact
+	}
+
+	fn validate_evaluator_results(
+		&self,
+		bytes: &[u8],
+	) -> Result<EvaluatorResultsBundle, aiq_runner::run_validation::RunValidationError> {
+		run_validation::validate_calibration_evaluator_results_bundle(self, bytes)
+	}
+}
 
 struct CandidateEvidence {
 	manifest_reference: ArtifactReference,
@@ -1333,17 +1385,18 @@ impl Drop for ReplayDirectory {
 }
 
 /// Reconstructs all attempted candidates and replays every completed evaluator result.
-pub(crate) fn verify_production_run<R>(
-	run: &RunRecord,
+pub(crate) fn verify_production_run<R, U>(
+	run: &U,
 	tasks: &[TaskDefinition],
 	resolver: &R,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	replay_root: &Path,
 	claim_identity: &str,
-) -> Result<(), WorkerError>
+) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
 {
 	let replay = ReplayDirectory::create(replay_root, claim_identity)?;
 	let result = verify_production_run_in(
@@ -1358,33 +1411,28 @@ where
 
 	match (result, cleanup) {
 		(Err(primary), _) => Err(primary),
-		(Ok(()), Err(cleanup)) => Err(cleanup),
-		(Ok(()), Ok(())) => Ok(()),
+		(Ok(_), Err(cleanup)) => Err(cleanup),
+		(Ok(usage), Ok(())) => Ok(usage),
 	}
 }
 
-fn verify_production_run_in<R>(
-	run: &RunRecord,
+fn verify_production_run_in<R, U>(
+	run: &U,
 	tasks: &[TaskDefinition],
 	resolver: &R,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	claim_root: &Path,
-) -> Result<(), WorkerError>
+) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
 {
-	if run.synthetic {
-		return Err(WorkerError::terminal(
-			ReasonCode::InvalidReplayEvidence,
-			"production replay cannot accept a synthetic run",
-		));
-	}
-
 	let evaluator_results = resolve_evaluator_results(run, resolver)?;
 	let task_map = controlled_task_map(tasks)?;
+	let mut provider_usage = vec![runner::ProviderTokenUsage::default(); run.results().len()];
 
-	for (index, result) in run.results.iter().enumerate() {
+	for (index, result) in run.results().iter().enumerate() {
 		if !execution_attempted(result) {
 			if result.workspace_manifest.is_some() || !result.artifacts.is_empty() {
 				return Err(WorkerError::terminal(
@@ -1447,11 +1495,12 @@ where
 					)?;
 				let response = complete_response(result, &evidence)?;
 				let tool_usage = verified_tool_usage(result, &evidence)?;
+				provider_usage[index] = tool_usage.provider_tokens.clone();
 
 				resolver.maintain_lease()?;
 
 				replay_evaluator(
-					run,
+					run.run_id(),
 					result,
 					task,
 					&response,
@@ -1466,6 +1515,9 @@ where
 			},
 			ResultStatus::Failed => {
 				verify_failed_result_policy(result)?;
+				let tool_usage = verified_tool_usage(result, &evidence)?;
+
+				provider_usage[index] = tool_usage.provider_tokens;
 
 				resolver.maintain_lease()?;
 			},
@@ -1486,7 +1538,7 @@ where
 
 	resolver.maintain_lease()?;
 
-	Ok(())
+	Ok(provider_usage)
 }
 
 fn controlled_task_map(
@@ -1507,14 +1559,15 @@ fn controlled_task_map(
 	Ok(task_map)
 }
 
-fn resolve_evaluator_results<R>(
-	run: &RunRecord,
+fn resolve_evaluator_results<R, U>(
+	run: &U,
 	resolver: &R,
 ) -> Result<EvaluatorResultsBundle, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
 {
-	let reference = &run.evaluator_results_artifact;
+	let reference = run.evaluator_results_artifact();
 
 	if reference.kind != "evaluator-results.json"
 		|| reference.bytes == 0
@@ -1535,7 +1588,7 @@ where
 		));
 	}
 
-	let bundle = run_validation::validate_evaluator_results_bundle(run, &bytes).map_err(|_| {
+	let bundle = run.validate_evaluator_results(&bytes).map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidReplayEvidence,
 			"evaluator-results bundle is malformed, noncanonical, or misaligned",
@@ -1657,7 +1710,10 @@ fn verified_tool_usage(
 	})?;
 	let observed = runner::parse_codex_tool_usage(stdout);
 
-	if observed != result.tool_usage {
+	if observed.steps != result.tool_usage.steps
+		|| observed.total_calls != result.tool_usage.total_calls
+		|| observed.by_tool != result.tool_usage.by_tool
+	{
 		return Err(WorkerError::terminal(
 			ReasonCode::ArtifactEvidenceMismatch,
 			"signed tool-use counters differ from content-addressed stdout",
@@ -1732,7 +1788,7 @@ fn complete_response(
 
 #[allow(clippy::too_many_arguments)]
 fn replay_evaluator(
-	run: &RunRecord,
+	run_id: &str,
 	result: &TaskResult,
 	task: &TaskDefinition,
 	response: &str,
@@ -1762,7 +1818,7 @@ fn replay_evaluator(
 	let context = EvaluatorContext {
 		task_id: &result.task_id,
 		task_version: &result.task_version,
-		run_id: &run.run_id,
+		run_id,
 		model: result.model,
 		final_response: response,
 		candidate_workspace,
