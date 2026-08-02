@@ -4,23 +4,29 @@
 skip_core_tasks = true
 
 # Check
-# | task              | type      | cwd |
-# | ----------------- | --------- | --- |
-# | check             | composite |     |
-# | check-database    | command   |     |
-# | check-rust        | command   |     |
-# | check-typescript  | command   |     |
-# | storage-lifecycle | command   |     |
+# | task                   | type      | cwd |
+# | ---------------------- | --------- | --- |
+# | check                  | composite |     |
+# | check-database         | command   |     |
+# | check-official-runtime | command   |     |
+# | check-rust             | command   |     |
+# | check-typescript       | command   |     |
+# | storage-lifecycle      | command   |     |
 
 [tasks.check]
 clear = true
 workspace = false
-dependencies = ["check-database", "check-rust", "check-typescript"]
+dependencies = ["check-database", "check-official-runtime", "check-rust", "check-typescript"]
 
 [tasks.check-database]
 workspace = false
 command = "node"
 args = ["scripts/check-database-schema.ts"]
+
+[tasks.check-official-runtime]
+workspace = false
+command = "python3"
+args = ["deploy/official-runtime/test_static.py"]
 
 [tasks.check-rust]
 workspace = false
