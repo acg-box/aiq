@@ -1012,6 +1012,9 @@ enum Command {
 		/// Environment variable containing a 32-byte Ed25519 secret as hexadecimal.
 		#[arg(long, default_value = "AIQ_RUNNER_SIGNING_KEY")]
 		signing_key_env: String,
+		/// Declared maximum concurrent task executions. Required when a real saved run predates this binding.
+		#[arg(long)]
+		execution_concurrency: Option<usize>,
 		/// Output signed-envelope JSON file.
 		#[arg(long)]
 		output: PathBuf,
@@ -1244,8 +1247,8 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			timeout_seconds,
 			allow_loopback_http,
 		)?,
-		Command::Package { run, artifact_root, signing_key_env, output } => {
-			run_package(&run, &artifact_root, &signing_key_env, &output)?;
+		Command::Package { run, artifact_root, signing_key_env, execution_concurrency, output } => {
+			run_package(&run, &artifact_root, &signing_key_env, execution_concurrency, &output)?;
 		},
 		Command::Identity { signing_key_env } => run_identity(&signing_key_env)?,
 		command @ Command::Normalize { .. } => run_normalize_command(command)?,
@@ -2838,6 +2841,7 @@ fn run_package(
 	run_path: &Path,
 	artifact_root: &Path,
 	signing_key_env: &str,
+	execution_concurrency: Option<usize>,
 	output: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let secret = signing_secret_from_environment(signing_key_env)?;
@@ -2848,6 +2852,10 @@ fn run_package(
 		Some(schema) if schema == RUN_SCHEMA_VERSION => {
 			let mut run: RunRecord = serde_json::from_value(value)?;
 
+			aiq_runner::run_validation::validate_run_record(&run, None)?;
+			if !run.synthetic {
+				bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
+			}
 			aiq_runner::run_validation::validate_run_record(&run, None)?;
 
 			let evaluator_results = submission::read_evaluator_results_artifact(
@@ -2877,8 +2885,10 @@ fn run_package(
 			submission::serialize_signed_package(&envelope)?
 		},
 		Some(schema) if schema == CALIBRATION_RUN_SCHEMA_VERSION => {
-			let run: CalibrationRunRecord = serde_json::from_value(value)?;
+			let mut run: CalibrationRunRecord = serde_json::from_value(value)?;
 
+			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
+			bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
 			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
 
 			let evaluator_results = submission::read_evaluator_results_artifact(
@@ -2921,6 +2931,24 @@ fn run_package(
 	}
 
 	Ok(())
+}
+
+fn bind_execution_concurrency(
+	existing: &mut Option<usize>,
+	declared: Option<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	match (*existing, declared) {
+		(Some(recorded), Some(declared)) if recorded != declared => {
+			Err("declared execution concurrency differs from the saved run".into())
+		},
+		(Some(_), _) => Ok(()),
+		(None, Some(declared)) if (1..=runner::MAX_RUN_JOBS).contains(&declared) => {
+			*existing = Some(declared);
+
+			Ok(())
+		},
+		_ => Err("real run packaging requires a bound execution concurrency".into()),
+	}
 }
 
 fn signing_secret_from_environment(name: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
@@ -3296,6 +3324,24 @@ mod tests {
 
 	fn expected_path(path: &Path) -> PathBuf {
 		cli::canonical_policy_path(path).expect("canonical policy fixture")
+	}
+
+	#[test]
+	fn package_concurrency_is_explicitly_bound_and_cannot_drift() {
+		let mut missing = None;
+
+		super::bind_execution_concurrency(&mut missing, Some(17)).expect("bind frozen run");
+		assert_eq!(missing, Some(17));
+		assert!(super::bind_execution_concurrency(&mut missing, Some(16)).is_err());
+
+		let mut absent = None;
+
+		assert!(super::bind_execution_concurrency(&mut absent, None).is_err());
+		assert!(super::bind_execution_concurrency(&mut absent, Some(0)).is_err());
+		assert!(
+			super::bind_execution_concurrency(&mut absent, Some(crate::runner::MAX_RUN_JOBS + 1))
+				.is_err()
+		);
 	}
 
 	#[test]

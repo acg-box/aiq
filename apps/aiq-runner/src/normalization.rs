@@ -227,6 +227,14 @@ pub struct NormalizedBatchStage {
 	pub synthetic: bool,
 	/// Exactly 17 deterministic child runs.
 	pub runs: Vec<NormalizedModelRun>,
+	/// Exact concurrency used by the source run, absent only for synthetic legacy evidence.
+	pub execution_concurrency: Option<usize>,
+	/// Verifier-recomputed per-task time, token, and API-equivalent cost evidence.
+	pub result_efficiency: Vec<crate::calibration_verification::CalibrationResultEfficiency>,
+	/// Per-model efficiency aggregates, separate from scores.
+	pub efficiency: Vec<crate::calibration_verification::CalibrationEfficiencyAggregate>,
+	/// Explicit fixed-point comparison-rate method.
+	pub pricing: crate::calibration_verification::ApiEquivalentPricingModel,
 	/// RFC 8785 SHA-256 commitment to this record with this field excluded.
 	pub normalization_digest: String,
 }
@@ -241,6 +249,8 @@ impl NormalizedBatchStage {
 	pub fn verify(&self) -> Result<(), NormalizationError> {
 		if self.schema_version != NORMALIZATION_SCHEMA_VERSION
 			|| self.runs.len() != NORMALIZED_MODEL_COUNT
+			|| self.result_efficiency.len() != NORMALIZED_MODEL_COUNT * NORMALIZED_TASK_COUNT
+			|| self.efficiency.len() != NORMALIZED_MODEL_COUNT
 		{
 			return Err(NormalizationError::new("invalid normalized batch schema or cardinality"));
 		}
@@ -468,6 +478,10 @@ impl VerifierSigningIdentity {
 		&self.node
 	}
 
+	pub(crate) fn sign_calibration_bytes(&self, bytes: &[u8]) -> String {
+		hex::encode(self.signing_key.sign(bytes).to_bytes())
+	}
+
 	/// Signs all immutable normalization bindings.
 	pub fn attest(
 		&self,
@@ -552,6 +566,10 @@ struct UnsignedNormalizedStage<'a> {
 	finished_unix_ms: u64,
 	synthetic: bool,
 	runs: &'a [NormalizedModelRun],
+	execution_concurrency: Option<usize>,
+	result_efficiency: &'a [crate::calibration_verification::CalibrationResultEfficiency],
+	efficiency: &'a [crate::calibration_verification::CalibrationEfficiencyAggregate],
+	pricing: &'a crate::calibration_verification::ApiEquivalentPricingModel,
 }
 impl<'a> From<&'a NormalizedBatchStage> for UnsignedNormalizedStage<'a> {
 	fn from(value: &'a NormalizedBatchStage) -> Self {
@@ -577,6 +595,10 @@ impl<'a> From<&'a NormalizedBatchStage> for UnsignedNormalizedStage<'a> {
 			finished_unix_ms: value.finished_unix_ms,
 			synthetic: value.synthetic,
 			runs: &value.runs,
+			execution_concurrency: value.execution_concurrency,
+			result_efficiency: &value.result_efficiency,
+			efficiency: &value.efficiency,
+			pricing: &value.pricing,
 		}
 	}
 }
@@ -810,6 +832,14 @@ pub fn normalize_verified_batch(
 		});
 	}
 
+	let empty_provider_usage =
+		vec![crate::runner::ProviderTokenUsage::default(); run.results.len()];
+	let (result_efficiency, efficiency, pricing) =
+		crate::calibration_verification::build_efficiency_evidence(
+			&run.results,
+			&empty_provider_usage,
+		)
+		.map_err(|error| NormalizationError::new(error.to_string()))?;
 	let mut stage = NormalizedBatchStage {
 		schema_version: NORMALIZATION_SCHEMA_VERSION.to_owned(),
 		matrix_batch_id: run.run_id.clone(),
@@ -839,6 +869,10 @@ pub fn normalize_verified_batch(
 		finished_unix_ms: metadata.finished_unix_ms,
 		synthetic: run.synthetic,
 		runs: children,
+		execution_concurrency: run.execution_concurrency,
+		result_efficiency,
+		efficiency,
+		pricing,
 		normalization_digest: String::new(),
 	};
 

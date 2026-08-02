@@ -3,6 +3,7 @@
 extern crate self as aiq_runner;
 
 pub mod adapter;
+pub mod calibration_verification;
 pub mod capacity;
 pub mod cli;
 pub mod corpus_commitment;
