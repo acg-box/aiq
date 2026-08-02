@@ -155,7 +155,7 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
       </p>
       <p>
         Pricing binding: {pricingBindings.length === 0 ? 'Unavailable' : pricingBindings.join('; ')}{' '}
-        · <a href="https://developers.openai.com/api/docs/models/compare">official source</a>
+        · <a href="https://developers.openai.com/api/docs/pricing">official source</a>
       </p>
       <div className="plot-grid">
         <Scatter scores={scores} metric="cost" />

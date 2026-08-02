@@ -70,7 +70,7 @@ const runRows = matrix.map((entry, index) => ({
   matrix_id: entry.id,
   started_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:00:00.000Z`,
   completed_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:27:00.000Z`,
-  benchmark_version: 'aiq-core@1.0.0',
+  benchmark_version: 'aiq-core@1.0.1',
   scoring_version: '1.0.0',
   prompt_set_digest: `sha256:${'2'.repeat(64)}`,
   runner_commit: '7a0c4d1',
@@ -78,7 +78,7 @@ const runRows = matrix.map((entry, index) => ({
   synthetic: false,
   corpus_release_id: 'corpus_2026.07.29',
   corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
-  catalog_digest: `sha256:${'4'.repeat(64)}`,
+  catalog_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
   task_set_digest: `sha256:${'5'.repeat(64)}`,
   preflight_digest: `sha256:${'6'.repeat(64)}`,
   runtime_digest: `sha256:${'7'.repeat(64)}`,
@@ -97,7 +97,9 @@ const runRows = matrix.map((entry, index) => ({
 }));
 
 const calibrationRunId = `run_${'8'.repeat(64)}`;
-const pricingSource = 'https://developers.openai.com/api/docs/models/compare';
+const pricingSource = 'https://developers.openai.com/api/docs/pricing';
+const pricingLimitation =
+  'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.';
 const calibrationRun = {
   run_id: calibrationRunId,
   classification: 'local_calibration_non_official',
@@ -118,6 +120,9 @@ const calibrationRun = {
 
 const calibrationScores = matrix.map((entry, index) => {
   const aiq = Number((82.5 - index * 0.6).toFixed(2));
+  const unavailableContextBand = index === 1;
+  const inputTokens = unavailableContextBand ? 344_001 : 72_000 + index * 1_000;
+  const outputTokens = 36_000 + index * 800;
   return {
     run_id: calibrationRunId,
     model_family: entry.model_family.toLowerCase(),
@@ -136,25 +141,25 @@ const calibrationScores = matrix.map((entry, index) => {
     observed_time_sample_count: 72,
     observed_time_coverage_percent: 100,
     duration_evidence_level: 'runner_observed',
-    input_tokens: 72_000 + index * 1_000,
+    input_tokens: inputTokens,
     cached_input_tokens: 12_000,
     cache_write_input_tokens: 2_000,
-    output_tokens: 36_000 + index * 800,
+    output_tokens: outputTokens,
     reasoning_output_tokens: 18_000 + index * 400,
-    total_tokens: 108_000 + index * 1_800,
+    total_tokens: inputTokens + outputTokens,
     token_usage_sample_count: 72,
     token_usage_source_level: 'provider_reported',
     token_usage_evidence_level: 'verifier_recomputed',
-    standard_api_equivalent_usd_nanos: 48_000_000 + index * 2_000_000,
-    estimated_cost_sample_count: 72,
-    cost_estimator_status: 'estimated',
-    cost_evidence_level: 'verifier_recomputed',
-    cost_estimator_limitations: [
-      'Estimate uses published standard-tier text-token prices, not an actual invoice.',
-    ],
+    standard_api_equivalent_usd_nanos: unavailableContextBand
+      ? null
+      : 48_000_000 + index * 2_000_000,
+    estimated_cost_sample_count: unavailableContextBand ? 71 : 72,
+    cost_estimator_status: unavailableContextBand ? 'unavailable_context_band' : 'estimated',
+    cost_evidence_level: unavailableContextBand ? null : 'verifier_recomputed',
+    cost_estimator_limitations: [pricingLimitation],
     token_usage_coverage_percent: 100,
     pricing_source: pricingSource,
-    pricing_as_of: '2026-07-30',
+    pricing_as_of: '2026-08-02',
     pricing_version: 'aiq.standard-api-equivalent-usd.v1',
     pricing_currency: 'USD',
     pricing_processing_tier: 'standard',
@@ -162,7 +167,7 @@ const calibrationScores = matrix.map((entry, index) => {
     invoked_result_count: 72,
     adapter_elapsed_observed_result_count: 72,
     token_observed_result_count: 72,
-    priced_result_count: 72,
+    priced_result_count: unavailableContextBand ? 71 : 72,
   };
 });
 
@@ -173,14 +178,17 @@ const historicalCalibrationScores = [
 
 const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
   Array.from({ length: 72 }, (_, taskIndex) => {
-    const inputTokens = 1_000 + configurationIndex * 10 + taskIndex;
+    const unavailableContextBand = configurationIndex === 0 && taskIndex === 1;
+    const inputTokens = unavailableContextBand
+      ? 272_001
+      : 1_000 + configurationIndex * 10 + taskIndex;
     const outputTokens = 500 + taskIndex;
     const workspaceIntegrity = configurationIndex === 0 && taskIndex === 0;
     return {
       result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
       run_id: calibrationRunId,
       task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
-      task_version: '1',
+      task_version: '1.0.1',
       domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
@@ -202,15 +210,15 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       total_tokens: inputTokens + outputTokens,
       token_usage_source_level: 'provider_reported',
       token_usage_evidence_level: 'verifier_recomputed',
-      standard_api_equivalent_usd_nanos: 650_000 + taskIndex * 1_000,
-      cost_estimator_status: 'estimated',
-      cost_evidence_level: 'verifier_recomputed',
-      cost_estimator_limitations: [
-        'Estimate uses published standard-tier text-token prices, not an actual invoice.',
-      ],
+      standard_api_equivalent_usd_nanos: unavailableContextBand
+        ? null
+        : 650_000 + taskIndex * 1_000,
+      cost_estimator_status: unavailableContextBand ? 'unavailable_context_band' : 'estimated',
+      cost_evidence_level: unavailableContextBand ? null : 'verifier_recomputed',
+      cost_estimator_limitations: [pricingLimitation],
       cost_method: 'standard_api_equivalent_text_token_estimate',
       cost_version: 'aiq.standard-api-equivalent-usd.v1',
-      cost_as_of: '2026-07-30',
+      cost_as_of: '2026-08-02',
       cost_source: pricingSource,
       pricing_currency: 'USD',
       pricing_processing_tier: 'standard',
@@ -280,7 +288,7 @@ for (const run of runRows) {
 }
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.0',
+  benchmark_version: 'aiq-core@1.0.1',
   scoring_version: '1.0.0',
   published_at: '2026-07-29T16:00:00.000Z',
   principles: [

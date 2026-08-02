@@ -31,7 +31,7 @@ const matrix = [
 );
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.0',
+  benchmark_version: 'aiq-core@1.0.1',
   scoring_version: '1.0.0',
   published_at: '2026-07-30T12:00:00Z',
   principles: [
