@@ -42,7 +42,14 @@ authenticated expiring report.
 
 A live run uses fresh task workspaces and content-addressed artifacts. It writes
 a durable checkpoint and creates one `aiq.run.v3` record. An Official run is
-non-synthetic, complete, and exactly 17 by 72. Calibration runs are not Official.
+non-synthetic, complete, and exactly 17 by 72. Calibration accepts a deterministic
+subset but remains untrusted, non-Official, and ineligible for ranking.
+
+After each paid invocation, the runner retains the available invocation and
+workspace evidence before cleanup. Authentication, subscription-limit, or
+workspace-integrity boundaries cancel remaining paid cells; checkpoints do not
+automatically retry indeterminate or boundary-failed cells. This avoids paying
+again while replacing evidence whose outcome is uncertain.
 
 `aiq.run-provenance.v2` contains 18 top-level fields. It binds the run class,
 corpus, catalog, task set, evaluator, runtime, preflight, harness, prompt, tool
@@ -59,24 +66,54 @@ The verifier claims a bounded lease, downloads only claim-bound artifacts,
 reconstructs candidate workspaces, and replays committed evaluators with the
 committed runtime. Production requires the `evaluator_replayed` disposition.
 
-The verification route performs three ordered database actions:
+The verification route performs three ordered database actions for Official
+evidence: stage `aiq.normalized-batch.v3`, record the immutable verifier
+attestation, then publish through the distinct publisher role. Calibration uses
+the same verifier and publisher identity boundary with separate stage,
+attestation, and publication RPCs. Its verifier replays the selected task
+artifacts, recomputes descriptive scores and efficiency evidence, and binds them
+in `aiq.calibration-verified-stage.v1` plus a signed
+`aiq.calibration-verifier-attestation.v1`.
 
-1. stage `aiq.normalized-batch.v3`;
-2. record the immutable verifier attestation;
-3. publish through the distinct publisher role.
+```mermaid
+sequenceDiagram
+    participant R as Runner
+    participant G as Web Gateway
+    participant V as Verifier
+    participant D as Database
+    participant P as Publisher
+    R->>G: Submit signed calibration package and artifacts
+    G->>D: Queue unverified package
+    V->>G: Claim package lease
+    V->>V: Reconstruct workspaces and replay evaluators
+    V->>G: Send calibration stage and attestation
+    G->>D: Stage replayed calibration evidence
+    G->>D: Record signed verifier attestation
+    G->>P: Request distinct publisher transition
+    P->>D: Reconcile retained evidence and publish calibration marker
+```
 
-Database functions enforce exact structure, identity separation, bindings,
-append-only evidence, and complete run state.
+The flow keeps replay-verified calibration evidence public but outside Official
+and ranking publication.
+
+Database functions enforce exact structure, identity separation, lease and
+attempt bindings, append-only evidence, retained Storage completeness, and the
+permanent non-Official classification. Retry-safe recorded dispositions allow a
+partially completed multi-RPC request to continue without replacing evidence.
 
 ## Database boundary
 
 `databases/schema.sql` owns the complete desired state. Private tables are in
-`aiq_private`. RLS is enabled and forced. Nine security-invoker views and one
-bounded trend RPC provide browser reads. The preview-status view returns one row
-only when the disposable database has the required matrix, cardinalities,
-scoring definition, synthetic boundary, and empty publication surface. It
-otherwise returns no private counts. Browser roles do not have private-table
-write access.
+`aiq_private`, with RLS enabled and forced. Security-invoker views and one bounded
+trend RPC provide browser reads; calibration adds bounded run, score, result,
+and model-efficiency views that require an explicit calibration publication
+marker. They expose fixed public-safe failure explanations and omit packages,
+signatures, raw provider events, artifacts, and private failure details.
+
+The preview-status view returns one row only when the disposable database has
+the required matrix, cardinalities, scoring definition, synthetic boundary, and
+empty Official and calibration publication surfaces. It otherwise returns no
+private counts. Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
 AIQ database. It inserts the current public catalog, scoring definition, model
@@ -102,6 +139,13 @@ Unexpected live evidence fails closed rather than being masked. The preview
 remains synthetic under the [Benchmark Method](benchmark-method.md): it adds a
 persistent banner, labels complete fixtures as not Official, and emits
 `noindex` metadata.
+
+The standard public application also exposes `/calibrations` and
+`/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
+one selected model's task slice and publishes descriptive score, elapsed-time,
+token-coverage, and API-equivalent cost evidence. These pages require explicit
+calibration publication and do not feed the Official leaderboard, compare, or
+trends surfaces.
 
 ```mermaid
 flowchart TD

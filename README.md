@@ -19,11 +19,13 @@ readiness still requires the remaining gates in the deployment handoff.
 
 ## Product contract
 
-- AIQ Core `1.0.0` has 72 private controlled tasks in ten domains.
+- AIQ Core `1.0.1` has 72 private controlled tasks in ten domains.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v3` envelopes.
+- Every result keeps runner-observed elapsed time and, when Codex reports it,
+  token usage and a versioned Standard API-equivalent cost estimate.
 - The verifier reconstructs candidate workspaces and replays deterministic
   evaluators before it signs `aiq.verifier-attestation.v3` evidence.
 - Production uses three distinct identities: runner, verifier, and publisher.
@@ -33,7 +35,7 @@ readiness still requires the remaining gates in the deployment handoff.
 The frozen public catalog digest is:
 
 ```text
-sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
+sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
 ```
 
 ## Repository map
@@ -165,7 +167,8 @@ this database before production initialization.
 1. The runner validates the controlled corpus, toolchain, and capability
    manifest.
 2. It executes the selected tasks and writes content-addressed artifacts.
-3. It scores the run and signs one v3 result package.
+3. It scores the run, records efficiency evidence, and signs one v3 result
+   package.
 4. `POST /api/submissions` stores the exact package bytes and queues the package
    as unverified.
 5. The verifier claims the package, reconstructs the workspaces, and replays the
