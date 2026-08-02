@@ -1,0 +1,27 @@
+FROM debian:bookworm-slim@sha256:9b67294679b30e5d6ab257b40594feeb4a4b81f7fcf4131f4decf0d6a212a9b0
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG SNAPSHOT=20260714T000000Z
+ARG SOURCE_COMMIT
+
+LABEL org.opencontainers.image.source="https://github.com/acg-box/aiq" \
+      org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.opencontainers.image.licenses="GPL-3.0-only"
+
+RUN printf '%s\n' \
+      "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${SNAPSHOT} bookworm main" \
+      "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/${SNAPSHOT} bookworm-security main" \
+      > /etc/apt/sources.list \
+    && rm -f /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Check-Valid-Until=false update \
+    && apt-get install --yes --no-install-recommends tinyproxy-bin=1.11.1-2.1+deb12u1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10002 aiqproxy \
+    && useradd --uid 10002 --gid 10002 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin aiqproxy \
+    && install -d -o root -g root -m 0755 /etc/tinyproxy
+
+COPY --chown=0:0 --chmod=0444 deploy/official-runtime/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+COPY --chown=0:0 --chmod=0444 deploy/official-runtime/proxy-filter.txt /etc/tinyproxy/filter
+
+USER 10002:10002
+ENTRYPOINT ["/usr/bin/tinyproxy", "-d", "-c", "/etc/tinyproxy/tinyproxy.conf"]

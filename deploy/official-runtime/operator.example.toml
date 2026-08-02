@@ -1,0 +1,24 @@
+source_commit = "REPLACE_WITH_40_CHARACTER_SOURCE_COMMIT"
+
+[read_only]
+baselines         = "/absolute/path/to/baselines"
+capabilities      = "/absolute/path/to/capabilities.json"
+codex_auth        = "/absolute/private/path/to/auth.json"
+codex_binary      = "/absolute/path/to/codex"
+corpus_commitment = "/absolute/path/to/corpus-commitment.json"
+evaluator_runtime = "/absolute/path/to/evaluator/runtime"
+evaluators        = "/absolute/path/to/evaluator/assets"
+hidden_tasks      = "/absolute/path/to/hidden/tasks"
+runner_binary     = "/absolute/path/to/aiq-runner"
+schedule          = "/absolute/path/to/schedule.json"
+source            = "/absolute/path/to/clean/source"
+toolchain         = "/absolute/path/to/model/toolchain"
+
+[writable]
+admission   = "/absolute/private/path/to/admission"
+artifacts   = "/absolute/private/path/to/artifacts"
+checkpoints = "/absolute/private/path/to/checkpoints"
+codex_home  = "/absolute/private/path/to/codex-home"
+execution   = "/absolute/private/path/to/execution"
+preflight   = "/absolute/private/path/to/preflight"
+results     = "/absolute/private/path/to/results"

@@ -1,0 +1,4 @@
+^api\.openai\.com:443$
+^auth\.openai\.com:443$
+^chatgpt\.com:443$
+^example\.com:443$

@@ -80,6 +80,9 @@ jobs:
       - name: Build Linux arm64 production runner
         run: cargo build --locked --package aiq-runner
 
+      - name: Check the bounded Official runtime contract
+        run: python3 deploy/official-runtime/test_static.py
+
   toml-check:
     name: TOML check
     runs-on: ubuntu-latest
