@@ -47,17 +47,15 @@ use aiq_runner::{
 	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
 	runner::{
 		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
-		LocalDirectoryWorkspaceProvider, LocalRunExecution, RUN_SCHEMA_VERSION, RunRecord,
-		SelectedRun,
+		LocalDirectoryWorkspaceProvider, LocalRunExecution, MAX_RUN_JOBS, RUN_SCHEMA_VERSION,
+		RunRecord, SelectedRun,
 	},
 	schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
 	scoring::{
 		self, AIQ_SCORING_VERSION, CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions,
 		ScoreReport,
 	},
-	submission::{
-		self, HttpsTransport, MAX_SIGNED_PACKAGE_BYTES, MAX_SUBMISSION_BYTES, SecretToken,
-	},
+	submission::{self, HttpsTransport, MAX_SUBMISSION_BYTES, SecretToken},
 	task::{
 		self, DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskLoadIssue, TaskLoadReport,
 		TaskSource, ValidationIssue, Visibility,
@@ -2853,9 +2851,11 @@ fn run_package(
 			let mut run: RunRecord = serde_json::from_value(value)?;
 
 			aiq_runner::run_validation::validate_run_record(&run, None)?;
+
 			if !run.synthetic {
 				bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
 			}
+
 			aiq_runner::run_validation::validate_run_record(&run, None)?;
 
 			let evaluator_results = submission::read_evaluator_results_artifact(
@@ -2888,7 +2888,9 @@ fn run_package(
 			let mut run: CalibrationRunRecord = serde_json::from_value(value)?;
 
 			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
+
 			bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
+
 			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
 
 			let evaluator_results = submission::read_evaluator_results_artifact(
@@ -2913,13 +2915,8 @@ fn run_package(
 				&run,
 				TrustTier::Untrusted,
 			)?;
-			let package = protocol::canonical_json(&envelope)?;
 
-			if package.len() > MAX_SIGNED_PACKAGE_BYTES {
-				return Err("signed calibration package exceeds the package byte bound".into());
-			}
-
-			package
+			submission::serialize_signed_package(&envelope)?
 		},
 		_ => return Err("run schema is unsupported for packaging".into()),
 	};
@@ -2942,7 +2939,7 @@ fn bind_execution_concurrency(
 			Err("declared execution concurrency differs from the saved run".into())
 		},
 		(Some(_), _) => Ok(()),
-		(None, Some(declared)) if (1..=runner::MAX_RUN_JOBS).contains(&declared) => {
+		(None, Some(declared)) if (1..=MAX_RUN_JOBS).contains(&declared) => {
 			*existing = Some(declared);
 
 			Ok(())
@@ -3331,6 +3328,7 @@ mod tests {
 		let mut missing = None;
 
 		super::bind_execution_concurrency(&mut missing, Some(17)).expect("bind frozen run");
+
 		assert_eq!(missing, Some(17));
 		assert!(super::bind_execution_concurrency(&mut missing, Some(16)).is_err());
 

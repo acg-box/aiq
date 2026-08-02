@@ -27,15 +27,20 @@ use aiq_runner::{
 	calibration_verification::{
 		self, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
-	corpus_commitment::{self, RunProvenanceCommitment},
+	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::MODEL_MATRIX,
 	normalization::{
 		self, AttestedDeploymentMetadata, MAX_VERIFICATION_REQUEST_BYTES, NormalizedBatchStage,
 		ReplayStatus, VerifiedPackageIdentity, VerifierAttestationV2, VerifierSigningIdentity,
 	},
-	protocol::{self, SubmissionEnvelope},
+	protocol::{
+		self, CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, SubmissionEnvelope, TrustTier,
+		VerifiedSubmission,
+	},
 	run_validation,
-	runner::{self, CalibrationRunRecord, FailureKind, ResultStatus, RunRecord},
+	runner::{
+		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
+	},
 	scoring::{self, AIQ_CORE_V1_TASK_IDENTITY_SHA256, ScoreContext, ScoreOptions, ScoreReport},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
 	task::{DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskSource, Visibility},
@@ -995,7 +1000,6 @@ where
 				),
 			);
 		}
-
 		if !verification_response_matches(&response.body, &prepared) {
 			return Ok(PackageDisposition::LeaseLost(prepared.replay_scope));
 		}
@@ -1235,12 +1239,6 @@ where
 }
 
 #[derive(Debug)]
-enum PreparedEvidence {
-	Official { stage: NormalizedBatchStage, attestation: VerifierAttestationV2 },
-	Calibration { stage: CalibrationVerifiedStageV1, attestation: CalibrationVerifierAttestationV1 },
-}
-
-#[derive(Debug)]
 struct PreparedVerification {
 	evidence: PreparedEvidence,
 	replay_scope: &'static str,
@@ -1380,6 +1378,12 @@ impl ReasonCode {
 	}
 }
 
+#[derive(Debug)]
+enum PreparedEvidence {
+	Official { stage: NormalizedBatchStage, attestation: VerifierAttestationV2 },
+	Calibration { stage: CalibrationVerifiedStageV1, attestation: CalibrationVerifierAttestationV1 },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum OperatorErrorClass {
@@ -1468,9 +1472,9 @@ fn prepare_package_verification(
 	})?;
 
 	match verified.payload_type.as_str() {
-		protocol::RUN_PAYLOAD_TYPE => prepare_official_verification(request, verified),
-		protocol::CALIBRATION_RUN_PAYLOAD_TYPE => {
-			if envelope.claimed_trust != protocol::TrustTier::Untrusted {
+		RUN_PAYLOAD_TYPE => prepare_official_verification(request, verified),
+		CALIBRATION_RUN_PAYLOAD_TYPE => {
+			if envelope.claimed_trust != TrustTier::Untrusted {
 				return Err(WorkerError::terminal(
 					ReasonCode::InvalidPackageProtocol,
 					"calibration package must claim untrusted handling",
@@ -1488,7 +1492,7 @@ fn prepare_package_verification(
 
 fn prepare_official_verification(
 	request: PreparationRequest<'_>,
-	verified: protocol::VerifiedSubmission,
+	verified: VerifiedSubmission,
 ) -> Result<PreparedVerification, WorkerError> {
 	let run: RunRecord = serde_json::from_value(verified.payload).map_err(|_| {
 		WorkerError::terminal(
@@ -1529,27 +1533,7 @@ fn prepare_official_verification(
 		));
 	}
 
-	let (replay_status, replay_scope, provider_usage) = if run.synthetic {
-		(
-			ReplayStatus::CommitmentsVerified,
-			"commitments_verified",
-			vec![runner::ProviderTokenUsage::default(); run.results.len()],
-		)
-	} else {
-		let provider_usage = replay::verify_production_run(
-			&run,
-			request.tasks,
-			request.resolver,
-			request.evaluator_root,
-			request.evaluator_runtime.ok_or_else(|| {
-				WorkerError::configuration("production replay lacks an evaluator runtime")
-			})?,
-			request.replay_root,
-			request.replay_identity,
-		)?;
-
-		(ReplayStatus::EvaluatorReplayed, PRODUCTION_REPLAY_SCOPE, provider_usage)
-	};
+	let (replay_status, replay_scope, provider_usage) = official_replay_evidence(&run, &request)?;
 	let scores = recompute_scores(request.tasks, &run)?;
 	let metadata = metadata_for(&run, request.environment)?;
 	let package = VerifiedPackageIdentity {
@@ -1566,13 +1550,17 @@ fn prepare_official_verification(
 				)
 			})?;
 	let (result_efficiency, efficiency, pricing) =
-		calibration_verification::build_efficiency_evidence(&run.results, &provider_usage)
-			.map_err(|_| {
-				WorkerError::terminal(
-					ReasonCode::NormalizationMismatch,
-					"deterministic efficiency recomputation failed",
-				)
-			})?;
+		calibration_verification::build_efficiency_evidence(
+			&run.results,
+			&provider_usage,
+			run.synthetic,
+		)
+		.map_err(|_| {
+			WorkerError::terminal(
+				ReasonCode::NormalizationMismatch,
+				"deterministic efficiency recomputation failed",
+			)
+		})?;
 
 	stage.result_efficiency = result_efficiency;
 	stage.efficiency = efficiency;
@@ -1583,12 +1571,14 @@ fn prepare_official_verification(
 			"efficiency-bound normalization digest failed",
 		)
 	})?;
+
 	stage.verify().map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::NormalizationMismatch,
 			"efficiency-bound normalization validation failed",
 		)
 	})?;
+
 	let attestation = request
 		.signing_identity
 		.attest(&stage, request.observed_unix_ms, replay_status)
@@ -1607,9 +1597,36 @@ fn prepare_official_verification(
 	})
 }
 
+fn official_replay_evidence(
+	run: &RunRecord,
+	request: &PreparationRequest<'_>,
+) -> Result<(ReplayStatus, &'static str, Vec<ProviderTokenUsage>), WorkerError> {
+	if run.synthetic {
+		return Ok((
+			ReplayStatus::CommitmentsVerified,
+			"commitments_verified",
+			vec![runner::ProviderTokenUsage::default(); run.results.len()],
+		));
+	}
+
+	let provider_usage = replay::verify_production_run(
+		run,
+		request.tasks,
+		request.resolver,
+		request.evaluator_root,
+		request.evaluator_runtime.ok_or_else(|| {
+			WorkerError::configuration("production replay lacks an evaluator runtime")
+		})?,
+		request.replay_root,
+		request.replay_identity,
+	)?;
+
+	Ok((ReplayStatus::EvaluatorReplayed, PRODUCTION_REPLAY_SCOPE, provider_usage))
+}
+
 fn prepare_calibration_verification(
 	request: PreparationRequest<'_>,
-	verified: protocol::VerifiedSubmission,
+	verified: VerifiedSubmission,
 ) -> Result<PreparedVerification, WorkerError> {
 	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
 		WorkerError::terminal(
@@ -1640,6 +1657,7 @@ fn prepare_calibration_verification(
 			"calibration evidence requires a non-synthetic verifier environment",
 		));
 	}
+
 	let mut expected_provenance =
 		request.environment.expected_provenance.clone().ok_or_else(|| {
 			WorkerError::terminal(
@@ -1648,7 +1666,7 @@ fn prepare_calibration_verification(
 			)
 		})?;
 
-	expected_provenance.run_class = corpus_commitment::RunClass::Calibration;
+	expected_provenance.run_class = RunClass::Calibration;
 
 	if run.provenance != expected_provenance {
 		return Err(WorkerError::terminal(
@@ -1668,35 +1686,25 @@ fn prepare_calibration_verification(
 		request.replay_root,
 		request.replay_identity,
 	)?;
-
 	let metadata = calibration_metadata_for(&run, request.environment)?;
 	let package = VerifiedPackageIdentity {
 		package_sha256: request.package_sha256.to_owned(),
 		content_hash: verified.content_hash,
 		signer: verified.signer,
 	};
-	let stage = calibration_verification::verify_calibration_run(
+	let (stage, attestation) = calibration_verification::verify_and_attest_calibration_run(
+		request.signing_identity,
 		&run,
 		&tasks,
 		&package,
 		&metadata,
 		&provider_usage,
-	)
-	.map_err(|_| {
-		WorkerError::terminal(
-			ReasonCode::NormalizationMismatch,
-			"deterministic calibration score or telemetry recomputation failed",
-		)
-	})?;
-	let attestation = calibration_verification::attest_calibration_stage(
-		request.signing_identity,
-		&stage,
 		request.observed_unix_ms,
 	)
 	.map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::NormalizationMismatch,
-			"calibration verifier attestation construction failed",
+			"calibration recomputation or verifier attestation construction failed",
 		)
 	})?;
 
@@ -2517,7 +2525,7 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 		}) || environment.runner_commit.len() < 7
 		|| environment.runner_commit.len() > 40
 		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
-		|| environment.region.is_empty()
+		|| !valid_identifier(&environment.region, 64)
 		|| environment.artifact_resolver_endpoint.as_ref().is_some_and(|url| {
 			!url.starts_with("https://")
 				|| url.ends_with('/')
@@ -2528,6 +2536,14 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 	}
 
 	Ok(())
+}
+
+fn valid_identifier(value: &str, maximum_bytes: usize) -> bool {
+	!value.is_empty()
+		&& value.len() <= maximum_bytes
+		&& value
+			.bytes()
+			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 fn verifier_environment_has_placeholders(environment: &VerifierEnvironment) -> bool {
@@ -2751,6 +2767,9 @@ mod tests {
 		UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse, VerificationRecord,
 		VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
 	};
+	use aiq_runner::calibration_verification::{
+		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+	};
 	use aiq_runner::{
 		adapter::{
 			self, ArtifactReference, ArtifactSink, AuthenticationProbe, CapabilityValidation,
@@ -2770,15 +2789,6 @@ mod tests {
 		task::EvaluatorRuntime,
 	};
 
-	fn official_evidence(
-		prepared: &PreparedVerification,
-	) -> (&NormalizedBatchStage, &VerifierAttestationV2) {
-		match &prepared.evidence {
-			PreparedEvidence::Official { stage, attestation } => (stage, attestation),
-			PreparedEvidence::Calibration { .. } => panic!("expected Official evidence"),
-		}
-	}
-
 	struct FakeTransport {
 		package: Vec<u8>,
 		posts: Mutex<VecDeque<String>>,
@@ -2792,19 +2802,6 @@ mod tests {
 	}
 
 	struct TestArtifactSink;
-	impl ArtifactSink for TestArtifactSink {
-		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
-			let digest = hex::encode(Sha256::digest(bytes));
-
-			Ok(ArtifactReference {
-				kind: kind.to_owned(),
-				content_hash: format!("sha256:{digest}"),
-				uri: format!("aiq-artifact://sha256/{digest}/{kind}"),
-				bytes: u64::try_from(bytes.len())
-					.map_err(|_| ExecutorError::new("fixture artifact is too large"))?,
-			})
-		}
-	}
 
 	struct RenewalTransport {
 		status: u16,
@@ -2825,6 +2822,20 @@ mod tests {
 		package_sha256: String,
 		evaluator_results_path: PathBuf,
 		manifest_path: PathBuf,
+	}
+
+	impl ArtifactSink for TestArtifactSink {
+		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
+			let digest = hex::encode(Sha256::digest(bytes));
+
+			Ok(ArtifactReference {
+				kind: kind.to_owned(),
+				content_hash: format!("sha256:{digest}"),
+				uri: format!("aiq-artifact://sha256/{digest}/{kind}"),
+				bytes: u64::try_from(bytes.len())
+					.map_err(|_| ExecutorError::new("fixture artifact is too large"))?,
+			})
+		}
 	}
 
 	impl LeaseMaintenance for NoopLease {
@@ -3157,6 +3168,7 @@ mod tests {
 
 			for result in &mut results {
 				result.run_id.clone_from(&run_id);
+
 				result.result_id = format!(
 					"result_{}",
 					result
@@ -3267,6 +3279,53 @@ mod tests {
 		fn drop(&mut self) {
 			let _ = fs::remove_dir_all(&self.root);
 		}
+	}
+
+	fn official_evidence(
+		prepared: &PreparedVerification,
+	) -> (&NormalizedBatchStage, &VerifierAttestationV2) {
+		match &prepared.evidence {
+			PreparedEvidence::Official { stage, attestation } => (stage, attestation),
+			PreparedEvidence::Calibration { .. } => panic!("expected Official evidence"),
+		}
+	}
+
+	fn assert_calibration_attestation_mutations_rejected(
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
+	) {
+		let mut changed = stage.clone();
+
+		changed.pricing.currency = "EUR".to_owned();
+		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
+
+		assert!(attestation.verify(&changed, &attestation.verifier).is_err());
+
+		let mut changed = stage.clone();
+
+		changed.scores[0].score.schema_version = "aiq.calibration-score-report.future".to_owned();
+		changed.score_reports_digest =
+			protocol::canonical_hash(&changed.scores).expect("changed score digest");
+		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
+
+		assert!(attestation.verify(&changed, &attestation.verifier).is_err());
+
+		let mut changed = stage.clone();
+
+		changed.scores[0].score.fixed_fixture_aiq =
+			changed.scores[0].score.fixed_fixture_aiq.map(|value| (value - 0.01).max(0.0));
+		changed.score_reports_digest =
+			protocol::canonical_hash(&changed.scores).expect("changed score digest");
+		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
+
+		assert!(attestation.verify(&changed, &attestation.verifier).is_err());
+
+		let mut uppercase_signature = attestation.clone();
+
+		uppercase_signature.signature = uppercase_signature.signature.to_ascii_uppercase();
+
+		assert_ne!(uppercase_signature.signature, attestation.signature);
+		assert!(uppercase_signature.verify(stage, &attestation.verifier).is_err());
 	}
 
 	#[test]
@@ -3411,13 +3470,41 @@ mod tests {
 			panic!("expected calibration evidence");
 		};
 
-		assert_eq!(stage.execution_concurrency, Some(17));
+		assert_eq!(stage.execution_concurrency, 17);
+
+		let mut missing_stage = serde_json::to_value(&stage).expect("serialize calibration stage");
+
+		missing_stage
+			.as_object_mut()
+			.expect("calibration stage object")
+			.remove("execution_concurrency");
+
+		assert!(
+			serde_json::from_value::<
+				aiq_runner::calibration_verification::CalibrationVerifiedStageV1,
+			>(missing_stage)
+			.is_err()
+		);
+
+		let mut null_attestation =
+			serde_json::to_value(&attestation).expect("serialize calibration attestation");
+
+		null_attestation["execution_concurrency"] = serde_json::Value::Null;
+
+		assert!(
+			serde_json::from_value::<
+				aiq_runner::calibration_verification::CalibrationVerifierAttestationV1,
+			>(null_attestation)
+			.is_err()
+		);
 		assert!(request.len() <= MAX_VERIFICATION_REQUEST_BYTES);
 		assert_eq!(stage.result_efficiency.len(), 72 * 17);
 		assert_eq!(stage.scores.len(), 17);
 		assert_eq!(stage.trust, TrustTier::Untrusted);
 		assert_eq!(attestation.stage_digest, stage.stage_digest);
 		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
+
+		assert_calibration_attestation_mutations_rejected(&stage, &attestation);
 	}
 
 	#[test]
@@ -3791,6 +3878,26 @@ mod tests {
 
 		crate::validate_environment(&environment)
 			.expect("test-owned fixture must remain structurally and semantically self-consistent");
+	}
+
+	#[test]
+	fn verifier_region_uses_the_public_identifier_grammar() {
+		let source = include_str!("../tests/fixtures/valid-synthetic-verifier-environment.json");
+		let environment: VerifierEnvironment = serde_json::from_str(source)
+			.expect("test-owned fixture must match the exact Rust shape");
+
+		for invalid in ["us east 1".to_owned(), "x".repeat(65)] {
+			let mut changed = environment.clone();
+
+			changed.region = invalid;
+
+			assert_eq!(
+				crate::validate_environment(&changed)
+					.expect_err("invalid region must fail closed")
+					.message,
+				"verifier environment is invalid"
+			);
+		}
 	}
 
 	#[test]

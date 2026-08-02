@@ -199,7 +199,7 @@ mod tests {
 					.expect("slot"),
 				task_set_hash: format!("sha256:{}", "4".repeat(64)),
 				scoring_version: "1.0.0".to_owned(),
-				execution_concurrency: None,
+				execution_concurrency: Some(1),
 				models: vec![model],
 				started_unix_ms: 1,
 				finished_unix_ms: 2,
@@ -222,6 +222,10 @@ mod tests {
 		}
 
 		fn verify(&self) -> Result<(), WorkerError> {
+			self.verify_usage().map(drop)
+		}
+
+		fn verify_usage(&self) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError> {
 			replay::verify_production_run(
 				&self.run,
 				&self.tasks,
@@ -231,7 +235,43 @@ mod tests {
 				&self.replay_root,
 				"123e4567-e89b-42d3-a456-426614174000",
 			)
-			.map(drop)
+		}
+
+		fn make_failed(&mut self, kind: FailureKind) {
+			let result = &mut self.run.results[0];
+
+			result.status = ResultStatus::Failed;
+			result.evaluation = EvaluationOutcome::NotEvaluated;
+			result.task_score = matches!(
+				kind,
+				FailureKind::Timeout
+					| FailureKind::UnsupportedModel
+					| FailureKind::NonZeroExit
+					| FailureKind::MissingResponse
+					| FailureKind::BudgetExceeded
+					| FailureKind::OutputTruncated
+			)
+			.then_some(0.0);
+			result.response = None;
+			result.response_sha256 = None;
+			result.evaluator_result_sha256 = None;
+			result.evaluator_stdout_sha256 = None;
+
+			result.evaluator_checks.clear();
+
+			result.failure = Some(ResultFailure {
+				kind,
+				message: "controlled failed-result fixture".to_owned(),
+				exit_code: Some(17),
+				retryable: true,
+			});
+
+			self.replace_evaluator_result(None);
+		}
+
+		fn remove_artifact(&mut self, kind: &str) {
+			self.resolver.objects.retain(|(_, object_kind), _| object_kind != kind);
+			self.run.results[0].artifacts.retain(|artifact| artifact.kind != kind);
 		}
 
 		fn replace_snapshot(&mut self, snapshot: WorkspaceSnapshot) {
@@ -795,6 +835,102 @@ mod tests {
 		fixture.verify().expect("shared parser replay");
 	}
 
+	fn failed_usage_stdout() -> String {
+		[
+			r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
+			r#"{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":2,"cache_write_input_tokens":1,"output_tokens":5,"reasoning_output_tokens":3,"total_tokens":16}}"#,
+		]
+		.join("\n")
+	}
+
+	#[test]
+	fn failed_results_replay_signed_tool_and_provider_usage() {
+		for kind in [FailureKind::NonZeroExit, FailureKind::Timeout] {
+			let stdout = failed_usage_stdout();
+			let expected = runner::parse_codex_tool_usage(&stdout);
+			let mut fixture = Fixture::completed("OK");
+
+			fixture.make_failed(kind);
+			fixture.replace_artifact("stdout.jsonl", stdout.into_bytes());
+
+			fixture.run.results[0].tool_usage = expected.clone();
+
+			let usage = fixture.verify_usage().expect("failed-result evidence replay");
+
+			assert_eq!(usage, vec![expected.provider_tokens]);
+		}
+	}
+
+	#[test]
+	fn failed_result_without_stdout_accepts_only_default_counters() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.make_failed(FailureKind::NonZeroExit);
+		fixture.remove_artifact("stdout.jsonl");
+
+		fixture.run.results[0].tool_usage = runner::ToolUsage::default();
+
+		assert_eq!(
+			fixture.verify_usage().expect("empty failed-result usage"),
+			vec![runner::ProviderTokenUsage::default()]
+		);
+
+		fixture.run.results[0].tool_usage.total_calls = 1;
+
+		assert_replay_error(
+			fixture.verify().expect_err("unsigned failed-result counters"),
+			ReasonCode::ArtifactEvidenceMismatch,
+		);
+	}
+
+	#[test]
+	fn workspace_integrity_replays_with_or_without_paired_workspace_evidence() {
+		for retain_workspace in [false, true] {
+			let stdout = failed_usage_stdout();
+			let expected = runner::parse_codex_tool_usage(&stdout);
+			let mut fixture = Fixture::completed("OK");
+
+			fixture.make_failed(FailureKind::WorkspaceIntegrity);
+			fixture.replace_artifact("stdout.jsonl", stdout.into_bytes());
+
+			fixture.run.results[0].tool_usage = expected.clone();
+
+			if !retain_workspace {
+				fixture.run.results[0].workspace_manifest = None;
+
+				fixture.remove_artifact("workspace-snapshot.json");
+			}
+
+			let usage = fixture.verify_usage().expect("workspace-integrity replay");
+
+			assert_eq!(usage, vec![expected.provider_tokens]);
+		}
+	}
+
+	#[test]
+	fn workspace_integrity_rejects_one_sided_workspace_evidence() {
+		let mut manifest_only = Fixture::completed("OK");
+
+		manifest_only.make_failed(FailureKind::WorkspaceIntegrity);
+		manifest_only.remove_artifact("workspace-snapshot.json");
+
+		assert_replay_error(
+			manifest_only.verify().expect_err("manifest-only workspace evidence"),
+			ReasonCode::InvalidReplayEvidence,
+		);
+
+		let mut snapshot_only = Fixture::completed("OK");
+
+		snapshot_only.make_failed(FailureKind::WorkspaceIntegrity);
+
+		snapshot_only.run.results[0].workspace_manifest = None;
+
+		assert_replay_error(
+			snapshot_only.verify().expect_err("snapshot-only workspace evidence"),
+			ReasonCode::InvalidReplayEvidence,
+		);
+	}
+
 	#[test]
 	fn signed_tool_counters_and_stdout_bytes_must_match() {
 		let mut counters = Fixture::completed("OK");
@@ -1254,10 +1390,11 @@ use sha2::{Digest, Sha256};
 use crate::{ArtifactResolverClient, ReasonCode, WorkerError};
 use aiq_runner::{
 	adapter::ArtifactReference,
-	protocol, run_validation,
+	protocol,
+	run_validation::{self, RunValidationError},
 	runner::{
 		self, CalibrationRunRecord, EvaluationOutcome, EvaluatorResultsBundle, FailureKind,
-		ResultStatus, RunRecord, TaskResult, ToolUsage, WorkspaceSnapshot,
+		ResultStatus, RunRecord, TaskResult, WorkspaceSnapshot,
 	},
 	submission::MAX_ARTIFACT_BYTES,
 	task::{
@@ -1276,7 +1413,7 @@ pub(crate) trait ReplayRun {
 	fn validate_evaluator_results(
 		&self,
 		bytes: &[u8],
-	) -> Result<EvaluatorResultsBundle, aiq_runner::run_validation::RunValidationError>;
+	) -> Result<EvaluatorResultsBundle, RunValidationError>;
 }
 impl ReplayRun for RunRecord {
 	fn run_id(&self) -> &str {
@@ -1294,7 +1431,7 @@ impl ReplayRun for RunRecord {
 	fn validate_evaluator_results(
 		&self,
 		bytes: &[u8],
-	) -> Result<EvaluatorResultsBundle, aiq_runner::run_validation::RunValidationError> {
+	) -> Result<EvaluatorResultsBundle, RunValidationError> {
 		run_validation::validate_evaluator_results_bundle(self, bytes)
 	}
 }
@@ -1314,7 +1451,7 @@ impl ReplayRun for CalibrationRunRecord {
 	fn validate_evaluator_results(
 		&self,
 		bytes: &[u8],
-	) -> Result<EvaluatorResultsBundle, aiq_runner::run_validation::RunValidationError> {
+	) -> Result<EvaluatorResultsBundle, RunValidationError> {
 		run_validation::validate_calibration_evaluator_results_bundle(self, bytes)
 	}
 }
@@ -1393,7 +1530,7 @@ pub(crate) fn verify_production_run<R, U>(
 	evaluator_runtime: &EvaluatorRuntime,
 	replay_root: &Path,
 	claim_identity: &str,
-) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError>
+) -> Result<Vec<aiq_runner::runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
@@ -1423,7 +1560,7 @@ fn verify_production_run_in<R, U>(
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	claim_root: &Path,
-) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError>
+) -> Result<Vec<aiq_runner::runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
@@ -1452,35 +1589,26 @@ where
 					"result does not bind a controlled task",
 				)
 			})?;
-		let evidence = resolve_candidate_evidence(result, resolver)?;
-		let destination = claim_root.join(format!("candidate-{index:04}"));
-		let materialized = evidence.snapshot.materialize_verified(&destination).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::InvalidReplayEvidence,
-				"workspace snapshot could not be reconstructed safely",
-			)
-		})?;
-		let materialized_hash = protocol::canonical_hash(&materialized).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::InvalidReplayEvidence,
-				"reconstructed workspace manifest could not be committed",
-			)
-		})?;
-		let materialized_bytes = protocol::canonical_json(&materialized).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::InvalidReplayEvidence,
-				"reconstructed workspace manifest could not be serialized",
-			)
-		})?;
+		let workspace_integrity_without_snapshot = result
+			.failure
+			.as_ref()
+			.is_some_and(|failure| failure.kind == FailureKind::WorkspaceIntegrity)
+			&& result.workspace_manifest.is_none();
 
-		if materialized_hash != evidence.manifest_reference.content_hash
-			|| materialized_bytes != evidence.manifest_bytes
-		{
-			return Err(WorkerError::terminal(
-				ReasonCode::ArtifactEvidenceMismatch,
-				"reconstructed workspace differs from the signed manifest reference",
-			));
+		if workspace_integrity_without_snapshot {
+			verify_failed_result_policy(result)?;
+
+			let tool_usage = verified_failed_tool_usage_without_workspace(result, resolver)?;
+
+			provider_usage[index] = tool_usage.provider_tokens;
+
+			resolver.maintain_lease()?;
+
+			continue;
 		}
+
+		let destination = claim_root.join(format!("candidate-{index:04}"));
+		let evidence = materialize_candidate(result, resolver, &destination)?;
 
 		match result.status {
 			ResultStatus::Completed => {
@@ -1495,6 +1623,7 @@ where
 					)?;
 				let response = complete_response(result, &evidence)?;
 				let tool_usage = verified_tool_usage(result, &evidence)?;
+
 				provider_usage[index] = tool_usage.provider_tokens.clone();
 
 				resolver.maintain_lease()?;
@@ -1515,7 +1644,8 @@ where
 			},
 			ResultStatus::Failed => {
 				verify_failed_result_policy(result)?;
-				let tool_usage = verified_tool_usage(result, &evidence)?;
+
+				let tool_usage = verified_failed_tool_usage(result, &evidence)?;
 
 				provider_usage[index] = tool_usage.provider_tokens;
 
@@ -1539,6 +1669,46 @@ where
 	resolver.maintain_lease()?;
 
 	Ok(provider_usage)
+}
+
+fn materialize_candidate<R>(
+	result: &TaskResult,
+	resolver: &R,
+	destination: &Path,
+) -> Result<CandidateEvidence, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+{
+	let evidence = resolve_candidate_evidence(result, resolver)?;
+	let materialized = evidence.snapshot.materialize_verified(destination).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"workspace snapshot could not be reconstructed safely",
+		)
+	})?;
+	let materialized_hash = protocol::canonical_hash(&materialized).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"reconstructed workspace manifest could not be committed",
+		)
+	})?;
+	let materialized_bytes = protocol::canonical_json(&materialized).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"reconstructed workspace manifest could not be serialized",
+		)
+	})?;
+
+	if materialized_hash != evidence.manifest_reference.content_hash
+		|| materialized_bytes != evidence.manifest_bytes
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::ArtifactEvidenceMismatch,
+			"reconstructed workspace differs from the signed manifest reference",
+		));
+	}
+
+	Ok(evidence)
 }
 
 fn controlled_task_map(
@@ -1695,7 +1865,7 @@ where
 fn verified_tool_usage(
 	result: &TaskResult,
 	evidence: &CandidateEvidence,
-) -> Result<ToolUsage, WorkerError> {
+) -> Result<aiq_runner::runner::ToolUsage, WorkerError> {
 	let stdout = evidence.artifacts.get("stdout.jsonl").ok_or_else(|| {
 		WorkerError::terminal(
 			ReasonCode::InvalidReplayEvidence,
@@ -1717,6 +1887,77 @@ fn verified_tool_usage(
 		return Err(WorkerError::terminal(
 			ReasonCode::ArtifactEvidenceMismatch,
 			"signed tool-use counters differ from content-addressed stdout",
+		));
+	}
+
+	Ok(observed)
+}
+
+fn verified_failed_tool_usage(
+	result: &TaskResult,
+	evidence: &CandidateEvidence,
+) -> Result<aiq_runner::runner::ToolUsage, WorkerError> {
+	if evidence.artifacts.contains_key("stdout.jsonl") {
+		return verified_tool_usage(result, evidence);
+	}
+	if result.tool_usage != aiq_runner::runner::ToolUsage::default() {
+		return Err(WorkerError::terminal(
+			ReasonCode::ArtifactEvidenceMismatch,
+			"failed result signs tool-use counters without content-addressed stdout",
+		));
+	}
+
+	Ok(aiq_runner::runner::ToolUsage::default())
+}
+
+fn verified_failed_tool_usage_without_workspace<R>(
+	result: &TaskResult,
+	resolver: &R,
+) -> Result<aiq_runner::runner::ToolUsage, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+{
+	let mut stdout = None;
+
+	for artifact in &result.artifacts {
+		let bytes = resolve_exact(artifact, resolver)?;
+
+		if artifact.kind == "workspace-snapshot.json" {
+			return Err(WorkerError::terminal(
+				ReasonCode::InvalidReplayEvidence,
+				"workspace-integrity result has a snapshot without a manifest",
+			));
+		}
+		if artifact.kind == "stdout.jsonl" {
+			stdout = Some(bytes);
+		}
+	}
+
+	let Some(stdout) = stdout else {
+		if result.tool_usage != aiq_runner::runner::ToolUsage::default() {
+			return Err(WorkerError::terminal(
+				ReasonCode::ArtifactEvidenceMismatch,
+				"workspace-integrity result signs counters without stdout evidence",
+			));
+		}
+
+		return Ok(aiq_runner::runner::ToolUsage::default());
+	};
+	let stdout = str::from_utf8(&stdout).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"content-addressed stdout is not UTF-8",
+		)
+	})?;
+	let observed = runner::parse_codex_tool_usage(stdout);
+
+	if observed.steps != result.tool_usage.steps
+		|| observed.total_calls != result.tool_usage.total_calls
+		|| observed.by_tool != result.tool_usage.by_tool
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::ArtifactEvidenceMismatch,
+			"workspace-integrity counters differ from content-addressed stdout",
 		));
 	}
 
@@ -1792,7 +2033,7 @@ fn replay_evaluator(
 	result: &TaskResult,
 	task: &TaskDefinition,
 	response: &str,
-	tool_usage: &ToolUsage,
+	tool_usage: &aiq_runner::runner::ToolUsage,
 	candidate_workspace: &Path,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
@@ -1948,7 +2189,8 @@ fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {
 		FailureKind::Spawn
 		| FailureKind::Authentication
 		| FailureKind::SubscriptionLimit
-		| FailureKind::EvaluatorFailure => None,
+		| FailureKind::EvaluatorFailure
+		| FailureKind::WorkspaceIntegrity => None,
 		FailureKind::CapabilityUnavailable
 		| FailureKind::CapabilityValidationFailed
 		| FailureKind::MissingEvaluator

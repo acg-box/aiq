@@ -297,7 +297,7 @@ impl Display for ExecutorError {
 }
 
 /// A structured Codex CLI failure.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterFailure {
 	/// Stable failure kind.
@@ -314,12 +314,32 @@ pub struct AdapterFailure {
 	pub stderr_truncated: bool,
 	/// Content-addressed references for retained raw failure streams.
 	pub artifacts: Vec<ArtifactReference>,
+	/// Complete bounded stdout retained only in the invoking process so failed
+	/// attempts can sign the same tool and provider counters as their artifact.
+	#[serde(skip)]
+	pub(crate) stdout_full: String,
 }
 impl AdapterFailure {
 	/// Returns whether inline provider text was removed for durable preflight evidence.
 	#[must_use]
 	pub fn is_normalized_preflight(&self) -> bool {
 		self.stderr.is_empty() && self.message == normalized_preflight_failure_message(self.kind)
+	}
+}
+
+impl Debug for AdapterFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("AdapterFailure")
+			.field("kind", &self.kind)
+			.field("exit_code", &self.exit_code)
+			.field("stderr", &"[REDACTED]")
+			.field("message", &self.message)
+			.field("stdout_truncated", &self.stdout_truncated)
+			.field("stderr_truncated", &self.stderr_truncated)
+			.field("artifacts", &self.artifacts)
+			.field("stdout_full", &"[REDACTED]")
+			.finish()
 	}
 }
 
@@ -542,7 +562,7 @@ impl ArtifactSink for LocalArtifactSink {
 }
 
 /// Successful Codex CLI output.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CodexOutput {
 	/// Small bounded standard-output preview.
 	pub stdout: String,
@@ -553,6 +573,18 @@ pub struct CodexOutput {
 	/// References for large raw streams.
 	pub artifacts: Vec<ArtifactReference>,
 	pub(crate) stdout_full: String,
+}
+impl Debug for CodexOutput {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("CodexOutput")
+			.field("stdout", &"[REDACTED]")
+			.field("stderr", &"[REDACTED]")
+			.field("exit_code", &self.exit_code)
+			.field("artifacts", &self.artifacts)
+			.field("stdout_full", &"[REDACTED]")
+			.finish()
+	}
 }
 
 /// One controlled Codex invocation.
@@ -835,13 +867,24 @@ where
 			invocation.max_tool_calls,
 			&scratch_environment,
 		);
-		let cleanup = scratch.cleanup();
+		let capture = match capture {
+			Ok(capture) => capture,
+			Err(failure) => {
+				let _ = scratch.cleanup();
 
-		cleanup?;
+				return Err(failure);
+			},
+		};
+		let classified = classify_capture(capture, &self.sink, true);
 
-		let capture = capture?;
+		if scratch.cleanup().is_err() {
+			return Err(post_execution_integrity_failure(
+				classified,
+				"post-invocation scratch cleanup failed",
+			));
+		}
 
-		classify_capture(capture, &self.sink, true)
+		classified
 	}
 
 	/// Proves managed profile policy and active selection without starting a model turn.
@@ -1569,12 +1612,16 @@ impl WorkspaceScratch {
 	}
 
 	fn remove(&self) -> Result<(), AdapterFailure> {
-		let metadata = fs::symlink_metadata(&self.path).map_err(|error| {
-			adapter_failure(
-				AdapterFailureKind::Spawn,
-				format!("cannot inspect controlled scratch directory: {error}"),
-			)
-		})?;
+		let metadata = match fs::symlink_metadata(&self.path) {
+			Ok(metadata) => metadata,
+			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+			Err(error) => {
+				return Err(adapter_failure(
+					AdapterFailureKind::Spawn,
+					format!("cannot inspect controlled scratch directory: {error}"),
+				));
+			},
+		};
 
 		if metadata.file_type().is_symlink() || !metadata.is_dir() {
 			return Err(adapter_failure(
@@ -1583,12 +1630,14 @@ impl WorkspaceScratch {
 			));
 		}
 
-		fs::remove_dir_all(&self.path).map_err(|error| {
-			adapter_failure(
+		match fs::remove_dir_all(&self.path) {
+			Ok(()) => Ok(()),
+			Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+			Err(error) => Err(adapter_failure(
 				AdapterFailureKind::Spawn,
 				format!("cannot remove controlled scratch directory: {error}"),
-			)
-		})
+			)),
+		}
 	}
 }
 
@@ -1791,6 +1840,8 @@ pub enum AdapterFailureKind {
 	BudgetExceeded,
 	/// A captured stream exceeded the retained byte limit.
 	OutputTruncated,
+	/// A paid invocation completed, but its evidence or scratch cleanup failed.
+	WorkspaceIntegrity,
 }
 
 /// Sandbox policy accepted by safe benchmark invocations.
@@ -4362,7 +4413,17 @@ where
 	let stdout_full = String::from_utf8_lossy(&capture.stdout).into_owned();
 	let stderr_full = String::from_utf8_lossy(&capture.stderr).into_owned();
 	let stderr = preview(&stderr_full);
-	let artifacts = capture_artifacts(&capture, sink, retain_stdout)?;
+	let artifacts =
+		capture_artifacts(&capture, sink, retain_stdout).map_err(|artifacts| AdapterFailure {
+			kind: AdapterFailureKind::WorkspaceIntegrity,
+			exit_code: capture.exit_code,
+			stderr: stderr.clone(),
+			message: "post-invocation output evidence retention failed".to_owned(),
+			stdout_truncated: capture.stdout_truncated,
+			stderr_truncated: capture.stderr_truncated,
+			artifacts,
+			stdout_full: stdout_full.clone(),
+		})?;
 
 	if capture.timed_out {
 		return Err(AdapterFailure {
@@ -4373,6 +4434,7 @@ where
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
+			stdout_full,
 		});
 	}
 
@@ -4389,6 +4451,7 @@ where
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
+			stdout_full,
 		});
 	}
 
@@ -4401,6 +4464,7 @@ where
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
+			stdout_full,
 		});
 	}
 	if capture.exit_code != Some(0) {
@@ -4450,6 +4514,7 @@ where
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts,
+			stdout_full,
 		});
 	}
 
@@ -4487,6 +4552,7 @@ fn normalize_optional_failure(failure: &mut Option<AdapterFailure>) {
 	let Some(failure) = failure else { return };
 
 	failure.stderr.clear();
+	failure.stdout_full.clear();
 
 	failure.message = normalized_preflight_failure_message(failure.kind).to_owned();
 }
@@ -4503,6 +4569,9 @@ fn normalized_preflight_failure_message(kind: AdapterFailureKind) -> &'static st
 		AdapterFailureKind::NonZeroExit => "Codex CLI exited unsuccessfully",
 		AdapterFailureKind::BudgetExceeded => "Codex CLI exceeded a configured live budget",
 		AdapterFailureKind::OutputTruncated => "Codex CLI output exceeded the safe capture limit",
+		AdapterFailureKind::WorkspaceIntegrity => {
+			"post-invocation output evidence or scratch cleanup failed"
+		},
 	}
 }
 
@@ -4510,7 +4579,7 @@ fn capture_artifacts<S>(
 	capture: &ExecutionCapture,
 	sink: &S,
 	retain_stdout: bool,
-) -> Result<Vec<ArtifactReference>, AdapterFailure>
+) -> Result<Vec<ArtifactReference>, Vec<ArtifactReference>>
 where
 	S: ArtifactSink,
 {
@@ -4519,17 +4588,41 @@ where
 	if !capture.stdout.is_empty()
 		&& (retain_stdout || capture.stdout.len() > MAX_INLINE_PREVIEW_BYTES)
 	{
-		artifacts.push(sink.put("stdout.jsonl", &capture.stdout).map_err(|error| {
-			adapter_failure(AdapterFailureKind::Spawn, format!("artifact sink failed: {error}"))
-		})?);
+		let stdout = sink.put("stdout.jsonl", &capture.stdout).map_err(|_| artifacts.clone())?;
+
+		artifacts.push(stdout);
 	}
 	if capture.stderr.len() > MAX_INLINE_PREVIEW_BYTES {
-		artifacts.push(sink.put("stderr.txt", &capture.stderr).map_err(|error| {
-			adapter_failure(AdapterFailureKind::Spawn, format!("artifact sink failed: {error}"))
-		})?);
+		let stderr = sink.put("stderr.txt", &capture.stderr).map_err(|_| artifacts.clone())?;
+
+		artifacts.push(stderr);
 	}
 
 	Ok(artifacts)
+}
+
+fn post_execution_integrity_failure(
+	classified: Result<CodexOutput, AdapterFailure>,
+	message: &'static str,
+) -> AdapterFailure {
+	match classified {
+		Ok(output) => AdapterFailure {
+			kind: AdapterFailureKind::WorkspaceIntegrity,
+			exit_code: output.exit_code,
+			stderr: output.stderr,
+			message: message.to_owned(),
+			stdout_truncated: false,
+			stderr_truncated: false,
+			artifacts: output.artifacts,
+			stdout_full: output.stdout_full,
+		},
+		Err(mut failure) => {
+			failure.kind = AdapterFailureKind::WorkspaceIntegrity;
+			failure.message = message.to_owned();
+
+			failure
+		},
+	}
 }
 
 fn preview(value: &str) -> String {
@@ -4547,6 +4640,7 @@ fn adapter_failure(kind: AdapterFailureKind, message: impl Into<String>) -> Adap
 		stdout_truncated: false,
 		stderr_truncated: false,
 		artifacts: Vec::new(),
+		stdout_full: String::new(),
 	}
 }
 
@@ -4760,6 +4854,11 @@ mod tests {
 		read_only_kind: Option<CanaryFileKind>,
 	}
 
+	struct ScratchReplacingExecutor {
+		capture: RefCell<Option<ExecutionCapture>>,
+		replacement: RefCell<Option<PathBuf>>,
+	}
+
 	#[derive(Clone, Copy)]
 	enum CanaryFileKind {
 		Regular,
@@ -4770,6 +4869,8 @@ mod tests {
 	struct MemorySink {
 		values: RefCell<Vec<Vec<u8>>>,
 	}
+
+	struct FailingSink;
 
 	#[derive(Default)]
 	struct RecordingChildObserver {
@@ -4830,6 +4931,23 @@ mod tests {
 		}
 	}
 
+	impl Executor for ScratchReplacingExecutor {
+		fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			let scratch = request
+				.environment
+				.get("TMPDIR")
+				.map(PathBuf::from)
+				.expect("controlled scratch environment");
+
+			fs::remove_dir(&scratch).expect("remove controlled scratch directory");
+			fs::write(&scratch, b"hostile replacement").expect("replace scratch with file");
+
+			*self.replacement.borrow_mut() = Some(scratch);
+
+			Ok(self.capture.borrow_mut().take().expect("test must provide a capture"))
+		}
+	}
+
 	impl ArtifactSink for MemorySink {
 		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
 			self.values.borrow_mut().push(bytes.to_vec());
@@ -4840,6 +4958,12 @@ mod tests {
 				uri: format!("aiq-artifact://fixture/{kind}"),
 				bytes: bytes.len() as u64,
 			})
+		}
+	}
+
+	impl ArtifactSink for FailingSink {
+		fn put(&self, _kind: &str, _bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
+			Err(ExecutorError::new("synthetic sink failure"))
 		}
 	}
 
@@ -4881,6 +5005,21 @@ mod tests {
 			.expect("fixture request flag");
 
 		PathBuf::from(request.args.get(index + 1).expect("fixture request path"))
+	}
+
+	#[test]
+	fn adapter_failure_debug_redacts_captured_provider_streams() {
+		let mut failure =
+			super::adapter_failure(AdapterFailureKind::NonZeroExit, "controlled failure");
+
+		failure.stderr = "private stderr prompt".to_owned();
+		failure.stdout_full = "private stdout prompt".to_owned();
+
+		let debug = format!("{failure:?}");
+
+		assert!(!debug.contains("private stderr prompt"));
+		assert!(!debug.contains("private stdout prompt"));
+		assert!(debug.matches("[REDACTED]").count() >= 2);
 	}
 
 	fn base64url(bytes: &[u8]) -> String {
@@ -5035,6 +5174,106 @@ mod tests {
 				})
 				.collect(),
 		}
+	}
+
+	#[test]
+	fn model_removed_controlled_scratch_is_idempotent_cleanup() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+
+		fs::remove_dir_all(&scratch.path).expect("model removes its controlled scratch");
+
+		scratch.remove().expect("first missing cleanup");
+		scratch.remove().expect("repeated missing cleanup");
+		scratch.cleanup().expect("explicit missing cleanup");
+	}
+
+	#[test]
+	fn controlled_scratch_cleanup_rejects_hostile_type_change() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+
+		fs::remove_dir(&path).expect("remove original scratch directory");
+		fs::write(&path, b"hostile replacement").expect("replace scratch with regular file");
+
+		let error = scratch.remove().expect_err("type change must fail closed");
+
+		assert_eq!(error.kind, AdapterFailureKind::Spawn);
+		assert!(error.message.contains("changed type"));
+
+		drop(scratch);
+
+		assert!(path.is_file(), "Drop must not remove a hostile replacement");
+
+		fs::remove_file(path).expect("remove hostile test replacement");
+	}
+
+	#[test]
+	fn paid_capture_survives_hostile_scratch_cleanup_failure() {
+		let stdout = br#"{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":5}}
+"#
+		.to_vec();
+		let adapter = CodexAdapter::new(
+			ScratchReplacingExecutor {
+				capture: RefCell::new(Some(capture(0, stdout.clone(), Vec::new()))),
+				replacement: RefCell::new(None),
+			},
+			MemorySink::default(),
+			"codex",
+			CodexExecutionConfig::isolated(test_controlled_root().join("codex-home"))
+				.with_denied_roots(vec![test_controlled_root().join("denied")]),
+		);
+		let failure = adapter.invoke(&invocation()).expect_err("cleanup failure must fail closed");
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert_eq!(failure.exit_code, Some(0));
+		assert_eq!(failure.stdout_full.as_bytes(), stdout);
+		assert!(failure.artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl"));
+		assert_eq!(adapter.sink.values.borrow().as_slice(), [stdout]);
+
+		let replacement =
+			adapter.executor.replacement.borrow_mut().take().expect("hostile replacement path");
+
+		fs::remove_file(replacement).expect("remove hostile replacement");
+	}
+
+	#[test]
+	fn paid_capture_survives_artifact_sink_failure_in_memory() {
+		let stdout = br#"{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":5}}
+"#
+		.to_vec();
+		let root = test_controlled_root();
+		let adapter = CodexAdapter::new(
+			FakeExecutor::from_order(vec![Ok(capture(0, stdout.clone(), Vec::new()))]),
+			FailingSink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home"))
+				.with_denied_roots(vec![root.join("denied")]),
+		);
+		let failure = adapter.invoke(&invocation()).expect_err("sink failure must fail closed");
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert_eq!(failure.exit_code, Some(0));
+		assert_eq!(failure.stdout_full.as_bytes(), stdout);
+		assert!(failure.artifacts.is_empty());
+	}
+
+	#[test]
+	fn successful_output_debug_redacts_all_inline_provider_text() {
+		let secret = "private provider stdout";
+		let output = super::CodexOutput {
+			stdout: secret.to_owned(),
+			stderr: "private provider stderr".to_owned(),
+			exit_code: Some(0),
+			artifacts: Vec::new(),
+			stdout_full: secret.to_owned(),
+		};
+		let rendered = format!("{output:?}");
+
+		assert!(!rendered.contains(secret));
+		assert!(!rendered.contains("private provider stderr"));
+		assert!(rendered.contains("[REDACTED]"));
 	}
 
 	#[test]
