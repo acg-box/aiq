@@ -32,6 +32,7 @@ const test = base.extend<LivePublishedFixtures>({
 });
 
 const calibrationRunId = `run_${'8'.repeat(64)}`;
+const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
 
 const routes = [
   '/',
@@ -39,6 +40,7 @@ const routes = [
   '/runs/run-live-sol-ultra',
   '/calibrations',
   `/calibrations/${calibrationRunId}`,
+  `/calibrations/${subsetCalibrationRunId}`,
   '/compare',
   '/trends?range=day',
   '/trends?range=week',
@@ -107,30 +109,54 @@ test('the live overview exposes all 17 published configurations without seed sub
   const calibrationEfficiency = page.getByRole('region', {
     name: 'Calibration model efficiency',
   });
-  await expect(calibrationEfficiency.getByRole('row')).toHaveCount(18);
-  const contextBandScore = calibrationEfficiency
-    .getByRole('row')
-    .filter({ hasText: 'sol · medium' });
-  await expect(contextBandScore).toContainText('Unavailable');
-  await expect(contextBandScore).toContainText('unavailable context band');
-  await expect(contextBandScore).toContainText(
-    'A result above 272000 aggregate input tokens is unpriced',
-  );
+  await expect(calibrationEfficiency.getByRole('row')).toHaveCount(2);
+  await expect(
+    calibrationEfficiency.getByRole('row').filter({ hasText: 'terra · medium' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Inspect the bounded 5-task subsets' }),
+  ).toHaveAttribute('href', `/calibrations/${subsetCalibrationRunId}`);
 });
 
-test('calibration history and detail keep one run and one 72-task slice bounded', async ({
+test('a partial Terra-only calibration derives a valid default and reports its selected subset', async ({
   page,
   request,
 }) => {
   await page.goto('/calibrations');
   const register = page.getByRole('region', { name: 'Public calibration register' });
-  await expect(register.getByRole('row')).toHaveCount(2);
-  await expect(register).toContainText('1,224 retained result cells');
-  await expect(
-    page.getByRole('region', { name: 'Calibration model efficiency' }).getByRole('row'),
-  ).toHaveCount(18);
-  await register.getByRole('link', { name: 'Inspect calibration' }).click();
+  await expect(register.getByRole('row')).toHaveCount(3);
+  await expect(register).toContainText('1 models × 5 tasks');
+  await register.getByRole('link', { name: 'Inspect calibration' }).first().click();
 
+  await expect(page).toHaveURL(`/calibrations/${subsetCalibrationRunId}`);
+  await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
+    'terra · medium',
+  );
+  await expect(page.getByRole('status')).toContainText('Showing 5 of 5 result cells');
+  await expect(page.getByLabel('Model and reasoning configuration').locator('option')).toHaveCount(
+    1,
+  );
+  await expect(page.getByRole('button', { name: 'Show 5-task subset' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
+  ).toHaveCount(6);
+
+  const absentConfiguration = await request.get(
+    `/calibrations/${subsetCalibrationRunId}?configuration=sol%3Alow`,
+  );
+  expect(absentConfiguration.status()).toBe(404);
+  expectNoStore(absentConfiguration);
+
+  const absentRun = await request.get(`/calibrations/run_${'6'.repeat(64)}`);
+  expect(absentRun.status()).toBe(404);
+  expectNoStore(absentRun);
+});
+
+test('full calibration detail keeps one run and one selected-task subset bounded', async ({
+  page,
+  request,
+}) => {
+  await page.goto(`/calibrations/${calibrationRunId}`);
   await expect(page).toHaveURL(`/calibrations/${calibrationRunId}`);
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'sol · low',
@@ -160,7 +186,7 @@ test('calibration history and detail keep one run and one 72-task slice bounded'
   );
 
   await selector.selectOption('terra:medium');
-  await page.getByRole('button', { name: 'Show 72-task slice' }).click();
+  await page.getByRole('button', { name: 'Show 72-task subset' }).click();
   await expect(page).toHaveURL(`/calibrations/${calibrationRunId}?configuration=terra%3Amedium`);
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'terra · medium',
