@@ -83,7 +83,7 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
   );
   for (const filter of unattemptedSets) {
     assert.equal(
-      filter.groups?.tail.trim(),
+      filter.groups?.tail?.trim() ?? '',
       '',
       'workspace_integrity is attempted and must not enter an unattempted filter.',
     );
