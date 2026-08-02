@@ -1,6 +1,6 @@
 # AIQ Core benchmark contract
 
-AIQ Core `1.0.0` is a fixed 72-task benchmark across ten domains. The public
+AIQ Core `1.0.1` is a fixed 72-task benchmark across ten domains. The public
 catalog defines task identity, domain, difficulty, tool policy, budget, evaluator
 identity, and public-safe descriptions. Private task prompts, fixtures, expected
 outputs, and evaluator content stay outside Git.
@@ -20,7 +20,7 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
+sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
 ```
 
 ## Private corpus boundary
