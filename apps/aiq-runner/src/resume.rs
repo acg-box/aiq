@@ -1133,6 +1133,7 @@ mod tests {
 				stdout_truncated: false,
 				stderr_truncated: false,
 				artifacts: Vec::new(),
+				stdout_full: String::new(),
 			};
 
 			entry.status = CapabilityValidationStatus::Unavailable;
@@ -1613,6 +1614,7 @@ mod tests {
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts: Vec::new(),
+			stdout_full: String::new(),
 		};
 		let evidence_digest = adapter::configuration_evidence_digest(
 			model,

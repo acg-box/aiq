@@ -1,13 +1,20 @@
 //! Isolated verification evidence for signed, non-Official calibration runs.
 
+use std::iter;
 use std::{
+	collections::BTreeSet,
 	error::Error,
 	fmt::{Display, Formatter},
 };
 
 use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
+use crate::adapter::ArtifactReference;
+use crate::runner::MAX_RUN_JOBS;
+use crate::runner::TaskResult;
+use crate::scoring::AIQ_SCORING_VERSION;
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
@@ -19,10 +26,7 @@ use crate::{
 	protocol::{self, NodeIdentity, TrustTier},
 	run_validation,
 	runner::{CalibrationRunRecord, FailureKind, ProviderTokenUsage},
-	scoring::{
-		CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions,
-		score_calibration_model_with_context,
-	},
+	scoring::{self, CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions},
 	submission,
 	task::TaskDefinition,
 };
@@ -38,7 +42,8 @@ pub const CALIBRATION_EFFICIENCY_SCHEMA_VERSION: &str = "aiq.calibration-efficie
 pub const API_EQUIVALENT_PRICING_VERSION: &str = "aiq.standard-api-equivalent-usd.v1";
 
 const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
-const PRICING_SOURCE: &str = "https://developers.openai.com/api/docs/models/compare";
+const MAX_SHORT_CONTEXT_INPUT_TOKENS: u64 = 272_000;
+const PRICING_SOURCE: &str = "https://developers.openai.com/api/docs/pricing";
 const PRICING_AS_OF: &str = "2026-08-02";
 
 /// Calibration verification or attestation failed.
@@ -51,11 +56,13 @@ impl CalibrationVerificationError {
 		Self { message: message.into() }
 	}
 }
+
 impl Display for CalibrationVerificationError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(&self.message)
 	}
 }
+
 impl Error for CalibrationVerificationError {}
 
 /// Standard API token rates for one model family.
@@ -64,9 +71,13 @@ impl Error for CalibrationVerificationError {}
 pub struct ApiEquivalentTokenRates {
 	/// API model identifier used for the comparison.
 	pub model: String,
+	/// Standard input rate in USD nanos for one token.
 	pub input_usd_nanos_per_token: u64,
+	/// Cached input rate in USD nanos for one token.
 	pub cached_input_usd_nanos_per_token: u64,
+	/// Cache-write input rate in USD nanos for one token.
 	pub cache_write_input_usd_nanos_per_token: u64,
+	/// Output rate in USD nanos for one token.
 	pub output_usd_nanos_per_token: u64,
 }
 
@@ -106,54 +117,14 @@ impl Default for ApiEquivalentPricingModel {
 			processing_tier: "standard".to_owned(),
 			rates: vec![
 				rates("gpt-5.6-sol", 5_000, 500, 6_250, 30_000),
-				rates("gpt-5.6-terra", 2_500, 250, 3_125, 15_000),
-				rates("gpt-5.6-luna", 1_000, 100, 1_250, 6_000),
+				rates("gpt-5.6-terra", 2_000, 200, 2_500, 12_000),
+				rates("gpt-5.6-luna", 200, 20, 250, 1_200),
 			],
 			formula: "(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again".to_owned(),
 			hosted_tool_fees_included: false,
-			limitation: "Standard API-equivalent comparison only. Aggregated turn usage does not expose per-request long-context multipliers. This is not actual subscription spend.".to_owned(),
+			limitation: "Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.".to_owned(),
 		}
 	}
-}
-
-fn rates(
-	model: &str,
-	input: u64,
-	cached: u64,
-	cache_write: u64,
-	output: u64,
-) -> ApiEquivalentTokenRates {
-	ApiEquivalentTokenRates {
-		model: model.to_owned(),
-		input_usd_nanos_per_token: input,
-		cached_input_usd_nanos_per_token: cached,
-		cache_write_input_usd_nanos_per_token: cache_write,
-		output_usd_nanos_per_token: output,
-	}
-}
-
-/// Why an API-equivalent estimate is present or unavailable.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CostEstimateStatus {
-	/// Every counter required by the standard-rate formula was reported.
-	Estimated,
-	/// At least one required provider counter was absent.
-	UnavailableMissingUsage,
-	/// Provider counters were internally inconsistent.
-	UnavailableInvalidUsage,
-}
-
-/// Evidence authority for one efficiency field.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EfficiencyEvidenceLevel {
-	/// Measured by the runner clock and not independently reproducible.
-	RunnerObserved,
-	/// Numeric provider metadata extracted from retained evidence.
-	ProviderReported,
-	/// Independently parsed again by the verifier from exact retained bytes.
-	VerifierRecomputed,
 }
 
 /// Public-safe efficiency observation for one signed result.
@@ -188,12 +159,19 @@ pub struct CalibrationResultEfficiency {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProviderTokenCoverage {
+	/// Number of selected task results.
 	pub selected_tasks: usize,
+	/// Number of results with an input-token counter.
 	pub input_tasks: usize,
+	/// Number of results with a cached-input counter.
 	pub cached_input_tasks: usize,
+	/// Number of results with a cache-write counter.
 	pub cache_write_input_tasks: usize,
+	/// Number of results with an output-token counter.
 	pub output_tasks: usize,
+	/// Number of results with a reasoning-token counter.
 	pub reasoning_tasks: usize,
+	/// Number of results with a total-token counter.
 	pub total_tasks: usize,
 }
 
@@ -201,8 +179,11 @@ pub struct ProviderTokenCoverage {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationEfficiencyAggregate {
+	/// Efficiency aggregate schema.
 	pub schema_version: String,
+	/// Model configuration for this aggregate.
 	pub model: ModelConfig,
+	/// Number of selected task results.
 	pub selected_tasks: usize,
 	/// Results with observed Codex adapter elapsed time.
 	pub observed_wall_tasks: usize,
@@ -212,9 +193,13 @@ pub struct CalibrationEfficiencyAggregate {
 	pub median_observed_wall_ms: Option<u64>,
 	/// 95th-percentile observed Codex adapter elapsed time.
 	pub p95_observed_wall_ms: Option<u64>,
+	/// Sums of each available provider token counter.
 	pub provider_token_totals: ProviderTokenUsage,
+	/// Per-counter provider token coverage.
 	pub provider_token_coverage: ProviderTokenCoverage,
+	/// Number of task results with an API-equivalent cost estimate.
 	pub estimated_cost_tasks: usize,
+	/// Total API-equivalent cost when every selected result has an estimate.
 	pub standard_api_equivalent_usd_nanos: Option<u64>,
 }
 
@@ -222,8 +207,11 @@ pub struct CalibrationEfficiencyAggregate {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationVerifiedScore {
+	/// Model configuration for the score.
 	pub model: ModelConfig,
+	/// Recomputed transparent correctness score.
 	pub score: CalibrationScoreReport,
+	/// Separate time, token, and cost evidence.
 	pub efficiency: CalibrationEfficiencyAggregate,
 }
 
@@ -231,43 +219,77 @@ pub struct CalibrationVerifiedScore {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationVerifiedStageV1 {
+	/// Calibration stage schema.
 	pub schema_version: String,
+	/// Stable run identifier.
 	pub run_id: String,
+	/// SHA-256 digest of the exact signed package bytes.
 	pub package_sha256: String,
+	/// Signed package content commitment.
 	pub content_hash: String,
+	/// Runner identity from the signed package.
 	pub runner: NodeIdentity,
+	/// Permanent non-Official classification.
 	pub classification: String,
+	/// Calibration run class.
 	pub run_class: RunClass,
+	/// False-only Official eligibility marker.
 	pub official_eligible: FalseOnly,
+	/// False-only ranking eligibility marker.
 	pub ranking_eligible: FalseOnly,
+	/// Public trust tier for this stage.
 	pub trust: TrustTier,
+	/// Committed controlled task-set hash.
 	pub task_set_hash: String,
+	/// Digest of the ordered task selection.
 	pub task_selection_digest: String,
+	/// Digest of the ordered model selection.
 	pub model_selection_digest: String,
+	/// Digest of the recomputed score reports.
 	pub score_reports_digest: String,
+	/// Digest of per-result efficiency evidence.
 	pub telemetry_digest: String,
+	/// Digest of the capability validation record.
 	pub capability_validation_digest: String,
+	/// Run provenance commitment.
 	pub provenance: RunProvenanceCommitment,
-	pub evaluator_results_artifact: crate::adapter::ArtifactReference,
+	/// Content-addressed deterministic evaluator-result artifact.
+	pub evaluator_results_artifact: ArtifactReference,
+	/// Correctness scoring contract version.
 	pub scoring_version: String,
-	pub execution_concurrency: Option<usize>,
+	/// Bound model-execution concurrency.
+	pub execution_concurrency: usize,
+	/// Ordered selected task identifiers.
 	pub task_ids: Vec<String>,
+	/// Ordered selected model configurations.
 	pub models: Vec<ModelConfig>,
+	/// Recomputed score and efficiency report for each model.
 	pub scores: Vec<CalibrationVerifiedScore>,
+	/// Per-result public-safe efficiency observations.
 	pub result_efficiency: Vec<CalibrationResultEfficiency>,
+	/// Versioned Standard API-equivalent pricing method.
 	pub pricing: ApiEquivalentPricingModel,
+	/// Controlled task-set identifier.
 	pub task_set_id: String,
+	/// Controlled task-set version.
 	pub task_set_version: String,
+	/// Benchmark protocol version.
 	pub benchmark_version: String,
+	/// Committed prompt-set digest.
 	pub prompt_set_digest: String,
+	/// Runner source commit.
 	pub runner_commit: String,
+	/// Runner region label.
 	pub region: String,
+	/// Idempotent schedule slot in Unix milliseconds.
 	pub scheduled_unix_ms: u64,
+	/// Runner start time in Unix milliseconds.
 	pub started_unix_ms: u64,
+	/// Runner finish time in Unix milliseconds.
 	pub finished_unix_ms: u64,
+	/// JCS commitment over the stage without this field.
 	pub stage_digest: String,
 }
-
 impl CalibrationVerifiedStageV1 {
 	/// Recomputes the full-stage JCS commitment with `stage_digest` excluded.
 	pub fn compute_stage_digest(&self) -> Result<String, CalibrationVerificationError> {
@@ -277,15 +299,22 @@ impl CalibrationVerifiedStageV1 {
 
 	/// Checks immutable digests and the permanent non-Official boundary.
 	pub fn verify(&self) -> Result<(), CalibrationVerificationError> {
+		let model_set = self.models.iter().copied().collect::<BTreeSet<_>>();
+		let task_set = self.task_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
+
 		if self.schema_version != CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION
 			|| self.classification != "local_calibration_non_official"
 			|| self.run_class != RunClass::Calibration
 			|| self.trust != TrustTier::Untrusted
 			|| self.models.is_empty()
-			|| !self
-				.execution_concurrency
-				.is_some_and(|jobs| (1..=crate::runner::MAX_RUN_JOBS).contains(&jobs))
+			|| self.models.len() > MODEL_MATRIX.len()
+			|| model_set.len() != self.models.len()
+			|| !model_set.iter().all(|model| MODEL_MATRIX.contains(model))
+			|| !(1..=MAX_RUN_JOBS).contains(&self.execution_concurrency)
 			|| self.task_ids.is_empty()
+			|| self.task_ids.len() > 72
+			|| task_set.len() != self.task_ids.len()
+			|| self.task_ids.iter().any(|task_id| !is_identifier(task_id, 64))
 			|| self.scores.len() != self.models.len()
 			|| self.result_efficiency.len() != self.models.len().saturating_mul(self.task_ids.len())
 			|| self.started_unix_ms > self.finished_unix_ms
@@ -296,6 +325,10 @@ impl CalibrationVerifiedStageV1 {
 				score.model != *model
 					|| score.score.model != *model
 					|| score.efficiency.model != *model
+					|| score.score.schema_version != "aiq.calibration-score-report.v1"
+					|| score.score.run_class != "calibration"
+					|| score.score.scoring_version != self.scoring_version
+					|| score.score.coverage.expected_tasks != self.task_ids.len()
 					|| score.score.official_eligible != FalseOnly
 					|| score.score.ranking_eligible != FalseOnly
 			}) {
@@ -304,8 +337,19 @@ impl CalibrationVerifiedStageV1 {
 			));
 		}
 
+		let aggregates =
+			self.scores.iter().map(|score| score.efficiency.clone()).collect::<Vec<_>>();
+
+		validate_efficiency_evidence_contract(
+			&self.models,
+			&self.task_ids,
+			&self.result_efficiency,
+			&aggregates,
+			&self.pricing,
+		)?;
 		validate_node(&self.runner)?;
 		validate_hash(&self.package_sha256, false)?;
+
 		for digest in [
 			&self.content_hash,
 			&self.task_set_hash,
@@ -350,40 +394,57 @@ impl CalibrationVerifiedStageV1 {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CalibrationVerifierAttestationV1 {
+	/// Calibration attestation schema.
 	pub schema_version: String,
+	/// Signature algorithm identifier.
 	pub signature_algorithm: String,
+	/// Signature contract version.
 	pub signature_version: String,
+	/// Bound run identifier.
 	pub run_id: String,
+	/// Bound SHA-256 digest of the exact package bytes.
 	pub package_sha256: String,
+	/// Bound signed package content commitment.
 	pub content_hash: String,
+	/// Bound calibration stage digest.
 	pub stage_digest: String,
+	/// Bound runner identity.
 	pub runner: NodeIdentity,
+	/// Distinct verifier identity.
 	pub verifier: NodeIdentity,
+	/// Bound permanent non-Official classification.
 	pub classification: String,
+	/// Calibration run class.
 	pub run_class: RunClass,
+	/// False-only Official eligibility marker.
 	pub official_eligible: FalseOnly,
+	/// False-only ranking eligibility marker.
 	pub ranking_eligible: FalseOnly,
+	/// Public trust tier for this attestation.
 	pub trust: TrustTier,
+	/// Bound controlled task-set hash.
 	pub task_set_hash: String,
+	/// Bound ordered task-selection digest.
 	pub task_selection_digest: String,
+	/// Bound ordered model-selection digest.
 	pub model_selection_digest: String,
+	/// Bound recomputed score-report digest.
 	pub score_reports_digest: String,
+	/// Bound efficiency-evidence digest.
 	pub telemetry_digest: String,
+	/// Bound capability-validation digest.
 	pub capability_validation_digest: String,
+	/// Bound correctness scoring version.
 	pub scoring_version: String,
-	pub execution_concurrency: Option<usize>,
+	/// Bound model-execution concurrency.
+	pub execution_concurrency: usize,
+	/// Verifier observation time in Unix milliseconds.
 	pub observed_unix_ms: u64,
+	/// Successful deterministic replay disposition.
 	pub replay_status: CalibrationReplayStatus,
+	/// Hex-encoded verifier signature.
 	pub signature: String,
 }
-
-/// The only successful calibration replay disposition.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CalibrationReplayStatus {
-	EvaluatorReplayed,
-}
-
 impl CalibrationVerifierAttestationV1 {
 	/// Verifies every duplicated stage binding, identity separation, and signature.
 	pub fn verify(
@@ -413,6 +474,7 @@ impl CalibrationVerifierAttestationV1 {
 			|| self.scoring_version != stage.scoring_version
 			|| self.execution_concurrency != stage.execution_concurrency
 			|| self.observed_unix_ms > MAX_JCS_SAFE_INTEGER
+			|| !is_lower_hex(&self.signature, 128)
 		{
 			return Err(CalibrationVerificationError::new(
 				"calibration attestation bindings are invalid",
@@ -420,6 +482,7 @@ impl CalibrationVerifierAttestationV1 {
 		}
 
 		stage.verify()?;
+
 		validate_node(&self.verifier)?;
 
 		let public: [u8; 32] = hex::decode(&self.verifier.public_key)
@@ -441,432 +504,6 @@ impl CalibrationVerifierAttestationV1 {
 	}
 }
 
-/// Validates, recomputes, and creates a calibration stage without using Official normalization.
-pub fn verify_calibration_run(
-	run: &CalibrationRunRecord,
-	tasks: &[TaskDefinition],
-	package: &VerifiedPackageIdentity,
-	metadata: &AttestedDeploymentMetadata,
-	provider_usage: &[ProviderTokenUsage],
-) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
-	if run.execution_concurrency.is_none() {
-		return Err(CalibrationVerificationError::new(
-			"calibration verification requires a bound execution concurrency",
-		));
-	}
-	if provider_usage.len() != run.results.len() {
-		return Err(CalibrationVerificationError::new(
-			"provider usage must align with every calibration result",
-		));
-	}
-	run_validation::validate_calibration_run_record_with_tasks(run, tasks)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	validate_metadata(run, package, metadata)?;
-
-	let pricing = ApiEquivalentPricingModel::default();
-	let result_efficiency = run
-		.results
-		.iter()
-		.zip(provider_usage)
-		.map(|(result, usage)| result_efficiency(result, usage, &pricing))
-		.collect::<Vec<_>>();
-	let scores = run
-		.models
-		.iter()
-		.copied()
-		.map(|model| {
-			let preflight_configuration_not_applicable =
-				run.capability_validation.model(model).is_some_and(|entry| {
-					run.capability_validation.manifest_issues.is_empty()
-						&& run.capability_validation.cli_probe.status == ProbeStatus::Available
-						&& entry.status == CapabilityValidationStatus::Unsupported
-						&& entry.probe.status == ConfigurationProbeStatus::ObservedUnsupported
-				});
-			let score = score_calibration_model_with_context(
-				tasks,
-				&run.results,
-				model,
-				ScoreContext {
-					preflight_configuration_not_applicable,
-					receiver_authorized_publication: false,
-				},
-				ScoreOptions::default(),
-			)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-			let model_results =
-				result_efficiency.iter().filter(|result| result.model == model).collect::<Vec<_>>();
-
-			Ok(CalibrationVerifiedScore {
-				model,
-				score,
-				efficiency: aggregate_efficiency(model, &model_results),
-			})
-		})
-		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
-	let capability_validation_digest = protocol::canonical_hash(&run.capability_validation)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	let mut stage = CalibrationVerifiedStageV1 {
-		schema_version: CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION.to_owned(),
-		run_id: run.run_id.clone(),
-		package_sha256: package.package_sha256.clone(),
-		content_hash: package.content_hash.clone(),
-		runner: package.signer.clone(),
-		classification: run.classification.clone(),
-		run_class: RunClass::Calibration,
-		official_eligible: FalseOnly,
-		ranking_eligible: FalseOnly,
-		trust: TrustTier::Untrusted,
-		task_set_hash: run.task_set_hash.clone(),
-		task_selection_digest: protocol::canonical_hash(&run.task_ids)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		model_selection_digest: protocol::canonical_hash(&run.models)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		score_reports_digest: protocol::canonical_hash(&scores)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		telemetry_digest: protocol::canonical_hash(&result_efficiency)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		capability_validation_digest,
-		provenance: run.provenance.clone(),
-		evaluator_results_artifact: run.evaluator_results_artifact.clone(),
-		scoring_version: run.scoring_version.clone(),
-		execution_concurrency: run.execution_concurrency,
-		task_ids: run.task_ids.clone(),
-		models: run.models.clone(),
-		scores,
-		result_efficiency,
-		pricing,
-		task_set_id: metadata.task_set_id.clone(),
-		task_set_version: metadata.task_set_version.clone(),
-		benchmark_version: metadata.benchmark_version.clone(),
-		prompt_set_digest: metadata.prompt_set_digest.clone(),
-		runner_commit: metadata.runner_commit.clone(),
-		region: metadata.region.clone(),
-		scheduled_unix_ms: metadata.scheduled_unix_ms,
-		started_unix_ms: metadata.started_unix_ms,
-		finished_unix_ms: metadata.finished_unix_ms,
-		stage_digest: String::new(),
-	};
-
-	stage.stage_digest = stage.compute_stage_digest()?;
-	stage.verify()?;
-
-	Ok(stage)
-}
-
-/// Signs a validated calibration stage with a distinct verifier identity.
-pub fn attest_calibration_stage(
-	identity: &VerifierSigningIdentity,
-	stage: &CalibrationVerifiedStageV1,
-	observed_unix_ms: u64,
-) -> Result<CalibrationVerifierAttestationV1, CalibrationVerificationError> {
-	stage.verify()?;
-
-	if identity.node() == &stage.runner || observed_unix_ms > MAX_JCS_SAFE_INTEGER {
-		return Err(CalibrationVerificationError::new(
-			"calibration verifier identity or observation time is invalid",
-		));
-	}
-
-	let mut attestation = CalibrationVerifierAttestationV1 {
-		schema_version: CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION.to_owned(),
-		signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
-		signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
-		run_id: stage.run_id.clone(),
-		package_sha256: stage.package_sha256.clone(),
-		content_hash: stage.content_hash.clone(),
-		stage_digest: stage.stage_digest.clone(),
-		runner: stage.runner.clone(),
-		verifier: identity.node().clone(),
-		classification: stage.classification.clone(),
-		run_class: RunClass::Calibration,
-		official_eligible: FalseOnly,
-		ranking_eligible: FalseOnly,
-		trust: TrustTier::Untrusted,
-		task_set_hash: stage.task_set_hash.clone(),
-		task_selection_digest: stage.task_selection_digest.clone(),
-		model_selection_digest: stage.model_selection_digest.clone(),
-		score_reports_digest: stage.score_reports_digest.clone(),
-		telemetry_digest: stage.telemetry_digest.clone(),
-		capability_validation_digest: stage.capability_validation_digest.clone(),
-		scoring_version: stage.scoring_version.clone(),
-		execution_concurrency: stage.execution_concurrency,
-		observed_unix_ms,
-		replay_status: CalibrationReplayStatus::EvaluatorReplayed,
-		signature: String::new(),
-	};
-	let bytes = protocol::canonical_json(&UnsignedCalibrationAttestation::from(&attestation))
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-
-	attestation.signature = identity.sign_calibration_bytes(&bytes);
-	attestation.verify(stage, identity.node())?;
-
-	Ok(attestation)
-}
-
-fn result_efficiency(
-	result: &crate::runner::TaskResult,
-	provider_usage: &ProviderTokenUsage,
-	pricing: &ApiEquivalentPricingModel,
-) -> CalibrationResultEfficiency {
-	let provider_tokens = provider_usage.clone();
-	let (standard_api_equivalent_usd_nanos, cost_status) =
-		estimate_cost(result.model, &provider_tokens, pricing);
-	let attempted = !matches!(
-		result.failure.as_ref().map(|failure| failure.kind),
-		Some(
-			FailureKind::CapabilityUnavailable
-				| FailureKind::CapabilityValidationFailed
-				| FailureKind::WorkspaceUnavailable
-		)
-	);
-
-	let observed_wall_ms = attempted.then_some(result.latency.wall_ms);
-	let has_provider_usage = !provider_tokens.is_empty();
-
-	CalibrationResultEfficiency {
-		source_result_id: result.result_id.clone(),
-		task_id: result.task_id.clone(),
-		model: result.model,
-		observed_wall_ms,
-		wall_time_evidence_level: observed_wall_ms.map(|_| EfficiencyEvidenceLevel::RunnerObserved),
-		provider_tokens,
-		provider_tokens_source: has_provider_usage
-			.then_some(EfficiencyEvidenceLevel::ProviderReported),
-		provider_tokens_evidence_level: has_provider_usage
-			.then_some(EfficiencyEvidenceLevel::VerifierRecomputed),
-		standard_api_equivalent_usd_nanos,
-		cost_status,
-		cost_evidence_level: standard_api_equivalent_usd_nanos
-			.map(|_| EfficiencyEvidenceLevel::VerifierRecomputed),
-	}
-}
-
-/// Builds verifier-facing efficiency evidence without changing score semantics.
-pub fn build_efficiency_evidence(
-	results: &[crate::runner::TaskResult],
-	provider_usage: &[ProviderTokenUsage],
-) -> Result<
-	(
-		Vec<CalibrationResultEfficiency>,
-		Vec<CalibrationEfficiencyAggregate>,
-		ApiEquivalentPricingModel,
-	),
-	CalibrationVerificationError,
-> {
-	if results.len() != provider_usage.len() {
-		return Err(CalibrationVerificationError::new(
-			"provider usage must align with every source result",
-		));
-	}
-
-	let pricing = ApiEquivalentPricingModel::default();
-	let observations = results
-		.iter()
-		.zip(provider_usage)
-		.map(|(result, usage)| result_efficiency(result, usage, &pricing))
-		.collect::<Vec<_>>();
-	let aggregates = MODEL_MATRIX
-		.iter()
-		.copied()
-		.filter(|model| results.iter().any(|result| result.model == *model))
-		.map(|model| {
-			let model_results =
-				observations.iter().filter(|result| result.model == model).collect::<Vec<_>>();
-
-			aggregate_efficiency(model, &model_results)
-		})
-		.collect();
-
-	Ok((observations, aggregates, pricing))
-}
-
-fn estimate_cost(
-	model: ModelConfig,
-	usage: &ProviderTokenUsage,
-	pricing: &ApiEquivalentPricingModel,
-) -> (Option<u64>, CostEstimateStatus) {
-	let (Some(input), Some(cached), Some(cache_write), Some(output)) =
-		(usage.input, usage.cached_input, usage.cache_write_input, usage.output)
-	else {
-		return (None, CostEstimateStatus::UnavailableMissingUsage);
-	};
-	let Some(non_cached) =
-		input.checked_sub(cached).and_then(|value| value.checked_sub(cache_write))
-	else {
-		return (None, CostEstimateStatus::UnavailableInvalidUsage);
-	};
-	let model_id = match model.family {
-		ModelFamily::Sol => "gpt-5.6-sol",
-		ModelFamily::Terra => "gpt-5.6-terra",
-		ModelFamily::Luna => "gpt-5.6-luna",
-	};
-	let Some(rate) = pricing.rates.iter().find(|rate| rate.model == model_id) else {
-		return (None, CostEstimateStatus::UnavailableMissingUsage);
-	};
-	let estimate = non_cached
-		.checked_mul(rate.input_usd_nanos_per_token)
-		.and_then(|value| {
-			cached
-				.checked_mul(rate.cached_input_usd_nanos_per_token)
-				.and_then(|cached| value.checked_add(cached))
-		})
-		.and_then(|value| {
-			cache_write
-				.checked_mul(rate.cache_write_input_usd_nanos_per_token)
-				.and_then(|cache_write| value.checked_add(cache_write))
-		})
-		.and_then(|value| {
-			output
-				.checked_mul(rate.output_usd_nanos_per_token)
-				.and_then(|output| value.checked_add(output))
-		});
-
-	match estimate {
-		Some(estimate) if estimate <= MAX_JCS_SAFE_INTEGER => {
-			(Some(estimate), CostEstimateStatus::Estimated)
-		},
-		_ => (None, CostEstimateStatus::UnavailableInvalidUsage),
-	}
-}
-
-fn aggregate_efficiency(
-	model: ModelConfig,
-	results: &[&CalibrationResultEfficiency],
-) -> CalibrationEfficiencyAggregate {
-	let mut walls = results.iter().filter_map(|result| result.observed_wall_ms).collect::<Vec<_>>();
-
-	walls.sort_unstable();
-
-	let provider_token_totals = ProviderTokenUsage {
-		input: sum_present(results, |usage| usage.input),
-		cached_input: sum_present(results, |usage| usage.cached_input),
-		cache_write_input: sum_present(results, |usage| usage.cache_write_input),
-		output: sum_present(results, |usage| usage.output),
-		reasoning: sum_present(results, |usage| usage.reasoning),
-		total: sum_present(results, |usage| usage.total),
-	};
-	let estimated = results
-		.iter()
-		.filter_map(|result| result.standard_api_equivalent_usd_nanos)
-		.collect::<Vec<_>>();
-	let total_estimated_cost = if estimated.len() == results.len() {
-		estimated
-			.iter()
-			.copied()
-			.try_fold(0_u64, u64::checked_add)
-			.filter(|total| *total <= MAX_JCS_SAFE_INTEGER)
-	} else {
-		None
-	};
-	let total_wall = (!walls.is_empty()).then(|| walls.iter().copied().sum());
-	let median = (!walls.is_empty()).then(|| {
-		let middle = walls.len() / 2;
-
-		if walls.len() % 2 == 0 {
-			walls[middle - 1].saturating_add(walls[middle]) / 2
-		} else {
-			walls[middle]
-		}
-	});
-	let p95 = (!walls.is_empty()).then(|| walls[(walls.len() * 95).div_ceil(100) - 1]);
-
-	CalibrationEfficiencyAggregate {
-		schema_version: CALIBRATION_EFFICIENCY_SCHEMA_VERSION.to_owned(),
-		model,
-		selected_tasks: results.len(),
-		observed_wall_tasks: walls.len(),
-		total_observed_wall_ms: total_wall,
-		median_observed_wall_ms: median,
-		p95_observed_wall_ms: p95,
-		provider_token_totals,
-		provider_token_coverage: ProviderTokenCoverage {
-			selected_tasks: results.len(),
-			input_tasks: count_present(results, |usage| usage.input),
-			cached_input_tasks: count_present(results, |usage| usage.cached_input),
-			cache_write_input_tasks: count_present(results, |usage| usage.cache_write_input),
-			output_tasks: count_present(results, |usage| usage.output),
-			reasoning_tasks: count_present(results, |usage| usage.reasoning),
-			total_tasks: count_present(results, |usage| usage.total),
-		},
-		estimated_cost_tasks: estimated.len(),
-		standard_api_equivalent_usd_nanos: total_estimated_cost,
-	}
-}
-
-fn count_present<F>(results: &[&CalibrationResultEfficiency], field: F) -> usize
-where
-	F: Fn(&ProviderTokenUsage) -> Option<u64>,
-{
-	results.iter().filter(|result| field(&result.provider_tokens).is_some()).count()
-}
-
-fn sum_present<F>(results: &[&CalibrationResultEfficiency], field: F) -> Option<u64>
-where
-	F: Fn(&ProviderTokenUsage) -> Option<u64>,
-{
-	let values =
-		results.iter().filter_map(|result| field(&result.provider_tokens)).collect::<Vec<_>>();
-
-	(!values.is_empty()).then(|| values.into_iter().fold(0_u64, u64::saturating_add))
-}
-
-fn validate_metadata(
-	run: &CalibrationRunRecord,
-	package: &VerifiedPackageIdentity,
-	metadata: &AttestedDeploymentMetadata,
-) -> Result<(), CalibrationVerificationError> {
-	validate_node(&package.signer)?;
-	validate_hash(&package.package_sha256, false)?;
-	validate_hash(&package.content_hash, true)?;
-	validate_hash(&metadata.prompt_set_digest, true)?;
-
-	if metadata.synthetic_test
-		|| metadata.task_set_id != "aiq-core"
-		|| metadata.task_set_version != crate::scoring::AIQ_SCORING_VERSION
-		|| metadata.benchmark_version != "aiq-core@1.0.0"
-		|| metadata.prompt_set_digest != run.provenance.prompt_digest
-		|| metadata.started_unix_ms != run.started_unix_ms
-		|| metadata.finished_unix_ms != run.finished_unix_ms
-		|| metadata.region.is_empty()
-		|| metadata.region.len() > 64
-		|| !(7..=40).contains(&metadata.runner_commit.len())
-		|| !metadata.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
-	{
-		return Err(CalibrationVerificationError::new(
-			"calibration deployment metadata is invalid",
-		));
-	}
-
-	Ok(())
-}
-
-fn validate_node(node: &NodeIdentity) -> Result<(), CalibrationVerificationError> {
-	if !node.node_id.strip_prefix("node_").is_some_and(|value| is_lower_hex(value, 64))
-		|| !is_lower_hex(&node.public_key, 64)
-	{
-		return Err(CalibrationVerificationError::new("node identity is invalid"));
-	}
-
-	Ok(())
-}
-
-fn validate_hash(value: &str, prefixed: bool) -> Result<(), CalibrationVerificationError> {
-	let digest = if prefixed { value.strip_prefix("sha256:") } else { Some(value) };
-
-	if !digest.is_some_and(|digest| is_lower_hex(digest, 64)) {
-		return Err(CalibrationVerificationError::new("digest is invalid"));
-	}
-
-	Ok(())
-}
-
-fn is_lower_hex(value: &str, length: usize) -> bool {
-	value.len() == length
-		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
 #[derive(Serialize)]
 struct UnsignedCalibrationStage<'a> {
 	schema_version: &'a str,
@@ -886,9 +523,9 @@ struct UnsignedCalibrationStage<'a> {
 	telemetry_digest: &'a str,
 	capability_validation_digest: &'a str,
 	provenance: &'a RunProvenanceCommitment,
-	evaluator_results_artifact: &'a crate::adapter::ArtifactReference,
+	evaluator_results_artifact: &'a ArtifactReference,
 	scoring_version: &'a str,
-	execution_concurrency: Option<usize>,
+	execution_concurrency: usize,
 	task_ids: &'a [String],
 	models: &'a [ModelConfig],
 	scores: &'a [CalibrationVerifiedScore],
@@ -968,7 +605,7 @@ struct UnsignedCalibrationAttestation<'a> {
 	telemetry_digest: &'a str,
 	capability_validation_digest: &'a str,
 	scoring_version: &'a str,
-	execution_concurrency: Option<usize>,
+	execution_concurrency: usize,
 	observed_unix_ms: u64,
 	replay_status: CalibrationReplayStatus,
 }
@@ -1003,32 +640,798 @@ impl<'a> From<&'a CalibrationVerifierAttestationV1> for UnsignedCalibrationAttes
 	}
 }
 
+/// Why an API-equivalent estimate is present or unavailable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostEstimateStatus {
+	/// Every counter required by the standard-rate formula was reported.
+	Estimated,
+	/// At least one required provider counter was absent.
+	UnavailableMissingUsage,
+	/// Provider counters were internally inconsistent.
+	UnavailableInvalidUsage,
+	/// Aggregate input cannot prove that every request used short-context rates.
+	UnavailableContextBand,
+}
+
+/// Evidence authority for one efficiency field.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EfficiencyEvidenceLevel {
+	/// Measured by the runner clock and not independently reproducible.
+	RunnerObserved,
+	/// Numeric provider metadata extracted from retained evidence.
+	ProviderReported,
+	/// Independently parsed again by the verifier from exact retained bytes.
+	VerifierRecomputed,
+}
+
+/// The only successful calibration replay disposition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationReplayStatus {
+	/// The verifier replayed every deterministic evaluator.
+	EvaluatorReplayed,
+}
+
+/// Validates, recomputes, and creates a calibration stage without using Official normalization.
+pub(crate) fn verify_calibration_run(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	package: &VerifiedPackageIdentity,
+	metadata: &AttestedDeploymentMetadata,
+	provider_usage: &[ProviderTokenUsage],
+) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
+	let execution_concurrency = run.execution_concurrency.ok_or_else(|| {
+		CalibrationVerificationError::new(
+			"calibration verification requires a bound execution concurrency",
+		)
+	})?;
+
+	if provider_usage.len() != run.results.len() {
+		return Err(CalibrationVerificationError::new(
+			"provider usage must align with every calibration result",
+		));
+	}
+
+	run_validation::validate_calibration_run_record_with_tasks(run, tasks)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+	validate_metadata(run, package, metadata)?;
+
+	let pricing = ApiEquivalentPricingModel::default();
+	let result_efficiency = run
+		.results
+		.iter()
+		.zip(provider_usage)
+		.map(|(result, usage)| result_efficiency(result, usage, &pricing, false))
+		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+	let scores = run
+		.models
+		.iter()
+		.copied()
+		.map(|model| {
+			let preflight_configuration_not_applicable =
+				run.capability_validation.model(model).is_some_and(|entry| {
+					run.capability_validation.manifest_issues.is_empty()
+						&& run.capability_validation.cli_probe.status == ProbeStatus::Available
+						&& entry.status == CapabilityValidationStatus::Unsupported
+						&& entry.probe.status == ConfigurationProbeStatus::ObservedUnsupported
+				});
+			let score = scoring::score_calibration_model_with_context(
+				tasks,
+				&run.results,
+				model,
+				ScoreContext {
+					preflight_configuration_not_applicable,
+					receiver_authorized_publication: false,
+				},
+				ScoreOptions::default(),
+			)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+			let model_results =
+				result_efficiency.iter().filter(|result| result.model == model).collect::<Vec<_>>();
+
+			Ok(CalibrationVerifiedScore {
+				model,
+				score,
+				efficiency: aggregate_efficiency(model, &model_results)?,
+			})
+		})
+		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+	let capability_validation_digest = protocol::canonical_hash(&run.capability_validation)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	let mut stage = CalibrationVerifiedStageV1 {
+		schema_version: CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION.to_owned(),
+		run_id: run.run_id.clone(),
+		package_sha256: package.package_sha256.clone(),
+		content_hash: package.content_hash.clone(),
+		runner: package.signer.clone(),
+		classification: run.classification.clone(),
+		run_class: RunClass::Calibration,
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		trust: TrustTier::Untrusted,
+		task_set_hash: run.task_set_hash.clone(),
+		task_selection_digest: protocol::canonical_hash(&run.task_ids)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		model_selection_digest: protocol::canonical_hash(&run.models)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		score_reports_digest: protocol::canonical_hash(&scores)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		telemetry_digest: protocol::canonical_hash(&result_efficiency)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		capability_validation_digest,
+		provenance: run.provenance.clone(),
+		evaluator_results_artifact: run.evaluator_results_artifact.clone(),
+		scoring_version: run.scoring_version.clone(),
+		execution_concurrency,
+		task_ids: run.task_ids.clone(),
+		models: run.models.clone(),
+		scores,
+		result_efficiency,
+		pricing,
+		task_set_id: metadata.task_set_id.clone(),
+		task_set_version: metadata.task_set_version.clone(),
+		benchmark_version: metadata.benchmark_version.clone(),
+		prompt_set_digest: metadata.prompt_set_digest.clone(),
+		runner_commit: metadata.runner_commit.clone(),
+		region: metadata.region.clone(),
+		scheduled_unix_ms: metadata.scheduled_unix_ms,
+		started_unix_ms: metadata.started_unix_ms,
+		finished_unix_ms: metadata.finished_unix_ms,
+		stage_digest: String::new(),
+	};
+
+	stage.stage_digest = stage.compute_stage_digest()?;
+
+	stage.verify()?;
+
+	Ok(stage)
+}
+
+/// Checks the exact persisted time, token, and pricing contract for one complete matrix.
+pub(crate) fn validate_efficiency_evidence_contract(
+	models: &[ModelConfig],
+	task_ids: &[String],
+	result_efficiency: &[CalibrationResultEfficiency],
+	aggregates: &[CalibrationEfficiencyAggregate],
+	pricing: &ApiEquivalentPricingModel,
+) -> Result<(), CalibrationVerificationError> {
+	let model_set = models.iter().copied().collect::<BTreeSet<_>>();
+	let task_set = task_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
+
+	if pricing != &ApiEquivalentPricingModel::default()
+		|| models.is_empty()
+		|| models.len() > MODEL_MATRIX.len()
+		|| model_set.len() != models.len()
+		|| !model_set.iter().all(|model| MODEL_MATRIX.contains(model))
+		|| task_ids.is_empty()
+		|| task_ids.len() > 72
+		|| task_set.len() != task_ids.len()
+		|| task_ids.iter().any(|task_id| !is_identifier(task_id, 64))
+		|| aggregates.len() != models.len()
+		|| result_efficiency.len() != models.len().saturating_mul(task_ids.len())
+	{
+		return Err(CalibrationVerificationError::new(
+			"efficiency evidence selection or pricing is outside the persisted contract",
+		));
+	}
+
+	let mut pairs = BTreeSet::new();
+	let mut source_result_ids = BTreeSet::new();
+
+	for evidence in result_efficiency {
+		validate_result_efficiency(evidence, pricing)?;
+
+		if !models.contains(&evidence.model)
+			|| !task_ids.contains(&evidence.task_id)
+			|| !pairs.insert((evidence.model, evidence.task_id.as_str()))
+			|| !source_result_ids.insert(evidence.source_result_id.as_str())
+		{
+			return Err(CalibrationVerificationError::new(
+				"result efficiency evidence does not form one unique selected model-task matrix",
+			));
+		}
+	}
+	for (model, aggregate) in models.iter().copied().zip(aggregates) {
+		let model_results =
+			result_efficiency.iter().filter(|evidence| evidence.model == model).collect::<Vec<_>>();
+		let expected = aggregate_efficiency(model, &model_results)?;
+
+		if aggregate.model != model || aggregate != &expected {
+			return Err(CalibrationVerificationError::new(
+				"calibration efficiency aggregate does not match its result evidence",
+			));
+		}
+	}
+
+	Ok(())
+}
+
+/// Recomputes and signs one calibration run through one indivisible verifier boundary.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_and_attest_calibration_run(
+	identity: &VerifierSigningIdentity,
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	package: &VerifiedPackageIdentity,
+	metadata: &AttestedDeploymentMetadata,
+	provider_usage: &[ProviderTokenUsage],
+	observed_unix_ms: u64,
+) -> Result<
+	(CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1),
+	CalibrationVerificationError,
+> {
+	let stage = verify_calibration_run(run, tasks, package, metadata, provider_usage)?;
+	let attestation = attest_calibration_stage(identity, &stage, observed_unix_ms)?;
+
+	Ok((stage, attestation))
+}
+
+/// Builds verifier-facing efficiency evidence without changing score semantics.
+pub fn build_efficiency_evidence(
+	results: &[TaskResult],
+	provider_usage: &[ProviderTokenUsage],
+	synthetic_uninvoked: bool,
+) -> Result<
+	(
+		Vec<CalibrationResultEfficiency>,
+		Vec<CalibrationEfficiencyAggregate>,
+		ApiEquivalentPricingModel,
+	),
+	CalibrationVerificationError,
+> {
+	if results.len() != provider_usage.len() {
+		return Err(CalibrationVerificationError::new(
+			"provider usage must align with every source result",
+		));
+	}
+
+	let pricing = ApiEquivalentPricingModel::default();
+	let observations = results
+		.iter()
+		.zip(provider_usage)
+		.map(|(result, usage)| result_efficiency(result, usage, &pricing, synthetic_uninvoked))
+		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+	let aggregates = MODEL_MATRIX
+		.iter()
+		.copied()
+		.filter(|model| results.iter().any(|result| result.model == *model))
+		.map(|model| {
+			let model_results =
+				observations.iter().filter(|result| result.model == model).collect::<Vec<_>>();
+
+			aggregate_efficiency(model, &model_results)
+		})
+		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+
+	Ok((observations, aggregates, pricing))
+}
+
+fn attest_calibration_stage(
+	identity: &VerifierSigningIdentity,
+	stage: &CalibrationVerifiedStageV1,
+	observed_unix_ms: u64,
+) -> Result<CalibrationVerifierAttestationV1, CalibrationVerificationError> {
+	stage.verify()?;
+
+	if identity.node() == &stage.runner || observed_unix_ms > MAX_JCS_SAFE_INTEGER {
+		return Err(CalibrationVerificationError::new(
+			"calibration verifier identity or observation time is invalid",
+		));
+	}
+
+	let mut attestation = CalibrationVerifierAttestationV1 {
+		schema_version: CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION.to_owned(),
+		signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
+		signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
+		run_id: stage.run_id.clone(),
+		package_sha256: stage.package_sha256.clone(),
+		content_hash: stage.content_hash.clone(),
+		stage_digest: stage.stage_digest.clone(),
+		runner: stage.runner.clone(),
+		verifier: identity.node().clone(),
+		classification: stage.classification.clone(),
+		run_class: RunClass::Calibration,
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		trust: TrustTier::Untrusted,
+		task_set_hash: stage.task_set_hash.clone(),
+		task_selection_digest: stage.task_selection_digest.clone(),
+		model_selection_digest: stage.model_selection_digest.clone(),
+		score_reports_digest: stage.score_reports_digest.clone(),
+		telemetry_digest: stage.telemetry_digest.clone(),
+		capability_validation_digest: stage.capability_validation_digest.clone(),
+		scoring_version: stage.scoring_version.clone(),
+		execution_concurrency: stage.execution_concurrency,
+		observed_unix_ms,
+		replay_status: CalibrationReplayStatus::EvaluatorReplayed,
+		signature: String::new(),
+	};
+	let bytes = protocol::canonical_json(&UnsignedCalibrationAttestation::from(&attestation))
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+	attestation.signature = identity.sign_calibration_bytes(&bytes);
+
+	attestation.verify(stage, identity.node())?;
+
+	Ok(attestation)
+}
+
+fn rates(
+	model: &str,
+	input: u64,
+	cached: u64,
+	cache_write: u64,
+	output: u64,
+) -> ApiEquivalentTokenRates {
+	ApiEquivalentTokenRates {
+		model: model.to_owned(),
+		input_usd_nanos_per_token: input,
+		cached_input_usd_nanos_per_token: cached,
+		cache_write_input_usd_nanos_per_token: cache_write,
+		output_usd_nanos_per_token: output,
+	}
+}
+
+fn result_efficiency(
+	result: &TaskResult,
+	provider_usage: &ProviderTokenUsage,
+	pricing: &ApiEquivalentPricingModel,
+	synthetic_uninvoked: bool,
+) -> Result<CalibrationResultEfficiency, CalibrationVerificationError> {
+	validate_provider_token_usage(provider_usage)?;
+
+	let provider_tokens = provider_usage.clone();
+	let (standard_api_equivalent_usd_nanos, cost_status) =
+		estimate_cost(result.model, &provider_tokens, pricing);
+	let attempted = !synthetic_uninvoked
+		&& !matches!(
+			result.failure.as_ref().map(|failure| failure.kind),
+			Some(
+				FailureKind::CapabilityUnavailable
+					| FailureKind::CapabilityValidationFailed
+					| FailureKind::WorkspaceUnavailable
+			)
+		);
+
+	if !attempted && !provider_tokens.is_empty() {
+		return Err(CalibrationVerificationError::new(
+			"an uninvoked calibration result cannot report provider usage",
+		));
+	}
+
+	let observed_wall_ms = attempted.then_some(result.latency.wall_ms);
+	let has_provider_usage = !provider_tokens.is_empty();
+	let observation = CalibrationResultEfficiency {
+		source_result_id: result.result_id.clone(),
+		task_id: result.task_id.clone(),
+		model: result.model,
+		observed_wall_ms,
+		wall_time_evidence_level: observed_wall_ms.map(|_| EfficiencyEvidenceLevel::RunnerObserved),
+		provider_tokens,
+		provider_tokens_source: has_provider_usage
+			.then_some(EfficiencyEvidenceLevel::ProviderReported),
+		provider_tokens_evidence_level: has_provider_usage
+			.then_some(EfficiencyEvidenceLevel::VerifierRecomputed),
+		standard_api_equivalent_usd_nanos,
+		cost_status,
+		cost_evidence_level: standard_api_equivalent_usd_nanos
+			.map(|_| EfficiencyEvidenceLevel::VerifierRecomputed),
+	};
+
+	validate_result_efficiency(&observation, pricing)?;
+
+	Ok(observation)
+}
+
+fn estimate_cost(
+	model: ModelConfig,
+	usage: &ProviderTokenUsage,
+	pricing: &ApiEquivalentPricingModel,
+) -> (Option<u64>, CostEstimateStatus) {
+	let (Some(input), Some(cached), Some(cache_write), Some(output)) =
+		(usage.input, usage.cached_input, usage.cache_write_input, usage.output)
+	else {
+		return (None, CostEstimateStatus::UnavailableMissingUsage);
+	};
+
+	if input > MAX_SHORT_CONTEXT_INPUT_TOKENS {
+		return (None, CostEstimateStatus::UnavailableContextBand);
+	}
+
+	let Some(non_cached) =
+		input.checked_sub(cached).and_then(|value| value.checked_sub(cache_write))
+	else {
+		return (None, CostEstimateStatus::UnavailableInvalidUsage);
+	};
+	let model_id = match model.family {
+		ModelFamily::Sol => "gpt-5.6-sol",
+		ModelFamily::Terra => "gpt-5.6-terra",
+		ModelFamily::Luna => "gpt-5.6-luna",
+	};
+	let Some(rate) = pricing.rates.iter().find(|rate| rate.model == model_id) else {
+		return (None, CostEstimateStatus::UnavailableMissingUsage);
+	};
+	let estimate = non_cached
+		.checked_mul(rate.input_usd_nanos_per_token)
+		.and_then(|value| {
+			cached
+				.checked_mul(rate.cached_input_usd_nanos_per_token)
+				.and_then(|cached| value.checked_add(cached))
+		})
+		.and_then(|value| {
+			cache_write
+				.checked_mul(rate.cache_write_input_usd_nanos_per_token)
+				.and_then(|cache_write| value.checked_add(cache_write))
+		})
+		.and_then(|value| {
+			output
+				.checked_mul(rate.output_usd_nanos_per_token)
+				.and_then(|output| value.checked_add(output))
+		});
+
+	match estimate {
+		Some(estimate) if estimate <= MAX_JCS_SAFE_INTEGER => {
+			(Some(estimate), CostEstimateStatus::Estimated)
+		},
+		_ => (None, CostEstimateStatus::UnavailableInvalidUsage),
+	}
+}
+
+fn aggregate_efficiency(
+	model: ModelConfig,
+	results: &[&CalibrationResultEfficiency],
+) -> Result<CalibrationEfficiencyAggregate, CalibrationVerificationError> {
+	if results.is_empty() || results.len() > 72 {
+		return Err(CalibrationVerificationError::new(
+			"efficiency aggregate task count is invalid",
+		));
+	}
+
+	let mut walls = results.iter().filter_map(|result| result.observed_wall_ms).collect::<Vec<_>>();
+
+	walls.sort_unstable();
+
+	let provider_token_totals = ProviderTokenUsage {
+		input: sum_present(results, |usage| usage.input)?,
+		cached_input: sum_present(results, |usage| usage.cached_input)?,
+		cache_write_input: sum_present(results, |usage| usage.cache_write_input)?,
+		output: sum_present(results, |usage| usage.output)?,
+		reasoning: sum_present(results, |usage| usage.reasoning)?,
+		total: sum_present(results, |usage| usage.total)?,
+	};
+
+	validate_provider_token_usage(&provider_token_totals)?;
+
+	let estimated = results
+		.iter()
+		.filter_map(|result| result.standard_api_equivalent_usd_nanos)
+		.collect::<Vec<_>>();
+	let total_estimated_cost = if estimated.len() == results.len() {
+		estimated
+			.iter()
+			.copied()
+			.try_fold(0_u64, u64::checked_add)
+			.filter(|total| *total <= MAX_JCS_SAFE_INTEGER)
+	} else {
+		None
+	};
+	let total_wall = if walls.is_empty() {
+		None
+	} else {
+		Some(checked_jcs_sum(walls.iter().copied(), "observed wall time")?)
+	};
+	let median = (!walls.is_empty()).then(|| {
+		let middle = walls.len() / 2;
+
+		if walls.len() % 2 == 0 {
+			let lower = walls[middle - 1];
+			let upper = walls[middle];
+
+			lower + (upper - lower) / 2
+		} else {
+			walls[middle]
+		}
+	});
+	let p95 = (!walls.is_empty()).then(|| walls[(walls.len() * 95).div_ceil(100) - 1]);
+
+	Ok(CalibrationEfficiencyAggregate {
+		schema_version: CALIBRATION_EFFICIENCY_SCHEMA_VERSION.to_owned(),
+		model,
+		selected_tasks: results.len(),
+		observed_wall_tasks: walls.len(),
+		total_observed_wall_ms: total_wall,
+		median_observed_wall_ms: median,
+		p95_observed_wall_ms: p95,
+		provider_token_totals,
+		provider_token_coverage: ProviderTokenCoverage {
+			selected_tasks: results.len(),
+			input_tasks: count_present(results, |usage| usage.input),
+			cached_input_tasks: count_present(results, |usage| usage.cached_input),
+			cache_write_input_tasks: count_present(results, |usage| usage.cache_write_input),
+			output_tasks: count_present(results, |usage| usage.output),
+			reasoning_tasks: count_present(results, |usage| usage.reasoning),
+			total_tasks: count_present(results, |usage| usage.total),
+		},
+		estimated_cost_tasks: estimated.len(),
+		standard_api_equivalent_usd_nanos: total_estimated_cost,
+	})
+}
+
+fn count_present<F>(results: &[&CalibrationResultEfficiency], field: F) -> usize
+where
+	F: Fn(&ProviderTokenUsage) -> Option<u64>,
+{
+	results.iter().filter(|result| field(&result.provider_tokens).is_some()).count()
+}
+
+fn sum_present<F>(
+	results: &[&CalibrationResultEfficiency],
+	field: F,
+) -> Result<Option<u64>, CalibrationVerificationError>
+where
+	F: Fn(&ProviderTokenUsage) -> Option<u64>,
+{
+	let values = results.iter().filter_map(|result| field(&result.provider_tokens));
+
+	checked_optional_jcs_sum(values, "provider token total")
+}
+
+fn checked_optional_jcs_sum(
+	values: impl IntoIterator<Item = u64>,
+	label: &str,
+) -> Result<Option<u64>, CalibrationVerificationError> {
+	let mut values = values.into_iter();
+	let Some(first) = values.next() else { return Ok(None) };
+
+	checked_jcs_sum(iter::once(first).chain(values), label).map(Some)
+}
+
+fn checked_jcs_sum(
+	values: impl IntoIterator<Item = u64>,
+	label: &str,
+) -> Result<u64, CalibrationVerificationError> {
+	let total = values.into_iter().try_fold(0_u64, u64::checked_add).ok_or_else(|| {
+		CalibrationVerificationError::new(format!("{label} overflows its integer representation"))
+	})?;
+
+	if total > MAX_JCS_SAFE_INTEGER {
+		return Err(CalibrationVerificationError::new(format!(
+			"{label} exceeds the JCS safe integer range"
+		)));
+	}
+
+	Ok(total)
+}
+
+fn validate_provider_token_usage(
+	usage: &ProviderTokenUsage,
+) -> Result<(), CalibrationVerificationError> {
+	let counters = [
+		usage.input,
+		usage.cached_input,
+		usage.cache_write_input,
+		usage.output,
+		usage.reasoning,
+		usage.total,
+	];
+
+	if counters.into_iter().flatten().any(|value| value > MAX_JCS_SAFE_INTEGER)
+		|| matches!((usage.input, usage.cached_input), (Some(input), Some(cached)) if cached > input)
+		|| matches!((usage.output, usage.reasoning), (Some(output), Some(reasoning)) if reasoning > output)
+	{
+		return Err(CalibrationVerificationError::new(
+			"provider token usage is outside the persisted calibration contract",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_result_efficiency(
+	evidence: &CalibrationResultEfficiency,
+	pricing: &ApiEquivalentPricingModel,
+) -> Result<(), CalibrationVerificationError> {
+	validate_provider_token_usage(&evidence.provider_tokens)?;
+
+	let expected_wall_level =
+		evidence.observed_wall_ms.map(|_| EfficiencyEvidenceLevel::RunnerObserved);
+	let has_provider_usage = !evidence.provider_tokens.is_empty();
+	let expected_provider_source =
+		has_provider_usage.then_some(EfficiencyEvidenceLevel::ProviderReported);
+	let expected_provider_evidence =
+		has_provider_usage.then_some(EfficiencyEvidenceLevel::VerifierRecomputed);
+	let (expected_cost, expected_cost_status) =
+		estimate_cost(evidence.model, &evidence.provider_tokens, pricing);
+	let expected_cost_evidence = expected_cost.map(|_| EfficiencyEvidenceLevel::VerifierRecomputed);
+
+	if !evidence
+		.source_result_id
+		.strip_prefix("result_")
+		.is_some_and(|digest| is_lower_hex(digest, 64))
+		|| !is_identifier(&evidence.task_id, 64)
+		|| !MODEL_MATRIX.contains(&evidence.model)
+		|| evidence.observed_wall_ms.is_some_and(|value| value > MAX_JCS_SAFE_INTEGER)
+		|| evidence.wall_time_evidence_level != expected_wall_level
+		|| evidence.provider_tokens_source != expected_provider_source
+		|| evidence.provider_tokens_evidence_level != expected_provider_evidence
+		|| evidence.standard_api_equivalent_usd_nanos != expected_cost
+		|| evidence.cost_status != expected_cost_status
+		|| evidence.cost_evidence_level != expected_cost_evidence
+	{
+		return Err(CalibrationVerificationError::new(
+			"result efficiency evidence is outside the persisted calibration contract",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_metadata(
+	run: &CalibrationRunRecord,
+	package: &VerifiedPackageIdentity,
+	metadata: &AttestedDeploymentMetadata,
+) -> Result<(), CalibrationVerificationError> {
+	validate_node(&package.signer)?;
+	validate_hash(&package.package_sha256, false)?;
+	validate_hash(&package.content_hash, true)?;
+	validate_hash(&metadata.prompt_set_digest, true)?;
+
+	if metadata.synthetic_test
+		|| metadata.task_set_id != "aiq-core"
+		|| metadata.task_set_version != AIQ_SCORING_VERSION
+		|| metadata.benchmark_version != "aiq-core@1.0.0"
+		|| metadata.prompt_set_digest != run.provenance.prompt_digest
+		|| metadata.started_unix_ms != run.started_unix_ms
+		|| metadata.finished_unix_ms != run.finished_unix_ms
+		|| !is_identifier(&metadata.region, 64)
+		|| !(7..=40).contains(&metadata.runner_commit.len())
+		|| !metadata.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+	{
+		return Err(CalibrationVerificationError::new(
+			"calibration deployment metadata is invalid",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_node(node: &NodeIdentity) -> Result<(), CalibrationVerificationError> {
+	if !node.node_id.strip_prefix("node_").is_some_and(|value| is_lower_hex(value, 64))
+		|| !is_lower_hex(&node.public_key, 64)
+	{
+		return Err(CalibrationVerificationError::new("node identity is invalid"));
+	}
+
+	let public_key = hex::decode(&node.public_key)
+		.map_err(|_| CalibrationVerificationError::new("node identity is invalid"))?;
+	let expected_node_id = format!("node_{}", hex::encode(Sha256::digest(public_key)));
+
+	if node.node_id != expected_node_id {
+		return Err(CalibrationVerificationError::new(
+			"node identifier does not derive from its public key",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_hash(value: &str, prefixed: bool) -> Result<(), CalibrationVerificationError> {
+	let digest = if prefixed { value.strip_prefix("sha256:") } else { Some(value) };
+
+	if !digest.is_some_and(|digest| is_lower_hex(digest, 64)) {
+		return Err(CalibrationVerificationError::new("digest is invalid"));
+	}
+
+	Ok(())
+}
+
+fn is_lower_hex(value: &str, length: usize) -> bool {
+	value.len() == length
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn is_identifier(value: &str, maximum_bytes: usize) -> bool {
+	!value.is_empty()
+		&& value.len() <= maximum_bytes
+		&& value
+			.bytes()
+			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{
-		ApiEquivalentPricingModel, CostEstimateStatus, build_efficiency_evidence, estimate_cost,
+	use std::slice;
+
+	use crate::calibration_verification::{
+		self, ApiEquivalentPricingModel, CostEstimateStatus, MAX_JCS_SAFE_INTEGER,
 	};
 	use crate::{
 		model::MODEL_MATRIX,
-		runner::{FailureKind, ProviderTokenUsage, ResultFailure, synthetic_demo},
+		protocol::SigningIdentity,
+		runner::{self, FailureKind, ProviderTokenUsage, ResultFailure},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
 	};
 
 	#[test]
+	fn node_identity_and_region_metadata_use_the_exact_public_contract() {
+		let mut node = SigningIdentity::from_secret([41; 32]).node().clone();
+
+		super::validate_node(&node).expect("derived node identity");
+
+		let replacement = if &node.node_id[5..6] == "a" { "b" } else { "a" };
+
+		node.node_id.replace_range(5..6, replacement);
+
+		assert!(super::validate_node(&node).is_err());
+		assert!(super::is_identifier("us-east-1.local", 64));
+		assert!(!super::is_identifier("us east 1", 64));
+		assert!(!super::is_identifier(&"x".repeat(65), 64));
+	}
+
+	#[test]
 	fn standard_cost_formula_separates_cache_reads_writes_and_output() {
 		let usage = ProviderTokenUsage {
-			input: Some(1_000_000),
-			cached_input: Some(200_000),
-			cache_write_input: Some(100_000),
+			input: Some(100_000),
+			cached_input: Some(20_000),
+			cache_write_input: Some(10_000),
 			output: Some(10_000),
 			reasoning: Some(4_000),
 			total: None,
 		};
-		let (cost, status) =
-			estimate_cost(MODEL_MATRIX[0], &usage, &ApiEquivalentPricingModel::default());
+		let (cost, status) = calibration_verification::estimate_cost(
+			MODEL_MATRIX[0],
+			&usage,
+			&ApiEquivalentPricingModel::default(),
+		);
 
 		assert_eq!(status, CostEstimateStatus::Estimated);
-		assert_eq!(cost, Some(4_525_000_000));
+		assert_eq!(cost, Some(722_500_000));
+
+		let pricing = ApiEquivalentPricingModel::default();
+
+		assert_eq!(
+			pricing
+				.rates
+				.iter()
+				.map(|rate| (
+					rate.model.as_str(),
+					rate.input_usd_nanos_per_token,
+					rate.cached_input_usd_nanos_per_token,
+					rate.cache_write_input_usd_nanos_per_token,
+					rate.output_usd_nanos_per_token,
+				))
+				.collect::<Vec<_>>(),
+			vec![
+				("gpt-5.6-sol", 5_000, 500, 6_250, 30_000),
+				("gpt-5.6-terra", 2_000, 200, 2_500, 12_000),
+				("gpt-5.6-luna", 200, 20, 250, 1_200),
+			]
+		);
+	}
+
+	#[test]
+	fn aggregate_usage_above_the_short_context_bound_is_explicitly_unpriced() {
+		let usage = ProviderTokenUsage {
+			input: Some(272_001),
+			cached_input: Some(0),
+			cache_write_input: Some(0),
+			output: Some(1),
+			..ProviderTokenUsage::default()
+		};
+
+		assert_eq!(
+			calibration_verification::estimate_cost(
+				MODEL_MATRIX[0],
+				&usage,
+				&ApiEquivalentPricingModel::default(),
+			),
+			(None, CostEstimateStatus::UnavailableContextBand)
+		);
 	}
 
 	#[test]
@@ -1037,7 +1440,7 @@ mod tests {
 		let missing = ProviderTokenUsage { input: Some(1), ..ProviderTokenUsage::default() };
 
 		assert_eq!(
-			estimate_cost(MODEL_MATRIX[0], &missing, &pricing),
+			calibration_verification::estimate_cost(MODEL_MATRIX[0], &missing, &pricing),
 			(None, CostEstimateStatus::UnavailableMissingUsage)
 		);
 
@@ -1050,14 +1453,14 @@ mod tests {
 		};
 
 		assert_eq!(
-			estimate_cost(MODEL_MATRIX[0], &invalid, &pricing),
+			calibration_verification::estimate_cost(MODEL_MATRIX[0], &invalid, &pricing),
 			(None, CostEstimateStatus::UnavailableInvalidUsage)
 		);
 	}
 
 	#[test]
 	fn aggregate_cost_is_null_until_every_selected_result_is_priced() {
-		let run = synthetic_demo(
+		let run = runner::synthetic_demo(
 			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
 			&crate::runner::TestArtifactSink,
 		)
@@ -1071,23 +1474,27 @@ mod tests {
 			reasoning: Some(1),
 			total: Some(11),
 		};
-		let (partial_results, partial_aggregates, pricing) = build_efficiency_evidence(
-			&results,
-			&[complete_usage.clone(), ProviderTokenUsage::default()],
-		)
-		.expect("partial efficiency evidence");
+		let (partial_results, partial_aggregates, pricing) =
+			calibration_verification::build_efficiency_evidence(
+				&results,
+				&[complete_usage.clone(), ProviderTokenUsage::default()],
+				false,
+			)
+			.expect("partial efficiency evidence");
 
 		assert_eq!(pricing.currency, "USD");
 		assert_eq!(pricing.processing_tier, "standard");
 		assert_eq!(partial_aggregates[0].estimated_cost_tasks, 1);
 		assert_eq!(partial_aggregates[0].standard_api_equivalent_usd_nanos, None);
 
-		let expected_one = partial_results[0]
-			.standard_api_equivalent_usd_nanos
-			.expect("one priced result");
-		let (_, complete_aggregates, _) =
-			build_efficiency_evidence(&results, &[complete_usage.clone(), complete_usage])
-				.expect("complete efficiency evidence");
+		let expected_one =
+			partial_results[0].standard_api_equivalent_usd_nanos.expect("one priced result");
+		let (_, complete_aggregates, _) = calibration_verification::build_efficiency_evidence(
+			&results,
+			&[complete_usage.clone(), complete_usage],
+			false,
+		)
+		.expect("complete efficiency evidence");
 
 		assert_eq!(complete_aggregates[0].estimated_cost_tasks, 2);
 		assert_eq!(
@@ -1098,7 +1505,7 @@ mod tests {
 
 	#[test]
 	fn non_invoked_and_missing_usage_evidence_labels_remain_absent() {
-		let mut run = synthetic_demo(
+		let mut run = runner::synthetic_demo(
 			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
 			&crate::runner::TestArtifactSink,
 		)
@@ -1112,9 +1519,12 @@ mod tests {
 			retryable: false,
 		});
 
-		let (observations, _, _) =
-			build_efficiency_evidence(&run.results[..1], &[ProviderTokenUsage::default()])
-				.expect("efficiency evidence");
+		let (observations, _, _) = calibration_verification::build_efficiency_evidence(
+			&run.results[..1],
+			&[ProviderTokenUsage::default()],
+			false,
+		)
+		.expect("efficiency evidence");
 		let observation = &observations[0];
 
 		assert_eq!(observation.observed_wall_ms, None);
@@ -1123,5 +1533,155 @@ mod tests {
 		assert_eq!(observation.provider_tokens_evidence_level, None);
 		assert_eq!(observation.standard_api_equivalent_usd_nanos, None);
 		assert_eq!(observation.cost_evidence_level, None);
+	}
+
+	#[test]
+	fn synthetic_results_never_become_runner_observed_invocations() {
+		let run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
+			&crate::runner::TestArtifactSink,
+		)
+		.expect("synthetic run");
+		let (observations, aggregates, _) = calibration_verification::build_efficiency_evidence(
+			&run.results,
+			&vec![ProviderTokenUsage::default(); run.results.len()],
+			true,
+		)
+		.expect("synthetic efficiency evidence");
+
+		assert!(observations.iter().all(|result| {
+			result.observed_wall_ms.is_none()
+				&& result.wall_time_evidence_level.is_none()
+				&& result.provider_tokens.is_empty()
+		}));
+		assert!(aggregates.iter().all(|aggregate| {
+			aggregate.observed_wall_tasks == 0 && aggregate.total_observed_wall_ms.is_none()
+		}));
+
+		let usage = ProviderTokenUsage { input: Some(1), ..ProviderTokenUsage::default() };
+
+		assert!(
+			calibration_verification::build_efficiency_evidence(&run.results[..1], &[usage], true,)
+				.is_err()
+		);
+	}
+
+	#[test]
+	fn persisted_provider_counters_must_be_jcs_safe_and_internally_ordered() {
+		let run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
+			&crate::runner::TestArtifactSink,
+		)
+		.expect("synthetic run");
+		let result = run.results[0].clone();
+		let invalid = [
+			ProviderTokenUsage {
+				input: Some(MAX_JCS_SAFE_INTEGER + 1),
+				..ProviderTokenUsage::default()
+			},
+			ProviderTokenUsage {
+				input: Some(1),
+				cached_input: Some(2),
+				..ProviderTokenUsage::default()
+			},
+			ProviderTokenUsage {
+				output: Some(1),
+				reasoning: Some(2),
+				..ProviderTokenUsage::default()
+			},
+		];
+
+		for usage in invalid {
+			assert!(
+				calibration_verification::build_efficiency_evidence(
+					slice::from_ref(&result),
+					&[usage],
+					false,
+				)
+				.is_err()
+			);
+		}
+	}
+
+	#[test]
+	fn aggregate_wall_and_token_totals_fail_closed_outside_jcs_range() {
+		let run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
+			&crate::runner::TestArtifactSink,
+		)
+		.expect("synthetic run");
+		let mut first = run.results[0].clone();
+		let mut second = first.clone();
+
+		first.latency.wall_ms = MAX_JCS_SAFE_INTEGER;
+		second.latency.wall_ms = 1;
+
+		assert!(
+			calibration_verification::build_efficiency_evidence(
+				&[first.clone(), second.clone()],
+				&[ProviderTokenUsage::default(), ProviderTokenUsage::default()],
+				false,
+			)
+			.is_err()
+		);
+
+		first.latency.wall_ms = 1;
+
+		let large = ProviderTokenUsage {
+			input: Some(MAX_JCS_SAFE_INTEGER),
+			..ProviderTokenUsage::default()
+		};
+		let one = ProviderTokenUsage { input: Some(1), ..ProviderTokenUsage::default() };
+
+		assert!(
+			calibration_verification::build_efficiency_evidence(
+				&[first, second],
+				&[large, one],
+				false,
+			)
+			.is_err()
+		);
+	}
+
+	#[test]
+	fn exact_jcs_maximum_remains_representable_without_fabricating_cost() {
+		let run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
+			&crate::runner::TestArtifactSink,
+		)
+		.expect("synthetic run");
+		let usage = ProviderTokenUsage {
+			input: Some(MAX_JCS_SAFE_INTEGER),
+			cached_input: Some(0),
+			cache_write_input: Some(0),
+			output: Some(0),
+			..ProviderTokenUsage::default()
+		};
+		let (results, aggregates, _) =
+			calibration_verification::build_efficiency_evidence(&run.results[..1], &[usage], false)
+				.expect("JCS-safe maximum evidence");
+
+		assert_eq!(results[0].cost_status, CostEstimateStatus::UnavailableContextBand);
+		assert_eq!(results[0].standard_api_equivalent_usd_nanos, None);
+		assert_eq!(aggregates[0].provider_token_totals.input, Some(MAX_JCS_SAFE_INTEGER));
+		assert_eq!(aggregates[0].standard_api_equivalent_usd_nanos, None);
+	}
+
+	#[test]
+	fn aggregate_provider_subset_relationships_cannot_become_invalid() {
+		let run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2026-08-02", ScheduleOccurrence::Day).expect("slot"),
+			&crate::runner::TestArtifactSink,
+		)
+		.expect("synthetic run");
+		let results = [run.results[0].clone(), run.results[0].clone()];
+		let usage = [
+			ProviderTokenUsage { input: Some(1), ..ProviderTokenUsage::default() },
+			ProviderTokenUsage { cached_input: Some(2), ..ProviderTokenUsage::default() },
+		];
+
+		assert!(
+			calibration_verification::build_efficiency_evidence(&results, &usage, false).is_err()
+		);
 	}
 }
