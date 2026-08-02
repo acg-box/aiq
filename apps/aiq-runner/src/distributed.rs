@@ -1305,7 +1305,7 @@ fn validate_wire_task(task: &TaskDefinition) -> Result<(), DistributedError> {
 		));
 	}
 
-	validate_safe_integer(task.budgets.wall_seconds, "task wall budget")?;
+	validate_safe_integer(task.budgets.wall_seconds, "Codex adapter elapsed-time budget")?;
 	validate_safe_integer(task.budgets.max_steps.into(), "task step budget")?;
 	validate_safe_integer(task.budgets.max_tool_calls.into(), "task tool-call budget")?;
 
