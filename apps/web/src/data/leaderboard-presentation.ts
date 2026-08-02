@@ -3,6 +3,7 @@ import type { LeaderboardEntry, LeaderboardStatus } from './types.ts';
 
 const statusLabels: Record<LeaderboardStatus, string> = {
   official: 'Official · 72/72',
+  synthetic_complete: 'Complete synthetic fixture · not Official',
   not_applicable: 'N/A · unsupported',
   missing: 'Missing result',
   unpublished: 'Unpublished',

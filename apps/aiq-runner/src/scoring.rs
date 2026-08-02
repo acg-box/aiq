@@ -27,15 +27,17 @@ pub const DEFAULT_BOOTSTRAP_SEED: u64 = 0x41_49_51_5f_56_31;
 
 const TASK_RESAMPLING_SENSITIVITY_METHOD: &str =
 	"finite_cluster_calibrated_percentile_sensitivity_v1";
-const SCORE_RULE: &str = "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires 72/72 and 10/10 domains. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
+const SCORE_RULE: &str = "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
 const CALIBRATION_SCORE_RULE: &str = "Calibration analysis only. Values are transparent descriptive aggregates for the selected evidence. This report has no publication classification and is not ranking eligible. When present, the task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
 
-/// Score publication tier.
+/// Score classification tier.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScoreTier {
 	/// All 72 tasks and all 10 domains have valid scores.
 	Official,
+	/// A complete 72-task synthetic fixture with descriptive estimates only.
+	SyntheticComplete,
 	/// At least 60 of 72 tasks are valid, with at least four valid tasks per domain.
 	Provisional,
 	/// Coverage is reported, but an AIQ score is not published.
@@ -226,7 +228,7 @@ pub struct ScoreReport {
 	pub tier: ScoreTier,
 	/// Official ranking score. It is present only for the Official tier.
 	pub official_aiq: Option<f64>,
-	/// Conditional observed estimate. Provisional estimates are not ranking eligible.
+	/// Conditional observed estimate. Synthetic and Provisional estimates are not ranking eligible.
 	pub conditional_observed_aiq: Option<f64>,
 	/// Whether this report can participate in an official ranking.
 	pub ranking_eligible: bool,
@@ -448,6 +450,7 @@ pub fn score_model_with_context(
 		matching.entry((&result.task_id, &result.task_version)).or_default().push(result);
 	}
 
+	let has_synthetic_results = selected_model_uses_synthetic_results(&matching)?;
 	let uniform_capability_unavailable = expected.len() == matching.len()
 		&& expected.keys().all(|key| {
 			matching.get(key).is_some_and(
@@ -490,9 +493,17 @@ pub fn score_model_with_context(
 	}
 
 	let coverage = coverage_summary(&accumulators);
-	let tier = publication_tier(&coverage, &accumulators, frozen_catalog);
+	let coverage_tier = publication_tier(&coverage, &accumulators, frozen_catalog);
+	let tier = if coverage_tier == ScoreTier::Official && has_synthetic_results {
+		ScoreTier::SyntheticComplete
+	} else {
+		coverage_tier
+	};
 	let domain_scores = domain_scores(&accumulators);
-	let conditional_observed_aiq = if matches!(tier, ScoreTier::Official | ScoreTier::Provisional) {
+	let conditional_observed_aiq = if matches!(
+		tier,
+		ScoreTier::Official | ScoreTier::SyntheticComplete | ScoreTier::Provisional
+	) {
 		Some(macro_score(&accumulators)? * 100.0)
 	} else {
 		None
@@ -541,13 +552,17 @@ pub fn score_calibration_model_with_context(
 ) -> Result<CalibrationScoreReport, ScoreError> {
 	let report = score_model_with_context(tasks, results, model, context, options)?;
 	let descriptive_status = match report.tier {
-		ScoreTier::Official => CalibrationDescriptiveStatus::CompleteFixture,
+		ScoreTier::Official | ScoreTier::SyntheticComplete => {
+			CalibrationDescriptiveStatus::CompleteFixture
+		},
 		ScoreTier::Provisional => CalibrationDescriptiveStatus::ConditionalObserved,
 		ScoreTier::CoverageOnly => CalibrationDescriptiveStatus::CoverageOnly,
 		ScoreTier::NotApplicable => CalibrationDescriptiveStatus::NotApplicable,
 	};
 	let fixed_fixture_aiq =
-		(report.tier == ScoreTier::Official).then_some(report.official_aiq).flatten();
+		matches!(report.tier, ScoreTier::Official | ScoreTier::SyntheticComplete)
+			.then_some(report.conditional_observed_aiq)
+			.flatten();
 
 	Ok(CalibrationScoreReport {
 		schema_version: "aiq.calibration-score-report.v1".to_owned(),
@@ -609,6 +624,23 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 					&& task.scorer_version == frozen.evaluator.scorer_version
 			})
 		})
+}
+
+fn selected_model_uses_synthetic_results(
+	matching: &BTreeMap<(&str, &str), Vec<&TaskResult>>,
+) -> Result<bool, ScoreError> {
+	let has_synthetic_results =
+		matching.values().flatten().any(|result| result.provenance.synthetic);
+	let has_non_synthetic_results =
+		matching.values().flatten().any(|result| !result.provenance.synthetic);
+
+	if has_synthetic_results && has_non_synthetic_results {
+		return Err(ScoreError::new(
+			"score inputs mix synthetic and non-synthetic result provenance",
+		));
+	}
+
+	Ok(has_synthetic_results)
 }
 
 fn deserialize_difficulty_coverage<'de, D>(
@@ -1091,7 +1123,7 @@ mod tests {
 	}
 
 	#[test]
-	fn official_macro_and_cluster_bootstrap_are_deterministic() {
+	fn synthetic_complete_macro_and_cluster_bootstrap_are_deterministic() {
 		let tasks = official_tasks();
 		let results = tasks
 			.iter()
@@ -1114,11 +1146,14 @@ mod tests {
 
 		assert_eq!(first, second);
 		assert_eq!(first.scoring_version, AIQ_SCORING_VERSION);
-		assert_eq!(first.tier, ScoreTier::Official);
+		assert_eq!(first.tier, ScoreTier::SyntheticComplete);
 		assert_eq!(first.coverage.valid_tasks, 72);
 		assert_eq!(first.coverage.covered_domains, 10);
+		assert!(first.official_aiq.is_none());
 		assert!(
-			(first.official_aiq.expect("official score") - 54.285_714_285_714_285).abs() < 1e-10
+			(first.conditional_observed_aiq.expect("synthetic descriptive score")
+				- 54.285_714_285_714_285)
+				.abs() < 1e-10
 		);
 		assert_eq!(first.binary_micro_diagnostic.successes, 39);
 		assert!(
@@ -1128,7 +1163,8 @@ mod tests {
 		);
 		assert!(!first.ranking_eligible);
 
-		let interval = first.task_resampling_sensitivity_interval.expect("official interval");
+		let interval =
+			first.task_resampling_sensitivity_interval.expect("synthetic descriptive interval");
 
 		assert_eq!(interval.lower, 44.071_428_571_428_57);
 		assert_eq!(interval.upper, 66.078_571_428_571_42);
@@ -1511,8 +1547,32 @@ mod tests {
 		)
 		.expect("synthetic fixture must remain mathematically scoreable");
 
-		assert_eq!(synthetic.tier, ScoreTier::Official);
+		assert_eq!(synthetic.tier, ScoreTier::SyntheticComplete);
+		assert!(synthetic.official_aiq.is_none());
+		assert_eq!(synthetic.conditional_observed_aiq, Some(100.0));
 		assert!(!synthetic.ranking_eligible);
+		assert_eq!(
+			serde_json::to_value(&synthetic).expect("synthetic report serialization")["tier"],
+			"synthetic_complete"
+		);
+
+		let mut mixed = results.clone();
+
+		mixed[0].provenance.synthetic = false;
+
+		let error = scoring::score_model_with_context(
+			&tasks,
+			&mixed,
+			MODEL_MATRIX[0],
+			context,
+			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+		)
+		.expect_err("mixed synthetic provenance must fail closed");
+
+		assert_eq!(
+			error.to_string(),
+			"score inputs mix synthetic and non-synthetic result provenance"
+		);
 
 		for result in &mut results {
 			result.provenance.synthetic = false;
@@ -1835,8 +1895,9 @@ mod tests {
 		)
 		.expect("zero-score failures must score");
 
-		assert_eq!(report.tier, ScoreTier::Official);
-		assert_eq!(report.official_aiq, Some(0.0));
+		assert_eq!(report.tier, ScoreTier::SyntheticComplete);
+		assert_eq!(report.official_aiq, None);
+		assert_eq!(report.conditional_observed_aiq, Some(0.0));
 		assert_eq!(
 			report.domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(),
 			72
@@ -1868,10 +1929,11 @@ mod tests {
 		)
 		.expect("runtime capability disappearance must score as zero");
 
-		assert_eq!(report.tier, ScoreTier::Official);
+		assert_eq!(report.tier, ScoreTier::SyntheticComplete);
 		assert_eq!(report.coverage.valid_tasks, 72);
 		assert_eq!(report.coverage.invalid_tasks, 0);
 		assert_eq!(report.domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(), 1);
-		assert!(report.official_aiq.expect("official score") < 100.0);
+		assert!(report.official_aiq.is_none());
+		assert!(report.conditional_observed_aiq.expect("synthetic descriptive score") < 100.0);
 	}
 }

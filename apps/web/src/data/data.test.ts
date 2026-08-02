@@ -15,6 +15,7 @@ import {
   summarizeRunDomains,
   TRUST_LEVELS,
 } from './format.ts';
+import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
 import {
   CANONICAL_MODEL_MATRIX_IDS,
   createAiqRepository,
@@ -50,7 +51,7 @@ import {
 } from './seed.ts';
 import { TREND_SERIES_STYLES } from './trend-styles.ts';
 import { classifyDataProvenance } from './provenance.ts';
-import type { RadarNode } from './types.ts';
+import { isScoredLeaderboardEntry, type RadarNode } from './types.ts';
 
 function distributedRadarRowFromNode(node: RadarNode): DistributedRadarRow {
   return {
@@ -334,7 +335,7 @@ void describe('seed repository', () => {
         missing: null,
         scoring_version: '1.0.0',
         score_status: 'missing',
-        synthetic: true,
+        synthetic: false,
       },
     ];
 
@@ -420,6 +421,27 @@ void describe('seed repository', () => {
         /public_leaderboard/,
       );
     }
+
+    const unscoredRow = {
+      ...baseRow,
+      score: null,
+      ci_low: null,
+      ci_high: null,
+      sample_size: null,
+      coverage_percent: null,
+      failures: null,
+      missing: null,
+    };
+    for (const syntheticRow of [
+      { ...baseRow, score_status: 'official', synthetic: true },
+      { ...unscoredRow, score_status: 'not_applicable', synthetic: true },
+      { ...unscoredRow, score_status: 'missing', synthetic: true },
+    ]) {
+      assert.throws(
+        () => joinModelMatrixWithLeaderboard(matrix, [syntheticRow]),
+        /public_leaderboard/,
+      );
+    }
   });
 
   void it('orders unordered live matrix rows canonically and rejects matrix drift', () => {
@@ -488,7 +510,36 @@ void describe('presentation aggregates', () => {
     assert.equal(formatConfidenceInterval({ ciLow: 78.15, ciHigh: 82.94 }), '78.2–82.9');
   });
 
-  void it('provides complete official runs and a structured coverage-only run', () => {
+  void it('keeps scored status, provenance, and presentation consistent', () => {
+    const syntheticEntry = seedLeaderboard[0];
+    assert.ok(syntheticEntry);
+    assert.equal(isScoredLeaderboardEntry(syntheticEntry), true);
+    assert.equal(isScoredLeaderboardEntry({ ...syntheticEntry, scoreStatus: 'official' }), false);
+    assert.equal(isScoredLeaderboardEntry({ ...syntheticEntry, synthetic: false }), false);
+    assert.deepEqual(
+      {
+        status: presentLeaderboardEntry(syntheticEntry).status,
+        evidence: presentLeaderboardEntry(syntheticEntry).evidence,
+      },
+      { status: 'Complete synthetic fixture · not Official', evidence: 'Synthetic' },
+    );
+
+    const officialEntry = {
+      ...syntheticEntry,
+      scoreStatus: 'official' as const,
+      synthetic: false as const,
+    };
+    assert.equal(isScoredLeaderboardEntry(officialEntry), true);
+    assert.deepEqual(
+      {
+        status: presentLeaderboardEntry(officialEntry).status,
+        evidence: presentLeaderboardEntry(officialEntry).evidence,
+      },
+      { status: 'Official · 72/72', evidence: 'Published' },
+    );
+  });
+
+  void it('provides complete synthetic runs and a structured coverage-only run', () => {
     const firstRun = seedRuns[0];
     const coverageOnlyRun = seedRuns.find((run) => run.id.includes('coverage-only'));
     assert.ok(firstRun);
@@ -520,10 +571,11 @@ void describe('presentation aggregates', () => {
         .every((task) => task.explanation !== null),
     );
     assert.deepEqual(classifyRunCompleteness(firstRun), {
-      label: 'Official',
+      label: 'Complete synthetic fixture · not Official',
       validResults: 72,
       notApplicable: false,
     });
+    assert.equal(classifyRunCompleteness({ ...firstRun, synthetic: false }).label, 'Official');
     assert.deepEqual(classifyRunCompleteness(coverageOnlyRun), {
       label: 'Coverage-only · not ranked',
       validResults: 58,
@@ -572,9 +624,12 @@ void describe('presentation aggregates', () => {
   });
 
   void it('states the conditional Provisional estimand and planned completion bounds', () => {
+    assert.match(seedMethodology.missingPolicy, /complete synthetic fixture.*never Official/);
     assert.match(seedMethodology.missingPolicy, /averages valid observed tasks within each domain/);
     assert.match(seedMethodology.missingPolicy, /retain every planned task/);
     assert.match(seedMethodology.missingPolicy, /assign unobserved tasks zero or one/);
+    assert.match(seedMethodology.missingPolicy, /at least 60 results/);
+    assert.match(seedMethodology.missingPolicy, /at least 4 in every domain/);
     assert.doesNotMatch(seedMethodology.missingPolicy, /never shrink a denominator/i);
   });
 

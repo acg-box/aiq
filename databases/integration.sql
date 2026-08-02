@@ -459,9 +459,8 @@ reset role;
 rollback to savepoint stage_resume;
 release savepoint stage_resume;
 
--- The deterministic demo is a pre-staged complete fixture. Exercise the stage
--- role boundary fail-closed, then run its attestation and publication
--- transitions.
+-- The deterministic demo is a pre-staged complete synthetic fixture. Exercise
+-- the stage role boundary and prove that attestation cannot make it publishable.
 set local role aiq_publisher;
 select set_config('request.jwt.claims', '{"role":"aiq_publisher"}', true);
 do $$
@@ -489,8 +488,6 @@ set
   claim_ack = null,
   verification_status = 'unverified',
   state = 'processed';
-update aiq_private.aiq_score_snapshots
-set score_status = 'official', published = false;
 update aiq_private.aiq_runs
 set published = false, trust_tier = 'unverified';
 update aiq_private.aiq_result_packages
@@ -502,6 +499,43 @@ set
 update aiq_private.aiq_matrix_batches
 set verified_at = null, published_at = null;
 set local session_replication_role = origin;
+
+do $$
+begin
+  begin
+    update aiq_private.aiq_score_snapshots
+    set score_status = 'official'
+    where score_snapshot_id = (
+      select score_snapshot_id
+      from aiq_private.aiq_score_snapshots
+      order by score_snapshot_id
+      limit 1
+    );
+    raise exception 'synthetic score accepted Official classification';
+  exception when check_violation then null;
+  end;
+end;
+$$;
+
+savepoint non_synthetic_score_classification;
+set local session_replication_role = replica;
+update aiq_private.aiq_runs
+set synthetic = false
+where run_id = (select min(run_id) from aiq_private.aiq_runs);
+set local session_replication_role = origin;
+do $$
+begin
+  begin
+    update aiq_private.aiq_score_snapshots
+    set published = published
+    where run_id = (select min(run_id) from aiq_private.aiq_runs);
+    raise exception 'non-synthetic score accepted Synthetic Complete classification';
+  exception when check_violation then null;
+  end;
+end;
+$$;
+rollback to savepoint non_synthetic_score_classification;
+release savepoint non_synthetic_score_classification;
 
 create temp table aiq_publication_fixture on commit drop as
 select
@@ -579,31 +613,39 @@ reset role;
 
 set local role aiq_publisher;
 select set_config('request.jwt.claims', '{"role":"aiq_publisher"}', true);
-select public.aiq_verify_and_publish(
-  matrix_batch_id, package_sha256, inbox_id, lease_token, attempt
-)
-from aiq_publication_fixture;
+do $$
+begin
+  begin
+    perform public.aiq_verify_and_publish(
+      matrix_batch_id, package_sha256, inbox_id, lease_token, attempt
+    )
+    from aiq_publication_fixture;
+    raise exception 'synthetic batch reached publication';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
 reset role;
 set constraints all immediate;
 set constraints all deferred;
 
 select pg_temp.aiq_assert(
-  (select count(*) = 17
+  (select count(*) = 0
    from aiq_private.aiq_runs
    where published and trust_tier = 'trusted_verified'),
-  'publisher must publish all 17 verified runs'
+  'synthetic runs must remain unpublished and unverified'
 );
 select pg_temp.aiq_assert(
   (select count(*) = 17
    from aiq_private.aiq_score_snapshots
-   where published and score_status = 'official'),
-  'publisher must publish all 17 official scores'
+   where not published and score_status = 'synthetic_complete'),
+  'complete synthetic scores must remain descriptive and unpublished'
 );
 select pg_temp.aiq_assert(
-  (select claim_ack = 'completed' and claim_expires_at is null
+  (select claim_ack is null and verification_status = 'unverified'
    from aiq_private.aiq_submission_inbox
    where inbox_id = (select inbox_id from aiq_publication_fixture)),
-  'publication must complete and release the claim'
+  'rejected synthetic publication must not advance the inbox'
 );
 
 -- Storage registry identity is idempotent, active references block deletion,

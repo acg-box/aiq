@@ -44,11 +44,14 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'public'
     and relation.relkind = 'v'
-    and relation.relname like 'public\_%' escape '\';
+    and (
+      relation.relname like 'public\_%' escape '\'
+      or relation.relname = 'aiq_preview_status_v1'
+    );
 
-  if public_view_count <> 8 or security_invoker_view_count <> 8 then
+  if public_view_count <> 9 or security_invoker_view_count <> 9 then
     raise exception
-      'expected 8 security-invoker public views, found % views and % invoker views',
+      'expected 9 security-invoker public views, found % views and % invoker views',
       public_view_count, security_invoker_view_count;
   end if;
 
@@ -63,6 +66,38 @@ begin
     raise exception 'the bounded public trend RPC is missing or not browser-readable';
   end if;
 
+  if pg_catalog.to_regprocedure('aiq_private.preview_status_v1()') is null
+    or exists (
+      select 1
+      from pg_catalog.pg_proc function
+      cross join lateral pg_catalog.aclexplode(
+        coalesce(
+          function.proacl,
+          pg_catalog.acldefault('f', function.proowner)
+        )
+      ) privilege
+      where function.oid = pg_catalog.to_regprocedure(
+          'aiq_private.preview_status_v1()'
+        )
+        and privilege.grantee = 0
+        and privilege.privilege_type = 'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'anon', 'aiq_private.preview_status_v1()', 'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'authenticated', 'aiq_private.preview_status_v1()', 'EXECUTE'
+    )
+    or not pg_catalog.has_table_privilege(
+      'anon', 'public.aiq_preview_status_v1', 'SELECT'
+    )
+    or not pg_catalog.has_table_privilege(
+      'authenticated', 'public.aiq_preview_status_v1', 'SELECT'
+    )
+  then
+    raise exception 'the bounded preview status view is missing or not browser-readable';
+  end if;
+
   select count(*) into browser_write_count
   from pg_catalog.pg_class relation
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
@@ -71,7 +106,10 @@ begin
       namespace.nspname = 'aiq_private'
       or (
         namespace.nspname = 'public'
-        and relation.relname like 'public\_%' escape '\'
+        and (
+          relation.relname like 'public\_%' escape '\'
+          or relation.relname = 'aiq_preview_status_v1'
+        )
       )
     )
     and relation.relkind in ('r', 'p', 'v')
@@ -156,6 +194,7 @@ select
   (select count(*) from public.public_runs) as run_count,
   (select count(*) from public.public_scoring_versions) as scoring_version_count,
   (select count(*) from public.public_task_coverage) as task_coverage_count,
+  (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
 
@@ -169,6 +208,7 @@ select
   (select count(*) from public.public_runs) as run_count,
   (select count(*) from public.public_scoring_versions) as scoring_version_count,
   (select count(*) from public.public_task_coverage) as task_coverage_count,
+  (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
 
