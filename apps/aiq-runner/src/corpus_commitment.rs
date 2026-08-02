@@ -21,7 +21,7 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
 	protocol,
-	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
+	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
 };
 
@@ -1015,8 +1015,8 @@ fn validate_header(commitment: &CorpusCommitment) -> Result<(), CorpusCommitment
 		|| !commitment.controlled
 		|| commitment.synthetic
 		|| catalog.schema_version != "aiq.catalog.v1"
-		|| catalog.task_set_id != "aiq-core"
-		|| catalog.task_set_version != AIQ_SCORING_VERSION
+		|| catalog.task_set_id != AIQ_TASK_SET_ID
+		|| catalog.task_set_version != AIQ_TASK_SET_VERSION
 		|| catalog.identity_sha256 != AIQ_CORE_V1_TASK_IDENTITY_SHA256
 		|| catalog.identity_scope != "ordered_full_task_metadata"
 	{
@@ -1354,7 +1354,7 @@ mod tests {
 			SourceManifestEntry,
 		},
 		protocol, runner,
-		scoring::AIQ_CORE_V1_TASK_IDENTITY_SHA256,
+		scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
 
 	#[test]
@@ -1535,8 +1535,8 @@ mod tests {
 			synthetic: false,
 			catalog: CorpusCatalog {
 				schema_version: "aiq.catalog.v1".to_owned(),
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
 				identity_sha256: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
 				identity_scope: "ordered_full_task_metadata".to_owned(),
 			},

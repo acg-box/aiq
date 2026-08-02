@@ -2771,6 +2771,7 @@ mod tests {
 		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	};
 	use aiq_runner::{
+		AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
 		adapter::{
 			self, ArtifactReference, ArtifactSink, AuthenticationProbe, CapabilityValidation,
 			CapabilityValidationReport, CapabilityValidationStatus, CliProbe, ConfigurationProbe,
@@ -3089,9 +3090,9 @@ mod tests {
 			let package_sha256 = hex::encode(Sha256::digest(&package));
 			let environment = VerifierEnvironment {
 				schema_version: "aiq.verifier-environment.v2".to_owned(),
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				benchmark_version: "aiq-core@1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: provenance.prompt_digest.clone(),
 				expected_provenance: Some(provenance),
 				runner_commit: "d".repeat(40),
@@ -3642,9 +3643,9 @@ mod tests {
 			tasks: runner::synthetic_demo_tasks(),
 			environment: VerifierEnvironment {
 				schema_version: "aiq.verifier-environment.v2".to_owned(),
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				benchmark_version: "aiq-core@1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: format!("sha256:{}", "c".repeat(64)),
 				expected_provenance: None,
 				runner_commit: "d".repeat(40),
@@ -4283,9 +4284,9 @@ mod tests {
 			run.schedule_slot.scheduled_unix_ms().expect("resolved signed schedule");
 		let environment = VerifierEnvironment {
 			schema_version: "aiq.verifier-environment.v2".to_owned(),
-			task_set_id: "aiq-core".to_owned(),
-			task_set_version: "1.0.0".to_owned(),
-			benchmark_version: "aiq-core@1.0.0".to_owned(),
+			task_set_id: AIQ_TASK_SET_ID.to_owned(),
+			task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+			benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 			prompt_set_digest: run.task_set_hash.clone(),
 			expected_provenance: None,
 			runner_commit: "0000000000000000000000000000000000000000".to_owned(),

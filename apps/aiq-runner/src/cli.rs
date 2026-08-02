@@ -52,8 +52,8 @@ use aiq_runner::{
 	},
 	schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
 	scoring::{
-		self, AIQ_SCORING_VERSION, CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions,
-		ScoreReport,
+		self, AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
+		CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions, ScoreReport,
 	},
 	submission::{self, HttpsTransport, MAX_SUBMISSION_BYTES, SecretToken},
 	task::{
@@ -3036,9 +3036,9 @@ fn run_demo(
 		write_json(
 			path,
 			&AttestedDeploymentMetadata {
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				benchmark_version: "aiq-core@1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: run.task_set_hash.clone(),
 				runner_commit: "0000000000000000000000000000000000000000".to_owned(),
 				region: "local-synthetic".to_owned(),

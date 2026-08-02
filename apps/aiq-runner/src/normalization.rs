@@ -26,7 +26,10 @@ use crate::{
 		EvaluationOutcome, FailureKind, Latency, ResultFailure, ResultStatus, RunRecord,
 		TaskResult, ToolUsage,
 	},
-	scoring::{self, AIQ_SCORING_VERSION, ScoreContext, ScoreOptions, ScoreReport, ScoreTier},
+	scoring::{
+		self, AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, ScoreContext,
+		ScoreOptions, ScoreReport, ScoreTier,
+	},
 	submission,
 	task::{Domain, TaskDefinition},
 };
@@ -1060,9 +1063,9 @@ fn validate_inputs(
 	}
 
 	if let Some(provenance) = &run.provenance
-		&& (metadata.task_set_id != "aiq-core"
-			|| metadata.task_set_version != AIQ_SCORING_VERSION
-			|| metadata.benchmark_version != "aiq-core@1.0.0"
+		&& (metadata.task_set_id != AIQ_TASK_SET_ID
+			|| metadata.task_set_version != AIQ_TASK_SET_VERSION
+			|| metadata.benchmark_version != AIQ_BENCHMARK_VERSION
 			|| metadata.prompt_set_digest != provenance.prompt_digest)
 	{
 		return Err(NormalizationError::new(
@@ -1321,7 +1324,10 @@ mod tests {
 		protocol::{self, SigningIdentity, TrustTier},
 		runner::{self},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
-		scoring::{self, ScoreContext, ScoreOptions, ScoreTier},
+		scoring::{
+			self, AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, ScoreContext,
+			ScoreOptions, ScoreTier,
+		},
 		submission,
 	};
 
@@ -1361,9 +1367,9 @@ mod tests {
 			signer,
 		};
 		let metadata = AttestedDeploymentMetadata {
-			task_set_id: "aiq-core".to_owned(),
-			task_set_version: "1.0.0".to_owned(),
-			benchmark_version: "aiq-core@1.0.0".to_owned(),
+			task_set_id: AIQ_TASK_SET_ID.to_owned(),
+			task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+			benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 			prompt_set_digest: "sha256:".to_owned() + &"c".repeat(64),
 			runner_commit: "d".repeat(40),
 			region: "local-test".to_owned(),
