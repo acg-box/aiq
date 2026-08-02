@@ -101,7 +101,7 @@ void test('keeps efficiency evidence nullable, bounded, and non-Official', () =>
   assert.doesNotMatch(schema, /total_tokens = input_tokens \+ output_tokens/);
   assert.match(
     schema,
-    /cost_estimator_status in \('estimated','unavailable_missing_usage','unavailable_invalid_usage'\)/,
+    /cost_estimator_status in \(\s*'estimated','unavailable_missing_usage','unavailable_invalid_usage',\s*'unavailable_context_band'\s*\)/,
   );
   assert.match(schema, /standard_api_equivalent_usd_nanos bigint/);
   assert.match(schema, /per_request_long_context_unknown/);
@@ -161,7 +161,7 @@ void test('accepts only the fixed Standard-tier pricing record', () => {
     'standard_api_equivalent_text_token_estimate',
     'aiq.standard-api-equivalent-usd.v1',
     '2026-08-02',
-    'https://developers.openai.com/api/docs/models/compare',
+    'https://developers.openai.com/api/docs/pricing',
     "candidate->>'currency'='USD'",
     "candidate->>'processing_tier'='standard'",
     'This is not actual subscription spend.',
@@ -170,8 +170,8 @@ void test('accepts only the fixed Standard-tier pricing record', () => {
   }
   for (const rate of [
     ["'gpt-5.6-sol'", '5000', '500', '6250', '30000'],
-    ["'gpt-5.6-terra'", '2500', '250', '3125', '15000'],
-    ["'gpt-5.6-luna'", '1000', '100', '1250', '6000'],
+    ["'gpt-5.6-terra'", '2000', '200', '2500', '12000'],
+    ["'gpt-5.6-luna'", '200', '20', '250', '1200'],
   ]) {
     let cursor = -1;
     for (const value of rate) {
@@ -183,6 +183,26 @@ void test('accepts only the fixed Standard-tier pricing record', () => {
   assert.match(schema, /pricing\.processing_tier as pricing_processing_tier/);
   assert.match(schema, /pricing\.rates as pricing_rates/);
   assert.match(schema, /pricing\.formula as cost_formula/);
+  assert.match(
+    schema,
+    /if input_tokens>272000\s*then return candidate->>'cost_status'='unavailable_context_band'/,
+  );
+  assert.match(
+    validator,
+    /A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands/,
+  );
+});
+
+void test('accepts the paid workspace-integrity adapter failure kind', () => {
+  const validator =
+    schema.match(
+      /create function aiq_private\.dto_adapter_failure_is_valid[\s\S]*?\n\$_\$;/,
+    )?.[0] ?? '';
+
+  assert.match(
+    validator,
+    /'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'/,
+  );
 });
 
 void test('binds Official efficiency evidence to the exact payload matrix', () => {
