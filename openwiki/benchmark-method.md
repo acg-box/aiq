@@ -9,9 +9,11 @@ tags: ['benchmark', 'method', 'scoring']
 
 ## Fixture
 
-AIQ Core `1.0.1` contains 72 fixed private tasks in ten domains. Its benchmark
-release is `aiq-core@1.0.1`; the independently versioned scoring implementation
-remains `1.0.0`.
+Repository source targets AIQ Core `1.0.2`, benchmark release
+`aiq-core@1.0.2`, and scoring implementation `1.0.2`. It contains 72 fixed
+private tasks in ten domains. AIQ Core `1.0.1` is the deployed predecessor and
+remains legitimate history, but source-head Official contracts do not accept
+its task-set or scorer versions.
 
 | Domain                          | Tasks |
 | ------------------------------- | ----: |
@@ -32,23 +34,27 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
+
+The release-policy identity is `aiq-core/1.0.2`. Its catalog
+release-identity digest is
+`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
 
 One current `aiq.corpus-commitment.v2` document binds every private task to that
 catalog. It also binds the baseline workspace, fixture bundle, evaluator,
 runtime, runner source, harness, tool policy, network policy, and environment.
 
-## AIQ Core 1.0.2 candidate gate
+## AIQ Core 1.0.2 release-gate evidence
 
-AIQ Core `1.0.1` remains current. AIQ Core `1.0.2` is an immutable,
-preregistered candidate and has not been promoted. Its release gate is a
-non-Official, three-repeat calibration: 3,672 core observations
+AIQ Core `1.0.2` is the current source-head authority, while hosted production
+still runs the `1.0.1` predecessor. Its separately preregistered release gate is
+a non-Official, three-repeat calibration: 3,672 core observations
 (`72 × 17 × 3`) plus 306 paired-contrast observations
 (`3 × 2 × 17 × 3`), for 3,978 observations. This calibration is separate from
 the Official `72 × 17` publication run, which has 1,224 observations. No real
-candidate or Official model run has started, and no subscription limit has been
-observed.
+release-gate or Official model run has started, and no subscription limit has
+been observed.
 
 The release gate proves only whether `1.0.2` independently meets the
 preregistered absolute adequacy thresholds. It does not compare `1.0.2` with

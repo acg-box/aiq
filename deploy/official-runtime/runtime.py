@@ -53,6 +53,8 @@ READ_ONLY = {
 
 SECRETS = {
     "codex_auth": ("AIQ_CODEX_AUTH", 10001),
+    "runner_signing_key": ("AIQ_RUNNER_SIGNING_KEY_FILE", 10001),
+    "runner_submission_token": ("AIQ_RUNNER_SUBMISSION_TOKEN_FILE", 10001),
     "verifier_token": ("AIQ_VERIFIER_TOKEN_FILE", 10003),
     "verifier_signing_key": ("AIQ_VERIFIER_SIGNING_KEY_FILE", 10003),
 }
@@ -83,6 +85,8 @@ RUNNER_MOUNTS = {
     "AIQ_RUNNER_BINARY": ("/inputs/bin/aiq-runner", True),
     "AIQ_CODEX_HOME": ("/codex-home", False),
     "AIQ_CODEX_AUTH": ("/codex-home/auth.json", True),
+    "AIQ_RUNNER_SIGNING_KEY_FILE": ("/run/secrets/runner-signing-key", True),
+    "AIQ_RUNNER_SUBMISSION_TOKEN_FILE": ("/run/secrets/runner-submission-token", True),
     "AIQ_EXECUTION": ("/execution", False),
     "AIQ_ARTIFACTS": ("/output/artifacts", False),
     "AIQ_CHECKPOINTS": ("/output/checkpoints", False),
@@ -106,6 +110,7 @@ VERIFIER_MOUNTS = {
 }
 
 MOUNTS = RUNNER_MOUNTS | VERIFIER_MOUNTS
+RUNNER_COMMANDS = frozenset(("admit-permissions", "preflight", "run", "score", "package", "submit"))
 
 
 def fail(message: str) -> Never:
@@ -397,12 +402,25 @@ def validate_source(source: Path, expected: object) -> str:
     return actual
 
 
-def validated_config(config_path: Path) -> tuple[dict[str, str], str, dict[str, object]]:
-    config = load_config(config_path)
+def validate_config_shape(
+    config: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    if set(config) != {"source_commit", "read_only", "writable"}:
+        fail("config must contain only source_commit, [read_only], and [writable]")
     read_only = config.get("read_only")
     writable = config.get("writable")
     if not isinstance(read_only, dict) or not isinstance(writable, dict):
         fail("config needs [read_only] and [writable] tables")
+    if set(read_only) != set(READ_ONLY) | set(SECRETS):
+        fail("[read_only] must contain the exact supported path key set")
+    if set(writable) != set(WRITABLE):
+        fail("[writable] must contain the exact supported path key set")
+    return read_only, writable
+
+
+def validated_config(config_path: Path) -> tuple[dict[str, str], str, dict[str, object]]:
+    config = load_config(config_path)
+    read_only, writable = validate_config_shape(config)
 
     env: dict[str, str] = {}
     paths: dict[str, Path] = {}
@@ -729,6 +747,10 @@ def assert_runtime(env: dict[str, str]) -> dict[str, dict[str, object]]:
     for forbidden in ("CODEX_HOME=", "AIQ_VERIFIER_INGRESS_TOKEN=", "AIQ_VERIFIER_SIGNING_KEY="):
         if forbidden in verifier_environment:
             fail(f"verifier environment exposes forbidden entry {forbidden}")
+    runner_environment = "\n".join(runner["Config"].get("Env") or [])
+    for forbidden in ("AIQ_RUNNER_SIGNING_KEY=", "AIQ_RUNNER_SUBMISSION_TOKEN="):
+        if forbidden in runner_environment:
+            fail(f"runner environment exposes forbidden entry {forbidden}")
     return containers
 
 
@@ -767,6 +789,16 @@ def requirements_binding() -> dict[str, str]:
 def secret_mount_metadata() -> dict[str, str]:
     targets = {
         "codex_auth": (CONTAINERS["runner"], "/codex-home/auth.json", "10001:10001:600:1"),
+        "runner_signing_key": (
+            CONTAINERS["runner"],
+            "/run/secrets/runner-signing-key",
+            "10001:10001:600:1",
+        ),
+        "runner_submission_token": (
+            CONTAINERS["runner"],
+            "/run/secrets/runner-submission-token",
+            "10001:10001:600:1",
+        ),
         "verifier_token": (CONTAINERS["verifier"], "/run/secrets/verifier-token", "10003:10003:600:1"),
         "verifier_signing_key": (
             CONTAINERS["verifier"],
@@ -1021,6 +1053,35 @@ def receipt(config: Path, state: Path) -> None:
     print(destination)
 
 
+def runner_command(config: Path, state: Path, command: str, command_args: list[str]) -> None:
+    if command not in RUNNER_COMMANDS:
+        fail(f"unsupported runner command {command}")
+    env, commit, content = validated_config(config)
+    validate_docker_host()
+    env_file = prepare_state(state, create=False)
+    require_env_file(env_file, env)
+    validate_state_separation(state, env)
+    require_created_content(state, content)
+    containers = assert_runtime(env)
+    assert_image_commit(containers, commit)
+    evidence = read_private_json(state / "validation.json")
+    require_current_evidence(evidence, runtime_binding(env_file, commit, containers, content))
+    if command_args[:1] == ["--"]:
+        command_args = command_args[1:]
+    run(
+        *compose_args(env_file),
+        "exec",
+        "--no-TTY",
+        "runner",
+        "/usr/local/bin/aiq-runtime-entrypoint",
+        command,
+        *command_args,
+    )
+    repeated_env, repeated_commit, repeated_content = validated_config(config)
+    if (repeated_env, repeated_commit, repeated_content) != (env, commit, content):
+        fail("operator inputs changed while the runner command executed")
+
+
 def down(state: Path) -> None:
     validate_docker_host()
     env_file = prepare_state(state, create=False)
@@ -1031,12 +1092,18 @@ def down(state: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("create", "up", "validate", "receipt", "down"))
+    parser.add_argument(
+        "command",
+        choices=("create", "up", "validate", "receipt", "down", *sorted(RUNNER_COMMANDS)),
+    )
     parser.add_argument("--config", type=Path)
     parser.add_argument("--state", required=True, type=Path)
-    args = parser.parse_args()
-    if args.command in {"create", "validate", "receipt"} and args.config is None:
+    args, command_args = parser.parse_known_args()
+    config_commands = {"create", "validate", "receipt", *RUNNER_COMMANDS}
+    if args.command in config_commands and args.config is None:
         parser.error(f"{args.command} requires --config")
+    if args.command not in RUNNER_COMMANDS and command_args:
+        parser.error(f"unrecognized arguments: {' '.join(command_args)}")
     if args.command == "create":
         create(args.config, args.state)
     elif args.command == "up":
@@ -1045,8 +1112,10 @@ def main() -> None:
         validate(args.config, args.state)
     elif args.command == "receipt":
         receipt(args.config, args.state)
-    else:
+    elif args.command == "down":
         down(args.state)
+    else:
+        runner_command(args.config, args.state, args.command, command_args)
 
 
 if __name__ == "__main__":

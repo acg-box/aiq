@@ -56,7 +56,7 @@ use aiq_runner::{
 	runner::{
 		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
 	},
-	scoring::{self, AIQ_CORE_V1_TASK_IDENTITY_SHA256, ScoreContext, ScoreOptions, ScoreReport},
+	scoring::{self, AIQ_CORE_TASK_IDENTITY_SHA256, ScoreContext, ScoreOptions, ScoreReport},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
 	task::{DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskSource, Visibility},
 };
@@ -3355,7 +3355,7 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 		|| environment.synthetic_test != environment.expected_provenance.is_none()
 		|| environment.expected_provenance.as_ref().is_some_and(|provenance| {
 			provenance.prompt_digest != environment.prompt_set_digest
-				|| provenance.catalog_digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+				|| provenance.catalog_digest != AIQ_CORE_TASK_IDENTITY_SHA256
 		}) || environment.runner_commit.len() < 7
 		|| environment.runner_commit.len() > 40
 		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -4948,7 +4948,7 @@ mod tests {
 			run_class: RunClass::Official,
 			corpus_release_id: "corpus_fixture".to_owned(),
 			corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
-			catalog_digest: aiq_runner::scoring::AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+			catalog_digest: aiq_runner::scoring::AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
 			task_set_digest,
 			evaluator_digest: format!("sha256:{}", "8".repeat(64)),
 			runtime_digest: format!("sha256:{}", "9".repeat(64)),

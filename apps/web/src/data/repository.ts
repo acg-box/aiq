@@ -1264,7 +1264,7 @@ function mapModelEfficiencyRow(row: ModelEfficiencyRow): PublicModelEfficiency {
 const seedCalibrationRun: PublicCalibrationRun = {
   id: `run_${'c'.repeat(64)}`,
   classification: 'local_calibration_non_official',
-  scoringVersion: '1.0.0',
+  scoringVersion: '1.0.2',
   selectedTaskCount: 1,
   selectedModelCount: 1,
   resultCount: 1,
@@ -1284,7 +1284,7 @@ const seedCalibrationRun: PublicCalibrationRun = {
       id: `result_${'d'.repeat(64)}`,
       runId: `run_${'c'.repeat(64)}`,
       taskId: 'synthetic-calibration-task',
-      taskVersion: '1.0.1',
+      taskVersion: '1.0.2',
       domain: 'coding',
       modelFamily: 'sol',
       reasoningEffort: 'low',

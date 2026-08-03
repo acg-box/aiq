@@ -1,14 +1,23 @@
 # AIQ Core benchmark contract
 
-AIQ Core `1.0.1` is a fixed 72-task benchmark across ten domains. The public
-catalog defines task identity, domain, difficulty, tool policy, budget, evaluator
-identity, and public-safe descriptions. Private task prompts, fixtures, expected
-outputs, and evaluator content stay outside Git.
+Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`. It is a fixed
+72-task benchmark across ten domains. The public catalog defines task identity,
+domain, difficulty, tool policy, budget, evaluator identity, and public-safe
+descriptions. Private task prompts, fixtures, expected outputs, and evaluator
+content stay outside Git.
+
+AIQ Core `1.0.2` is not promoted. Production `aiq.wiki` and the personal
+Supabase project continue to run the older `1.0.1` foundation until candidate
+validation, promotion, the one greenfield database reset, and deployment
+complete. No real candidate or Official model run has started.
 
 ## Public authority
 
-- `catalog/aiq-core-v1.json` is the generated public catalog.
-- `schema/catalog.schema.json` validates the catalog.
+- `candidates/aiq-core-1.0.2/catalog.json` is the active generated public
+  catalog for repository source.
+- `catalog/aiq-core-v1.json` is the immutable `1.0.1` predecessor catalog.
+- `candidates/aiq-core-1.0.2/catalog.schema.json` validates the active source
+  catalog. `schema/catalog.schema.json` validates the historical predecessor.
 - `schema/corpus-commitment-v2.schema.json` validates the current controlled
   corpus commitment.
 - `schema/result-package-v3.schema.json` validates signed runner packages.
@@ -20,14 +29,21 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
 
-## AIQ Core 1.0.2 candidate
+Its release identity is:
 
-AIQ Core `1.0.2` is an immutable, preregistered release candidate. Production
-and the current public catalog remain on AIQ Core `1.0.1`. The candidate is not
-promoted or current. These files own the candidate:
+```text
+sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b
+```
+
+## AIQ Core 1.0.2 release gate
+
+AIQ Core `1.0.2` is an immutable, preregistered release candidate. Repository
+source now uses it as its only active task-set and scorer target, but production
+remains on AIQ Core `1.0.1`. The candidate is not promoted. These files own the
+candidate and source-head catalog authority:
 
 - `candidates/aiq-core-1.0.2/catalog.json`;
 - `candidates/aiq-core-1.0.2/catalog.schema.json`;
@@ -36,13 +52,13 @@ promoted or current. These files own the candidate:
   `schema/promotion-receipt.schema.json`, and
   `schema/released-manifest.schema.json` contracts.
 
-The candidate task-metadata identity is:
+The task-metadata identity is:
 
 ```text
 sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
 
-The candidate release identity is:
+The release identity is:
 
 ```text
 sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b
@@ -82,7 +98,7 @@ available usage fields. The public aggregate release-gate source, evidence, and
 result artifacts omit these fields and do not publish efficiency or cost
 evidence.
 
-Regenerate and test the candidate with:
+Regenerate and test the active source catalog with:
 
 ```sh
 node scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts

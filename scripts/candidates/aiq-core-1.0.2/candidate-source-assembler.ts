@@ -2388,7 +2388,7 @@ export async function assembleCandidateSource(
       run.schema_version !== 'aiq.calibration-run.v3' ||
       run.official_eligible !== false ||
       run.classification !== 'local_calibration_non_official' ||
-      run.scoring_version !== '1.0.0' ||
+      run.scoring_version !== '1.0.2' ||
       canonicalJson(run.task_ids) !== canonicalJson(taskIds) ||
       canonicalJson(run.models) !==
         canonicalJson(

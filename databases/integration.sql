@@ -225,7 +225,7 @@ begin
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.0'
+    'scoring_version', '1.0.2'
   )), 8);
 
   for task_number in 1..72 loop
@@ -241,7 +241,7 @@ begin
         'schema_version', 'aiq.result.v2',
         'run_id', run_id,
         'task_id', 'task-' || lpad(task_number::text, 2, '0'),
-        'task_version', '1.0.1',
+        'task_version', '1.0.2',
         'task_hash', task_hash,
         'model', model,
         'status', 'completed',
@@ -283,7 +283,7 @@ begin
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.0',
+    'scoring_version', '1.0.2',
     'models', models,
     'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
@@ -503,14 +503,14 @@ select
     'content_hash', input.envelope ->> 'content_hash',
     'signer', input.envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.1',
+    'task_set_version', '1.0.2',
     'task_set_hash', input.envelope #>> '{payload,task_set_hash}',
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.1',
+    'benchmark_version', 'aiq-core@1.0.2',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.0',
+    'scoring_version', '1.0.2',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', 1785164400000,
@@ -650,9 +650,9 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   run_id, package_sha256, envelope ->> 'content_hash',
-  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.1', '1.0.0',
-  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.1',
-  stage ->> 'prompt_set_digest', '1.0.0', 'a7d91f4', 'integration',
+  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.2', '1.0.2',
+  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.2',
+  stage ->> 'prompt_set_digest', '1.0.2', 'a7d91f4', 'integration',
   1785164400000, 1785164400000, 1785164400001, 1, stage
 from aiq_stage_resume_input;
 insert into aiq_private.aiq_result_packages (

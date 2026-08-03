@@ -15,21 +15,31 @@ cargo make init-database
 ```
 
 The Supabase database must already provide `anon`, `authenticated`,
-`authenticator`, and `service_role`. The production reference contains one
-controlled, non-synthetic `aiq.corpus-commitment.v2` document and exactly three
-public identities: runner, verifier, and publisher.
+`authenticator`, and `service_role`. The production reference contains one real,
+controlled, non-synthetic `aiq.corpus-commitment.v2` document for the promoted
+AIQ Core `1.0.2` release, its real `published_at` timestamp, and exactly three
+public identities: runner, verifier, and publisher. The repository does not
+contain a substitute promoted commitment or benchmark results. Supply the
+controlled production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.1` with benchmark identifier `aiq-core@1.0.1`;
+- AIQ Core task release `1.0.2` with benchmark identifier `aiq-core@1.0.2`;
+- scoring version `1.0.2`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
 - 40 private tables with enabled and forced RLS;
 - 12 security-invoker public views;
 - two hardened, non-login gateway roles;
-- catalog digest
-  `sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
+- ordered task-metadata catalog digest
+  `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
+- catalog release identity
+  `sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+
+AIQ Core `1.0.2` is the only supported task-set and benchmark version in this
+desired state. There is no migration, compatibility, dual-version, or data
+preservation path.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.

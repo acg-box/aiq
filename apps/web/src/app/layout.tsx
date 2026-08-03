@@ -44,7 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               ? 'RLS-protected public views · AIQ v1 · inspect each scoring version'
               : publicDataConfiguration === 'invalid'
                 ? 'Invalid public data configuration · review both browser-safe Supabase variables'
-                : 'Demo values are synthetic seed data · AIQ v1 · scoring 1.0.0'}
+                : 'Demo values are synthetic seed data · AIQ v1 · scoring 1.0.2'}
           </p>
         </footer>
       </body>

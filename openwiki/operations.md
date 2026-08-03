@@ -27,15 +27,18 @@ production nodes, no published runs or other genuine run data, and private
 The apex home returns `200`. The production readiness endpoint returns `200`
 with `bounded_dependency_probe_passed`, `scope_ready: true`, and production
 mode for the deployed `1.0.1` foundation. The empty real-data read path passes.
-Repository head requires an exact 12-view public inventory and is not deployed;
-complete its one greenfield database reset only after source freeze.
+Repository head makes AIQ Core `1.0.2` and scoring `1.0.2` the current contract,
+with an exact 12-view public inventory and one greenfield database state. It is
+not deployed; freeze and validate the bound source before the greenfield
+database reset and deployment.
 
 No benchmark or Storage schedule and no cloud runner or verifier worker exist.
 A real Official or candidate calibration run has not started. No subscription
 limit has been observed. Official dispatch is blocked by the managed-policy
 gate: `Official runs require an exclusive managed aiq_benchmark allowlist and
-managed default; no model was invoked`. AIQ Core `1.0.1` remains current; AIQ
-Core `1.0.2` is a preregistered candidate and is not promoted. Calibration
+managed default; no model was invoked`. AIQ Core `1.0.1` remains deployed; AIQ
+Core `1.0.2` is the preregistered source-head target and is not promoted.
+Calibration
 evidence is non-Official and cannot satisfy the Official publication gate. This
 state is not final release acceptance.
 
@@ -98,8 +101,11 @@ Before a live run:
 
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
-2. Verify the catalog digest is
-   `sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
+2. Verify the ordered task-metadata catalog digest is
+   `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
+   the release-policy identity is `aiq-core/1.0.2`, and the catalog
+   release-identity digest is
+   `sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
 3. Create distinct runner, verifier, and publisher Ed25519 identities.
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
@@ -150,8 +156,12 @@ cargo run -p aiq-runner -- package --help
 cargo run -p aiq-runner -- submit --help
 ```
 
-Keep `AIQ_RUNNER_SIGNING_KEY` only in the runner environment. `score` emits a
-non-Official calibration score bundle when its saved run is calibration.
+For direct local CLI use, expose the signing key only to `package` and the
+submission token only to `submit`. In the bounded Official runtime, provide
+`runner_signing_key` and `runner_submission_token` as separate single-link
+`10001:10001`, mode-`0600` files; the protected wrapper reads each secret only
+for its authorized command. `score` emits a non-Official calibration score
+bundle when its saved run is calibration.
 `package` binds the run's execution concurrency, signs the calibration payload,
 and rejects a conflicting concurrency declaration. `submit` validates and
 uploads every signed content-addressed artifact before sending the package to
@@ -187,8 +197,25 @@ deploy/official-runtime/runtime.py receipt --config /controlled/operator.toml --
 Validation recomputes frozen-tree bindings and runs model-free canaries for the
 runner sandbox, the separated networks, direct-egress denial, proxy allowlists,
 and the verifier's lack of Codex access. Retain the private deployment receipt v2.
-Run one runner command at a time and perform the separate permission-admission
-sequence before paid work. Stop only this stack with
+Run one runner command at a time. Use the repository-owned manager path for the
+complete Official sequence; do not invoke the runner directly in the container:
+
+```text
+deploy/official-runtime/runtime.py admit-permissions
+deploy/official-runtime/runtime.py preflight
+deploy/official-runtime/runtime.py run
+deploy/official-runtime/runtime.py score
+deploy/official-runtime/runtime.py package
+deploy/official-runtime/runtime.py submit
+```
+
+`admit-permissions` is model-free. `preflight` is the first paid step. The same
+private admission receipt binds preflight, run, score, and package. The wrapper
+supplies fixed input paths and `https://aiq.wiki`, reads the runner signing key
+only for `package`, and reads the submission token only for `submit`. It does
+not place these secrets in Docker arguments, Compose configuration, or logs.
+The canonical concrete argument lists are in
+`deploy/official-runtime/README.md`. Stop only this stack with
 `runtime.py down --state /controlled/runtime-state`. The canonical path and mount
 contract remains in `deploy/official-runtime/README.md`; this mechanism implements
 the trust boundaries in [Architecture and Runtime](architecture-and-runtime.md)
@@ -253,9 +280,10 @@ of rows is valid until a verified calibration has completed this transition.
 
 ## Fresh database initialization
 
-The current production project has already completed this one-shot
-initialization. Do not rerun it against that project. For a replacement empty
-Supabase project, do not apply AIQ objects before initialization. Use a direct
+The current production project has already completed the earlier `1.0.1`
+one-shot initialization. Source head cannot upgrade or preserve it. After
+source freeze and validation, reset to a replacement empty Supabase database,
+and do not apply AIQ objects before initialization. Use a direct
 PostgreSQL URL, not the public Data API URL.
 
 ```sh
@@ -265,8 +293,14 @@ cargo make init-database
 ```
 
 The command uses one connection and one transaction. It rejects existing AIQ
-schema or roles. The repository defines one greenfield desired state, with no
-migrations or compatibility path. The receipt must report 72 tasks, 17 model
+schema or roles. After the operational promotion gate in
+[Deployment Handoff](deployment-handoff.md), prepare a separately controlled
+production reference containing a non-synthetic AIQ Core `1.0.2` corpus
+commitment, a canonical millisecond UTC `published_at`, and the three production
+identities. Initialization validates those fields and bindings but does not
+prove promotion. The repository defines one greenfield desired state, with no
+migration, compatibility, dual-version, or data-preservation path. The receipt
+must report scoring `1.0.2`, both catalog identities, 72 tasks, 17 model
 configurations, and three production nodes. This one-shot behavior enforces the
 database boundary in [Architecture and Runtime](architecture-and-runtime.md);
 the opt-in PostgreSQL 17 test also runs initialization twice and requires the

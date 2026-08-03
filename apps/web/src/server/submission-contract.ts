@@ -981,7 +981,7 @@ function validateOfficialRunPayload(
     !isScheduleSlot(payload.schedule_slot) ||
     typeof payload.task_set_hash !== 'string' ||
     !contentHashPattern.test(payload.task_set_hash) ||
-    payload.scoring_version !== '1.0.0' ||
+    payload.scoring_version !== '1.0.2' ||
     !isExactModelMatrix(payload.models) ||
     !isSafeUnsignedInteger(payload.started_unix_ms) ||
     !isSafeUnsignedInteger(payload.finished_unix_ms) ||
@@ -1077,7 +1077,7 @@ function validateOfficialRunPayload(
     task_set_hash: payload.task_set_hash,
     corpus_commitment_sha256: provenance.corpus_commitment_sha256,
     models: payload.models,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
   };
   return payload.run_id === `run_${sha256Hex(canonicalJson(classifiedIdentity))}`;
 }
@@ -1093,7 +1093,7 @@ function validateCalibrationRunPayload(
     !isScheduleSlot(payload.schedule_slot) ||
     typeof payload.task_set_hash !== 'string' ||
     !contentHashPattern.test(payload.task_set_hash) ||
-    payload.scoring_version !== '1.0.0' ||
+    payload.scoring_version !== '1.0.2' ||
     !Array.isArray(payload.models) ||
     payload.models.length < 1 ||
     payload.models.length > MAX_MODELS ||
@@ -1201,7 +1201,7 @@ function validateCalibrationRunPayload(
     task_set_hash: payload.task_set_hash,
     corpus_commitment_sha256: provenance.corpus_commitment_sha256,
     models: payload.models,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
   };
   return payload.run_id === `run_${sha256Hex(canonicalJson(classifiedIdentity))}`;
 }

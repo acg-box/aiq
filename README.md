@@ -10,23 +10,25 @@ acceptance is not complete. The personal Vercel scope `acgbox` hosts project
 configured. `https://www.aiq.wiki` preserves the request path and redirects to
 the apex domain. The personal Supabase organization `ACG Box` hosts project
 `aiq` (`xxnszykaeapolqdnhalx`), initialized once with the earlier AIQ Core
-`1.0.1` schema and reference. The live database has 17 model configurations, three production
-nodes, no published runs, and private `private-packages` and
+`1.0.1` schema and reference. The live database has 17 model configurations,
+three production nodes, no published runs, and private `private-packages` and
 `private-artifacts` buckets. Bounded runtime readiness and the empty real-data
 read path pass for that deployed `1.0.1` foundation. Repository head now
-requires an exact 12-view public inventory and is not deployed; its one
-greenfield database reset remains pending. No benchmark or Storage schedule and
-no cloud runner or verifier worker exist. A real candidate or Official model run has not started,
-and no subscription limit has been observed. Deployment readiness still
-requires the remaining gates in the deployment handoff.
-Production still uses AIQ Core `1.0.1` and contains no genuine run data. AIQ
-Core `1.0.2` is a preregistered candidate only. Its three-repeat release-gate
-calibration has not started.
+targets AIQ Core `1.0.2`, scoring `1.0.2`, and an exact 12-view public inventory.
+It is not deployed, and its one greenfield database reset remains pending. No
+benchmark or Storage schedule and no cloud runner or verifier worker exist. A
+real candidate or Official model run has not started, and no subscription limit
+has been observed. AIQ Core `1.0.2` is not promoted. Production continues to use
+the older `1.0.1` foundation and contains no genuine run data until candidate
+validation, promotion, database reset, and deployment complete. Deployment
+readiness still requires the remaining gates in the deployment handoff.
 
 ## Product contract
 
-- AIQ Core `1.0.1` has 72 private controlled tasks in ten domains.
-- AIQ Core `1.0.2` is a preregistered candidate. It is not current or promoted.
+- Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`, with 72
+  private controlled tasks in ten domains.
+- AIQ Core `1.0.2` remains an unpromoted preregistered candidate. AIQ Core
+  `1.0.1` is the deployed predecessor until the controlled cutover completes.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
@@ -39,11 +41,16 @@ calibration has not started.
 - The Web application reads public database views and sends controlled writes
   through server routes.
 
-The frozen public catalog digest is:
+The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
+
+Its catalog release identity is
+`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+The predecessor `1.0.1` identity remains in historical source and comparisons;
+it is not accepted by the source-head runtime or greenfield database state.
 
 The Official `72 × 17` run has 1,224 observations and is separate from the
 candidate calibration. The candidate calibration uses three fixed repeats:
@@ -135,9 +142,12 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-The production reference contains one current controlled corpus commitment and
-exactly three public identities: runner, verifier, and publisher. A successful
-receipt reports 72 tasks, 17 model configurations, and three nodes.
+The production reference must contain the real controlled, non-synthetic AIQ
+Core `1.0.2` corpus commitment, its real canonical `published_at` timestamp, and
+exactly three public identities: runner, verifier, and publisher. Prepare it
+only after promotion; the repository contains no substitute promoted reference.
+A successful receipt reports scoring `1.0.2`, both source-head catalog
+identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and
 calibration publication checks:
@@ -182,6 +192,19 @@ Official means a complete, non-synthetic 17-by-72 run with valid current
 bindings. A complete synthetic fixture uses the `synthetic_complete`
 classification, has no Official AIQ value, and is never ranking eligible. There
 is no additional provider ceremony.
+
+## Official paid-work boundary
+
+The repository-owned Official runtime manager is the only documented runner
+command path for the bounded container. Run its commands in this order:
+`admit-permissions`, `preflight`, `run`, `score`, `package`, and `submit`.
+`admit-permissions` is model-free; `preflight` is the first paid step. The same
+private admission receipt binds preflight through package. The manager reads the
+runner signing key only for `package` and the submission token only for
+`submit`; it does not put either secret in Docker arguments, Compose
+configuration, or logs. See `deploy/official-runtime/README.md` for the exact
+`deploy/official-runtime/runtime.py` commands. This command support does not
+prove secret provisioning, runtime deployment, admission, or model execution.
 
 ## Security boundaries
 

@@ -32,9 +32,11 @@ Review each result against source authority. Do not replace real product values
 with generic examples. Do not add deployment resources, secrets, schedules, or
 automation only to remove a marker.
 
-The current project constants include 72 tasks, 17 model configurations, three
-production identities, and catalog digest
-`sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
-This digest and AIQ Core `1.0.1` remain current. AIQ Core `1.0.2` is a separate
-preregistered candidate, not a replacement until an authorized promotion and
-cutover complete.
+The source-head project constants include AIQ Core and scoring version `1.0.2`,
+72 tasks, 17 model configurations, three production identities, ordered
+task-metadata digest
+`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
+release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
+`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+The production foundation remains on the historical `1.0.1` predecessor until
+the unpromoted candidate completes its authorized cutover.

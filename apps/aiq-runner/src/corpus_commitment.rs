@@ -20,9 +20,9 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	candidate_release_gate::{CANDIDATE_TASK_IDENTITY_SHA256, CANDIDATE_TASK_SET_VERSION},
+	candidate_release_gate::CANDIDATE_TASK_SET_VERSION,
 	protocol,
-	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
+	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
 };
 
@@ -30,25 +30,17 @@ use crate::{
 pub const CANDIDATE_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
 	"sha256:fa0fbbd01a00874791b592a2661b91a44189ea53e691af1616c76d271b6c7a66";
 
-const RELEASED_CATALOG_JSON: &str = include_str!("../../../benchmarks/catalog/aiq-core-v1.json");
 const CANDIDATE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json");
 const RELEASED_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
 	task_set_version: AIQ_TASK_SET_VERSION,
-	identity_sha256: AIQ_CORE_V1_TASK_IDENTITY_SHA256,
-	identity_scope: "ordered_full_task_metadata",
-	tasks: CatalogTaskAuthority::Embedded(RELEASED_CATALOG_JSON),
-};
-const CANDIDATE_CATALOG: CatalogContract = CatalogContract {
-	catalog_schema_version: "aiq.catalog.v1",
-	task_set_id: AIQ_TASK_SET_ID,
-	task_set_version: CANDIDATE_TASK_SET_VERSION,
-	identity_sha256: CANDIDATE_TASK_IDENTITY_SHA256,
+	identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256,
 	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::Embedded(CANDIDATE_CATALOG_JSON),
 };
+const CANDIDATE_CATALOG: CatalogContract = RELEASED_CATALOG;
 const CANDIDATE_CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-coupled-challenge-01",
 	"contrast-coupled-reference-01",
@@ -530,7 +522,7 @@ pub(crate) fn fixture_run_provenance_for_class(
 		run_class,
 		corpus_release_id: "corpus_fixture".to_owned(),
 		corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
-		catalog_digest: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+		catalog_digest: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
 		task_set_digest,
 		evaluator_digest,
 		runtime_digest,
@@ -680,9 +672,6 @@ pub fn validate_corpus_commitment(
 }
 
 /// Loads and validates the immutable AIQ Core 1.0.2 release-gate corpus.
-///
-/// This entry point is for non-Official candidate calibration only. The normal
-/// corpus entry point remains bound to the released AIQ Core 1.0.1 identity.
 pub fn validate_candidate_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -738,10 +727,9 @@ pub fn validate_run_provenance(
 	preflight_digest: &str,
 ) -> Result<(), CorpusCommitmentError> {
 	let catalog_allowed = match provenance.run_class {
-		RunClass::Official => provenance.catalog_digest == AIQ_CORE_V1_TASK_IDENTITY_SHA256,
+		RunClass::Official => provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256,
 		RunClass::Calibration => {
-			provenance.catalog_digest == AIQ_CORE_V1_TASK_IDENTITY_SHA256
-				|| provenance.catalog_digest == CANDIDATE_TASK_IDENTITY_SHA256
+			provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256
 				|| provenance.catalog_digest == CANDIDATE_CONTRAST_CATALOG.identity_sha256
 		},
 	};
@@ -1216,7 +1204,7 @@ fn validate_header(
 }
 
 fn catalog_contract(catalog: &CorpusCatalog) -> Result<CatalogContract, CorpusCommitmentError> {
-	[RELEASED_CATALOG, CANDIDATE_CATALOG]
+	[RELEASED_CATALOG]
 		.into_iter()
 		.find(|contract| {
 			catalog.task_set_id == AIQ_TASK_SET_ID
@@ -1560,7 +1548,7 @@ mod tests {
 			SourceManifestEntry,
 		},
 		protocol, runner,
-		scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
+		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
 
 	#[test]
@@ -1597,9 +1585,10 @@ mod tests {
 			"runner": {"source_manifest": source_manifest},
 			"model_toolchain": policy,
 		});
-		let catalog: super::FrozenCatalog =
-			serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
-				.expect("embedded catalog");
+		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
+			"../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"
+		))
+		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
 			"protocol": "aiq.tool-policy.v1",
 			"evidence_class": "declared_policy_commitment",
@@ -1755,7 +1744,7 @@ mod tests {
 				schema_version: "aiq.catalog.v1".to_owned(),
 				task_set_id: AIQ_TASK_SET_ID.to_owned(),
 				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
-				identity_sha256: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+				identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
 				identity_scope: "ordered_full_task_metadata".to_owned(),
 			},
 			execution: CorpusExecution {
@@ -1773,20 +1762,18 @@ mod tests {
 	#[test]
 	fn current_corpus_header_is_strict() {
 		assert!(corpus_commitment::validate_header(&commitment(), super::RELEASED_CATALOG).is_ok());
-
-		let mut candidate = commitment();
-
-		candidate.catalog.task_set_version = super::CANDIDATE_TASK_SET_VERSION.to_owned();
-		candidate.catalog.identity_sha256 = super::CANDIDATE_TASK_IDENTITY_SHA256.to_owned();
-
-		assert!(corpus_commitment::validate_header(&candidate, super::CANDIDATE_CATALOG).is_ok());
-		assert!(corpus_commitment::validate_header(&candidate, super::RELEASED_CATALOG).is_err());
-		assert_eq!(
-			super::catalog_contract(&candidate.catalog)
-				.expect("candidate catalog contract")
-				.identity_sha256,
-			super::CANDIDATE_TASK_IDENTITY_SHA256
+		assert!(
+			corpus_commitment::validate_header(&commitment(), super::CANDIDATE_CATALOG).is_ok()
 		);
+
+		let mut predecessor = commitment();
+
+		predecessor.catalog.task_set_version = "1.0.1".to_owned();
+		predecessor.catalog.identity_sha256 =
+			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
+
+		assert!(corpus_commitment::validate_header(&predecessor, super::RELEASED_CATALOG).is_err());
+		assert!(super::catalog_contract(&predecessor.catalog).is_err());
 
 		let mut contrast = commitment();
 
@@ -1850,7 +1837,7 @@ mod tests {
 	}
 
 	#[test]
-	fn candidate_provenance_is_calibration_only() {
+	fn current_and_contrast_provenance_enforce_run_class() {
 		let task_set = format!("sha256:{}", "b".repeat(64));
 		let preflight = format!("sha256:{}", "c".repeat(64));
 		let mut provenance = corpus_commitment::fixture_run_provenance_for_class(
@@ -1861,8 +1848,6 @@ mod tests {
 			preflight.clone(),
 		);
 
-		provenance.catalog_digest = super::CANDIDATE_TASK_IDENTITY_SHA256.to_owned();
-
 		assert!(
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()
 		);
@@ -1870,11 +1855,16 @@ mod tests {
 		provenance.run_class = super::RunClass::Official;
 
 		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()
+		);
+
+		provenance.catalog_digest = super::CANDIDATE_CONTRAST_CATALOG.identity_sha256.to_owned();
+
+		assert!(
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()
 		);
 
 		provenance.run_class = super::RunClass::Calibration;
-		provenance.catalog_digest = super::CANDIDATE_CONTRAST_CATALOG.identity_sha256.to_owned();
 
 		assert!(
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()

@@ -3003,7 +3003,34 @@ await test('generated catalog matches the published catalog schema', async () =>
     name.endsWith('.json'),
   );
 
+  strictEqual(schema.$id, 'https://aiq.wiki/schema/aiq-core/1.0.2/catalog.v1.json');
   strictEqual(matchesSchema(catalog, schema, schema), true);
+
+  for (const [field, value] of [
+    ['task_set_id', 'other'],
+    ['task_set_version', '1.0.1'],
+  ] as const) {
+    const changed = catalogJson(catalog);
+    changed[field] = value;
+    strictEqual(matchesSchema(changed, schema, schema), false, `${field} must be release-bound`);
+  }
+
+  for (const [field, value] of [
+    ['task_version', '1.0.1'],
+    ['scorer_version', '1.0.1'],
+  ] as const) {
+    const changed = catalogJson(catalog);
+    const firstTask = arrayProperty(changed, 'tasks')[0];
+    if (!isJsonObject(firstTask)) {
+      throw new TypeError('First task must be an object.');
+    }
+    if (field === 'scorer_version') {
+      objectProperty(firstTask, 'evaluator')[field] = value;
+    } else {
+      firstTask[field] = value;
+    }
+    strictEqual(matchesSchema(changed, schema, schema), false, `${field} must be release-bound`);
+  }
 
   for (const task of catalog.tasks) {
     strictEqual(matchesSchema(task, taskSchema, schema), true, `${task.task_id} must match`);
@@ -3342,11 +3369,31 @@ await test('published task schema accepts examples and rejects shared negative f
   const schema = parseJsonObject(
     await readFile('benchmarks/candidates/aiq-core-1.0.2/task.schema.json', 'utf8'),
   );
-  strictEqual(schema.$id, 'https://aiq.wiki/schema/task.v2.json');
+  strictEqual(schema.$id, 'https://aiq.wiki/schema/aiq-core/1.0.2/task.v2.json');
+  const historicalCatalogSchema = parseJsonObject(
+    await readFile('benchmarks/schema/catalog.schema.json', 'utf8'),
+  );
+  const historicalTaskSchema = parseJsonObject(
+    await readFile('benchmarks/schema/task.schema.json', 'utf8'),
+  );
+  strictEqual(schema.$id === historicalTaskSchema.$id, false);
+  const candidateCatalogSchema = parseJsonObject(
+    await readFile('benchmarks/candidates/aiq-core-1.0.2/catalog.schema.json', 'utf8'),
+  );
+  strictEqual(candidateCatalogSchema.$id === historicalCatalogSchema.$id, false);
   strictEqual(
     objectProperty(objectProperty(schema, 'properties'), 'schema_version').const,
     'aiq.task.v2',
   );
+  const externalScorerSchema = objectProperty(
+    objectProperty(objectProperty(schema, '$defs'), 'externalEvaluator'),
+    'properties',
+  ).scorer_version;
+  if (!isJsonObject(externalScorerSchema)) {
+    throw new TypeError('External evaluator scorer schema must be an object.');
+  }
+  strictEqual(matchesSchema('1.0.2', externalScorerSchema, schema), true);
+  strictEqual(matchesSchema('1.0.1', externalScorerSchema, schema), false);
   const exampleNames = (await readdir('benchmarks/examples/tasks')).filter((name) =>
     name.endsWith('.json'),
   );
@@ -3394,8 +3441,8 @@ await test('task schema keeps human text multiline and rejects unsafe machine fi
     ['task_id', `${String(task.task_id)}\r\n`],
     ['task_id', `${String(task.task_id)}\u2028`],
     ['task_id', `${String(task.task_id)}\u2029`],
-    ['task_version', '01.0.0'],
-    ['scorer_version', '1.0.0-beta'],
+    ['task_version', '1.0.1'],
+    ['scorer_version', '1.0.1'],
     ['cluster_id', 'coding-cluster-1'],
   ] as const) {
     const changed = structuredClone(task);
@@ -3437,7 +3484,7 @@ await test('task schema keeps human text multiline and rejects unsafe machine fi
   const externalSchema = resolveReference(schema, '#/$defs/externalEvaluator');
   const external: JsonSchema = {
     protocol_version: 'aiq.evaluator-input.v2',
-    scorer_version: '1.0.0',
+    scorer_version: '1.0.2',
     executable_ref: 'bin/evaluator',
     executable_digest: `sha256:${'a'.repeat(64)}`,
     runtime_kind: 'node',

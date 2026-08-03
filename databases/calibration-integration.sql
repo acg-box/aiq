@@ -65,7 +65,7 @@ as $$
 $$;
 
 select pg_temp.aiq_assert(
-  aiq_private.task_catalog_is_exact('aiq-core','1.0.1'),
+  aiq_private.task_catalog_is_exact('aiq-core','1.0.2'),
   'calibration integration requires the exact production initializer catalog'
 );
 
@@ -135,7 +135,7 @@ begin
     jsonb_agg('sha256:'||fixture_commitment order by fixture_commitment collate "C")
   into task_ids,task_hashes
   from aiq_private.aiq_task_catalog
-  where task_set_id='aiq-core' and task_set_version='1.0.1';
+  where task_set_id='aiq-core' and task_set_version='1.0.2';
   task_set_hash:=aiq_private.jcs_sha256(task_hashes);
   select jsonb_build_object('node_id',node_id,'public_key',public_key)
     into runner from pg_temp.aiq_calibration_identities where role_name='runner';
@@ -174,8 +174,8 @@ begin
     'schema_version','aiq.run-provenance.v2','run_class','calibration',
     'corpus_release_id','corpus_integration_calibration',
     'corpus_commitment_sha256',(select metadata->>'corpus_commitment_sha256'
-      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.1'),
-    'catalog_digest','sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
+      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.2'),
+    'catalog_digest','sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
     'task_set_digest',task_set_hash,
     'evaluator_digest','sha256:'||repeat('3',64),
     'runtime_digest','sha256:'||repeat('4',64),
@@ -194,7 +194,7 @@ begin
     'schema_version','aiq.run-identity.v3','run_class','calibration',
     'slot',schedule_slot,'task_set_hash',task_set_hash,
     'corpus_commitment_sha256',provenance->'corpus_commitment_sha256',
-    'models',models,'scoring_version','1.0.0'
+    'models',models,'scoring_version','1.0.2'
   )),8);
   select jsonb_agg(result order by model_ordinal,task_ordinal) into results
   from (
@@ -226,13 +226,13 @@ begin
         'synthetic',false,'local_trust','untrusted'
       )
     ) as result_base) built
-    where task.task_set_id='aiq-core' and task.task_set_version='1.0.1'
+    where task.task_set_id='aiq-core' and task.task_set_version='1.0.2'
   ) generated;
   payload:=jsonb_build_object(
     'schema_version','aiq.calibration-run.v3','official_eligible',false,
     'classification','local_calibration_non_official','run_id',run_id,
     'schedule_slot',schedule_slot,'task_set_hash',task_set_hash,
-    'scoring_version','1.0.0','execution_concurrency',1,
+    'scoring_version','1.0.2','execution_concurrency',1,
     'models',models,'task_ids',task_ids,'started_unix_ms',1785672000000,
     'finished_unix_ms',1785672001000,'capability_validation',preflight,
     'provenance',provenance,
@@ -366,7 +366,7 @@ with source as (
     'model',model,
     'score',jsonb_build_object(
       'schema_version','aiq.calibration-score-report.v1','run_class','calibration',
-      'scoring_version','1.0.0','model',model,'descriptive_status','coverage_only',
+      'scoring_version','1.0.2','model',model,'descriptive_status','coverage_only',
       'official_eligible',false,'ranking_eligible',false,
       'fixed_fixture_aiq',null,'conditional_observed_aiq',null,'completion_bounds',null,
       'task_resampling_sensitivity_interval',null,
@@ -389,7 +389,7 @@ with source as (
       ) order by domain) from (
         select domain,count(*)::integer as task_count
         from aiq_private.aiq_task_catalog
-        where task_set_id='aiq-core' and task_set_version='1.0.1' group by domain
+        where task_set_id='aiq-core' and task_set_version='1.0.2' group by domain
       ) domain_counts),
       'rule','Synthetic untrusted calibration evidence is descriptive only.'
     ),
@@ -421,11 +421,11 @@ with source as (
       'capability_validation_digest',aiq_private.jcs_sha256(source.payload->'capability_validation'),
       'provenance',source.payload->'provenance',
       'evaluator_results_artifact',source.payload->'evaluator_results_artifact',
-      'scoring_version','1.0.0','execution_concurrency',source.payload->'execution_concurrency',
+      'scoring_version','1.0.2','execution_concurrency',source.payload->'execution_concurrency',
       'task_ids',source.payload->'task_ids','models',source.payload->'models',
       'scores',scores.value,'result_efficiency',result_efficiency.value,
       'pricing',pg_temp.aiq_efficiency_pricing(),'task_set_id','aiq-core',
-      'task_set_version','1.0.1','benchmark_version','aiq-core@1.0.1',
+      'task_set_version','1.0.2','benchmark_version','aiq-core@1.0.2',
       'prompt_set_digest',source.payload#>>'{provenance,prompt_digest}',
       'runner_commit','integration','region','integration','scheduled_unix_ms',1785672000000,
       'started_unix_ms',source.payload->'started_unix_ms',
@@ -454,7 +454,7 @@ select stage.*,
     'score_reports_digest',stage.stage->>'score_reports_digest',
     'telemetry_digest',stage.stage->>'telemetry_digest',
     'capability_validation_digest',stage.stage->>'capability_validation_digest',
-    'scoring_version','1.0.0','execution_concurrency',stage.stage->'execution_concurrency',
+    'scoring_version','1.0.2','execution_concurrency',stage.stage->'execution_concurrency',
     'observed_unix_ms',1785672002000,'replay_status','evaluator_replayed',
     'signature',repeat('32',64)
   ) as attestation

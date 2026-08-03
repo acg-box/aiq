@@ -50,12 +50,10 @@
       "$ref": "#/$defs/nodeIdentity"
     },
     "task_set_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128
+      "const": "aiq-core"
     },
     "task_set_version": {
-      "$ref": "#/$defs/semanticVersion"
+      "const": "1.0.2"
     },
     "task_set_hash": {
       "$ref": "#/$defs/sha256"
@@ -91,14 +89,13 @@
       ]
     },
     "benchmark_version": {
-      "type": "string",
-      "minLength": 1
+      "const": "aiq-core@1.0.2"
     },
     "prompt_set_digest": {
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "const": "1.0.0"
+      "const": "1.0.2"
     },
     "runner_commit": {
       "type": "string",
@@ -294,7 +291,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc"
+          "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
@@ -1198,7 +1195,7 @@
           "const": "aiq.score-report.v1"
         },
         "scoring_version": {
-          "const": "1.0.0"
+          "const": "1.0.2"
         },
         "model": {
           "$ref": "#/$defs/modelConfig"
@@ -1838,7 +1835,7 @@
           "minLength": 1
         },
         "task_version": {
-          "$ref": "#/$defs/semanticVersion"
+          "const": "1.0.2"
         },
         "task_hash": {
           "$ref": "#/$defs/sha256"
@@ -1858,7 +1855,7 @@
           ]
         },
         "scorer_version": {
-          "$ref": "#/$defs/semanticVersion"
+          "const": "1.0.2"
         },
         "model": {
           "$ref": "#/$defs/modelConfig"

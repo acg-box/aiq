@@ -36,9 +36,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json;
 use sha2::{Digest, Sha256};
 
-use crate::candidate_release_gate::CANDIDATE_TASK_IDENTITY_SHA256;
 use crate::candidate_release_gate::CANDIDATE_UNIT_OUTPUT_COUNT;
-use crate::candidate_release_gate::ForbiddenCandidatePath;
 use crate::official_admission::{
 	OfficialOutputPlan, OfficialPlanBinding, PermissionAdmissionReport,
 };
@@ -6051,12 +6049,6 @@ fn run_package(
 			}
 
 			let mut run: CalibrationRunRecord = serde_json::from_value(value)?;
-
-			if run.provenance.catalog_digest == CANDIDATE_TASK_IDENTITY_SHA256 {
-				candidate_release_gate::reject_released_path(
-					ForbiddenCandidatePath::OfficialPackage,
-				)?;
-			}
 
 			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
 
