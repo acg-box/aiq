@@ -100,7 +100,32 @@ const calibrationRunId = `run_${'8'.repeat(64)}`;
 const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
 const pricingSource = 'https://developers.openai.com/api/docs/pricing';
 const pricingLimitation =
-  'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.';
+  'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing';
+const costFormula =
+  '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again';
+const pricingRates = [
+  {
+    model: 'gpt-5.6-sol',
+    input_usd_nanos_per_token: 5000,
+    cached_input_usd_nanos_per_token: 500,
+    cache_write_input_usd_nanos_per_token: 6250,
+    output_usd_nanos_per_token: 30000,
+  },
+  {
+    model: 'gpt-5.6-terra',
+    input_usd_nanos_per_token: 2000,
+    cached_input_usd_nanos_per_token: 200,
+    cache_write_input_usd_nanos_per_token: 2500,
+    output_usd_nanos_per_token: 12000,
+  },
+  {
+    model: 'gpt-5.6-luna',
+    input_usd_nanos_per_token: 200,
+    cached_input_usd_nanos_per_token: 20,
+    cache_write_input_usd_nanos_per_token: 250,
+    output_usd_nanos_per_token: 1200,
+  },
+];
 const calibrationRun = {
   run_id: calibrationRunId,
   classification: 'local_calibration_non_official',
@@ -270,9 +295,11 @@ calibrationResults.push(
 
 const modelEfficiency = calibrationScores.map((score, index) => ({
   run_id: leaderboard[index]?.run_id ?? `run-live-${matrix[index]?.id ?? index}`,
+  matrix_batch_id: `run_${'b'.repeat(64)}`,
   model_family: score.model_family,
   reasoning_effort: score.reasoning_effort,
-  observed_total_wall_ms: score.observed_total_wall_ms,
+  matrix_batch_elapsed_ms: 7_652_000,
+  summed_cell_adapter_elapsed_ms: score.observed_total_wall_ms,
   observed_median_wall_ms: score.observed_median_wall_ms,
   observed_p95_wall_ms: score.observed_p95_wall_ms,
   observed_time_sample_count: score.observed_time_sample_count,
@@ -286,6 +313,18 @@ const modelEfficiency = calibrationScores.map((score, index) => ({
   total_tokens: score.total_tokens,
   token_usage_sample_count: score.token_usage_sample_count,
   token_usage_coverage_percent: score.token_usage_coverage_percent,
+  input_token_coverage_count: 72,
+  input_token_coverage_percent: 100,
+  cached_input_token_coverage_count: 72,
+  cached_input_token_coverage_percent: 100,
+  cache_write_input_token_coverage_count: 72,
+  cache_write_input_token_coverage_percent: 100,
+  output_token_coverage_count: 72,
+  output_token_coverage_percent: 100,
+  reasoning_token_coverage_count: 72,
+  reasoning_token_coverage_percent: 100,
+  total_token_coverage_count: 72,
+  total_token_coverage_percent: 100,
   token_usage_source_level: score.token_usage_source_level,
   token_usage_evidence_level: score.token_usage_evidence_level,
   standard_api_equivalent_usd_nanos: score.standard_api_equivalent_usd_nanos,
@@ -297,6 +336,17 @@ const modelEfficiency = calibrationScores.map((score, index) => ({
   pricing_version: score.pricing_version,
   pricing_currency: score.pricing_currency,
   pricing_processing_tier: score.pricing_processing_tier,
+  result_count: 72,
+  attempted_result_count: 72,
+  invoked_result_count: 72,
+  adapter_elapsed_observed_result_count: 72,
+  token_observed_result_count: 72,
+  priced_result_count: score.priced_result_count,
+  execution_concurrency: 17,
+  estimated_cost_sample_count: score.estimated_cost_sample_count,
+  cost_estimator_limitations: score.cost_estimator_limitations,
+  pricing_rates: pricingRates,
+  cost_formula: costFormula,
 }));
 
 const historicalModelEfficiency = [
@@ -324,6 +374,18 @@ for (const run of runRows) {
         retryable: null,
         tools: ['repository search', 'test runner'],
         latency_ms: 7_500 + globalIndex * 137,
+        latency_evidence_level: 'runner_observed',
+        input_tokens: 1_000 + globalIndex,
+        cached_input_tokens: 200,
+        cache_write_input_tokens: 50,
+        output_tokens: 500 + globalIndex,
+        reasoning_output_tokens: 250,
+        total_tokens: 1_500 + globalIndex * 2,
+        token_usage_source_level: 'provider_reported',
+        token_usage_evidence_level: 'verifier_recomputed',
+        standard_api_equivalent_usd_nanos: 650_000 + globalIndex * 1_000,
+        cost_estimator_status: 'estimated',
+        cost_evidence_level: 'verifier_recomputed',
       });
     }
   }

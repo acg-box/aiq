@@ -1439,7 +1439,7 @@ impl Executor for SystemExecutor {
 }
 
 /// Public-safe observation of one exact controlled ChatGPT credential file.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct ChatgptCredentialObservation {
 	/// Digest of locally decoded account, user, and plan claims.
 	///

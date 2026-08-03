@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { CalibrationEfficiency } from '../components/calibration-efficiency.tsx';
 import { ReadStateNote } from '../components/read-state-note.tsx';
 import { LeaderboardTable } from '../components/leaderboard-table.tsx';
+import { OfficialEfficiencyTable } from '../components/official-efficiency-table.tsx';
 import { ScoreRing } from '../components/score-ring.tsx';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
@@ -47,6 +48,16 @@ export default async function OverviewPage() {
     (value) => value.map((score) => score.synthetic),
   );
   const leaderboard = leaderboardResult.data;
+  const officialRunIds = leaderboard.flatMap((entry) =>
+    entry.scoreStatus === 'official' && entry.runId ? [entry.runId] : [],
+  );
+  const officialEfficiencyResult = await readPublicData(
+    repository,
+    () => repository.listModelEfficiency(officialRunIds),
+    [],
+    (value) => value.length === 0,
+    (value) => value.map(() => false),
+  );
   const nodes = nodesResult.data;
   const scoredEntries = leaderboard.filter(isScoredLeaderboardEntry);
   const highestPointEstimate = scoredEntries.toSorted((left, right) => right.score - left.score)[0];
@@ -210,6 +221,24 @@ export default async function OverviewPage() {
             independent.
           </p>
         )}
+      </section>
+
+      <section className="page-shell section-block" aria-labelledby="official-efficiency-heading">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Published efficiency</span>
+            <h2 id="official-efficiency-heading">Official time, tokens, and cost</h2>
+          </div>
+          <p>
+            Codex adapter elapsed, provider token counters, and Standard API-equivalent cost stay
+            separate from AIQ. Summed cell elapsed and signed matrix batch wall-clock are distinct;
+            the batch value is counted once across concurrent configurations.
+          </p>
+        </div>
+        <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
+        {officialEfficiencyResult.state === 'published' ? (
+          <OfficialEfficiencyTable rows={officialEfficiencyResult.data} />
+        ) : null}
       </section>
 
       <section className="page-shell section-block" id="leaderboard">

@@ -263,7 +263,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
         'https://developers.openai.com/api/docs/pricing',
         'https://developers.openai.com/api/docs/models/compare',
       ),
-      /pricing record drifted/,
+      /pricing (record drifted|inventory must retain)/,
     ],
   ] as const) {
     assert.notEqual(changed, schema);

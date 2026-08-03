@@ -85,16 +85,21 @@ estimates. Unknown values are `NULL`. Standard short-context rates come from
 `https://developers.openai.com/api/docs/pricing`. A result with more than
 272000 aggregate input tokens has status `unavailable_context_band` and no cost
 or cost-evidence authority because aggregate turn usage cannot identify
-per-request context bands. The method says that actual subscription spend is
-not measured. The database does not store or infer that value.
+per-request context bands. Prompts above that boundary use the published
+long-context multiplier. Regional processing uplift and hosted tool fees are
+excluded. The method says that actual subscription spend is not measured. The
+database does not store or infer that value.
 
 `public_model_efficiency` is the separate published Official efficiency
 aggregate. It does not change AIQ scores or ranking. Elapsed columns aggregate
-observed Codex adapter invocation elapsed time. They do not represent batch
-makespan. The persisted Rust aggregate supplies the median and p95. An even
-sample median is the integer average of the two middle values. The p95 uses the
-nearest-rank value. Token counters keep the raw provider values. Reasoning
-output is a subset of output and is not added twice. Cost uses exact integer
+observed Codex adapter invocation elapsed time. The
+`summed_cell_adapter_elapsed_ms` value is not batch makespan because concurrent
+calls can overlap. The signed matrix-stage timestamps supply
+`matrix_batch_elapsed_ms`; all 17 child runs share it, so consumers count it
+once per matrix batch. The persisted Rust aggregate supplies the median and
+p95. An even sample median is the integer average of the two middle values. The
+p95 uses the nearest-rank value. Token counters keep the raw provider values.
+Reasoning output is a subset of output and is not added twice. Cost uses exact integer
 `standard_api_equivalent_usd_nanos` values and an immutable pricing-method
 digest. The pricing record keeps its method, version, observation date, source,
 currency, Standard processing tier, rates, formula, and limitation. Missing or
@@ -152,10 +157,13 @@ AIQ_PREVIEW_POSTGREST_URL='http://127.0.0.1:4180' \
 cargo make smoke-preview-web
 ```
 
-The other SQL files are validation inputs, not production installers.
+The other SQL files are validation inputs, not production installers. Apply
+the following sequence to a separate fresh disposable PostgreSQL 17 database,
+not to the database created by `init-database`:
 
 ```sh
-cargo make smoke-database
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/schema.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   --file databases/synthetic-demo.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \

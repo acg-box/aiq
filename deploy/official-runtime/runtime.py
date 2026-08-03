@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage the bounded local Linux arm64 Official runner stack."""
+"""Manage the bounded local Linux arm64 Official runner and verifier stack."""
 
 from __future__ import annotations
 
@@ -17,8 +17,12 @@ from typing import Never
 ROOT = Path(__file__).resolve().parent
 COMPOSE = ROOT / "compose.yaml"
 PROJECT = "aiq-official-runtime"
-RUNNER = "aiq-official-runner"
-PROXY = "aiq-official-proxy"
+CONTAINERS = {
+    "runner": "aiq-official-runner",
+    "runner_proxy": "aiq-official-runner-proxy",
+    "verifier": "aiq-official-verifier",
+    "verifier_proxy": "aiq-official-verifier-proxy",
+}
 REQUIREMENTS = ROOT.parent.parent / "config" / "codex-requirements.example.toml"
 SECCOMP = ROOT / "seccomp-bwrap.json"
 
@@ -34,20 +38,34 @@ READ_ONLY = {
     "schedule": ("AIQ_SCHEDULE", "file"),
     "codex_binary": ("AIQ_CODEX_BINARY", "executable"),
     "runner_binary": ("AIQ_RUNNER_BINARY", "executable"),
-    "codex_auth": ("AIQ_CODEX_AUTH", "private_file"),
+    "verifier_binary": ("AIQ_VERIFIER_BINARY", "executable"),
+    "verifier_tasks": ("AIQ_VERIFIER_TASKS", "dir"),
+    "verifier_evaluators": ("AIQ_VERIFIER_EVALUATORS", "dir"),
+    "verifier_evaluator_runtime": ("AIQ_VERIFIER_EVALUATOR_RUNTIME", "path"),
+    "verifier_toolchain": ("AIQ_VERIFIER_TOOLCHAIN", "dir"),
+    "verifier_corpus_commitment": ("AIQ_VERIFIER_CORPUS_COMMITMENT", "file"),
+    "verifier_environment": ("AIQ_VERIFIER_ENVIRONMENT", "file"),
+}
+
+SECRETS = {
+    "codex_auth": ("AIQ_CODEX_AUTH", 10001),
+    "verifier_token": ("AIQ_VERIFIER_TOKEN_FILE", 10003),
+    "verifier_signing_key": ("AIQ_VERIFIER_SIGNING_KEY_FILE", 10003),
 }
 
 WRITABLE = {
-    "codex_home": "AIQ_CODEX_HOME",
-    "execution": "AIQ_EXECUTION",
-    "artifacts": "AIQ_ARTIFACTS",
-    "checkpoints": "AIQ_CHECKPOINTS",
-    "preflight": "AIQ_PREFLIGHT",
-    "admission": "AIQ_ADMISSION",
-    "results": "AIQ_RESULTS",
+    "codex_home": ("AIQ_CODEX_HOME", 10001, 0o711),
+    "execution": ("AIQ_EXECUTION", 10001, 0o700),
+    "artifacts": ("AIQ_ARTIFACTS", 10001, 0o700),
+    "checkpoints": ("AIQ_CHECKPOINTS", 10001, 0o700),
+    "preflight": ("AIQ_PREFLIGHT", 10001, 0o700),
+    "admission": ("AIQ_ADMISSION", 10001, 0o700),
+    "results": ("AIQ_RESULTS", 10001, 0o700),
+    "verifier_replay": ("AIQ_VERIFIER_REPLAY", 10003, 0o700),
+    "verifier_records": ("AIQ_VERIFIER_RECORDS", 10003, 0o700),
 }
 
-MOUNTS = {
+RUNNER_MOUNTS = {
     "AIQ_SOURCE": ("/inputs/source", True),
     "AIQ_HIDDEN_TASKS": ("/inputs/tasks", True),
     "AIQ_BASELINES": ("/inputs/baselines", True),
@@ -68,6 +86,22 @@ MOUNTS = {
     "AIQ_ADMISSION": ("/output/admission", False),
     "AIQ_RESULTS": ("/output/results", False),
 }
+
+VERIFIER_MOUNTS = {
+    "AIQ_VERIFIER_BINARY": ("/inputs/bin/aiq-verifier", True),
+    "AIQ_VERIFIER_TASKS": ("/inputs/tasks", True),
+    "AIQ_VERIFIER_EVALUATORS": ("/inputs/evaluators", True),
+    "AIQ_VERIFIER_EVALUATOR_RUNTIME": ("/inputs/evaluator-runtime", True),
+    "AIQ_VERIFIER_TOOLCHAIN": ("/inputs/toolchain", True),
+    "AIQ_VERIFIER_CORPUS_COMMITMENT": ("/inputs/corpus-commitment.json", True),
+    "AIQ_VERIFIER_ENVIRONMENT": ("/inputs/verifier-environment.json", True),
+    "AIQ_VERIFIER_TOKEN_FILE": ("/run/secrets/verifier-token", True),
+    "AIQ_VERIFIER_SIGNING_KEY_FILE": ("/run/secrets/verifier-signing-key", True),
+    "AIQ_VERIFIER_REPLAY": ("/replay", False),
+    "AIQ_VERIFIER_RECORDS": ("/records", False),
+}
+
+MOUNTS = RUNNER_MOUNTS | VERIFIER_MOUNTS
 
 
 def fail(message: str) -> Never:
@@ -141,32 +175,191 @@ def validate_kind(path: Path, kind: str, label: str) -> None:
         fail(f"{label} must be a regular file")
     if kind == "path" and not (path.is_file() or path.is_dir()):
         fail(f"{label} must be a regular file or directory")
-    if unsafe_write_bits(path):
-        fail(f"{label} must not be writable by group or other")
+    if stat.S_IMODE(path.stat().st_mode) & 0o222:
+        fail(f"{label} must have no owner, group, or other write bit")
     if kind == "executable" and not os.access(path, os.X_OK):
         fail(f"{label} must be executable")
-    if kind == "private_file":
-        mode = stat.S_IMODE(path.stat().st_mode)
-        if path.stat().st_uid != os.getuid() or mode & 0o077:
-            fail(f"{label} must be owned by this user with mode 0600 or stricter")
 
 
-def validate_writable(path: Path, label: str) -> None:
+def validate_secret(path: Path, label: str, service_uid: int) -> dict[str, object]:
     info = path.stat()
-    if not path.is_dir() or info.st_uid != os.getuid():
-        fail(f"{label} must be a directory owned by this user")
-    if stat.S_IMODE(info.st_mode) != 0o700:
-        fail(f"{label} must have mode 0700")
-    if not os.access(path, os.R_OK | os.W_OK | os.X_OK):
-        fail(f"{label} is not readable, writable, and searchable")
+    if not path.is_file() or info.st_nlink != 1:
+        fail(f"{label} must be a singly linked regular file")
+    if info.st_uid != service_uid or info.st_gid != service_uid:
+        fail(f"{label} must be owned by uid/gid {service_uid}:{service_uid}")
+    if stat.S_IMODE(info.st_mode) != 0o600:
+        fail(f"{label} must have exact mode 0600")
+    return {
+        "owner": f"{info.st_uid}:{info.st_gid}",
+        "mode": "0600",
+        "links": 1,
+        "mount_policy": "read_only_file",
+        "content_digest_recorded": False,
+    }
+
+
+def validate_empty_mountpoint(path: Path, label: str, service_uid: int) -> dict[str, object]:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        fail(f"{label} must be an existing empty regular file")
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        fail(f"{label} must be a singly linked non-symlink regular file")
+    if info.st_uid != service_uid or info.st_gid != service_uid:
+        fail(f"{label} must be owned by uid/gid {service_uid}:{service_uid}")
+    if stat.S_IMODE(info.st_mode) != 0o600 or info.st_size != 0:
+        fail(f"{label} must be empty and have exact mode 0600")
+    return {
+        "owner": f"{info.st_uid}:{info.st_gid}",
+        "mode": "0600",
+        "links": 1,
+        "bytes": 0,
+        "purpose": "nested_read_only_bind_mountpoint",
+    }
+
+
+def validate_writable(
+    path: Path,
+    label: str,
+    service_uid: int,
+    expected_mode: int = 0o700,
+    service_gid: int | None = None,
+) -> None:
+    info = path.stat()
+    expected_gid = service_uid if service_gid is None else service_gid
+    if not path.is_dir() or info.st_uid != service_uid or info.st_gid != expected_gid:
+        fail(f"{label} must be a directory owned by uid/gid {service_uid}:{expected_gid}")
+    if stat.S_IMODE(info.st_mode) != expected_mode:
+        fail(f"{label} must have mode {expected_mode:04o}")
+
+
+def _metadata(info: os.stat_result) -> tuple[int, int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def content_binding(path: Path, *, exclude_root: frozenset[str] = frozenset()) -> dict[str, object]:
+    """Hash one frozen regular file or directory without following links."""
+    digest = hashlib.sha256()
+    entry_count = 0
+    byte_count = 0
+
+    def add(record: dict[str, object]) -> None:
+        nonlocal entry_count
+        digest.update(json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+        digest.update(b"\n")
+        entry_count += 1
+
+    def scan_file(parent_fd: int | None, name: str | None, display: str, root: Path | None = None) -> None:
+        nonlocal byte_count
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(root if root is not None else name, flags, dir_fd=parent_fd)
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                fail(f"read-only input has a special file or unsafe hard link: {path / display}")
+            if stat.S_IMODE(before.st_mode) & 0o222:
+                fail(f"read-only input entry has a write bit: {path / display}")
+            file_digest = hashlib.sha256()
+            while True:
+                block = os.read(descriptor, 1024 * 1024)
+                if not block:
+                    break
+                file_digest.update(block)
+            after = os.fstat(descriptor)
+            if _metadata(before) != _metadata(after):
+                fail(f"read-only input changed while hashing: {path / display}")
+            byte_count += before.st_size
+            add({
+                "path": display,
+                "type": "file",
+                "mode": f"{stat.S_IMODE(before.st_mode):04o}",
+                "size": before.st_size,
+                "sha256": file_digest.hexdigest(),
+            })
+        finally:
+            os.close(descriptor)
+
+    def scan_directory(parent_fd: int | None, name: str | None, display: str, root: Path | None = None) -> None:
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(root if root is not None else name, flags, dir_fd=parent_fd)
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISDIR(before.st_mode):
+                fail(f"read-only input is not a directory: {path / display}")
+            if stat.S_IMODE(before.st_mode) & 0o222:
+                fail(f"read-only input directory has a write bit: {path / display}")
+            add({"path": display, "type": "directory", "mode": f"{stat.S_IMODE(before.st_mode):04o}"})
+            with os.scandir(descriptor) as iterator:
+                names = sorted(entry.name for entry in iterator)
+            for child in names:
+                if display == "." and child in exclude_root:
+                    continue
+                child_info = os.stat(child, dir_fd=descriptor, follow_symlinks=False)
+                child_display = child if display == "." else f"{display}/{child}"
+                if stat.S_ISLNK(child_info.st_mode):
+                    fail(f"read-only input contains a symlink: {path / child_display}")
+                if stat.S_ISDIR(child_info.st_mode):
+                    scan_directory(descriptor, child, child_display)
+                elif stat.S_ISREG(child_info.st_mode):
+                    scan_file(descriptor, child, child_display)
+                else:
+                    fail(f"read-only input contains a special file: {path / child_display}")
+            after = os.fstat(descriptor)
+            if _metadata(before) != _metadata(after):
+                fail(f"read-only input directory changed while hashing: {path / display}")
+        finally:
+            os.close(descriptor)
+
+    root_info = os.stat(path, follow_symlinks=False)
+    if stat.S_ISREG(root_info.st_mode):
+        scan_file(None, None, ".", path)
+        kind = "file"
+    elif stat.S_ISDIR(root_info.st_mode):
+        scan_directory(None, None, ".", path)
+        kind = "directory"
+    else:
+        fail(f"read-only input is a special file: {path}")
+    final_info = os.stat(path, follow_symlinks=False)
+    if _metadata(root_info) != _metadata(final_info):
+        fail(f"read-only input path changed while hashing: {path}")
+    return {
+        "algorithm": "sha256",
+        "manifest_format": "aiq.frozen-tree.v1",
+        "type": kind,
+        "digest": f"sha256:{digest.hexdigest()}",
+        "entries": entry_count,
+        "bytes": byte_count,
+        "host_identity": {"device": root_info.st_dev, "inode": root_info.st_ino},
+    }
 
 
 def validate_no_overlap(paths: dict[str, Path]) -> None:
+    shared_read_only = {
+        frozenset(("read_only.hidden_tasks", "read_only.verifier_tasks")),
+        frozenset(("read_only.evaluators", "read_only.verifier_evaluators")),
+        frozenset(("read_only.evaluator_runtime", "read_only.verifier_evaluator_runtime")),
+        frozenset(("read_only.toolchain", "read_only.verifier_toolchain")),
+        frozenset(("read_only.corpus_commitment", "read_only.verifier_corpus_commitment")),
+    }
     items = list(paths.items())
     for index, (left_name, left) in enumerate(items):
         for right_name, right in items[index + 1 :]:
             common = Path(os.path.commonpath((left, right)))
             if common == left or common == right:
+                if left == right and frozenset((left_name, right_name)) in shared_read_only:
+                    continue
                 fail(f"{left_name} and {right_name} overlap")
 
 
@@ -192,7 +385,7 @@ def validate_source(source: Path, expected: object) -> str:
     return actual
 
 
-def validated_config(config_path: Path) -> tuple[dict[str, str], str]:
+def validated_config(config_path: Path) -> tuple[dict[str, str], str, dict[str, object]]:
     config = load_config(config_path)
     read_only = config.get("read_only")
     writable = config.get("writable")
@@ -201,21 +394,46 @@ def validated_config(config_path: Path) -> tuple[dict[str, str], str]:
 
     env: dict[str, str] = {}
     paths: dict[str, Path] = {}
+    inputs: dict[str, object] = {}
     for name, (variable, kind) in READ_ONLY.items():
         path = declared_path(read_only.get(name), f"read_only.{name}")
         validate_kind(path, kind, f"read_only.{name}")
         paths[f"read_only.{name}"] = path
         env[variable] = str(path)
-    for name, variable in WRITABLE.items():
+        inputs[name] = {
+            "mount_source": str(path),
+            **content_binding(path, exclude_root=frozenset({".git"}) if name == "source" else frozenset()),
+        }
+    secret_metadata: dict[str, object] = {}
+    for name, (variable, service_uid) in SECRETS.items():
+        path = declared_path(read_only.get(name), f"read_only.{name}")
+        secret_metadata[name] = validate_secret(path, f"read_only.{name}", service_uid)
+        paths[f"read_only.{name}"] = path
+        env[variable] = str(path)
+    for name, (variable, service_uid, expected_mode) in WRITABLE.items():
         path = declared_path(writable.get(name), f"writable.{name}")
-        validate_writable(path, f"writable.{name}")
+        validate_writable(path, f"writable.{name}", service_uid, expected_mode)
         paths[f"writable.{name}"] = path
         env[variable] = str(path)
 
+    mountpoints = {
+        "codex_auth": validate_empty_mountpoint(
+            paths["writable.codex_home"] / "auth.json",
+            "writable.codex_home/auth.json mountpoint",
+            10001,
+        )
+    }
+
     validate_no_overlap(paths)
+    if paths["read_only.source"] != ROOT.parent.parent:
+        fail("read_only.source must be the source tree that contains this runtime manager")
     commit = validate_source(paths["read_only.source"], config.get("source_commit"))
     env["AIQ_SOURCE_COMMIT"] = commit
-    return env, commit
+    return env, commit, {
+        "inputs": inputs,
+        "secrets": secret_metadata,
+        "mountpoints": mountpoints,
+    }
 
 
 def validate_docker_host() -> None:
@@ -255,7 +473,7 @@ def prepare_state(state: Path, *, create: bool) -> Path:
         state.mkdir(mode=0o700, parents=False)
     if state.resolve() != state:
         fail("--state must be canonical")
-    validate_writable(state, "state")
+    validate_writable(state, "state", os.getuid(), 0o700, os.getgid())
     return state / "compose.env"
 
 
@@ -391,15 +609,19 @@ def inspect(name: str) -> dict[str, object]:
     return json.loads(run("docker", "inspect", name, capture=True))[0]
 
 
-def assert_mount_policy(runner: dict[str, object], env: dict[str, str]) -> None:
+def assert_mount_policy(
+    container: dict[str, object],
+    env: dict[str, str],
+    policy: dict[str, tuple[str, bool]],
+) -> None:
     expected = {
         destination: {"source": env[variable], "read_only": read_only}
-        for variable, (destination, read_only) in MOUNTS.items()
+        for variable, (destination, read_only) in policy.items()
     }
     actual: dict[str, dict[str, object]] = {}
-    for mount in runner["Mounts"]:
+    for mount in container["Mounts"]:
         if mount["Type"] != "bind":
-            continue
+            fail("live container has an unexpected non-bind mount")
         actual[mount["Destination"]] = {
             "source": mount["Source"],
             "read_only": not mount["RW"],
@@ -408,12 +630,11 @@ def assert_mount_policy(runner: dict[str, object], env: dict[str, str]) -> None:
         fail("live runner bind mounts do not match the supplied operator config")
 
 
-def assert_runtime(env: dict[str, str]) -> tuple[dict[str, object], dict[str, object]]:
-    runner = inspect(RUNNER)
-    proxy = inspect(PROXY)
-    runner_host = runner["HostConfig"]
-    proxy_host = proxy["HostConfig"]
-    for name, host in ((RUNNER, runner_host), (PROXY, proxy_host)):
+def assert_runtime(env: dict[str, str]) -> dict[str, dict[str, object]]:
+    containers = {role: inspect(name) for role, name in CONTAINERS.items()}
+    for role, container in containers.items():
+        name = CONTAINERS[role]
+        host = container["HostConfig"]
         if host["ReadonlyRootfs"] is not True or host["Privileged"] is not False:
             fail(f"{name} does not have the required root-filesystem and privilege policy")
         if host["CapDrop"] != ["ALL"]:
@@ -428,43 +649,76 @@ def assert_runtime(env: dict[str, str]) -> tuple[dict[str, object], dict[str, ob
             fail(f"{name} publishes a host port")
         if "unconfined" in " ".join(host["SecurityOpt"]):
             fail(f"{name} uses an unconfined security policy")
-    if runner["Config"]["User"] != "10001:10001":
-        fail("runner does not use uid/gid 10001:10001")
-    if proxy["Config"]["User"] != "10002:10002":
-        fail("proxy does not use uid/gid 10002:10002")
-    if proxy["Mounts"]:
-        fail("proxy has an unexpected mount")
-    security_options = runner_host["SecurityOpt"]
+    expected_users = {
+        "runner": "10001:10001",
+        "runner_proxy": "10002:10002",
+        "verifier": "10003:10003",
+        "verifier_proxy": "10004:10004",
+    }
+    expected_images = {
+        "runner": "aiq-official-runner:local",
+        "runner_proxy": "aiq-official-runner-proxy:local",
+        "verifier": "aiq-official-verifier:local",
+        "verifier_proxy": "aiq-official-verifier-proxy:local",
+    }
+    for role, container in containers.items():
+        if container["Config"]["User"] != expected_users[role]:
+            fail(f"{role} does not use exact uid/gid {expected_users[role]}")
+        if container["Config"]["Image"] != expected_images[role]:
+            fail(f"{role} does not use the exact local image tag")
+    if containers["runner_proxy"]["Mounts"] or containers["verifier_proxy"]["Mounts"]:
+        fail("a proxy has an unexpected mount")
+    security_options = containers["runner"]["HostConfig"]["SecurityOpt"]
     security = " ".join(security_options)
     profile_options = [option for option in security_options if option.startswith("seccomp=")]
     if "unconfined" in security or len(profile_options) != 1:
         fail("runner custom seccomp policy is not active")
     if json.loads(profile_options[0].removeprefix("seccomp=")) != json.loads(SECCOMP.read_text()):
         fail("active runner seccomp policy does not match the reviewed profile")
-    if runner["NetworkSettings"]["Networks"].keys() != {"aiq-official-runner-internal"}:
+    for role in ("runner_proxy", "verifier", "verifier_proxy"):
+        options = containers[role]["HostConfig"]["SecurityOpt"]
+        if any(option.startswith("seccomp=") for option in options):
+            fail(f"{role} must use Docker's default seccomp profile")
+    runner = containers["runner"]
+    runner_proxy = containers["runner_proxy"]
+    verifier = containers["verifier"]
+    verifier_proxy = containers["verifier_proxy"]
+    if set(runner["NetworkSettings"]["Networks"]) != {"aiq-official-runner-internal"}:
         fail("runner must attach only to its internal network")
-    proxy_networks = set(proxy["NetworkSettings"]["Networks"].keys())
-    if proxy_networks != {"aiq-official-runner-internal", "aiq-official-proxy-egress"}:
-        fail("proxy network topology is not exact")
-    endpoint = proxy["NetworkSettings"]["Networks"]["aiq-official-runner-internal"]["IPAddress"]
-    if endpoint != "172.30.0.2":
-        fail("proxy internal endpoint is not 172.30.0.2")
-    assert_mount_policy(runner, env)
-    return runner, proxy
+    if set(verifier["NetworkSettings"]["Networks"]) != {"aiq-official-verifier-internal"}:
+        fail("verifier must attach only to its own internal network")
+    expected_proxy_networks = {
+        "runner_proxy": {"aiq-official-runner-internal", "aiq-official-runner-proxy-egress"},
+        "verifier_proxy": {"aiq-official-verifier-internal", "aiq-official-verifier-proxy-egress"},
+    }
+    for role, expected in expected_proxy_networks.items():
+        if set(containers[role]["NetworkSettings"]["Networks"]) != expected:
+            fail(f"{role} network topology is not exact")
+    if runner_proxy["NetworkSettings"]["Networks"]["aiq-official-runner-internal"]["IPAddress"] != "172.30.0.2":
+        fail("runner proxy internal endpoint is not 172.30.0.2")
+    if verifier_proxy["NetworkSettings"]["Networks"]["aiq-official-verifier-internal"]["IPAddress"] != "172.32.0.2":
+        fail("verifier proxy internal endpoint is not 172.32.0.2")
+    assert_mount_policy(runner, env, RUNNER_MOUNTS)
+    assert_mount_policy(verifier, env, VERIFIER_MOUNTS)
+    verifier_environment = "\n".join(verifier["Config"].get("Env") or [])
+    for forbidden in ("CODEX_HOME=", "AIQ_VERIFIER_INGRESS_TOKEN=", "AIQ_VERIFIER_SIGNING_KEY="):
+        if forbidden in verifier_environment:
+            fail(f"verifier environment exposes forbidden entry {forbidden}")
+    return containers
 
 
-def assert_image_commit(runner: dict[str, object], proxy: dict[str, object], commit: str) -> None:
-    for name, container in ((RUNNER, runner), (PROXY, proxy)):
+def assert_image_commit(containers: dict[str, dict[str, object]], commit: str) -> None:
+    for role, container in containers.items():
         labels = container["Config"].get("Labels") or {}
         if labels.get("org.opencontainers.image.revision") != commit:
-            fail(f"{name} image is not bound to the configured source commit")
+            fail(f"{role} image is not bound to the configured source commit")
 
 
 def requirements_binding() -> dict[str, str]:
     ownership_mode = run(
         "docker",
         "exec",
-        RUNNER,
+        CONTAINERS["runner"],
         "stat",
         "-c",
         "%u:%g:%a",
@@ -474,7 +728,7 @@ def requirements_binding() -> dict[str, str]:
     container_digest = run(
         "docker",
         "exec",
-        RUNNER,
+        CONTAINERS["runner"],
         "sha256sum",
         "/etc/codex/requirements.toml",
         capture=True,
@@ -485,26 +739,66 @@ def requirements_binding() -> dict[str, str]:
     return {"digest": expected, "ownership_mode": ownership_mode}
 
 
+def secret_mount_metadata() -> dict[str, str]:
+    targets = {
+        "codex_auth": (CONTAINERS["runner"], "/codex-home/auth.json", "10001:10001:600:1"),
+        "verifier_token": (CONTAINERS["verifier"], "/run/secrets/verifier-token", "10003:10003:600:1"),
+        "verifier_signing_key": (
+            CONTAINERS["verifier"],
+            "/run/secrets/verifier-signing-key",
+            "10003:10003:600:1",
+        ),
+    }
+    observed = {}
+    for name, (container, target, expected) in targets.items():
+        value = run(
+            "docker", "exec", container, "stat", "-c", "%u:%g:%a:%h", target, capture=True
+        )
+        if value != expected:
+            fail(f"{name} secret mount metadata is not exact")
+        observed[name] = value
+    return observed
+
+
+def default_seccomp_binding() -> dict[str, str]:
+    observed = {}
+    for role in ("runner_proxy", "verifier", "verifier_proxy"):
+        value = run(
+            "docker",
+            "exec",
+            CONTAINERS[role],
+            "sh",
+            "-c",
+            "awk '/^Seccomp:/ { print $2 }' /proc/self/status",
+            capture=True,
+        )
+        if value != "2":
+            fail(f"{role} does not have Docker's default seccomp enforcement")
+        observed[role] = "filtering"
+    return observed
+
+
 def runtime_binding(
     env_file: Path,
     commit: str,
-    runner: dict[str, object],
-    proxy: dict[str, object],
+    containers: dict[str, dict[str, object]],
+    content: dict[str, object],
 ) -> dict[str, object]:
-    runner_network = runner["NetworkSettings"]["Networks"]["aiq-official-runner-internal"]
-    proxy_networks = proxy["NetworkSettings"]["Networks"]
+    network_ids: dict[str, str] = {}
+    for role, container in containers.items():
+        for network_name, network in container["NetworkSettings"]["Networks"].items():
+            network_ids[f"{role}:{network_name}"] = network["NetworkID"]
     return {
         "source_commit": commit,
         "compose_env_digest": sha256(env_file),
-        "containers": {"runner": runner["Id"], "proxy": proxy["Id"]},
-        "images": {"runner": runner["Image"], "proxy": proxy["Image"]},
+        "containers": {role: container["Id"] for role, container in containers.items()},
+        "images": {role: container["Image"] for role, container in containers.items()},
         "requirements": requirements_binding(),
+        "secret_mount_metadata": secret_mount_metadata(),
+        "default_seccomp": default_seccomp_binding(),
         "seccomp_digest": sha256(SECCOMP),
-        "networks": {
-            "runner_internal": runner_network["NetworkID"],
-            "proxy_internal": proxy_networks["aiq-official-runner-internal"]["NetworkID"],
-            "proxy_egress": proxy_networks["aiq-official-proxy-egress"]["NetworkID"],
-        },
+        "networks": network_ids,
+        "content": content,
     }
 
 
@@ -542,16 +836,46 @@ def validate_state_separation(state: Path, env: dict[str, str]) -> None:
             fail(f"state directory overlaps {variable}")
 
 
+def require_created_content(state: Path, content: dict[str, object]) -> None:
+    recorded = read_private_json(state / "content-bindings.json")
+    if recorded.get("schema_version") != "aiq.official-runtime-content-bindings.v1":
+        fail("created content bindings use an unsupported schema")
+    if recorded.get("content") != content:
+        fail("read-only input content or secret metadata changed; run create again")
+
+
+def receipt_content(content: dict[str, object]) -> dict[str, object]:
+    inputs = {}
+    for name, binding in content["inputs"].items():
+        inputs[name] = {key: value for key, value in binding.items() if key != "mount_source"}
+    return {
+        "inputs": inputs,
+        "secrets": content["secrets"],
+        "mountpoints": content["mountpoints"],
+    }
+
+
 def create(config: Path, state: Path) -> None:
-    env, _ = validated_config(config)
+    env, commit, content = validated_config(config)
     validate_docker_host()
     env_file = prepare_state(state, create=True)
     validate_state_separation(state, env)
     write_env(env_file, env)
+    atomic_write_private(
+        state / "content-bindings.json",
+        (json.dumps({
+            "schema_version": "aiq.official-runtime-content-bindings.v1",
+            "source_commit": commit,
+            "content": content,
+        }, sort_keys=True) + "\n").encode(),
+    )
     args = compose_args(env_file)
     run(*args, "config", "--quiet")
     run(*args, "build", "--pull")
     run(*args, "create", "--force-recreate")
+    repeated_env, repeated_commit, repeated_content = validated_config(config)
+    if (repeated_env, repeated_commit, repeated_content) != (env, commit, content):
+        fail("operator inputs changed while the stack was created")
 
 
 def up(state: Path) -> None:
@@ -563,14 +887,15 @@ def up(state: Path) -> None:
 
 
 def validate(config: Path, state: Path) -> None:
-    env, commit = validated_config(config)
+    env, commit, content = validated_config(config)
     validate_docker_host()
     env_file = prepare_state(state, create=False)
     require_env_file(env_file, env)
     validate_state_separation(state, env)
-    runner, proxy = assert_runtime(env)
-    assert_image_commit(runner, proxy, commit)
-    output = run(
+    require_created_content(state, content)
+    containers = assert_runtime(env)
+    assert_image_commit(containers, commit)
+    runner_output = run(
         *compose_args(env_file),
         "exec",
         "--no-TTY",
@@ -578,49 +903,66 @@ def validate(config: Path, state: Path) -> None:
         "/usr/local/bin/aiq-runtime-canary",
         capture=True,
     )
-    if "model_invoked=false" not in output:
-        fail("model-free canary result is absent")
+    verifier_output = run(
+        *compose_args(env_file),
+        "exec",
+        "--no-TTY",
+        "verifier",
+        "/usr/local/bin/aiq-verifier-canary",
+        capture=True,
+    )
+    if "model_invoked=false" not in runner_output or "model_invoked=false" not in verifier_output:
+        fail("a model-free canary result is absent")
+    repeated_env, repeated_commit, repeated_content = validated_config(config)
+    if (repeated_env, repeated_commit, repeated_content) != (env, commit, content):
+        fail("operator inputs changed during validation")
     evidence = {
-        "schema_version": "aiq.official-runtime-validation.v1",
-        "binding": runtime_binding(env_file, commit, runner, proxy),
-        "canary": output,
+        "schema_version": "aiq.official-runtime-validation.v2",
+        "binding": runtime_binding(env_file, commit, containers, content),
+        "canary": {"runner": runner_output, "verifier": verifier_output},
         "model_invoked": False,
     }
     atomic_write_private(
         state / "validation.json",
         (json.dumps(evidence, sort_keys=True) + "\n").encode(),
     )
-    print(output)
+    print(runner_output)
+    print(verifier_output)
 
 
 def receipt(config: Path, state: Path) -> None:
-    env, commit = validated_config(config)
+    env, commit, content = validated_config(config)
     validate_docker_host()
     env_file = prepare_state(state, create=False)
     require_env_file(env_file, env)
     validate_state_separation(state, env)
-    runner, proxy = assert_runtime(env)
-    assert_image_commit(runner, proxy, commit)
+    require_created_content(state, content)
+    containers = assert_runtime(env)
+    assert_image_commit(containers, commit)
     evidence = read_private_json(state / "validation.json")
-    current_binding = runtime_binding(env_file, commit, runner, proxy)
+    current_binding = runtime_binding(env_file, commit, containers, content)
     require_current_evidence(evidence, current_binding)
     docker_version = json.loads(
         run("docker", "version", "--format", "{{json .Server}}", capture=True)
     )
-    mounts = [
-        {"destination": mount["Destination"], "mode": "rw" if mount["RW"] else "ro"}
-        for mount in runner["Mounts"]
-        if mount["Type"] == "bind"
-    ]
+    mounts = {
+        role: sorted(
+            [
+                {"destination": mount["Destination"], "mode": "rw" if mount["RW"] else "ro"}
+                for mount in container["Mounts"]
+                if mount["Type"] == "bind"
+            ],
+            key=lambda item: item["destination"],
+        )
+        for role, container in containers.items()
+    }
     payload = {
-        "schema_version": "aiq.official-runtime-deployment-receipt.v1",
+        "schema_version": "aiq.official-runtime-deployment-receipt.v2",
         "source_commit": commit,
         "platform": {"os": docker_version["Os"], "architecture": docker_version["Arch"]},
         "docker": {"version": docker_version["Version"], "security_options": ["seccomp"]},
-        "images": {
-            "runner": runner["Image"],
-            "proxy": proxy["Image"],
-        },
+        "images": {role: container["Image"] for role, container in containers.items()},
+        "content_bindings": receipt_content(content),
         "requirements": {
             "digest": current_binding["requirements"]["digest"],
             "container_ownership_mode": current_binding["requirements"]["ownership_mode"],
@@ -633,13 +975,19 @@ def receipt(config: Path, state: Path) -> None:
         },
         "network_topology": {
             "runner": ["aiq-official-runner-internal"],
-            "proxy": ["aiq-official-runner-internal", "aiq-official-proxy-egress"],
-            "proxy_endpoint": "172.30.0.2:3128",
+            "runner_proxy": ["aiq-official-runner-internal", "aiq-official-runner-proxy-egress"],
+            "runner_proxy_endpoint": "172.30.0.2:3128",
+            "verifier": ["aiq-official-verifier-internal"],
+            "verifier_proxy": ["aiq-official-verifier-internal", "aiq-official-verifier-proxy-egress"],
+            "verifier_proxy_endpoint": "172.32.0.2:3128",
             "host_ports": [],
         },
-        "mount_policy": sorted(mounts, key=lambda item: item["destination"]),
+        "mount_policy": mounts,
         "model_invoked": False,
     }
+    repeated_env, repeated_commit, repeated_content = validated_config(config)
+    if (repeated_env, repeated_commit, repeated_content) != (env, commit, content):
+        fail("operator inputs changed while the receipt was created")
     destination = state / "deployment-receipt.json"
     atomic_write_private(
         destination,

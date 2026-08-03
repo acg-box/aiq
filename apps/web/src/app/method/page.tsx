@@ -44,9 +44,13 @@ function EfficiencyMethod() {
             Raw token counters are provider-reported. The verifier recomputes aggregates and the
             cost estimate from those counters. USD displays only when estimator status is estimated
             and token coverage is complete. Missing, invalid, or JCS-overflowed aggregate usage
-            displays as unavailable, never zero. A result above 272,000 aggregate input tokens uses
-            the unavailable context band status and is not priced because aggregate turn usage
-            cannot identify per-request context bands.
+            displays as unavailable, never zero.{' '}
+            <a href="https://developers.openai.com/api/docs/pricing">
+              Prompts above 272,000 input tokens use 2× input and 1.5× output rates
+            </a>
+            . AIQ cannot identify each request context band from aggregate usage, so a result above
+            272,000 aggregate input tokens uses the unavailable context band status and is not
+            priced.
           </dd>
         </div>
         <div>
@@ -57,7 +61,10 @@ function EfficiencyMethod() {
             consume time; missing or non-invoked cells do not. Full-matrix timings are operational
             resource-profile evidence under the recorded node, execution order, and concurrency (17
             jobs for the current run). Model, tool, network, and local contention vary. This is not
-            pure task latency or an isolated API-frontier latency test.
+            pure task latency or an isolated API-frontier latency test. Cell durations can overlap
+            under concurrency. Signed matrix-stage start and finish times provide the full batch
+            wall-clock, which is counted once across the 17 configurations. TTFT and TPS are
+            unavailable and are not inferred.
           </dd>
         </div>
         <div>

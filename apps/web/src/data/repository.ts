@@ -284,6 +284,18 @@ export interface RunResultRow {
   retryable: boolean | null;
   tools: string[];
   latency_ms: number | null;
+  latency_evidence_level: 'runner_observed' | null;
+  input_tokens: number | null;
+  cached_input_tokens: number | null;
+  cache_write_input_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_output_tokens: number | null;
+  total_tokens: number | null;
+  token_usage_source_level: 'provider_reported' | null;
+  token_usage_evidence_level: 'verifier_recomputed' | null;
+  standard_api_equivalent_usd_nanos: number | null;
+  cost_estimator_status: TaskResult['costEstimatorStatus'];
+  cost_evidence_level: 'verifier_recomputed' | null;
 }
 
 export interface CalibrationRunRow {
@@ -524,9 +536,11 @@ export interface CalibrationScoreRow {
 
 interface ModelEfficiencyRow {
   run_id: string;
+  matrix_batch_id: string;
   model_family: 'sol' | 'terra' | 'luna';
   reasoning_effort: ReasoningTier;
-  observed_total_wall_ms: number | null;
+  matrix_batch_elapsed_ms: number;
+  summed_cell_adapter_elapsed_ms: number | null;
   observed_median_wall_ms: number | null;
   observed_p95_wall_ms: number | null;
   observed_time_sample_count: number;
@@ -542,7 +556,19 @@ interface ModelEfficiencyRow {
   token_usage_source_level: 'provider_reported' | null;
   standard_api_equivalent_usd_nanos: number | null;
   cost_estimator_status: PublicModelEfficiency['costEstimatorStatus'];
-  token_usage_coverage_percent: number;
+  token_usage_coverage_percent: number | null;
+  input_token_coverage_count: number | null;
+  input_token_coverage_percent: number | null;
+  cached_input_token_coverage_count: number | null;
+  cached_input_token_coverage_percent: number | null;
+  cache_write_input_token_coverage_count: number | null;
+  cache_write_input_token_coverage_percent: number | null;
+  output_token_coverage_count: number | null;
+  output_token_coverage_percent: number | null;
+  reasoning_token_coverage_count: number | null;
+  reasoning_token_coverage_percent: number | null;
+  total_token_coverage_count: number | null;
+  total_token_coverage_percent: number | null;
   token_usage_evidence_level: 'verifier_recomputed' | null;
   cost_evidence_level: 'verifier_recomputed' | null;
   cost_method: string | null;
@@ -551,6 +577,17 @@ interface ModelEfficiencyRow {
   pricing_version: string | null;
   pricing_currency: 'USD' | null;
   pricing_processing_tier: 'standard' | null;
+  result_count: number;
+  attempted_result_count: number;
+  invoked_result_count: number;
+  adapter_elapsed_observed_result_count: number;
+  token_observed_result_count: number;
+  priced_result_count: number;
+  execution_concurrency: number;
+  estimated_cost_sample_count: number;
+  cost_estimator_limitations: string[];
+  pricing_rates: PublicModelEfficiency['pricingRates'];
+  cost_formula: string | null;
 }
 
 export function mapRunRow(row: RunRow, resultRows: readonly RunResultRow[]): BenchmarkRun {
@@ -592,6 +629,18 @@ export function mapRunRow(row: RunRow, resultRows: readonly RunResultRow[]): Ben
               : null,
           tools: result.tools,
           latencyMs: result.latency_ms,
+          latencyEvidenceLevel: result.latency_evidence_level,
+          inputTokens: result.input_tokens,
+          cachedInputTokens: result.cached_input_tokens,
+          cacheWriteInputTokens: result.cache_write_input_tokens,
+          outputTokens: result.output_tokens,
+          reasoningOutputTokens: result.reasoning_output_tokens,
+          totalTokens: result.total_tokens,
+          tokenUsageSourceLevel: result.token_usage_source_level,
+          tokenUsageEvidenceLevel: result.token_usage_evidence_level,
+          standardApiEquivalentUsdNanos: result.standard_api_equivalent_usd_nanos,
+          costEstimatorStatus: result.cost_estimator_status,
+          costEvidenceLevel: result.cost_evidence_level,
         }),
       ),
   };
@@ -903,14 +952,25 @@ function isCalibrationScoreRow(value: unknown): value is CalibrationScoreRow {
 
 function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
   if (!isUnknownRecord(value)) return false;
+  const resultCount = value.result_count;
+  const categoryCoverage = [
+    [value.input_token_coverage_count, value.input_token_coverage_percent],
+    [value.cached_input_token_coverage_count, value.cached_input_token_coverage_percent],
+    [value.cache_write_input_token_coverage_count, value.cache_write_input_token_coverage_percent],
+    [value.output_token_coverage_count, value.output_token_coverage_percent],
+    [value.reasoning_token_coverage_count, value.reasoning_token_coverage_percent],
+    [value.total_token_coverage_count, value.total_token_coverage_percent],
+  ];
   return (
     isBoundedIdentifier(value.run_id) &&
+    isBoundedIdentifier(value.matrix_batch_id) &&
     (value.model_family === 'sol' ||
       value.model_family === 'terra' ||
       value.model_family === 'luna') &&
     typeof value.reasoning_effort === 'string' &&
     ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value.reasoning_effort) &&
-    isNullableNonnegativeNumber(value.observed_total_wall_ms) &&
+    isCount(value.matrix_batch_elapsed_ms) &&
+    isNullableNonnegativeNumber(value.summed_cell_adapter_elapsed_ms) &&
     isNullableNonnegativeNumber(value.observed_median_wall_ms) &&
     isNullableNonnegativeNumber(value.observed_p95_wall_ms) &&
     isCount(value.observed_time_sample_count) &&
@@ -918,12 +978,12 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
     value.observed_time_coverage_percent >= 0 &&
     value.observed_time_coverage_percent <= 100 &&
     ((value.observed_time_sample_count === 0 &&
-      value.observed_total_wall_ms === null &&
+      value.summed_cell_adapter_elapsed_ms === null &&
       value.observed_median_wall_ms === null &&
       value.observed_p95_wall_ms === null &&
       value.duration_evidence_level === null) ||
       (value.observed_time_sample_count > 0 &&
-        value.observed_total_wall_ms !== null &&
+        value.summed_cell_adapter_elapsed_ms !== null &&
         value.observed_median_wall_ms !== null &&
         value.observed_p95_wall_ms !== null &&
         value.duration_evidence_level === 'runner_observed')) &&
@@ -948,9 +1008,20 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       value.standard_api_equivalent_usd_nanos !== null) ||
       (value.cost_estimator_status !== 'estimated' &&
         value.standard_api_equivalent_usd_nanos === null)) &&
-    isFiniteNumber(value.token_usage_coverage_percent) &&
-    value.token_usage_coverage_percent >= 0 &&
-    value.token_usage_coverage_percent <= 100 &&
+    (value.token_usage_coverage_percent === null ||
+      (isFiniteNumber(value.token_usage_coverage_percent) &&
+        value.token_usage_coverage_percent > 0 &&
+        value.token_usage_coverage_percent <= 100)) &&
+    isPositiveCount(resultCount) &&
+    categoryCoverage.every(
+      ([count, percent]) =>
+        (count === null && percent === null) ||
+        (isPositiveCount(count) &&
+          isFiniteNumber(percent) &&
+          percent > 0 &&
+          percent <= 100 &&
+          percent === Number(((100 * count) / resultCount).toFixed(4))),
+    ) &&
     (value.token_usage_evidence_level === null ||
       value.token_usage_evidence_level === 'verifier_recomputed') &&
     (value.cost_evidence_level === null || value.cost_evidence_level === 'verifier_recomputed') &&
@@ -962,6 +1033,23 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
     (value.pricing_version === null || isBoundedIdentifier(value.pricing_version)) &&
     (value.pricing_currency === null || value.pricing_currency === 'USD') &&
     (value.pricing_processing_tier === null || value.pricing_processing_tier === 'standard') &&
+    isCount(value.attempted_result_count) &&
+    isCount(value.invoked_result_count) &&
+    isCount(value.adapter_elapsed_observed_result_count) &&
+    isCount(value.token_observed_result_count) &&
+    isCount(value.priced_result_count) &&
+    isPositiveCount(value.execution_concurrency) &&
+    isCount(value.estimated_cost_sample_count) &&
+    value.attempted_result_count <= resultCount &&
+    value.invoked_result_count <= value.attempted_result_count &&
+    value.adapter_elapsed_observed_result_count <= value.invoked_result_count &&
+    value.token_observed_result_count === value.token_usage_sample_count &&
+    value.priced_result_count === value.estimated_cost_sample_count &&
+    Array.isArray(value.cost_estimator_limitations) &&
+    value.cost_estimator_limitations.every(isBoundedText) &&
+    Array.isArray(value.pricing_rates) &&
+    value.pricing_rates.every(isPricingRate) &&
+    (value.cost_formula === null || isBoundedText(value.cost_formula)) &&
     groupIsComplete([
       value.cost_method,
       value.pricing_source,
@@ -969,6 +1057,7 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       value.pricing_version,
       value.pricing_currency,
       value.pricing_processing_tier,
+      value.cost_formula,
     ]) &&
     ((value.token_usage_sample_count === 0 &&
       [
@@ -1001,6 +1090,17 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       (value.cost_estimator_status !== 'estimated' &&
         value.standard_api_equivalent_usd_nanos === null &&
         value.cost_evidence_level === null))
+  );
+}
+
+function isPricingRate(value: unknown): boolean {
+  return (
+    isUnknownRecord(value) &&
+    isBoundedIdentifier(value.model) &&
+    isCount(value.input_usd_nanos_per_token) &&
+    isCount(value.cached_input_usd_nanos_per_token) &&
+    isCount(value.cache_write_input_usd_nanos_per_token) &&
+    isCount(value.output_usd_nanos_per_token)
   );
 }
 
@@ -1124,9 +1224,11 @@ function mapCalibrationScoreRow(row: CalibrationScoreRow): PublicCalibrationScor
 function mapModelEfficiencyRow(row: ModelEfficiencyRow): PublicModelEfficiency {
   return {
     runId: row.run_id,
+    matrixBatchId: row.matrix_batch_id,
     modelFamily: row.model_family,
     reasoningEffort: row.reasoning_effort,
-    observedTotalWallMs: row.observed_total_wall_ms,
+    matrixBatchElapsedMs: row.matrix_batch_elapsed_ms,
+    summedCellAdapterElapsedMs: row.summed_cell_adapter_elapsed_ms,
     observedMedianWallMs: row.observed_median_wall_ms,
     observedP95WallMs: row.observed_p95_wall_ms,
     observedTimeSampleCount: row.observed_time_sample_count,
@@ -1143,6 +1245,26 @@ function mapModelEfficiencyRow(row: ModelEfficiencyRow): PublicModelEfficiency {
     standardApiEquivalentUsdNanos: row.standard_api_equivalent_usd_nanos,
     costEstimatorStatus: row.cost_estimator_status,
     tokenUsageCoveragePercent: row.token_usage_coverage_percent,
+    tokenCoverage: {
+      input: { count: row.input_token_coverage_count, percent: row.input_token_coverage_percent },
+      cachedInput: {
+        count: row.cached_input_token_coverage_count,
+        percent: row.cached_input_token_coverage_percent,
+      },
+      cacheWriteInput: {
+        count: row.cache_write_input_token_coverage_count,
+        percent: row.cache_write_input_token_coverage_percent,
+      },
+      output: {
+        count: row.output_token_coverage_count,
+        percent: row.output_token_coverage_percent,
+      },
+      reasoning: {
+        count: row.reasoning_token_coverage_count,
+        percent: row.reasoning_token_coverage_percent,
+      },
+      total: { count: row.total_token_coverage_count, percent: row.total_token_coverage_percent },
+    },
     tokenUsageEvidenceLevel: row.token_usage_evidence_level,
     costEvidenceLevel: row.cost_evidence_level,
     costMethod: row.cost_method,
@@ -1151,6 +1273,17 @@ function mapModelEfficiencyRow(row: ModelEfficiencyRow): PublicModelEfficiency {
     pricingVersion: row.pricing_version,
     pricingCurrency: row.pricing_currency,
     pricingProcessingTier: row.pricing_processing_tier,
+    resultCount: row.result_count,
+    attemptedResultCount: row.attempted_result_count,
+    invokedResultCount: row.invoked_result_count,
+    adapterElapsedObservedResultCount: row.adapter_elapsed_observed_result_count,
+    tokenObservedResultCount: row.token_observed_result_count,
+    pricedResultCount: row.priced_result_count,
+    executionConcurrency: row.execution_concurrency,
+    estimatedCostSampleCount: row.estimated_cost_sample_count,
+    costEstimatorLimitations: row.cost_estimator_limitations,
+    pricingRates: row.pricing_rates,
+    costFormula: row.cost_formula,
   };
 }
 
@@ -1187,8 +1320,8 @@ const seedCalibrationRun: PublicCalibrationRun = {
       explanationCode: null,
       explanationSummary: null,
       taskScore: 1,
-      latencyMs: 1_000,
-      latencyEvidenceLevel: 'runner_observed',
+      latencyMs: null,
+      latencyEvidenceLevel: null,
       inputTokens: null,
       cachedInputTokens: null,
       cacheWriteInputTokens: null,
@@ -1224,12 +1357,12 @@ const seedCalibrationScores: readonly PublicCalibrationScore[] = [
     sampleSize: 1,
     resultCount: 1,
     coveragePercent: 100 / 72,
-    observedTotalWallMs: 1_000,
-    observedMedianWallMs: 1_000,
-    observedP95WallMs: 1_000,
-    observedTimeSampleCount: 1,
-    observedTimeCoveragePercent: 100,
-    durationEvidenceLevel: 'runner_observed',
+    observedTotalWallMs: null,
+    observedMedianWallMs: null,
+    observedP95WallMs: null,
+    observedTimeSampleCount: 0,
+    observedTimeCoveragePercent: 0,
+    durationEvidenceLevel: null,
     inputTokens: null,
     cachedInputTokens: null,
     cacheWriteInputTokens: null,
@@ -1250,9 +1383,9 @@ const seedCalibrationScores: readonly PublicCalibrationScore[] = [
     pricingVersion: null,
     pricingCurrency: 'USD',
     pricingProcessingTier: 'standard',
-    attemptedResultCount: 1,
-    invokedResultCount: 1,
-    adapterElapsedObservedResultCount: 1,
+    attemptedResultCount: 0,
+    invokedResultCount: 0,
+    adapterElapsedObservedResultCount: 0,
     tokenObservedResultCount: 0,
     pricedResultCount: 0,
     synthetic: true,
@@ -2194,7 +2327,7 @@ export class SupabaseAiqRepository implements AiqRepository {
           this.#client
             .from(PUBLIC_VIEW_NAMES.runResults)
             .select(
-              'run_id,id,task,domain,status,score,explanation_code,explanation_summary,retryable,tools,latency_ms',
+              'run_id,id,task,domain,status,score,explanation_code,explanation_summary,retryable,tools,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level',
             )
             .in('run_id', batch)
             .order('run_id', { ascending: true })
@@ -2512,26 +2645,32 @@ export class SupabaseAiqRepository implements AiqRepository {
   async listModelEfficiency(runIds: readonly string[]): Promise<readonly PublicModelEfficiency[]> {
     const selectedRunIds = [...new Set(runIds)];
     if (
-      selectedRunIds.length > CALIBRATION_MODEL_CONFIGURATIONS.length ||
+      selectedRunIds.length > TREND_MAX_POINTS ||
       selectedRunIds.some((runId) => !isBoundedIdentifier(runId))
     ) {
       throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: invalid run selection`);
     }
     if (selectedRunIds.length === 0) return [];
-    const maximumRows = selectedRunIds.length * CALIBRATION_MODEL_CONFIGURATIONS.length;
-    const { data, error } = await this.#client
-      .from(PUBLIC_VIEW_NAMES.modelEfficiency)
-      .select(
-        'run_id,model_family,reasoning_effort,observed_total_wall_ms,observed_median_wall_ms,observed_p95_wall_ms,observed_time_sample_count,observed_time_coverage_percent,duration_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_sample_count,token_usage_coverage_percent,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,cost_method,pricing_source,pricing_as_of,pricing_version,pricing_currency,pricing_processing_tier',
-      )
-      .in('run_id', selectedRunIds)
-      .order('run_id', { ascending: true })
-      .order('model_family', { ascending: true })
-      .order('reasoning_effort', { ascending: true })
-      .limit(maximumRows + 1)
-      .overrideTypes<unknown[], { merge: false }>();
-    if (error) {
-      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: ${error.message}`);
+    const maximumRows = selectedRunIds.length;
+    const data: unknown[] = [];
+    for (let offset = 0; offset < selectedRunIds.length; offset += RUN_ID_BATCH_SIZE) {
+      const runIdBatch = selectedRunIds.slice(offset, offset + RUN_ID_BATCH_SIZE);
+      // oxlint-disable-next-line no-await-in-loop -- bounded batches avoid oversized filter URLs.
+      const result = await this.#client
+        .from(PUBLIC_VIEW_NAMES.modelEfficiency)
+        .select(
+          'run_id,matrix_batch_id,model_family,reasoning_effort,matrix_batch_elapsed_ms,summed_cell_adapter_elapsed_ms,observed_median_wall_ms,observed_p95_wall_ms,observed_time_sample_count,observed_time_coverage_percent,duration_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_sample_count,token_usage_coverage_percent,input_token_coverage_count,input_token_coverage_percent,cached_input_token_coverage_count,cached_input_token_coverage_percent,cache_write_input_token_coverage_count,cache_write_input_token_coverage_percent,output_token_coverage_count,output_token_coverage_percent,reasoning_token_coverage_count,reasoning_token_coverage_percent,total_token_coverage_count,total_token_coverage_percent,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,cost_method,pricing_source,pricing_as_of,pricing_version,pricing_currency,pricing_processing_tier,result_count,attempted_result_count,invoked_result_count,adapter_elapsed_observed_result_count,token_observed_result_count,priced_result_count,execution_concurrency,estimated_cost_sample_count,cost_estimator_limitations,pricing_rates,cost_formula',
+        )
+        .in('run_id', runIdBatch)
+        .order('run_id', { ascending: true })
+        .limit(runIdBatch.length + 1)
+        .overrideTypes<unknown[], { merge: false }>();
+      if (result.error) {
+        throw new Error(
+          `Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: ${result.error.message}`,
+        );
+      }
+      data.push(...result.data);
     }
     const selectedRunIdSet = new Set(selectedRunIds);
     if (
@@ -2550,6 +2689,16 @@ export class SupabaseAiqRepository implements AiqRepository {
       )
     ) {
       throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: invalid response shape`);
+    }
+    const batchElapsedById = new Map<string, number>();
+    for (const row of data) {
+      const priorElapsed = batchElapsedById.get(row.matrix_batch_id);
+      if (priorElapsed !== undefined && priorElapsed !== row.matrix_batch_elapsed_ms) {
+        throw new Error(
+          `Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: inconsistent matrix batch elapsed time`,
+        );
+      }
+      batchElapsedById.set(row.matrix_batch_id, row.matrix_batch_elapsed_ms);
     }
     const identities = new Set<string>();
     for (const row of data) {

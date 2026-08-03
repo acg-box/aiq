@@ -117,6 +117,22 @@ export interface TaskResult {
   } | null;
   tools: string[];
   latencyMs: number | null;
+  latencyEvidenceLevel: 'runner_observed' | null;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteInputTokens: number | null;
+  outputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  totalTokens: number | null;
+  tokenUsageSourceLevel: 'provider_reported' | null;
+  tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
+  standardApiEquivalentUsdNanos: number | null;
+  costEstimatorStatus:
+    | 'estimated'
+    | 'unavailable_missing_usage'
+    | 'unavailable_invalid_usage'
+    | 'unavailable_context_band';
+  costEvidenceLevel: 'verifier_recomputed' | null;
 }
 
 export interface BenchmarkRun {
@@ -258,9 +274,11 @@ export interface PublicCalibrationScore {
 
 export interface PublicModelEfficiency {
   runId: string;
+  matrixBatchId: string;
   modelFamily: CalibrationModelFamily;
   reasoningEffort: ReasoningTier;
-  observedTotalWallMs: number | null;
+  matrixBatchElapsedMs: number;
+  summedCellAdapterElapsedMs: number | null;
   observedMedianWallMs: number | null;
   observedP95WallMs: number | null;
   observedTimeSampleCount: number;
@@ -280,7 +298,15 @@ export interface PublicModelEfficiency {
     | 'unavailable_missing_usage'
     | 'unavailable_invalid_usage'
     | 'unavailable_context_band';
-  tokenUsageCoveragePercent: number;
+  tokenUsageCoveragePercent: number | null;
+  tokenCoverage: {
+    input: TokenCategoryCoverage;
+    cachedInput: TokenCategoryCoverage;
+    cacheWriteInput: TokenCategoryCoverage;
+    output: TokenCategoryCoverage;
+    reasoning: TokenCategoryCoverage;
+    total: TokenCategoryCoverage;
+  };
   tokenUsageEvidenceLevel: 'verifier_recomputed' | null;
   costEvidenceLevel: 'verifier_recomputed' | null;
   costMethod: string | null;
@@ -289,6 +315,30 @@ export interface PublicModelEfficiency {
   pricingVersion: string | null;
   pricingCurrency: 'USD' | null;
   pricingProcessingTier: 'standard' | null;
+  resultCount: number;
+  attemptedResultCount: number;
+  invokedResultCount: number;
+  adapterElapsedObservedResultCount: number;
+  tokenObservedResultCount: number;
+  pricedResultCount: number;
+  executionConcurrency: number;
+  estimatedCostSampleCount: number;
+  costEstimatorLimitations: readonly string[];
+  pricingRates: readonly PricingRate[];
+  costFormula: string | null;
+}
+
+export interface TokenCategoryCoverage {
+  count: number | null;
+  percent: number | null;
+}
+
+export interface PricingRate {
+  model: string;
+  input_usd_nanos_per_token: number;
+  cached_input_usd_nanos_per_token: number;
+  cache_write_input_usd_nanos_per_token: number;
+  output_usd_nanos_per_token: number;
 }
 
 export type PublicCalibrationRunSummary = Omit<

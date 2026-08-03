@@ -246,36 +246,59 @@ owner-immutable `auth.json`. Do not change the active Codex profile.
 Use the CLI help from the built binary as the exact argument contract:
 
 ```sh
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- preflight --help
 cargo run -p aiq-runner -- run --help
 ```
 
-Complete and retain preflight before the live run. Provision an external timer;
-the runner validates a supplied schedule but does not create or select one. The
-timer owner must invoke both approved daily occurrences with the schedule's local
+Run `admit-permissions` before any paid Official preflight. Its private v2 receipt
+must bind the exact 72-by-17 controlled inputs, schedule occurrence, conservative
+capacity, jobs, and planned preflight, checkpoint, run, score, and package paths.
+Pass that same receipt to preflight, run, score, and package; a preflight cache
+cannot be rebound to another admission. Provision an external timer because the
+runner validates a supplied schedule but does not create or select one. The timer
+owner must invoke both approved daily occurrences with the schedule's local
 `--slot-date`, `--occurrence day` or `--occurrence night`, and timezone-bound
 schedule file. Dispatch outside that occurrence's exact window fails closed.
-Preserve the checkpoint and artifact root after interruption so an operator can
-resume the same attempt rather than discard completed evidence.
+Preserve the checkpoint, exact run-bound output reservation, and artifact root
+after interruption so the unchanged run can resume without replacing completed
+evidence. Keep output parents owner-controlled and exclude writers that do not
+honor the runner's advisory lock.
 
 Use non-synthetic evidence and the complete 17-by-72 shape for an Official run.
 Score, package, and submit only after all required artifacts and bindings
-validate. The controlled command and recovery details remain canonical in
-[Operations and Validation](operations.md).
+validate. Repository support does not prove that production admission passes or
+that a worker is deployed. The controlled command and recovery details remain
+canonical in [Operations and Validation](operations.md).
 
-## Verifier setup
+## Official runtime and verifier setup
 
-Run `aiq-verifier` in a separate environment with its own key, token, environment
+The bounded runtime in `deploy/official-runtime` runs runner, runner proxy,
+verifier, and verifier proxy as four non-root Linux arm64 containers. Runner and
+verifier have separate internal networks, writable roots, UIDs, and default-deny
+proxy allowlists. The verifier has no Codex binary or home and its proxy rejects
+Codex and OpenAI hosts. The runtime requires a local Linux `aarch64` Docker daemon
+with seccomp, a clean source tree at the declared commit, frozen read-only inputs,
+and separate mode-private secret files. Its model-free validation v2 canaries and
+private deployment receipt v2 must pass before launch acceptance; the receipt
+binds all four image IDs, topology, mount policy, requirements/seccomp digests,
+and non-secret frozen inputs without hashing secret content.
+
+Run `aiq-verifier` in the verifier container with its own key, token, environment
 metadata, private tasks, evaluator registry, corpus commitment, runtime,
-toolchain, and replay root.
+toolchain, replay root, and private record root.
 
 ```sh
 cargo run -p aiq-verifier -- --help
 ```
 
-Production verification must reconstruct candidate workspaces and replay the
-deterministic evaluators. The gateway stages evidence under the verifier role and
-publishes under the distinct publisher role.
+After package submission and explicit operator authorization, use the mounted
+secret-file entrypoint to run one bounded worker. It writes create-new private
+JSONL records and does not schedule itself. Production verification must
+reconstruct candidate workspaces and replay the deterministic evaluators. The
+gateway stages evidence under the verifier role and publishes under the distinct
+publisher role. Follow [Operations and Validation](operations.md) for lifecycle
+commands and the canonical `deploy/official-runtime/README.md` for exact mounts.
 
 ## Storage operations
 
@@ -310,8 +333,15 @@ public-read failures.
 - [ ] Browser roles cannot write private tables.
 - [ ] Runner, verifier, and publisher identities are distinct.
 - [ ] Server secrets are absent from browser bundles and logs.
-- [ ] The runner preflight is current and bound to the controlled inputs.
-- [ ] The verifier can claim, reconstruct, replay, attest, and submit.
+- [ ] Local Linux arm64 and seccomp checks, frozen-input validation v2 canaries,
+      proxy-denial checks, and the private deployment receipt v2 pass for all four
+      isolated runtime containers.
+- [ ] One private Official admission v2 receipt binds the exact plan and all
+      future outputs; paid preflight, run, score, and package use that same receipt.
+- [ ] Protected output parents enforce the trusted single-writer and advisory-lock
+      boundary, and runner/verifier secret mounts remain isolated.
+- [ ] The verifier can claim, reconstruct, replay, attest, and submit through its
+      Codex-free container and bounded worker wrapper.
 - [ ] The publisher can complete only a fully verified batch.
 - [ ] Public pages and bounded readiness probes work from the public origin.
 - [ ] The disposable live-stack smoke passes through real PostgREST and RLS.
@@ -319,7 +349,8 @@ public-read failures.
       checkpoints and artifacts for operator-directed resume.
 - [ ] Storage deletion is gated on successful reconciliation and reviewed metrics.
 - [ ] One complete non-synthetic 17-by-72 run is verified, published, and visible
-      in the overview, trends, run history, and run detail pages.
+      in the overview, trends, run history, and run detail pages, with consistent
+      matrix-batch, per-cell timing, token-coverage, and pricing evidence.
 - [ ] Monitoring and Storage lifecycle owners are active.
 - [x] DNS and TLS resolve to the approved Vercel deployment.
 - [ ] The acceptance window records health, user-visible checks, worker progress,

@@ -75,22 +75,33 @@ measures the Codex adapter invocation only; it excludes workspace setup,
 artifact sealing, and evaluator replay. The verifier cannot reproduce the
 clock value, so public data labels its authority as `runner_observed`.
 
+Official publication keeps two different clocks. `matrix_batch_elapsed_ms` is
+the signed wall-clock for the complete matrix stage, shared across all 17 model
+configurations and counted once. `summed_cell_adapter_elapsed_ms` adds retained
+cell invocation durations for one configuration; those cells may overlap at the
+recorded execution concurrency, so this sum is not isolated model latency and
+must not be added to the shared batch clock. TTFT and TPS are unavailable and
+are not inferred.
+
 When Codex reports token counters, the runner retains the exact provider event.
 The verifier parses those bytes again before publishing input, cached-input,
 cache-write-input, output, reasoning-output, and total-token values. Aggregates
-publish coverage counts separately and provide total cost only when every
-selected result is estimable. Missing, adapter-uninvoked, or inconsistent
-counters stay unavailable rather than becoming zero.
+publish a separate observed count and percentage for each of those six categories
+and provide total cost only when every selected result is estimable. Zero
+observations remain unavailable rather than being presented as `0%`; missing,
+adapter-uninvoked, or inconsistent counters never become zero.
 
 The cost field uses the versioned
 `aiq.standard-api-equivalent-usd.v1` method and the Standard processing-tier
 rates observed on 2026-08-02 at the
 [official OpenAI pricing page](https://developers.openai.com/api/docs/pricing).
 It separates normal input, cached input, cache-write input, and output.
-Reasoning tokens are a subset of output and are not added twice. If aggregate
-input is more than 272,000 tokens, the estimate is null because aggregate usage
-cannot identify the context band of each request. The value is an API-equivalent
-comparison. It is not actual subscription spend.
+Reasoning tokens are a subset of output and are not added twice. Published
+pricing applies a 2x input and 1.5x output rate above 272,000 input tokens, but an
+aggregate result cannot identify each request's context band; an aggregate over
+that boundary is therefore unpriced rather than guessed. Regional uplift,
+hosted-tool fees, and subscription pricing are excluded. The value is an
+API-equivalent comparison, not actual subscription spend.
 
 ## Outcomes and scoring
 

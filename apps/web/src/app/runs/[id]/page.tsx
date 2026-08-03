@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { DataNote } from '../../../components/data-note.tsx';
+import { OfficialEfficiencyTable } from '../../../components/official-efficiency-table.tsx';
 import { ReadStateNote } from '../../../components/read-state-note.tsx';
 import {
   classifyRunCompleteness,
@@ -53,6 +54,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   const summary = summarizeRun(run);
   const domains = summarizeRunDomains(run);
   const completeness = classifyRunCompleteness(run);
+  const efficiencyResult = await readPublicData(
+    repository,
+    () => (run.synthetic ? Promise.resolve([]) : repository.listModelEfficiency([run.id])),
+    [],
+    (value) => value.length === 0,
+    (value) => value.map(() => false),
+  );
   return (
     <section className="page-shell inner-page">
       <div className="run-heading">
@@ -103,7 +111,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           <strong>{summary.notApplicable}</strong>
         </div>
         <div>
-          <span>Median latency</span>
+          <span>Median Codex adapter elapsed</span>
           <strong>
             {summary.medianLatencyMs === null
               ? '—'
@@ -111,6 +119,22 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           </strong>
         </div>
       </div>
+      <section className="run-section" aria-labelledby="run-efficiency-heading">
+        <div className="section-heading compact">
+          <div>
+            <span className="eyebrow">Retained efficiency evidence</span>
+            <h2 id="run-efficiency-heading">Official time, token coverage, and cost</h2>
+          </div>
+          <p>
+            Codex adapter elapsed is runner-observed. Summed cell durations can overlap, while the
+            signed matrix batch wall-clock is counted once. Neither value is isolated model latency.
+          </p>
+        </div>
+        <ReadStateNote result={efficiencyResult} subject="Official run efficiency" />
+        {efficiencyResult.state === 'published' ? (
+          <OfficialEfficiencyTable rows={efficiencyResult.data} />
+        ) : null}
+      </section>
       <section className="run-section">
         <div className="section-heading compact">
           <div>
@@ -198,10 +222,27 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               <footer>
                 <span>Tools: {task.tools.length > 0 ? task.tools.join(', ') : 'none'}</span>
                 <span>
-                  Latency:{' '}
+                  Codex adapter elapsed:{' '}
                   {task.latencyMs === null
-                    ? 'not recorded'
-                    : `${task.latencyMs.toLocaleString()} ms`}
+                    ? 'unavailable'
+                    : `${task.latencyMs.toLocaleString()} ms · ${task.latencyEvidenceLevel?.replaceAll('_', '-')}`}
+                </span>
+                <span>
+                  Tokens: input {task.inputTokens?.toLocaleString() ?? 'unavailable'} · cached input{' '}
+                  {task.cachedInputTokens?.toLocaleString() ?? 'unavailable'} · cache-write input{' '}
+                  {task.cacheWriteInputTokens?.toLocaleString() ?? 'unavailable'} · output{' '}
+                  {task.outputTokens?.toLocaleString() ?? 'unavailable'} · reasoning{' '}
+                  {task.reasoningOutputTokens?.toLocaleString() ?? 'unavailable'} · total{' '}
+                  {task.totalTokens?.toLocaleString() ?? 'unavailable'}
+                </span>
+                <span>
+                  API-equivalent cost:{' '}
+                  {task.standardApiEquivalentUsdNanos === null
+                    ? task.costEstimatorStatus.replaceAll('_', ' ')
+                    : `$${(task.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(6)}`}{' '}
+                  · token evidence{' '}
+                  {task.tokenUsageEvidenceLevel?.replaceAll('_', '-') ?? 'unavailable'} · cost
+                  evidence {task.costEvidenceLevel?.replaceAll('_', '-') ?? 'unavailable'}
                 </span>
               </footer>
             </article>

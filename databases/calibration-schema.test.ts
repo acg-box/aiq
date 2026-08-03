@@ -141,6 +141,10 @@ void test('separates verifier and publisher RPC authority', () => {
 });
 
 void test('keeps efficiency evidence nullable, bounded, and non-Official', () => {
+  const exactKeys =
+    schema.match(/create function aiq_private\.has_exact_jsonb_keys[\s\S]*?\n\$\$;/i)?.[0] ?? '';
+  assert.match(exactKeys, /from unnest\(expected_keys\) key/);
+  assert.match(exactKeys, /observed_keys is not distinct from normalized_expected_keys/);
   assert.match(schema, /cached_input_tokens <= input_tokens/);
   assert.match(schema, /reasoning_output_tokens <= output_tokens/);
   assert.doesNotMatch(schema, /total_tokens = input_tokens \+ output_tokens/);
@@ -214,6 +218,7 @@ void test('accepts only the fixed Standard-tier pricing record', () => {
     'aiq.standard-api-equivalent-usd.v1',
     '2026-08-02',
     'https://developers.openai.com/api/docs/pricing',
+    'Regional processing uplift and hosted tool fees are excluded.',
     "candidate->>'currency'='USD'",
     "candidate->>'processing_tier'='standard'",
     'This is not actual subscription spend.',
@@ -239,10 +244,7 @@ void test('accepts only the fixed Standard-tier pricing record', () => {
     schema,
     /if input_tokens>272000\s*then return candidate->>'cost_status'='unavailable_context_band'/,
   );
-  assert.match(
-    validator,
-    /A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands/,
-  );
+  assert.match(validator, /Prompts above 272000 input tokens use 2x input and 1\.5x output rates/);
 });
 
 void test('accepts the paid workspace-integrity adapter failure kind', () => {
@@ -285,6 +287,17 @@ void test('binds Official efficiency evidence to the exact payload matrix', () =
   assert.match(bound, /source->>'result_id'=evidence->>'source_result_id'/);
   assert.match(bound, /evidence->'provider_tokens'<>'\{\}'::jsonb/);
   assert.match(bound, /insert into aiq_private\.efficiency_official_models/);
+  for (const category of [
+    'input',
+    'cached_input',
+    'cache_write_input',
+    'output',
+    'reasoning',
+    'total',
+  ]) {
+    assert.match(bound, new RegExp(`provider_token_coverage,${category}_tasks`));
+    assert.match(schema, new RegExp(`${category}_token_observed_result_count integer not null`));
+  }
   assert.match(bound, /verified\.evidence->>'provider_tokens_evidence_level'/);
   assert.match(
     schema,
@@ -293,7 +306,57 @@ void test('binds Official efficiency evidence to the exact payload matrix', () =
 
   const view = schema.match(/CREATE VIEW public\.public_model_efficiency[\s\S]*?;\n/)?.[0] ?? '';
   assert.match(view, /from aiq_private\.efficiency_official_models efficiency/);
+  assert.match(view, /run\.matrix_batch_id/);
+  assert.match(
+    view,
+    /extract\(epoch from \(run\.completed_at-run\.started_at\)\)\*1000[\s\S]{0,80}as matrix_batch_elapsed_ms/,
+  );
+  assert.match(view, /efficiency\.observed_total_wall_ms as summed_cell_adapter_elapsed_ms/);
+  assert.match(schema, /grant select\(matrix_batch_id\) on table aiq_private\.aiq_runs to anon;/);
+  assert.match(
+    schema,
+    /grant select\(matrix_batch_id\) on table aiq_private\.aiq_runs to authenticated;/,
+  );
+  assert.doesNotMatch(view, /efficiency\.observed_total_wall_ms(?:,|\s+from)/);
+  for (const category of [
+    'input',
+    'cached_input',
+    'cache_write_input',
+    'output',
+    'reasoning',
+    'total',
+  ]) {
+    assert.match(view, new RegExp(`${category}_token_coverage_count`));
+    assert.match(view, new RegExp(`${category}_token_coverage_percent`));
+  }
+  assert.match(view, /pricing\.rates as pricing_rates/);
+  assert.match(view, /pricing\.formula as cost_formula/);
   assert.doesNotMatch(view, /percentile_disc|percentile_cont/);
+});
+
+void test('publishes narrow Official per-result efficiency without private payload fields', () => {
+  const view = schema.match(/create view public\.public_run_results[\s\S]*?;\n/)?.[0] ?? '';
+  for (const field of [
+    'latency_evidence_level',
+    'input_tokens',
+    'cached_input_tokens',
+    'cache_write_input_tokens',
+    'output_tokens',
+    'reasoning_output_tokens',
+    'total_tokens',
+    'token_usage_evidence_level',
+    'standard_api_equivalent_usd_nanos',
+    'cost_estimator_status',
+    'cost_evidence_level',
+  ]) {
+    assert.match(view, new RegExp(`result\\.${field}`));
+  }
+  assert.match(view, /join aiq_private\.aiq_runs run on \(\(run\.run_id = result\.run_id\)\)/);
+  assert.match(view, /where run\.published/);
+  assert.doesNotMatch(
+    view,
+    /failure_detail|result\.usage|provenance|response_sha256|result_package_sha256/,
+  );
 });
 
 void test('retains all publication audit objects before claim references retire', () => {

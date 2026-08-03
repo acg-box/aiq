@@ -1,28 +1,25 @@
 name: aiq-official-runtime
 
 services:
-  proxy:
-    image: aiq-official-proxy:local
+  runner_proxy:
+    image: aiq-official-runner-proxy:local
     build:
       context: ../..
       dockerfile: deploy/official-runtime/Dockerfile.proxy
       args:
         SOURCE_COMMIT: ${AIQ_SOURCE_COMMIT}
-      platforms:
-        - linux/arm64
-    container_name: aiq-official-proxy
+      platforms: [linux/arm64]
+    container_name: aiq-official-runner-proxy
     user: "10002:10002"
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10002,gid=10002
     networks:
       runner_internal:
         ipv4_address: 172.30.0.2
-      proxy_egress: {}
+      runner_proxy_egress: {}
     restart: "no"
 
   runner:
@@ -32,13 +29,11 @@ services:
       dockerfile: deploy/official-runtime/Dockerfile.runner
       args:
         SOURCE_COMMIT: ${AIQ_SOURCE_COMMIT}
-      platforms:
-        - linux/arm64
+      platforms: [linux/arm64]
     container_name: aiq-official-runner
     user: "10001:10001"
     read_only: true
-    cap_drop:
-      - ALL
+    cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
       - seccomp=./seccomp-bwrap.json
@@ -51,88 +46,107 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=0700,uid=10001,gid=10001
       - /run:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10001,gid=10001
     volumes:
-      - type: bind
-        source: ${AIQ_SOURCE}
-        target: /inputs/source
-        read_only: true
-      - type: bind
-        source: ${AIQ_HIDDEN_TASKS}
-        target: /inputs/tasks
-        read_only: true
-      - type: bind
-        source: ${AIQ_BASELINES}
-        target: /inputs/baselines
-        read_only: true
-      - type: bind
-        source: ${AIQ_EVALUATORS}
-        target: /inputs/evaluators
-        read_only: true
-      - type: bind
-        source: ${AIQ_EVALUATOR_RUNTIME}
-        target: /inputs/evaluator-runtime
-        read_only: true
-      - type: bind
-        source: ${AIQ_TOOLCHAIN}
-        target: /inputs/toolchain
-        read_only: true
-      - type: bind
-        source: ${AIQ_CORPUS_COMMITMENT}
-        target: /inputs/corpus-commitment.json
-        read_only: true
-      - type: bind
-        source: ${AIQ_CAPABILITIES}
-        target: /inputs/capabilities.json
-        read_only: true
-      - type: bind
-        source: ${AIQ_SCHEDULE}
-        target: /inputs/schedule.json
-        read_only: true
-      - type: bind
-        source: ${AIQ_CODEX_BINARY}
-        target: /inputs/bin/codex
-        read_only: true
-      - type: bind
-        source: ${AIQ_RUNNER_BINARY}
-        target: /inputs/bin/aiq-runner
-        read_only: true
-      - type: bind
-        source: ${AIQ_CODEX_HOME}
-        target: /codex-home
-      - type: bind
-        source: ${AIQ_CODEX_AUTH}
-        target: /codex-home/auth.json
-        read_only: true
-      - type: bind
-        source: ${AIQ_EXECUTION}
-        target: /execution
-      - type: bind
-        source: ${AIQ_ARTIFACTS}
-        target: /output/artifacts
-      - type: bind
-        source: ${AIQ_CHECKPOINTS}
-        target: /output/checkpoints
-      - type: bind
-        source: ${AIQ_PREFLIGHT}
-        target: /output/preflight
-      - type: bind
-        source: ${AIQ_ADMISSION}
-        target: /output/admission
-      - type: bind
-        source: ${AIQ_RESULTS}
-        target: /output/results
-    depends_on:
-      - proxy
+      - {type: bind, source: "${AIQ_SOURCE}", target: /inputs/source, read_only: true}
+      - {type: bind, source: "${AIQ_HIDDEN_TASKS}", target: /inputs/tasks, read_only: true}
+      - {type: bind, source: "${AIQ_BASELINES}", target: /inputs/baselines, read_only: true}
+      - {type: bind, source: "${AIQ_EVALUATORS}", target: /inputs/evaluators, read_only: true}
+      - {type: bind, source: "${AIQ_EVALUATOR_RUNTIME}", target: /inputs/evaluator-runtime, read_only: true}
+      - {type: bind, source: "${AIQ_TOOLCHAIN}", target: /inputs/toolchain, read_only: true}
+      - {type: bind, source: "${AIQ_CORPUS_COMMITMENT}", target: /inputs/corpus-commitment.json, read_only: true}
+      - {type: bind, source: "${AIQ_CAPABILITIES}", target: /inputs/capabilities.json, read_only: true}
+      - {type: bind, source: "${AIQ_SCHEDULE}", target: /inputs/schedule.json, read_only: true}
+      - {type: bind, source: "${AIQ_CODEX_BINARY}", target: /inputs/bin/codex, read_only: true}
+      - {type: bind, source: "${AIQ_RUNNER_BINARY}", target: /inputs/bin/aiq-runner, read_only: true}
+      - {type: bind, source: "${AIQ_CODEX_HOME}", target: /codex-home}
+      - {type: bind, source: "${AIQ_CODEX_AUTH}", target: /codex-home/auth.json, read_only: true}
+      - {type: bind, source: "${AIQ_EXECUTION}", target: /execution}
+      - {type: bind, source: "${AIQ_ARTIFACTS}", target: /output/artifacts}
+      - {type: bind, source: "${AIQ_CHECKPOINTS}", target: /output/checkpoints}
+      - {type: bind, source: "${AIQ_PREFLIGHT}", target: /output/preflight}
+      - {type: bind, source: "${AIQ_ADMISSION}", target: /output/admission}
+      - {type: bind, source: "${AIQ_RESULTS}", target: /output/results}
+    depends_on: [runner_proxy]
     networks:
       runner_internal:
         ipv4_address: 172.30.0.3
+    restart: "no"
+
+  verifier_proxy:
+    image: aiq-official-verifier-proxy:local
+    build:
+      context: ../..
+      dockerfile: deploy/official-runtime/Dockerfile.verifier-proxy
+      args:
+        SOURCE_COMMIT: ${AIQ_SOURCE_COMMIT}
+      platforms: [linux/arm64]
+    container_name: aiq-official-verifier-proxy
+    user: "10004:10004"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10004,gid=10004
+    networks:
+      verifier_internal:
+        ipv4_address: 172.32.0.2
+      verifier_proxy_egress: {}
+    restart: "no"
+
+  verifier:
+    image: aiq-official-verifier:local
+    build:
+      context: ../..
+      dockerfile: deploy/official-runtime/Dockerfile.verifier
+      args:
+        SOURCE_COMMIT: ${AIQ_SOURCE_COMMIT}
+      platforms: [linux/arm64]
+    container_name: aiq-official-verifier
+    user: "10003:10003"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      HTTPS_PROXY: http://172.32.0.2:3128
+      HTTP_PROXY: http://172.32.0.2:3128
+      NO_PROXY: localhost,127.0.0.1
+      AIQ_VERIFIER_ENVIRONMENT: /inputs/verifier-environment.json
+      AIQ_PRIVATE_TASKS: /inputs/tasks
+      AIQ_EVALUATORS: /inputs/evaluators
+      AIQ_EVALUATOR_RUNTIME: /inputs/evaluator-runtime
+      AIQ_TOOLCHAIN: /inputs/toolchain
+      AIQ_CORPUS_COMMITMENT: /inputs/corpus-commitment.json
+      AIQ_REPLAY_ROOT: /replay
+      AIQ_RECORDS_ROOT: /records
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=0700,uid=10003,gid=10003
+    volumes:
+      - {type: bind, source: "${AIQ_VERIFIER_BINARY}", target: /inputs/bin/aiq-verifier, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_TASKS}", target: /inputs/tasks, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_EVALUATORS}", target: /inputs/evaluators, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_EVALUATOR_RUNTIME}", target: /inputs/evaluator-runtime, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_TOOLCHAIN}", target: /inputs/toolchain, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_CORPUS_COMMITMENT}", target: /inputs/corpus-commitment.json, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_ENVIRONMENT}", target: /inputs/verifier-environment.json, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_TOKEN_FILE}", target: /run/secrets/verifier-token, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_SIGNING_KEY_FILE}", target: /run/secrets/verifier-signing-key, read_only: true}
+      - {type: bind, source: "${AIQ_VERIFIER_REPLAY}", target: /replay}
+      - {type: bind, source: "${AIQ_VERIFIER_RECORDS}", target: /records}
+    depends_on: [verifier_proxy]
+    networks:
+      verifier_internal:
+        ipv4_address: 172.32.0.3
     restart: "no"
 
 networks:
   runner_internal:
     name: aiq-official-runner-internal
     internal: true
-    ipam:
-      config:
-        - subnet: 172.30.0.0/24
-  proxy_egress:
-    name: aiq-official-proxy-egress
+    ipam: {config: [{subnet: 172.30.0.0/24}]}
+  runner_proxy_egress:
+    name: aiq-official-runner-proxy-egress
+  verifier_internal:
+    name: aiq-official-verifier-internal
+    internal: true
+    ipam: {config: [{subnet: 172.32.0.0/24}]}
+  verifier_proxy_egress:
+    name: aiq-official-verifier-proxy-egress

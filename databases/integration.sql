@@ -23,6 +23,15 @@ begin
 end;
 $$;
 
+select pg_temp.aiq_assert(
+  aiq_private.has_exact_jsonb_keys('{"a":1,"b":2}'::jsonb,array['b','a']::text[]),
+  'exact JSON object keys must not depend on caller order or database collation'
+);
+select pg_temp.aiq_assert(
+  not aiq_private.has_exact_jsonb_keys('{"a":1,"b":2}'::jsonb,array['a','a','b']::text[]),
+  'exact JSON object keys must reject duplicate expected keys'
+);
+
 create or replace function pg_temp.aiq_efficiency_pricing()
 returns jsonb
 language sql
@@ -61,7 +70,7 @@ as $$
     ),
     'formula', '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
     'hosted_tool_fees_included', false,
-    'limitation', 'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.'
+    'limitation', 'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing'
   );
 $$;
 
@@ -115,7 +124,7 @@ select pg_temp.aiq_assert(
     'provider_tokens_evidence_level', 'verifier_recomputed',
     'provider_tokens_source', 'provider_reported',
     'source_result_id', 'result_' || repeat('b', 64),
-    'standard_api_equivalent_usd_nanos', 54400000,
+    'standard_api_equivalent_usd_nanos', 272000000,
     'task_id', 'coding-01',
     'wall_time_evidence_level', 'runner_observed'
   )),
@@ -515,14 +524,14 @@ select
           'cost_evidence_level', null,
           'cost_status', 'unavailable_missing_usage',
           'model', result -> 'model',
-          'observed_wall_ms', result #> '{latency,wall_ms}',
+          'observed_wall_ms', null,
           'provider_tokens', '{}'::jsonb,
           'provider_tokens_evidence_level', null,
           'provider_tokens_source', null,
           'source_result_id', result ->> 'result_id',
           'standard_api_equivalent_usd_nanos', null,
           'task_id', result ->> 'task_id',
-          'wall_time_evidence_level', 'runner_observed'
+          'wall_time_evidence_level', null
         )
         order by result -> 'model', result ->> 'task_id'
       )
@@ -534,10 +543,10 @@ select
           'schema_version', 'aiq.calibration-efficiency.v1',
           'model', model.value,
           'selected_tasks', 72,
-          'observed_wall_tasks', 72,
-          'total_observed_wall_ms', 72,
-          'median_observed_wall_ms', 1,
-          'p95_observed_wall_ms', 1,
+          'observed_wall_tasks', 0,
+          'total_observed_wall_ms', null,
+          'median_observed_wall_ms', null,
+          'p95_observed_wall_ms', null,
           'provider_token_totals', '{}'::jsonb,
           'provider_token_coverage', jsonb_build_object(
             'selected_tasks', 72,
@@ -567,6 +576,57 @@ from aiq_integration_input input
 cross join aiq_enqueue_accepted accepted
 cross join aiq_claim_two claim;
 grant select on aiq_stage_resume_input to aiq_verifier;
+
+select pg_temp.aiq_assert(
+  (select octet_length(stage::text) <= 4 * 1024 * 1024 from aiq_stage_resume_input),
+  'the synthetic normalized stage must fit the database envelope bound'
+);
+select pg_temp.aiq_assert(
+  (select aiq_private.efficiency_pricing_v1_is_valid(stage->'pricing')
+   from aiq_stage_resume_input),
+  'the synthetic normalized stage must retain the exact pricing contract'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from aiq_stage_resume_input input
+    cross join lateral jsonb_array_elements(input.stage->'result_efficiency') evidence
+    where aiq_private.result_efficiency_v1_is_valid(evidence) is not true
+  ),
+  'every synthetic per-result efficiency record must validate'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from aiq_stage_resume_input input
+    cross join lateral jsonb_array_elements(input.stage->'efficiency') aggregate
+    where aiq_private.efficiency_aggregate_v1_is_valid(aggregate) is not true
+  ),
+  'every synthetic model efficiency aggregate must validate'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from aiq_stage_resume_input input
+    cross join lateral jsonb_array_elements(input.stage->'efficiency') aggregate
+    where aiq_private.efficiency_aggregate_matches_results(
+      aggregate,input.stage->'result_efficiency'
+    ) is not true
+  ),
+  'every synthetic model efficiency aggregate must match its result cells'
+);
+select pg_temp.aiq_assert(
+  (select count(distinct evidence->>'source_result_id')=1224
+   from aiq_stage_resume_input input
+   cross join lateral jsonb_array_elements(input.stage->'result_efficiency') evidence),
+  'synthetic efficiency evidence must bind 1224 unique result identities'
+);
+select pg_temp.aiq_assert(
+  (select aiq_private.official_model_matrix_is_exact(
+     (select jsonb_agg(aggregate.value->'model' order by aggregate.ordinality)
+      from jsonb_array_elements(input.stage->'efficiency')
+        with ordinality aggregate(value,ordinality))
+   )
+   from aiq_stage_resume_input input),
+  'synthetic efficiency aggregates must retain the exact 17-model order'
+);
 
 set local session_replication_role = replica;
 insert into aiq_private.aiq_nodes (
@@ -970,6 +1030,53 @@ select pg_temp.aiq_assert(
        'status','failure_code','explanation_code','explanation_summary'
      )),
   'public calibration results must expose bounded failure classification'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 6
+   from information_schema.columns
+   where table_schema = 'aiq_private'
+     and table_name = 'efficiency_official_models'
+     and column_name in (
+       'input_token_observed_result_count','cached_input_token_observed_result_count',
+       'cache_write_input_token_observed_result_count','output_token_observed_result_count',
+       'reasoning_token_observed_result_count','total_token_observed_result_count'
+     )),
+  'Official storage must preserve all six provider token category coverage counts'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 12
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_model_efficiency'
+     and column_name in (
+       'input_token_coverage_count','input_token_coverage_percent',
+       'cached_input_token_coverage_count','cached_input_token_coverage_percent',
+       'cache_write_input_token_coverage_count','cache_write_input_token_coverage_percent',
+       'output_token_coverage_count','output_token_coverage_percent',
+       'reasoning_token_coverage_count','reasoning_token_coverage_percent',
+       'total_token_coverage_count','total_token_coverage_percent'
+     )),
+  'public Official efficiency must expose category-specific coverage'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 3
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_model_efficiency'
+     and column_name in (
+       'matrix_batch_id','matrix_batch_elapsed_ms','summed_cell_adapter_elapsed_ms'
+     )),
+  'public Official efficiency must distinguish shared batch wall-clock from summed cell time'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'public_run_results'
+      and column_name in (
+        'usage','provenance','failure_detail','result_package_sha256','pricing_digest'
+      )
+  ),
+  'public Official result efficiency must omit private provider payloads and digests'
 );
 
 rollback;

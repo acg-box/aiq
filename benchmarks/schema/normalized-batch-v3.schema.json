@@ -697,11 +697,7 @@
           "else": {
             "properties": {
               "cost_status": {
-                "enum": [
-                  "estimated",
-                  "unavailable_invalid_usage",
-                  "unavailable_context_band"
-                ]
+                "enum": ["estimated", "unavailable_invalid_usage", "unavailable_context_band"]
               }
             }
           }
@@ -1114,7 +1110,7 @@
           "const": false
         },
         "limitation": {
-          "const": "Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend."
+          "const": "Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing"
         }
       }
     },

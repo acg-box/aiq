@@ -33,17 +33,68 @@ Production uses three Ed25519 identities:
 The gateway mints short-lived custom-role JWTs for verifier and publisher RPCs.
 The browser never receives those credentials.
 
+## Bounded Official runtime
+
+`deploy/official-runtime` supplies a local Linux arm64 deployment mechanism with
+four non-root, read-only-root containers: runner, runner proxy, verifier, and
+verifier proxy. Runner and verifier occupy separate internal networks. The runner
+proxy permits only approved Codex hosts plus its canary host; the verifier proxy
+permits the production gateway, Supabase, and its canary host while explicitly
+denying Codex and OpenAI hosts. Neither side receives a Docker socket or host
+port, and all containers drop capabilities and use `no-new-privileges`.
+
+The runtime manager requires a local Docker daemon with Linux `aarch64` and
+seccomp, canonical non-overlapping paths, a clean source worktree at the declared
+commit, frozen read-only inputs, and exact private ownership on writable roots and
+secret files. It recomputes deterministic `aiq.frozen-tree.v1` summaries during
+create, validation, and receipt generation. It records secret mount metadata but
+never opens or hashes secret contents. Model-free runner and verifier canaries
+prove the sandbox and proxy boundaries before the private deployment receipt v2
+is issued. [Operations and Validation](operations.md) owns the commands, while
+[Deployment Handoff](deployment-handoff.md) treats the receipt as launch evidence.
+The bundle does not schedule benchmark commands, invoke Codex during validation,
+claim a package automatically, or prove that a production worker is deployed.
+
 ## Runner flow
 
-The runner validates the public catalog, current corpus commitment, controlled
-toolchain, evaluator runtime, source manifest, capability manifest, schedule,
-and path layout. Preflight probes the exact local Codex CLI and writes an
-authenticated expiring report.
+Before any paid Official preflight, `admit-permissions` validates the exact
+72-by-17 plan, controlled-input identities, schedule occurrence, conservative
+capacity, worker count, managed `aiq_benchmark` policy, sandbox canaries, and the
+planned preflight, checkpoint, run, score, and package paths. It writes one
+private create-once `aiq.official-permission-admission.v2` receipt without invoking
+a model. Paid preflight validates the public catalog, current corpus commitment,
+controlled toolchain, evaluator runtime, source manifest, capability manifest,
+schedule, and path layout, probes the exact local Codex CLI, and binds its
+expiring report to that receipt. The same admission is required by Official
+`run`, `score`, and `package`; calibration rejects it.
+
+```mermaid
+sequenceDiagram
+    participant O as Operator
+    participant R as Runner
+    participant C as Codex CLI
+    O->>R: Admit exact Official plan
+    R->>R: Check policy canaries paths capacity and schedule
+    R-->>O: Private admission v2 receipt
+    O->>R: Paid preflight with receipt
+    R->>C: Probe exact 17-model capability matrix
+    R-->>O: Receipt-bound preflight report
+    O->>R: Run score and package with same receipt
+    R->>C: Execute admitted 72-by-17 plan
+    R-->>O: Reserved run and create-new score and package
+```
+
+The flow prevents a model invocation before the exact Official plan passes
+permission admission and prevents later stages from silently changing that plan.
 
 A live run uses fresh task workspaces and content-addressed artifacts. It writes
-a durable checkpoint and creates one `aiq.run.v3` record. An Official run is
-non-synthetic, complete, and exactly 17 by 72. Calibration accepts a deterministic
-subset but remains untrusted, non-Official, and ineligible for ranking.
+a durable checkpoint and creates one `aiq.run.v3` record. Official run output is
+held by an exact run-bound reservation so only the unchanged run may recover it
+after interruption; score and package outputs remain create-new. Parent ownership,
+nonblocking advisory locks, link checks, and Linux or macOS atomic writes form the
+trusted single-writer boundary. An Official run is non-synthetic, complete, and
+exactly 17 by 72. Calibration accepts a deterministic subset but remains
+untrusted, non-Official, and ineligible for ranking.
 
 After each paid invocation, the runner retains the available invocation and
 workspace evidence before cleanup. Authentication, subscription-limit, or
@@ -146,6 +197,20 @@ one selected model's task slice and publishes descriptive score, elapsed-time,
 token-coverage, and API-equivalent cost evidence. These pages require explicit
 calibration publication and do not feed the Official leaderboard, compare, or
 trends surfaces.
+
+Verified Official evidence has a separate public efficiency projection used by
+the overview, compare, trends, and Official run-detail pages. Each model row binds
+to one published non-synthetic score and its matrix batch. The signed matrix batch
+wall-clock is shared by all 17 configurations and counted once; per-cell adapter
+durations are summed separately and may overlap at the recorded concurrency. A
+narrow per-result view exposes only derived timing, six token categories, cost
+status, and verifier-recomputed evidence labels, not raw provider events,
+signatures, digests, packages, or private failures. Repository reads reject
+duplicate identities, inconsistent shared batch durations, impossible counts,
+partial timing groups, invalid coverage percentages, and partial pricing metadata.
+The readiness probe includes these public-read contracts under
+`public_read_views`. Their measurement meaning belongs to
+[Benchmark Method](benchmark-method.md).
 
 ```mermaid
 flowchart TD

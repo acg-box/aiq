@@ -20,6 +20,7 @@ pub mod scoring;
 pub mod submission;
 pub mod task;
 
+mod official_admission;
 mod pinned_path;
 
 pub use self::{
