@@ -391,8 +391,8 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       public_node_count: 3,
       private_table_count: 40,
       forced_rls_table_count: 40,
-      public_view_count: 13,
-      security_invoker_view_count: 13,
+      public_view_count: 12,
+      security_invoker_view_count: 12,
       hardened_gateway_role_count: 2,
     },
   );
@@ -496,8 +496,8 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(receipt.public_node_count, 3);
   strictEqual(receipt.private_table_count, 40);
   strictEqual(receipt.forced_rls_table_count, 40);
-  strictEqual(receipt.public_view_count, 13);
-  strictEqual(receipt.security_invoker_view_count, 13);
+  strictEqual(receipt.public_view_count, 12);
+  strictEqual(receipt.security_invoker_view_count, 12);
   strictEqual(receipt.hardened_gateway_role_count, 2);
   strictEqual(Object.keys(receipt.node_ids).length, 3);
 });
@@ -852,8 +852,8 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(receipt.public_node_count, 3);
     strictEqual(receipt.private_table_count, 40);
     strictEqual(receipt.forced_rls_table_count, 40);
-    strictEqual(receipt.public_view_count, 13);
-    strictEqual(receipt.security_invoker_view_count, 13);
+    strictEqual(receipt.public_view_count, 12);
+    strictEqual(receipt.security_invoker_view_count, 12);
     strictEqual(receipt.hardened_gateway_role_count, 2);
     strictEqual(readiness.initialized, true);
     strictEqual(readiness.task_count, 72);
@@ -861,9 +861,43 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(readiness.production_node_count, 3);
     strictEqual(readiness.private_table_count, 40);
     strictEqual(readiness.forced_rls_table_count, 40);
-    strictEqual(readiness.public_view_count, 13);
-    strictEqual(readiness.security_invoker_view_count, 13);
+    strictEqual(readiness.public_view_count, 12);
+    strictEqual(readiness.security_invoker_view_count, 12);
     strictEqual(readiness.hardened_gateway_role_count, 2);
+
+    const { stdout: residueOutput } = await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--quiet',
+        '--tuples-only',
+        '--no-align',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--command',
+        `begin;
+create view public.aiq_obsolete_extra_status with (security_invoker = true)
+as select true as ready;
+grant select on table public.aiq_obsolete_extra_status to anon, authenticated;
+set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
+select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::text;
+rollback;`,
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
+    const residueReadiness = object(
+      JSON.parse(
+        residueOutput
+          .trim()
+          .split(/\r?\n/)
+          .find((line) => line.startsWith('{')) ?? 'null',
+      ),
+    );
+    strictEqual(residueReadiness.initialized, false);
+    strictEqual(residueReadiness.public_view_count, 13);
+    strictEqual(residueReadiness.security_invoker_view_count, 13);
 
     const expectedPublicShape = {
       distributed_radar_count: 3,

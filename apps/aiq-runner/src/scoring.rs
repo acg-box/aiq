@@ -8,6 +8,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
+use crate::candidate_release_gate::CANDIDATE_SCORER_VERSION;
 use crate::{
 	model::ModelConfig,
 	protocol::{self, TrustTier},
@@ -336,6 +337,7 @@ struct Observation {
 struct FrozenCatalog {
 	task_set_id: String,
 	task_set_version: String,
+	#[serde(alias = "task_metadata_identity")]
 	identity_commitment: FrozenIdentityCommitment,
 	tasks: Vec<FrozenCatalogTask>,
 }
@@ -611,6 +613,23 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 	let Ok(catalog) = frozen_catalog() else {
 		return false;
 	};
+
+	task_bindings_match_catalog(tasks, catalog, AIQ_SCORING_VERSION)
+}
+
+pub(crate) fn task_bindings_match_candidate_catalog(tasks: &[TaskDefinition]) -> bool {
+	let Ok(catalog) = frozen_candidate_catalog() else {
+		return false;
+	};
+
+	task_bindings_match_catalog(tasks, catalog, CANDIDATE_SCORER_VERSION)
+}
+
+fn task_bindings_match_catalog(
+	tasks: &[TaskDefinition],
+	catalog: FrozenCatalog,
+	expected_scorer_version: &str,
+) -> bool {
 	let expected = catalog
 		.tasks
 		.into_iter()
@@ -626,7 +645,7 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 					&& task.domain == frozen.domain
 					&& task.difficulty == frozen.difficulty
 					&& task.cluster_id.as_deref() == Some(frozen.cluster_id.as_str())
-					&& task.scorer_version == AIQ_SCORING_VERSION
+					&& task.scorer_version == expected_scorer_version
 					&& task.scorer_version == frozen.evaluator.scorer_version
 			})
 		})
@@ -787,6 +806,10 @@ fn publication_tier(
 
 fn frozen_catalog() -> Result<FrozenCatalog, serde_json::Error> {
 	serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
+}
+
+fn frozen_candidate_catalog() -> Result<FrozenCatalog, serde_json::Error> {
+	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"))
 }
 
 fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {

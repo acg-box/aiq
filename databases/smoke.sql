@@ -8,6 +8,7 @@ declare
   private_table_count integer;
   public_view_count integer;
   security_invoker_view_count integer;
+  canonical_public_view_count integer;
   current_scoring_count integer;
   current_task_count integer;
   current_task_set_count integer;
@@ -39,20 +40,28 @@ begin
     count(*) filter (
       where coalesce(relation.reloptions, array[]::text[])
         @> array['security_invoker=true']
+    ),
+    count(*) filter (
+      where relation.relname in (
+        'public_distributed_radar','public_leaderboard','public_model_matrix',
+        'public_nodes','public_run_results','public_runs',
+        'public_scoring_versions','public_task_coverage',
+        'public_calibration_runs','public_calibration_results',
+        'public_calibration_scores','public_model_efficiency'
+      )
     )
-  into public_view_count, security_invoker_view_count
+  into public_view_count, security_invoker_view_count, canonical_public_view_count
   from pg_catalog.pg_class relation
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'public'
-    and relation.relkind = 'v'
-    and (
-      relation.relname like 'public\_%' escape '\'
-      or relation.relname = 'aiq_preview_status_v1'
-    );
+    and relation.relkind = 'v';
 
-  if public_view_count <> 13 or security_invoker_view_count <> 13 then
+  if public_view_count <> 12
+    or security_invoker_view_count <> 12
+    or canonical_public_view_count <> 12
+  then
     raise exception
-      'expected 13 security-invoker public views, found % views and % invoker views',
+      'expected 12 security-invoker public views, found % views and % invoker views',
       public_view_count, security_invoker_view_count;
   end if;
 
@@ -67,51 +76,13 @@ begin
     raise exception 'the bounded public trend RPC is missing or not browser-readable';
   end if;
 
-  if pg_catalog.to_regprocedure('aiq_private.preview_status_v1()') is null
-    or exists (
-      select 1
-      from pg_catalog.pg_proc function
-      cross join lateral pg_catalog.aclexplode(
-        coalesce(
-          function.proacl,
-          pg_catalog.acldefault('f', function.proowner)
-        )
-      ) privilege
-      where function.oid = pg_catalog.to_regprocedure(
-          'aiq_private.preview_status_v1()'
-        )
-        and privilege.grantee = 0
-        and privilege.privilege_type = 'EXECUTE'
-    )
-    or not pg_catalog.has_function_privilege(
-      'anon', 'aiq_private.preview_status_v1()', 'EXECUTE'
-    )
-    or not pg_catalog.has_function_privilege(
-      'authenticated', 'aiq_private.preview_status_v1()', 'EXECUTE'
-    )
-    or not pg_catalog.has_table_privilege(
-      'anon', 'public.aiq_preview_status_v1', 'SELECT'
-    )
-    or not pg_catalog.has_table_privilege(
-      'authenticated', 'public.aiq_preview_status_v1', 'SELECT'
-    )
-  then
-    raise exception 'the bounded preview status view is missing or not browser-readable';
-  end if;
-
   select count(*) into browser_write_count
   from pg_catalog.pg_class relation
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   cross join (values ('anon'), ('authenticated')) as browser(role_name)
   where (
       namespace.nspname = 'aiq_private'
-      or (
-        namespace.nspname = 'public'
-        and (
-          relation.relname like 'public\_%' escape '\'
-          or relation.relname = 'aiq_preview_status_v1'
-        )
-      )
+      or namespace.nspname = 'public'
     )
     and relation.relkind in ('r', 'p', 'v')
     and (
@@ -257,7 +228,6 @@ select
    from public.public_calibration_results limit 1) as calibration_result_failure_shape,
   (select count(*) from public.public_calibration_scores) as calibration_score_count,
   (select count(*) from public.public_model_efficiency) as model_efficiency_count,
-  (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
 
@@ -277,7 +247,6 @@ select
    from public.public_calibration_results limit 1) as calibration_result_failure_shape,
   (select count(*) from public.public_calibration_scores) as calibration_score_count,
   (select count(*) from public.public_model_efficiency) as model_efficiency_count,
-  (select count(*) from public.aiq_preview_status_v1) as preview_status_count,
   (select count(*) from public.public_trend_points('all')) as trend_point_count;
 reset role;
 

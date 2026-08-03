@@ -3,6 +3,11 @@
 This bundle runs the AIQ Official runner and verifier in separate Linux arm64
 containers. It does not make macOS an Official runtime. `create`, `validate`,
 and `receipt` do not invoke Codex, claim a package, or send a verification.
+It is also separate from the preregistered AIQ Core `1.0.2` candidate runtime.
+That candidate's three-repeat calibration does not replace the Official
+`72 × 17` run.
+
+See `THIRD_PARTY.md` for the pinned runtime-image packages and licenses.
 
 The stack has four non-root containers:
 
@@ -19,12 +24,37 @@ verifier use different internal networks and different egress proxies. The
 runner proxy permits only the three approved Codex hosts and `example.com` for
 the canary. The verifier proxy permits only `aiq.wiki`,
 `xxnszykaeapolqdnhalx.supabase.co`, and `example.com`. It rejects OpenAI and
-Codex hosts. No filter has a wildcard.
+Codex hosts. No filter has a wildcard. Each proxy allows 128 clients. The
+runner canary opens 64 concurrent allowed CONNECT tunnels before it repeats the
+default-deny check. The verifier internal network is the RFC1918 subnet
+`10.248.32.0/24`; confirm that the local Docker Engine and host VPN do not
+already route it.
 
 ## Prepare host paths
 
 Use a local Docker Engine or local VM that reports Linux `aarch64` and seccomp.
 Do not use a remote Docker context.
+
+On an Apple Silicon Mac with OrbStack, check the ordinary operator context and
+the protected provisioning context before preparing paths. Both must resolve the
+same local Unix socket and Linux `aarch64` daemon:
+
+```sh
+docker context inspect --format '{{.Endpoints.docker.Host}}'
+docker info --format '{{.OSType}}/{{.Architecture}} {{json .SecurityOptions}}'
+sudo env HOME="$HOME" DOCKER_CONTEXT="$(docker context show)" PATH="$PATH" \
+  docker context inspect --format '{{.Endpoints.docker.Host}}'
+sudo env HOME="$HOME" DOCKER_CONTEXT="$(docker context show)" PATH="$PATH" \
+  docker info --format '{{.OSType}}/{{.Architecture}} {{json .SecurityOptions}}'
+```
+
+Each context command must report the same local `unix://` endpoint. Each info
+command must report `linux/aarch64` and `seccomp`. Root is required for the
+one-time numeric ownership and macOS flag provisioning below. The Official
+manager can then run as the ordinary operator that owns its private state
+directory and can access that verified Docker socket.
+These host checks and the preparation below do not deploy the runtime or start a
+real run.
 
 Copy `operator.example.toml` outside Git and replace all placeholders. Use
 absolute canonical paths. A declared path must not contain a symlink or a
@@ -42,6 +72,15 @@ source tree so the Compose build context and image revision cannot diverge.
 The source digest excludes only the root `.git` control entry; the commit and
 clean status bind that control data.
 
+On macOS, use dedicated AIQ trees and remove inherited ACLs before freezing
+inputs or setting writable-root modes. Clear unexpected immutable flags only on
+the exact dedicated mutable or non-secret input paths before provisioning:
+
+```sh
+chmod -RN /absolute/controlled/input /absolute/private/runtime-root
+chflags -R nouchg,noschg /absolute/controlled/input /absolute/private/runtime-root
+```
+
 The manager creates a deterministic `aiq.frozen-tree.v1` SHA-256 summary for
 the source, private tasks, baselines, evaluators, evaluator runtime, toolchain,
 corpus commitment, capabilities, schedule, runner binary, Codex binary,
@@ -49,6 +88,9 @@ verifier binary, verifier tasks, verifier evaluators, verifier runtime,
 verifier toolchain, verifier corpus commitment, and verifier environment. It
 recomputes the summaries during `create`, `validate`, and `receipt`. A content
 or metadata change makes validation evidence stale and stops the command.
+The manager rejects a Mach-O or wrong-architecture executable. Codex can be a
+static Linux AArch64 ELF; the AIQ runner and verifier must be Linux AArch64 PIE
+files that use `/lib/ld-linux-aarch64.so.1`.
 
 Create runner writable directories with exact uid/gid `10001:10001` and mode
 `0700`. Use mode `0711` only for the Codex home so the OCI runtime can install
@@ -69,6 +111,17 @@ install -o 10001 -g 10001 -m 0600 /dev/null /controlled/runner/codex-home/auth.j
 install -d -o 10003 -g 10003 -m 0700 /controlled/verifier/replay
 install -o 10003 -g 10003 -m 0600 /protected/input/token /controlled/secrets/verifier-token
 ```
+
+On macOS, the Codex authentication source must be a separate copy, not the
+active profile. After its owner and mode are exact, protect that separate copy
+for the complete run:
+
+```sh
+chflags uchg /absolute/private/path/to/auth.json
+```
+
+Clear `uchg` only on that separate copy when an operator intentionally replaces
+it. The manager rejects a macOS Codex authentication copy without `uchg`.
 
 Do not put a secret value in the TOML file. The TOML file contains only secret
 file paths. The manager never opens or hashes Codex authentication, the

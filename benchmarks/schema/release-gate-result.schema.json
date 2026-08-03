@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/release-gate-result.v1.json",
+  "title": "AIQ Core release-gate result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_identity",
+    "candidate_status",
+    "passed",
+    "failures",
+    "authority_digest",
+    "evidence_digest",
+    "plan_id"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.release-gate-result.v1" },
+    "release_identity": { "const": "aiq-core/1.0.2" },
+    "candidate_status": { "const": "candidate_requires_controlled_release_gate" },
+    "passed": { "type": "boolean" },
+    "failures": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "authority_digest": { "$ref": "#/$defs/digest" },
+    "evidence_digest": { "$ref": "#/$defs/digest" },
+    "plan_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "passed": { "const": true } }, "required": ["passed"] },
+      "then": { "properties": { "failures": { "maxItems": 0 } } },
+      "else": { "properties": { "failures": { "minItems": 1 } } }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    }
+  }
+}

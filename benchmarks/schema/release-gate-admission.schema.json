@@ -1,0 +1,655 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/release-gate-admission.v1.json",
+  "title": "Signed pre-run AIQ Core release admission plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "signature_domain",
+    "signature_encoding",
+    "release_identity",
+    "catalog_release_identity_digest",
+    "task_metadata_identity_digest",
+    "corpus_commitment_digest",
+    "plan_id",
+    "execution_plan_digest",
+    "model_id_mapping_digest",
+    "issued_at",
+    "collection_not_before",
+    "collection_not_after",
+    "repeat_schedule",
+    "observation_universe",
+    "infrastructure_retry_policy",
+    "model_matrix",
+    "contrast_bindings",
+    "signer",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.release-gate-admission.v1"
+    },
+    "signature_domain": {
+      "const": "aiq.release-gate-admission.v1"
+    },
+    "signature_encoding": {
+      "const": "aiq.sorted-key-json.v1"
+    },
+    "release_identity": {
+      "const": "aiq-core/1.0.2"
+    },
+    "catalog_release_identity_digest": {
+      "const": "sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b"
+    },
+    "task_metadata_identity_digest": {
+      "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
+    },
+    "corpus_commitment_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "plan_id": {
+      "$ref": "#/$defs/identifier"
+    },
+    "execution_plan_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "model_id_mapping_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "issued_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "collection_not_before": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "collection_not_after": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "repeat_schedule": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/repeat"
+      }
+    },
+    "observation_universe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_ids",
+        "model_ids",
+        "raw_cell_count",
+        "contrast_pair_count",
+        "contrast_observation_count"
+      ],
+      "properties": {
+        "task_ids": {
+          "type": "array",
+          "minItems": 72,
+          "maxItems": 72,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "model_ids": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
+        "raw_cell_count": {
+          "const": 3672
+        },
+        "contrast_pair_count": {
+          "const": 153
+        },
+        "contrast_observation_count": {
+          "const": 306
+        }
+      }
+    },
+    "infrastructure_retry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_attempts",
+        "backoff_seconds",
+        "retryable_classifications",
+        "model_or_evaluator_failures_retryable"
+      ],
+      "properties": {
+        "max_attempts": {
+          "const": 3
+        },
+        "backoff_seconds": {
+          "const": [0, 30, 90]
+        },
+        "retryable_classifications": {
+          "const": ["pre_model_admission"]
+        },
+        "model_or_evaluator_failures_retryable": {
+          "const": false
+        }
+      }
+    },
+    "model_matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "configurations"],
+      "properties": {
+        "digest": {
+          "const": "sha256:c385d79e02d233b4594800a66199c2da59e8f6fd623fb808812a669ccba29757"
+        },
+        "configurations": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "sol-low"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-sol-low"
+                    },
+                    "family": {
+                      "const": "sol"
+                    },
+                    "reasoning_effort": {
+                      "const": "low"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "sol-medium"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-sol-medium"
+                    },
+                    "family": {
+                      "const": "sol"
+                    },
+                    "reasoning_effort": {
+                      "const": "medium"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "sol-high"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-sol-high"
+                    },
+                    "family": {
+                      "const": "sol"
+                    },
+                    "reasoning_effort": {
+                      "const": "high"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "sol-xhigh"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-sol-xhigh"
+                    },
+                    "family": {
+                      "const": "sol"
+                    },
+                    "reasoning_effort": {
+                      "const": "xhigh"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "sol-max"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-sol-max"
+                    },
+                    "family": {
+                      "const": "sol"
+                    },
+                    "reasoning_effort": {
+                      "const": "max"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "sol-ultra"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-sol-ultra"
+                    },
+                    "family": {
+                      "const": "sol"
+                    },
+                    "reasoning_effort": {
+                      "const": "ultra"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "terra-low"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-terra-low"
+                    },
+                    "family": {
+                      "const": "terra"
+                    },
+                    "reasoning_effort": {
+                      "const": "low"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "terra-medium"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-terra-medium"
+                    },
+                    "family": {
+                      "const": "terra"
+                    },
+                    "reasoning_effort": {
+                      "const": "medium"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "terra-high"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-terra-high"
+                    },
+                    "family": {
+                      "const": "terra"
+                    },
+                    "reasoning_effort": {
+                      "const": "high"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "terra-xhigh"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-terra-xhigh"
+                    },
+                    "family": {
+                      "const": "terra"
+                    },
+                    "reasoning_effort": {
+                      "const": "xhigh"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "terra-max"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-terra-max"
+                    },
+                    "family": {
+                      "const": "terra"
+                    },
+                    "reasoning_effort": {
+                      "const": "max"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "terra-ultra"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-terra-ultra"
+                    },
+                    "family": {
+                      "const": "terra"
+                    },
+                    "reasoning_effort": {
+                      "const": "ultra"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "luna-low"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-luna-low"
+                    },
+                    "family": {
+                      "const": "luna"
+                    },
+                    "reasoning_effort": {
+                      "const": "low"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "luna-medium"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-luna-medium"
+                    },
+                    "family": {
+                      "const": "luna"
+                    },
+                    "reasoning_effort": {
+                      "const": "medium"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "luna-high"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-luna-high"
+                    },
+                    "family": {
+                      "const": "luna"
+                    },
+                    "reasoning_effort": {
+                      "const": "high"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "luna-xhigh"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-luna-xhigh"
+                    },
+                    "family": {
+                      "const": "luna"
+                    },
+                    "reasoning_effort": {
+                      "const": "xhigh"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/model"
+                },
+                {
+                  "properties": {
+                    "model_id": {
+                      "const": "luna-max"
+                    },
+                    "execution_model_id": {
+                      "const": "gpt-5.6-luna-max"
+                    },
+                    "family": {
+                      "const": "luna"
+                    },
+                    "reasoning_effort": {
+                      "const": "max"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "contrast_bindings": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/contrast"
+      }
+    },
+    "signer": {
+      "$ref": "#/$defs/signer"
+    },
+    "signature": {
+      "$ref": "#/$defs/signature"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*(?![\\s\\S])"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{86}==(?![\\s\\S])"
+    },
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_id", "algorithm"],
+      "properties": {
+        "key_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "algorithm": {
+          "const": "ed25519"
+        }
+      }
+    },
+    "repeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repeat_id", "scheduled_at", "contrast_arm_order"],
+      "properties": {
+        "repeat_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "scheduled_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "contrast_arm_order": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(coupled_constraints|ambiguous_recovery_state|plausible_incomplete_evidence):(reference|challenge)(?![\\s\\S])"
+          }
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_id", "execution_model_id", "family", "reasoning_effort"],
+      "properties": {
+        "model_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "execution_model_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "family": {
+          "enum": ["sol", "terra", "luna"]
+        },
+        "reasoning_effort": {
+          "enum": ["low", "medium", "high", "xhigh", "max", "ultra"]
+        }
+      }
+    },
+    "contrast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contrast_id", "reference_variant_digest", "challenge_variant_digest"],
+      "properties": {
+        "contrast_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "reference_variant_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "challenge_variant_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    }
+  }
+}

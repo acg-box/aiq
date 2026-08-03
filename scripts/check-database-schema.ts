@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const privateTableCount = 40;
-const publicViewCount = 13;
+const publicViewCount = 12;
 const hardenedGatewayRoleCount = 2;
 const evidencePrivateTables = [
   'efficiency_pricing_methods',
@@ -26,7 +26,6 @@ const corePublicViews = [
   'public_runs',
   'public_scoring_versions',
   'public_task_coverage',
-  'aiq_preview_status_v1',
 ] as const;
 const evidencePublicViews = [
   'public_calibration_runs',
@@ -38,7 +37,7 @@ const publicViews = [...corePublicViews, ...evidencePublicViews] as const;
 
 function checkSecurityDefinerSearchPaths(schema: string): void {
   const starts = [...schema.matchAll(/^create function /gm)].map(({ index }) => index);
-  assert.ok(starts.length >= 115, 'The schema function inventory is incomplete.');
+  assert.ok(starts.length >= 114, 'The schema function inventory is incomplete.');
   for (const [position, start] of starts.entries()) {
     const end = starts[position + 1] ?? schema.length;
     const definition = schema.slice(start, end);
@@ -231,7 +230,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     'Each private table must force row-level security.',
   );
   assert.equal(
-    (schema.match(/^create view public\.(?:public_|aiq_preview_status_v1)/gim) ?? []).length,
+    (schema.match(/^create view public\./gim) ?? []).length,
     publicViewCount,
     'Only the inventoried read views can be public.',
   );
@@ -268,20 +267,6 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
       `${viewName} must be an invoker-security view.`,
     );
   }
-  assert.match(schema, /create function aiq_private\.preview_status_v1\(\) returns table\(/);
-  assert.match(
-    schema,
-    /create function aiq_private\.preview_status_v1\(\)[\s\S]*?language plpgsql stable security definer[\s\S]*?scoring\.scoring_version = '1\.0\.0'[\s\S]*?and scoring\.synthetic[\s\S]*?then\s+return;/,
-  );
-  assert.match(
-    schema,
-    /create view public\.aiq_preview_status_v1 with \(security_invoker = true\)/,
-  );
-  assert.match(schema, /revoke all on function aiq_private\.preview_status_v1\(\) from PUBLIC/);
-  assert.match(schema, /grant all on function aiq_private\.preview_status_v1\(\) to anon/);
-  assert.match(schema, /grant all on function aiq_private\.preview_status_v1\(\) to authenticated/);
-  assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to anon/);
-  assert.match(schema, /grant select on table public\.aiq_preview_status_v1 to authenticated/);
   const browserReadSurfaceRevocation = [
     ...schema.matchAll(/revoke all on table\s+([\s\S]*?)\s+from public, anon, authenticated;/gi),
   ]
@@ -321,18 +306,6 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /score ->> 'tier' = 'synthetic_complete' and not is_synthetic/);
   assert.match(schema, /score ->> 'tier' = 'official' and is_synthetic/);
   assert.match(schema, /batch\.synthetic[\s\S]{0,120}return false;/);
-  for (const source of [
-    'aiq_matrix_batches',
-    'aiq_result_packages',
-    'aiq_submission_inbox',
-    'aiq_submission_conflicts',
-  ]) {
-    assert.match(
-      schema,
-      new RegExp(`from aiq_private\\.${source} [\\s\\S]{0,180}where `),
-      `Preview status must reject non-synthetic evidence from ${source}.`,
-    );
-  }
   assert.match(syntheticDemo, /'synthetic_complete'/);
   assert.doesNotMatch(schema, /create table public\.aiq_/);
   const databaseSources = `${schema}\n${syntheticDemo}`;
@@ -620,7 +593,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   );
   assert.match(
     schema,
-    /private_table_count=40 and forced_rls_table_count=40\s+and public_view_count=13 and security_invoker_view_count=13\s+and hardened_gateway_role_count=2/,
+    /private_table_count=40 and forced_rls_table_count=40\s+and public_view_count=12 and security_invoker_view_count=12\s+and canonical_public_view_count=12\s+and hardened_gateway_role_count=2/,
     'Production readiness must bind the complete schema, RLS, view, and gateway-role inventory.',
   );
 

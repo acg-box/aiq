@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 import { createBoundedSupabaseFetch, createSupabaseApiKeyFetch } from '../server/supabase-http.ts';
 import { filterTrendPoints } from './format.ts';
-import { inspectDeploymentProfile } from './deployment-profile.ts';
 import {
   inspectPublicSupabaseConfiguration,
   type PublicDataConfiguration,
@@ -62,37 +61,6 @@ export const PUBLIC_VIEW_NAMES = {
   calibrationScores: 'public_calibration_scores',
   modelEfficiency: 'public_model_efficiency',
 } as const;
-
-export const PREVIEW_STATUS_VIEW = 'aiq_preview_status_v1';
-
-const PREVIEW_STATUS_SELECT =
-  'contract_version,profile_id,canonical_model_matrix,task_count,model_configuration_count,synthetic_run_count,synthetic_task_result_count,synthetic_score_snapshot_count,synthetic_scoring_definition_count,synthetic_radar_node_count,published_run_count,published_leaderboard_count,published_trend_point_count,calibration_run_count,calibration_result_count,calibration_score_count,non_synthetic_evidence_count';
-
-const EXPECTED_PREVIEW_STATUS = {
-  contract_version: 'aiq.preview-status.v1',
-  profile_id: 'acgbox-aiq-preview-v1',
-  canonical_model_matrix: true,
-  task_count: 72,
-  model_configuration_count: 17,
-  synthetic_run_count: 17,
-  synthetic_task_result_count: 1_224,
-  synthetic_score_snapshot_count: 17,
-  synthetic_scoring_definition_count: 1,
-  synthetic_radar_node_count: 3,
-  published_run_count: 0,
-  published_leaderboard_count: 0,
-  published_trend_point_count: 0,
-  calibration_run_count: 0,
-  calibration_result_count: 0,
-  calibration_score_count: 0,
-  non_synthetic_evidence_count: 0,
-} as const;
-
-export type PreviewStatusRow = typeof EXPECTED_PREVIEW_STATUS;
-
-export interface PreviewStatusSource extends AiqRepository {
-  readPreviewStatusRows(): Promise<unknown>;
-}
 
 export interface ModelMatrixRow {
   id: string;
@@ -969,14 +937,16 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       value.model_family === 'luna') &&
     typeof value.reasoning_effort === 'string' &&
     ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value.reasoning_effort) &&
+    isPositiveCount(resultCount) &&
     isCount(value.matrix_batch_elapsed_ms) &&
     isNullableNonnegativeNumber(value.summed_cell_adapter_elapsed_ms) &&
     isNullableNonnegativeNumber(value.observed_median_wall_ms) &&
     isNullableNonnegativeNumber(value.observed_p95_wall_ms) &&
     isCount(value.observed_time_sample_count) &&
+    value.observed_time_sample_count <= resultCount &&
     isFiniteNumber(value.observed_time_coverage_percent) &&
-    value.observed_time_coverage_percent >= 0 &&
-    value.observed_time_coverage_percent <= 100 &&
+    value.observed_time_coverage_percent ===
+      Number(((100 * value.observed_time_sample_count) / resultCount).toFixed(4)) &&
     ((value.observed_time_sample_count === 0 &&
       value.summed_cell_adapter_elapsed_ms === null &&
       value.observed_median_wall_ms === null &&
@@ -996,6 +966,7 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       value.total_tokens,
     ].every(isNullableNonnegativeNumber) &&
     isCount(value.token_usage_sample_count) &&
+    value.token_usage_sample_count <= resultCount &&
     (value.token_usage_source_level === null ||
       value.token_usage_source_level === 'provider_reported') &&
     (value.standard_api_equivalent_usd_nanos === null ||
@@ -1008,11 +979,11 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
       value.standard_api_equivalent_usd_nanos !== null) ||
       (value.cost_estimator_status !== 'estimated' &&
         value.standard_api_equivalent_usd_nanos === null)) &&
-    (value.token_usage_coverage_percent === null ||
-      (isFiniteNumber(value.token_usage_coverage_percent) &&
-        value.token_usage_coverage_percent > 0 &&
-        value.token_usage_coverage_percent <= 100)) &&
-    isPositiveCount(resultCount) &&
+    ((value.token_usage_sample_count === 0 && value.token_usage_coverage_percent === null) ||
+      (value.token_usage_sample_count > 0 &&
+        isFiniteNumber(value.token_usage_coverage_percent) &&
+        value.token_usage_coverage_percent ===
+          Number(((100 * value.token_usage_sample_count) / resultCount).toFixed(4)))) &&
     categoryCoverage.every(
       ([count, percent]) =>
         (count === null && percent === null) ||
@@ -1043,8 +1014,10 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
     value.attempted_result_count <= resultCount &&
     value.invoked_result_count <= value.attempted_result_count &&
     value.adapter_elapsed_observed_result_count <= value.invoked_result_count &&
+    value.adapter_elapsed_observed_result_count === value.observed_time_sample_count &&
     value.token_observed_result_count === value.token_usage_sample_count &&
     value.priced_result_count === value.estimated_cost_sample_count &&
+    value.priced_result_count <= resultCount &&
     Array.isArray(value.cost_estimator_limitations) &&
     value.cost_estimator_limitations.every(isBoundedText) &&
     Array.isArray(value.pricing_rates) &&
@@ -1086,7 +1059,8 @@ function isModelEfficiencyRow(value: unknown): value is ModelEfficiencyRow {
     ((value.cost_estimator_status === 'estimated' &&
       value.standard_api_equivalent_usd_nanos !== null &&
       value.cost_evidence_level === 'verifier_recomputed' &&
-      value.token_usage_coverage_percent === 100) ||
+      value.token_usage_coverage_percent === 100 &&
+      value.priced_result_count === resultCount) ||
       (value.cost_estimator_status !== 'estimated' &&
         value.standard_api_equivalent_usd_nanos === null &&
         value.cost_evidence_level === null))
@@ -1760,95 +1734,6 @@ export class SeedAiqRepository implements AiqRepository {
   }
 }
 
-export class PreviewAiqRepository implements AiqRepository {
-  readonly mode = 'synthetic' as const;
-  readonly configuration = 'live' as const;
-  readonly #liveRepository: PreviewStatusSource;
-  readonly #seedRepository = new SeedAiqRepository();
-  #previewStatusCheck: Promise<void> | undefined;
-
-  constructor(liveRepository: PreviewStatusSource) {
-    if (liveRepository.mode !== 'live' || liveRepository.configuration !== 'live') {
-      throw new Error('AIQ Wiki preview requires one valid live public-data repository.');
-    }
-    this.#liveRepository = liveRepository;
-  }
-
-  #assertPreviewStatus(): Promise<void> {
-    this.#previewStatusCheck ??= this.#liveRepository.readPreviewStatusRows().then((value) => {
-      if (!Array.isArray(value) || value.length !== 1) {
-        throw new Error('AIQ Wiki preview requires exactly one preview-status row.');
-      }
-      const row: unknown = value[0];
-      const expectedEntries = Object.entries(EXPECTED_PREVIEW_STATUS);
-      if (
-        !isUnknownRecord(row) ||
-        Object.keys(row).length !== expectedEntries.length ||
-        expectedEntries.some(([key, expected]) => Reflect.get(row, key) !== expected)
-      ) {
-        throw new Error('AIQ Wiki preview status does not match the required fixture contract.');
-      }
-      return undefined;
-    });
-    return this.#previewStatusCheck;
-  }
-
-  async listLeaderboard(): Promise<readonly LeaderboardEntry[]> {
-    await this.#assertPreviewStatus();
-    return this.#seedRepository.listLeaderboard();
-  }
-
-  async listTrendPoints(range: TrendRange = 'all'): Promise<readonly TrendPoint[]> {
-    await this.#assertPreviewStatus();
-    return this.#seedRepository.listTrendPoints(range);
-  }
-
-  async listRunPage(request: RunHistoryPageRequest = {}): Promise<RunHistoryPage> {
-    await this.#assertPreviewStatus();
-    return this.#seedRepository.listRunPage(request);
-  }
-
-  async getRun(id: string): Promise<BenchmarkRun | null> {
-    await this.#assertPreviewStatus();
-    return this.#seedRepository.getRun(id);
-  }
-
-  async listCalibrationRunPage(
-    _request: CalibrationRunPageRequest = {},
-  ): Promise<CalibrationRunPage> {
-    await this.#assertPreviewStatus();
-    return { runs: [], newerCursor: null, olderCursor: null };
-  }
-
-  async getCalibrationRun(
-    _id: string,
-    _selection: CalibrationModelSelection,
-  ): Promise<PublicCalibrationRun | null> {
-    await this.#assertPreviewStatus();
-    return null;
-  }
-
-  async listCalibrationScores(_runId: string): Promise<readonly PublicCalibrationScore[]> {
-    await this.#assertPreviewStatus();
-    return [];
-  }
-
-  async listModelEfficiency(_runIds: readonly string[]): Promise<readonly PublicModelEfficiency[]> {
-    await this.#assertPreviewStatus();
-    return [];
-  }
-
-  async getMethodology(): Promise<Methodology> {
-    await this.#assertPreviewStatus();
-    return this.#seedRepository.getMethodology();
-  }
-
-  async listRadarNodes(): Promise<readonly RadarNode[]> {
-    await this.#assertPreviewStatus();
-    return this.#seedRepository.listRadarNodes();
-  }
-}
-
 function normalizeLeaderboardStatus(row: LeaderboardRow | undefined): LeaderboardStatus {
   if (!row) {
     return 'unpublished';
@@ -2191,18 +2076,6 @@ export class SupabaseAiqRepository implements AiqRepository {
         fetch: createSupabaseApiKeyFetch(publishableKey, undefined, fetchImplementation),
       },
     });
-  }
-
-  async readPreviewStatusRows(): Promise<unknown> {
-    const { data, error } = await this.#client
-      .from(PREVIEW_STATUS_VIEW)
-      .select(PREVIEW_STATUS_SELECT)
-      .limit(2)
-      .overrideTypes<unknown[], { merge: false }>();
-    if (error) {
-      throw new Error(`Cannot read ${PREVIEW_STATUS_VIEW}: ${error.message}`);
-    }
-    return data;
   }
 
   async #modelMatrix(): Promise<readonly ModelMatrixRow[]> {
@@ -2825,28 +2698,12 @@ export function createAiqRepository(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): AiqRepository {
   const configuration = inspectPublicSupabaseConfiguration(environment);
-  const deploymentProfile = inspectDeploymentProfile(environment);
-  if (deploymentProfile.profile === 'invalid') {
-    return new InvalidLiveAiqRepository(deploymentProfile.issues);
-  }
   if (configuration.state === 'live' && configuration.url && configuration.publishableKey) {
     try {
-      const liveRepository = new SupabaseAiqRepository(
-        configuration.url,
-        configuration.publishableKey,
-      );
-      return deploymentProfile.profile === 'preview'
-        ? new PreviewAiqRepository(liveRepository)
-        : liveRepository;
+      return new SupabaseAiqRepository(configuration.url, configuration.publishableKey);
     } catch {
       return new InvalidLiveAiqRepository([]);
     }
-  }
-  if (deploymentProfile.profile === 'preview') {
-    return new InvalidLiveAiqRepository([
-      ...configuration.issues,
-      'AIQ Wiki preview requires both browser-safe Supabase variables',
-    ]);
   }
   if (configuration.state === 'invalid') {
     return new InvalidLiveAiqRepository(configuration.issues);
@@ -2857,11 +2714,5 @@ export function createAiqRepository(
 export function classifyPublicDataConfiguration(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): PublicDataConfiguration {
-  const deploymentProfile = inspectDeploymentProfile(environment);
-  const publicConfiguration = inspectPublicSupabaseConfiguration(environment);
-  if (deploymentProfile.profile === 'invalid') return 'invalid';
-  if (deploymentProfile.profile === 'preview' && publicConfiguration.state !== 'live') {
-    return 'invalid';
-  }
-  return publicConfiguration.state;
+  return inspectPublicSupabaseConfiguration(environment).state;
 }

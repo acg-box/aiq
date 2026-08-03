@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import type { AiqRepository } from '../data/types.ts';
-import type { DeploymentProfile } from '../data/deployment-profile.ts';
 
 const navigation = [
   ['Overview', '/'],
@@ -16,13 +15,7 @@ const navigation = [
   ['Radar', '/radar'],
 ] as const;
 
-export function SiteHeader({
-  configuration,
-  deploymentProfile,
-}: {
-  configuration: AiqRepository['configuration'];
-  deploymentProfile: DeploymentProfile;
-}) {
+export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
 
   return (
@@ -49,13 +42,11 @@ export function SiteHeader({
       </nav>
       <span className="live-pill">
         <span aria-hidden="true" />
-        {deploymentProfile === 'preview'
-          ? 'preview data'
-          : configuration === 'live'
-            ? 'public data'
-            : configuration === 'invalid'
-              ? 'invalid config'
-              : 'seed mode'}
+        {configuration === 'live'
+          ? 'public data'
+          : configuration === 'invalid'
+            ? 'invalid config'
+            : 'seed mode'}
       </span>
     </header>
   );

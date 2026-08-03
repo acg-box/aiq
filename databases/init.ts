@@ -84,8 +84,8 @@ export interface InitializationReceipt {
   readonly public_node_count: 3;
   readonly private_table_count: 40;
   readonly forced_rls_table_count: 40;
-  readonly public_view_count: 13;
-  readonly security_invoker_view_count: 13;
+  readonly public_view_count: 12;
+  readonly security_invoker_view_count: 12;
   readonly hardened_gateway_role_count: 2;
   readonly node_ids: Readonly<Record<NodeRole, string>>;
 }
@@ -971,8 +971,8 @@ commit;
       public_node_count: 3,
       private_table_count: 40,
       forced_rls_table_count: 40,
-      public_view_count: 13,
-      security_invoker_view_count: 13,
+      public_view_count: 12,
+      security_invoker_view_count: 12,
       hardened_gateway_role_count: 2,
       node_ids: nodeIds,
     },

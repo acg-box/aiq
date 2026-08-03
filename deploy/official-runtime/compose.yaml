@@ -88,7 +88,7 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=10004,gid=10004
     networks:
       verifier_internal:
-        ipv4_address: 172.32.0.2
+        ipv4_address: 10.248.32.2
       verifier_proxy_egress: {}
     restart: "no"
 
@@ -106,8 +106,8 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
-      HTTPS_PROXY: http://172.32.0.2:3128
-      HTTP_PROXY: http://172.32.0.2:3128
+      HTTPS_PROXY: http://10.248.32.2:3128
+      HTTP_PROXY: http://10.248.32.2:3128
       NO_PROXY: localhost,127.0.0.1
       AIQ_VERIFIER_ENVIRONMENT: /inputs/verifier-environment.json
       AIQ_PRIVATE_TASKS: /inputs/tasks
@@ -134,7 +134,7 @@ services:
     depends_on: [verifier_proxy]
     networks:
       verifier_internal:
-        ipv4_address: 172.32.0.3
+        ipv4_address: 10.248.32.3
     restart: "no"
 
 networks:
@@ -147,6 +147,6 @@ networks:
   verifier_internal:
     name: aiq-official-verifier-internal
     internal: true
-    ipam: {config: [{subnet: 172.32.0.0/24}]}
+    ipam: {config: [{subnet: 10.248.32.0/24}]}
   verifier_proxy_egress:
     name: aiq-official-verifier-proxy-egress

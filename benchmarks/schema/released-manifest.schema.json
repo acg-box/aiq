@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/released-manifest.v1.json",
+  "title": "AIQ Core released manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_identity",
+    "release_status",
+    "candidate_catalog_release_identity_digest",
+    "task_metadata_identity_digest",
+    "receipt_digest",
+    "released_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.released-manifest.v1" },
+    "release_identity": { "const": "aiq-core/1.0.2" },
+    "release_status": { "const": "released_by_verified_receipt" },
+    "candidate_catalog_release_identity_digest": {
+      "const": "sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b"
+    },
+    "task_metadata_identity_digest": {
+      "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
+    },
+    "receipt_digest": { "$ref": "#/$defs/digest" },
+    "released_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    }
+  }
+}

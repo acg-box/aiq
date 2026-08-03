@@ -6,6 +6,7 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use jiff::Timestamp;
 use sha2::{Digest, Sha256};
 
 use crate::runner::MAX_RUN_JOBS;
@@ -15,7 +16,11 @@ use crate::{
 		CapabilityValidationStatus, ConfigurationProbeStatus, MAX_INLINE_PREVIEW_BYTES,
 		ProbeStatus,
 	},
-	corpus_commitment::{self, RunClass},
+	candidate_release_gate::{
+		CANDIDATE_TASK_IDENTITY_SHA256, CANDIDATE_TASK_SET_VERSION, CandidateExecutionUnit,
+		CandidateExecutionUnitKind,
+	},
+	corpus_commitment::{self, CANDIDATE_CONTRAST_CATALOG_IDENTITY_SHA256, RunClass},
 	model::{MODEL_MATRIX, ModelConfig},
 	protocol, resume,
 	runner::{
@@ -170,6 +175,7 @@ pub fn validate_calibration_run_record(
 
 	validate_calibration_results(run, &model_set, &task_set)
 }
+
 /// Validates a calibration against the exact supplied task definitions and frozen catalog bindings.
 pub fn validate_calibration_run_record_with_tasks(
 	run: &CalibrationRunRecord,
@@ -177,30 +183,92 @@ pub fn validate_calibration_run_record_with_tasks(
 ) -> Result<(), RunValidationError> {
 	validate_calibration_run_record(run)?;
 
-	let task_ids = tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
-	let selected_ids = run.task_ids.iter().map(String::as_str).collect::<Vec<_>>();
+	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
+}
 
-	if task_ids != selected_ids {
-		return Err(RunValidationError::new(
-			"supplied tasks do not equal the ordered calibration task selection",
-		));
-	}
-	if !scoring::task_bindings_match_frozen_catalog(tasks) {
-		return Err(RunValidationError::new(
-			"supplied calibration tasks do not match the frozen catalog identity",
-		));
-	}
+/// Validates release-gate calibration output against AIQ Core 1.0.2 candidate bindings.
+///
+/// Candidate output is never Official or ranking eligible. This separate entry
+/// point prevents a candidate catalog from being accepted by the released
+/// calibration verifier by accident.
+pub fn validate_candidate_calibration_run_record_with_tasks(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<(), RunValidationError> {
+	validate_calibration_run_record(run)?;
 
-	let task_metadata = collect_task_metadata(&run.results)?;
-	let task_set_hash = validate_tasks(tasks, &task_metadata)?;
-
-	if task_set_hash != run.task_set_hash {
+	if run.provenance.catalog_digest != CANDIDATE_TASK_IDENTITY_SHA256 {
 		return Err(RunValidationError::new(
-			"supplied calibration task definitions do not match the selected task-set hash",
+			"release-gate calibration is not bound to the AIQ Core 1.0.2 candidate",
 		));
 	}
 
-	Ok(())
+	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_candidate_catalog)
+}
+
+/// Validates one exact plan-bound candidate unit after live execution.
+///
+/// Every candidate unit runs the complete 17-model matrix. Core units bind the
+/// immutable 72-task candidate catalog; contrast units bind one of the six
+/// separately committed controlled arms.
+pub fn validate_candidate_unit_calibration_run_record_with_tasks(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	unit: &CandidateExecutionUnit,
+) -> Result<(), RunValidationError> {
+	validate_calibration_run_record(run)?;
+
+	let execution_model_ids =
+		unit.models.iter().map(|model| model.execution_model_id.as_str()).collect::<Vec<_>>();
+	let run_model_ids = run.models.iter().map(|model| model.key()).collect::<Vec<_>>();
+	let expected_scheduled_unix_ms = unit
+		.slot_id
+		.parse::<Timestamp>()
+		.map_err(|_| RunValidationError::new("candidate unit slot is not a valid timestamp"))?
+		.as_millisecond();
+	let expected_scheduled_unix_ms = u64::try_from(expected_scheduled_unix_ms)
+		.map_err(|_| RunValidationError::new("candidate unit slot precedes the Unix epoch"))?;
+	let run_scheduled_unix_ms = run.schedule_slot.scheduled_unix_ms().map_err(|error| {
+		RunValidationError::new(format!("candidate run schedule slot is invalid: {error}"))
+	})?;
+
+	if run.models != MODEL_MATRIX
+		|| execution_model_ids != run_model_ids
+		|| run.task_ids != unit.ordered_task_ids
+		|| run.provenance.corpus_commitment_sha256 != unit.corpus_commitment_sha256
+		|| run_scheduled_unix_ms != expected_scheduled_unix_ms
+	{
+		return Err(RunValidationError::new(
+			"candidate run does not match the signed unit model, task, corpus, or slot binding",
+		));
+	}
+
+	match unit.kind {
+		CandidateExecutionUnitKind::Core => {
+			if run.provenance.catalog_digest != CANDIDATE_TASK_IDENTITY_SHA256
+				|| tasks.len() != 72
+				|| !scoring::task_bindings_match_candidate_catalog(tasks)
+			{
+				return Err(RunValidationError::new(
+					"candidate core unit does not match the immutable 72-task catalog",
+				));
+			}
+		},
+		CandidateExecutionUnitKind::Contrast => {
+			if run.provenance.catalog_digest != CANDIDATE_CONTRAST_CATALOG_IDENTITY_SHA256
+				|| tasks.len() != 1
+				|| tasks[0].task_version != CANDIDATE_TASK_SET_VERSION
+				|| unit.ordered_task_ids.len() != 1
+				|| unit.ordered_task_ids[0] != tasks[0].task_id
+			{
+				return Err(RunValidationError::new(
+					"candidate contrast unit does not match its signed controlled arm",
+				));
+			}
+		},
+	}
+
+	validate_calibration_task_content(run, tasks)
 }
 
 /// Validates a complete run. Supplied tasks add source-authoritative hash checks.
@@ -361,6 +429,44 @@ pub(crate) fn valid_normalized_artifact_reference(artifact: &ArtifactReference) 
 			artifact.kind.as_str(),
 			"stdout.jsonl" | "stderr.txt" | "final-response.txt" | "workspace-snapshot.json"
 		)
+}
+
+fn validate_calibration_task_bindings(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	bindings_match: fn(&[TaskDefinition]) -> bool,
+) -> Result<(), RunValidationError> {
+	let task_ids = tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
+	let selected_ids = run.task_ids.iter().map(String::as_str).collect::<Vec<_>>();
+
+	if task_ids != selected_ids {
+		return Err(RunValidationError::new(
+			"supplied tasks do not equal the ordered calibration task selection",
+		));
+	}
+	if !bindings_match(tasks) {
+		return Err(RunValidationError::new(
+			"supplied calibration tasks do not match the selected catalog identity",
+		));
+	}
+
+	validate_calibration_task_content(run, tasks)
+}
+
+fn validate_calibration_task_content(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<(), RunValidationError> {
+	let task_metadata = collect_task_metadata(&run.results)?;
+	let task_set_hash = validate_tasks(tasks, &task_metadata)?;
+
+	if task_set_hash != run.task_set_hash {
+		return Err(RunValidationError::new(
+			"supplied calibration task definitions do not match the selected task-set hash",
+		));
+	}
+
+	Ok(())
 }
 
 fn calibration_preflight_covers_models(

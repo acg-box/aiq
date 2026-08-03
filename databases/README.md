@@ -26,7 +26,7 @@ A successful receipt reports:
 - 17 model configurations;
 - three distinct production nodes;
 - 40 private tables with enabled and forced RLS;
-- 13 security-invoker public views;
+- 12 security-invoker public views;
 - two hardened, non-login gateway roles;
 - catalog digest
   `sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
@@ -37,7 +37,7 @@ expected outputs, signing keys, tokens, or database credentials.
 ## Security model
 
 The schema stores AIQ tables in `aiq_private`, enables and forces RLS, and
-exposes 13 security-invoker public views plus narrow RPCs. Browser roles have
+exposes 12 security-invoker public views plus narrow RPCs. Browser roles have
 read-only access. Server gateways control submission, verification, publication,
 and private Storage operations.
 
@@ -126,36 +126,6 @@ references before it retires the temporary claim references. An exact publisher
 retry reconciles them again.
 
 ## Disposable validation
-
-The first free-tier deployment must be a disposable synthetic preview. Create a
-new PostgreSQL 17 or Supabase database, then run one command:
-
-```sh
-AIQ_DATABASE_URL='<direct-connection-url>' cargo make init-preview-database
-```
-
-This command is not a production initializer. It applies `schema.sql` and
-`synthetic-demo.sql` in one transaction. It rejects an existing AIQ schema or
-AIQ role, validates the 72-task, 17-configuration, 1,224-result, and three-node
-synthetic shape, and does not put the connection URL in the `psql` arguments or
-command output. The public publication views remain empty because no synthetic
-row passes the verifier publication boundary. The explicit Web preview profile
-checks that empty publication surface before it serves checked-in synthetic
-fixtures. If the command fails, discard the database. Do not use this database
-for production data.
-
-The browser roles can read `public.aiq_preview_status_v1`. It returns exactly
-one bounded `aiq.preview-status.v1` row only when the synthetic preview contract
-and counts match. It returns no row after any non-synthetic, noncanonical, or
-published evidence appears, so it does not disclose production activity counts.
-
-Expose a local disposable copy through PostgREST, then validate the exact
-preview profile through the built Next.js application:
-
-```sh
-AIQ_PREVIEW_POSTGREST_URL='http://127.0.0.1:4180' \
-cargo make smoke-preview-web
-```
 
 The other SQL files are validation inputs, not production installers. Apply
 the following sequence to a separate fresh disposable PostgreSQL 17 database,

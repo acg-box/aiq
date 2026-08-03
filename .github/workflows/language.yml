@@ -64,8 +64,8 @@ jobs:
       - name: Build Rust workspace
         run: cargo make build-rust
 
-  rust-linux-arm64-runner:
-    name: Linux arm64 runner build
+  rust-linux-arm64-binaries:
+    name: Linux arm64 binary build
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Fetch latest code
@@ -77,11 +77,20 @@ jobs:
           cache: true
           rustflags: ''
 
-      - name: Build Linux arm64 production runner
-        run: cargo build --locked --package aiq-runner
+      - name: Build Linux arm64 production binaries
+        run: cargo build --locked --release --package aiq-runner --package aiq-verifier
+
+      - name: Validate Linux arm64 production binaries
+        run: |
+          python3 deploy/candidate-runtime/binary_builder.py target/release /tmp/aiq-linux-arm64
+          /tmp/aiq-linux-arm64/aiq-runner --version
+          /tmp/aiq-linux-arm64/aiq-verifier --version
 
       - name: Check the bounded Official runtime contract
         run: python3 deploy/official-runtime/test_static.py
+
+      - name: Check the bounded candidate runtime contract
+        run: python3 -B deploy/candidate-runtime/test_runtime.py
 
   toml-check:
     name: TOML check
@@ -215,32 +224,6 @@ jobs:
         run: |
           docker exec "${{ job.services.postgres.id }}" \
             dropdb --if-exists --username postgres aiq_initializer
-          docker exec "${{ job.services.postgres.id }}" \
-            psql --username postgres --dbname postgres --set ON_ERROR_STOP=1 \
-            --command \
-            "drop role if exists aiq_publisher;
-            drop role if exists aiq_verifier;
-            drop role if exists service_role;
-            drop role if exists authenticator;
-            drop role if exists authenticated;
-            drop role if exists anon;"
-
-      - name: Create fresh preview initializer test database
-        run: >-
-          docker exec "${{ job.services.postgres.id }}"
-          createdb --username postgres aiq_preview_initializer
-
-      - name: Exercise the preview initializer and browser roles
-        env:
-          AIQ_DATABASE_PREVIEW_TEST_PSQL: psql
-          AIQ_DATABASE_PREVIEW_TEST_URL: postgresql://postgres:aiq-contract-local-only@127.0.0.1:5432/aiq_preview_initializer
-        run: node --test databases/preview-init.test.ts
-
-      - name: Remove preview initializer test database and roles
-        if: always()
-        run: |
-          docker exec "${{ job.services.postgres.id }}" \
-            dropdb --if-exists --username postgres aiq_preview_initializer
           docker exec "${{ job.services.postgres.id }}" \
             psql --username postgres --dbname postgres --set ON_ERROR_STOP=1 \
             --command \

@@ -22,7 +22,7 @@ if curl --noproxy '*' --silent --show-error --connect-timeout 5 https://example.
   exit 1
 fi
 
-curl --proxy http://172.32.0.2:3128 --silent --show-error --fail \
+curl --proxy http://10.248.32.2:3128 --silent --show-error --fail \
   --connect-timeout 5 --max-time 15 --output /dev/null https://example.com/
 
 assert_proxy_denied() {
@@ -31,7 +31,7 @@ assert_proxy_denied() {
 
   # Tinyproxy returns CONNECT 403 only when its filter denies the target. DNS,
   # TLS, timeout, and generic proxy failures report another value and must fail.
-  if connect_status=$(curl --proxy http://172.32.0.2:3128 --silent --show-error \
+  if connect_status=$(curl --proxy http://10.248.32.2:3128 --silent --show-error \
     --connect-timeout 5 --max-time 10 --output /dev/null \
     --write-out '%{http_connect}' "$url" 2>/dev/null); then
     echo "verifier proxy allowed $label" >&2
