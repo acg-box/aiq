@@ -20,7 +20,7 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
 
   return (
     <header className="site-header">
-      <Link className="brand" href="/" aria-label="AIQ home">
+      <Link className="brand" href="/" aria-label="AIQ home" prefetch={false}>
         <span className="brand-mark" aria-hidden="true">
           A
         </span>
@@ -32,7 +32,12 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
             href === '/' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
           return (
-            <Link key={href} href={href} aria-current={current ? 'page' : undefined}>
+            <Link
+              key={href}
+              href={href}
+              aria-current={current ? 'page' : undefined}
+              prefetch={false}
+            >
               {label}
             </Link>
           );
