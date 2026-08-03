@@ -1548,7 +1548,7 @@ export function createEnqueueRpcArguments(
   return {
     envelope: submission.envelope,
     request_context: {
-      source: 'aiq-wiki-web',
+      source: 'aiq-web',
       received_at: receipt.receivedAt,
       idempotency_key: submission.idempotencyKey,
       package_sha256: receipt.packageSha256,

@@ -41,7 +41,7 @@ state is not final release acceptance.
 
 ## Toolchain
 
-Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
 locked dependencies.
 
 ```sh
@@ -155,7 +155,9 @@ non-Official calibration score bundle when its saved run is calibration.
 `package` binds the run's execution concurrency, signs the calibration payload,
 and rejects a conflicting concurrency declaration. `submit` validates and
 uploads every signed content-addressed artifact before sending the package to
-`/api/submissions`. A queue receipt is not verification or publication.
+`/api/submissions`. The Web gateway records `request_context.source` as
+`aiq-web` when it enqueues the submission. A queue receipt is not verification
+or publication.
 
 `aiq-runner normalize` is an audit path that can report commitments-verified or
 failed dispositions, but it cannot claim `evaluator_replayed`. Production replay
@@ -204,14 +206,25 @@ steps provision a local runtime; they do not deploy it or start model work.
 
 The fixed plan has three repeats: 3,672 core plus 306 contrast observations,
 for 3,978 total. The separate Official `72 × 17` run has 1,224 observations. It
-has no task, model, contrast-arm, or unit selectors. The isolated assembler
-carries exact public source-observation and evidence schemas. Promotion is a
-later explicit operation and rejects a receipt timestamp earlier than evidence
-collection. Gate artifacts do not carry Official/calibration efficiency
-publication evidence: signed unit artifacts retain measured latency and
-available provider-token counters, but the public aggregate gate artifacts omit
-them. Use `deploy/candidate-runtime/README.md` as the command authority. No
-candidate real run has started.
+has no task, model, contrast-arm, or unit selectors. `prepare` creates and signs
+the deterministic 21-unit plan. For each repeat, run `run-repeat`,
+`verify-repeat`, and `finalize-repeat` in order, then run `aggregate` after all
+three repeats. Repeat one creates all 86 exact-plan reservations; later repeats
+reopen them. Runner and verifier stop before transferring the declared roots
+between their UIDs, and each transfer receives a create-new private receipt. An
+interrupted repeat stage is retried with the same repeat number rather than a new
+plan.
+
+The isolated assembler carries exact public source-observation and evidence
+schemas. Promotion is a later explicit operation and rejects a receipt timestamp
+earlier than evidence collection. Gate artifacts do not carry
+Official/calibration efficiency publication evidence: signed unit artifacts
+retain measured latency and available provider-token counters, but the public
+aggregate gate artifacts omit them. Use `deploy/candidate-runtime/README.md` as
+the command authority. This lifecycle executes the preregistered gate in
+[Benchmark Method](benchmark-method.md) within the isolation boundaries in
+[Architecture and Runtime](architecture-and-runtime.md). No candidate real run
+has started.
 
 ## Verifier worker
 
@@ -308,13 +321,13 @@ Validate the Web application. On a fresh host, install the pinned Playwright
 browsers first, as the checked-in CI job does:
 
 ```sh
-npm exec --workspace @aiq/wiki-web -- \
+npm exec --workspace @aiq/web -- \
   playwright install --with-deps chromium firefox webkit
 npm run check
 npm run lint
-npm run test --workspace @aiq/wiki-web
-npm run build --workspace @aiq/wiki-web
-npm run test:browser --workspace @aiq/wiki-web
+npm run test --workspace @aiq/web
+npm run build --workspace @aiq/web
+npm run test:browser --workspace @aiq/web
 ```
 
 To validate a real PostgREST-to-Next public-read chain against a freshly

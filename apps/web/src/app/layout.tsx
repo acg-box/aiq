@@ -15,7 +15,7 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: 'AIQ Wiki — fixed-fixture agent evaluation', template: '%s · AIQ Wiki' },
+  title: { default: 'AIQ — fixed-fixture agent evaluation', template: '%s · AIQ' },
   description:
     'A transparent index of AIQ v1 fixed-fixture outcomes, sensitivity, history, and provenance.',
 };
@@ -32,7 +32,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <main id="main">{children}</main>
         <footer>
           <div>
-            <strong>AIQ Wiki</strong>
+            <strong>AIQ</strong>
             <p>Evidence before order. Uncertainty beside every score.</p>
           </div>
           <div>

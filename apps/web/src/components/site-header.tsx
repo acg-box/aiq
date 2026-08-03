@@ -20,13 +20,11 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
 
   return (
     <header className="site-header">
-      <Link className="brand" href="/" aria-label="AIQ Wiki home">
+      <Link className="brand" href="/" aria-label="AIQ home">
         <span className="brand-mark" aria-hidden="true">
           A
         </span>
-        <span>
-          AIQ <em>Wiki</em>
-        </span>
+        <span>AIQ</span>
       </Link>
       <nav aria-label="Main navigation">
         {navigation.map(([label, href]) => {
