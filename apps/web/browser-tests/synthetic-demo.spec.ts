@@ -59,6 +59,13 @@ for (const route of routes) {
     const response = await page.goto(route.path);
     expect(response?.status()).toBe(200);
     expect(response?.headers()['cache-control']).toContain('no-store');
+    expect(response?.headers()['x-content-type-options']).toBe('nosniff');
+    expect(response?.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin');
+    expect(response?.headers()['permissions-policy']).toContain('camera=()');
+    expect(response?.headers()['x-frame-options']).toBe('DENY');
+    const canonicalUrl = route.path === '/' ? 'https://aiq.wiki' : `https://aiq.wiki${route.path}`;
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', canonicalUrl);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonicalUrl);
     await expect(
       page.getByRole('heading', { level: 1, name: new RegExp(route.heading) }),
     ).toBeVisible();
@@ -78,6 +85,27 @@ for (const route of routes) {
     expect(runtimeFailures).toEqual([]);
   });
 }
+
+test('crawler metadata routes expose only the public surface', async ({ request }) => {
+  const robotsResponse = await request.get('/robots.txt');
+  expect(robotsResponse.status()).toBe(200);
+  expect(robotsResponse.headers()['content-type']).toContain('text/plain');
+  const robotsBody = await robotsResponse.text();
+  expect(robotsBody).toContain('Allow: /');
+  expect(robotsBody).toContain('Disallow: /api/');
+  expect(robotsBody).toContain('Sitemap: https://aiq.wiki/sitemap.xml');
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(sitemapResponse.status()).toBe(200);
+  expect(sitemapResponse.headers()['content-type']).toContain('application/xml');
+  const sitemapBody = await sitemapResponse.text();
+  for (const publicRoute of routes.filter(
+    (candidate) => !candidate.path.includes(seedCalibrationRunId),
+  )) {
+    expect(sitemapBody).toContain(`<loc>https://aiq.wiki${publicRoute.path}</loc>`);
+  }
+  expect(sitemapBody).not.toContain('/api/');
+});
 
 test('the index exposes the fixed 17-configuration matrix and a complete run', async ({
   page,
