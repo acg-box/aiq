@@ -110,10 +110,15 @@ Run both model-free corpus validators before `admit-permissions`. They validate
 the controlled 72-task AIQ Core corpus and the separate six-unit contrast corpus.
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
-exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, exclusive
-managed policy, sandbox canaries, and planned preflight, checkpoint, run, score,
-and package paths. Retain its private create-once
-`aiq.official-permission-admission.v2` receipt and pass it as
+exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, and planned
+preflight, checkpoint, run, score, and package paths. The runner invokes Codex
+with `--strict-config`, selects the explicit `aiq_benchmark` profile, disables
+profile network access, and runs the sandbox canaries. External managed
+requirements must be absent: remove any requirements file or provider-managed
+requirements instead of installing the deleted
+`config/codex-requirements.example.toml`. Any externally reported requirements
+make the Official admission ineligible before a model is invoked. Retain the
+private create-once `aiq.official-permission-admission.v2` receipt and pass it as
 `--official-admission` to `preflight`, `run`, `score`, and `package`. A cached or
 refreshed preflight remains bound to that receipt and cannot authorize a changed
 plan. Official run output uses an exact run-bound reservation; score and package
@@ -122,9 +127,10 @@ single-writer because the runner takes nonblocking advisory locks before paid
 probing and holds them through finalization.
 
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
-Repository support for admission does not prove the production managed policy has
-passed. The `run` command defaults to calibration and accepts repeated `--task`
-and `--model` arguments for a deterministic bounded subset. Calibration rejects
+Repository support for admission does not prove that the production permission
+canaries pass on the selected host. The `run` command defaults to calibration
+and accepts repeated `--task` and `--model` arguments for a deterministic
+bounded subset. Calibration rejects
 an Official admission receipt, can be replay-verified and published to its
 separate public register, but never classifies or publishes as Official or ranking
 eligible. Use `run --help` for the complete controlled input contract.

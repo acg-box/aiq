@@ -609,7 +609,7 @@ impl CodexExecutionConfig {
 	}
 }
 
-/// Public-safe proof that Codex selected the managed benchmark permission profile.
+/// Public-safe proof that Codex selected the explicit benchmark permission profile.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedPermissionProfileEvidence {
@@ -617,17 +617,17 @@ pub struct ManagedPermissionProfileEvidence {
 	pub schema_version: String,
 	/// Exact observed Codex CLI version.
 	pub codex_version: String,
-	/// Exact managed default permission profile.
+	/// Exact default permission profile supplied through strict CLI configuration.
 	pub default_permissions: String,
-	/// Sole managed allowed permission profile.
+	/// Exact selectable permission profile reported after applying strict CLI configuration.
 	pub allowed_permission_profile: String,
 	/// Exact active profile returned by model-free `thread/start`.
 	pub active_permission_profile: String,
-	/// Whether managed requirements are strict enough for a later Official run.
+	/// Whether the explicit profile is eligible for a later Official run.
 	pub official_eligible: bool,
-	/// Public-safe managed-requirements classification.
+	/// Public-safe classification of the external managed-requirements state.
 	pub managed_requirements_status: String,
-	/// Digest of the exact effective managed requirement fields returned by Codex.
+	/// Digest of the externally observed requirements result returned by Codex.
 	pub managed_requirements_digest: String,
 	/// Digest of the exact active model-free profile selection.
 	pub profile_selection_digest: String,
@@ -635,7 +635,7 @@ pub struct ManagedPermissionProfileEvidence {
 	pub evidence_digest: String,
 }
 impl ManagedPermissionProfileEvidence {
-	/// Returns the effective managed-requirements digest.
+	/// Returns the digest of the observed external managed-requirements state.
 	#[must_use]
 	pub fn managed_requirements_digest(&self) -> &str {
 		&self.managed_requirements_digest
@@ -648,14 +648,14 @@ impl ManagedPermissionProfileEvidence {
 	}
 }
 
-/// Expected digests for the exact managed profile required by an Official run.
+/// Expected digests for the explicit profile required by an Official run.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExpectedOfficialPermissionProfileDigests {
 	managed_requirements_digest: String,
 	profile_selection_digest: String,
 }
 impl ExpectedOfficialPermissionProfileDigests {
-	/// Returns the exact required managed-requirements digest.
+	/// Returns the digest of the expected absent managed-requirements state.
 	#[must_use]
 	pub fn managed_requirements_digest(&self) -> &str {
 		&self.managed_requirements_digest
@@ -800,7 +800,7 @@ where
 		classified
 	}
 
-	/// Proves managed profile policy and active selection without starting a model turn.
+	/// Proves explicit profile policy and active selection without starting a model turn.
 	pub fn verify_managed_permission_profile(
 		&self,
 		workspace: &Path,
@@ -819,7 +819,10 @@ where
 			.map(|path| ProtectedBenchmarkPath { category: "denied_root", path })
 			.collect::<Vec<_>>();
 		let toolchain = self.config.model_toolchain.as_ref().ok_or_else(|| {
-			adapter_failure(AdapterFailureKind::Spawn, "managed profile requires a toolchain")
+			adapter_failure(
+				AdapterFailureKind::Spawn,
+				"permission profile probe requires a toolchain",
+			)
 		})?;
 
 		isolation::validate_protected_layout(
@@ -834,7 +837,7 @@ where
 		if !codex_version_at_least(&version, 0, 138, 0) {
 			return Err(adapter_failure(
 				AdapterFailureKind::Unsupported,
-				"managed permission profiles require Codex CLI 0.138.0 or later",
+				"permission profiles require Codex CLI 0.138.0 or later",
 			));
 		}
 
@@ -1414,14 +1417,7 @@ struct ManagedPermissionProfileEvidenceBody<'a> {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ConfigRequirementsReadResult {
-	requirements: Option<ConfigRequirements>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ConfigRequirements {
-	allowed_permission_profiles: Option<BTreeMap<String, bool>>,
-	default_permissions: Option<String>,
+	requirements: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -2122,7 +2118,7 @@ pub fn permission_policy_digest(
 	})
 }
 
-/// Computes the exact managed-profile digests an Official probe must observe.
+/// Computes the exact explicit-profile digests an Official probe must observe.
 pub fn expected_official_permission_profile_digests(
 	codex_version: &str,
 ) -> Result<ExpectedOfficialPermissionProfileDigests, AdapterFailure> {
@@ -2135,15 +2131,7 @@ pub fn expected_official_permission_profile_digests(
 		));
 	}
 
-	let requirements = ConfigRequirementsReadResult {
-		requirements: Some(ConfigRequirements {
-			allowed_permission_profiles: Some(BTreeMap::from([(
-				BENCHMARK_PERMISSION_PROFILE.to_owned(),
-				true,
-			)])),
-			default_permissions: Some(BENCHMARK_PERMISSION_PROFILE.to_owned()),
-		}),
-	};
+	let requirements = ConfigRequirementsReadResult { requirements: None };
 	let managed_requirements_digest = protocol::canonical_hash(&(
 		"aiq.managed-permission-requirements.v1",
 		codex_version,
@@ -2152,7 +2140,7 @@ pub fn expected_official_permission_profile_digests(
 	.map_err(|error| {
 		adapter_failure(
 			AdapterFailureKind::Spawn,
-			format!("cannot digest expected managed requirements: {error}"),
+			format!("cannot digest expected absent managed requirements: {error}"),
 		)
 	})?;
 	let profile_selection_digest = protocol::canonical_hash(&(
@@ -3647,23 +3635,10 @@ fn build_managed_profile_evidence(
 	})
 }
 
-fn classify_managed_requirements(
-	requirements: Option<&ConfigRequirements>,
-) -> (bool, &'static str) {
-	let Some(requirements) = requirements else {
-		return (false, "absent");
-	};
-	let exact_allowed = requirements.allowed_permission_profiles.as_ref().is_some_and(|allowed| {
-		allowed.len() == 1 && allowed.get(BENCHMARK_PERMISSION_PROFILE) == Some(&true)
-	});
-	let exact_default =
-		requirements.default_permissions.as_deref() == Some(BENCHMARK_PERMISSION_PROFILE);
-
-	match (exact_allowed, exact_default) {
-		(true, true) => (true, "exact"),
-		(false, true) => (false, "allowlist_not_exclusive"),
-		(true, false) => (false, "default_mismatch"),
-		(false, false) => (false, "allowlist_and_default_mismatch"),
+fn classify_managed_requirements(requirements: Option<&Value>) -> (bool, &'static str) {
+	match requirements {
+		None => (true, "absent_expected"),
+		Some(_) => (false, "present_unexpected"),
 	}
 }
 
@@ -5290,7 +5265,7 @@ mod tests {
 	#[test]
 	fn managed_profile_exchange_uses_the_current_app_server_request_shapes() {
 		let root = test_controlled_root();
-		let (_, stdin) =
+		let (args, stdin) =
 			super::managed_profile_exchange(&root.join("task"), &[root.join("denied")])
 				.expect("managed profile exchange");
 		let requests = stdin
@@ -5302,6 +5277,14 @@ mod tests {
 			.collect::<Vec<_>>();
 
 		assert_eq!(requests.len(), 5);
+		assert!(args.contains(&"--strict-config".to_owned()));
+		assert!(
+			args.windows(2)
+				.any(|pair| { pair == ["--config", "default_permissions=\"aiq_benchmark\""] })
+		);
+		assert!(args.windows(2).any(|pair| {
+			pair == ["--config", "permissions.aiq_benchmark.network.enabled=false"]
+		}));
 		assert_eq!(requests[1], serde_json::json!({"method": "initialized"}));
 		assert_eq!(
 			requests[2],
@@ -5314,7 +5297,7 @@ mod tests {
 	}
 
 	#[test]
-	fn model_free_profile_allows_calibration_without_managed_defaults_but_marks_it_non_official() {
+	fn model_free_profile_requires_absent_external_managed_requirements_for_official() {
 		fn rpc(requirements: &str) -> Vec<u8> {
 			format!(
 				"{{\"id\":1,\"result\":{{\"requirements\":{requirements}}}}}\n{{\"id\":2,\"result\":{{\"data\":[{{\"id\":\"aiq_benchmark\",\"allowed\":true}}]}}}}\n{{\"id\":3,\"result\":{{\"activePermissionProfile\":{{\"id\":\"aiq_benchmark\"}}}}}}\n"
@@ -5323,18 +5306,18 @@ mod tests {
 		}
 
 		let workspace = test_controlled_root().join("task");
-		let calibration = adapter(vec![
+		let official = adapter(vec![
 			Ok(capture(0, b"codex-cli 0.138.0".to_vec(), Vec::new())),
 			Ok(capture(0, rpc("null"), Vec::new())),
 		]);
-		let calibration_evidence = calibration
+		let official_evidence = official
 			.verify_managed_permission_profile(&workspace)
-			.expect("active local profile is sufficient for calibration");
+			.expect("explicit profile with absent external requirements");
 
-		assert!(!calibration_evidence.official_eligible);
-		assert_eq!(calibration_evidence.managed_requirements_status, "absent");
+		assert!(official_evidence.official_eligible);
+		assert_eq!(official_evidence.managed_requirements_status, "absent_expected");
 
-		let official = adapter(vec![
+		let unexpected = adapter(vec![
 			Ok(capture(0, b"codex-cli 0.138.0".to_vec(), Vec::new())),
 			Ok(capture(
 				0,
@@ -5344,12 +5327,12 @@ mod tests {
 				Vec::new(),
 			)),
 		]);
-		let official_evidence = official
+		let unexpected_evidence = unexpected
 			.verify_managed_permission_profile(&workspace)
-			.expect("strict managed profile evidence");
+			.expect("actual profile selection is reported before Official classification");
 
-		assert!(official_evidence.official_eligible);
-		assert_eq!(official_evidence.managed_requirements_status, "exact");
+		assert!(!unexpected_evidence.official_eligible);
+		assert_eq!(unexpected_evidence.managed_requirements_status, "present_unexpected");
 
 		let planned = super::expected_official_permission_profile_digests("codex-cli 0.138.0")
 			.expect("Official profile expectation");
@@ -5363,11 +5346,11 @@ mod tests {
 			planned.profile_selection_digest()
 		);
 		assert_ne!(
-			calibration_evidence.managed_requirements_digest(),
+			unexpected_evidence.managed_requirements_digest(),
 			official_evidence.managed_requirements_digest()
 		);
 		assert_eq!(
-			calibration_evidence.profile_selection_digest(),
+			unexpected_evidence.profile_selection_digest(),
 			official_evidence.profile_selection_digest()
 		);
 	}
@@ -5724,7 +5707,7 @@ mod tests {
 
 	#[test]
 	#[ignore = "requires an installed Codex CLI with permission-profile support"]
-	fn real_codex_model_free_managed_profile_reports_local_and_official_eligibility() {
+	fn real_codex_model_free_profile_reports_expected_absent_managed_requirements() {
 		let codex_binary =
 			env::var("AIQ_REAL_CODEX_BINARY").expect("AIQ_REAL_CODEX_BINARY must name Codex");
 		let codex_home =
@@ -5755,24 +5738,15 @@ mod tests {
 		);
 		let evidence = adapter.verify_managed_permission_profile(&workspace);
 		let cleanup = fs::remove_dir_all(root);
-		let evidence = evidence.expect("model-free managed profile must select aiq_benchmark");
+		let evidence = evidence.expect("model-free explicit profile must select aiq_benchmark");
 		let planned = super::expected_official_permission_profile_digests(&evidence.codex_version)
 			.expect("planned Official profile");
 
 		assert_eq!(evidence.active_permission_profile, super::BENCHMARK_PERMISSION_PROFILE);
+		assert!(evidence.official_eligible);
+		assert_eq!(evidence.managed_requirements_status, "absent_expected");
+		assert_eq!(evidence.managed_requirements_digest(), planned.managed_requirements_digest());
 		assert_eq!(evidence.profile_selection_digest(), planned.profile_selection_digest());
-
-		if evidence.official_eligible {
-			assert_eq!(
-				evidence.managed_requirements_digest(),
-				planned.managed_requirements_digest()
-			);
-		} else {
-			assert_ne!(
-				evidence.managed_requirements_digest(),
-				planned.managed_requirements_digest()
-			);
-		}
 
 		assert!(!evidence.evidence_digest.is_empty());
 

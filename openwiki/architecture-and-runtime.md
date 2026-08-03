@@ -66,11 +66,14 @@ external service configuration and production acceptance.
 
 Before any paid Official preflight, `admit-permissions` validates the exact
 72-by-17 plan, controlled-input identities, schedule occurrence, conservative
-capacity, worker count, managed `aiq_benchmark` policy, sandbox canaries, and the
-planned preflight, checkpoint, run, score, and package paths. It writes one
-private create-once `aiq.official-permission-admission.v2` receipt without invoking
-a model. Paid preflight validates the public catalog, current corpus commitment,
-controlled toolchain, evaluator runtime, source manifest, capability manifest,
+capacity, worker count, and permission boundary. The runner starts Codex with
+strict CLI configuration that selects the explicit `aiq_benchmark` profile and
+requires external managed requirements to be absent, then runs the sandbox
+canaries and validates the planned preflight, checkpoint, run, score, and package
+paths. It writes one private create-once
+`aiq.official-permission-admission.v2` receipt without invoking a model. Paid
+preflight validates the public catalog, current corpus commitment, controlled
+toolchain, evaluator runtime, source manifest, capability manifest,
 schedule, and path layout, probes the exact local Codex CLI, and binds its
 expiring report to that receipt. The same admission is required by Official
 `run`, `score`, and `package`; calibration rejects it.
