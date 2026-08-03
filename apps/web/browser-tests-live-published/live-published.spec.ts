@@ -116,6 +116,12 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     page.getByRole('link', { name: 'Inspect the bounded 5-task subsets' }),
   ).toHaveAttribute('href', `/calibrations/${subsetCalibrationRunId}`);
+  await expect(
+    page.getByRole('heading', { name: 'Official time, tokens, and cost' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
+  ).toHaveCount(18);
 });
 
 test('a partial Terra-only calibration derives a valid default and reports its selected subset', async ({
@@ -182,7 +188,7 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   await expect(contextBandResult).toContainText('Unavailable');
   await expect(contextBandResult).toContainText('unavailable context band');
   await expect(contextBandResult).toContainText(
-    'A result above 272000 aggregate input tokens is unpriced',
+    'a result above 272000 aggregate input tokens is therefore unpriced',
   );
 
   await selector.selectOption('terra:medium');
@@ -209,6 +215,39 @@ test('Official compare efficiency is limited to current leaderboard run identiti
   const contextBandEfficiency = efficiency.getByRole('row').filter({ hasText: 'sol · medium' });
   await expect(contextBandEfficiency).toContainText('Unavailable');
   await expect(contextBandEfficiency).toContainText('unavailable context band');
+  await expect(efficiency).toContainText(
+    '72 results · 72 attempted · 72 adapter-invoked · concurrency 17',
+  );
+  await expect(efficiency).toContainText(
+    'Reasoning is a subset of output and is not charged twice.',
+  );
+  await expect(efficiency).toContainText(
+    'gpt-5.6-terra: input 2000, cached input 200, cache-write input 2500, output 12000 USD nanos/token',
+  );
+  await expect(efficiency).toContainText(
+    'gpt-5.6-luna: input 200, cached input 20, cache-write input 250, output 1200 USD nanos/token',
+  );
+  await expect(efficiency).toContainText('Signed matrix batch wall-clock');
+  await expect(efficiency).toContainText('2.1 h');
+  await expect(efficiency).toContainText('count once across all 17 configurations');
+  await expect(efficiency).toContainText('TTFT and TPS are unavailable');
+  await expect(efficiency.getByRole('link', { name: 'source' }).first()).toHaveAttribute(
+    'href',
+    'https://developers.openai.com/api/docs/pricing',
+  );
+});
+
+test('Official trends expose historical time and cost evidence', async ({ page }) => {
+  await page.goto('/trends?range=all');
+  await expect(
+    page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
+  ).toHaveCount(18);
+  await expect(
+    page.getByText('Summed cell adapter durations can overlap', { exact: false }).first(),
+  ).toBeVisible();
 });
 
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {
@@ -219,6 +258,16 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(provenance).toContainText('corpus_2026.07.29');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
   await expect(provenance.getByText('Not published', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole('heading', { name: 'Official time, token coverage, and cost' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Neither value is isolated model latency.', { exact: false }),
+  ).toBeVisible();
+  await expect(page.locator('.task-list > article').first()).toContainText(
+    'Codex adapter elapsed:',
+  );
+  await expect(page.locator('.task-list > article').first()).toContainText('API-equivalent cost:');
 });
 
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {
@@ -227,6 +276,11 @@ test('the published method and radar retain versioned, signed provenance', async
   await expect(page.getByText('1.0.0', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
+  ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
+  await expect(
+    page.getByRole('link', {
+      name: 'Prompts above 272,000 input tokens use 2× input and 1.5× output rates',
+    }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
   await expect(page.getByText('unavailable context band status', { exact: false })).toBeVisible();
   await expect(

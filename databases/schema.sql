@@ -2754,13 +2754,16 @@ create function aiq_private.has_exact_jsonb_keys(value jsonb, expected_keys text
     as $$
 declare
   observed_keys text[];
+  normalized_expected_keys text[];
 begin
   if jsonb_typeof(value) is distinct from 'object' then
     return false;
   end if;
   select array_agg(key order by key) into observed_keys
   from jsonb_object_keys(value) key;
-  return observed_keys is not distinct from expected_keys;
+  select array_agg(key order by key) into normalized_expected_keys
+  from unnest(expected_keys) key;
+  return observed_keys is not distinct from normalized_expected_keys;
 end;
 $$;
 
@@ -3707,7 +3710,7 @@ begin
     and candidate->>'formula'=
       '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again'
     and candidate->>'limitation'=
-      'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.'
+      'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing'
     and candidate->'rates'=jsonb_build_array(
       jsonb_build_object('model','gpt-5.6-sol','input_usd_nanos_per_token',5000,
         'cached_input_usd_nanos_per_token',500,'cache_write_input_usd_nanos_per_token',6250,
@@ -3848,7 +3851,7 @@ begin
     or not aiq_private.dto_uint_is_valid(candidate->'estimated_cost_tasks',72)
     or not aiq_private.provider_token_usage_is_valid(candidate->'provider_token_totals')
     or not aiq_private.has_exact_jsonb_keys(candidate->'provider_token_coverage',array[
-      'cached_input_tasks','cache_write_input_tasks','input_tasks','output_tasks',
+      'cache_write_input_tasks','cached_input_tasks','input_tasks','output_tasks',
       'reasoning_tasks','selected_tasks','total_tasks'
     ]::text[])
     or exists(select 1 from jsonb_each(candidate->'provider_token_coverage') coverage
@@ -5345,7 +5348,10 @@ begin
       adapter_elapsed_observed_result_count,observed_total_wall_ms,
       observed_median_wall_ms,observed_p95_wall_ms,input_tokens,cached_input_tokens,
       cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,
-      token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
+      token_observed_result_count,input_token_observed_result_count,
+      cached_input_token_observed_result_count,cache_write_input_token_observed_result_count,
+      output_token_observed_result_count,reasoning_token_observed_result_count,
+      total_token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
       cost_estimator_status,cost_evidence_level,pricing_digest,efficiency_record
     ) values(
       child_id,72,
@@ -5374,6 +5380,12 @@ begin
       (efficiency_entry#>>'{provider_token_totals,total}')::bigint,
       (select count(*)::integer from jsonb_array_elements(stage->'result_efficiency') evidence
         where evidence->'model'=child->'model' and evidence->'provider_tokens'<>'{}'::jsonb),
+      (efficiency_entry#>>'{provider_token_coverage,input_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,cached_input_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,cache_write_input_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,output_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,reasoning_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,total_tasks}')::integer,
       (efficiency_entry->>'estimated_cost_tasks')::integer,
       (efficiency_entry->>'standard_api_equivalent_usd_nanos')::bigint,
       case when efficiency_entry->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
@@ -9620,7 +9632,22 @@ create view public.public_run_results with (security_invoker = true) as
                     else '{}'::jsonb
                 end) tool_name(tool_name)
           ORDER BY tool_name.tool_name), '{}'::text[]) as tools,
-    result.latency_ms
+    result.latency_ms,
+    result.latency_evidence_level,
+    result.input_tokens,
+    result.cached_input_tokens,
+    result.cache_write_input_tokens,
+    result.output_tokens,
+    result.reasoning_output_tokens,
+    result.total_tokens,
+    result.token_usage_evidence_level,
+        case
+            when (result.token_usage_evidence_level IS null) then null::text
+            else 'provider_reported'::text
+        end as token_usage_source_level,
+    result.standard_api_equivalent_usd_nanos,
+    result.cost_estimator_status,
+    result.cost_evidence_level
    from ((aiq_private.aiq_task_results result
      join aiq_private.aiq_runs run on ((run.run_id = result.run_id)))
      left join aiq_private.aiq_task_catalog catalog on (((catalog.task_set_id = run.task_set_id) and (catalog.task_set_version = run.task_set_version) and (catalog.task_id = result.task_id) and (catalog.task_version = result.task_version))))
@@ -13149,6 +13176,14 @@ grant select(run_id) on table aiq_private.aiq_runs to authenticated;
 
 
 --
+-- Name: COLUMN aiq_runs.matrix_batch_id; Type: ACL; Schema: aiq_private; Owner: -
+--
+
+grant select(matrix_batch_id) on table aiq_private.aiq_runs to anon;
+grant select(matrix_batch_id) on table aiq_private.aiq_runs to authenticated;
+
+
+--
 -- Name: COLUMN aiq_runs.scheduled_for; Type: ACL; Schema: aiq_private; Owner: -
 --
 
@@ -13881,6 +13916,12 @@ create table aiq_private.efficiency_official_models (
   reasoning_output_tokens bigint,
   total_tokens bigint,
   token_observed_result_count integer not null,
+  input_token_observed_result_count integer not null,
+  cached_input_token_observed_result_count integer not null,
+  cache_write_input_token_observed_result_count integer not null,
+  output_token_observed_result_count integer not null,
+  reasoning_token_observed_result_count integer not null,
+  total_token_observed_result_count integer not null,
   priced_result_count integer not null,
   standard_api_equivalent_usd_nanos bigint,
   cost_estimator_status text not null,
@@ -13894,6 +13935,12 @@ create table aiq_private.efficiency_official_models (
     and invoked_result_count between 0 and attempted_result_count
     and adapter_elapsed_observed_result_count between 0 and invoked_result_count
     and token_observed_result_count between 0 and result_count
+    and input_token_observed_result_count between 0 and result_count
+    and cached_input_token_observed_result_count between 0 and result_count
+    and cache_write_input_token_observed_result_count between 0 and result_count
+    and output_token_observed_result_count between 0 and result_count
+    and reasoning_token_observed_result_count between 0 and result_count
+    and total_token_observed_result_count between 0 and result_count
     and priced_result_count between 0 and result_count
   ),
   constraint efficiency_official_models_elapsed check (
@@ -13947,6 +13994,18 @@ create table aiq_private.efficiency_official_models (
       efficiency_record#>>'{provider_token_totals,reasoning}'
     and total_tokens::text is not distinct from
       efficiency_record#>>'{provider_token_totals,total}'
+    and input_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,input_tasks}'
+    and cached_input_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,cached_input_tasks}'
+    and cache_write_input_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,cache_write_input_tasks}'
+    and output_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,output_tasks}'
+    and reasoning_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,reasoning_tasks}'
+    and total_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,total_tasks}'
     and priced_result_count::text=efficiency_record->>'estimated_cost_tasks'
     and standard_api_equivalent_usd_nanos::text is not distinct from
       efficiency_record->>'standard_api_equivalent_usd_nanos'
@@ -15450,8 +15509,11 @@ where not run.official_eligible and not run.ranking_eligible
   and not publication.official_eligible and not publication.ranking_eligible;
 
 CREATE VIEW public.public_model_efficiency with (security_invoker=true) as
-select efficiency.run_id,model.model_family,model.reasoning_effort,
-  efficiency.observed_total_wall_ms,efficiency.observed_median_wall_ms,
+select efficiency.run_id,run.matrix_batch_id,model.model_family,model.reasoning_effort,
+  floor(extract(epoch from (run.completed_at-run.started_at))*1000)::bigint
+    as matrix_batch_elapsed_ms,
+  efficiency.observed_total_wall_ms as summed_cell_adapter_elapsed_ms,
+  efficiency.observed_median_wall_ms,
   efficiency.observed_p95_wall_ms,
   efficiency.adapter_elapsed_observed_result_count as observed_time_sample_count,
   round(100*efficiency.adapter_elapsed_observed_result_count::numeric/
@@ -15462,8 +15524,34 @@ select efficiency.run_id,model.model_family,model.reasoning_effort,
   efficiency.cache_write_input_tokens,efficiency.output_tokens,
   efficiency.reasoning_output_tokens,efficiency.total_tokens,
   efficiency.token_observed_result_count as token_usage_sample_count,
-  round(100*efficiency.token_observed_result_count::numeric/efficiency.result_count,4)
+  case when efficiency.token_observed_result_count=0 then null else
+    round(100*efficiency.token_observed_result_count::numeric/efficiency.result_count,4) end
     as token_usage_coverage_percent,
+  nullif(efficiency.input_token_observed_result_count,0) as input_token_coverage_count,
+  case when efficiency.input_token_observed_result_count=0 then null else
+    round(100*efficiency.input_token_observed_result_count::numeric/efficiency.result_count,4) end
+    as input_token_coverage_percent,
+  nullif(efficiency.cached_input_token_observed_result_count,0) as cached_input_token_coverage_count,
+  case when efficiency.cached_input_token_observed_result_count=0 then null else
+    round(100*efficiency.cached_input_token_observed_result_count::numeric/efficiency.result_count,4)
+    end as cached_input_token_coverage_percent,
+  nullif(efficiency.cache_write_input_token_observed_result_count,0)
+    as cache_write_input_token_coverage_count,
+  case when efficiency.cache_write_input_token_observed_result_count=0 then null else
+    round(100*efficiency.cache_write_input_token_observed_result_count::numeric/
+      efficiency.result_count,4) end as cache_write_input_token_coverage_percent,
+  nullif(efficiency.output_token_observed_result_count,0) as output_token_coverage_count,
+  case when efficiency.output_token_observed_result_count=0 then null else
+    round(100*efficiency.output_token_observed_result_count::numeric/efficiency.result_count,4) end
+    as output_token_coverage_percent,
+  nullif(efficiency.reasoning_token_observed_result_count,0) as reasoning_token_coverage_count,
+  case when efficiency.reasoning_token_observed_result_count=0 then null else
+    round(100*efficiency.reasoning_token_observed_result_count::numeric/
+      efficiency.result_count,4) end as reasoning_token_coverage_percent,
+  nullif(efficiency.total_token_observed_result_count,0) as total_token_coverage_count,
+  case when efficiency.total_token_observed_result_count=0 then null else
+    round(100*efficiency.total_token_observed_result_count::numeric/efficiency.result_count,4) end
+    as total_token_coverage_percent,
   case when efficiency.token_observed_result_count=0 then null else 'provider_reported' end
     as token_usage_source_level,
   case when efficiency.token_observed_result_count=0 then null else 'verifier_recomputed' end
@@ -15486,8 +15574,14 @@ join aiq_private.aiq_runs run using(run_id)
 join aiq_private.aiq_model_configs model using(model_config_id)
 join aiq_private.efficiency_pricing_methods pricing using(pricing_digest)
 where run.published and not run.synthetic
+  and run.started_at is not null and run.completed_at is not null
   and exists(select 1 from aiq_private.aiq_score_snapshots score
     where score.run_id=run.run_id and score.published and score.score_status='official');
+
+comment on column public.public_model_efficiency.matrix_batch_elapsed_ms is
+  'Signed matrix-stage wall-clock elapsed time. All 17 child runs share this value; count it once.';
+comment on column public.public_model_efficiency.summed_cell_adapter_elapsed_ms is
+  'Sum of retained per-result Codex adapter elapsed times. Concurrent calls can overlap.';
 
 CREATE VIEW public.public_calibration_results with (security_invoker=true) as
 select result.result_id,
@@ -15739,7 +15833,10 @@ grant select(run_id,result_count,attempted_result_count,execution_concurrency,
   invoked_result_count,adapter_elapsed_observed_result_count,observed_total_wall_ms,
   observed_median_wall_ms,observed_p95_wall_ms,input_tokens,cached_input_tokens,
   cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,
-  token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
+  token_observed_result_count,input_token_observed_result_count,
+  cached_input_token_observed_result_count,cache_write_input_token_observed_result_count,
+  output_token_observed_result_count,reasoning_token_observed_result_count,
+  total_token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
   cost_estimator_status,cost_evidence_level,pricing_digest)
   on aiq_private.efficiency_official_models to anon, authenticated;
 

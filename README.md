@@ -118,17 +118,28 @@ The production reference contains one current controlled corpus commitment and
 exactly three public identities: runner, verifier, and publisher. A successful
 receipt reports 72 tasks, 17 model configurations, and three nodes.
 
-The SQL files in `databases/` support disposable validation:
+Use one initialized disposable database for production-shape smoke and
+calibration publication checks:
 
 ```sh
 cargo make smoke-database
+AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-calibration-database
+```
+
+Use a separate fresh PostgreSQL 17 database for the deterministic synthetic
+flow:
+
+```sh
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/schema.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   --file databases/synthetic-demo.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   --file databases/integration.sql
 ```
 
-Do not load `synthetic-demo.sql` into production.
+Do not apply the synthetic flow to the initialized production-shape database
+or to production.
 
 ## Disposable AIQ Wiki free preview
 

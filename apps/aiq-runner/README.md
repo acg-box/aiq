@@ -55,13 +55,15 @@ A live run also requires controlled task, workspace, evaluator, schedule,
 execution, artifact, preflight-cache, and checkpoint paths. The CLI checks path
 separation and commitments before it starts task processes.
 
-Run `admit-permissions` before an Official occurrence. It uses the exact planned
-run paths to verify the exclusive managed `aiq_benchmark` profile and all Codex
-sandbox canaries. It writes one private create-once
-`aiq.official-permission-admission.v1` receipt. It does not invoke a model,
-create a checkpoint, or reserve the planned Official output. The command is a
-permission gate only. The `run` command still validates the schedule, capacity,
-and complete execution contract.
+Run `admit-permissions` before any paid Official preflight. It validates the
+exact 72-by-17 controlled inputs, selected schedule occurrence, conservative
+all-17-model capacity, worker count, and the create-new run, score, and package
+output plan. It then verifies the exclusive managed `aiq_benchmark` profile and
+all Codex sandbox canaries. It writes one private create-once
+`aiq.official-permission-admission.v2` receipt without invoking a model or
+creating a checkpoint. Pass that receipt as `--official-admission` to the paid
+`preflight`, `run`, `score`, and `package` commands. A refreshed preflight is
+bound to the same receipt and cannot be reused for another Official plan.
 
 The non-secret [managed requirements example](../../config/codex-requirements.example.toml)
 contains the exact Official policy. Install its bytes outside the repository as
@@ -101,13 +103,30 @@ not the actual cost of a ChatGPT or Codex subscription.
 Task workspaces are fresh copies. The runner stores content-addressed workspace
 and evaluator artifacts under the controlled artifact root. It writes a durable
 checkpoint so an interrupted run can continue without replacing completed
-evidence.
+evidence. An Official run holds its create-new output with an exact run-bound
+reservation. The same run can reopen that unchanged reservation after an
+interruption. Another run, modified reservation, symbolic link, or hard-link
+alias fails closed. Every parent of a future protected file must be owned by
+the current user and must not be writable by group or other. The runner holds
+a nonblocking kernel advisory lock on each parent before it reads or writes
+preflight state or invokes a paid capability probe. It holds the locks through
+execution and finalization. All writers in this trusted boundary must use the
+runner lock. Do not give an untrusted process the same user identity or write
+access to these directories. Protected writes require Linux or macOS atomic
+rename primitives and fail closed on other platforms.
 
 ## Scoring, packaging, and submission
 
 `score` applies the checked-in AIQ v1 scoring rules to a saved run. `package`
 binds the run and its artifacts into one signed `aiq.result-package.v3` envelope.
 The runner key must match the run's preflight node identity.
+
+File outputs are create-new protected outputs. Existing regular files,
+hard-link aliases, and symbolic links are rejected without changing their
+bytes when the required single-writer directory boundary is intact. The runner
+`normalize` audit path can record commitments-only or failed
+verification, but it cannot claim `evaluator_replayed`; only `aiq-verifier` can
+produce that production disposition after actual replay.
 
 `submit` uploads the required private artifacts, stores the exact package bytes,
 and calls `/api/submissions`. A successful queue response means unverified

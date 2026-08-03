@@ -113,6 +113,8 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   );
   await expect(page.getByRole('heading', { level: 1 })).toContainText(/Sol|Terra|Luna/);
   await expect(page.locator('.task-list > article')).toHaveCount(72);
+  await expect(page.locator('.task-list')).toContainText('Codex adapter elapsed: unavailable');
+  await expect(page.locator('.task-list')).not.toContainText('runner-observed');
   const failedTasks = page.locator('.task-list > article').filter({
     has: page.locator('.result-failed'),
   });
@@ -151,6 +153,9 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(2);
+  await expect(
+    page.getByText('0 attempted · 0 adapter-invoked · 0 elapsed-observed'),
+  ).toBeVisible();
 });
 
 test('radar separates synthetic registry, observation, and aggregation evidence', async ({

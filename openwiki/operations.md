@@ -113,20 +113,30 @@ active Codex profile immutable.
 Use CLI help as the exact command authority:
 
 ```sh
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- preflight --help
 cargo run -p aiq-runner -- run --help
 ```
 
-Run preflight first. Store its authenticated report at a durable path. The run
-can use that report until it expires or can refresh it explicitly.
+For Official work, run `admit-permissions` before paid preflight. It validates the
+exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, exclusive
+managed policy, sandbox canaries, and planned preflight, checkpoint, run, score,
+and package paths. Retain its private create-once
+`aiq.official-permission-admission.v2` receipt and pass it as
+`--official-admission` to `preflight`, `run`, `score`, and `package`. A cached or
+refreshed preflight remains bound to that receipt and cannot authorize a changed
+plan. Official run output uses an exact run-bound reservation; score and package
+outputs are create-new. Keep every future-output parent owner-controlled and
+single-writer because the runner takes nonblocking advisory locks before paid
+probing and holds them through finalization.
 
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
-The current managed policy has not passed the Official admission gate. The `run`
-command defaults to calibration and accepts repeated `--task` and `--model`
-arguments for a deterministic bounded subset. Calibration can be replay-verified
-and published to its separate public register, but never classify or publish it
-as Official or ranking eligible. Use `run --help` for the complete controlled
-input contract.
+Repository support for admission does not prove the production managed policy has
+passed. The `run` command defaults to calibration and accepts repeated `--task`
+and `--model` arguments for a deterministic bounded subset. Calibration rejects
+an Official admission receipt, can be replay-verified and published to its
+separate public register, but never classifies or publishes as Official or ranking
+eligible. Use `run --help` for the complete controlled input contract.
 
 ## Score, package, and submit
 
@@ -145,23 +155,59 @@ and rejects a conflicting concurrency declaration. `submit` validates and
 uploads every signed content-addressed artifact before sending the package to
 `/api/submissions`. A queue receipt is not verification or publication.
 
-`aiq-runner normalize` remains the Official-run normalization path. Calibration
-must instead pass through `aiq-verifier`, which reconstructs the selected
-workspaces, replays evaluators, recomputes scores and efficiency evidence, and
-emits the calibration stage and attestation contracts from [Benchmark Method](benchmark-method.md).
+`aiq-runner normalize` is an audit path that can report commitments-verified or
+failed dispositions, but it cannot claim `evaluator_replayed`. Production replay
+authority belongs only to `aiq-verifier`. Calibration must pass through that
+verifier, which reconstructs the selected workspaces, replays evaluators,
+recomputes scores and efficiency evidence, and emits the calibration stage and
+attestation contracts from [Benchmark Method](benchmark-method.md).
+
+## Bounded Official runtime
+
+The local runtime in `deploy/official-runtime` requires Python 3.11 or newer and
+a local Docker daemon reporting Linux `aarch64` with seccomp. Copy
+`operator.example.toml` outside Git and supply canonical, non-overlapping,
+symlink-free paths. Freeze every non-secret read-only input, keep the source
+worktree clean at the declared commit, create runner writable roots as
+`10001:10001` and verifier replay/record roots as `10003:10003`, and provide each
+secret as a separate single-link mode-`0600` file. The manager records only secret
+metadata, not secret content.
+
+```sh
+deploy/official-runtime/runtime.py create --config /controlled/operator.toml --state /controlled/runtime-state
+deploy/official-runtime/runtime.py up --state /controlled/runtime-state
+deploy/official-runtime/runtime.py validate --config /controlled/operator.toml --state /controlled/runtime-state
+deploy/official-runtime/runtime.py receipt --config /controlled/operator.toml --state /controlled/runtime-state
+```
+
+Validation recomputes frozen-tree bindings and runs model-free canaries for the
+runner sandbox, the separated networks, direct-egress denial, proxy allowlists,
+and the verifier's lack of Codex access. Retain the private deployment receipt v2.
+Run one runner command at a time and perform the separate permission-admission
+sequence before paid work. Stop only this stack with
+`runtime.py down --state /controlled/runtime-state`. The canonical path and mount
+contract remains in `deploy/official-runtime/README.md`; this mechanism implements
+the trust boundaries in [Architecture and Runtime](architecture-and-runtime.md)
+but is not evidence of an active production worker.
 
 ## Verifier worker
 
-Keep `AIQ_VERIFIER_SIGNING_KEY` and `AIQ_VERIFIER_INGRESS_TOKEN` only in the
-verifier environment. Provide the private tasks, evaluator registry, corpus
-commitment, toolchain, runtime, environment metadata, and a fresh replay root.
+Keep the verifier token and signing key only in the verifier environment. Provide
+the private tasks, evaluator registry, corpus commitment, toolchain, runtime,
+environment metadata, and a fresh replay root. In the bounded runtime, the
+verifier has its own container, network, default-deny proxy, UID, replay root, and
+record root, with no Codex binary or Codex home.
 
 ```sh
 cargo run -p aiq-verifier -- --help
 ```
 
-The worker claims bounded leases from `/api/claims`, reconstructs workspaces,
-replays evaluators, and posts the stage and attestation to
+After a real package has been submitted and an operator authorizes a claim, run
+one bounded worker through `aiq-verifier-entrypoint` as described by
+`deploy/official-runtime/README.md`. The wrapper reads the secret files only at
+worker startup, supplies them to the child, and writes create-new private JSONL
+records. The worker claims bounded leases from `/api/claims`, reconstructs
+workspaces, replays evaluators, and posts the stage and attestation to
 `/api/verifications`. Production requires `evaluator_replayed`. For calibration,
 the gateway stages the replayed evidence and immutable attestation under the
 verifier role, then uses the distinct publisher role to reconcile retained

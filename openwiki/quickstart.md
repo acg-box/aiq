@@ -37,12 +37,15 @@ three production nodes, no published runs, and private `private-packages` and
 read path pass.
 
 No benchmark or Storage schedule and no cloud runner or verifier worker exist.
-A full real run has not been published. Official dispatch is blocked by the
-managed-policy gate: `Official runs require an exclusive managed aiq_benchmark
-allowlist and managed default; no model was invoked`. Current run work is
-calibration-only. The repository now supports signed, replay-verified calibration
-evidence and bounded `/calibrations` views, but calibration remains untrusted,
-non-Official, and ineligible for ranking.
+The repository now contains a bounded local Linux arm64 runner-and-verifier
+bundle, but its presence does not establish a production deployment. A full real
+run has not been published. Official dispatch remains subject to the managed
+permission-admission gate. Current run work is calibration-only. The repository
+supports signed, replay-verified calibration evidence and bounded `/calibrations`
+views, but calibration remains untrusted, non-Official, and ineligible for
+ranking. Official pages can also disclose coverage-qualified time, provider-token,
+and API-equivalent cost evidence separately from AIQ when a verified Official run
+is eventually published; see [Benchmark Method](benchmark-method.md).
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.

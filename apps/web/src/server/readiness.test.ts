@@ -250,7 +250,7 @@ void describe('bounded readiness probe', () => {
       scope: [
         'runtime_mode',
         'configuration_contract',
-        'eight_public_views',
+        'public_read_views',
         'public_trend_points_rpc',
         'private_storage_buckets',
         'role_scoped_rpc_contract',
@@ -301,7 +301,7 @@ void describe('bounded readiness probe', () => {
       scope: [
         'runtime_mode',
         'configuration_contract',
-        'eight_public_views',
+        'public_read_views',
         'public_trend_points_rpc',
         'private_storage_buckets',
         'role_scoped_rpc_contract',
@@ -488,7 +488,7 @@ void describe('bounded readiness probe', () => {
       scope: [
         'runtime_mode',
         'configuration_contract',
-        'eight_public_views',
+        'public_read_views',
         'public_trend_points_rpc',
         'private_storage_buckets',
         'role_scoped_rpc_contract',

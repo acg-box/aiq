@@ -122,7 +122,7 @@ impl Default for ApiEquivalentPricingModel {
 			],
 			formula: "(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again".to_owned(),
 			hosted_tool_fees_included: false,
-			limitation: "Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.".to_owned(),
+			limitation: "Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing".to_owned(),
 		}
 	}
 }
@@ -1345,7 +1345,7 @@ fn is_identifier(value: &str, maximum_bytes: usize) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::slice;
+	use std::{fs, path::PathBuf, slice};
 
 	use crate::calibration_verification::{
 		self, ApiEquivalentPricingModel, CostEstimateStatus, MAX_JCS_SAFE_INTEGER,
@@ -1383,16 +1383,19 @@ mod tests {
 			reasoning: Some(4_000),
 			total: None,
 		};
-		let (cost, status) = calibration_verification::estimate_cost(
-			MODEL_MATRIX[0],
-			&usage,
-			&ApiEquivalentPricingModel::default(),
-		);
-
-		assert_eq!(status, CostEstimateStatus::Estimated);
-		assert_eq!(cost, Some(722_500_000));
-
 		let pricing = ApiEquivalentPricingModel::default();
+		let expected_costs = [
+			(MODEL_MATRIX[0], 722_500_000),
+			(MODEL_MATRIX[6], 289_000_000),
+			(MODEL_MATRIX[12], 28_900_000),
+		];
+
+		for (model, expected) in expected_costs {
+			let (cost, status) = calibration_verification::estimate_cost(model, &usage, &pricing);
+
+			assert_eq!(status, CostEstimateStatus::Estimated);
+			assert_eq!(cost, Some(expected));
+		}
 
 		assert_eq!(
 			pricing
@@ -1412,6 +1415,204 @@ mod tests {
 				("gpt-5.6-luna", 200, 20, 250, 1_200),
 			]
 		);
+	}
+
+	fn contract_section<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+		let start_index = source.find(start).unwrap_or_else(|| panic!("missing {start}"));
+		let suffix = &source[start_index..];
+		let end_index = suffix.find(end).unwrap_or_else(|| panic!("missing {end}"));
+
+		&suffix[..end_index]
+	}
+
+	fn assert_bound_literal(section: &str, binding: &str, literal: &str, label: &str) {
+		let binding_index =
+			section.find(binding).unwrap_or_else(|| panic!("missing {label} binding"));
+		let literal_index = section[binding_index..]
+			.find(literal)
+			.unwrap_or_else(|| panic!("missing {label} literal"));
+
+		assert!(literal_index < 256, "{label} literal is not bound to its field");
+	}
+
+	fn assert_database_and_web_pricing_scalars(
+		pricing: &serde_json::Value,
+		database: &str,
+		web: &str,
+	) {
+		for field in ["method", "version", "as_of", "source", "currency", "processing_tier"] {
+			let literal = pricing[field].as_str().expect("pricing text field must be text");
+
+			assert_bound_literal(database, &format!("candidate->>'{field}'"), literal, field);
+
+			assert!(
+				web.contains(&format!("value.{field} === '{literal}'")),
+				"web pricing {field} drifted"
+			);
+		}
+		for (field, binding) in [("formula", "pricingFormula"), ("limitation", "pricingLimitation")]
+		{
+			let literal = pricing[field].as_str().expect("pricing text field must be text");
+
+			assert_bound_literal(database, &format!("candidate->>'{field}'"), literal, field);
+
+			assert!(web.contains(literal), "web pricing {field} literal drifted");
+			assert!(
+				web.contains(&format!("value.{field} === {binding}")),
+				"web pricing {field} binding drifted"
+			);
+		}
+
+		assert!(
+			database.contains("candidate->'hosted_tool_fees_included'='false'::jsonb"),
+			"database hosted-tool pricing policy drifted"
+		);
+		assert!(
+			web.contains("value.hosted_tool_fees_included === false"),
+			"web hosted-tool pricing policy drifted"
+		);
+	}
+
+	fn assert_database_and_web_pricing_rates(
+		rates: &[serde_json::Value],
+		database: &str,
+		web: &str,
+	) {
+		let compact_database = database.split_whitespace().collect::<String>();
+		let web_rates = contract_section(web, "const pricingRates = [", "] as const;");
+		let compact_web = web.split_whitespace().collect::<String>().replace('_', "");
+		let compact_web_rates = web_rates.split_whitespace().collect::<String>().replace('_', "");
+
+		assert_eq!(
+			compact_database.matches("jsonb_build_object('model',").count(),
+			rates.len(),
+			"database pricing rate count drifted"
+		);
+		assert_eq!(
+			compact_web_rates.matches("['").count(),
+			rates.len(),
+			"web pricing rate count drifted"
+		);
+
+		for rate in rates {
+			let model = rate["model"].as_str().expect("pricing model must be text");
+			let input = rate["input_usd_nanos_per_token"].as_u64().expect("input rate");
+			let cached = rate["cached_input_usd_nanos_per_token"].as_u64().expect("cached rate");
+			let cache_write =
+				rate["cache_write_input_usd_nanos_per_token"].as_u64().expect("cache-write rate");
+			let output = rate["output_usd_nanos_per_token"].as_u64().expect("output rate");
+
+			assert!(
+				compact_database.contains(&format!(
+					"jsonb_build_object('model','{model}','input_usd_nanos_per_token',{input},'cached_input_usd_nanos_per_token',{cached},'cache_write_input_usd_nanos_per_token',{cache_write},'output_usd_nanos_per_token',{output})"
+				)),
+				"database pricing rate for {model} drifted"
+			);
+			assert!(
+				compact_web.contains(
+					&format!("['{model}',{input},{cached},{cache_write},{output}],")
+						.replace('_', "")
+				),
+				"web pricing rate for {model} drifted"
+			);
+		}
+	}
+
+	#[test]
+	fn serialized_pricing_default_matches_schema_database_and_web_contracts() {
+		let pricing = serde_json::to_value(ApiEquivalentPricingModel::default())
+			.expect("pricing default must serialize");
+		let repository_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+		let normalized_schema: serde_json::Value = serde_json::from_slice(
+			&fs::read(repository_root.join("benchmarks/schema/normalized-batch-v3.schema.json"))
+				.expect("normalized schema must be readable"),
+		)
+		.expect("normalized schema must be JSON");
+		let calibration_schema: serde_json::Value = serde_json::from_slice(
+			&fs::read(
+				repository_root.join("benchmarks/schema/calibration-verified-stage-v1.schema.json"),
+			)
+			.expect("calibration stage schema must be readable"),
+		)
+		.expect("calibration stage schema must be JSON");
+
+		for field in [
+			"method",
+			"version",
+			"as_of",
+			"source",
+			"currency",
+			"processing_tier",
+			"formula",
+			"hosted_tool_fees_included",
+			"limitation",
+		] {
+			assert_eq!(
+				normalized_schema["$defs"]["apiEquivalentPricing"]["properties"][field]["const"],
+				pricing[field],
+				"normalized schema pricing field {field} drifted"
+			);
+			assert_eq!(
+				calibration_schema["$defs"]["pricing"]["properties"][field]["const"],
+				pricing[field],
+				"calibration schema pricing field {field} drifted"
+			);
+		}
+
+		let rates = pricing["rates"].as_array().expect("pricing rates must be an array");
+		let normalized_rates = normalized_schema["$defs"]["apiEquivalentPricing"]["properties"]
+			["rates"]["prefixItems"]
+			.as_array()
+			.expect("normalized schema rates must be an array");
+		let rate_definitions = ["solRate", "terraRate", "lunaRate"];
+
+		assert_eq!(rates.len(), 3, "serialized pricing rate count drifted");
+		assert_eq!(
+			rates.len(),
+			normalized_rates.len(),
+			"normalized schema pricing rate count drifted"
+		);
+		assert_eq!(
+			rates.len(),
+			rate_definitions.len(),
+			"calibration schema pricing rate count drifted"
+		);
+
+		for (actual, schema_rate) in rates.iter().zip(normalized_rates) {
+			assert_eq!(schema_rate["const"], *actual, "normalized schema rate drifted");
+		}
+		for (actual, definition) in rates.iter().zip(rate_definitions) {
+			for field in [
+				"model",
+				"input_usd_nanos_per_token",
+				"cached_input_usd_nanos_per_token",
+				"cache_write_input_usd_nanos_per_token",
+				"output_usd_nanos_per_token",
+			] {
+				assert_eq!(
+					calibration_schema["$defs"][definition]["properties"][field]["const"],
+					actual[field],
+					"calibration schema {definition}.{field} drifted"
+				);
+			}
+		}
+
+		let database = fs::read_to_string(repository_root.join("databases/schema.sql"))
+			.expect("database schema must be readable");
+		let web = fs::read_to_string(
+			repository_root.join("apps/web/src/server/verification-contract.ts"),
+		)
+		.expect("web verification contract must be readable");
+		let database_contract = contract_section(
+			&database,
+			"create function aiq_private.efficiency_pricing_v1_is_valid",
+			"\n$$;",
+		);
+		let web_contract =
+			contract_section(&web, "const pricingFormula =", "function isEvaluatorResultsArtifact");
+
+		assert_database_and_web_pricing_scalars(&pricing, database_contract, web_contract);
+		assert_database_and_web_pricing_rates(rates, database_contract, web_contract);
 	}
 
 	#[test]
