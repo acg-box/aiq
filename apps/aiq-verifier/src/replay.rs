@@ -9,7 +9,7 @@ mod tests {
 		env, fs,
 		path::{Path, PathBuf},
 		process,
-		sync::atomic::{AtomicU64, Ordering},
+		sync::atomic::{AtomicBool, AtomicU64, Ordering},
 	};
 
 	use sha2::{Digest, Sha256};
@@ -47,6 +47,11 @@ mod tests {
 
 	struct FailingLeaseResolver {
 		inner: MemoryResolver,
+	}
+
+	struct PanickingResolver {
+		inner: MemoryResolver,
+		panicked: AtomicBool,
 	}
 
 	impl ArtifactResolverClient for MemoryResolver {
@@ -88,6 +93,21 @@ mod tests {
 			kind: &str,
 			expected_bytes: u64,
 		) -> Result<Vec<u8>, WorkerError> {
+			self.inner.resolve(digest, kind, expected_bytes)
+		}
+	}
+
+	impl ArtifactResolverClient for PanickingResolver {
+		fn resolve(
+			&self,
+			digest: &str,
+			kind: &str,
+			expected_bytes: u64,
+		) -> Result<Vec<u8>, WorkerError> {
+			if kind != "evaluator-results.json" && !self.panicked.swap(true, Ordering::SeqCst) {
+				panic!("fixture resolver panic");
+			}
+
 			self.inner.resolve(digest, kind, expected_bytes)
 		}
 	}
@@ -1519,6 +1539,27 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 	}
 
 	#[test]
+	fn replay_worker_panic_is_joined_and_cleaned() {
+		let fixture = Fixture::completed("OK");
+		let resolver =
+			PanickingResolver { inner: fixture.resolver.clone(), panicked: AtomicBool::new(false) };
+		let error = replay::verify_production_run(
+			&fixture.run,
+			&fixture.tasks,
+			&resolver,
+			&fixture.evaluator_root,
+			&fixture.evaluator_runtime,
+			&fixture.replay_root,
+			"123e4567-e89b-42d3-a456-426614174000",
+			4,
+		)
+		.expect_err("worker panic must become a replay error");
+
+		assert!(error.is_transient());
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
 	fn maximum_official_shape_replays_with_bounded_parallelism() {
 		let mut fixture = Fixture::completed("OK");
 
@@ -1533,13 +1574,14 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
+use std::thread::{self, Builder};
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fs,
+	panic::{self, AssertUnwindSafe},
 	path::{Path, PathBuf},
 	str,
 	sync::Mutex,
-	thread,
 };
 
 use sha2::{Digest, Sha256};
@@ -1700,10 +1742,16 @@ struct ReplayScheduler {
 	next_index: usize,
 	failure: Option<(usize, WorkerError)>,
 	outputs: Vec<Option<CandidateReplayOutput>>,
+	cancelled: bool,
 }
 impl ReplayScheduler {
 	fn new(result_count: usize) -> Self {
-		Self { next_index: 0, failure: None, outputs: (0..result_count).map(|_| None).collect() }
+		Self {
+			next_index: 0,
+			failure: None,
+			outputs: (0..result_count).map(|_| None).collect(),
+			cancelled: false,
+		}
 	}
 }
 
@@ -1812,29 +1860,14 @@ where
 	let scheduler = Mutex::new(ReplayScheduler::new(run.results().len()));
 	let worker_error = thread::scope(|scope| {
 		let mut workers = Vec::with_capacity(replay_jobs.min(run.results().len()));
+		let mut worker_error = None;
 
-		for _ in 0..replay_jobs.min(run.results().len()) {
-			workers.push(scope.spawn(|| -> Result<(), WorkerError> {
-				loop {
-					let index = {
-						let mut scheduler = scheduler.lock().map_err(|_| {
-							WorkerError::transient("replay scheduler is unavailable")
-						})?;
-
-						if scheduler.failure.is_some()
-							|| scheduler.next_index >= run.results().len()
-						{
-							return Ok(());
-						}
-
-						let index = scheduler.next_index;
-
-						scheduler.next_index += 1;
-
-						index
-					};
-					let result = replay_candidate(
-						index,
+		for worker_index in 0..replay_jobs.min(run.results().len()) {
+			let worker = Builder::new()
+				.name(format!("aiq-verifier-replay-{worker_index:02}"))
+				.spawn_scoped(scope, || {
+					catch_replay_worker_panic(
+						&scheduler,
 						run,
 						&evaluator_results,
 						&task_map,
@@ -1842,28 +1875,34 @@ where
 						claim_root,
 						evaluator_root,
 						evaluator_runtime,
-					);
-					let mut scheduler = scheduler
-						.lock()
-						.map_err(|_| WorkerError::transient("replay scheduler is unavailable"))?;
+					)
+				});
 
-					match result {
-						Ok(output) => scheduler.outputs[index] = Some(output),
-						Err(error) => {
-							if scheduler.failure.as_ref().is_none_or(|(failed, _)| index < *failed)
-							{
-								scheduler.failure = Some((index, error));
-							}
+			match worker {
+				Ok(worker) => workers.push(worker),
+				Err(_) => {
+					match scheduler.lock() {
+						Ok(mut scheduler) => scheduler.cancelled = true,
+						Err(_) => {
+							worker_error =
+								Some(WorkerError::transient("replay scheduler is unavailable"));
 						},
 					}
-				}
-			}));
+
+					worker_error.get_or_insert_with(|| {
+						WorkerError::transient("candidate replay worker could not start")
+					});
+
+					break;
+				},
+			}
 		}
-
-		let mut worker_error = None;
-
 		for worker in workers {
 			let result = worker.join().unwrap_or_else(|_| {
+				if let Ok(mut scheduler) = scheduler.lock() {
+					scheduler.cancelled = true;
+				}
+
 				Err(WorkerError::transient("candidate replay worker panicked"))
 			});
 
@@ -1904,6 +1943,103 @@ where
 	resolver.maintain_lease()?;
 
 	Ok(provider_usage)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn catch_replay_worker_panic<R, U>(
+	scheduler: &Mutex<ReplayScheduler>,
+	run: &U,
+	evaluator_results: &EvaluatorResultsBundle,
+	task_map: &BTreeMap<(&str, &str), &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	match panic::catch_unwind(AssertUnwindSafe(|| {
+		replay_worker(
+			scheduler,
+			run,
+			evaluator_results,
+			task_map,
+			resolver,
+			claim_root,
+			evaluator_root,
+			evaluator_runtime,
+		)
+	})) {
+		Ok(result) => result,
+		Err(_) => {
+			if let Ok(mut scheduler) = scheduler.lock() {
+				scheduler.cancelled = true;
+			}
+
+			Err(WorkerError::transient("candidate replay worker panicked"))
+		},
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replay_worker<R, U>(
+	scheduler: &Mutex<ReplayScheduler>,
+	run: &U,
+	evaluator_results: &EvaluatorResultsBundle,
+	task_map: &BTreeMap<(&str, &str), &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	loop {
+		let index = {
+			let mut scheduler = scheduler
+				.lock()
+				.map_err(|_| WorkerError::transient("replay scheduler is unavailable"))?;
+
+			if scheduler.cancelled
+				|| scheduler.failure.is_some()
+				|| scheduler.next_index >= run.results().len()
+			{
+				return Ok(());
+			}
+
+			let index = scheduler.next_index;
+
+			scheduler.next_index += 1;
+
+			index
+		};
+		let result = replay_candidate(
+			index,
+			run,
+			evaluator_results,
+			task_map,
+			resolver,
+			claim_root,
+			evaluator_root,
+			evaluator_runtime,
+		);
+		let mut scheduler = scheduler
+			.lock()
+			.map_err(|_| WorkerError::transient("replay scheduler is unavailable"))?;
+
+		match result {
+			Ok(output) => scheduler.outputs[index] = Some(output),
+			Err(error) => {
+				if scheduler.failure.as_ref().is_none_or(|(failed, _)| index < *failed) {
+					scheduler.failure = Some((index, error));
+				}
+			},
+		}
+	}
 }
 
 #[allow(clippy::too_many_arguments)]
