@@ -74,11 +74,14 @@ exact 72-by-17 controlled inputs, selected schedule occurrence, conservative
 all-17-model capacity, worker count, and the create-new run, score, and package
 output plan. It then verifies the explicit `aiq_benchmark` profile selected by
 strict CLI configuration and all Codex sandbox canaries. External managed
-requirements are not required and must be absent. The command writes one private create-once
-`aiq.official-permission-admission.v2` receipt without invoking a model or
-creating a checkpoint. Pass that receipt as `--official-admission` to the paid
-`preflight`, `run`, `score`, and `package` commands. A refreshed preflight is
-bound to the same receipt and cannot be reused for another Official plan.
+requirements are not required and must be absent. The command writes one
+private create-once `aiq.official-permission-admission.v2` receipt without
+invoking a model or creating a checkpoint. Pass that receipt as
+`--official-admission` to
+`preflight`, `run`, `score`, and `package`. Only the exact configuration probes
+in `preflight` and runnable task cells in `run` invoke models. `score` and
+`package` are model-free. A refreshed preflight is bound to the same receipt and
+cannot be reused for another Official plan.
 
 The credential source must stay unchanged during controlled work. Use a
 separate private Codex home on the Mac and make its copied `auth.json` owner

@@ -179,7 +179,10 @@ The only Official execution and publication path runs `aiq-runner` and
 network access. Use the release binaries in this order:
 `admit-permissions`, `preflight`, `run`, `score`, `package`, `submit`, and then
 verifier replay. `admit-permissions` is model-free; `preflight` is the first paid
-step. The same private admission receipt binds preflight through package.
+step. Only its exact configuration probes and runnable task cells in `run`
+invoke models. Scoring, packaging, submission, verifier replay, and publication
+do not invoke models. The same private admission receipt binds preflight through
+package.
 Provide the runner signing key only to `package`, the submission token only to
 `submit`, and verifier credentials only to the verifier command.
 The first release does not depend on or run Linux or Docker. They remain a

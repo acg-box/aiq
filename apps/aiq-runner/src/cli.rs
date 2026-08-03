@@ -1198,7 +1198,8 @@ enum Command {
 		/// Controlled local artifact sink.
 		#[arg(long)]
 		artifact_root: PathBuf,
-		/// Existing persisted preflight path protected from benchmark children.
+		/// Planned persisted preflight cache path. It may be absent before paid preflight or
+		/// retained for an exact unchanged resume, and is protected from benchmark children.
 		#[arg(long)]
 		preflight_cache: PathBuf,
 		/// Planned durable per-attempt checkpoint. This command does not reserve it.
