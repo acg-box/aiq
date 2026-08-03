@@ -5,8 +5,14 @@ import { CalibrationEfficiency } from '../../components/calibration-efficiency.t
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Calibration evidence' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Calibration evidence',
+  path: '/calibrations',
+  description:
+    'Inspect replay-verified AIQ calibration evidence kept separate from Official rankings.',
+});
 export const dynamic = 'force-dynamic';
 
 type CalibrationSearchParams = { before?: string; after?: string };

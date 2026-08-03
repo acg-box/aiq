@@ -6,8 +6,14 @@ import { OfficialEfficiencyTable } from '../../components/official-efficiency-ta
 import { TrendExplorer } from '../../components/trend-explorer.tsx';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Trends' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Trends',
+  path: '/trends',
+  description:
+    'Follow retained AIQ fixed-fixture observations and sensitivity intervals over time.',
+});
 export const dynamic = 'force-dynamic';
 
 import type { TrendRange } from '../../data/types.ts';
