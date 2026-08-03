@@ -82,7 +82,11 @@ differs from the six-decimal result.
 The separately signed authority binds the exact source-observation digest,
 corpus commitment, six contrast-arm digests, and 17 complete model
 configurations. Each model configuration includes family, reasoning effort,
-runtime, tool-policy, and network-policy identity. The trusted public key comes
+runtime, tool-policy, and network-policy identity. The configurations must be
+the ordered fixed matrix: `sol-low` through
+`sol-ultra`, `terra-low` through `terra-ultra`, and `luna-low` through
+`luna-max`; a signed substitute, duplicate, or reordered configuration is
+invalid. The trusted public key comes
 from a separate trust policy. The release runtime must pin that policy's
 canonical digest out of band and must not accept the pin from evidence, an
 authority, a receipt, or a release request. Authority and promotion roles must

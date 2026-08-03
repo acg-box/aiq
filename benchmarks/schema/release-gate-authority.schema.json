@@ -41,7 +41,26 @@
           "type": "array",
           "minItems": 17,
           "maxItems": 17,
-          "items": { "$ref": "#/$defs/modelConfiguration" }
+          "prefixItems": [
+            { "$ref": "#/$defs/solLow" },
+            { "$ref": "#/$defs/solMedium" },
+            { "$ref": "#/$defs/solHigh" },
+            { "$ref": "#/$defs/solXhigh" },
+            { "$ref": "#/$defs/solMax" },
+            { "$ref": "#/$defs/solUltra" },
+            { "$ref": "#/$defs/terraLow" },
+            { "$ref": "#/$defs/terraMedium" },
+            { "$ref": "#/$defs/terraHigh" },
+            { "$ref": "#/$defs/terraXhigh" },
+            { "$ref": "#/$defs/terraMax" },
+            { "$ref": "#/$defs/terraUltra" },
+            { "$ref": "#/$defs/lunaLow" },
+            { "$ref": "#/$defs/lunaMedium" },
+            { "$ref": "#/$defs/lunaHigh" },
+            { "$ref": "#/$defs/lunaXhigh" },
+            { "$ref": "#/$defs/lunaMax" }
+          ],
+          "items": false
         }
       }
     },
@@ -94,12 +113,216 @@
       ],
       "properties": {
         "model_id": { "$ref": "#/$defs/identifier" },
-        "family": { "$ref": "#/$defs/identifier" },
+        "family": { "enum": ["sol", "terra", "luna"] },
         "reasoning_effort": { "enum": ["low", "medium", "high", "xhigh", "max", "ultra"] },
         "runtime_digest": { "$ref": "#/$defs/digest" },
         "tool_policy_digest": { "$ref": "#/$defs/digest" },
         "network_policy_digest": { "$ref": "#/$defs/digest" }
       }
+    },
+    "solLow": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "sol-low" },
+            "family": { "const": "sol" },
+            "reasoning_effort": { "const": "low" }
+          }
+        }
+      ]
+    },
+    "solMedium": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "sol-medium" },
+            "family": { "const": "sol" },
+            "reasoning_effort": { "const": "medium" }
+          }
+        }
+      ]
+    },
+    "solHigh": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "sol-high" },
+            "family": { "const": "sol" },
+            "reasoning_effort": { "const": "high" }
+          }
+        }
+      ]
+    },
+    "solXhigh": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "sol-xhigh" },
+            "family": { "const": "sol" },
+            "reasoning_effort": { "const": "xhigh" }
+          }
+        }
+      ]
+    },
+    "solMax": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "sol-max" },
+            "family": { "const": "sol" },
+            "reasoning_effort": { "const": "max" }
+          }
+        }
+      ]
+    },
+    "solUltra": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "sol-ultra" },
+            "family": { "const": "sol" },
+            "reasoning_effort": { "const": "ultra" }
+          }
+        }
+      ]
+    },
+    "terraLow": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "terra-low" },
+            "family": { "const": "terra" },
+            "reasoning_effort": { "const": "low" }
+          }
+        }
+      ]
+    },
+    "terraMedium": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "terra-medium" },
+            "family": { "const": "terra" },
+            "reasoning_effort": { "const": "medium" }
+          }
+        }
+      ]
+    },
+    "terraHigh": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "terra-high" },
+            "family": { "const": "terra" },
+            "reasoning_effort": { "const": "high" }
+          }
+        }
+      ]
+    },
+    "terraXhigh": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "terra-xhigh" },
+            "family": { "const": "terra" },
+            "reasoning_effort": { "const": "xhigh" }
+          }
+        }
+      ]
+    },
+    "terraMax": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "terra-max" },
+            "family": { "const": "terra" },
+            "reasoning_effort": { "const": "max" }
+          }
+        }
+      ]
+    },
+    "terraUltra": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "terra-ultra" },
+            "family": { "const": "terra" },
+            "reasoning_effort": { "const": "ultra" }
+          }
+        }
+      ]
+    },
+    "lunaLow": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "luna-low" },
+            "family": { "const": "luna" },
+            "reasoning_effort": { "const": "low" }
+          }
+        }
+      ]
+    },
+    "lunaMedium": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "luna-medium" },
+            "family": { "const": "luna" },
+            "reasoning_effort": { "const": "medium" }
+          }
+        }
+      ]
+    },
+    "lunaHigh": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "luna-high" },
+            "family": { "const": "luna" },
+            "reasoning_effort": { "const": "high" }
+          }
+        }
+      ]
+    },
+    "lunaXhigh": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "luna-xhigh" },
+            "family": { "const": "luna" },
+            "reasoning_effort": { "const": "xhigh" }
+          }
+        }
+      ]
+    },
+    "lunaMax": {
+      "allOf": [
+        { "$ref": "#/$defs/modelConfiguration" },
+        {
+          "properties": {
+            "model_id": { "const": "luna-max" },
+            "family": { "const": "luna" },
+            "reasoning_effort": { "const": "max" }
+          }
+        }
+      ]
     },
     "contrastBinding": {
       "type": "object",

@@ -277,12 +277,32 @@ export interface ComponentEvidence {
 
 export interface ModelMatrixConfiguration {
   readonly model_id: string;
-  readonly family: string;
+  readonly family: 'sol' | 'terra' | 'luna';
   readonly reasoning_effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
   readonly runtime_digest: string;
   readonly tool_policy_digest: string;
   readonly network_policy_digest: string;
 }
+
+export const FIXED_MODEL_MATRIX_IDENTITIES = [
+  { model_id: 'sol-low', family: 'sol', reasoning_effort: 'low' },
+  { model_id: 'sol-medium', family: 'sol', reasoning_effort: 'medium' },
+  { model_id: 'sol-high', family: 'sol', reasoning_effort: 'high' },
+  { model_id: 'sol-xhigh', family: 'sol', reasoning_effort: 'xhigh' },
+  { model_id: 'sol-max', family: 'sol', reasoning_effort: 'max' },
+  { model_id: 'sol-ultra', family: 'sol', reasoning_effort: 'ultra' },
+  { model_id: 'terra-low', family: 'terra', reasoning_effort: 'low' },
+  { model_id: 'terra-medium', family: 'terra', reasoning_effort: 'medium' },
+  { model_id: 'terra-high', family: 'terra', reasoning_effort: 'high' },
+  { model_id: 'terra-xhigh', family: 'terra', reasoning_effort: 'xhigh' },
+  { model_id: 'terra-max', family: 'terra', reasoning_effort: 'max' },
+  { model_id: 'terra-ultra', family: 'terra', reasoning_effort: 'ultra' },
+  { model_id: 'luna-low', family: 'luna', reasoning_effort: 'low' },
+  { model_id: 'luna-medium', family: 'luna', reasoning_effort: 'medium' },
+  { model_id: 'luna-high', family: 'luna', reasoning_effort: 'high' },
+  { model_id: 'luna-xhigh', family: 'luna', reasoning_effort: 'xhigh' },
+  { model_id: 'luna-max', family: 'luna', reasoning_effort: 'max' },
+] as const;
 
 export interface ReleaseGateAuthority {
   readonly schema_version: 'aiq.release-gate-authority.v1';
@@ -981,20 +1001,24 @@ export function evaluateReleaseGate(
     evidence.model_matrix_digest !== authority.model_matrix.digest ||
     authority.model_matrix.digest !==
       releaseEvidenceModelMatrixDigest(authority.model_matrix.configurations) ||
-    authority.model_matrix.configurations.length !== 17 ||
+    authority.model_matrix.configurations.length !== FIXED_MODEL_MATRIX_IDENTITIES.length ||
     modelIds.size !== 17 ||
     authority.model_matrix.configurations.some(
-      ({
-        model_id: modelId,
-        family,
-        reasoning_effort: effort,
-        runtime_digest: runtime,
-        tool_policy_digest: tool,
-        network_policy_digest: network,
-      }) =>
+      (
+        {
+          model_id: modelId,
+          family,
+          reasoning_effort: effort,
+          runtime_digest: runtime,
+          tool_policy_digest: tool,
+          network_policy_digest: network,
+        },
+        index,
+      ) =>
         !validIdentifier(modelId) ||
-        !validIdentifier(family) ||
-        !['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(effort) ||
+        modelId !== FIXED_MODEL_MATRIX_IDENTITIES[index]?.model_id ||
+        family !== FIXED_MODEL_MATRIX_IDENTITIES[index]?.family ||
+        effort !== FIXED_MODEL_MATRIX_IDENTITIES[index]?.reasoning_effort ||
         !validDigest(runtime) ||
         !validDigest(tool) ||
         !validDigest(network),

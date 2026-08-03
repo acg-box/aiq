@@ -9,6 +9,7 @@ import {
   AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256,
   COMMAND_EXECUTION_DISCLOSURE,
   DOMAINS,
+  FIXED_MODEL_MATRIX_IDENTITIES,
   RELEASE_GATE_POLICY,
   PREDECESSOR_CATALOG,
   assertCatalogInvariants,
@@ -146,10 +147,8 @@ function bindCell(cell: ReleaseGateRawCell): ReleaseGateRawCell {
 }
 
 function modelMatrix(): readonly ModelMatrixConfiguration[] {
-  return Array.from({ length: 17 }, (_, index) => ({
-    model_id: `model-${String(index + 1)}`,
-    family: index < 6 ? 'sol' : index < 12 ? 'terra' : 'luna',
-    reasoning_effort: REASONING_EFFORTS[index % REASONING_EFFORTS.length] ?? 'low',
+  return FIXED_MODEL_MATRIX_IDENTITIES.map((identity, index) => ({
+    ...identity,
     runtime_digest: `sha256:${'3'.repeat(63)}${(index % 16).toString(16)}`,
     tool_policy_digest: `sha256:${'4'.repeat(63)}${(index % 16).toString(16)}`,
     network_policy_digest: `sha256:${'5'.repeat(63)}${(index % 16).toString(16)}`,
@@ -157,8 +156,6 @@ function modelMatrix(): readonly ModelMatrixConfiguration[] {
 }
 
 const SCORE_COMPONENT_CACHE = new Map<number, readonly number[]>();
-const REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] as const;
-
 function componentsForScore(requestedScore: number): readonly ComponentEvidence[] {
   const requestedUnits = Math.round(Math.max(0, Math.min(1, requestedScore)) * 200);
   let selected = SCORE_COMPONENT_CACHE.get(requestedUnits);
@@ -1218,9 +1215,18 @@ await test('signed authority binds source evidence and rejects caller-selected t
     true,
   );
 
-  const changedConfigurations = authority.model_matrix.configurations.map((configuration, index) =>
-    index === 0 ? { ...configuration, family: 'changed-family' } : configuration,
-  );
+  const changedConfigurations: readonly ModelMatrixConfiguration[] =
+    authority.model_matrix.configurations.map((configuration, index) =>
+      index === 0
+        ? { ...configuration, reasoning_effort: 'medium' }
+        : index === 1
+          ? { ...configuration, reasoning_effort: 'low' }
+          : configuration,
+    );
+  const changedMatrixEvidence = {
+    ...evidence,
+    model_matrix_digest: releaseEvidenceModelMatrixDigest(changedConfigurations),
+  };
   const changedMatrixUnsigned: ReleaseGateAuthority = {
     ...authority,
     model_matrix: {
@@ -1239,7 +1245,7 @@ await test('signed authority binds source evidence and rejects caller-selected t
   };
   strictEqual(
     evaluateReleaseGateWithAuthority(
-      evidence,
+      changedMatrixEvidence,
       changedMatrixAuthority,
       TRUST_POLICY,
       TRUST_ROOT,
@@ -1716,6 +1722,22 @@ await test('authority, trust-root, trust-policy, and receipt schemas are closed 
   strictEqual(
     matchesSchema(
       { ...authority, public_key: 'caller-selected' },
+      authoritySchema,
+      authoritySchema,
+    ),
+    false,
+  );
+  strictEqual(
+    matchesSchema(
+      {
+        ...authority,
+        model_matrix: {
+          ...authority.model_matrix,
+          configurations: authority.model_matrix.configurations.map((configuration, index) =>
+            index === 0 ? { ...configuration, reasoning_effort: 'medium' } : configuration,
+          ),
+        },
+      },
       authoritySchema,
       authoritySchema,
     ),
