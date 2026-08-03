@@ -6,6 +6,7 @@ pub(crate) mod process_group;
 use std::cell::Cell;
 #[cfg(unix)]
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fmt::Debug;
 #[cfg(unix)]
 use std::fs::Permissions;
@@ -16,7 +17,10 @@ use std::mem::MaybeUninit;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::AsRawFd;
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::{
+	ffi::OsStrExt as _,
+	fs::{MetadataExt, PermissionsExt},
+};
 use std::sync::mpsc::Receiver;
 use std::{
 	collections::{BTreeMap, BTreeSet},
@@ -71,9 +75,23 @@ thread_local! {
 	#[cfg(target_os = "linux")]
 	static FORCE_JSON_RPC_STOP_FAILURE: std::cell::Cell<bool> =
 		const { std::cell::Cell::new(false) };
+	static SCRATCH_REMOVE_HOOK: std::cell::RefCell<Option<ScratchRemoveHook>> =
+		const { std::cell::RefCell::new(None) };
+	static SCRATCH_QUARANTINE_HOOK: std::cell::RefCell<Option<ScratchQuarantineHook>> =
+		const { std::cell::RefCell::new(None) };
+	static FORCE_SCRATCH_IDENTITY_CAPTURE_FAILURE: std::cell::Cell<bool> =
+		const { std::cell::Cell::new(false) };
 }
 
 type CaptureThread = JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
+#[cfg(test)]
+type ScratchRemoveHook = Box<dyn FnMut(&Path) -> io::Result<()>>;
+#[cfg(test)]
+type ScratchQuarantineHook = Box<dyn FnMut(&Path, &Path)>;
+
+#[cfg(unix)]
+static SCRATCH_QUARANTINE_SEQUENCE: std::sync::atomic::AtomicU64 =
+	std::sync::atomic::AtomicU64::new(0);
 
 /// Maximum complete bytes accepted independently for stdout and stderr.
 pub const MAX_CAPTURE_BYTES: usize = 4 * 1_024 * 1_024;
@@ -782,18 +800,25 @@ where
 		);
 		let capture = match capture {
 			Ok(capture) => capture,
-			Err(failure) => {
-				let _ = scratch.cleanup();
-
-				return Err(failure);
+			Err(failure) => match scratch.cleanup() {
+				Ok(()) => return Err(failure),
+				Err(cleanup_failure) => {
+					return Err(post_execution_integrity_failure(
+						Err(failure),
+						format!(
+							"Codex execution and post-invocation scratch cleanup failed: {}",
+							cleanup_failure.message
+						),
+					));
+				},
 			},
 		};
 		let classified = classify_capture(capture, &self.sink, true);
 
-		if scratch.cleanup().is_err() {
+		if let Err(cleanup_failure) = scratch.cleanup() {
 			return Err(post_execution_integrity_failure(
 				classified,
-				"post-invocation scratch cleanup failed",
+				format!("post-invocation scratch cleanup failed: {}", cleanup_failure.message),
 			));
 		}
 
@@ -1451,8 +1476,66 @@ struct JsonRpcResponse<T> {
 
 struct WorkspaceScratch {
 	path: PathBuf,
+	#[cfg(unix)]
+	identity: PinnedDirectoryIdentity,
+	#[cfg(unix)]
+	source_parent: PinnedDirectoryIdentity,
+	#[cfg(unix)]
+	quarantine_parent: PinnedDirectoryIdentity,
+	#[cfg(unix)]
+	basename: OsString,
+	#[cfg(unix)]
+	held_directory: File,
 	cleaned: bool,
 }
+
+#[cfg(unix)]
+struct CreatedScratchGuard<'a> {
+	source_parent: &'a PinnedDirectoryIdentity,
+	quarantine_parent: &'a PinnedDirectoryIdentity,
+	source_name: OsString,
+	held_directory: Option<File>,
+}
+
+#[cfg(unix)]
+impl CreatedScratchGuard<'_> {
+	fn disarm(mut self) -> File {
+		self.held_directory.take().expect("created scratch guard must hold a directory")
+	}
+}
+
+#[cfg(unix)]
+impl Drop for CreatedScratchGuard<'_> {
+	fn drop(&mut self) {
+		let Some(held_directory) = self.held_directory.as_ref() else { return };
+
+		for nonce in 0_u8..16 {
+			let quarantine_name = scratch_quarantine_name(nonce);
+
+			match self.source_parent.rename_child_noreplace_to(
+				&self.source_name,
+				self.quarantine_parent,
+				&quarantine_name,
+			) {
+				Ok(()) => {
+					if self
+						.quarantine_parent
+						.verify_child_directory(&quarantine_name, held_directory)
+						.is_ok()
+					{
+						let _ =
+							self.quarantine_parent.unlink_empty_child_directory(&quarantine_name);
+					}
+
+					return;
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+				Err(_) => return,
+			}
+		}
+	}
+}
+
 impl WorkspaceScratch {
 	fn create(workspace: &Path) -> Result<Self, AdapterFailure> {
 		let workspace = fs::canonicalize(workspace).map_err(|error| {
@@ -1461,23 +1544,85 @@ impl WorkspaceScratch {
 				format!("cannot resolve controlled scratch workspace: {error}"),
 			)
 		})?;
+		#[cfg(unix)]
+		let source_parent = PinnedDirectoryIdentity::capture(&workspace).map_err(|error| {
+			adapter_failure(
+				AdapterFailureKind::Spawn,
+				format!("cannot pin controlled scratch workspace: {error}"),
+			)
+		})?;
+		#[cfg(unix)]
+		let quarantine_parent_path = workspace.parent().ok_or_else(|| {
+			adapter_failure(AdapterFailureKind::Spawn, "controlled scratch workspace has no parent")
+		})?;
+		#[cfg(unix)]
+		let quarantine_parent =
+			PinnedDirectoryIdentity::capture(quarantine_parent_path).map_err(|error| {
+				adapter_failure(
+					AdapterFailureKind::Spawn,
+					format!("cannot pin controlled scratch quarantine parent: {error}"),
+				)
+			})?;
 
 		for nonce in 0_u8..16 {
 			let timestamp =
 				SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |value| value.as_nanos());
-			let path =
-				workspace.join(format!(".aiq-scratch-{}-{}-{nonce}", process::id(), timestamp));
+			let basename =
+				OsString::from(format!(".aiq-scratch-{}-{}-{nonce}", process::id(), timestamp));
+			let path = workspace.join(&basename);
 
-			match fs::create_dir(&path) {
-				Ok(()) => {
-					#[cfg(unix)]
-					fs::set_permissions(&path, Permissions::from_mode(0o700)).map_err(|error| {
+			#[cfg(unix)]
+			match source_parent.create_child_directory(&basename) {
+				Ok(held_directory) => {
+					let guard = CreatedScratchGuard {
+						source_parent: &source_parent,
+						quarantine_parent: &quarantine_parent,
+						source_name: basename.clone(),
+						held_directory: Some(held_directory),
+					};
+					#[cfg(test)]
+					let forced_failure =
+						FORCE_SCRATCH_IDENTITY_CAPTURE_FAILURE.with(|forced| forced.replace(false));
+					#[cfg(not(test))]
+					let forced_failure = false;
+					let identity = if forced_failure {
+						Err("forced controlled scratch identity capture failure".to_owned())
+					} else {
+						PinnedDirectoryIdentity::capture(&path)
+					}
+					.map_err(|error| {
 						adapter_failure(
 							AdapterFailureKind::Spawn,
-							format!("cannot restrict controlled scratch directory: {error}"),
+							format!("cannot pin controlled scratch directory: {error}"),
 						)
 					})?;
+					let held_directory = guard.disarm();
 
+					return Ok(Self {
+						path,
+						identity,
+						source_parent,
+						quarantine_parent,
+						basename,
+						held_directory,
+						cleaned: false,
+					});
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot create controlled scratch directory ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			}
+
+			#[cfg(not(unix))]
+			match fs::create_dir(&path) {
+				Ok(()) => {
 					return Ok(Self { path, cleaned: false });
 				},
 				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
@@ -1513,21 +1658,38 @@ impl WorkspaceScratch {
 	}
 
 	fn cleanup(mut self) -> Result<(), AdapterFailure> {
-		self.remove()?;
-
+		let result = self.remove();
 		self.cleaned = true;
 
-		Ok(())
+		result
 	}
 
 	fn remove(&self) -> Result<(), AdapterFailure> {
+		#[cfg(unix)]
+		return self.remove_unix();
+		#[cfg(not(unix))]
+		return self.remove_portable();
+	}
+
+	#[cfg(unix)]
+	fn remove_unix(&self) -> Result<(), AdapterFailure> {
 		let metadata = match fs::symlink_metadata(&self.path) {
 			Ok(metadata) => metadata,
-			Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				return require_held_directory_unlinked(
+					&self.held_directory,
+					&self.source_parent,
+					&self.quarantine_parent,
+					"controlled scratch path disappeared without a proven unlink",
+				);
+			},
 			Err(error) => {
 				return Err(adapter_failure(
 					AdapterFailureKind::Spawn,
-					format!("cannot inspect controlled scratch directory: {error}"),
+					format!(
+						"cannot inspect controlled scratch directory ({})",
+						public_io_error_cause(&error)
+					),
 				));
 			},
 		};
@@ -1539,14 +1701,292 @@ impl WorkspaceScratch {
 			));
 		}
 
-		match fs::remove_dir_all(&self.path) {
-			Ok(()) => Ok(()),
-			Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
-			Err(error) => Err(adapter_failure(
+		self.identity.verify().map_err(|_| {
+			adapter_failure(
 				AdapterFailureKind::Spawn,
-				format!("cannot remove controlled scratch directory: {error}"),
-			)),
+				"controlled scratch path identity changed before cleanup",
+			)
+		})?;
+
+		for nonce in 0_u8..16 {
+			let quarantine_name = scratch_quarantine_name(nonce);
+			let quarantine_path = self.quarantine_parent.path().join(&quarantine_name);
+
+			#[cfg(test)]
+			SCRATCH_QUARANTINE_HOOK.with(|slot| {
+				if let Some(hook) = slot.borrow_mut().as_mut() {
+					hook(&self.path, &quarantine_path);
+				}
+			});
+
+			match self.source_parent.rename_child_noreplace_to(
+				&self.basename,
+				&self.quarantine_parent,
+				&quarantine_name,
+			) {
+				Ok(()) => {
+					self.quarantine_parent
+						.verify_child_directory(&quarantine_name, &self.held_directory)
+						.map_err(|_| {
+							adapter_failure(
+								AdapterFailureKind::Spawn,
+								"controlled scratch identity changed during quarantine",
+							)
+						})?;
+
+					return remove_quarantined_scratch(
+						&self.source_parent,
+						&self.quarantine_parent,
+						&quarantine_name,
+						&quarantine_path,
+						&self.held_directory,
+					);
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+				Err(error) if error.kind() == ErrorKind::NotFound => {
+					return require_held_directory_unlinked(
+						&self.held_directory,
+						&self.source_parent,
+						&self.quarantine_parent,
+						"controlled scratch identity changed before quarantine",
+					);
+				},
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot quarantine controlled scratch directory ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			}
 		}
+
+		Err(adapter_failure(
+			AdapterFailureKind::Spawn,
+			"cannot allocate controlled scratch quarantine name",
+		))
+	}
+
+	#[cfg(not(unix))]
+	fn remove_portable(&self) -> Result<(), AdapterFailure> {
+		const MAX_ATTEMPTS: usize = 3;
+		const RETRY_DELAYS: [Duration; MAX_ATTEMPTS - 1] =
+			[Duration::from_millis(5), Duration::from_millis(15)];
+
+		for attempt in 1..=MAX_ATTEMPTS {
+			let metadata = match fs::symlink_metadata(&self.path) {
+				Ok(metadata) => metadata,
+				Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot inspect controlled scratch directory ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			};
+
+			if metadata.file_type().is_symlink() || !metadata.is_dir() {
+				return Err(adapter_failure(
+					AdapterFailureKind::Spawn,
+					"controlled scratch path changed type before cleanup",
+				));
+			}
+
+			match remove_scratch_directory(&self.path) {
+				Ok(()) => return Ok(()),
+				Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+				Err(error)
+					if attempt < MAX_ATTEMPTS && scratch_remove_error_is_transient(&error) =>
+				{
+					thread::sleep(RETRY_DELAYS[attempt - 1]);
+				},
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot remove controlled scratch directory after {attempt} attempt(s) ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			}
+		}
+
+		unreachable!("bounded scratch cleanup loop must return")
+	}
+}
+
+fn remove_scratch_directory(path: &Path) -> io::Result<()> {
+	#[cfg(test)]
+	if let Some(result) = SCRATCH_REMOVE_HOOK
+		.with(|slot| slot.borrow_mut().as_mut().map(|remove_hook| remove_hook(path)))
+	{
+		return result;
+	}
+
+	fs::remove_dir_all(path)
+}
+
+#[cfg(unix)]
+fn scratch_quarantine_name(nonce: u8) -> OsString {
+	let timestamp =
+		SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |value| value.as_nanos());
+	let sequence = SCRATCH_QUARANTINE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+	OsString::from(format!(
+		".aiq-scratch-quarantine-{}-{timestamp}-{sequence}-{nonce}",
+		process::id()
+	))
+}
+
+#[cfg(unix)]
+fn remove_quarantined_scratch(
+	source_parent: &PinnedDirectoryIdentity,
+	quarantine_parent: &PinnedDirectoryIdentity,
+	quarantine_name: &OsStr,
+	quarantine_path: &Path,
+	held_directory: &File,
+) -> Result<(), AdapterFailure> {
+	const MAX_ATTEMPTS: usize = 3;
+	const RETRY_DELAYS: [Duration; MAX_ATTEMPTS - 1] =
+		[Duration::from_millis(5), Duration::from_millis(15)];
+
+	for attempt in 1..=MAX_ATTEMPTS {
+		quarantine_parent.verify_child_directory(quarantine_name, held_directory).map_err(
+			|_| {
+				adapter_failure(
+					AdapterFailureKind::Spawn,
+					"controlled scratch quarantine identity changed before removal",
+				)
+			},
+		)?;
+
+		match remove_scratch_directory(quarantine_path) {
+			Ok(()) => {
+				return require_held_directory_unlinked(
+					held_directory,
+					source_parent,
+					quarantine_parent,
+					"controlled scratch quarantine removal was not proven",
+				);
+			},
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				return require_held_directory_unlinked(
+					held_directory,
+					source_parent,
+					quarantine_parent,
+					"controlled scratch quarantine disappeared without a proven unlink",
+				);
+			},
+			Err(error) if attempt < MAX_ATTEMPTS && scratch_remove_error_is_transient(&error) => {
+				thread::sleep(RETRY_DELAYS[attempt - 1]);
+			},
+			Err(error) => {
+				return Err(adapter_failure(
+					AdapterFailureKind::Spawn,
+					format!(
+						"cannot remove controlled scratch quarantine after {attempt} attempt(s) ({})",
+						public_io_error_cause(&error)
+					),
+				));
+			},
+		}
+	}
+
+	unreachable!("bounded scratch quarantine cleanup loop must return")
+}
+
+#[cfg(unix)]
+fn require_held_directory_unlinked(
+	held_directory: &File,
+	source_parent: &PinnedDirectoryIdentity,
+	quarantine_parent: &PinnedDirectoryIdentity,
+	message: &'static str,
+) -> Result<(), AdapterFailure> {
+	source_parent.verify().map_err(|_| {
+		adapter_failure(AdapterFailureKind::Spawn, "controlled scratch source parent changed")
+	})?;
+	quarantine_parent.verify().map_err(|_| {
+		adapter_failure(AdapterFailureKind::Spawn, "controlled scratch quarantine parent changed")
+	})?;
+	let metadata = held_directory.metadata().map_err(|_| {
+		adapter_failure(
+			AdapterFailureKind::Spawn,
+			"cannot inspect held controlled scratch identity",
+		)
+	})?;
+
+	if held_directory_is_unlinked(held_directory, &metadata) {
+		Ok(())
+	} else {
+		Err(adapter_failure(AdapterFailureKind::Spawn, message))
+	}
+}
+
+#[cfg(unix)]
+fn held_directory_is_unlinked(held_directory: &File, metadata: &Metadata) -> bool {
+	if !metadata.is_dir() {
+		return false;
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	return metadata.nlink() == 0;
+
+	#[cfg(target_os = "macos")]
+	{
+		let mut path = [0_i8; libc::PATH_MAX as usize];
+		let result =
+			unsafe { libc::fcntl(held_directory.as_raw_fd(), libc::F_GETPATH, path.as_mut_ptr()) };
+
+		if result != 0 {
+			return false;
+		}
+
+		let path = unsafe { std::ffi::CStr::from_ptr(path.as_ptr()) };
+		let path = Path::new(OsStr::from_bytes(path.to_bytes()));
+
+		matches!(fs::symlink_metadata(path), Err(error) if error.kind() == ErrorKind::NotFound)
+	}
+}
+
+fn scratch_remove_error_is_transient(error: &io::Error) -> bool {
+	matches!(
+		error.kind(),
+		ErrorKind::Interrupted
+			| ErrorKind::PermissionDenied
+			| ErrorKind::ResourceBusy
+			| ErrorKind::WouldBlock
+			| ErrorKind::TimedOut
+			| ErrorKind::DirectoryNotEmpty
+			| ErrorKind::Other
+	)
+}
+
+fn public_io_error_cause(error: &io::Error) -> String {
+	let kind = match error.kind() {
+		ErrorKind::NotFound => "not_found",
+		ErrorKind::PermissionDenied => "permission_denied",
+		ErrorKind::AlreadyExists => "already_exists",
+		ErrorKind::Interrupted => "interrupted",
+		ErrorKind::ResourceBusy => "resource_busy",
+		ErrorKind::WouldBlock => "would_block",
+		ErrorKind::TimedOut => "timed_out",
+		ErrorKind::DirectoryNotEmpty => "directory_not_empty",
+		ErrorKind::Other => "other",
+		_ => "io_error",
+	};
+
+	match error.raw_os_error() {
+		#[cfg(unix)]
+		Some(code) => format!("cause={kind}, errno={code}"),
+		#[cfg(not(unix))]
+		Some(code) => format!("cause={kind}, os_code={code}"),
+		None => format!("cause={kind}"),
 	}
 }
 
@@ -4480,14 +4920,16 @@ where
 
 fn post_execution_integrity_failure(
 	classified: Result<CodexOutput, AdapterFailure>,
-	message: &'static str,
+	message: impl Into<String>,
 ) -> AdapterFailure {
+	let message = message.into();
+
 	match classified {
 		Ok(output) => AdapterFailure {
 			kind: AdapterFailureKind::WorkspaceIntegrity,
 			exit_code: output.exit_code,
 			stderr: output.stderr,
-			message: message.to_owned(),
+			message,
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts: output.artifacts,
@@ -4495,7 +4937,7 @@ fn post_execution_integrity_failure(
 		},
 		Err(mut failure) => {
 			failure.kind = AdapterFailureKind::WorkspaceIntegrity;
-			failure.message = message.to_owned();
+			failure.message = message;
 
 			failure
 		},
@@ -4677,6 +5119,8 @@ fn observation_time() -> String {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(unix)]
+	use std::ffi::OsStr;
 	#[cfg(target_os = "macos")]
 	use std::fs::File;
 	#[cfg(unix)]
@@ -4686,12 +5130,14 @@ mod tests {
 	#[cfg(unix)]
 	use std::process::{Command, Stdio};
 	use std::{
-		cell::RefCell,
+		cell::{Cell, RefCell},
 		collections::{BTreeMap, BTreeSet},
 		env, fs,
 		io::{self, Read as _, Write as _},
 		path::PathBuf,
-		process, slice,
+		process,
+		rc::Rc,
+		slice,
 		sync::{
 			OnceLock,
 			atomic::{AtomicU32, AtomicU64, Ordering},
@@ -5065,6 +5511,125 @@ mod tests {
 		scratch.cleanup().expect("explicit missing cleanup");
 	}
 
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_retries_one_transient_remove_failure() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+		let attempts = Rc::new(Cell::new(0_usize));
+		let hook_attempts = Rc::clone(&attempts);
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |path| {
+				let attempt = hook_attempts.get() + 1;
+
+				hook_attempts.set(attempt);
+				if attempt == 1 {
+					Err(io::Error::from(io::ErrorKind::PermissionDenied))
+				} else {
+					fs::remove_dir_all(path)
+				}
+			}));
+		});
+
+		let cleanup = scratch.cleanup();
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| *slot.borrow_mut() = None);
+		cleanup.expect("transient scratch removal must recover");
+		assert_eq!(attempts.get(), 2);
+		assert!(!path.exists());
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_reports_bounded_persistent_remove_failure_once() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+		let attempts = Rc::new(Cell::new(0_usize));
+		let hook_attempts = Rc::clone(&attempts);
+		let quarantine_path = Rc::new(RefCell::new(None::<PathBuf>));
+		let hook_quarantine_path = Rc::clone(&quarantine_path);
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |path| {
+				hook_attempts.set(hook_attempts.get() + 1);
+				*hook_quarantine_path.borrow_mut() = Some(path.to_owned());
+				Err(io::Error::from_raw_os_error(libc::EACCES))
+			}));
+		});
+
+		let error = scratch.cleanup().expect_err("persistent cleanup failure must surface");
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| *slot.borrow_mut() = None);
+		assert_eq!(attempts.get(), 3, "Drop must not silently retry after cleanup fails");
+		assert!(error.message.contains("after 3 attempt(s)"));
+		assert!(error.message.contains("cause=permission_denied"));
+		assert!(error.message.contains(&format!("errno={}", libc::EACCES)));
+		assert!(!error.message.contains(&path.display().to_string()));
+
+		let quarantine_path = quarantine_path.borrow_mut().take().expect("quarantine path");
+
+		assert!(!path.exists());
+		fs::remove_dir_all(quarantine_path).expect("remove persistent-failure fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_does_not_retry_same_type_identity_replacement() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+		let hook_calls = Rc::new(Cell::new(0_usize));
+		let hook_call_count = Rc::clone(&hook_calls);
+		let quarantine_path = Rc::new(RefCell::new(None::<PathBuf>));
+		let hook_quarantine_path = Rc::clone(&quarantine_path);
+
+		super::SCRATCH_QUARANTINE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |source, quarantine| {
+				hook_call_count.set(hook_call_count.get() + 1);
+				fs::remove_dir_all(source).expect("remove original controlled scratch");
+				fs::create_dir(source).expect("install hostile directory replacement");
+				*hook_quarantine_path.borrow_mut() = Some(quarantine.to_owned());
+			}));
+		});
+
+		let error = scratch.cleanup().expect_err("identity replacement must fail closed");
+
+		super::SCRATCH_QUARANTINE_HOOK.with(|slot| *slot.borrow_mut() = None);
+		assert_eq!(hook_calls.get(), 1);
+		assert!(error.message.contains("changed during quarantine"));
+		assert!(!path.exists());
+		let quarantine_path = quarantine_path.borrow_mut().take().expect("quarantine path");
+
+		assert!(quarantine_path.is_dir(), "cleanup must not delete the moved replacement");
+		fs::remove_dir(quarantine_path).expect("remove hostile directory replacement");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_pin_failure_cleans_the_new_empty_directory() {
+		let workspace = test_controlled_root().join("task").join(format!(
+			"pin-failure-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+
+		fs::create_dir(&workspace).expect("isolated pin-failure workspace");
+
+		super::FORCE_SCRATCH_IDENTITY_CAPTURE_FAILURE.with(|forced| forced.set(true));
+
+		let error = match super::WorkspaceScratch::create(&workspace) {
+			Ok(_) => panic!("forced identity capture failure must surface"),
+			Err(error) => error,
+		};
+
+		assert!(error.message.contains("cannot pin controlled scratch directory"));
+		assert_eq!(fs::read_dir(&workspace).expect("workspace entries").count(), 0);
+
+		fs::remove_dir(workspace).expect("remove pin-failure workspace");
+	}
+
 	#[test]
 	fn controlled_scratch_cleanup_rejects_hostile_type_change() {
 		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
@@ -5086,6 +5651,82 @@ mod tests {
 		fs::remove_file(path).expect("remove hostile test replacement");
 	}
 
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_rejects_a_model_renamed_directory() {
+		let workspace = test_controlled_root().join("task");
+		let scratch = super::WorkspaceScratch::create(&workspace).expect("controlled scratch");
+		let escaped = workspace.join(format!(
+			"escaped-scratch-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+
+		fs::rename(&scratch.path, &escaped).expect("model renames controlled scratch");
+
+		let error = scratch.cleanup().expect_err("renamed scratch must fail closed");
+
+		assert!(error.message.contains("disappeared without a proven unlink"));
+		assert!(escaped.is_dir(), "cleanup must not delete the renamed directory");
+
+		fs::remove_dir(escaped).expect("remove renamed scratch fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn pinned_child_creation_rolls_back_a_post_open_failure() {
+		let parent_path = test_controlled_root().join("task").join(format!(
+			"child-rollback-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+		let child_name = OsStr::new("new-child");
+
+		fs::create_dir(&parent_path).expect("child rollback parent");
+		let parent = crate::pinned_path::PinnedDirectoryIdentity::capture(&parent_path)
+			.expect("pinned child rollback parent");
+		crate::pinned_path::force_create_child_post_open_failure();
+
+		let error =
+			parent.create_child_directory(child_name).expect_err("post-open failure must surface");
+
+		assert!(error.to_string().contains("forced post-open"));
+		assert!(!parent_path.join(child_name).exists());
+
+		drop(parent);
+		fs::remove_dir(parent_path).expect("remove child rollback parent");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn pinned_child_rollback_preserves_a_post_open_replacement() {
+		let parent_path = test_controlled_root().join("task").join(format!(
+			"child-rollback-replacement-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+		let child_name = OsStr::new("new-child");
+		let child_path = parent_path.join(child_name);
+		let hook_child_path = child_path.clone();
+
+		fs::create_dir(&parent_path).expect("child rollback replacement parent");
+		let parent = crate::pinned_path::PinnedDirectoryIdentity::capture(&parent_path)
+			.expect("pinned child rollback replacement parent");
+		crate::pinned_path::set_create_child_post_open_hook(move || {
+			fs::remove_dir(&hook_child_path).expect("remove original opened child");
+			fs::create_dir(&hook_child_path).expect("install empty child replacement");
+		});
+		crate::pinned_path::force_create_child_post_open_failure();
+
+		let error = parent
+			.create_child_directory(child_name)
+			.expect_err("post-open replacement failure must surface");
+
+		assert!(error.to_string().contains("forced post-open"));
+		assert!(child_path.is_dir(), "rollback must preserve the replacement identity");
+
+		fs::remove_dir(child_path).expect("remove preserved child replacement");
+		drop(parent);
+		fs::remove_dir(parent_path).expect("remove child rollback replacement parent");
+	}
+
 	#[test]
 	fn paid_capture_survives_hostile_scratch_cleanup_failure() {
 		let stdout = br#"{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":5}}
@@ -5105,6 +5746,7 @@ mod tests {
 
 		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
 		assert_eq!(failure.exit_code, Some(0));
+		assert!(failure.message.contains("changed type"));
 		assert_eq!(failure.stdout_full.as_bytes(), stdout);
 		assert!(failure.artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl"));
 		assert_eq!(adapter.sink.values.borrow().as_slice(), [stdout]);
@@ -5113,6 +5755,34 @@ mod tests {
 			adapter.executor.replacement.borrow_mut().take().expect("hostile replacement path");
 
 		fs::remove_file(replacement).expect("remove hostile replacement");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn executor_failure_and_cleanup_failure_become_workspace_integrity() {
+		let quarantine_path = Rc::new(RefCell::new(None::<PathBuf>));
+		let hook_quarantine_path = Rc::clone(&quarantine_path);
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |path| {
+				*hook_quarantine_path.borrow_mut() = Some(path.to_owned());
+				Err(io::Error::from_raw_os_error(libc::EACCES))
+			}));
+		});
+		let adapter = adapter(vec![Err(ExecutorError::new("synthetic executor failure"))]);
+
+		let failure = adapter.invoke(&invocation()).expect_err("combined failure must fail closed");
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| *slot.borrow_mut() = None);
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert!(failure.message.contains("execution and post-invocation scratch cleanup failed"));
+		assert!(failure.message.contains("cause=permission_denied"));
+		assert!(failure.stderr.is_empty());
+		assert!(failure.artifacts.is_empty());
+
+		let quarantine_path = quarantine_path.borrow_mut().take().expect("quarantine path");
+
+		fs::remove_dir_all(quarantine_path).expect("remove combined-failure fixture");
 	}
 
 	#[test]
