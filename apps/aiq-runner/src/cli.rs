@@ -46,7 +46,8 @@ use aiq_runner::{
 	},
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
-		self, ExecutionToolPolicy, RunClass, ValidatedCorpusCommitment, ValidatedModelToolchain,
+		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, ValidatedCorpusCommitment,
+		ValidatedModelToolchain,
 	},
 	isolation::{self, ProtectedBenchmarkPath},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
@@ -1983,15 +1984,13 @@ fn run_preflight(
 	let protected_output = canonical_leaf_policy_path(&output)?;
 
 	future_locks.verify(&protected_output)?;
+
 	let manifest = read_json::<CapabilityManifest>(&path)?;
 	let codex_binary = controlled_codex_binary(&codex_binary)?;
 	let evaluator_runtime = EvaluatorRuntime::resolve(&evaluator_runtime)?;
 	let policy = corpus_commitment::read_execution_tool_policy(&corpus_commitment)?;
-	let model_toolchain = corpus_commitment::validate_model_toolchain(
-		&codex_toolchain_root,
-		&policy,
-		&evaluator_runtime,
-	)?;
+	let model_toolchain =
+		preflight_model_toolchain(&codex_toolchain_root, &policy, &evaluator_runtime)?;
 	let admission = official_admission.map(read_successful_official_admission).transpose()?;
 
 	if let Some((report, _)) = &admission {
@@ -2008,10 +2007,7 @@ fn run_preflight(
 		)?;
 	}
 
-	let observed_unix_ms = resume::unix_ms();
-	let expires_unix_ms = observed_unix_ms
-		.checked_add(expires_in_seconds.checked_mul(1_000).ok_or("preflight expiry overflows")?)
-		.ok_or("preflight expiry overflows")?;
+	let (observed_unix_ms, expires_unix_ms) = preflight_window(expires_in_seconds)?;
 	let artifact_sink = LocalArtifactSink::new(&artifact_root)?;
 	let official_protected = admission
 		.as_ref()
@@ -2080,6 +2076,7 @@ fn run_preflight(
 		admission.as_ref(),
 		official_protected.as_deref(),
 	)?;
+
 	future_locks.verify(&protected_output)?;
 
 	let report = adapter.validate_capabilities(&manifest);
@@ -2101,6 +2098,23 @@ fn run_preflight(
 	binding.output_parent.verify()?;
 
 	Ok(())
+}
+
+fn preflight_window(expires_in_seconds: u64) -> Result<(u64, u64), &'static str> {
+	let observed_unix_ms = resume::unix_ms();
+	let expires_unix_ms = observed_unix_ms
+		.checked_add(expires_in_seconds.checked_mul(1_000).ok_or("preflight expiry overflows")?)
+		.ok_or("preflight expiry overflows")?;
+
+	Ok((observed_unix_ms, expires_unix_ms))
+}
+
+fn preflight_model_toolchain(
+	root: &Path,
+	policy: &ExecutionToolPolicy,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+	corpus_commitment::validate_model_toolchain(root, policy, evaluator_runtime)
 }
 
 fn verify_preflight_official_permissions<E, S>(
@@ -3375,6 +3389,7 @@ fn prepare_live_runtime(
 	);
 	let permission_evidence =
 		verify_permission_evidence(&adapter, &execution_root, &protected_paths, options.run_class)?;
+
 	Ok(PreparedLiveRuntime {
 		adapter,
 		workspace_provider,
@@ -5377,6 +5392,7 @@ mod tests {
 	use clap::Parser as _;
 
 	use crate::capacity;
+	use crate::resume;
 	use crate::runner;
 	use crate::{
 		adapter::{
@@ -5742,6 +5758,7 @@ mod tests {
 			cli::acquire_preflight_future_protected_locks(&output)
 				.expect("preflight lock released after drop"),
 		);
+
 		assert!(cli::acquire_preflight_future_protected_locks(Path::new("-")).is_err());
 
 		let held =
@@ -5755,6 +5772,7 @@ mod tests {
 		assert!(held.verify(&protected_output).is_err());
 
 		drop(held);
+
 		fs::remove_dir_all(root).expect("fixture cleanup");
 		fs::remove_dir_all(moved).expect("moved fixture cleanup");
 	}
@@ -5899,12 +5917,11 @@ mod tests {
 	fn live_run_state_paths_are_distinct_before_preflight() {
 		let root = fixture_root("live-run-state-aliases");
 		let preflight = root.join("preflight.json");
-		let preflight_attempt = crate::resume::preflight_attempt_path(&preflight);
+		let preflight_attempt = resume::preflight_attempt_path(&preflight);
 		let checkpoint = root.join("checkpoint.json");
 		let output = root.join("run.json");
 
 		fs::create_dir_all(&root).expect("fixture root");
-
 		cli::validate_run_future_protected_paths(&preflight, &checkpoint, &output)
 			.expect("distinct durable paths");
 		cli::validate_run_future_protected_paths(&preflight, &checkpoint, Path::new("-"))
@@ -5916,6 +5933,7 @@ mod tests {
 					.is_err()
 			);
 		}
+
 		assert!(cli::validate_run_future_protected_paths(&preflight, &preflight, &output).is_err());
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
@@ -5945,7 +5963,9 @@ mod tests {
 		);
 
 		fs::remove_file(&output).expect("remove existing output fixture");
+
 		drop(cli::FutureProtectedFiles::prepare(&entries).expect("initial reservation"));
+
 		assert_eq!(
 			fs::read(&output).expect("calibration reservation"),
 			entries[2].recoverable_bytes.as_deref().expect("reservation bytes")
@@ -5962,6 +5982,7 @@ mod tests {
 			)
 			.expect("finalize calibration output with the held directory lock");
 		protected.disarm(&output);
+
 		drop(protected);
 
 		assert_eq!(

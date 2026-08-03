@@ -21,8 +21,14 @@ use std::{
 	},
 };
 
+#[cfg(target_os = "macos")]
+use libc::RENAME_EXCL;
+#[cfg(target_os = "linux")]
+use libc::RENAME_NOREPLACE;
+#[cfg(target_os = "linux")]
+use libc::SYS_renameat2;
 #[cfg(unix)]
-use libc::{O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_RDONLY, O_RDWR};
+use libc::{AT_REMOVEDIR, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_RDONLY, O_RDWR};
 
 #[cfg(test)]
 thread_local! {
@@ -30,16 +36,6 @@ thread_local! {
 		const { std::cell::Cell::new(false) };
 	static CREATE_CHILD_POST_OPEN_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
 		const { std::cell::RefCell::new(None) };
-}
-
-#[cfg(test)]
-pub(crate) fn force_create_child_post_open_failure() {
-	FORCE_CREATE_CHILD_POST_OPEN_FAILURE.with(|forced| forced.set(true));
-}
-
-#[cfg(test)]
-pub(crate) fn set_create_child_post_open_hook(hook: impl FnOnce() + 'static) {
-	CREATE_CHILD_POST_OPEN_HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
 }
 
 /// Held identity of one file and its parent directory.
@@ -402,13 +398,13 @@ impl PinnedDirectoryIdentity {
 		if result != 0 {
 			return Err(io::Error::last_os_error());
 		}
-		let mut rollback = EmptyChildDirectoryRollback {
+
+		let rollback = EmptyChildDirectoryRollback {
 			parent: self,
 			name: name_c,
 			held_directory: None,
 			armed: true,
 		};
-
 		let directory = openat_file(
 			self.directory_file.as_raw_fd(),
 			name,
@@ -416,21 +412,26 @@ impl PinnedDirectoryIdentity {
 			0,
 		)?;
 		let metadata = directory.metadata()?;
+		let mut rollback = rollback;
 
 		if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
 			return Err(io::Error::other("new protected child directory identity is unsafe"));
 		}
+
 		rollback.held_directory = Some(directory.try_clone()?);
+
 		#[cfg(test)]
 		if let Some(hook) = CREATE_CHILD_POST_OPEN_HOOK.with(|slot| slot.borrow_mut().take()) {
 			hook();
 		}
+
 		#[cfg(test)]
 		if FORCE_CREATE_CHILD_POST_OPEN_FAILURE.with(|forced| forced.replace(false)) {
 			return Err(io::Error::other("forced post-open child directory failure"));
 		}
 
 		self.verify().map_err(io::Error::other)?;
+
 		rollback.armed = false;
 
 		Ok(directory)
@@ -452,12 +453,12 @@ impl PinnedDirectoryIdentity {
 		#[cfg(target_os = "linux")]
 		let result = unsafe {
 			libc::syscall(
-				libc::SYS_renameat2,
+				SYS_renameat2,
 				self.directory_file.as_raw_fd(),
 				source_name.as_ptr(),
 				destination_directory.directory_file.as_raw_fd(),
 				destination_name.as_ptr(),
-				libc::RENAME_NOREPLACE,
+				RENAME_NOREPLACE,
 			)
 		};
 		#[cfg(target_os = "macos")]
@@ -467,7 +468,7 @@ impl PinnedDirectoryIdentity {
 				source_name.as_ptr(),
 				destination_directory.directory_file.as_raw_fd(),
 				destination_name.as_ptr(),
-				libc::RENAME_EXCL,
+				RENAME_EXCL,
 			)
 		};
 		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -475,10 +476,12 @@ impl PinnedDirectoryIdentity {
 
 		if result == 0 {
 			self.verify().map_err(io::Error::other)?;
+
 			destination_directory.verify().map_err(io::Error::other)
 		} else {
 			#[cfg(any(target_os = "linux", target_os = "macos"))]
 			return Err(io::Error::last_os_error());
+
 			#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 			return Err(io::Error::new(
 				ErrorKind::Unsupported,
@@ -518,9 +521,8 @@ impl PinnedDirectoryIdentity {
 		self.verify()?;
 
 		let name = component(name)?;
-		let result = unsafe {
-			libc::unlinkat(self.directory_file.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR)
-		};
+		let result =
+			unsafe { libc::unlinkat(self.directory_file.as_raw_fd(), name.as_ptr(), AT_REMOVEDIR) };
 
 		if result == 0 {
 			self.verify()
@@ -638,56 +640,6 @@ impl PinnedDirectoryIdentity {
 	}
 }
 
-#[cfg(unix)]
-struct EmptyChildDirectoryRollback<'a> {
-	parent: &'a PinnedDirectoryIdentity,
-	name: CString,
-	held_directory: Option<File>,
-	armed: bool,
-}
-
-#[cfg(unix)]
-impl Drop for EmptyChildDirectoryRollback<'_> {
-	fn drop(&mut self) {
-		if !self.armed || self.parent.verify().is_err() {
-			return;
-		}
-		let Some(held_directory) = self.held_directory.as_ref() else { return };
-		let descriptor = unsafe {
-			libc::openat(
-				self.parent.directory_file.as_raw_fd(),
-				self.name.as_ptr(),
-				O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
-				0,
-			)
-		};
-
-		if descriptor < 0 {
-			return;
-		}
-
-		let current = unsafe { File::from_raw_fd(descriptor) };
-		let Ok(held_metadata) = held_directory.metadata() else { return };
-		let Ok(current_metadata) = current.metadata() else { return };
-
-		if !held_metadata.is_dir()
-			|| !current_metadata.is_dir()
-			|| held_metadata.dev() != current_metadata.dev()
-			|| held_metadata.ino() != current_metadata.ino()
-		{
-			return;
-		}
-
-		unsafe {
-			libc::unlinkat(
-				self.parent.directory_file.as_raw_fd(),
-				self.name.as_ptr(),
-				libc::AT_REMOVEDIR,
-			);
-		}
-	}
-}
-
 #[cfg(not(unix))]
 impl PinnedDirectoryIdentity {
 	pub(crate) fn capture(_path: &std::path::Path) -> Result<Self, String> {
@@ -719,6 +671,66 @@ impl Debug for PinnedDirectoryIdentity {
 			.field("pinned", &true)
 			.finish_non_exhaustive()
 	}
+}
+
+#[cfg(unix)]
+struct EmptyChildDirectoryRollback<'a> {
+	parent: &'a PinnedDirectoryIdentity,
+	name: CString,
+	held_directory: Option<File>,
+	armed: bool,
+}
+#[cfg(unix)]
+impl Drop for EmptyChildDirectoryRollback<'_> {
+	fn drop(&mut self) {
+		if !self.armed || self.parent.verify().is_err() {
+			return;
+		}
+
+		let Some(held_directory) = self.held_directory.as_ref() else { return };
+		let descriptor = unsafe {
+			libc::openat(
+				self.parent.directory_file.as_raw_fd(),
+				self.name.as_ptr(),
+				O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+				0,
+			)
+		};
+
+		if descriptor < 0 {
+			return;
+		}
+
+		let current = unsafe { File::from_raw_fd(descriptor) };
+		let Ok(held_metadata) = held_directory.metadata() else { return };
+		let Ok(current_metadata) = current.metadata() else { return };
+
+		if !held_metadata.is_dir()
+			|| !current_metadata.is_dir()
+			|| held_metadata.dev() != current_metadata.dev()
+			|| held_metadata.ino() != current_metadata.ino()
+		{
+			return;
+		}
+
+		unsafe {
+			libc::unlinkat(
+				self.parent.directory_file.as_raw_fd(),
+				self.name.as_ptr(),
+				AT_REMOVEDIR,
+			);
+		}
+	}
+}
+
+#[cfg(test)]
+pub(crate) fn force_create_child_post_open_failure() {
+	FORCE_CREATE_CHILD_POST_OPEN_FAILURE.with(|forced| forced.set(true));
+}
+
+#[cfg(test)]
+pub(crate) fn set_create_child_post_open_hook(hook: impl FnOnce() + 'static) {
+	CREATE_CHILD_POST_OPEN_HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
 }
 
 #[cfg(unix)]
