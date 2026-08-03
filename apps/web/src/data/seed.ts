@@ -118,6 +118,21 @@ const toolSets = [
   ['retrieval tool'],
 ] as const;
 const failureCodes = ['AGENT_TIMEOUT', 'MODEL_TIMEOUT', 'TOOL_TIMEOUT'] as const;
+const syntheticUnavailableEfficiency = {
+  latencyMs: null,
+  latencyEvidenceLevel: null,
+  inputTokens: null,
+  cachedInputTokens: null,
+  cacheWriteInputTokens: null,
+  outputTokens: null,
+  reasoningOutputTokens: null,
+  totalTokens: null,
+  tokenUsageSourceLevel: null,
+  tokenUsageEvidenceLevel: null,
+  standardApiEquivalentUsdNanos: null,
+  costEstimatorStatus: 'unavailable_missing_usage',
+  costEvidenceLevel: null,
+} as const;
 
 function buildSyntheticCompleteTasks(
   entry: ScoredLeaderboardEntry,
@@ -155,7 +170,7 @@ function buildSyntheticCompleteTasks(
             }
           : null,
         tools: [...tools],
-        latencyMs: 8_000 + ((currentIndex * 1_173 + entryIndex * 487) % 29_000),
+        ...syntheticUnavailableEfficiency,
       };
     });
   });
@@ -191,7 +206,7 @@ function buildCoverageOnlyTasks(): readonly TaskResult[] {
               }
             : null,
         tools: [...tools],
-        latencyMs: isMissing ? null : 9_000 + ((currentIndex * 977) % 27_000),
+        ...syntheticUnavailableEfficiency,
       };
     }),
   );

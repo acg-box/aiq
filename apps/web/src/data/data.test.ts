@@ -134,6 +134,14 @@ function calibrationScoreRepository(row: unknown): SupabaseAiqRepository {
   );
 }
 
+function modelEfficiencyRepository(rows: readonly unknown[]): SupabaseAiqRepository {
+  return new SupabaseAiqRepository(
+    'https://example.supabase.co',
+    'sb_publishable_public_example',
+    async () => Response.json(rows),
+  );
+}
+
 void describe('seed repository', () => {
   void it('provides the complete 6/6/5 model and reasoning matrix', () => {
     assert.equal(seedLeaderboard.length, 17);
@@ -572,6 +580,26 @@ void describe('presentation aggregates', () => {
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
     assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.1');
+    assert.ok(
+      seedRuns
+        .flatMap((run) => run.tasks)
+        .every(
+          (task) =>
+            task.latencyMs === null &&
+            task.latencyEvidenceLevel === null &&
+            task.inputTokens === null &&
+            task.cachedInputTokens === null &&
+            task.cacheWriteInputTokens === null &&
+            task.outputTokens === null &&
+            task.reasoningOutputTokens === null &&
+            task.totalTokens === null &&
+            task.tokenUsageSourceLevel === null &&
+            task.tokenUsageEvidenceLevel === null &&
+            task.standardApiEquivalentUsdNanos === null &&
+            task.costEvidenceLevel === null,
+        ),
+      'synthetic task fixtures must not claim retained invocation efficiency evidence',
+    );
     assert.deepEqual(
       Object.fromEntries(
         benchmarkDomainConfig.map((domain) => [
@@ -629,6 +657,36 @@ void describe('presentation aggregates', () => {
       validResults: 0,
       notApplicable: true,
     });
+  });
+
+  void it('keeps synthetic calibration invocation counts and efficiency evidence unavailable', async () => {
+    const repository = new SeedAiqRepository();
+    const page = await repository.listCalibrationRunPage();
+    const seed = page.runs[0];
+    assert.ok(seed);
+    const scores = await repository.listCalibrationScores(seed.id);
+    assert.deepEqual(
+      scores.map((score) => ({
+        attempted: score.attemptedResultCount,
+        invoked: score.invokedResultCount,
+        elapsed: score.adapterElapsedObservedResultCount,
+        elapsedMs: score.observedTotalWallMs,
+        durationEvidence: score.durationEvidenceLevel,
+        tokenCount: score.tokenObservedResultCount,
+        pricedCount: score.pricedResultCount,
+      })),
+      [
+        {
+          attempted: 0,
+          invoked: 0,
+          elapsed: 0,
+          elapsedMs: null,
+          durationEvidence: null,
+          tokenCount: 0,
+          pricedCount: 0,
+        },
+      ],
+    );
   });
 
   void it('keeps leaderboard scores consistent with equal-weight fixed-domain means', () => {
@@ -864,7 +922,7 @@ void describe('presentation aggregates', () => {
             : 'unavailable_missing_usage',
           cost_evidence_level: null,
           cost_estimator_limitations: [
-            'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.',
+            'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing',
           ],
           cost_method: 'standard_api_equivalent_text_token_estimate',
           cost_version: 'aiq.standard-api-equivalent-usd.v1',
@@ -941,7 +999,7 @@ void describe('presentation aggregates', () => {
     assert.equal(contextBand.standardApiEquivalentUsdNanos, null);
     assert.equal(contextBand.costEvidenceLevel, null);
     assert.deepEqual(contextBand.costEstimatorLimitations, [
-      'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.',
+      'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing',
     ]);
     assert.equal(resultRequests.length, 1);
     const resultUrl = new URL(resultRequests[0]?.url ?? 'invalid:');
@@ -1103,6 +1161,84 @@ void describe('presentation aggregates', () => {
           /public_calibration_scores: invalid response shape/,
         ),
       ),
+    );
+  });
+
+  void it('keeps signed matrix wall-clock separate from summed concurrent cell time', async () => {
+    const runId = `run_${'d'.repeat(64)}`;
+    const matrixBatchId = `run_${'b'.repeat(64)}`;
+    const row = {
+      run_id: runId,
+      matrix_batch_id: matrixBatchId,
+      model_family: 'sol',
+      reasoning_effort: 'low',
+      matrix_batch_elapsed_ms: 7_652_000,
+      summed_cell_adapter_elapsed_ms: 12_240_000,
+      observed_median_wall_ms: 160_000,
+      observed_p95_wall_ms: 240_000,
+      observed_time_sample_count: 72,
+      observed_time_coverage_percent: 100,
+      duration_evidence_level: 'runner_observed',
+      input_tokens: null,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      output_tokens: null,
+      reasoning_output_tokens: null,
+      total_tokens: null,
+      token_usage_sample_count: 0,
+      token_usage_coverage_percent: null,
+      input_token_coverage_count: null,
+      input_token_coverage_percent: null,
+      cached_input_token_coverage_count: null,
+      cached_input_token_coverage_percent: null,
+      cache_write_input_token_coverage_count: null,
+      cache_write_input_token_coverage_percent: null,
+      output_token_coverage_count: null,
+      output_token_coverage_percent: null,
+      reasoning_token_coverage_count: null,
+      reasoning_token_coverage_percent: null,
+      total_token_coverage_count: null,
+      total_token_coverage_percent: null,
+      token_usage_source_level: null,
+      token_usage_evidence_level: null,
+      standard_api_equivalent_usd_nanos: null,
+      cost_estimator_status: 'unavailable_missing_usage',
+      cost_evidence_level: null,
+      cost_method: null,
+      pricing_source: null,
+      pricing_as_of: null,
+      pricing_version: null,
+      pricing_currency: null,
+      pricing_processing_tier: null,
+      result_count: 72,
+      attempted_result_count: 72,
+      invoked_result_count: 72,
+      adapter_elapsed_observed_result_count: 72,
+      token_observed_result_count: 0,
+      priced_result_count: 0,
+      execution_concurrency: 17,
+      estimated_cost_sample_count: 0,
+      cost_estimator_limitations: [],
+      pricing_rates: [],
+      cost_formula: null,
+    };
+    const [efficiency] = await modelEfficiencyRepository([row]).listModelEfficiency([runId]);
+    assert.equal(efficiency?.matrixBatchId, matrixBatchId);
+    assert.equal(efficiency?.matrixBatchElapsedMs, 7_652_000);
+    assert.equal(efficiency?.summedCellAdapterElapsedMs, 12_240_000);
+
+    const secondRunId = `run_${'e'.repeat(64)}`;
+    await assert.rejects(
+      modelEfficiencyRepository([
+        row,
+        {
+          ...row,
+          run_id: secondRunId,
+          model_family: 'terra',
+          matrix_batch_elapsed_ms: 7_652_001,
+        },
+      ]).listModelEfficiency([runId, secondRunId]),
+      /inconsistent matrix batch elapsed time/,
     );
   });
 

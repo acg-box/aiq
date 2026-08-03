@@ -208,7 +208,7 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
                 <td>
                   {score.observedTotalWallMs === null
                     ? 'Unavailable'
-                    : `${formatHumanDuration(score.observedTotalWallMs)} total`}
+                    : `${formatHumanDuration(score.observedTotalWallMs)} summed cell time`}
                   <small>
                     {score.observedMedianWallMs === null
                       ? 'median unavailable'

@@ -151,7 +151,7 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     /'gpt-5\.6-sol'[\s\S]{0,240}5000[\s\S]{0,120}500[\s\S]{0,160}6250[\s\S]{0,120}30000/,
     /'gpt-5\.6-terra'[\s\S]{0,240}2000[\s\S]{0,120}200[\s\S]{0,160}2500[\s\S]{0,120}12000/,
     /'gpt-5\.6-luna'[\s\S]{0,240}200[\s\S]{0,120}20[\s\S]{0,160}250[\s\S]{0,120}1200/,
-    /Standard short-context API-equivalent comparison only\.[\s\S]{0,240}272000 aggregate input tokens[\s\S]{0,240}This is not actual subscription spend\./,
+    /Standard short-context API-equivalent comparison only\.[\s\S]{0,320}272000 aggregate input tokens[\s\S]{0,220}Regional processing uplift and hosted tool fees are excluded\.[\s\S]{0,120}This is not actual subscription spend\.[\s\S]{0,120}https:\/\/developers\.openai\.com\/api\/docs\/pricing/,
   ]) {
     assert.match(
       pricingValidator,
@@ -453,7 +453,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     "candidate->>'processing_tier'='standard'",
     "candidate->'hosted_tool_fees_included'='false'::jsonb",
     "'(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again'",
-    "'Standard short-context API-equivalent comparison only. A result above 272000 aggregate input tokens is unpriced because aggregate turn usage cannot identify per-request context bands. This is not actual subscription spend.'",
+    "'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing'",
   ]) {
     assert.ok(
       schema.includes(pricingContract),

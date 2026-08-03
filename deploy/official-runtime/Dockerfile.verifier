@@ -14,14 +14,18 @@ RUN printf '%s\n' \
       > /etc/apt/sources.list \
     && rm -f /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Check-Valid-Until=false update \
-    && apt-get install --yes --no-install-recommends tinyproxy-bin=1.11.1-2.1+deb12u1 \
+    && apt-get install --yes --no-install-recommends \
+      ca-certificates=20230311+deb12u1 \
+      curl=7.88.1-10+deb12u15 \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10002 aiqproxy \
-    && useradd --uid 10002 --gid 10002 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin aiqproxy \
-    && install -d -o root -g root -m 0755 /etc/tinyproxy
+    && groupadd --gid 10003 aiqverifier \
+    && useradd --uid 10003 --gid 10003 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin aiqverifier \
+    && install -d -o root -g root -m 0755 /run/secrets
 
-COPY --chown=0:0 --chmod=0444 deploy/official-runtime/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
-COPY --chown=0:0 --chmod=0444 deploy/official-runtime/runner-proxy-filter.txt /etc/tinyproxy/filter
+COPY --chown=0:0 --chmod=0555 deploy/official-runtime/verifier-entrypoint.sh /usr/local/bin/aiq-verifier-entrypoint
+COPY --chown=0:0 --chmod=0555 deploy/official-runtime/verifier-canary.sh /usr/local/bin/aiq-verifier-canary
 
-USER 10002:10002
-ENTRYPOINT ["/usr/bin/tinyproxy", "-d", "-c", "/etc/tinyproxy/tinyproxy.conf"]
+USER 10003:10003
+WORKDIR /replay
+ENTRYPOINT ["/usr/local/bin/aiq-verifier-entrypoint"]
+CMD ["hold"]
