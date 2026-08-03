@@ -172,7 +172,7 @@ user. The runner uses the host's direct Codex connection. Linux and Docker remai
 future deployment targets; first-release commands and acceptance run natively on
 the Mac.
 
-Run one paid command at a time in this order:
+Run the Official commands one at a time in this order:
 
 ```text
 target/release/aiq-runner admit-permissions ...
@@ -183,11 +183,13 @@ target/release/aiq-runner package ...
 target/release/aiq-runner submit ...
 ```
 
-`admit-permissions` is model-free. `preflight` is the first paid step. Pass the
-same private admission receipt through preflight, run, score, and package. Keep
-the checkpoint, run reservation, artifacts, and preflight cache after an
-interruption; resume the unchanged run instead of creating another paid run.
-The first release executes one complete 17-by-72 Official matrix.
+`admit-permissions` is model-free. `preflight` is the first paid step. Only its
+exact configuration probes and runnable task cells in `run` invoke models.
+`score`, `package`, `submit`, verifier replay, and publication are model-free.
+Pass the same private admission receipt through preflight, run, score, and
+package. Keep the checkpoint, run reservation, artifacts, and preflight cache
+after an interruption; resume the unchanged run instead of creating another
+paid run. The first release executes one complete 17-by-72 Official matrix.
 
 ## Verifier worker
 
@@ -201,10 +203,14 @@ cargo run -p aiq-verifier -- --help
 ```
 
 After a real package has been submitted and an operator authorizes a claim, run
-the native verifier for one bounded lease. It writes create-new private JSONL
-records. The worker claims the lease from `/api/claims`, reconstructs
-workspaces, replays evaluators, and posts the stage and attestation to
-`/api/verifications`. Production requires `evaluator_replayed`. For calibration,
+the native verifier for one bounded lease. The worker emits one compact
+`aiq.verifier-record.v1` JSON object to standard output after each claimed
+package. If the operator retains these objects in a create-once private JSONL
+file, the operator shell owns that redirection and file creation. Offline
+`verify-local` stage and attestation files are separate create-new outputs and
+are not publication. The worker claims the lease from `/api/claims`,
+reconstructs workspaces, replays evaluators, and posts the stage and attestation
+to `/api/verifications`. Production requires `evaluator_replayed`. For calibration,
 the gateway stages the replayed evidence and immutable attestation under the
 verifier role, then uses the distinct publisher role to reconcile retained
 package and artifact evidence and publish only the non-Official calibration

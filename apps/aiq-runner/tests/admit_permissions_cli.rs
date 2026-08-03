@@ -66,6 +66,9 @@ fn admit_permissions_help_exposes_the_exact_planned_run_paths() {
 
 	assert!(stdout.contains("without invoking a model"));
 	assert!(stdout.contains("does not reserve it"));
+	assert!(stdout.contains("Planned persisted preflight cache path"));
+	assert!(stdout.contains("absent before paid preflight"));
+	assert!(stdout.contains("retained for an exact unchanged resume"));
 	assert!(stdout.contains("Durable private permission-admission JSON receipt"));
 }
 

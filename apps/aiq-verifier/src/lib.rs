@@ -57,6 +57,14 @@ const RECORD_SCHEMA: &str = "aiq.verifier-record.v1";
 const MAX_OPERATOR_ERROR_DETAIL_BYTES: usize = 256;
 const REDACTED_ERROR_CODE: &str = "details_redacted";
 const REDACTED_ERROR_DETAIL: &str = "Additional error detail was redacted.";
+const ADDITIONAL_MODES_HELP: &str = "Additional modes:
+  aiq-verifier validate-environment --environment <ENVIRONMENT>
+      Validate production environment metadata without secrets or service access.
+  aiq-verifier verify-local --help
+      Replay one production package offline and write create-new stage and attestation files.
+      This mode does not publish or assign cloud trust.
+
+Run `aiq-verifier <mode> --help` for the exact mode arguments.";
 
 /// Narrow client contract for authenticated content-addressed artifact resolution.
 pub trait ArtifactResolverClient {
@@ -91,7 +99,7 @@ trait LeaseMaintenance {
 
 /// Command-line settings for one bounded verifier invocation.
 #[derive(Debug, Parser)]
-#[command(name = "aiq-verifier", version, about)]
+#[command(name = "aiq-verifier", version, about, after_help = ADDITIONAL_MODES_HELP)]
 pub struct Cli {
 	/// Vercel deployment origin. The worker uses `/api/claims` and `/api/verifications`.
 	#[arg(long)]
@@ -3506,6 +3514,17 @@ mod tests {
 		synthetic.extend(["--evaluator-runtime", "/toolchain/node"]);
 
 		assert!(Cli::try_parse_from(synthetic).is_err());
+	}
+
+	#[test]
+	fn top_level_help_exposes_offline_and_environment_validation_modes() {
+		let help = <Cli as clap::CommandFactory>::command().render_long_help().to_string();
+
+		assert!(help.contains("aiq-verifier validate-environment --environment <ENVIRONMENT>"));
+		assert!(help.contains("without secrets or service access"));
+		assert!(help.contains("aiq-verifier verify-local --help"));
+		assert!(help.contains("write create-new stage and attestation files"));
+		assert!(help.contains("does not publish or assign cloud trust"));
 	}
 
 	#[test]
