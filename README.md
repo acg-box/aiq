@@ -1,6 +1,6 @@
-# AIQ Wiki
+# AIQ
 
-AIQ Wiki records fixed-fixture AI and agent benchmark results. The repository
+AIQ records fixed-fixture AI and agent benchmark results. The repository
 contains a Rust runner, a Rust verifier, a Next.js application, the public AIQ
 Core catalog, and one declarative PostgreSQL schema.
 
@@ -73,7 +73,7 @@ authentication, and production data must stay outside Git.
 
 ## Local synthetic demonstration
 
-Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
 locked dependencies.
 
 ```sh

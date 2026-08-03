@@ -281,7 +281,7 @@ exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/calibrat
 [tasks.smoke-live-web]
 workspace = false
 command = "npm"
-args = ["run", "test:browser:live-stack", "--workspace", "@aiq/wiki-web"]
+args = ["run", "test:browser:live-stack", "--workspace", "@aiq/web"]
 
 [tasks.require-subscription-smoke-platform]
 private = true
@@ -381,10 +381,10 @@ args = [
 	"--test-threads=1",
 ]
 
-[tasks.require-node-24-18]
+[tasks.require-node-24-15]
 workspace = false
 command = "node"
 args = [
 	"-e",
-	"const [major, minor] = process.versions.node.split('.').map(Number); if (major < 24 || (major === 24 && minor < 18)) { console.error('Node.js 24.18.0 or newer is required'); process.exit(1); }",
+	"const [major, minor] = process.versions.node.split('.').map(Number); if (major < 24 || (major === 24 && minor < 15)) { console.error('Node.js 24.15.0 or newer is required'); process.exit(1); }",
 ]

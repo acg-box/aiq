@@ -7,7 +7,7 @@ tags: ['template', 'maintenance']
 
 # Template Adoption
 
-AIQ Wiki is an adopted repository, not an unconfigured template. Current source,
+AIQ is an adopted repository, not an unconfigured template. Current source,
 schemas, tests, and OpenWiki pages own its behavior.
 
 ## Maintained surfaces

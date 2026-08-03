@@ -82,9 +82,15 @@ jobs:
 
       - name: Validate Linux arm64 production binaries
         run: |
-          python3 deploy/candidate-runtime/binary_builder.py target/release /tmp/aiq-linux-arm64
-          /tmp/aiq-linux-arm64/aiq-runner --version
-          /tmp/aiq-linux-arm64/aiq-verifier --version
+          staging="$(mktemp --directory /tmp/aiq-linux-arm64-staging.XXXXXX)"
+          publish_parent="$(mktemp --directory /tmp/aiq-linux-arm64-publish.XXXXXX)"
+          target="$publish_parent/output"
+          trap 'rm --force --recursive -- "$staging" "$publish_parent"' EXIT
+          install --mode=0555 -- target/release/aiq-runner "$staging/aiq-runner"
+          install --mode=0555 -- target/release/aiq-verifier "$staging/aiq-verifier"
+          python3 deploy/candidate-runtime/binary_builder.py "$staging" "$target"
+          "$target/aiq-runner" --version
+          "$target/aiq-verifier" --version
 
       - name: Check the bounded Official runtime contract
         run: python3 deploy/official-runtime/test_static.py
@@ -162,11 +168,11 @@ jobs:
 
       - name: Install Playwright browsers
         run: >-
-          npm exec --workspace @aiq/wiki-web --
+          npm exec --workspace @aiq/web --
           playwright install --with-deps chromium firefox webkit
 
       - name: Run browser acceptance tests
-        run: npm run test:browser --workspace @aiq/wiki-web
+        run: npm run test:browser --workspace @aiq/web
 
   database-check:
     name: Database check

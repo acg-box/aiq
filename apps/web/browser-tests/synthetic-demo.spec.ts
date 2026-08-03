@@ -106,7 +106,7 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   const runResponse = await page.goto(runHref ?? '/runs/unavailable');
   expect(runResponse?.headers()['cache-control']).toContain('no-store');
   await expect(page).toHaveURL(/\/runs\/run-2026-07-\d{2}-/);
-  await expect(page).toHaveTitle(/Run detail · AIQ Wiki/);
+  await expect(page).toHaveTitle(/Run detail · AIQ/);
   await expect(page.getByRole('link', { name: 'Runs', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
@@ -360,7 +360,7 @@ test('keyboard users can reach navigation and operate trend controls with visibl
   await expect(skipLink).toHaveCSS('position', 'fixed');
 
   await page.keyboard.press(linkNavigationKey);
-  await expect(page.getByRole('link', { name: 'AIQ Wiki home' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'AIQ home' })).toBeFocused();
 
   await page.goto('/trends');
   const day = page.getByRole('link', { name: 'Day' });

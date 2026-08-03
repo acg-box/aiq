@@ -80,8 +80,8 @@ export default async function OverviewPage() {
             when you can <em>inspect it.</em>
           </h1>
           <p>
-            AIQ Wiki pairs each fixed-fixture result with task sensitivity, coverage, failures,
-            history, and a route to all 72 task outcomes.
+            AIQ pairs each fixed-fixture result with task sensitivity, coverage, failures, history,
+            and a route to all 72 task outcomes.
           </p>
           <div className="hero-actions">
             <Link className="button primary" href="#leaderboard">
