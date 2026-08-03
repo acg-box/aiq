@@ -1,13 +1,13 @@
 ---
 type: 'Quickstart'
-title: 'AIQ Wiki Quickstart'
+title: 'AIQ Quickstart'
 description: 'Product scope, local demonstration, validation, and deployment status.'
 tags: ['quickstart', 'navigation', 'aiq']
 ---
 
-# AIQ Wiki Quickstart
+# AIQ Quickstart
 
-AIQ Wiki publishes transparent records for a fixed AI and agent benchmark. It
+AIQ publishes transparent records for a fixed AI and agent benchmark. It
 contains:
 
 - a Next.js site for results, trends, run details, method, and distributed radar;
@@ -64,7 +64,7 @@ authentication stay outside Git.
 
 ## Local demonstration
 
-Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, and the locked
+Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, and the locked
 dependencies.
 
 ```sh

@@ -1353,7 +1353,7 @@ void describe('shared result-package contract', () => {
       {
         envelope: fixture,
         request_context: {
-          source: 'aiq-wiki-web',
+          source: 'aiq-web',
           received_at: receipt.receivedAt,
           idempotency_key: fixtureRunId,
           package_sha256: receipt.packageSha256,

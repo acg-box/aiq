@@ -40,7 +40,7 @@ do not establish final release acceptance.
 
 ## Release topology
 
-AIQ Wiki uses one production environment for its first greenfield release. The
+AIQ uses one production environment for its first greenfield release. The
 database has one desired state and no migrations, upgrade path, or compatibility
 state.
 This repository does not define an automatic production trigger. The deployment
@@ -76,9 +76,15 @@ Gate artifacts do not publish efficiency evidence: signed unit artifacts retain
 measured latency and available provider-token counters, while the public
 aggregate gate source, evidence, and result artifacts omit those fields.
 Official or calibration publication owns the coverage-qualified aggregates and
-Standard API-equivalent estimate. Follow the canonical
-`deploy/candidate-runtime/README.md`; record actual evidence only after each
-command succeeds.
+Standard API-equivalent estimate. A passing gate and promotion receipt authorize
+only the separate repository and production cutover; they do not submit the
+candidate artifacts or publish an Official result. After that cutover is
+separately validated, execute a fresh Official `72 × 17` admission, run, score,
+package, submission, verifier replay, and publisher transition through the
+bounded runtime in [Operations and Validation](operations.md), following the
+publication method in [Benchmark Method](benchmark-method.md). Follow the
+canonical `deploy/candidate-runtime/README.md`; record actual evidence only after
+each command succeeds.
 
 ## Personal free-tier launch
 
@@ -203,13 +209,13 @@ Build and test before deployment. On a fresh host, install the pinned Playwright
 browsers first, as the checked-in CI job does:
 
 ```sh
-npm exec --workspace @aiq/wiki-web -- \
+npm exec --workspace @aiq/web -- \
   playwright install --with-deps chromium firefox webkit
 npm run check
 npm run lint
-npm run test --workspace @aiq/wiki-web
-npm run build --workspace @aiq/wiki-web
-npm run test:browser --workspace @aiq/wiki-web
+npm run test --workspace @aiq/web
+npm run build --workspace @aiq/web
+npm run test:browser --workspace @aiq/web
 ```
 
 Before launch, also run the real public-read smoke from [Operations and
