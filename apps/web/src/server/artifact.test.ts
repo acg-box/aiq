@@ -19,25 +19,27 @@ const runId = `run_${'a'.repeat(64)}`;
 const bytes = Buffer.from('artifact evidence');
 const digest = createHash('sha256').update(bytes).digest('hex');
 
-function evaluatorBundle(checkCount = 1): Buffer {
+function evaluatorResult(checkCount = 1): Record<string, unknown> {
+  return {
+    schema_version: 'aiq.evaluator-result.v3',
+    outcome: 'correct',
+    score: 1,
+    checks: Array.from({ length: checkCount }, (_, index) => ({
+      check_id: `check_${index}`,
+      weight: 1,
+      passed: true,
+      failure_class: 'none',
+      evidence_digest: `sha256:${((index % 15) + 1).toString(16).repeat(64)}`,
+    })),
+    raw_stdout_sha256: `sha256:${'a'.repeat(64)}`,
+  };
+}
+
+function evaluatorBundle(checkCount = 1, result = evaluatorResult(checkCount)): Buffer {
   return Buffer.from(
     canonicalJson({
       schema_version: 'aiq.evaluator-results.v1',
-      results: [
-        {
-          schema_version: 'aiq.evaluator-result.v3',
-          outcome: 'correct',
-          score: 1,
-          checks: Array.from({ length: checkCount }, (_, index) => ({
-            check_id: `check_${index}`,
-            weight: 1,
-            passed: true,
-            failure_class: 'none',
-            evidence_digest: `sha256:${String(index + 1).repeat(64)}`,
-          })),
-        },
-        null,
-      ],
+      results: [result, null],
     }),
   );
 }
@@ -188,12 +190,68 @@ void describe('runner artifact upload', () => {
       isCanonicalEvaluatorResultsBundle(Buffer.from(` ${body.toString('utf8')}`)),
       false,
     );
-    assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(7)), false);
+    assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(16)), true);
+    assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(17)), false);
     assert.equal(ARTIFACT_KIND_MAX_BYTES['evaluator-results.json'], MAX_EVALUATOR_RESULTS_BYTES);
   });
 
+  void it('accepts the production evaluator result shape and schema-authorized omitted digest', () => {
+    assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(16)), true);
+
+    const { raw_stdout_sha256: _omitted, ...withoutRawStdoutDigest } = evaluatorResult();
+    assert.equal(
+      isCanonicalEvaluatorResultsBundle(evaluatorBundle(1, withoutRawStdoutDigest)),
+      true,
+    );
+  });
+
+  void it('rejects missing base keys, malformed raw stdout digests, and extra result keys', () => {
+    const { schema_version: _omitted, ...missingSchemaVersion } = evaluatorResult();
+    assert.equal(
+      isCanonicalEvaluatorResultsBundle(evaluatorBundle(1, missingSchemaVersion)),
+      false,
+    );
+
+    for (const malformedDigest of [
+      'a'.repeat(64),
+      `sha256:${'A'.repeat(64)}`,
+      `sha256:${'a'.repeat(63)}`,
+      `sha256:${'0'.repeat(64)}`,
+      null,
+    ]) {
+      assert.equal(
+        isCanonicalEvaluatorResultsBundle(
+          evaluatorBundle(1, {
+            ...evaluatorResult(),
+            raw_stdout_sha256: malformedDigest,
+          }),
+        ),
+        false,
+      );
+    }
+
+    const zeroEvidenceDigest = evaluatorResult();
+    zeroEvidenceDigest.checks = [
+      {
+        check_id: 'check_0',
+        weight: 1,
+        passed: true,
+        failure_class: 'none',
+        evidence_digest: `sha256:${'0'.repeat(64)}`,
+      },
+    ];
+    assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(1, zeroEvidenceDigest)), false);
+
+    assert.equal(
+      isCanonicalEvaluatorResultsBundle(
+        evaluatorBundle(1, { ...evaluatorResult(), unexpected: true }),
+      ),
+      false,
+    );
+  });
+
   void it('rejects malformed evaluator bundles before Storage', async () => {
-    const body = evaluatorBundle(7);
+    const body = evaluatorBundle(17);
     const bundleDigest = createHash('sha256').update(body).digest('hex');
     let stores = 0;
     const response = await handleArtifactUpload(
