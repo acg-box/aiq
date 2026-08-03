@@ -359,7 +359,9 @@ impl PreflightAdmissionBinding {
 
 		if adapter.verify_managed_permission_profile(self.profile_workspace.path())? != self.profile
 		{
-			return Err("managed permission profile changed before a capability probe".into());
+			return Err(
+				"explicit permission profile evidence changed before a capability probe".into()
+			);
 		}
 
 		self.artifact_root.verify()?;
@@ -2092,13 +2094,13 @@ where
 	let expected_profile = receipt
 		.managed_profile
 		.as_ref()
-		.ok_or("Official admission receipt omits managed profile evidence")?;
+		.ok_or("Official admission receipt omits permission profile evidence")?;
 	let current_profile =
 		adapter.verify_managed_permission_profile(Path::new(&plan.execution_root))?;
 
 	if &current_profile != expected_profile {
 		return Err(
-			"managed permission profile changed after Official admission; no model was invoked"
+			"explicit permission profile evidence changed after Official admission; no model was invoked"
 				.into(),
 		);
 	}
@@ -2114,7 +2116,7 @@ where
 
 	if receipt.permission_evidence_digest.as_deref() != Some(&current_digest) {
 		return Err(
-			"managed permission canaries changed after Official admission; no model was invoked"
+			"permission evidence or canaries changed after Official admission; no model was invoked"
 				.into(),
 		);
 	}
@@ -3004,12 +3006,12 @@ fn freeze_run_preflight(
 		let expected_profile = receipt
 			.managed_profile
 			.as_ref()
-			.ok_or("Official admission receipt omits managed profile evidence")?;
+			.ok_or("Official admission receipt omits permission profile evidence")?;
 		let current_profile = adapter.verify_managed_permission_profile(&options.execution_root)?;
 
 		if &current_profile != expected_profile {
 			return Err(
-				"managed permission profile changed after Official admission; no model was invoked"
+				"explicit permission profile evidence changed after Official admission; no model was invoked"
 					.into(),
 			);
 		}
@@ -3025,7 +3027,7 @@ fn freeze_run_preflight(
 		if receipt.permission_evidence_digest.as_deref()
 			!= Some(current_evidence.combined_digest()?.as_str())
 		{
-			return Err("managed permission canaries changed after Official admission; no model was invoked".into());
+			return Err("permission evidence or canaries changed after Official admission; no model was invoked".into());
 		}
 	}
 
@@ -3159,7 +3161,10 @@ fn prepare_authorized_live_run(
 	if let Some((report, _)) = &admission
 		&& report.permission_evidence_digest.as_deref() != Some(&permission_evidence_digest)
 	{
-		return Err("managed permission evidence changed after Official admission; no task model was invoked".into());
+		return Err(
+			"permission evidence changed after Official admission; no task model was invoked"
+				.into(),
+		);
 	}
 
 	Ok(AuthorizedRun {
@@ -3376,7 +3381,7 @@ where
 	S: ArtifactSink,
 {
 	if run_class == RunClass::Official && !profile.official_eligible {
-		return Err("Official runs require an exclusive managed aiq_benchmark allowlist and managed default; no model was invoked".into());
+		return Err("Official runs require no external managed requirements and must select the explicit aiq_benchmark profile; no model was invoked".into());
 	}
 
 	let digests = PermissionEvidenceDigests {
@@ -5395,7 +5400,7 @@ mod tests {
 		assert!(super::Cli::try_parse_from(["aiq-runner", "replay-candidate"]).is_err());
 	}
 
-	fn ineligible_managed_profile() -> ManagedPermissionProfileEvidence {
+	fn unexpected_managed_requirements_profile() -> ManagedPermissionProfileEvidence {
 		ManagedPermissionProfileEvidence {
 			schema_version: "aiq.managed-permission-profile-evidence.v1".to_owned(),
 			codex_version: "codex-cli 0.146.0".to_owned(),
@@ -5403,7 +5408,7 @@ mod tests {
 			allowed_permission_profile: "aiq_benchmark".to_owned(),
 			active_permission_profile: "aiq_benchmark".to_owned(),
 			official_eligible: false,
-			managed_requirements_status: "allowlist_not_exclusive".to_owned(),
+			managed_requirements_status: "present_unexpected".to_owned(),
 			managed_requirements_digest: format!("sha256:{}", "a".repeat(64)),
 			profile_selection_digest: format!("sha256:{}", "b".repeat(64)),
 			evidence_digest: format!("sha256:{}", "c".repeat(64)),
@@ -5888,7 +5893,7 @@ mod tests {
 	}
 
 	#[test]
-	fn ineligible_official_admission_writes_denied_receipt_without_reserving_run_files() {
+	fn unexpected_managed_requirements_deny_admission_before_the_canary() {
 		let root = fixture_root("denied-admission");
 		let workspace = root.join("workspace");
 		let codex_home = root.join("codex-home");
@@ -5906,7 +5911,7 @@ mod tests {
 			"codex",
 			CodexExecutionConfig::isolated(codex_home),
 		);
-		let profile = ineligible_managed_profile();
+		let profile = unexpected_managed_requirements_profile();
 		let assessment = cli::verify_permission_evidence_with_profile(
 			&adapter,
 			&workspace,
@@ -5928,14 +5933,11 @@ mod tests {
 
 		assert_eq!(value["official_permission_eligible"], false);
 		assert_eq!(value["model_invoked"], false);
-		assert_eq!(
-			value["managed_profile"]["managed_requirements_status"],
-			"allowlist_not_exclusive"
-		);
+		assert_eq!(value["managed_profile"]["managed_requirements_status"], "present_unexpected");
 		assert!(
-			value["failure"].as_str().is_some_and(
-				|failure| failure.contains("exclusive managed aiq_benchmark allowlist")
-			)
+			value["failure"]
+				.as_str()
+				.is_some_and(|failure| failure.contains("require no external managed requirements"))
 		);
 		assert!(requests.borrow().is_empty(), "denial must precede the sandbox canary");
 		assert!(!checkpoint.exists(), "denial must not create a checkpoint");

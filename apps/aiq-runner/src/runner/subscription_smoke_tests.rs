@@ -1134,14 +1134,12 @@ fn verify_controlled_smoke_permission_admission(
 		.map_err(|error| error.to_string())?;
 
 	if !managed_profile.official_eligible
-		|| managed_profile.managed_requirements_status != "exact"
+		|| managed_profile.managed_requirements_status != "absent_expected"
 		|| managed_profile.default_permissions != "aiq_benchmark"
 		|| managed_profile.allowed_permission_profile != "aiq_benchmark"
 		|| managed_profile.active_permission_profile != "aiq_benchmark"
 	{
-		return Err(
-			"controlled smoke did not observe the exact Official managed requirements".to_owned()
-		);
+		return Err("controlled smoke did not observe the explicit Official permission profile with absent external managed requirements".to_owned());
 	}
 
 	verify_controlled_smoke_permission_canaries(

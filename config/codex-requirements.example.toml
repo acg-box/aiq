@@ -1,2 +1,0 @@
-allowed_permission_profiles.aiq_benchmark = true
-default_permissions                       = "aiq_benchmark"
