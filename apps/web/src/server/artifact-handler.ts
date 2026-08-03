@@ -44,7 +44,7 @@ export interface ArtifactUploadDependencies {
 }
 
 const digestPattern = /^[a-f0-9]{64}(?![\s\S])/;
-const prefixedDigestPattern = /^sha256:[a-f0-9]{64}(?![\s\S])/;
+const prefixedDigestPattern = /^sha256:(?!0{64}(?![\s\S]))[a-f0-9]{64}(?![\s\S])/;
 const checkIdPattern = /^[A-Za-z0-9._-]{1,128}(?![\s\S])/;
 const runPattern = /^run_[a-f0-9]{64}(?![\s\S])/;
 
@@ -94,16 +94,24 @@ function isEvaluatorCheck(value: unknown): boolean {
 function isEvaluatorResult(value: unknown): boolean {
   return (
     isRecord(value) &&
-    hasExactKeys(value, ['checks', 'outcome', 'schema_version', 'score']) &&
+    hasExactKeys(
+      value,
+      Object.hasOwn(value, 'raw_stdout_sha256')
+        ? ['checks', 'outcome', 'raw_stdout_sha256', 'schema_version', 'score']
+        : ['checks', 'outcome', 'schema_version', 'score'],
+    ) &&
     value.schema_version === 'aiq.evaluator-result.v3' &&
     (value.outcome === 'correct' || value.outcome === 'partial' || value.outcome === 'incorrect') &&
     typeof value.score === 'number' &&
     Number.isFinite(value.score) &&
     value.score >= 0 &&
     value.score <= 1 &&
+    (!Object.hasOwn(value, 'raw_stdout_sha256') ||
+      (typeof value.raw_stdout_sha256 === 'string' &&
+        prefixedDigestPattern.test(value.raw_stdout_sha256))) &&
     Array.isArray(value.checks) &&
     value.checks.length >= 1 &&
-    value.checks.length <= 6 &&
+    value.checks.length <= 16 &&
     value.checks.every(isEvaluatorCheck) &&
     new Set(value.checks.map((check) => (isRecord(check) ? check.check_id : Symbol('invalid'))))
       .size === value.checks.length &&
