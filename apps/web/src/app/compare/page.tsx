@@ -6,8 +6,13 @@ import { OfficialEfficiencyTable } from '../../components/official-efficiency-ta
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Compare' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Compare',
+  path: '/compare',
+  description: 'Compare exact AIQ model and reasoning configurations with their public evidence.',
+});
 export const dynamic = 'force-dynamic';
 
 export default async function ComparePage() {

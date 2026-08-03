@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import { SiteHeader } from '../components/site-header.tsx';
 import { classifyPublicDataConfiguration } from '../data/repository.ts';
+import { SITE_DESCRIPTION, SITE_NAME, SITE_ORIGIN } from './site-metadata.ts';
 // oxlint-disable-next-line import/no-unassigned-import -- Next.js loads global CSS by side effect.
 import './globals.css';
 
@@ -15,9 +16,20 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: SITE_ORIGIN,
+  applicationName: SITE_NAME,
   title: { default: 'AIQ — fixed-fixture agent evaluation', template: '%s · AIQ' },
-  description:
-    'A transparent index of AIQ v1 fixed-fixture outcomes, sensitivity, history, and provenance.',
+  description: SITE_DESCRIPTION,
+  alternates: { canonical: '/' },
+  category: 'technology',
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: 'AIQ — fixed-fixture agent evaluation',
+    description: SITE_DESCRIPTION,
+    url: '/',
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

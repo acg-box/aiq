@@ -12,8 +12,20 @@ import {
 } from '../../../data/format.ts';
 import { readPublicData, readPublicValue } from '../../../data/read-state.ts';
 import { createAiqRepository } from '../../../data/repository.ts';
+import { createPageMetadata } from '../../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Run detail' };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  return createPageMetadata({
+    title: 'Run detail',
+    path: `/runs/${encodeURIComponent(id)}`,
+    description: 'Inspect the outcomes, coverage, and provenance for one public AIQ run.',
+  });
+}
 export const dynamic = 'force-dynamic';
 
 export default async function RunPage({ params }: { params: Promise<{ id: string }> }) {

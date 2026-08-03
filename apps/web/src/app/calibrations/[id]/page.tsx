@@ -12,8 +12,20 @@ import {
   parseCalibrationConfiguration,
 } from '../../../data/repository.ts';
 import { uncachedInputTokens } from '../../../data/token-usage.ts';
+import { createPageMetadata } from '../../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Calibration detail' };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  return createPageMetadata({
+    title: 'Calibration detail',
+    path: `/calibrations/${encodeURIComponent(id)}`,
+    description: 'Inspect replay-verified evidence for one public, non-Official AIQ calibration.',
+  });
+}
 export const dynamic = 'force-dynamic';
 
 type CalibrationDetailSearchParams = { configuration?: string | string[] };

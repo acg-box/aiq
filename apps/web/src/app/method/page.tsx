@@ -3,8 +3,13 @@ import type { Metadata } from 'next';
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { readPublicValue } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Method' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Method',
+  path: '/method',
+  description: 'Read the AIQ fixed-fixture benchmark, scoring, uncertainty, and provenance method.',
+});
 export const dynamic = 'force-dynamic';
 
 function EfficiencyMethod() {
