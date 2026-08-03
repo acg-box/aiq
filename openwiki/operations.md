@@ -154,7 +154,10 @@ and rejects a conflicting concurrency declaration. `submit` validates and
 uploads every signed content-addressed artifact before sending the package to
 `/api/submissions`. It keeps at most eight artifact uploads in flight by default.
 Use `--artifact-upload-concurrency` to select a value from 1 through 32 when the
-controlled network requires a different bound. The Web gateway records
+controlled network requires a different bound. One shared HTTPS connection pool
+serves the submission. Network failures, timeouts, HTTP 408, HTTP 429, and HTTP
+5xx responses get at most three total attempts with a fixed 500 ms delay. Other
+HTTP 4xx responses are terminal. The Web gateway records
 `request_context.source` as `aiq-web` when it enqueues the submission. A queue
 receipt is not verification or publication.
 
