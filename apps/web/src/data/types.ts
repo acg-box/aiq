@@ -111,9 +111,9 @@ export interface TaskResult {
   status: RunStatus;
   score: number | null;
   explanation: {
-    code: string;
+    code: string | null;
     summary: string;
-    retryable: boolean;
+    retryable: boolean | null;
   } | null;
   tools: string[];
   latencyMs: number | null;

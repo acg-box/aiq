@@ -587,14 +587,13 @@ export function mapRunRow(row: RunRow, resultRows: readonly RunResultRow[]): Ben
           domain: result.domain,
           status: result.status,
           score: result.score,
-          explanation:
-            result.explanation_code && result.explanation_summary && result.retryable !== null
-              ? {
-                  code: result.explanation_code,
-                  summary: result.explanation_summary,
-                  retryable: result.retryable,
-                }
-              : null,
+          explanation: result.explanation_summary
+            ? {
+                code: result.explanation_code,
+                summary: result.explanation_summary,
+                retryable: result.retryable,
+              }
+            : null,
           tools: result.tools,
           latencyMs: result.latency_ms,
           latencyEvidenceLevel: result.latency_evidence_level,
