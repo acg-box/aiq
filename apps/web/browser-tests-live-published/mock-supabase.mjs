@@ -46,8 +46,39 @@ const matrix = [
   })),
 );
 
+const officialOutcomeCounts = matrix.map((_, index) => {
+  const passed = index < 10 ? 35 : 34;
+  const executionFailures = index < 6 ? 1 : 0;
+  return {
+    passed,
+    failed: 72 - passed,
+    executionFailures,
+    evaluatorIncorrect: 72 - passed - executionFailures,
+  };
+});
+const officialOutcomeTotals = officialOutcomeCounts.reduce(
+  (totals, outcomes) => ({
+    passed: totals.passed + outcomes.passed,
+    failed: totals.failed + outcomes.failed,
+    evaluatorIncorrect: totals.evaluatorIncorrect + outcomes.evaluatorIncorrect,
+    executionFailures: totals.executionFailures + outcomes.executionFailures,
+  }),
+  { passed: 0, failed: 0, evaluatorIncorrect: 0, executionFailures: 0 },
+);
+if (
+  officialOutcomeTotals.passed !== 588 ||
+  officialOutcomeTotals.failed !== 636 ||
+  officialOutcomeTotals.evaluatorIncorrect !== 630 ||
+  officialOutcomeTotals.executionFailures !== 6 ||
+  officialOutcomeTotals.passed + officialOutcomeTotals.evaluatorIncorrect !== 1_218
+) {
+  throw new Error('The live-published fixture does not match the pending Official outcome shape.');
+}
+
 const leaderboard = matrix.map((entry, index) => {
-  const score = Number((84.2 - index * 0.7).toFixed(1));
+  const outcomes = officialOutcomeCounts[index];
+  if (!outcomes) throw new Error('Missing Official outcome counts.');
+  const score = Number(((100 * outcomes.passed) / 72).toFixed(1));
   return {
     matrix_id: entry.id,
     run_id: `run-live-${entry.id}`,
@@ -56,7 +87,7 @@ const leaderboard = matrix.map((entry, index) => {
     ci_high: Number((score + 1.8).toFixed(1)),
     sample_size: 72,
     coverage_percent: 100,
-    failures: 0,
+    failures: outcomes.failed,
     missing: 0,
     scoring_version: '1.0.2',
     score_status: 'official',
@@ -65,36 +96,40 @@ const leaderboard = matrix.map((entry, index) => {
 });
 
 const provenanceHash = `sha256:${'1'.repeat(64)}`;
-const runRows = matrix.map((entry, index) => ({
-  id: `run-live-${entry.id}`,
-  matrix_id: entry.id,
-  started_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:00:00.000Z`,
-  completed_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:27:00.000Z`,
-  benchmark_version: 'aiq-core@1.0.2',
-  scoring_version: '1.0.2',
-  prompt_set_digest: `sha256:${'2'.repeat(64)}`,
-  runner_commit: '7a0c4d1',
-  region: 'us-east-1',
-  synthetic: false,
-  corpus_release_id: 'corpus_2026.07.29',
-  corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
-  catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
-  task_set_digest: `sha256:${'5'.repeat(64)}`,
-  preflight_digest: `sha256:${'6'.repeat(64)}`,
-  runtime_digest: `sha256:${'7'.repeat(64)}`,
-  run_class: 'official',
-  permission_evidence_digest: `sha256:${'9'.repeat(64)}`,
-  result_count: 72,
-  passed_count: 72,
-  failed_count: 0,
-  invalid_count: 0,
-  missing_count: 0,
-  not_applicable_count: 0,
-  observed_count: 72,
-  coverage_percent: 100,
-  covered_domain_count: 10,
-  provisional_domain_count: 10,
-}));
+const runRows = matrix.map((entry, index) => {
+  const outcomes = officialOutcomeCounts[index];
+  if (!outcomes) throw new Error('Missing Official outcome counts.');
+  return {
+    id: `run-live-${entry.id}`,
+    matrix_id: entry.id,
+    started_at: '2026-08-03T12:00:00.000Z',
+    completed_at: '2026-08-03T13:37:24.411Z',
+    benchmark_version: 'aiq-core@1.0.2',
+    scoring_version: '1.0.2',
+    prompt_set_digest: `sha256:${'2'.repeat(64)}`,
+    runner_commit: '7a0c4d1',
+    region: 'us-east-1',
+    synthetic: false,
+    corpus_release_id: 'corpus_2026.07.29',
+    corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
+    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+    task_set_digest: `sha256:${'5'.repeat(64)}`,
+    preflight_digest: `sha256:${'6'.repeat(64)}`,
+    runtime_digest: `sha256:${'7'.repeat(64)}`,
+    run_class: 'official',
+    permission_evidence_digest: `sha256:${'9'.repeat(64)}`,
+    result_count: 72,
+    passed_count: outcomes.passed,
+    failed_count: outcomes.failed,
+    invalid_count: 0,
+    missing_count: 0,
+    not_applicable_count: 0,
+    observed_count: 72,
+    coverage_percent: 100,
+    covered_domain_count: 10,
+    provisional_domain_count: 10,
+  };
+});
 
 const calibrationRunId = `run_${'8'.repeat(64)}`;
 const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
@@ -298,38 +333,38 @@ const modelEfficiency = calibrationScores.map((score, index) => ({
   matrix_batch_id: `run_${'b'.repeat(64)}`,
   model_family: score.model_family,
   reasoning_effort: score.reasoning_effort,
-  matrix_batch_elapsed_ms: 7_652_000,
+  matrix_batch_elapsed_ms: 5_844_411,
   summed_cell_adapter_elapsed_ms: score.observed_total_wall_ms,
   observed_median_wall_ms: score.observed_median_wall_ms,
   observed_p95_wall_ms: score.observed_p95_wall_ms,
   observed_time_sample_count: score.observed_time_sample_count,
   observed_time_coverage_percent: score.observed_time_coverage_percent,
   duration_evidence_level: score.duration_evidence_level,
-  input_tokens: score.input_tokens,
-  cached_input_tokens: score.cached_input_tokens,
-  cache_write_input_tokens: score.cache_write_input_tokens,
-  output_tokens: score.output_tokens,
-  reasoning_output_tokens: score.reasoning_output_tokens,
-  total_tokens: score.total_tokens,
-  token_usage_sample_count: score.token_usage_sample_count,
-  token_usage_coverage_percent: score.token_usage_coverage_percent,
-  input_token_coverage_count: 72,
-  input_token_coverage_percent: 100,
-  cached_input_token_coverage_count: 72,
-  cached_input_token_coverage_percent: 100,
-  cache_write_input_token_coverage_count: 72,
-  cache_write_input_token_coverage_percent: 100,
-  output_token_coverage_count: 72,
-  output_token_coverage_percent: 100,
-  reasoning_token_coverage_count: 72,
-  reasoning_token_coverage_percent: 100,
-  total_token_coverage_count: 72,
-  total_token_coverage_percent: 100,
-  token_usage_source_level: score.token_usage_source_level,
-  token_usage_evidence_level: score.token_usage_evidence_level,
-  standard_api_equivalent_usd_nanos: score.standard_api_equivalent_usd_nanos,
-  cost_estimator_status: score.cost_estimator_status,
-  cost_evidence_level: score.cost_evidence_level,
+  input_tokens: null,
+  cached_input_tokens: null,
+  cache_write_input_tokens: null,
+  output_tokens: null,
+  reasoning_output_tokens: null,
+  total_tokens: null,
+  token_usage_sample_count: 0,
+  token_usage_coverage_percent: null,
+  input_token_coverage_count: null,
+  input_token_coverage_percent: null,
+  cached_input_token_coverage_count: null,
+  cached_input_token_coverage_percent: null,
+  cache_write_input_token_coverage_count: null,
+  cache_write_input_token_coverage_percent: null,
+  output_token_coverage_count: null,
+  output_token_coverage_percent: null,
+  reasoning_token_coverage_count: null,
+  reasoning_token_coverage_percent: null,
+  total_token_coverage_count: null,
+  total_token_coverage_percent: null,
+  token_usage_source_level: null,
+  token_usage_evidence_level: null,
+  standard_api_equivalent_usd_nanos: null,
+  cost_estimator_status: 'unavailable_missing_usage',
+  cost_evidence_level: null,
   cost_method: 'standard_api_equivalent_text_token_estimate',
   pricing_source: score.pricing_source,
   pricing_as_of: score.pricing_as_of,
@@ -340,10 +375,10 @@ const modelEfficiency = calibrationScores.map((score, index) => ({
   attempted_result_count: 72,
   invoked_result_count: 72,
   adapter_elapsed_observed_result_count: 72,
-  token_observed_result_count: 72,
-  priced_result_count: score.priced_result_count,
+  token_observed_result_count: 0,
+  priced_result_count: 0,
   execution_concurrency: 17,
-  estimated_cost_sample_count: score.estimated_cost_sample_count,
+  estimated_cost_sample_count: 0,
   cost_estimator_limitations: score.cost_estimator_limitations,
   pricing_rates: pricingRates,
   cost_formula: costFormula,
@@ -356,36 +391,43 @@ const historicalModelEfficiency = [
 
 /** @type {Array<{ run_id: string; [key: string]: unknown }>} */
 const runResults = [];
-for (const run of runRows) {
-  const publishedScore = leaderboard.find((entry) => entry.matrix_id === run.matrix_id)?.score ?? 0;
+for (const [runIndex, run] of runRows.entries()) {
+  const outcomes = officialOutcomeCounts[runIndex];
+  if (!outcomes) throw new Error('Missing Official outcome counts.');
   let globalIndex = 0;
   for (const [domain, taskCount] of domainCounts) {
     for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
       globalIndex += 1;
+      const passed = globalIndex <= outcomes.passed;
+      const executionFailure = !passed && globalIndex > 72 - outcomes.executionFailures;
       runResults.push({
         run_id: run.id,
         id: `aiq-v1-${domain}-${String(taskIndex + 1).padStart(2, '0')}`,
         task: `${domain.replaceAll('_', ' ')} published fixture ${taskIndex + 1}`,
         domain,
-        status: 'passed',
-        score: publishedScore / 100,
-        explanation_code: null,
-        explanation_summary: null,
-        retryable: null,
+        status: passed ? 'passed' : 'failed',
+        score: passed ? 1 : 0,
+        explanation_code: executionFailure ? 'adapter_execution_failure' : null,
+        explanation_summary: passed
+          ? null
+          : executionFailure
+            ? 'The adapter process exited before it returned a response.'
+            : 'The evaluator rejected the response.',
+        retryable: executionFailure ? true : null,
         tools: ['repository search', 'test runner'],
         latency_ms: 7_500 + globalIndex * 137,
         latency_evidence_level: 'runner_observed',
-        input_tokens: 1_000 + globalIndex,
-        cached_input_tokens: 200,
-        cache_write_input_tokens: 50,
-        output_tokens: 500 + globalIndex,
-        reasoning_output_tokens: 250,
-        total_tokens: 1_500 + globalIndex * 2,
-        token_usage_source_level: 'provider_reported',
-        token_usage_evidence_level: 'verifier_recomputed',
-        standard_api_equivalent_usd_nanos: 650_000 + globalIndex * 1_000,
-        cost_estimator_status: 'estimated',
-        cost_evidence_level: 'verifier_recomputed',
+        input_tokens: null,
+        cached_input_tokens: null,
+        cache_write_input_tokens: null,
+        output_tokens: null,
+        reasoning_output_tokens: null,
+        total_tokens: null,
+        token_usage_source_level: null,
+        token_usage_evidence_level: null,
+        standard_api_equivalent_usd_nanos: null,
+        cost_estimator_status: 'unavailable_missing_usage',
+        cost_evidence_level: null,
       });
     }
   }

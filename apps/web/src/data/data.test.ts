@@ -43,6 +43,7 @@ import {
   type DistributedRadarRow,
   type LeaderboardRow,
   type ModelMatrixRow,
+  type RunResultRow,
   type RunRow,
   TREND_MAX_POINTS,
   type TrendRow,
@@ -1779,6 +1780,86 @@ void describe('presentation aggregates', () => {
         ].every((value) => value === null),
       ),
     );
+  });
+
+  void it('preserves evaluator outcomes separately from execution-failure explanations', () => {
+    const template = seedRuns[0];
+    assert.ok(template);
+    const row: RunRow = {
+      id: 'run-public-explanations',
+      matrix_id: template.entryId,
+      started_at: template.startedAt,
+      completed_at: template.completedAt,
+      benchmark_version: template.benchmarkVersion,
+      scoring_version: template.scoringVersion,
+      prompt_set_digest: template.promptSetDigest,
+      runner_commit: template.runnerCommit,
+      region: template.region,
+      synthetic: false,
+      corpus_release_id: template.corpusReleaseId,
+      corpus_commitment_sha256: template.corpusCommitmentSha256,
+      catalog_digest: template.catalogDigest,
+      task_set_digest: template.taskSetDigest,
+      preflight_digest: template.preflightDigest,
+      runtime_digest: template.runtimeDigest,
+      run_class: 'official',
+      permission_evidence_digest: template.permissionEvidenceDigest,
+      result_count: 2,
+      passed_count: 0,
+      failed_count: 2,
+      invalid_count: 0,
+      missing_count: 0,
+      not_applicable_count: 0,
+      observed_count: 2,
+      coverage_percent: 100,
+      covered_domain_count: 1,
+      provisional_domain_count: 0,
+    };
+    const evaluatorIncorrect: RunResultRow = {
+      run_id: row.id,
+      id: 'result-evaluator-incorrect',
+      task: 'Evaluator-incorrect result',
+      domain: 'coding',
+      status: 'failed',
+      score: 0,
+      explanation_code: null,
+      explanation_summary: 'The evaluator rejected the response.',
+      retryable: null,
+      tools: [],
+      latency_ms: 1_500,
+      latency_evidence_level: 'runner_observed',
+      input_tokens: null,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      output_tokens: null,
+      reasoning_output_tokens: null,
+      total_tokens: null,
+      token_usage_source_level: null,
+      token_usage_evidence_level: null,
+      standard_api_equivalent_usd_nanos: null,
+      cost_estimator_status: 'unavailable_missing_usage',
+      cost_evidence_level: null,
+    };
+    const executionFailure: RunResultRow = {
+      ...evaluatorIncorrect,
+      id: 'result-execution-failure',
+      task: 'Execution-failure result',
+      explanation_code: 'adapter_execution_failure',
+      explanation_summary: 'The adapter process exited before it returned a response.',
+      retryable: true,
+    };
+
+    const tasks = mapRunRow(row, [evaluatorIncorrect, executionFailure]).tasks;
+    assert.deepEqual(tasks[0]?.explanation, {
+      code: null,
+      summary: 'The evaluator rejected the response.',
+      retryable: null,
+    });
+    assert.deepEqual(tasks[1]?.explanation, {
+      code: 'adapter_execution_failure',
+      summary: 'The adapter process exited before it returned a response.',
+      retryable: true,
+    });
   });
 
   void it('provides distinct color and line-pattern encodings for all 17 trend series', () => {
