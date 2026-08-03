@@ -387,7 +387,7 @@ function fixture(
         schema_version: 'aiq.calibration-run.v3',
         official_eligible: false,
         classification: 'local_calibration_non_official',
-        scoring_version: '1.0.0',
+        scoring_version: '1.0.2',
         task_set_hash: digest(taskIds),
         capability_validation: { models: [] },
         provenance: {

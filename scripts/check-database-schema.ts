@@ -124,21 +124,30 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = 'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+  const catalogDigest = '2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
+  const catalogReleaseDigest = '45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b';
+  const predecessorCatalogDigest =
+    'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
   const staleCatalogDigest = 'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
   const databaseSources = `${schema}\n${syntheticDemo}`;
 
+  assert.doesNotMatch(databaseSources, new RegExp(predecessorCatalogDigest));
   assert.doesNotMatch(databaseSources, new RegExp(staleCatalogDigest));
   assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.0/);
+  assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.1/);
   assert.match(schema, new RegExp(`sha256:${catalogDigest}`));
   assert.match(schema, new RegExp(`catalog_sha256 =\\s*'${catalogDigest}'`));
-  assert.match(schema, /task_set\.task_set_version = '1\.0\.1'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.0'/);
-  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.1'/);
-  assert.match(syntheticDemo, /'aiq-core@1\.0\.1'/);
+  assert.match(
+    schema,
+    new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
+  );
+  assert.match(schema, /task_set\.task_set_version = '1\.0\.2'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.2'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.2'/);
+  assert.match(syntheticDemo, /'aiq-core@1\.0\.2'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.1', '1\.0\.0'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.2', '1\.0\.2'/,
   );
 
   const pricingValidator =

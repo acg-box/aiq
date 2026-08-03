@@ -14,16 +14,17 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- AIQ Core benchmark release `aiq-core@1.0.1`, with 72 private tasks, a public
-  catalog, and independently versioned scoring at `1.0.0`;
+- a source-head AIQ Core `aiq-core@1.0.2` target, with 72 private tasks, a
+  public catalog, and scoring `1.0.2`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-AIQ Core `1.0.1` remains the current production benchmark. AIQ Core `1.0.2` is
-an immutable, preregistered candidate. It is not promoted or current.
+Repository source makes AIQ Core `1.0.2` and scorer `1.0.2` the current
+Official contract. The hosted production foundation still uses the `1.0.1`
+predecessor, so the source-head desired state is not yet deployed.
 
 ## Deployment status
 
@@ -38,8 +39,10 @@ initialization completed, and the real database has 17 model configurations,
 three production nodes, no published runs or other genuine run data, and private
 `private-packages` and `private-artifacts` buckets. Bounded runtime readiness and
 the empty real-data read path pass for the deployed `1.0.1` foundation.
-Repository head requires an exact 12-view public inventory and is not deployed;
-the one greenfield database reset remains pending.
+Repository head requires AIQ Core `1.0.2`, scoring `1.0.2`, an exact 12-view
+public inventory, and one greenfield database state. It is not deployed; the
+candidate validation, promotion, greenfield database reset, and deployment
+remain pending.
 
 No benchmark or Storage schedule and no cloud runner or verifier worker exist.
 The repository now contains a bounded local Linux arm64 runner-and-verifier
@@ -115,9 +118,16 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-The expected receipt contains 72 tasks, 17 model configurations, and three
-nodes. The catalog digest is
-`sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
+After the promotion gate, the separately controlled reference must contain a
+non-synthetic AIQ Core `1.0.2` corpus commitment, a canonical millisecond UTC
+`published_at`, and the three production identities. Initialization validates
+those fields and bindings but does not prove promotion. The expected receipt
+contains scoring `1.0.2`, 72 tasks, 17 model configurations, and three nodes. The ordered task-metadata catalog
+digest is
+`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
+the release-policy identity is `aiq-core/1.0.2`, and its catalog
+release-identity digest is
+`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
 
 ## Next reading
 

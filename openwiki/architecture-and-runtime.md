@@ -20,6 +20,15 @@ tags: ['architecture', 'runtime', 'security']
 The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
+Repository source has one active full-catalog Official contract: AIQ Core
+`1.0.2` with scoring `1.0.2`, task-metadata digest
+`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
+release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
+`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+Production still runs the earlier `1.0.1` foundation, so the current `1.0.2`
+source contract is not deployed. No real release-gate or Official run has
+started.
+
 ## Identity boundary
 
 Production uses three Ed25519 identities:
@@ -54,6 +63,12 @@ is issued. [Operations and Validation](operations.md) owns the commands, while
 [Deployment Handoff](deployment-handoff.md) treats the receipt as launch evidence.
 The bundle does not schedule benchmark commands, invoke Codex during validation,
 claim a package automatically, or prove that a production worker is deployed.
+The runtime manager is also the repository-owned command boundary for Official
+runner secrets. Its `admit-permissions`, `preflight`, `run`, `score`, `package`,
+and `submit` subcommands invoke the mounted runner through the fixed allowlist.
+The wrapper reads the runner signing key only for `package` and the submission
+token only for `submit`; it does not place either value in Docker arguments,
+Compose configuration, or logs.
 
 ## Candidate runtime
 
@@ -182,9 +197,14 @@ signatures, raw provider events, artifacts, and private failure details.
 Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
-AIQ database. It inserts the current public catalog, scoring definition, model
-matrix, corpus commitment, and runner/verifier/publisher identities.
-There are no migrations or compatibility layers for this greenfield state.
+AIQ database. It accepts only the AIQ Core `1.0.2` catalog and scoring `1.0.2`.
+The controlled production reference must supply a non-synthetic corpus
+commitment, a canonical millisecond UTC `published_at`, and the runner,
+verifier, and publisher identities. Operationally, [Deployment Handoff](deployment-handoff.md)
+requires promotion before preparing that reference; the initializer validates
+its shape and bindings but does not prove promotion. It inserts the reference
+with the model matrix. There are no migrations, compatibility layers,
+dual-version mode, or preservation path for this greenfield state.
 
 ## Storage boundary
 

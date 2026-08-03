@@ -35,14 +35,14 @@ limit has been observed. Official dispatch is blocked by the managed-policy
 gate: `Official runs require an exclusive managed aiq_benchmark allowlist and
 managed default; no model was invoked`. Current run work is preparation only;
 calibration evidence is non-Official and cannot satisfy the Official publication
-gate. AIQ Core `1.0.2` is preregistered but not promoted or current. These facts
-do not establish final release acceptance.
+gate. AIQ Core `1.0.2` is the current repository source authority but is not
+deployed. These facts do not establish final release acceptance.
 
 ## Release topology
 
 AIQ uses one production environment for its first greenfield release. The
-database has one desired state and no migrations, upgrade path, or compatibility
-state.
+database has one AIQ Core `1.0.2` desired state and no migrations, upgrade path,
+compatibility state, dual-version mode, or data-preservation path.
 This repository does not define an automatic production trigger. The deployment
 owner must approve one exact source commit and bind every deployed surface to
 that commit before production traffic starts.
@@ -62,8 +62,10 @@ separate deployable. Distributed remote nodes are not part of the first launch.
 
 ## AIQ Core 1.0.2 candidate handoff
 
-The candidate release gate is not part of the current AIQ Core `1.0.1`
-production state. Its local Linux arm64 runtime can be provisioned on Apple
+The candidate release gate is not part of the deployed AIQ Core `1.0.1`
+production state. Repository source targets AIQ Core and scoring version
+`1.0.2`, but this source cutover does not promote or deploy it. Its local Linux
+arm64 runtime can be provisioned on Apple
 Silicon through OrbStack. Provisioning the Docker context, host paths,
 ownership, ACLs, immutable flags, containers, or receipts does not deploy the
 runtime, start a real run, or promote the candidate.
@@ -77,10 +79,12 @@ measured latency and available provider-token counters, while the public
 aggregate gate source, evidence, and result artifacts omit those fields.
 Official or calibration publication owns the coverage-qualified aggregates and
 Standard API-equivalent estimate. A passing gate and promotion receipt authorize
-only the separate repository and production cutover; they do not submit the
-candidate artifacts or publish an Official result. After that cutover is
-separately validated, execute a fresh Official `72 × 17` admission, run, score,
-package, submission, verifier replay, and publisher transition through the
+only the remaining production cutover; they do not submit the candidate
+artifacts or publish an Official result. After promotion, prepare the real
+production reference with its canonical `published_at`, perform the greenfield
+database reset, validate and deploy the bound source, and execute a fresh
+Official `72 × 17` admission, run, score, package, submission, verifier replay,
+and publisher transition through the
 bounded runtime in [Operations and Validation](operations.md), following the
 publication method in [Benchmark Method](benchmark-method.md). Follow the
 canonical `deploy/candidate-runtime/README.md`; record actual evidence only after
@@ -95,11 +99,14 @@ parallel review project or deployment profile. Measure actual usage after the
 first real publication and upgrade only if the free tiers are insufficient.
 
 The current hosted database still represents the earlier AIQ Core `1.0.1`
-foundation. Repository head removes the obsolete auxiliary surface and requires
-exactly 12 public security-invoker views. Because the project has no migration
-or compatibility path, perform the one authorized greenfield reset and run
-`databases/init.ts` only after source freeze and before publishing real `1.0.2`
-data. Until that succeeds, do not claim that the hosted database matches head.
+foundation. Repository head targets AIQ Core and scoring version `1.0.2`, removes
+the obsolete auxiliary surface, and requires exactly 12 public security-invoker
+views. Because the project has no migration or compatibility path, perform the
+one authorized greenfield reset and run `databases/init.ts` only after source
+validation, production-reference preparation, and source freeze.
+Validate that state before deploying or publishing real `1.0.2` data. Until the
+reset and deployment succeed, do not claim that the hosted database matches
+head.
 
 ## Required and remaining external inputs
 
@@ -122,8 +129,11 @@ data. Until that succeeds, do not claim that the hosted database matches head.
 - route protection, monitoring, retention, and incident owners;
 - one acceptance window and the owner who records runtime evidence.
 
-The public catalog digest is
-`sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc`.
+The source-head ordered task-metadata catalog digest is
+`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`.
+The release-policy identity is `aiq-core/1.0.2`, and its catalog
+release-identity digest is
+`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
 
 ## Identity setup
 
@@ -142,9 +152,9 @@ in the runner environment.
 ## Supabase setup
 
 The current personal project `ACG Box/aiq` (`xxnszykaeapolqdnhalx`) has already
-completed the one-shot production initialization. Do not rerun the initializer
-against it. Retain its receipt and confirm the deployed state through the
-bounded readiness checks.
+completed the earlier `1.0.1` one-shot initialization. Do not run the source-head
+initializer against this nonempty database. Retain its predecessor receipt only
+as deployment history until the authorized greenfield reset.
 
 Use the following procedure only for a replacement empty project:
 
@@ -152,8 +162,11 @@ Use the following procedure only for a replacement empty project:
 2. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
 3. Create both Storage buckets as private.
-4. Prepare one public-safe production reference with the current corpus
-   commitment and the three identities.
+4. After candidate promotion, prepare one public-safe production reference with
+   the controlled non-synthetic AIQ Core `1.0.2` corpus commitment, a canonical
+   millisecond UTC `published_at`, and the three identities. The initializer
+   validates these fields and bindings but does not prove promotion; the
+   repository contains no substitute promoted reference.
 5. Run the initializer through a direct PostgreSQL connection:
 
 ```sh
@@ -163,8 +176,9 @@ cargo make init-database
 ```
 
 The initializer must be the first AIQ database action. It uses one transaction
-and rejects existing AIQ objects. Confirm that its receipt reports 72 tasks, 17
-model configurations, and three nodes.
+and rejects existing AIQ objects. Confirm that its receipt reports scoring
+`1.0.2`, both source-head catalog identities, 72 tasks, 17 model configurations,
+and three nodes.
 
 6. Run the database smoke check:
 
@@ -265,10 +279,18 @@ evidence. Keep output parents owner-controlled and exclude writers that do not
 honor the runner's advisory lock.
 
 Use non-synthetic evidence and the complete 17-by-72 shape for an Official run.
-Score, package, and submit only after all required artifacts and bindings
-validate. Repository support does not prove that production admission passes or
-that a worker is deployed. The controlled command and recovery details remain
-canonical in [Operations and Validation](operations.md).
+The paid-work order is `admit-permissions` (model-free), `preflight` (first paid
+step), `run`, `score`, `package`, and `submit`. Route every step through
+`deploy/official-runtime/runtime.py`. Direct container execution bypasses the
+manager's pre-command revalidation and fixed allowlist and is outside this
+operator procedure. The same admission receipt binds preflight through package. The
+manager reads the runner signing key only for `package` and the runner
+submission token only for `submit`, without putting either secret in Docker
+arguments, Compose configuration, or logs. Score, package, and submit only after
+all required artifacts and bindings validate. Repository support does not prove
+that production admission passes or that a worker is deployed. The exact
+commands and recovery details remain canonical in
+`deploy/official-runtime/README.md` and [Operations and Validation](operations.md).
 
 ## Official runtime and verifier setup
 

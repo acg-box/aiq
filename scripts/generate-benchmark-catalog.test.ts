@@ -1,12 +1,15 @@
-import { deepStrictEqual, strictEqual, throws } from 'node:assert/strict';
+import { deepStrictEqual, match, strictEqual, throws } from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   AIQ_CORE_V1_TASK_IDENTITY_SHA256,
   COMMAND_EXECUTION_DISCLOSURE,
   DOMAINS,
+  HISTORICAL_PREDECESSOR_GENERATOR,
   assertCatalogInvariants,
   buildCatalog,
   taskIdentityDigest,
@@ -251,7 +254,7 @@ await test('the frozen identity commitment covers ordered full task metadata', (
   throws(() => assertCatalogInvariants(reordered), /identity commitment does not match/);
 });
 
-await test('the current catalog binds task release 1.0.1 to scorer 1.0.0', () => {
+await test('the historical predecessor catalog binds task release 1.0.1 to scorer 1.0.0', () => {
   const catalog = buildCatalog();
 
   strictEqual(catalog.task_set_version, '1.0.1');
@@ -271,7 +274,7 @@ await test('the current catalog binds task release 1.0.1 to scorer 1.0.0', () =>
   }
   throws(
     () => assertCatalogInvariants(replaceFirstTask(catalog, { ...first, task_version: '1.0.0' })),
-    /current AIQ Core catalog requires/,
+    /historical AIQ Core predecessor catalog requires/,
   );
 });
 
@@ -624,9 +627,20 @@ await test('catalog machine tokens, versions, fixtures, and acceptance handles a
   }
 });
 
-await test('generated catalog byte-matches the checked-in artifact', async () => {
+await test('generated predecessor catalog byte-matches the historical checked-in artifact', async () => {
   const published = await readFile('benchmarks/catalog/aiq-core-v1.json', 'utf8');
   strictEqual(published, `${JSON.stringify(buildCatalog(), undefined, 2)}\n`);
+});
+
+await test('the historical predecessor command cannot regenerate active authority', () => {
+  strictEqual(HISTORICAL_PREDECESSOR_GENERATOR, true);
+  const result = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('./generate-benchmark-catalog.ts', import.meta.url))],
+    { encoding: 'utf8' },
+  );
+  strictEqual(result.status, 1);
+  match(result.stderr, /historical-only[\s\S]*active AIQ Core 1\.0\.2 catalog/u);
 });
 
 await test('published task schema accepts examples and rejects shared negative fixtures', async () => {

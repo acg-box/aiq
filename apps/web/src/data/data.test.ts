@@ -176,7 +176,7 @@ void describe('seed repository', () => {
           entry.sampleSize === 72 &&
           entry.coveragePercent === 100 &&
           entry.missing === 0 &&
-          entry.scoringVersion === '1.0.0',
+          entry.scoringVersion === '1.0.2',
       ),
     );
   });
@@ -353,7 +353,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         failures: null,
         missing: null,
-        scoring_version: '1.0.0',
+        scoring_version: '1.0.2',
         score_status: 'not_applicable',
         synthetic: false,
       },
@@ -367,7 +367,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         failures: null,
         missing: null,
-        scoring_version: '1.0.0',
+        scoring_version: '1.0.2',
         score_status: 'missing',
         synthetic: false,
       },
@@ -441,7 +441,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       failures: 0,
       missing: 0,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
       score_status: null,
       synthetic: false,
     };
@@ -522,7 +522,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       failures: 1,
       missing: 0,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
       score_status: 'official',
       synthetic: false,
     };
@@ -579,7 +579,8 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.1');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.2');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.2');
     assert.ok(
       seedRuns
         .flatMap((run) => run.tasks)
@@ -664,6 +665,11 @@ void describe('presentation aggregates', () => {
     const page = await repository.listCalibrationRunPage();
     const seed = page.runs[0];
     assert.ok(seed);
+    const detail = await repository.getCalibrationRun(seed.id, {
+      modelFamily: 'sol',
+      reasoningEffort: 'low',
+    });
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.2');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -861,7 +867,7 @@ void describe('presentation aggregates', () => {
     const run = {
       run_id: runId,
       classification: 'local_calibration_non_official',
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
       selected_task_count: 72,
       selected_model_count: 17,
       result_count: 1_224,
@@ -889,7 +895,7 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.1',
+          task_version: '1.0.2',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
@@ -1301,7 +1307,7 @@ void describe('presentation aggregates', () => {
     const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
       id: `calibration-${String(index).padStart(4, '0')}`,
       classification: 'local_calibration_non_official',
-      scoringVersion: '1.0.0',
+      scoringVersion: '1.0.2',
       selectedTaskCount: 72,
       selectedModelCount: 17,
       resultCount: 1_224,
@@ -1711,8 +1717,8 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.1',
-      scoring_version: '1.0.0',
+      benchmark_version: 'aiq-core@1.0.2',
+      scoring_version: '1.0.2',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
       region: 'us-east-1',

@@ -975,7 +975,7 @@ mod tests {
 			ResultFailure, ResultStatus, ToolUsage,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
-		scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_TASK_SET_VERSION},
+		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_VERSION},
 		submission::{
 			self, ArtifactUploadRequest, ArtifactUploadTransport, MAX_SUBMISSION_BYTES,
 			SecretToken, SubmissionOutcomeKind, SubmissionRequest, SubmissionTransport,
@@ -2137,10 +2137,10 @@ mod tests {
 		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(envelope.payload["models"].as_array().map(Vec::len), Some(17));
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
-		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.1");
+		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.2");
 		assert_eq!(
-			AIQ_CORE_V1_TASK_IDENTITY_SHA256,
-			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc"
+			AIQ_CORE_TASK_IDENTITY_SHA256,
+			"sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
 		);
 		assert!(tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION));
 		assert!(scoring::task_bindings_match_frozen_catalog(&tasks));

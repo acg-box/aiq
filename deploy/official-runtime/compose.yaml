@@ -59,6 +59,8 @@ services:
       - {type: bind, source: "${AIQ_RUNNER_BINARY}", target: /inputs/bin/aiq-runner, read_only: true}
       - {type: bind, source: "${AIQ_CODEX_HOME}", target: /codex-home}
       - {type: bind, source: "${AIQ_CODEX_AUTH}", target: /codex-home/auth.json, read_only: true}
+      - {type: bind, source: "${AIQ_RUNNER_SIGNING_KEY_FILE}", target: /run/secrets/runner-signing-key, read_only: true}
+      - {type: bind, source: "${AIQ_RUNNER_SUBMISSION_TOKEN_FILE}", target: /run/secrets/runner-submission-token, read_only: true}
       - {type: bind, source: "${AIQ_EXECUTION}", target: /execution}
       - {type: bind, source: "${AIQ_ARTIFACTS}", target: /output/artifacts}
       - {type: bind, source: "${AIQ_CHECKPOINTS}", target: /output/checkpoints}

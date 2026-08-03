@@ -47,7 +47,8 @@ Before completion, search the maintained pages for:
 
 - removed components and commands;
 - old schema or package versions;
-- confusion between current AIQ Core `1.0.1` and candidate `1.0.2`;
+- confusion between the deployed AIQ Core `1.0.1` predecessor and the
+  unpromoted source-head `1.0.2` target;
 - wrong task, model, or identity counts;
 - stale catalog digests;
 - links to missing files or headings;

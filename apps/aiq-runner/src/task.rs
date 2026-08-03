@@ -789,12 +789,10 @@ pub(crate) fn is_fixture_reference(value: &str) -> bool {
 	}
 
 	for scheme in ["aiq-controlled-fixture://", "aiq-controlled-acceptance://"] {
-		if let Some(reference) = value.strip_prefix(scheme) {
-			for version in ["1.0.1", "1.0.2"] {
-				if let Some(task_id) = reference.strip_prefix(&format!("aiq-core/{version}/")) {
-					return is_task_id(task_id);
-				}
-			}
+		if let Some(reference) = value.strip_prefix(scheme)
+			&& let Some(task_id) = reference.strip_prefix("aiq-core/1.0.2/")
+		{
+			return is_task_id(task_id);
 		}
 	}
 
@@ -1150,8 +1148,6 @@ mod tests {
 
 		for reference in [
 			"repo://benchmarks/examples/tasks/public-example-coding.json",
-			"aiq-controlled-fixture://aiq-core/1.0.1/coding-01",
-			"aiq-controlled-acceptance://aiq-core/1.0.1/coding-01",
 			"aiq-controlled-fixture://aiq-core/1.0.2/coding-01",
 			"aiq-controlled-acceptance://aiq-core/1.0.2/coding-01",
 		] {
@@ -1177,6 +1173,7 @@ mod tests {
 			"repo://dir//file",
 			"repo://dir/",
 			"repo://dir\\file",
+			"aiq-controlled-fixture://aiq-core/1.0.1/coding-01",
 			"aiq-controlled-fixture://aiq-core/1.0.1/coding-1",
 			"aiq-controlled-fixture://other/1.0.0/coding-01",
 			"aiq-controlled-acceptance://aiq-core/1.0.0/coding-01",

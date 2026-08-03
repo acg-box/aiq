@@ -1934,7 +1934,7 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc'
+      'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
     or candidate ->> 'preflight_digest' is distinct from preflight_digest
   then return false;
@@ -2360,9 +2360,9 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
     where task_set.task_set_id = target_task_set_id
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.1'
-      and scoring.scoring_version = '1.0.0'
-      and scoring.benchmark_version = 'aiq-core@1.0.1'
+      and task_set.task_set_version = '1.0.2'
+      and scoring.scoring_version = '1.0.2'
+      and scoring.benchmark_version = 'aiq-core@1.0.2'
       and scoring.is_published
       and not scoring.synthetic
       and task_set.task_count = 72
@@ -2372,12 +2372,14 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc'
+        '2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
+      and task_set.metadata ->> 'catalog_release_identity_sha256' =
+        'sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -3203,10 +3205,8 @@ create function aiq_private.ordered_catalog_identity_sha256(target_task_set_id t
         and catalog.hidden_content_ref is null
         and catalog.public_metadata
       ) as relational_binding_is_exact,
-      string_agg(
-        catalog.full_public_metadata::text,
-        ',' order by catalog.catalog_ordinal
-      ) as ordered_metadata
+      jsonb_agg(catalog.metadata order by catalog.catalog_ordinal)
+        as ordered_metadata
     from catalog
   )
   select case
@@ -3217,13 +3217,7 @@ create function aiq_private.ordered_catalog_identity_sha256(target_task_set_id t
       and validated.first_ordinal = 1
       and validated.last_ordinal = 72
       and validated.relational_binding_is_exact
-    then encode(
-      extensions.digest(
-        convert_to('[' || validated.ordered_metadata || ']', 'utf8'),
-        'sha256'
-      ),
-      'hex'
-    )
+    then replace(aiq_private.jcs_sha256(validated.ordered_metadata), 'sha256:', '')
     else null
   end
   from validated;
@@ -4026,7 +4020,7 @@ begin
     or jsonb_typeof(payload -> 'schema_version') is distinct from 'string'
     or payload ->> 'schema_version' is distinct from 'aiq.run.v3'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.0'
+    or payload ->> 'scoring_version' <> '1.0.2'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or jsonb_typeof(payload -> 'synthetic') <> 'boolean'
@@ -4291,7 +4285,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+    'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
 end;
 $_$;
 
@@ -4473,7 +4467,7 @@ begin
       ]::text[]
     )
     or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
-    or stage ->> 'scoring_version' is distinct from '1.0.0'
+    or stage ->> 'scoring_version' is distinct from '1.0.2'
     or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
@@ -4592,7 +4586,7 @@ begin
         and existing_batch.source_node_id = source_node
         and existing_batch.task_set_id = stage ->> 'task_set_id'
         and existing_batch.task_set_version = stage ->> 'task_set_version'
-        and existing_batch.scoring_version = '1.0.0'
+        and existing_batch.scoring_version = '1.0.2'
         and existing_batch.synthetic = is_synthetic
         and existing_batch.task_set_hash = stage ->> 'task_set_hash'
         and existing_batch.capability_validation_digest
@@ -5006,7 +5000,7 @@ begin
   ) values (
     batch_id, package_id, stage ->> 'content_hash', normalization,
     source_node, stage ->> 'task_set_id', stage ->> 'task_set_version',
-    '1.0.0', is_synthetic, stage ->> 'task_set_hash',
+    '1.0.2', is_synthetic, stage ->> 'task_set_hash',
     nullif(stage ->> 'capability_validation_digest', ''),
     stage ->> 'benchmark_version', stage ->> 'prompt_set_digest',
     stage ->> 'scoring_version', stage ->> 'runner_commit', stage ->> 'region',
@@ -5317,7 +5311,7 @@ begin
       child_id, batch_id, child_id, 'manual',
       to_timestamp((stage ->> 'scheduled_unix_ms')::double precision / 1000),
       'UTC', stage ->> 'task_set_id', stage ->> 'task_set_version',
-      stage ->> 'benchmark_version', '1.0.0', model.model_config_id,
+      stage ->> 'benchmark_version', '1.0.2', model.model_config_id,
       source_node,
       (case when valid_count = 72 then 'completed' else 'partial' end)
         ::aiq_private.run_status,
@@ -5424,7 +5418,7 @@ begin
       value ->> 'source_result_id', child_id, value ->> 'task_id',
       value ->> 'task_version', value ->> 'domain', 1,
       (value ->> 'outcome')::aiq_private.result_outcome,
-      (value ->> 'task_score')::numeric, '1.0.0',
+      (value ->> 'task_score')::numeric, '1.0.2',
       value -> 'failure' ->> 'kind', value ->> 'failure_responsibility',
       value -> 'failure' ->> 'message',
       (value -> 'failure' ->> 'retryable')::boolean,
@@ -5469,7 +5463,7 @@ begin
       not_applicable_count, domain_scores, interval_parameters, published,
       normalization_digest
     ) values (
-      child_id, '1.0.0', (score ->> 'tier')::aiq_private.score_status,
+      child_id, '1.0.2', (score ->> 'tier')::aiq_private.score_status,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round(fixed_score, 3) end,
       (score -> 'task_resampling_sensitivity_interval' ->> 'lower')::numeric,
@@ -5714,7 +5708,7 @@ create function aiq_private.task_catalog_is_exact(target_task_set_id text, targe
         and task.task_set_version = target_task_set_version
     )
     else aiq_private.frozen_catalog_identity_is_valid(
-      target_task_set_id, target_task_set_version, '1.0.0'
+      target_task_set_id, target_task_set_version, '1.0.2'
     )
   end
   from aiq_private.aiq_task_sets task_set
@@ -6237,7 +6231,7 @@ create table aiq_private.aiq_matrix_batches (
     run_provenance jsonb,
     normalized_stage jsonb,
     constraint aiq_batch_capability_evidence_policy check (((synthetic and (capability_validation_digest IS null)) or ((not synthetic) and (capability_validation_digest IS not null) and (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)))),
-    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.0'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
+    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.2'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
     constraint aiq_matrix_batches_check check (((published_at IS null) or (verified_at IS not null))),
     constraint aiq_matrix_batches_child_count_check check ((child_count = 17)),
     constraint aiq_matrix_batches_content_hash_check check ((content_hash ~ '^sha256:[0-9a-f]{64}$'::text)),
@@ -7351,7 +7345,7 @@ begin
     select
       count(*)::integer as scoring_count,
       count(*) filter (
-        where scoring.benchmark_version = 'aiq-core@1.0.1'
+        where scoring.benchmark_version = 'aiq-core@1.0.2'
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
@@ -7385,7 +7379,7 @@ begin
           }'::jsonb
       )::integer as valid_scoring_count
     from aiq_private.aiq_scoring_versions scoring
-    where scoring.scoring_version = '1.0.0'
+    where scoring.scoring_version = '1.0.2'
   ),
   task_facts as (
     select
@@ -7410,7 +7404,7 @@ begin
         as reliability_recovery_count
     from aiq_private.aiq_task_catalog task
     where task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.1'
+      and task.task_set_version = '1.0.2'
   ),
   catalog_facts as (
     select
@@ -7420,7 +7414,7 @@ begin
       end as catalog_identity_sha256
     from aiq_private.aiq_task_sets task_set
     where task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.1'
+      and task_set.task_set_version = '1.0.2'
   ),
   eligible_nodes as (
     select node.node_id, 'runner'::text as approved_role
@@ -7528,7 +7522,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.1', '1.0.0'
+        'aiq-core', '1.0.2', '1.0.2'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
@@ -13506,7 +13500,7 @@ begin
     or payload -> 'official_eligible' <> 'false'::jsonb
     or payload ->> 'classification' <> 'local_calibration_non_official'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.0'
+    or payload ->> 'scoring_version' <> '1.0.2'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or not aiq_private.dto_schedule_is_valid(payload -> 'schedule_slot')

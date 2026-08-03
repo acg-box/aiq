@@ -99,15 +99,24 @@ the nested read-only `auth.json` mount. Before `create`, put a zero-byte
 `0600`, and one link. This file is not a credential. Keep the real Codex
 `auth.json` secret at the separate `read_only.codex_auth` path. Create verifier
 replay and record directories with exact uid/gid `10003:10003` and mode `0700`.
-Create the real Codex authentication file with exact owner `10001:10001` and
-mode `0600`. Create the verifier token and Ed25519 signing key files with exact
-owner `10003:10003` and mode `0600`. Put each real secret outside all other
-declared roots. For example, use a protected administrator shell:
+Create the real Codex authentication, runner Ed25519 signing key, and runner
+submission token files with exact owner `10001:10001` and mode `0600`. Create
+the verifier token and Ed25519 signing key files with exact owner `10003:10003`
+and mode `0600`. Each secret must be a singly linked regular file. Put each real
+secret outside all other declared roots. For example, use a protected
+administrator shell:
+
+The runner signing-key file must contain exactly 64 lowercase hexadecimal
+characters and can have at most one terminal newline. The runner submission
+token must contain 1 to 4,096 visible ASCII characters without whitespace or a
+terminal newline.
 
 ```sh
 install -d -o 10001 -g 10001 -m 0700 /controlled/runner/execution
 install -d -o 10001 -g 10001 -m 0711 /controlled/runner/codex-home
 install -o 10001 -g 10001 -m 0600 /dev/null /controlled/runner/codex-home/auth.json
+install -o 10001 -g 10001 -m 0600 /protected/input/runner-key /controlled/secrets/runner-signing-key
+install -o 10001 -g 10001 -m 0600 /protected/input/runner-token /controlled/secrets/runner-submission-token
 install -d -o 10003 -g 10003 -m 0700 /controlled/verifier/replay
 install -o 10003 -g 10003 -m 0600 /protected/input/token /controlled/secrets/verifier-token
 ```
@@ -124,12 +133,12 @@ Clear `uchg` only on that separate copy when an operator intentionally replaces
 it. The manager rejects a macOS Codex authentication copy without `uchg`.
 
 Do not put a secret value in the TOML file. The TOML file contains only secret
-file paths. The manager never opens or hashes Codex authentication, the
-verifier token, or the verifier signing key. It records only owner, mode, link,
-and read-only mount policy metadata. It also records the zero-byte mountpoint
-metadata, never secret content. Compose does not put these values in an
-environment variable or image. The verifier entrypoint reads the two verifier
-files only when it starts a worker and does not print them.
+file paths. The manager never opens or hashes Codex authentication, runner
+credentials, verifier token, or verifier signing key. It records only owner,
+mode, link, and read-only mount policy metadata. It also records the zero-byte
+mountpoint metadata, never secret content. Compose does not put these values in
+an environment variable or image. An entrypoint reads only the credentials
+needed for one runner or verifier command and does not print them.
 
 ## Create and validate the stack
 
@@ -186,9 +195,59 @@ inputs, toolchain, corpus commitment, environment, and replay root. It writes
 the worker JSON lines to a new mode-private file below `/records`. The verifier
 has no Codex mount and cannot reach a Codex or OpenAI host.
 
-Use the runner binary at `/inputs/bin/aiq-runner` only after the separate
-Official admission procedure passes. Write runner data only to the declared
-writable roots. Start only one runner command at a time. The runner holds a
+Use the manager's exact runner-command allowlist after `validate`. It rechecks
+the current config, content binding, container policy, image revision, and
+model-free validation evidence before each command. Put runner CLI arguments
+after `--`. The wrapper supplies all fixed input paths, the Official run class,
+the runner proxy, and `https://aiq.wiki`. It reads the signing key only for
+`package` and the submission token only for `submit`. It never puts either
+value in the Docker CLI, Compose configuration, or logs.
+
+```sh
+deploy/official-runtime/runtime.py admit-permissions \
+  --config /controlled/operator.toml --state /controlled/runtime-state -- \
+  --slot-date YYYY-MM-DD --occurrence day --observed-at 'unix-ms:<milliseconds>' \
+  --preflight-cache /output/preflight/official.json \
+  --checkpoint /output/checkpoints/official.json --jobs 1 \
+  --planned-output /output/results/official-run.json \
+  --planned-score-output /output/results/official-score.json \
+  --planned-package-output /output/results/official-package.json \
+  --output /output/admission/official.json
+
+deploy/official-runtime/runtime.py preflight \
+  --config /controlled/operator.toml --state /controlled/runtime-state -- \
+  --official-admission /output/admission/official.json \
+  --output /output/preflight/official.json
+
+deploy/official-runtime/runtime.py run \
+  --config /controlled/operator.toml --state /controlled/runtime-state -- \
+  --slot-date YYYY-MM-DD --occurrence day --observed-at 'unix-ms:<milliseconds>' \
+  --preflight-cache /output/preflight/official.json \
+  --official-admission /output/admission/official.json \
+  --checkpoint /output/checkpoints/official.json --jobs 1 \
+  --output /output/results/official-run.json
+
+deploy/official-runtime/runtime.py score \
+  --config /controlled/operator.toml --state /controlled/runtime-state -- \
+  --results /output/results/official-run.json \
+  --official-admission /output/admission/official.json \
+  --output /output/results/official-score.json
+
+deploy/official-runtime/runtime.py package \
+  --config /controlled/operator.toml --state /controlled/runtime-state -- \
+  --run /output/results/official-run.json --execution-concurrency 1 \
+  --official-admission /output/admission/official.json \
+  --output /output/results/official-package.json
+
+deploy/official-runtime/runtime.py submit \
+  --config /controlled/operator.toml --state /controlled/runtime-state -- \
+  --package /output/results/official-package.json
+```
+
+Admission, preflight, run, score, and package outputs use the runner's
+create-once policies. Submission uses the signed package's stable idempotency
+key; an accepted retry is reported as a duplicate by the gateway. Start only
+one runner command at a time. The runner holds a
 kernel advisory lock on every future-output parent before any paid preflight
 and through finalization, and all AIQ writers must honor that lock. The exact
 uid `10001`, private host directory modes, single runner container, and separate

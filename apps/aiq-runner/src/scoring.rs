@@ -8,7 +8,9 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
-use crate::candidate_release_gate::CANDIDATE_SCORER_VERSION;
+use crate::candidate_release_gate::{
+	CANDIDATE_SCORER_VERSION, CANDIDATE_TASK_IDENTITY_SHA256, CANDIDATE_TASK_SET_VERSION,
+};
 use crate::{
 	model::ModelConfig,
 	protocol::{self, TrustTier},
@@ -17,16 +19,15 @@ use crate::{
 };
 
 /// Current scoring implementation version.
-pub const AIQ_SCORING_VERSION: &str = "1.0.0";
+pub const AIQ_SCORING_VERSION: &str = CANDIDATE_SCORER_VERSION;
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
-pub const AIQ_TASK_SET_VERSION: &str = "1.0.1";
+pub const AIQ_TASK_SET_VERSION: &str = CANDIDATE_TASK_SET_VERSION;
 /// Current benchmark release identifier.
-pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.1";
-/// Frozen full-metadata commitment for AIQ Core 1.0.1.
-pub const AIQ_CORE_V1_TASK_IDENTITY_SHA256: &str =
-	"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc";
+pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.2";
+/// Frozen full-metadata commitment for the current AIQ Core release.
+pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str = CANDIDATE_TASK_IDENTITY_SHA256;
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -618,11 +619,7 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 }
 
 pub(crate) fn task_bindings_match_candidate_catalog(tasks: &[TaskDefinition]) -> bool {
-	let Ok(catalog) = frozen_candidate_catalog() else {
-		return false;
-	};
-
-	task_bindings_match_catalog(tasks, catalog, CANDIDATE_SCORER_VERSION)
+	task_bindings_match_frozen_catalog(tasks)
 }
 
 fn task_bindings_match_catalog(
@@ -805,10 +802,6 @@ fn publication_tier(
 }
 
 fn frozen_catalog() -> Result<FrozenCatalog, serde_json::Error> {
-	serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
-}
-
-fn frozen_candidate_catalog() -> Result<FrozenCatalog, serde_json::Error> {
 	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"))
 }
 
@@ -819,7 +812,7 @@ fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
 
 	if catalog.task_set_id != AIQ_TASK_SET_ID
 		|| catalog.task_set_version != AIQ_TASK_SET_VERSION
-		|| catalog.identity_commitment.digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+		|| catalog.identity_commitment.digest != AIQ_CORE_TASK_IDENTITY_SHA256
 		|| catalog.tasks.len() != 72
 		|| tasks.len() != catalog.tasks.len()
 	{

@@ -55,7 +55,7 @@ use crate::{
 	protocol,
 	runner::{RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus, TaskResult},
 	schedule::ScheduleSlot,
-	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
+	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
 	task::{EvaluationResult, TASK_SCHEMA_VERSION},
 };
 
@@ -585,7 +585,7 @@ pub fn classified_run_id(
 /// Returns the fixed full-catalog commitment.
 #[must_use]
 pub fn catalog_digest() -> String {
-	AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned()
+	AIQ_CORE_TASK_IDENTITY_SHA256.to_owned()
 }
 
 /// Atomically writes JSON with file and parent-directory durability.

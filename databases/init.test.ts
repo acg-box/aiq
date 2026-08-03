@@ -12,7 +12,7 @@ import { canonicalJson, initializeDatabase, prepareInitialization } from './init
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const catalogPath = resolve(repositoryRoot, 'benchmarks/catalog/aiq-core-v1.json');
+const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.2/catalog.json');
 const corpusSchemaPath = resolve(
   repositoryRoot,
   'benchmarks/schema/corpus-commitment-v2.schema.json',
@@ -227,6 +227,7 @@ async function referenceFixture(): Promise<JsonObject> {
     .digest('hex')}`;
   return {
     schema_version: 'aiq.production-reference.v1',
+    published_at: '2026-08-03T12:00:00.000Z',
     corpus_commitment: {
       schema_version: 'aiq.corpus-commitment.v2',
       release_id: 'corpus_initial_greenfield',
@@ -235,8 +236,8 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.1',
-        identity_sha256: object(catalog.identity_commitment).digest,
+        task_set_version: '1.0.2',
+        identity_sha256: object(catalog.task_metadata_identity).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
       execution: {
@@ -363,7 +364,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.1', '1\.0\.0'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.2', '1\.0\.2'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -402,13 +403,22 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .update(canonicalJson(object(reference.corpus_commitment)))
       .digest('hex')}`,
   );
+  strictEqual(prepared.receipt.scoring_version, '1.0.2');
+  strictEqual(
+    prepared.receipt.catalog_identity_sha256,
+    'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+  );
+  strictEqual(
+    prepared.receipt.catalog_release_identity_sha256,
+    'sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b',
+  );
   const taskGroup = groups[2];
   if (taskGroup === undefined) throw new Error('task row group is missing');
   strictEqual(
     `sha256:${createHash('sha256')
-      .update(JSON.stringify(taskGroup.map((row) => object(object(row).full_public_metadata))))
+      .update(canonicalJson(taskGroup.map((row) => object(object(row).full_public_metadata))))
       .digest('hex')}`,
-    object(object(await catalogFixture()).identity_commitment).digest,
+    object(object(await catalogFixture()).task_metadata_identity).digest,
   );
 });
 
@@ -563,6 +573,18 @@ void test('rejects malformed, incomplete, duplicate, and mismatched references',
       'synthetic',
       (reference) => {
         object(reference.corpus_commitment).synthetic = true;
+      },
+    ],
+    [
+      'invalid publication timestamp',
+      (reference) => {
+        reference.published_at = 'not-a-timestamp';
+      },
+    ],
+    [
+      'non-canonical publication timestamp',
+      (reference) => {
+        reference.published_at = '2026-08-03T12:00:00Z';
       },
     ],
     [
