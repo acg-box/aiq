@@ -6,6 +6,7 @@ use std::{
 	fmt::{self, Debug, Display},
 	fs, iter,
 	path::{Path, PathBuf},
+	thread,
 	time::Duration,
 };
 
@@ -29,6 +30,10 @@ pub const MAX_SUBMISSION_BYTES: usize = 4 * 1_024 * 1_024;
 pub const MAX_SIGNED_PACKAGE_BYTES: usize = MAX_SUBMISSION_BYTES - 240 * 1_024;
 /// Maximum retained artifact accepted through the Vercel ingress boundary.
 pub const MAX_ARTIFACT_BYTES: usize = 4 * 1_024 * 1_024;
+/// Default maximum number of artifact uploads in flight.
+pub const DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY: usize = 8;
+/// Maximum accepted artifact-upload concurrency.
+pub const MAX_ARTIFACT_UPLOAD_CONCURRENCY: usize = 32;
 
 /// Injectable outbound submission transport.
 pub trait SubmissionTransport {
@@ -108,6 +113,12 @@ pub enum SubmissionOutcomeKind {
 	Timeout,
 	/// Local configuration or package validation failure.
 	Configuration,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ArtifactUploadOutcome {
+	Stored,
+	Duplicate,
 }
 
 /// A bearer token that does not implement serialization and redacts debug output.
@@ -472,6 +483,52 @@ where
 	)
 }
 
+/// Uploads unique artifacts with bounded concurrency before submitting the package.
+pub fn submit_signed_package_with_artifacts_concurrently<T>(
+	transport: &T,
+	endpoint: &str,
+	body: Vec<u8>,
+	artifact_root: &Path,
+	bearer_token: SecretToken,
+	artifact_upload_concurrency: usize,
+) -> Result<SubmissionBundleOutcome, SubmissionError>
+where
+	T: ArtifactUploadTransport + SubmissionTransport + Sync,
+{
+	submit_signed_package_with_artifacts_concurrent_policy(
+		transport,
+		endpoint,
+		body,
+		artifact_root,
+		bearer_token,
+		artifact_upload_concurrency,
+		false,
+	)
+}
+
+/// Uploads concurrently through HTTP only when the endpoint is a loopback origin.
+pub fn submit_signed_package_with_artifacts_concurrently_allowing_loopback<T>(
+	transport: &T,
+	endpoint: &str,
+	body: Vec<u8>,
+	artifact_root: &Path,
+	bearer_token: SecretToken,
+	artifact_upload_concurrency: usize,
+) -> Result<SubmissionBundleOutcome, SubmissionError>
+where
+	T: ArtifactUploadTransport + SubmissionTransport + Sync,
+{
+	submit_signed_package_with_artifacts_concurrent_policy(
+		transport,
+		endpoint,
+		body,
+		artifact_root,
+		bearer_token,
+		artifact_upload_concurrency,
+		true,
+	)
+}
+
 /// Validates and submits one signed package.
 pub fn submit_signed_package<T>(
 	transport: &T,
@@ -815,36 +872,9 @@ where
 				)
 			})?;
 
-		match response.status {
-			200..=207 | 209..=299 => stored += 1,
-			208 => duplicate += 1,
-			409 => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::Conflict,
-					"artifact ingress reported an immutable content-address conflict",
-				));
-			},
-			400..=499 => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::ClientError,
-					format!(
-						"artifact ingress rejected the signed reference with HTTP {}",
-						response.status
-					),
-				));
-			},
-			500..=599 => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::ServerError,
-					format!("artifact ingress is unavailable with HTTP {}", response.status),
-				));
-			},
-			_ => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::Network,
-					"artifact ingress returned an invalid HTTP status",
-				));
-			},
+		match classify_artifact_upload_response(response)? {
+			ArtifactUploadOutcome::Stored => stored += 1,
+			ArtifactUploadOutcome::Duplicate => duplicate += 1,
 		}
 	}
 
@@ -863,6 +893,144 @@ where
 		artifacts_duplicate: duplicate,
 		package,
 	})
+}
+
+fn classify_artifact_upload_response(
+	response: TransportResponse,
+) -> Result<ArtifactUploadOutcome, SubmissionError> {
+	match response.status {
+		200..=207 | 209..=299 => Ok(ArtifactUploadOutcome::Stored),
+		208 => Ok(ArtifactUploadOutcome::Duplicate),
+		409 => Err(SubmissionError::new(
+			SubmissionOutcomeKind::Conflict,
+			"artifact ingress reported an immutable content-address conflict",
+		)),
+		400..=499 => Err(SubmissionError::new(
+			SubmissionOutcomeKind::ClientError,
+			format!("artifact ingress rejected the signed reference with HTTP {}", response.status),
+		)),
+		500..=599 => Err(SubmissionError::new(
+			SubmissionOutcomeKind::ServerError,
+			format!("artifact ingress is unavailable with HTTP {}", response.status),
+		)),
+		_ => Err(SubmissionError::new(
+			SubmissionOutcomeKind::Network,
+			"artifact ingress returned an invalid HTTP status",
+		)),
+	}
+}
+
+fn submit_signed_package_with_artifacts_concurrent_policy<T>(
+	transport: &T,
+	endpoint: &str,
+	body: Vec<u8>,
+	artifact_root: &Path,
+	bearer_token: SecretToken,
+	artifact_upload_concurrency: usize,
+	allow_loopback_http: bool,
+) -> Result<SubmissionBundleOutcome, SubmissionError>
+where
+	T: ArtifactUploadTransport + SubmissionTransport + Sync,
+{
+	if !(1..=MAX_ARTIFACT_UPLOAD_CONCURRENCY).contains(&artifact_upload_concurrency) {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			format!(
+				"artifact upload concurrency must be between 1 and {MAX_ARTIFACT_UPLOAD_CONCURRENCY}"
+			),
+		));
+	}
+
+	validate_endpoint(endpoint, allow_loopback_http)?;
+
+	let (envelope, payload) = validate_signed_package(&body)?;
+	let root = canonical_artifact_root(artifact_root)?;
+	let references = collect_artifact_references(&payload)?;
+	let artifact_url = format!("{}/api/artifacts", endpoint.trim_end_matches('/'));
+	let mut reference_iter = references.iter();
+	let mut stored = 0;
+	let mut duplicate = 0;
+
+	loop {
+		let batch = reference_iter.by_ref().take(artifact_upload_concurrency).collect::<Vec<_>>();
+
+		if batch.is_empty() {
+			break;
+		}
+
+		let outcomes = thread::scope(|scope| {
+			let handles = batch
+				.into_iter()
+				.map(|((kind, digest), expected_bytes)| {
+					let token = bearer_token.duplicate();
+					let idempotency_key = envelope.idempotency_key.clone();
+					let root = &root;
+					let artifact_url = &artifact_url;
+
+					scope.spawn(move || {
+						let bytes = read_artifact(root, kind, digest, *expected_bytes)?;
+						let response = transport
+							.upload(&ArtifactUploadRequest {
+								url: artifact_url.clone(),
+								body: bytes,
+								idempotency_key,
+								kind: kind.clone(),
+								digest: digest.clone(),
+								bearer_token: token,
+							})
+							.map_err(classify_transport_failure)?;
+
+						classify_artifact_upload_response(response)
+					})
+				})
+				.collect::<Vec<_>>();
+
+			handles
+				.into_iter()
+				.map(|handle| {
+					handle.join().unwrap_or_else(|_| {
+						Err(SubmissionError::new(
+							SubmissionOutcomeKind::Network,
+							"artifact upload worker terminated unexpectedly",
+						))
+					})
+				})
+				.collect::<Vec<_>>()
+		});
+
+		for outcome in outcomes {
+			match outcome? {
+				ArtifactUploadOutcome::Stored => stored += 1,
+				ArtifactUploadOutcome::Duplicate => duplicate += 1,
+			}
+		}
+	}
+
+	let package = submit_signed_package_policy(
+		transport,
+		endpoint,
+		body,
+		bearer_token.duplicate(),
+		allow_loopback_http,
+	)?;
+
+	Ok(SubmissionBundleOutcome {
+		schema_version: "aiq.submission-outcome.v1",
+		artifacts_total: references.len(),
+		artifacts_stored: stored,
+		artifacts_duplicate: duplicate,
+		package,
+	})
+}
+
+fn classify_transport_failure(failure: TransportFailure) -> SubmissionError {
+	SubmissionError::new(
+		match failure.kind {
+			TransportFailureKind::Network => SubmissionOutcomeKind::Network,
+			TransportFailureKind::Timeout => SubmissionOutcomeKind::Timeout,
+		},
+		failure.message,
+	)
 }
 
 fn submit_signed_package_policy<T>(
@@ -953,7 +1121,12 @@ mod tests {
 		env, fs,
 		path::PathBuf,
 		process,
-		time::{SystemTime, UNIX_EPOCH},
+		sync::{
+			Mutex,
+			atomic::{AtomicUsize, Ordering},
+		},
+		thread,
+		time::{Duration, SystemTime, UNIX_EPOCH},
 	};
 
 	use serde_json;
@@ -995,6 +1168,26 @@ mod tests {
 		artifact_status: u16,
 		submission_status: u16,
 		events: RefCell<Vec<String>>,
+	}
+
+	struct ConcurrentTransport {
+		active: AtomicUsize,
+		maximum_active: AtomicUsize,
+		artifact_status: Option<u16>,
+		artifacts: Mutex<Vec<String>>,
+		packages: AtomicUsize,
+	}
+
+	impl ConcurrentTransport {
+		fn new(artifact_status: Option<u16>) -> Self {
+			Self {
+				active: AtomicUsize::new(0),
+				maximum_active: AtomicUsize::new(0),
+				artifact_status,
+				artifacts: Mutex::new(Vec::new()),
+				packages: AtomicUsize::new(0),
+			}
+		}
 	}
 
 	impl SubmissionTransport for FailingTransport {
@@ -1040,6 +1233,45 @@ mod tests {
 			));
 
 			Ok(TransportResponse { status: self.artifact_status })
+		}
+	}
+
+	impl SubmissionTransport for ConcurrentTransport {
+		fn send(
+			&self,
+			_request: &SubmissionRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			self.packages.fetch_add(1, Ordering::SeqCst);
+
+			Ok(TransportResponse { status: 202 })
+		}
+	}
+
+	impl ArtifactUploadTransport for ConcurrentTransport {
+		fn upload(
+			&self,
+			request: &ArtifactUploadRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+
+			self.maximum_active.fetch_max(active, Ordering::SeqCst);
+
+			thread::sleep(Duration::from_millis(5));
+
+			self.artifacts.lock().expect("artifact event lock").push(request.digest.clone());
+			self.active.fetch_sub(1, Ordering::SeqCst);
+
+			let status = self.artifact_status.unwrap_or_else(|| {
+				if request.kind == "evaluator-results.json"
+					|| request.body.first().is_some_and(|byte| byte % 2 == 0)
+				{
+					208
+				} else {
+					201
+				}
+			});
+
+			Ok(TransportResponse { status })
 		}
 	}
 
@@ -1090,6 +1322,34 @@ mod tests {
 
 		run.results[0].artifacts.push(reference.clone());
 		run.results[1].artifacts.push(reference);
+
+		submission::bind_synthetic_run_to_signer(&mut run, &identity.node().node_id)
+			.expect("synthetic fixture must bind");
+
+		let envelope = identity
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("fixture must sign");
+
+		submission::serialize_signed_package(&envelope).expect("fixture package")
+	}
+
+	fn signed_body_with_unique_artifacts(root: &PathBuf, count: u8) -> Vec<u8> {
+		let sink = LocalArtifactSink::new(root).expect("fixture sink");
+		let identity = SigningIdentity::from_secret([9; 32]);
+		let mut run = runner::synthetic_demo(
+			ScheduleConfig::default()
+				.slot("2024-02-29", ScheduleOccurrence::Day)
+				.expect("fixture slot"),
+			&sink,
+		)
+		.expect("fixture run");
+
+		for marker in 1..=count {
+			let reference = sink.put("stdout.jsonl", &[marker]).expect("fixture artifact");
+			let result_index = usize::from(marker) % run.results.len();
+
+			run.results[result_index].artifacts.push(reference);
+		}
 
 		submission::bind_synthetic_run_to_signer(&mut run, &identity.node().node_id)
 			.expect("synthetic fixture must bind");
@@ -1754,6 +2014,84 @@ mod tests {
 		assert!(events[0].starts_with("artifact:evaluator-results.json:"));
 		assert!(events[1].starts_with("artifact:stdout.jsonl:"));
 		assert!(events[2].starts_with("package:run_"));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn concurrent_artifact_uploads_are_bounded_and_count_completion_order_independently() {
+		let root = temporary_root("artifact-concurrency");
+		let body = signed_body_with_unique_artifacts(&root, 8);
+		let transport = ConcurrentTransport::new(None);
+		let outcome = submission::submit_signed_package_with_artifacts_concurrently(
+			&transport,
+			"https://example.vercel.app",
+			body,
+			&root,
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+			3,
+		)
+		.expect("concurrent bundle must submit");
+
+		assert_eq!(outcome.artifacts_total, 9);
+		assert_eq!(outcome.artifacts_stored, 4);
+		assert_eq!(outcome.artifacts_duplicate, 5);
+		assert_eq!(transport.packages.load(Ordering::SeqCst), 1);
+		assert!((2..=3).contains(&transport.maximum_active.load(Ordering::SeqCst)));
+
+		let artifacts = transport.artifacts.lock().expect("artifact event lock");
+		let unique = artifacts.iter().collect::<BTreeSet<_>>();
+
+		assert_eq!(artifacts.len(), 9);
+		assert_eq!(unique.len(), 9);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn concurrent_artifact_error_drains_the_batch_and_stops_before_more_work() {
+		let root = temporary_root("artifact-concurrency-error");
+		let body = signed_body_with_unique_artifacts(&root, 8);
+		let transport = ConcurrentTransport::new(Some(503));
+		let error = submission::submit_signed_package_with_artifacts_concurrently(
+			&transport,
+			"https://example.vercel.app",
+			body,
+			&root,
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+			3,
+		)
+		.expect_err("artifact server error must stop submission");
+
+		assert_eq!(error.kind(), SubmissionOutcomeKind::ServerError);
+		assert_eq!(transport.packages.load(Ordering::SeqCst), 0);
+		assert_eq!(transport.artifacts.lock().expect("artifact event lock").len(), 3);
+		assert_eq!(transport.active.load(Ordering::SeqCst), 0);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn concurrent_artifact_upload_rejects_out_of_range_worker_counts() {
+		let root = temporary_root("artifact-concurrency-bounds");
+		let body = signed_body_with_unique_artifacts(&root, 1);
+
+		for concurrency in [0, submission::MAX_ARTIFACT_UPLOAD_CONCURRENCY + 1] {
+			let transport = ConcurrentTransport::new(None);
+			let error = submission::submit_signed_package_with_artifacts_concurrently(
+				&transport,
+				"https://example.vercel.app",
+				body.clone(),
+				&root,
+				SecretToken::new("secret".to_owned()).expect("fixture token"),
+				concurrency,
+			)
+			.expect_err("out-of-range concurrency must fail closed");
+
+			assert_eq!(error.kind(), SubmissionOutcomeKind::Configuration);
+			assert!(transport.artifacts.lock().expect("artifact event lock").is_empty());
+			assert_eq!(transport.packages.load(Ordering::SeqCst), 0);
+		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
 	}

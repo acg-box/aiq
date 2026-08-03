@@ -70,7 +70,10 @@ use aiq_runner::{
 		self, AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
 		CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions, ScoreReport,
 	},
-	submission::{self, HttpsTransport, MAX_SUBMISSION_BYTES, SecretToken},
+	submission::{
+		self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY,
+		MAX_SUBMISSION_BYTES, SecretToken,
+	},
 	task::{
 		self, DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskLoadIssue, TaskLoadReport,
 		TaskSource, ValidationIssue, Visibility,
@@ -1427,6 +1430,13 @@ enum Command {
 		/// Global HTTPS timeout in seconds.
 		#[arg(long, default_value_t = 30)]
 		timeout_seconds: u64,
+		/// Maximum artifact uploads in flight, from 1 through 32.
+		#[arg(
+			long,
+			default_value_t = DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY,
+			value_parser = parse_artifact_upload_concurrency
+		)]
+		artifact_upload_concurrency: usize,
 		/// Permit plain HTTP only when the endpoint is a loopback origin.
 		#[arg(long, default_value_t = false)]
 		allow_loopback_http: bool,
@@ -1668,6 +1678,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			endpoint,
 			token_env,
 			timeout_seconds,
+			artifact_upload_concurrency,
 			allow_loopback_http,
 		} => run_submit(
 			&package,
@@ -1675,6 +1686,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			&endpoint,
 			&token_env,
 			timeout_seconds,
+			artifact_upload_concurrency,
 			allow_loopback_http,
 		)?,
 		command @ Command::Package { .. } => dispatch_package(command)?,
@@ -4704,6 +4716,7 @@ fn run_submit(
 	endpoint: &str,
 	token_env: &str,
 	timeout_seconds: u64,
+	artifact_upload_concurrency: usize,
 	allow_loopback_http: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let token = env::var(token_env)
@@ -4712,26 +4725,42 @@ fn run_submit(
 	let package = fs::read(package)?;
 	let token = SecretToken::new(token)?;
 	let outcome = if allow_loopback_http {
-		submission::submit_signed_package_with_artifacts_allowing_loopback(
+		submission::submit_signed_package_with_artifacts_concurrently_allowing_loopback(
 			&transport,
 			endpoint,
 			package,
 			artifact_root,
 			token,
+			artifact_upload_concurrency,
 		)?
 	} else {
-		submission::submit_signed_package_with_artifacts(
+		submission::submit_signed_package_with_artifacts_concurrently(
 			&transport,
 			endpoint,
 			package,
 			artifact_root,
 			token,
+			artifact_upload_concurrency,
 		)?
 	};
 
 	write_json(Path::new("-"), &outcome)?;
 
 	Ok(())
+}
+
+fn parse_artifact_upload_concurrency(value: &str) -> Result<usize, String> {
+	let concurrency = value
+		.parse::<usize>()
+		.map_err(|_| "artifact upload concurrency must be a positive integer".to_owned())?;
+
+	if (1..=MAX_ARTIFACT_UPLOAD_CONCURRENCY).contains(&concurrency) {
+		Ok(concurrency)
+	} else {
+		Err(format!(
+			"artifact upload concurrency must be between 1 and {MAX_ARTIFACT_UPLOAD_CONCURRENCY}"
+		))
+	}
 }
 
 fn run_demo(
@@ -5551,6 +5580,47 @@ mod tests {
 			super::bind_execution_concurrency(&mut absent, Some(crate::runner::MAX_RUN_JOBS + 1))
 				.is_err()
 		);
+	}
+
+	#[test]
+	fn submit_artifact_upload_concurrency_has_a_bounded_default_and_override() {
+		let parse = |extra: &[&str]| {
+			let mut arguments = vec![
+				"aiq-runner",
+				"submit",
+				"--package",
+				"package.json",
+				"--endpoint",
+				"https://example.vercel.app",
+			];
+
+			arguments.extend_from_slice(extra);
+
+			super::Cli::try_parse_from(arguments)
+		};
+		let default = parse(&[]).expect("default submit arguments");
+
+		assert!(matches!(
+			default.command,
+			super::Command::Submit {
+				artifact_upload_concurrency: crate::submission::DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY,
+				..
+			}
+		));
+
+		let override_value = crate::submission::MAX_ARTIFACT_UPLOAD_CONCURRENCY.to_string();
+		let overridden = parse(&["--artifact-upload-concurrency", &override_value])
+			.expect("bounded submit override");
+
+		assert!(matches!(
+			overridden.command,
+			super::Command::Submit {
+				artifact_upload_concurrency: crate::submission::MAX_ARTIFACT_UPLOAD_CONCURRENCY,
+				..
+			}
+		));
+		assert!(parse(&["--artifact-upload-concurrency", "0"]).is_err());
+		assert!(parse(&["--artifact-upload-concurrency", "33"]).is_err());
 	}
 
 	#[test]

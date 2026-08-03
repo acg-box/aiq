@@ -152,9 +152,11 @@ non-Official calibration score bundle when its saved run is calibration.
 `package` binds the run's execution concurrency, signs the calibration payload,
 and rejects a conflicting concurrency declaration. `submit` validates and
 uploads every signed content-addressed artifact before sending the package to
-`/api/submissions`. The Web gateway records `request_context.source` as
-`aiq-web` when it enqueues the submission. A queue receipt is not verification
-or publication.
+`/api/submissions`. It keeps at most eight artifact uploads in flight by default.
+Use `--artifact-upload-concurrency` to select a value from 1 through 32 when the
+controlled network requires a different bound. The Web gateway records
+`request_context.source` as `aiq-web` when it enqueues the submission. A queue
+receipt is not verification or publication.
 
 `aiq-runner normalize` is an audit path that can report commitments-verified or
 failed dispositions, but it cannot claim `evaluator_replayed`. Production replay
