@@ -44,7 +44,6 @@ pub(crate) struct OfficialPlanBinding {
 	pub(crate) artifact_root: String,
 	pub(crate) codex_home: String,
 	pub(crate) codex_binary: String,
-	pub(crate) codex_egress_proxy: String,
 	pub(crate) schedule: String,
 	pub(crate) schedule_digest: String,
 	pub(crate) slot: ScheduleSlot,

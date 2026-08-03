@@ -1,19 +1,16 @@
 //! Bounded queue consumption, package verification, normalization, and acknowledgement.
 
-pub mod candidate_release_gate;
-
-mod candidate_execution;
 mod replay;
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::{
 	cell::Cell,
-	collections::{BTreeMap, BTreeSet},
+	collections::BTreeSet,
 	env, error,
 	ffi::OsString,
 	fmt::{Debug, Display, Formatter},
-	fs::{self, File, OpenOptions, Permissions},
+	fs::{self, OpenOptions},
 	io::{Read, Write},
 	path::{Path, PathBuf},
 	process, thread,
@@ -21,9 +18,6 @@ use std::{
 };
 
 use clap::Parser;
-#[cfg(test)]
-use ed25519_dalek as _;
-use libc::O_CLOEXEC;
 use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
@@ -33,14 +27,6 @@ use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
 	calibration_verification::{
 		self, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
-	},
-	candidate_artifacts::{
-		CandidateEvaluatorResultBundle, CandidateResultPackageBundle, CandidateSigningIdentity,
-	},
-	candidate_release_gate::{
-		CandidateEvaluatorResult, CandidateExecutionAuthorization, CandidateExecutionExpectations,
-		CandidateExecutionUnit, CandidateExecutionUnitKind, CandidateGateError,
-		CandidateOutputReservations, CandidateOutputState, CandidateReservationMode,
 	},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::MODEL_MATRIX,
@@ -71,8 +57,6 @@ const RECORD_SCHEMA: &str = "aiq.verifier-record.v1";
 const MAX_OPERATOR_ERROR_DETAIL_BYTES: usize = 256;
 const REDACTED_ERROR_CODE: &str = "details_redacted";
 const REDACTED_ERROR_DETAIL: &str = "Additional error detail was redacted.";
-const MAX_CANDIDATE_EVALUATOR_RESULT_BYTES: usize = 1_024 * 1_024;
-const MAX_CANDIDATE_UNIT_BUNDLE_BYTES: usize = 64 * 1_024 * 1_024;
 
 /// Narrow client contract for authenticated content-addressed artifact resolution.
 pub trait ArtifactResolverClient {
@@ -376,62 +360,6 @@ struct ValidateEnvironmentCli {
 	/// Verifier-owned production environment metadata.
 	#[arg(long)]
 	environment: PathBuf,
-}
-
-/// Offline comparison settings for one committed and independently replayed candidate result.
-#[derive(Debug, Parser)]
-#[command(
-	name = "aiq-verifier replay-candidate",
-	version,
-	about = "Compare one candidate evaluator replay offline and write a digest-only proof"
-)]
-struct ReplayCandidateCli {
-	/// Committed candidate evaluator result JSON.
-	#[arg(long)]
-	committed_result: PathBuf,
-	/// Independently replayed candidate evaluator result JSON.
-	#[arg(long)]
-	replayed_result: PathBuf,
-	/// New path for the canonical candidate replay proof JSON.
-	#[arg(long)]
-	output: PathBuf,
-}
-
-/// Offline verification settings for one exact candidate execution unit.
-#[derive(Debug, Parser)]
-#[command(
-	name = "aiq-verifier verify-candidate-unit",
-	version,
-	about = "Independently replay one authorized candidate unit into its held verifier reservation"
-)]
-struct VerifyCandidateUnitCli {
-	/// Closed out-of-band authorization and corpus pins for this invocation.
-	#[arg(long)]
-	expectations: PathBuf,
-	/// Exact unit identifier from the signed private plan.
-	#[arg(long)]
-	unit_id: String,
-	/// Plan-bound controlled task directory for the selected unit kind.
-	#[arg(long)]
-	tasks: PathBuf,
-	/// Plan-bound controlled source tree committed by the selected corpus.
-	#[arg(long)]
-	source_root: PathBuf,
-	/// Plan-bound content-addressed artifact root.
-	#[arg(long)]
-	artifact_root: PathBuf,
-	/// Plan-bound registry root for committed external evaluators.
-	#[arg(long)]
-	evaluator_root: PathBuf,
-	/// Plan-bound absolute evaluator runtime executable.
-	#[arg(long)]
-	evaluator_runtime: PathBuf,
-	/// Plan-bound controlled parent for reconstructed candidate workspaces.
-	#[arg(long)]
-	replay_root: PathBuf,
-	/// Environment variable containing the authorized verifier Ed25519 secret.
-	#[arg(long, default_value = "AIQ_CANDIDATE_VERIFIER_SIGNING_KEY")]
-	signing_key_env: String,
 }
 
 struct OperatorDiagnostic {
@@ -1441,40 +1369,6 @@ impl FileIdentity {
 struct RegularInput {
 	bytes: Vec<u8>,
 	canonical_path: PathBuf,
-	identity: FileIdentity,
-}
-
-struct OwnedCandidateOutput {
-	path: PathBuf,
-	identity: FileIdentity,
-	installed: bool,
-}
-impl Drop for OwnedCandidateOutput {
-	fn drop(&mut self) {
-		if self.installed {
-			return;
-		}
-
-		if let Ok(metadata) = fs::symlink_metadata(&self.path)
-			&& !metadata.file_type().is_symlink()
-			&& metadata.is_file()
-			&& has_one_link(&metadata)
-			&& self.identity.matches(&metadata)
-		{
-			let _ = fs::remove_file(&self.path);
-		}
-	}
-}
-
-struct CandidateLocalInputs<'a> {
-	tasks_root: &'a Path,
-	source_root: &'a Path,
-	artifact_resolver: &'a LocalArtifactResolver,
-	evaluator_root: &'a Path,
-	evaluator_runtime_path: &'a Path,
-	evaluator_runtime: &'a EvaluatorRuntime,
-	replay_root: &'a Path,
-	verifier_identity: &'a CandidateSigningIdentity,
 }
 
 /// Stable rejection reason understood by operators and automation.
@@ -1583,23 +1477,6 @@ pub fn run_cli() -> Result<(), WorkerError> {
 
 			return run_validate_environment(ValidateEnvironmentCli::parse_from(
 				validate_arguments,
-			));
-		}
-		if command == "replay-candidate" {
-			let mut replay_arguments = vec![OsString::from("aiq-verifier replay-candidate")];
-
-			replay_arguments.extend(arguments.iter().skip(2).cloned());
-
-			return run_replay_candidate(ReplayCandidateCli::parse_from(replay_arguments));
-		}
-		if command == "verify-candidate-unit" {
-			let mut candidate_arguments =
-				vec![OsString::from("aiq-verifier verify-candidate-unit")];
-
-			candidate_arguments.extend(arguments.iter().skip(2).cloned());
-
-			return run_verify_candidate_unit(VerifyCandidateUnitCli::parse_from(
-				candidate_arguments,
 			));
 		}
 	}
@@ -2145,20 +2022,6 @@ fn has_one_link(metadata: &std::fs::Metadata) -> bool {
 	}
 }
 
-fn same_file_identity(left: FileIdentity, right: FileIdentity) -> bool {
-	#[cfg(unix)]
-	{
-		left == right
-	}
-
-	#[cfg(not(unix))]
-	{
-		let _ = (left, right);
-
-		false
-	}
-}
-
 fn read_owned_regular_input(
 	path: &Path,
 	label: &str,
@@ -2231,68 +2094,7 @@ fn read_owned_regular_input(
 		return Err(WorkerError::configuration(format!("{label} changed while it was read")));
 	}
 
-	Ok(RegularInput { bytes, canonical_path, identity })
-}
-
-fn write_candidate_output(path: &Path, bytes: &[u8]) -> Result<(), WorkerError> {
-	let target = OutputTarget::new(path, "candidate replay output")?;
-	let mut options = OpenOptions::new();
-
-	options.write(true).create_new(true);
-	#[cfg(unix)]
-	options.mode(0o600);
-
-	let mut file = options.open(&target.path).map_err(|error| {
-		WorkerError::configuration(format!(
-			"cannot create candidate replay output without overwrite: {error}"
-		))
-	})?;
-	let metadata = file.metadata().map_err(|error| {
-		WorkerError::configuration(format!("cannot inspect candidate replay output: {error}"))
-	})?;
-	let identity = FileIdentity::from_metadata(&metadata);
-	let mut owned = OwnedCandidateOutput { path: target.path.clone(), identity, installed: false };
-
-	#[cfg(unix)]
-	file.set_permissions(Permissions::from_mode(0o600)).map_err(|error| {
-		WorkerError::configuration(format!("cannot restrict candidate replay output: {error}"))
-	})?;
-	file.write_all(bytes).and_then(|()| file.sync_all()).map_err(|error| {
-		WorkerError::configuration(format!("cannot persist candidate replay output: {error}"))
-	})?;
-
-	let persisted = file.metadata().map_err(|error| {
-		WorkerError::configuration(format!("cannot inspect candidate replay output: {error}"))
-	})?;
-	let installed = fs::symlink_metadata(&target.path).map_err(|error| {
-		WorkerError::configuration(format!("cannot inspect candidate replay output path: {error}"))
-	})?;
-	#[cfg(unix)]
-	let mode_is_exact = persisted.mode() & 0o777 == 0o600;
-	#[cfg(not(unix))]
-	let mode_is_exact = true;
-
-	if !persisted.is_file()
-		|| !has_one_link(&persisted)
-		|| !identity.matches(&persisted)
-		|| installed.file_type().is_symlink()
-		|| !identity.matches(&installed)
-		|| !mode_is_exact
-	{
-		return Err(WorkerError::configuration(
-			"candidate replay output identity, link count, or mode changed during persistence",
-		));
-	}
-
-	File::open(&target.parent).and_then(|parent| parent.sync_all()).map_err(|error| {
-		WorkerError::configuration(format!(
-			"cannot sync candidate replay output directory: {error}"
-		))
-	})?;
-
-	owned.installed = true;
-
-	Ok(())
+	Ok(RegularInput { bytes, canonical_path })
 }
 
 fn read_regular_json<T>(path: &Path, label: &str) -> Result<T, WorkerError>
@@ -2570,505 +2372,6 @@ fn run_validate_environment(cli: ValidateEnvironmentCli) -> Result<(), WorkerErr
 	println!("verifier environment is structurally and semantically self-consistent: {digest}");
 
 	Ok(())
-}
-
-fn run_replay_candidate(cli: ReplayCandidateCli) -> Result<(), WorkerError> {
-	let output = OutputTarget::new(&cli.output, "candidate replay output")?;
-	let committed = read_owned_regular_input(
-		&cli.committed_result,
-		"committed candidate evaluator result",
-		MAX_CANDIDATE_EVALUATOR_RESULT_BYTES,
-	)?;
-	let replayed = read_owned_regular_input(
-		&cli.replayed_result,
-		"replayed candidate evaluator result",
-		MAX_CANDIDATE_EVALUATOR_RESULT_BYTES,
-	)?;
-
-	if same_file_identity(committed.identity, replayed.identity) {
-		return Err(WorkerError::configuration(
-			"committed and replayed candidate results must be distinct files",
-		));
-	}
-	if output.path == committed.canonical_path || output.path == replayed.canonical_path {
-		return Err(WorkerError::configuration(
-			"candidate replay output must not alias either input",
-		));
-	}
-
-	let committed_result: CandidateEvaluatorResult = serde_json::from_slice(&committed.bytes)
-		.map_err(|error| {
-			WorkerError::configuration(format!("committed candidate evaluator result: {error}"))
-		})?;
-	let replayed_result: CandidateEvaluatorResult = serde_json::from_slice(&replayed.bytes)
-		.map_err(|error| {
-			WorkerError::configuration(format!("replayed candidate evaluator result: {error}"))
-		})?;
-
-	for (label, input, value) in [
-		("committed", committed.bytes.as_slice(), &committed_result),
-		("replayed", replayed.bytes.as_slice(), &replayed_result),
-	] {
-		let canonical = canonical_candidate_document(value)?;
-
-		if input != canonical && input.strip_suffix(b"\n") != Some(canonical.as_slice()) {
-			return Err(WorkerError::configuration(format!(
-				"{label} candidate evaluator result is not canonical JSON"
-			)));
-		}
-	}
-
-	let proof = candidate_release_gate::verify_candidate_evaluator_replay(
-		&committed_result,
-		&replayed_result,
-	)
-	.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let mut proof_bytes = protocol::canonical_json(&proof).map_err(|error| {
-		WorkerError::configuration(format!("candidate replay proof serialization failed: {error}"))
-	})?;
-
-	proof_bytes.push(b'\n');
-
-	write_candidate_output(&output.path, &proof_bytes)
-}
-
-fn run_verify_candidate_unit(cli: VerifyCandidateUnitCli) -> Result<(), WorkerError> {
-	let expectations_input = read_owned_regular_input(
-		&cli.expectations,
-		"candidate execution expectations",
-		MAX_SUBMISSION_BYTES,
-	)?;
-	let expectations = parse_canonical_candidate_expectations(&expectations_input.bytes)?;
-
-	aiq_runner::candidate_release_gate::verify_trusted_candidate_admission(&expectations)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	let verifier_identity =
-		CandidateSigningIdentity::from_secret(signing_key_from_environment(&cli.signing_key_env)?);
-
-	aiq_runner::candidate_release_gate::execute_verifier_after_authorization(
-		&expectations,
-		CandidateReservationMode::ResumeExactPlan,
-		&verifier_identity.node().node_id,
-		|authorization, _admission, _corpus, outputs| {
-			let tasks_root = controlled_root(&cli.tasks, "candidate task root")
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			let source_root = controlled_root(&cli.source_root, "candidate source root")
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			let artifact_resolver = LocalArtifactResolver::new(&cli.artifact_root)
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			let evaluator_root = controlled_root(&cli.evaluator_root, "candidate evaluator root")
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			let replay_root = controlled_root(&cli.replay_root, "candidate replay root")
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			let evaluator_runtime_path =
-				controlled_regular_file_path(&cli.evaluator_runtime, "candidate evaluator runtime")
-					.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			let evaluator_runtime = EvaluatorRuntime::resolve(&evaluator_runtime_path)
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-
-			verify_candidate_unit_and_fill(
-				&cli.unit_id,
-				authorization,
-				outputs,
-				CandidateLocalInputs {
-					tasks_root: &tasks_root,
-					source_root: &source_root,
-					artifact_resolver: &artifact_resolver,
-					evaluator_root: &evaluator_root,
-					evaluator_runtime_path: &evaluator_runtime_path,
-					evaluator_runtime: &evaluator_runtime,
-					replay_root: &replay_root,
-					verifier_identity: &verifier_identity,
-				},
-			)
-			.map_err(|error| CandidateGateError::new(error.to_string()))
-		},
-	)
-	.map_err(|error| WorkerError::configuration(error.to_string()))
-}
-
-fn parse_canonical_candidate_expectations(
-	bytes: &[u8],
-) -> Result<CandidateExecutionExpectations, WorkerError> {
-	let expectations: CandidateExecutionExpectations =
-		serde_json::from_slice(bytes).map_err(|error| {
-			WorkerError::configuration(format!("candidate execution expectations: {error}"))
-		})?;
-	let canonical = protocol::canonical_json(&expectations).map_err(|error| {
-		WorkerError::configuration(format!("candidate execution expectations: {error}"))
-	})?;
-
-	if bytes != canonical && bytes.strip_suffix(b"\n") != Some(canonical.as_slice()) {
-		return Err(WorkerError::configuration(
-			"candidate execution expectations are not canonical JSON",
-		));
-	}
-
-	Ok(expectations)
-}
-
-fn verify_candidate_unit_and_fill(
-	unit_id: &str,
-	authorization: &CandidateExecutionAuthorization,
-	outputs: &mut CandidateOutputReservations,
-	inputs: CandidateLocalInputs<'_>,
-) -> Result<(), WorkerError> {
-	let unit = exact_candidate_unit(authorization, unit_id)?;
-
-	validate_candidate_input_bindings(authorization, unit, &inputs)?;
-
-	let (result_digest, evaluator_digest, verifier_key, existing_verifier_digest) =
-		candidate_unit_output_state(outputs, unit)?;
-	let results: CandidateResultPackageBundle = read_candidate_bundle(
-		&unit.outputs.result_package_bundle,
-		"candidate result-package bundle",
-		&result_digest,
-	)?;
-	let evaluators: CandidateEvaluatorResultBundle = read_candidate_bundle(
-		&unit.outputs.evaluator_result_bundle,
-		"candidate evaluator-result bundle",
-		&evaluator_digest,
-	)?;
-	let unit_payload = results
-		.verify(authorization, unit)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let tasks = load_candidate_unit_tasks(authorization, unit, &inputs)?;
-
-	run_validation::validate_candidate_unit_calibration_run_record_with_tasks(
-		&unit_payload.run,
-		&tasks,
-		unit,
-	)
-	.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	validate_evaluator_bindings(&tasks, inputs.evaluator_root, inputs.evaluator_runtime)?;
-
-	let replay = candidate_execution::verify_candidate_execution_unit(
-		authorization,
-		unit,
-		&results,
-		&evaluators,
-		&tasks,
-		inputs.artifact_resolver,
-		inputs.evaluator_root,
-		inputs.evaluator_runtime,
-		inputs.replay_root,
-		&format!("candidate-{unit_id}"),
-		inputs.verifier_identity,
-	)?;
-	let bytes = canonical_candidate_document(&replay)?;
-
-	if let Some(expected_digest) = existing_verifier_digest {
-		let existing = read_owned_regular_input(
-			&unit.outputs.verifier_replay_bundle,
-			"candidate verifier-replay bundle",
-			MAX_CANDIDATE_UNIT_BUNDLE_BYTES,
-		)?;
-		let observed_digest = format!("sha256:{}", hex::encode(Sha256::digest(&existing.bytes)));
-
-		if existing.canonical_path != unit.outputs.verifier_replay_bundle
-			|| observed_digest != expected_digest
-			|| existing.bytes != bytes
-		{
-			return Err(WorkerError::configuration(
-				"candidate verifier replay retry does not match the immutable completed bundle",
-			));
-		}
-	} else {
-		outputs
-			.fill(&verifier_key, &bytes)
-			.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	}
-
-	Ok(())
-}
-
-fn exact_candidate_unit<'a>(
-	authorization: &'a CandidateExecutionAuthorization,
-	unit_id: &str,
-) -> Result<&'a CandidateExecutionUnit, WorkerError> {
-	if unit_id.is_empty() {
-		return Err(WorkerError::configuration("candidate unit id must not be empty"));
-	}
-
-	let mut matches =
-		authorization.plan.execution_units.iter().filter(|unit| unit.unit_id == unit_id);
-	let unit = matches
-		.next()
-		.ok_or_else(|| WorkerError::configuration("candidate unit is not in the signed plan"))?;
-
-	if matches.next().is_some() {
-		return Err(WorkerError::configuration(
-			"candidate unit id is duplicated in the signed plan",
-		));
-	}
-
-	Ok(unit)
-}
-
-fn validate_candidate_input_bindings(
-	authorization: &CandidateExecutionAuthorization,
-	unit: &CandidateExecutionUnit,
-	inputs: &CandidateLocalInputs<'_>,
-) -> Result<(), WorkerError> {
-	let controlled = &authorization.plan.controlled_inputs;
-	let expected_tasks = match unit.kind {
-		CandidateExecutionUnitKind::Core => &controlled.core_tasks_root,
-		CandidateExecutionUnitKind::Contrast => &controlled.contrast_tasks_root,
-	};
-
-	for (label, supplied, expected) in [
-		("candidate task root", inputs.tasks_root, expected_tasks.as_path()),
-		("candidate source root", inputs.source_root, controlled.source_root.as_path()),
-		(
-			"candidate artifact root",
-			inputs.artifact_resolver.root.as_path(),
-			controlled.artifact_root.as_path(),
-		),
-		("candidate evaluator root", inputs.evaluator_root, controlled.evaluator_root.as_path()),
-		("candidate replay root", inputs.replay_root, controlled.verifier_replay_root.as_path()),
-		(
-			"candidate evaluator runtime",
-			inputs.evaluator_runtime_path,
-			controlled.evaluator_runtime.as_path(),
-		),
-	] {
-		if supplied != expected {
-			return Err(WorkerError::configuration(format!(
-				"{label} does not match the signed private plan"
-			)));
-		}
-	}
-
-	if inputs.evaluator_runtime.executable_digest()
-		!= authorization.plan.runtime.evaluator_runtime_sha256
-	{
-		return Err(WorkerError::configuration(
-			"candidate evaluator runtime digest does not match the signed private plan",
-		));
-	}
-
-	for (left_label, left, right_label, right) in [
-		(
-			"artifact root",
-			inputs.artifact_resolver.root.as_path(),
-			"evaluator root",
-			inputs.evaluator_root,
-		),
-		(
-			"artifact root",
-			inputs.artifact_resolver.root.as_path(),
-			"replay root",
-			inputs.replay_root,
-		),
-		("evaluator root", inputs.evaluator_root, "replay root", inputs.replay_root),
-	] {
-		if roots_overlap(left, right) {
-			return Err(WorkerError::configuration(format!(
-				"candidate {left_label} and {right_label} must be separate directory trees"
-			)));
-		}
-	}
-
-	Ok(())
-}
-
-fn candidate_unit_output_state(
-	outputs: &CandidateOutputReservations,
-	unit: &CandidateExecutionUnit,
-) -> Result<(String, String, String, Option<String>), WorkerError> {
-	let result_key = format!("{}/result_package_bundle", unit.unit_id);
-	let evaluator_key = format!("{}/evaluator_result_bundle", unit.unit_id);
-	let verifier_key = format!("{}/verifier_replay_bundle", unit.unit_id);
-	let states = outputs.states();
-	let filled_digest = |key: &str, label: &str| match states.get(key) {
-		Some(CandidateOutputState::Filled { sha256 }) => Ok(sha256.clone()),
-		Some(CandidateOutputState::Reserved) => Err(WorkerError::configuration(format!(
-			"candidate {label} is still an empty reservation"
-		))),
-		None => {
-			Err(WorkerError::configuration(format!("candidate {label} reservation is missing")))
-		},
-	};
-	let result_digest = filled_digest(&result_key, "result-package bundle")?;
-	let evaluator_digest = filled_digest(&evaluator_key, "evaluator-result bundle")?;
-	let verifier_digest = match states.get(&verifier_key) {
-		Some(CandidateOutputState::Reserved) => None,
-		Some(CandidateOutputState::Filled { sha256 }) => Some(sha256.clone()),
-		None => {
-			return Err(WorkerError::configuration(
-				"candidate verifier bundle reservation is missing",
-			));
-		},
-	};
-
-	for (key, expected) in [
-		(&result_key, unit.outputs.result_package_bundle.as_path()),
-		(&evaluator_key, unit.outputs.evaluator_result_bundle.as_path()),
-		(&verifier_key, unit.outputs.verifier_replay_bundle.as_path()),
-	] {
-		if outputs.path(key) != Some(expected) {
-			return Err(WorkerError::configuration(
-				"candidate output reservation path differs from the signed unit",
-			));
-		}
-	}
-
-	Ok((result_digest, evaluator_digest, verifier_key, verifier_digest))
-}
-
-fn load_candidate_unit_tasks(
-	authorization: &CandidateExecutionAuthorization,
-	unit: &CandidateExecutionUnit,
-	inputs: &CandidateLocalInputs<'_>,
-) -> Result<Vec<TaskDefinition>, WorkerError> {
-	let report = DirectoryTaskSource::new(inputs.tasks_root, Some(Visibility::Hidden)).load();
-	let expected_count = match unit.kind {
-		CandidateExecutionUnitKind::Core => 72,
-		CandidateExecutionUnitKind::Contrast => 6,
-	};
-
-	if !report.issues.is_empty() || report.tasks.len() != expected_count {
-		return Err(WorkerError::configuration(
-			"candidate task root does not contain its exact valid hidden task set",
-		));
-	}
-
-	let commitment = match unit.kind {
-		CandidateExecutionUnitKind::Core => {
-			corpus_commitment::validate_candidate_corpus_commitment(
-				&unit.corpus_commitment_path,
-				&report.tasks,
-				inputs.source_root,
-			)
-		},
-		CandidateExecutionUnitKind::Contrast => {
-			corpus_commitment::validate_candidate_contrast_corpus_commitment(
-				&unit.corpus_commitment_path,
-				&report.tasks,
-				inputs.source_root,
-				&unit.corpus_commitment_sha256,
-			)
-		},
-	}
-	.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	if commitment.canonical_sha256() != unit.corpus_commitment_sha256 {
-		return Err(WorkerError::configuration(
-			"candidate corpus commitment differs from the signed unit",
-		));
-	}
-
-	commitment
-		.validate_evaluator_runtime(inputs.evaluator_runtime)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	let mut tasks = report
-		.tasks
-		.into_iter()
-		.map(|task| (task.task_id.clone(), task))
-		.collect::<BTreeMap<_, _>>();
-	let selected = unit
-		.ordered_task_ids
-		.iter()
-		.map(|task_id| {
-			tasks.remove(task_id).ok_or_else(|| {
-				WorkerError::configuration("candidate signed unit task is absent from its corpus")
-			})
-		})
-		.collect::<Result<Vec<_>, _>>()?;
-
-	if unit.kind == CandidateExecutionUnitKind::Core && !tasks.is_empty() {
-		return Err(WorkerError::configuration(
-			"candidate core unit does not select the complete committed task set",
-		));
-	}
-	if unit.corpus_commitment_path.as_path()
-		!= match unit.kind {
-			CandidateExecutionUnitKind::Core => {
-				authorization.plan.core_corpus_commitment_path.as_path()
-			},
-			CandidateExecutionUnitKind::Contrast => {
-				authorization.plan.contrast_corpus_commitment_path.as_path()
-			},
-		} {
-		return Err(WorkerError::configuration(
-			"candidate unit corpus path differs from the signed private plan",
-		));
-	}
-
-	Ok(selected)
-}
-
-fn read_candidate_bundle<T>(
-	path: &Path,
-	label: &str,
-	expected_file_sha256: &str,
-) -> Result<T, WorkerError>
-where
-	T: DeserializeOwned + Serialize,
-{
-	let input = read_owned_regular_input(path, label, MAX_CANDIDATE_UNIT_BUNDLE_BYTES)?;
-	let observed = format!("sha256:{}", hex::encode(Sha256::digest(&input.bytes)));
-
-	if observed != expected_file_sha256 || input.canonical_path != path {
-		return Err(WorkerError::configuration(format!(
-			"{label} does not match its held plan-bound output"
-		)));
-	}
-
-	let value: T = serde_json::from_slice(&input.bytes)
-		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
-
-	if canonical_candidate_document(&value)? != input.bytes {
-		return Err(WorkerError::configuration(format!("{label} is not canonical JSON")));
-	}
-
-	Ok(value)
-}
-
-fn canonical_candidate_document(value: &impl Serialize) -> Result<Vec<u8>, WorkerError> {
-	let mut bytes = protocol::canonical_json(value)
-		.map_err(|error| WorkerError::configuration(format!("candidate JSON: {error}")))?;
-
-	bytes.push(b'\n');
-
-	Ok(bytes)
-}
-
-fn controlled_regular_file_path(path: &Path, label: &str) -> Result<PathBuf, WorkerError> {
-	let metadata = fs::symlink_metadata(path)
-		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
-
-	if metadata.file_type().is_symlink() || !metadata.is_file() || !has_one_link(&metadata) {
-		return Err(WorkerError::configuration(format!(
-			"{label} must be a single-link regular file"
-		)));
-	}
-
-	let canonical = fs::canonicalize(path)
-		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
-	let mut options = OpenOptions::new();
-
-	options.read(true);
-	#[cfg(unix)]
-	options.custom_flags(O_NOFOLLOW | O_CLOEXEC);
-
-	let file = options
-		.open(path)
-		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
-	let opened =
-		file.metadata().map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
-
-	if !opened.is_file()
-		|| !has_one_link(&opened)
-		|| !FileIdentity::from_metadata(&opened).matches(&metadata)
-	{
-		return Err(WorkerError::configuration(format!("{label} changed while it was opened")));
-	}
-
-	Ok(canonical)
 }
 
 fn operator_diagnostic_for_message(class: OperatorErrorClass, message: &str) -> OperatorDiagnostic {
@@ -3577,7 +2880,6 @@ fn utc_components(seconds: u64) -> Result<(i64, i64, i64, u64, u64, u64), Worker
 #[cfg(test)]
 mod tests {
 	#[cfg(unix)]
-	use std::os::unix::fs::MetadataExt as _;
 	use std::{
 		collections::{BTreeSet, VecDeque},
 		env, fs,
@@ -3599,10 +2901,9 @@ mod tests {
 		MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic,
 		OperatorErrorClass, PackageDisposition, PreparationRequest, PreparedEvidence,
 		PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL,
-		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, ReplayCandidateCli, Secret,
-		Transport, UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse,
-		VerificationRecord, VerifierEnvironment, VerifyCandidateUnitCli, VerifyLocalCli, Worker,
-		WorkerError, replay,
+		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, Secret, Transport,
+		UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse, VerificationRecord,
+		VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
@@ -3613,10 +2914,6 @@ mod tests {
 			self, ArtifactReference, ArtifactSink, AuthenticationProbe, CapabilityValidation,
 			CapabilityValidationReport, CapabilityValidationStatus, CliProbe, ConfigurationProbe,
 			ConfigurationProbeStatus, ExecutorError, ProbeStatus,
-		},
-		candidate_release_gate::{
-			CANDIDATE_EVALUATOR_RESULT_SCHEMA, CandidateAssertion, CandidateEvaluatorComponent,
-			CandidateEvaluatorResult,
 		},
 		corpus_commitment::{RunClass, RunProvenanceCommitment},
 		model::MODEL_MATRIX,
@@ -4250,336 +3547,15 @@ mod tests {
 
 		assert!(VerifyLocalCli::try_parse_from(overridden).is_err());
 	}
-
-	#[test]
-	fn verify_candidate_unit_cli_requires_the_closed_plan_bound_surface() {
-		let arguments = [
-			"aiq-verifier verify-candidate-unit",
-			"--expectations",
-			"expectations.json",
-			"--unit-id",
-			"repeat-01-core",
-			"--tasks",
-			"/controlled/tasks",
-			"--source-root",
-			"/controlled/source",
-			"--artifact-root",
-			"/controlled/artifacts",
-			"--evaluator-root",
-			"/controlled/evaluators",
-			"--evaluator-runtime",
-			"/controlled/bin/node",
-			"--replay-root",
-			"/controlled/verifier-replay",
-		];
-		let parsed = VerifyCandidateUnitCli::try_parse_from(arguments).expect("candidate CLI");
-
-		assert_eq!(parsed.unit_id, "repeat-01-core");
-		assert_eq!(parsed.signing_key_env, "AIQ_CANDIDATE_VERIFIER_SIGNING_KEY");
-		assert!(VerifyCandidateUnitCli::try_parse_from(&arguments[..arguments.len() - 2]).is_err());
-
-		let mut alias = arguments.to_vec();
-
-		alias.extend(["--output", "replay.json"]);
-
-		assert!(VerifyCandidateUnitCli::try_parse_from(alias).is_err());
-	}
-
-	#[cfg(unix)]
-	#[test]
-	fn candidate_replay_root_rejects_a_symbolic_link() {
-		let root = candidate_test_root("candidate-replay-symlink");
-		let replay = root.join("verifier-replay");
-		let alias = root.join("verifier-replay-alias");
-
-		fs::create_dir(&replay).expect("replay root");
-		std::os::unix::fs::symlink(&replay, &alias).expect("replay symlink");
-
-		assert!(super::controlled_root(&alias, "candidate replay root").is_err());
-
-		fs::remove_dir_all(root).expect("remove fixture");
-	}
-
-	fn candidate_result() -> CandidateEvaluatorResult {
-		let components = [3_000, 2_500, 2_500, 2_000]
-			.into_iter()
-			.enumerate()
-			.map(|(component, weight_basis_points)| CandidateEvaluatorComponent {
-				component_id: format!("component_{:02}", component + 1),
-				weight_basis_points,
-				assertions: (0..3)
-					.map(|assertion| CandidateAssertion {
-						assertion_id: format!("assertion_{assertion}"),
-						passed: true,
-						evidence_sha256: format!(
-							"sha256:{}",
-							char::from(b'a' + assertion as u8).to_string().repeat(64)
-						),
-					})
-					.collect(),
-			})
-			.collect();
-
-		CandidateEvaluatorResult {
-			schema_version: CANDIDATE_EVALUATOR_RESULT_SCHEMA.to_owned(),
-			task_id: "coding-01".to_owned(),
-			task_version: "1.0.2".to_owned(),
-			scorer_version: "1.0.2".to_owned(),
-			components,
-			score_numerator: 1,
-			score_denominator: 1,
-			score_decimal_6: "1.000000".to_owned(),
-		}
-	}
-
-	fn candidate_test_root(label: &str) -> PathBuf {
+	fn temporary_test_root(label: &str) -> PathBuf {
 		let unique =
 			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
-		let root = env::temp_dir()
-			.join(format!("aiq-verifier-candidate-{label}-{}-{unique}", process::id()));
+		let root = env::temp_dir().join(format!("aiq-verifier-{label}-{}-{unique}", process::id()));
 
-		fs::create_dir(&root).expect("candidate fixture directory");
+		fs::create_dir(&root).expect("fixture directory");
 
 		root
 	}
-
-	fn write_candidate_result(path: &Path, result: &CandidateEvaluatorResult) {
-		let mut bytes = protocol::canonical_json(result).expect("candidate result JSON");
-
-		bytes.push(b'\n');
-
-		fs::write(path, bytes).expect("candidate result file");
-	}
-
-	#[test]
-	fn replay_candidate_cli_parses_and_writes_canonical_private_proof() {
-		let arguments = [
-			"aiq-verifier replay-candidate",
-			"--committed-result",
-			"committed.json",
-			"--replayed-result",
-			"replayed.json",
-			"--output",
-			"proof.json",
-		];
-
-		assert!(ReplayCandidateCli::try_parse_from(arguments).is_ok());
-		assert!(ReplayCandidateCli::try_parse_from(&arguments[..arguments.len() - 2]).is_err());
-
-		let root = candidate_test_root("success");
-		let committed = root.join("committed.json");
-		let replayed = root.join("replayed.json");
-		let output = root.join("proof.json");
-		let result = candidate_result();
-
-		write_candidate_result(&committed, &result);
-		write_candidate_result(&replayed, &result);
-
-		super::run_replay_candidate(ReplayCandidateCli {
-			committed_result: committed,
-			replayed_result: replayed,
-			output: output.clone(),
-		})
-		.expect("candidate replay proof");
-
-		let proof_bytes = fs::read(&output).expect("proof bytes");
-		let proof: crate::candidate_release_gate::CandidateReplayProof =
-			serde_json::from_slice(&proof_bytes).expect("proof JSON");
-		let mut expected = protocol::canonical_json(&proof).expect("canonical proof");
-
-		expected.push(b'\n');
-
-		assert_eq!(proof_bytes, expected);
-		assert_eq!(proof.committed_result_sha256, proof.replayed_result_sha256);
-
-		#[cfg(unix)]
-		{
-			let metadata = fs::metadata(&output).expect("proof metadata");
-
-			assert_eq!(metadata.mode() & 0o777, 0o600);
-			assert_eq!(metadata.nlink(), 1);
-		}
-
-		fs::remove_dir_all(root).expect("remove candidate fixture");
-	}
-
-	#[test]
-	fn replay_candidate_rejects_mismatch_and_invalid_result_without_output() {
-		let root = candidate_test_root("mismatch");
-		let committed = root.join("committed.json");
-		let replayed = root.join("replayed.json");
-		let output = root.join("proof.json");
-		let result = candidate_result();
-		let mut changed = result.clone();
-
-		changed.components[0].assertions[0].evidence_sha256 = format!("sha256:{}", "d".repeat(64));
-
-		write_candidate_result(&committed, &result);
-		write_candidate_result(&replayed, &changed);
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed.clone(),
-				replayed_result: replayed.clone(),
-				output: output.clone(),
-			})
-			.is_err()
-		);
-		assert!(!output.exists());
-
-		changed = result;
-		changed.score_decimal_6 = "0.999999".to_owned();
-
-		write_candidate_result(&replayed, &changed);
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed,
-				replayed_result: replayed,
-				output: output.clone(),
-			})
-			.is_err()
-		);
-		assert!(!output.exists());
-
-		fs::remove_dir_all(root).expect("remove candidate fixture");
-	}
-
-	#[test]
-	fn replay_candidate_rejects_noncanonical_result_bytes_without_output() {
-		let root = candidate_test_root("noncanonical");
-		let committed = root.join("committed.json");
-		let replayed = root.join("replayed.json");
-		let output = root.join("proof.json");
-		let result = candidate_result();
-
-		fs::write(&committed, serde_json::to_vec_pretty(&result).expect("pretty candidate result"))
-			.expect("noncanonical committed result");
-
-		write_candidate_result(&replayed, &result);
-
-		let error = super::run_replay_candidate(ReplayCandidateCli {
-			committed_result: committed,
-			replayed_result: replayed,
-			output: output.clone(),
-		})
-		.expect_err("noncanonical candidate result must fail");
-
-		assert!(error.to_string().contains("is not canonical JSON"));
-		assert!(!output.exists());
-
-		fs::remove_dir_all(root).expect("remove candidate fixture");
-	}
-
-	#[test]
-	fn replay_candidate_never_overwrites_existing_output() {
-		let root = candidate_test_root("existing");
-		let committed = root.join("committed.json");
-		let replayed = root.join("replayed.json");
-		let output = root.join("proof.json");
-		let result = candidate_result();
-
-		write_candidate_result(&committed, &result);
-		write_candidate_result(&replayed, &result);
-
-		fs::write(&output, b"preserve me\n").expect("existing output");
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed,
-				replayed_result: replayed,
-				output: output.clone(),
-			})
-			.is_err()
-		);
-		assert_eq!(fs::read(&output).expect("existing output"), b"preserve me\n");
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: root.join("committed.json"),
-				replayed_result: root.join("replayed.json"),
-				output: PathBuf::from("-"),
-			})
-			.is_err()
-		);
-
-		fs::remove_dir_all(root).expect("remove candidate fixture");
-	}
-
-	#[cfg(unix)]
-	#[test]
-	fn replay_candidate_rejects_symlinks_aliases_and_hardlinks() {
-		let root = candidate_test_root("aliases");
-		let committed = root.join("committed.json");
-		let replayed = root.join("replayed.json");
-		let linked = root.join("linked.json");
-		let symlinked = root.join("symlinked.json");
-		let output = root.join("proof.json");
-		let result = candidate_result();
-
-		write_candidate_result(&committed, &result);
-		write_candidate_result(&replayed, &result);
-
-		let committed_before = fs::read(&committed).expect("committed bytes");
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed.clone(),
-				replayed_result: replayed.clone(),
-				output: committed.clone(),
-			})
-			.is_err()
-		);
-		assert_eq!(fs::read(&committed).expect("committed bytes"), committed_before);
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed.clone(),
-				replayed_result: committed.clone(),
-				output: output.clone(),
-			})
-			.is_err()
-		);
-
-		std::os::unix::fs::symlink(&replayed, &symlinked).expect("input symlink");
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed.clone(),
-				replayed_result: symlinked,
-				output: output.clone(),
-			})
-			.is_err()
-		);
-
-		let symlinked_output = root.join("symlinked-output.json");
-		let symlink_target = root.join("unused-target.json");
-
-		std::os::unix::fs::symlink(&symlink_target, &symlinked_output).expect("output symlink");
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed.clone(),
-				replayed_result: replayed.clone(),
-				output: symlinked_output,
-			})
-			.is_err()
-		);
-		assert!(!symlink_target.exists());
-
-		fs::hard_link(&replayed, &linked).expect("input hard link");
-
-		assert!(
-			super::run_replay_candidate(ReplayCandidateCli {
-				committed_result: committed,
-				replayed_result: replayed,
-				output: output.clone(),
-			})
-			.is_err()
-		);
-		assert!(!output.exists());
-
-		fs::remove_dir_all(root).expect("remove candidate fixture");
-	}
-
 	#[test]
 	fn local_replay_reconstructs_all_1224_results_and_writes_deterministic_evidence() {
 		let fixture = LocalReplayFixture::new();
@@ -4806,7 +3782,7 @@ mod tests {
 
 	#[test]
 	fn local_artifact_resolver_requires_the_content_address() {
-		let root = candidate_test_root("artifact-content-address");
+		let root = temporary_test_root("artifact-content-address");
 		let artifact_root = root.join("artifacts");
 		let bytes = b"plan-bound artifact";
 		let digest = hex::encode(Sha256::digest(bytes));

@@ -20,28 +20,26 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	candidate_release_gate::CANDIDATE_TASK_SET_VERSION,
 	protocol,
 	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
 };
 
-/// Ordered catalog identity for the six controlled candidate contrast arms.
-pub const CANDIDATE_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:fa0fbbd01a00874791b592a2661b91a44189ea53e691af1616c76d271b6c7a66";
+/// Ordered catalog identity for the six controlled contrast variants.
+pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
+	"sha256:984d37e6db5a9d00b21fe0bb1a940d5712c0974c90a56f232a81347425410c24";
 
-const CANDIDATE_CATALOG_JSON: &str =
+const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json");
-const RELEASED_CATALOG: CatalogContract = CatalogContract {
+const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
 	task_set_version: AIQ_TASK_SET_VERSION,
 	identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256,
 	identity_scope: "ordered_full_task_metadata",
-	tasks: CatalogTaskAuthority::Embedded(CANDIDATE_CATALOG_JSON),
+	tasks: CatalogTaskAuthority::Embedded(CORE_CATALOG_JSON),
 };
-const CANDIDATE_CATALOG: CatalogContract = RELEASED_CATALOG;
-const CANDIDATE_CONTRAST_TASK_IDS: [&str; 6] = [
+const CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-coupled-challenge-01",
 	"contrast-coupled-reference-01",
 	"contrast-evidence-challenge-01",
@@ -49,13 +47,13 @@ const CANDIDATE_CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-recovery-challenge-01",
 	"contrast-recovery-reference-01",
 ];
-const CANDIDATE_CONTRAST_CATALOG: CatalogContract = CatalogContract {
-	catalog_schema_version: "aiq.candidate-contrast-manifest.v1",
-	task_set_id: "aiq-core-contrast-arms",
-	task_set_version: CANDIDATE_TASK_SET_VERSION,
-	identity_sha256: CANDIDATE_CONTRAST_CATALOG_IDENTITY_SHA256,
-	identity_scope: "ordered_six_plan_bound_contrast_variants",
-	tasks: CatalogTaskAuthority::FixedOrderedIds(&CANDIDATE_CONTRAST_TASK_IDS),
+const CONTRAST_CATALOG: CatalogContract = CatalogContract {
+	catalog_schema_version: "aiq.contrast-corpus.v1",
+	task_set_id: "aiq-core-contrast",
+	task_set_version: AIQ_TASK_SET_VERSION,
+	identity_sha256: CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
+	identity_scope: "ordered_six_contrast_variants",
+	tasks: CatalogTaskAuthority::FixedOrderedIds(&CONTRAST_TASK_IDS),
 };
 
 /// Explicit execution class selected before any benchmark work starts.
@@ -668,39 +666,37 @@ pub fn validate_corpus_commitment(
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
-	validate_corpus_commitment_inner(path, tasks, source_root, RELEASED_CATALOG)
+	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads and validates the immutable AIQ Core 1.0.2 release-gate corpus.
-pub fn validate_candidate_corpus_commitment(
+/// Loads and validates the immutable 72-task AIQ Core 1.0.2 corpus.
+pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
-	validate_corpus_commitment_inner(path, tasks, source_root, CANDIDATE_CATALOG)
+	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads the six plan-bound AIQ Core 1.0.2 contrast arms.
+/// Loads the six controlled AIQ Core 1.0.2 contrast variants.
 ///
-/// The expected canonical digest comes from the signed private execution plan.
-/// Contrast tasks are calibration-only and are not part of the 72-task
-/// candidate catalog.
-pub fn validate_candidate_contrast_corpus_commitment(
+/// The caller supplies the expected canonical commitment digest. Contrast tasks
+/// are calibration-only and are not part of the 72-task core catalog.
+pub fn validate_contrast_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 	expected_canonical_sha256: &str,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
 	if !valid_digest(expected_canonical_sha256) {
-		return Err(CorpusCommitmentError::new("candidate contrast corpus digest is invalid"));
+		return Err(CorpusCommitmentError::new("contrast corpus digest is invalid"));
 	}
 
-	let validated =
-		validate_corpus_commitment_inner(path, tasks, source_root, CANDIDATE_CONTRAST_CATALOG)?;
+	let validated = validate_corpus_commitment_inner(path, tasks, source_root, CONTRAST_CATALOG)?;
 
 	if validated.canonical_sha256() != expected_canonical_sha256 {
 		return Err(CorpusCommitmentError::new(
-			"candidate contrast corpus does not match the signed execution plan",
+			"contrast corpus does not match the expected canonical commitment",
 		));
 	}
 
@@ -730,7 +726,7 @@ pub fn validate_run_provenance(
 		RunClass::Official => provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256,
 		RunClass::Calibration => {
 			provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256
-				|| provenance.catalog_digest == CANDIDATE_CONTRAST_CATALOG.identity_sha256
+				|| provenance.catalog_digest == CONTRAST_CATALOG.identity_sha256
 		},
 	};
 
@@ -1091,16 +1087,14 @@ fn catalog_tool_policy_tasks(
 		},
 		CatalogTaskAuthority::FixedOrderedIds(expected_ids) => {
 			let tasks = selected_tasks.ok_or_else(|| {
-				CorpusCommitmentError::new(
-					"plan-bound contrast tool policy requires the exact selected tasks",
-				)
+				CorpusCommitmentError::new("contrast tool policy requires the exact selected tasks")
 			})?;
 
 			if tasks.len() != expected_ids.len()
 				|| tasks.iter().zip(expected_ids).any(|(task, expected)| task.task_id != *expected)
 			{
 				return Err(CorpusCommitmentError::new(
-					"plan-bound contrast tasks are missing, duplicated, or reordered",
+					"contrast tasks are missing, duplicated, or reordered",
 				));
 			}
 
@@ -1204,7 +1198,7 @@ fn validate_header(
 }
 
 fn catalog_contract(catalog: &CorpusCatalog) -> Result<CatalogContract, CorpusCommitmentError> {
-	[RELEASED_CATALOG]
+	[CORE_CATALOG]
 		.into_iter()
 		.find(|contract| {
 			catalog.task_set_id == AIQ_TASK_SET_ID
@@ -1390,7 +1384,7 @@ fn validate_catalog_tasks(
 						|| task.task_version != catalog_contract.task_set_version
 				}) {
 				return Err(CorpusCommitmentError::new(
-					"candidate contrast commitment does not cover the exact six ordered arms",
+					"contrast commitment does not cover the exact six ordered variants",
 				));
 			}
 		},
@@ -1638,7 +1632,7 @@ mod tests {
 			&execution,
 			source,
 			&policy,
-			super::RELEASED_CATALOG,
+			super::CORE_CATALOG,
 			None,
 		)
 		.expect("valid deterministic digests");
@@ -1660,7 +1654,7 @@ mod tests {
 					&mutated,
 					source,
 					&policy,
-					super::RELEASED_CATALOG,
+					super::CORE_CATALOG,
 					None,
 				)
 				.is_err()
@@ -1761,10 +1755,7 @@ mod tests {
 
 	#[test]
 	fn current_corpus_header_is_strict() {
-		assert!(corpus_commitment::validate_header(&commitment(), super::RELEASED_CATALOG).is_ok());
-		assert!(
-			corpus_commitment::validate_header(&commitment(), super::CANDIDATE_CATALOG).is_ok()
-		);
+		assert!(corpus_commitment::validate_header(&commitment(), super::CORE_CATALOG).is_ok());
 
 		let mut predecessor = commitment();
 
@@ -1772,68 +1763,62 @@ mod tests {
 		predecessor.catalog.identity_sha256 =
 			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
 
-		assert!(corpus_commitment::validate_header(&predecessor, super::RELEASED_CATALOG).is_err());
+		assert!(corpus_commitment::validate_header(&predecessor, super::CORE_CATALOG).is_err());
 		assert!(super::catalog_contract(&predecessor.catalog).is_err());
 
 		let mut contrast = commitment();
 
-		contrast.catalog.schema_version =
-			super::CANDIDATE_CONTRAST_CATALOG.catalog_schema_version.to_owned();
-		contrast.catalog.task_set_id = super::CANDIDATE_CONTRAST_CATALOG.task_set_id.to_owned();
-		contrast.catalog.task_set_version =
-			super::CANDIDATE_CONTRAST_CATALOG.task_set_version.to_owned();
-		contrast.catalog.identity_sha256 =
-			super::CANDIDATE_CONTRAST_CATALOG.identity_sha256.to_owned();
-		contrast.catalog.identity_scope =
-			super::CANDIDATE_CONTRAST_CATALOG.identity_scope.to_owned();
+		contrast.catalog.schema_version = super::CONTRAST_CATALOG.catalog_schema_version.to_owned();
+		contrast.catalog.task_set_id = super::CONTRAST_CATALOG.task_set_id.to_owned();
+		contrast.catalog.task_set_version = super::CONTRAST_CATALOG.task_set_version.to_owned();
+		contrast.catalog.identity_sha256 = super::CONTRAST_CATALOG.identity_sha256.to_owned();
+		contrast.catalog.identity_scope = super::CONTRAST_CATALOG.identity_scope.to_owned();
 
-		assert!(
-			corpus_commitment::validate_header(&contrast, super::CANDIDATE_CONTRAST_CATALOG,)
-				.is_ok()
+		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
+		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
+		assert_eq!(contrast.catalog.identity_scope, "ordered_six_contrast_variants");
+		assert_eq!(
+			contrast.catalog.identity_sha256,
+			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256
 		);
-		assert!(corpus_commitment::validate_header(&contrast, super::CANDIDATE_CATALOG).is_err());
+		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG,).is_ok());
+		assert!(corpus_commitment::validate_header(&contrast, super::CORE_CATALOG).is_err());
 
 		let mut synthetic = commitment();
 
 		synthetic.synthetic = true;
 
-		assert!(corpus_commitment::validate_header(&synthetic, super::RELEASED_CATALOG).is_err());
+		assert!(corpus_commitment::validate_header(&synthetic, super::CORE_CATALOG).is_err());
 
 		let mut uncontrolled = commitment();
 
 		uncontrolled.controlled = false;
 
-		assert!(
-			corpus_commitment::validate_header(&uncontrolled, super::RELEASED_CATALOG).is_err()
-		);
+		assert!(corpus_commitment::validate_header(&uncontrolled, super::CORE_CATALOG).is_err());
 	}
 
 	#[test]
-	fn contrast_tool_policy_requires_all_six_plan_bound_tasks_in_order() {
+	fn contrast_tool_policy_requires_all_six_tasks_in_order() {
 		let mut tasks = runner::synthetic_demo_tasks()[..6].to_vec();
 
-		for (task, task_id) in tasks.iter_mut().zip(super::CANDIDATE_CONTRAST_TASK_IDS) {
+		for (task, task_id) in tasks.iter_mut().zip(super::CONTRAST_TASK_IDS) {
 			task.task_id = task_id.to_owned();
-			task.task_version = super::CANDIDATE_TASK_SET_VERSION.to_owned();
+			task.task_version = super::AIQ_TASK_SET_VERSION.to_owned();
 		}
 
-		let policy =
-			super::catalog_tool_policy_tasks(super::CANDIDATE_CONTRAST_CATALOG, Some(&tasks))
-				.expect("contrast tool policy");
+		let policy = super::catalog_tool_policy_tasks(super::CONTRAST_CATALOG, Some(&tasks))
+			.expect("contrast tool policy");
 
 		assert_eq!(policy.len(), 6);
 		assert_eq!(
 			policy[0].pointer("/task_id").and_then(serde_json::Value::as_str),
 			Some("contrast-coupled-challenge-01")
 		);
-		assert!(super::catalog_tool_policy_tasks(super::CANDIDATE_CONTRAST_CATALOG, None).is_err());
+		assert!(super::catalog_tool_policy_tasks(super::CONTRAST_CATALOG, None).is_err());
 
 		tasks.swap(0, 1);
 
-		assert!(
-			super::catalog_tool_policy_tasks(super::CANDIDATE_CONTRAST_CATALOG, Some(&tasks),)
-				.is_err()
-		);
+		assert!(super::catalog_tool_policy_tasks(super::CONTRAST_CATALOG, Some(&tasks),).is_err());
 	}
 
 	#[test]
@@ -1858,7 +1843,7 @@ mod tests {
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()
 		);
 
-		provenance.catalog_digest = super::CANDIDATE_CONTRAST_CATALOG.identity_sha256.to_owned();
+		provenance.catalog_digest = super::CONTRAST_CATALOG.identity_sha256.to_owned();
 
 		assert!(
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()

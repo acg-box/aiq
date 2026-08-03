@@ -23,44 +23,22 @@ The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
 Repository source makes AIQ Core `1.0.2` and scorer `1.0.2` the current
-Official contract. The hosted production foundation still uses the `1.0.1`
-predecessor, so the source-head desired state is not yet deployed.
+Official contract. This is one greenfield launch. No Official benchmark history
+has been published.
 
 ## Deployment status
 
-The production Web and database foundations are provisioned, but release
-acceptance is not complete. The personal Vercel scope `acgbox` hosts project
-`aiq` at `https://aiq.wiki`, and `https://www.aiq.wiki` preserves the request
-path and redirects to the apex domain. HTTPS and Vercel domain verification
-pass. The production environment-name contract is configured. The personal
-Supabase organization `ACG Box` hosts project `aiq`
-(`xxnszykaeapolqdnhalx`). Its earlier AIQ Core `1.0.1` schema and reference
-initialization completed, and the real database has 17 model configurations,
-three production nodes, no published runs or other genuine run data, and private
-`private-packages` and `private-artifacts` buckets. Bounded runtime readiness and
-the empty real-data read path pass for the deployed `1.0.1` foundation.
-Repository head requires AIQ Core `1.0.2`, scoring `1.0.2`, an exact 12-view
-public inventory, and one greenfield database state. It is not deployed; the
-candidate validation, promotion, greenfield database reset, and deployment
-remain pending.
+Production release acceptance is not complete. The target external resources
+are the personal Supabase organization `ACG Box`, Supabase project `aiq`,
+personal Vercel scope `acgbox`, Vercel project `aiq`, and apex domain
+`https://aiq.wiki`. Repository documentation does not claim that these external
+resources exist or are configured until live acceptance records that evidence.
 
-No benchmark or Storage schedule and no cloud runner or verifier worker exist.
-The repository now contains a bounded local Linux arm64 runner-and-verifier
-bundle, but its presence does not establish a production deployment. A real
-Official or candidate calibration run has not started. No subscription limit has
-been observed. Official dispatch remains subject to the managed
-permission-admission gate. The repository supports signed, replay-verified
-calibration evidence and bounded `/calibrations` views, but calibration remains
-untrusted, non-Official, and ineligible for ranking. The preregistered candidate
-uses a separate three-repeat calibration with 3,672 core plus 306 contrast
-observations, or 3,978 total. The separate Official `72 × 17` run has 1,224
-observations. The gate proves only preregistered absolute adequacy; it does not
-compare `1.0.2` with `1.0.1` or prove superiority. Official pages can disclose
-coverage-qualified time, provider-token, and API-equivalent cost evidence
-separately from AIQ when a verified Official run is eventually published.
-Candidate signed unit artifacts retain measured latency and available
-provider-token counters, but the public aggregate gate artifacts omit efficiency
-fields; see [Benchmark Method](benchmark-method.md).
+The only Official path uses native Rust runner and verifier release binaries on
+this Apple Silicon macOS host with direct network access. A real Official run
+has not started. The required first publication is one complete `72 × 17`
+matrix, or 1,224 observations. Official pages report coverage-qualified elapsed
+time, provider-token use, and Standard API-equivalent cost separately from AIQ.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
@@ -86,6 +64,8 @@ is incomplete.
 cargo run -p aiq-runner -- matrix
 cargo run -p aiq-runner -- validate \
   --public-tasks benchmarks/examples/tasks
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo make fmt-check
 cargo make check
 cargo make lint
@@ -107,10 +87,8 @@ They are diagnostics, not benchmark results.
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` connects directly to one new Supabase PostgreSQL database and
 applies the schema plus public reference data in one transaction. It rejects an
-existing AIQ database. The repository has one greenfield desired state and no
-migration or compatibility path. The production project is already initialized;
-use this command only for a replacement empty project, not for the current
-project.
+existing AIQ database. The repository has one greenfield desired state. Use this
+command once for the new empty production project.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -118,16 +96,17 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-After the promotion gate, the separately controlled reference must contain a
+After the controlled corpus and final native binaries pass model-free
+validation, the separately controlled reference must contain a
 non-synthetic AIQ Core `1.0.2` corpus commitment, a canonical millisecond UTC
 `published_at`, and the three production identities. Initialization validates
-those fields and bindings but does not prove promotion. The expected receipt
+those fields and bindings. The expected receipt
 contains scoring `1.0.2`, 72 tasks, 17 model configurations, and three nodes. The ordered task-metadata catalog
 digest is
 `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
 the release-policy identity is `aiq-core/1.0.2`, and its catalog
 release-identity digest is
-`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
 
 ## Next reading
 

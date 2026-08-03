@@ -1482,6 +1482,7 @@ impl ReplayRun for CalibrationRunRecord {
 /// The evaluator vector is aligned with the signed run results. Completed
 /// results contain the independently recomputed evaluator result; all other
 /// terminal states contain `None`.
+#[cfg(test)]
 pub(crate) struct ProductionReplayEvidence {
 	pub provider_usage: Vec<aiq_runner::runner::ProviderTokenUsage>,
 	pub evaluator_results: Vec<Option<EvaluationResult>>,
@@ -1566,19 +1567,21 @@ where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
 {
-	Ok(replay_production_run(
-		run,
-		tasks,
-		resolver,
-		evaluator_root,
-		evaluator_runtime,
-		replay_root,
-		claim_identity,
-	)?
-	.provider_usage)
+	with_replay_directory(replay_root, claim_identity, |claim_root| {
+		verify_production_run_in(
+			run,
+			tasks,
+			resolver,
+			evaluator_root,
+			evaluator_runtime,
+			claim_root,
+			|_, _| {},
+		)
+	})
 }
 
 /// Reconstructs candidates and returns every independently replayed evaluator result.
+#[cfg(test)]
 pub(crate) fn replay_production_run<R, U>(
 	run: &U,
 	tasks: &[TaskDefinition],
@@ -1592,40 +1595,55 @@ where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
 {
+	let mut evaluator_results = (0..run.results().len()).map(|_| None).collect::<Vec<_>>();
+	let provider_usage = with_replay_directory(replay_root, claim_identity, |claim_root| {
+		verify_production_run_in(
+			run,
+			tasks,
+			resolver,
+			evaluator_root,
+			evaluator_runtime,
+			claim_root,
+			|index, result| evaluator_results[index] = Some(result),
+		)
+	})?;
+
+	Ok(ProductionReplayEvidence { provider_usage, evaluator_results })
+}
+
+fn with_replay_directory<T>(
+	replay_root: &Path,
+	claim_identity: &str,
+	operation: impl FnOnce(&Path) -> Result<T, WorkerError>,
+) -> Result<T, WorkerError> {
 	let replay = ReplayDirectory::create(replay_root, claim_identity)?;
-	let result = verify_production_run_in(
-		run,
-		tasks,
-		resolver,
-		evaluator_root,
-		evaluator_runtime,
-		replay.path()?,
-	);
+	let result = operation(replay.path()?);
 	let cleanup = replay.cleanup();
 
 	match (result, cleanup) {
 		(Err(primary), _) => Err(primary),
 		(Ok(_), Err(cleanup)) => Err(cleanup),
-		(Ok(evidence), Ok(())) => Ok(evidence),
+		(Ok(output), Ok(())) => Ok(output),
 	}
 }
 
-fn verify_production_run_in<R, U>(
+fn verify_production_run_in<R, U, F>(
 	run: &U,
 	tasks: &[TaskDefinition],
 	resolver: &R,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	claim_root: &Path,
-) -> Result<ProductionReplayEvidence, WorkerError>
+	mut record_evaluator_result: F,
+) -> Result<Vec<aiq_runner::runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
+	F: FnMut(usize, EvaluationResult),
 {
 	let evaluator_results = resolve_evaluator_results(run, resolver)?;
 	let task_map = controlled_task_map(tasks)?;
 	let mut provider_usage = vec![runner::ProviderTokenUsage::default(); run.results().len()];
-	let mut replayed_evaluator_results = (0..run.results().len()).map(|_| None).collect::<Vec<_>>();
 
 	for (index, result) in run.results().iter().enumerate() {
 		if !execution_attempted(result) {
@@ -1698,7 +1716,7 @@ where
 					evaluator_result,
 				)?;
 
-				replayed_evaluator_results[index] = Some(replayed);
+				record_evaluator_result(index, replayed);
 
 				resolver.maintain_lease()?;
 			},
@@ -1728,7 +1746,7 @@ where
 
 	resolver.maintain_lease()?;
 
-	Ok(ProductionReplayEvidence { provider_usage, evaluator_results: replayed_evaluator_results })
+	Ok(provider_usage)
 }
 
 fn materialize_candidate<R>(

@@ -1,7 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
-const applicationPort = 4_177;
-const supabasePort = 4_178;
+import { resolvePlaywrightCompanionPort, resolvePlaywrightPort } from './playwright-port.ts';
+
+const applicationPort = resolvePlaywrightPort(4_177, process.env.AIQ_PLAYWRIGHT_PORT);
+const supabasePort = resolvePlaywrightCompanionPort(applicationPort);
 const reuseExistingServer = process.env.AIQ_PLAYWRIGHT_REUSE_EXISTING_SERVER === '1';
 
 export default defineConfig({

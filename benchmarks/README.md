@@ -6,18 +6,15 @@ domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
-AIQ Core `1.0.2` is not promoted. Production `aiq.wiki` and the personal
-Supabase project continue to run the older `1.0.1` foundation until candidate
-validation, promotion, the one greenfield database reset, and deployment
-complete. No real candidate or Official model run has started.
+AIQ Core `1.0.2` is the only first-release contract. No real Official model run
+has started.
 
 ## Public authority
 
 - `candidates/aiq-core-1.0.2/catalog.json` is the active generated public
   catalog for repository source.
-- `catalog/aiq-core-v1.json` is the immutable `1.0.1` predecessor catalog.
 - `candidates/aiq-core-1.0.2/catalog.schema.json` validates the active source
-  catalog. `schema/catalog.schema.json` validates the historical predecessor.
+  catalog.
 - `schema/corpus-commitment-v2.schema.json` validates the current controlled
   corpus commitment.
 - `schema/result-package-v3.schema.json` validates signed runner packages.
@@ -35,22 +32,17 @@ sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 Its release identity is:
 
 ```text
-sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b
+sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6
 ```
 
-## AIQ Core 1.0.2 release gate
+## AIQ Core 1.0.2 authority
 
-AIQ Core `1.0.2` is an immutable, preregistered release candidate. Repository
-source now uses it as its only active task-set and scorer target, but production
-remains on AIQ Core `1.0.1`. The candidate is not promoted. These files own the
-candidate and source-head catalog authority:
+These files own the active catalog authority:
 
 - `candidates/aiq-core-1.0.2/catalog.json`;
 - `candidates/aiq-core-1.0.2/catalog.schema.json`;
 - `candidates/aiq-core-1.0.2/task.schema.json`; and
-- the `schema/release-gate-*.schema.json`,
-  `schema/promotion-receipt.schema.json`, and
-  `schema/released-manifest.schema.json` contracts.
+- `schema/corpus-commitment-v2.schema.json`.
 
 The task-metadata identity is:
 
@@ -61,42 +53,14 @@ sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 The release identity is:
 
 ```text
-sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b
+sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6
 ```
 
-The first digest binds the ordered task metadata. The second digest also binds
-the pre-registered gate policy and predecessor lineage. Candidate evidence must
-use the non-Official release-gate calibration path. A passing gate result does
-not release the candidate. A distinct promotion key must sign a valid
-`aiq.promotion-receipt.v1` before one atomic production cutover can start.
-
-The fixed candidate calibration has three repeats. It contains 3,672 core
-observations (`72 × 17 × 3`) and 306 contrast observations
-(`3 × 2 × 17 × 3`), for 3,978 observations. This is separate from a fresh
-Official `72 × 17` run. No candidate real run has started.
-
-The release gate tests whether `1.0.2` independently meets the preregistered
-absolute thresholds. It does not compare `1.0.2` with `1.0.1` and does not
-establish that `1.0.2` is superior to `1.0.1`.
-
-Every candidate release lifecycle command validates the public trust policy
-against the SHA-256 digest in the separately authenticated runtime variable
-`AIQ_CORE_1_0_2_RELEASE_TRUST_POLICY_SHA256`. The commands do not accept a
-caller-selected trust root. The repository does not contain a production trust
-policy or production release public keys. Before release-gate operation, the
-operator must provision distinct Ed25519 authority and promotion public keys in
-one closed-schema trust policy and set the protected runtime variable to the
-canonical digest of that exact policy.
-
-The isolated source assembler embeds exact copies of
-`release-gate-source-observations.schema.json` and
-`release-gate-evidence.schema.json`; tests require those copies to match the
-public schema files. Promotion receipt validation also requires
-`issued_at >= evidence.collected_at`. Signed candidate execution-unit artifacts
-retain the embedded calibration task records, including measured latency and any
-available usage fields. The public aggregate release-gate source, evidence, and
-result artifacts omit these fields and do not publish efficiency or cost
-evidence.
+The first digest binds the ordered task metadata. The second binds the catalog
+release identity. Model-free validation replays every controlled fixture twice,
+checks the six contrast units, and requires byte-identical expected results.
+The first paid publication is one complete Official `72 × 17` matrix with 1,224
+observations.
 
 Regenerate and test the active source catalog with:
 
@@ -123,6 +87,14 @@ Validate the public examples:
 ```sh
 cargo run -p aiq-runner -- validate \
   --public-tasks benchmarks/examples/tasks
+```
+
+Validate the controlled AIQ Core and six-unit contrast corpora without invoking
+Codex. Use CLI help for the exact controlled input contract:
+
+```sh
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
 ```
 
 Run the repository checks:

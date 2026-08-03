@@ -52,7 +52,6 @@ fn admit_permissions_help_exposes_the_exact_planned_run_paths() {
 		"--observed-at",
 		"--codex-binary",
 		"--codex-home",
-		"--codex-egress-proxy",
 		"--artifact-root",
 		"--preflight-cache",
 		"--checkpoint",
@@ -68,6 +67,21 @@ fn admit_permissions_help_exposes_the_exact_planned_run_paths() {
 	assert!(stdout.contains("without invoking a model"));
 	assert!(stdout.contains("does not reserve it"));
 	assert!(stdout.contains("Durable private permission-admission JSON receipt"));
+}
+
+#[test]
+fn official_direct_commands_expose_no_proxy_mode() {
+	for command in ["admit-permissions", "preflight", "run"] {
+		let output = Command::new(env!("CARGO_BIN_EXE_aiq-runner"))
+			.args([command, "--help"])
+			.output()
+			.expect("run Official command help");
+		let stdout = String::from_utf8(output.stdout).expect("UTF-8 help output");
+
+		assert!(output.status.success());
+		assert!(!stdout.contains("--codex-egress-proxy"));
+		assert!(!stdout.to_ascii_lowercase().contains("proxy"));
+	}
 }
 
 #[test]

@@ -410,7 +410,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
   strictEqual(
     prepared.receipt.catalog_release_identity_sha256,
-    'sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b',
+    'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6',
   );
   const taskGroup = groups[2];
   if (taskGroup === undefined) throw new Error('task row group is missing');

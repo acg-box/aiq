@@ -1,7 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
-const applicationPort = 4_181;
-const proxyPort = 4_182;
+import { resolvePlaywrightCompanionPort, resolvePlaywrightPort } from './playwright-port.ts';
+
+const applicationPort = resolvePlaywrightPort(4_181, process.env.AIQ_PLAYWRIGHT_PORT);
+const proxyPort = resolvePlaywrightCompanionPort(applicationPort);
 const postgrestUrl = process.env.AIQ_LIVE_POSTGREST_URL;
 const publicKey = 'sb_publishable_local_validation';
 

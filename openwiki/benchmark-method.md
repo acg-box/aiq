@@ -11,9 +11,7 @@ tags: ['benchmark', 'method', 'scoring']
 
 Repository source targets AIQ Core `1.0.2`, benchmark release
 `aiq-core@1.0.2`, and scoring implementation `1.0.2`. It contains 72 fixed
-private tasks in ten domains. AIQ Core `1.0.1` is the deployed predecessor and
-remains legitimate history, but source-head Official contracts do not accept
-its task-set or scorer versions.
+private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
 | ------------------------------- | ----: |
@@ -39,32 +37,29 @@ sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 
 The release-policy identity is `aiq-core/1.0.2`. Its catalog
 release-identity digest is
-`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
 
 One current `aiq.corpus-commitment.v2` document binds every private task to that
 catalog. It also binds the baseline workspace, fixture bundle, evaluator,
 runtime, runner source, harness, tool policy, network policy, and environment.
 
-## AIQ Core 1.0.2 release-gate evidence
+## Greenfield Official evidence
 
-AIQ Core `1.0.2` is the current source-head authority, while hosted production
-still runs the `1.0.1` predecessor. Its separately preregistered release gate is
-a non-Official, three-repeat calibration: 3,672 core observations
-(`72 × 17 × 3`) plus 306 paired-contrast observations
-(`3 × 2 × 17 × 3`), for 3,978 observations. This calibration is separate from
-the Official `72 × 17` publication run, which has 1,224 observations. No real
-release-gate or Official model run has started, and no subscription limit has
-been observed.
+The first release publishes one complete Official `72 × 17` matrix, or 1,224
+observations. Before the paid run, model-free validation checks all 72 core task
+definitions, six contrast variants, 648 fixed evaluator bindings, toolchain
+identities, source bindings, and deterministic evaluator outputs on the native
+macOS host. Contrast tests are validation evidence; they do not add rows to the
+Official matrix. Use the top-level model-free validators for these two
+controlled corpora:
 
-The release gate proves only whether `1.0.2` independently meets the
-preregistered absolute adequacy thresholds. It does not compare `1.0.2` with
-`1.0.1` and does not establish that `1.0.2` is superior to `1.0.1`.
+```sh
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
+```
 
-The isolated source assembler embeds exact copies of the public source-
-observation and release-evidence schemas. Tests require the embedded schemas to
-equal the checked-in schemas. A passing gate does not promote the candidate. A
-promotion receipt needs a distinct trusted promotion signer and a canonical
-`issued_at` that is not earlier than `evidence.collected_at`.
+No real Official model run has started. The method must preserve unsupported or
+unavailable capability states instead of replacing them with fabricated output.
 
 ## Model matrix
 
@@ -130,10 +125,9 @@ that boundary is therefore unpriced rather than guessed. Regional uplift,
 hosted-tool fees, and subscription pricing are excluded. The value is an
 API-equivalent comparison, not actual subscription spend.
 
-Signed AIQ Core `1.0.2` execution-unit artifacts retain the embedded calibration
-task records, including measured latency and any available usage fields. The
-public aggregate release-gate source, evidence, and result artifacts omit these
-fields and do not publish efficiency or cost evidence.
+Signed AIQ Core `1.0.2` result packages retain measured latency and any available
+usage fields. Public aggregates include only verified, coverage-qualified timing,
+token, and Standard API-equivalent cost evidence.
 
 ### External reference decisions
 
@@ -177,7 +171,7 @@ Provisional or coverage-only but is not ranked as Official.
 ## Verification
 
 The runner signs one `aiq.result-package.v3` envelope. For an Official run, the
-verifier checks the signature and content hashes, reconstructs candidate
+verifier checks the signature and content hashes, reconstructs submitted
 workspaces, replays the deterministic evaluators, and signs
 `aiq.verifier-attestation.v3` only after the normalized stage and replay bindings
 agree.

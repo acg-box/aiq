@@ -24,10 +24,6 @@ ureq       = { workspace = true }
 # crates.io
 libc = "0.2"
 
-[dev-dependencies]
-# crates.io
-ed25519-dalek = { workspace = true }
-
 [[bin]]
 name = "aiq-verifier"
 path = "src/main.rs"

@@ -8,9 +8,6 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
-use crate::candidate_release_gate::{
-	CANDIDATE_SCORER_VERSION, CANDIDATE_TASK_IDENTITY_SHA256, CANDIDATE_TASK_SET_VERSION,
-};
 use crate::{
 	model::ModelConfig,
 	protocol::{self, TrustTier},
@@ -19,15 +16,16 @@ use crate::{
 };
 
 /// Current scoring implementation version.
-pub const AIQ_SCORING_VERSION: &str = CANDIDATE_SCORER_VERSION;
+pub const AIQ_SCORING_VERSION: &str = "1.0.2";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
-pub const AIQ_TASK_SET_VERSION: &str = CANDIDATE_TASK_SET_VERSION;
+pub const AIQ_TASK_SET_VERSION: &str = "1.0.2";
 /// Current benchmark release identifier.
 pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.2";
 /// Frozen full-metadata commitment for the current AIQ Core release.
-pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str = CANDIDATE_TASK_IDENTITY_SHA256;
+pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
+	"sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -618,7 +616,7 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 	task_bindings_match_catalog(tasks, catalog, AIQ_SCORING_VERSION)
 }
 
-pub(crate) fn task_bindings_match_candidate_catalog(tasks: &[TaskDefinition]) -> bool {
+pub(crate) fn task_bindings_match_core_catalog(tasks: &[TaskDefinition]) -> bool {
 	task_bindings_match_frozen_catalog(tasks)
 }
 

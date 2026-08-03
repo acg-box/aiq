@@ -21,6 +21,18 @@ cargo run -p aiq-runner -- validate \
   --public-tasks benchmarks/examples/tasks
 ```
 
+Validate the complete controlled AIQ Core corpus and the separate six-unit
+contrast corpus without invoking Codex:
+
+```sh
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
+```
+
+The first command requires the 72 controlled tasks and their commitment. The
+second also requires the exact expected contrast-corpus commitment digest. Both
+commands validate fixtures, evaluators, the committed runtime, and toolchain.
+
 Create deterministic synthetic output without invoking Codex:
 
 ```sh
@@ -48,8 +60,10 @@ A live preflight requires:
 - an absolute committed Node.js runtime;
 - the controlled Node.js and ripgrep toolchain root;
 - the exact Codex executable and Codex home;
-- the operator-selected private HTTP proxy;
 - a durable output path.
+
+The only first-release Official runtime runs directly on the operator's Apple
+Silicon Mac with the Mac's direct network connection.
 
 A live run also requires controlled task, workspace, evaluator, schedule,
 execution, artifact, preflight-cache, and checkpoint paths. The CLI checks path
@@ -70,11 +84,10 @@ contains the exact Official policy. Install its bytes outside the repository as
 root-owned `/etc/codex/requirements.toml`. Do not use a user-writable copy for
 Official admission.
 
-The credential source must stay unchanged during controlled work. On Linux,
-put `auth.json` on a read-only file-system mount. For local macOS validation,
-use a separate private Codex home and make its copied `auth.json` owner
+The credential source must stay unchanged during controlled work. Use a
+separate private Codex home on the Mac and make its copied `auth.json` owner
 immutable with `uchg`. Do not change the active Codex profile to meet this
-requirement. Other operating systems fail closed.
+requirement. First-release Official execution uses this native Mac runtime.
 
 The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
@@ -112,8 +125,8 @@ a nonblocking kernel advisory lock on each parent before it reads or writes
 preflight state or invokes a paid capability probe. It holds the locks through
 execution and finalization. All writers in this trusted boundary must use the
 runner lock. Do not give an untrusted process the same user identity or write
-access to these directories. Protected writes require Linux or macOS atomic
-rename primitives and fail closed on other platforms.
+access to these directories. Protected writes use macOS atomic rename
+primitives and fail closed when those primitives are unavailable.
 
 ## Scoring, packaging, and submission
 
@@ -146,9 +159,9 @@ example. The second uses operator-supplied controlled inputs. Their summaries
 are diagnostic evidence only. For the controlled smoke,
 `AIQ_CONTROLLED_SUBSCRIPTION_SMOKE_EXECUTION_ROOT` must name a new private
 absolute path outside the repository, Codex home, controlled inputs, artifact
-root, and model toolchain. It also requires `AIQ_REAL_CODEX_EGRESS_PROXY` in
-canonical `http://<private-IPv4>:<port>` form and
-`AIQ_REAL_PERMISSION_PROBE_BINARY` naming the exact `aiq-runner` executable.
+root, and model toolchain. `AIQ_REAL_PERMISSION_PROBE_BINARY` must name the
+exact `aiq-runner` executable. Direct network access is the only supported
+first-release path.
 
 ## Safety
 

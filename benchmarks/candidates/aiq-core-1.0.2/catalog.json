@@ -2,15 +2,10 @@
   "schema_version": "aiq.catalog.v1",
   "task_set_id": "aiq-core",
   "task_set_version": "1.0.2",
+  "scoring_version": "1.0.2",
   "title": "AIQ Core Daily Work Benchmark",
-  "status": "candidate_requires_controlled_release_gate",
+  "status": "active",
   "generated_from": "scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts",
-  "predecessor_catalog": {
-    "task_set_version": "1.0.1",
-    "task_identity_digest": "sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc",
-    "digest_scope": "ordered_full_task_metadata",
-    "source_commit": "4700e4c6e5e46ff9b3451d87b8761fb8da8365a0"
-  },
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
@@ -18,10 +13,18 @@
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
+    "release_identity": "aiq-core/1.0.2",
+    "scoring_version": "1.0.2",
+    "task_metadata_identity": {
+      "algorithm": "sha256",
+      "canonicalization": "aiq.sorted-key-json.v1",
+      "digest": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937",
+      "scope": "ordered_full_task_metadata"
+    },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b",
-    "scope": "task_metadata_identity_release_policy_and_predecessor"
+    "digest": "sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6",
+    "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
     "public_repository": "Metadata, schemas, public examples, and synthetic scoring fixtures only.",
@@ -98,68 +101,7 @@
         "hard": 1
       }
     },
-    "difficulty_role": "Difficulty is a provisional, non-ordinal coverage label. It is not an empirical rank, does not set score weight, and must not be interpreted as calibrated until the 1.0.2 controlled release gate passes."
-  },
-  "release_gate_policy": {
-    "policy_version": "aiq.release-gate.v1",
-    "release_identity": "aiq-core/1.0.2",
-    "state": "preregistered_not_evaluated",
-    "evidence_requirement": "new_controlled_hidden_corpus",
-    "trust_root_requirement": "runtime_pinned_out_of_band_digest",
-    "score_bands": {
-      "floor_max": 0.1,
-      "mid_min": 0.2,
-      "mid_max": 0.8,
-      "ceiling_min": 0.9,
-      "invariant_range_max": 0.05
-    },
-    "aggregate_thresholds": {
-      "infrastructure_failures_max": 0,
-      "evaluator_failures_max": 0,
-      "floor_tasks_max": 7,
-      "ceiling_tasks_max": 7,
-      "mid_band_tasks_min": 43,
-      "invariant_tasks_max": 14
-    },
-    "domain_thresholds": {
-      "mid_band_share_min": 0.5,
-      "floor_share_max": 0.3,
-      "ceiling_share_max": 0.3
-    },
-    "paired_contrast_thresholds": {
-      "predeclared_contrasts_min": 3,
-      "directional_difference_aiq_min": 3,
-      "adjusted_lower_bound_must_exclude_zero": true,
-      "adjusted_lower_bound_method": "model_clustered_one_sided_bonferroni_normal_approximation",
-      "familywise_alpha": 0.05,
-      "one_sided_critical_value": 2.128
-    },
-    "predeclared_contrasts": [
-      {
-        "contrast_id": "coupled_constraints",
-        "expected_direction": "reference_higher",
-        "paired_factor": "One controlled pair adds interacting constraints while keeping the core work and scoring scale fixed.",
-        "controlled_pair_requirement": "Bind matched task variants, use the preregistered deterministic counterbalanced arm order, and compute the paired AIQ difference across the fixed model matrix."
-      },
-      {
-        "contrast_id": "ambiguous_recovery_state",
-        "expected_direction": "reference_higher",
-        "paired_factor": "One controlled pair changes a complete checkpoint into an ambiguous but recoverable state.",
-        "controlled_pair_requirement": "Use the preregistered deterministic counterbalanced arm order, keep the intended final state fixed, and score safe state reconciliation separately from core task completion."
-      },
-      {
-        "contrast_id": "plausible_incomplete_evidence",
-        "expected_direction": "reference_higher",
-        "paired_factor": "One controlled pair replaces complete evidence with a plausible but materially incomplete evidence set.",
-        "controlled_pair_requirement": "Use the preregistered deterministic counterbalanced arm order, keep requested claims fixed, and score unsupported inference separately from citation and artifact format."
-      }
-    ],
-    "stability_thresholds": {
-      "complete_repeats_min": 3,
-      "aggregate_sd_aiq_max": 2,
-      "median_cell_range_max": 0.1,
-      "icc_min": 0.75
-    }
+    "difficulty_role": "Difficulty is a non-ordinal coverage label. It is not an empirical rank and does not set score weight."
   },
   "tasks": [
     {

@@ -25,9 +25,8 @@ use crate::schedule::ScheduleConfig;
 use crate::schedule::ScheduleOccurrence;
 use crate::{
 	adapter::{
-		ArtifactSink, CodexAdapter, CodexEgressProxyEndpoint, CodexExecutionConfig, CommandRequest,
-		ExecutionCapture, Executor, ExecutorError, LocalArtifactSink, SandboxPolicy,
-		SystemExecutor,
+		ArtifactSink, CodexAdapter, CodexExecutionConfig, CommandRequest, ExecutionCapture,
+		Executor, ExecutorError, LocalArtifactSink, SandboxPolicy, SystemExecutor,
 	},
 	corpus_commitment::{self, ValidatedModelToolchain},
 	isolation::{self, ProtectedBenchmarkPath},
@@ -72,7 +71,6 @@ struct ControlledSmokeConfig {
 	corpus_commitment: PathBuf,
 	codex_binary: PathBuf,
 	codex_home: PathBuf,
-	codex_egress_proxy: CodexEgressProxyEndpoint,
 	permission_probe_binary: PathBuf,
 	toolchain_root: PathBuf,
 	execution_lock: PathBuf,
@@ -531,36 +529,9 @@ fn cleanup_exact_empty_created_file(
 fn require_chatgpt_subscription(
 	codex_binary: &Path,
 	config: &CodexExecutionConfig,
-	egress_proxy: Option<&CodexEgressProxyEndpoint>,
 ) -> Result<(), String> {
-	let mut environment = config.allowed_environment.clone();
-
-	environment.insert("CODEX_HOME".to_owned(), config.codex_home.display().to_string());
-
-	for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
-	{
-		environment.remove(key);
-
-		if let Some(endpoint) = egress_proxy {
-			environment.insert(key.to_owned(), endpoint.as_str());
-		}
-	}
-
-	environment.remove("NO_PROXY");
-	environment.remove("no_proxy");
-
 	let capture = SystemExecutor
-		.execute(&CommandRequest {
-			program: codex_binary.display().to_string(),
-			args: vec!["login".to_owned(), "status".to_owned()],
-			stdin: Vec::new(),
-			timeout: Duration::from_secs(10),
-			max_capture_bytes: 4_096,
-			max_steps: u32::MAX,
-			max_tool_calls: u32::MAX,
-			clear_environment: true,
-			environment,
-		})
+		.execute(&chatgpt_subscription_request(codex_binary, config))
 		.map_err(|error| format!("cannot probe Codex login: {error}"))?;
 	let stdout = String::from_utf8(capture.stdout)
 		.map_err(|_| "Codex login probe returned invalid stdout".to_owned())?;
@@ -577,6 +548,34 @@ fn require_chatgpt_subscription(
 	}
 
 	Ok(())
+}
+
+fn chatgpt_subscription_request(
+	codex_binary: &Path,
+	config: &CodexExecutionConfig,
+) -> CommandRequest {
+	let mut environment = config.allowed_environment.clone();
+
+	environment.insert("CODEX_HOME".to_owned(), config.codex_home.display().to_string());
+
+	for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
+	{
+		environment.remove(key);
+	}
+
+	environment.remove("NO_PROXY");
+	environment.remove("no_proxy");
+	CommandRequest {
+		program: codex_binary.display().to_string(),
+		args: vec!["login".to_owned(), "status".to_owned()],
+		stdin: Vec::new(),
+		timeout: Duration::from_secs(10),
+		max_capture_bytes: 4_096,
+		max_steps: u32::MAX,
+		max_tool_calls: u32::MAX,
+		clear_environment: true,
+		environment,
+	}
 }
 
 fn create_private_artifact_root(path: PathBuf) -> Result<PathBuf, String> {
@@ -713,12 +712,6 @@ fn controlled_smoke_guard(
 	)?;
 	let codex_binary = executable("AIQ_REAL_CODEX_BINARY")?;
 	let codex_home = directory("AIQ_REAL_CODEX_HOME")?;
-	let codex_egress_proxy = values
-		.get("AIQ_REAL_CODEX_EGRESS_PROXY")
-		.ok_or_else(|| "AIQ_REAL_CODEX_EGRESS_PROXY is required".to_owned())
-		.and_then(|value| {
-			CodexEgressProxyEndpoint::parse(value).map_err(|error| error.to_string())
-		})?;
 	let permission_probe_binary = executable("AIQ_REAL_PERMISSION_PROBE_BINARY")?;
 	let toolchain_root = directory("AIQ_REAL_CODEX_TOOLCHAIN_ROOT")?;
 	let execution_lock = canonical_output(values, "AIQ_SUBSCRIPTION_SMOKE_EXECUTION_LOCK", false)?;
@@ -745,7 +738,6 @@ fn controlled_smoke_guard(
 		corpus_commitment,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		permission_probe_binary,
 		toolchain_root,
 		execution_lock,
@@ -1128,11 +1120,7 @@ fn verify_controlled_smoke_permission_admission(
 	execution_config: &CodexExecutionConfig,
 	artifacts: &LocalArtifactSink,
 ) -> Result<String, String> {
-	require_chatgpt_subscription(
-		&config.codex_binary,
-		execution_config,
-		Some(&config.codex_egress_proxy),
-	)?;
+	require_chatgpt_subscription(&config.codex_binary, execution_config)?;
 
 	let permission_adapter = CodexAdapter::new(
 		SystemExecutor,
@@ -1242,7 +1230,6 @@ fn environment() -> BTreeMap<String, String> {
 		"AIQ_ALLOW_PAID_CONTROLLED_SUBSCRIPTION_SMOKE",
 		"AIQ_REAL_CODEX_BINARY",
 		"AIQ_REAL_CODEX_HOME",
-		"AIQ_REAL_CODEX_EGRESS_PROXY",
 		"AIQ_REAL_PERMISSION_PROBE_BINARY",
 		"AIQ_REAL_CODEX_TOOLCHAIN_ROOT",
 		"AIQ_SUBSCRIPTION_SMOKE_EXECUTION_LOCK",
@@ -1328,10 +1315,23 @@ fn smoke_guards_require_exact_opt_in_and_fixed_model() {
 }
 
 #[test]
-fn controlled_smoke_preserves_sanitized_environment_and_exact_proxy() {
+fn controlled_smoke_direct_egress_strips_inherited_proxy_environment() {
 	let requests = Rc::new(RefCell::new(Vec::new()));
-	let proxy = CodexEgressProxyEndpoint::parse("http://10.20.30.40:8080")
-		.expect("canonical private proxy");
+	let mut execution_config = CodexExecutionConfig::isolated("/controlled/codex-home");
+
+	for (key, value) in [
+		("HTTP_PROXY", "http://203.0.113.1:8080"),
+		("HTTPS_PROXY", "http://203.0.113.2:8080"),
+		("ALL_PROXY", "socks5://203.0.113.3:8080"),
+		("http_proxy", "http://203.0.113.4:8080"),
+		("https_proxy", "http://203.0.113.5:8080"),
+		("all_proxy", "socks5://203.0.113.6:8080"),
+		("NO_PROXY", "*"),
+		("no_proxy", "localhost"),
+	] {
+		execution_config.allowed_environment.insert(key.to_owned(), value.to_owned());
+	}
+
 	let adapter = CodexAdapter::new(
 		RecordingExecutor {
 			requests: Rc::clone(&requests),
@@ -1340,7 +1340,7 @@ fn controlled_smoke_preserves_sanitized_environment_and_exact_proxy() {
 		},
 		TestArtifactSink,
 		"codex",
-		CodexExecutionConfig::isolated("/controlled/codex-home").with_egress_proxy(proxy),
+		execution_config,
 	);
 
 	adapter.probe_version().expect("version probe");
@@ -1348,20 +1348,61 @@ fn controlled_smoke_preserves_sanitized_environment_and_exact_proxy() {
 	let requests = requests.borrow();
 	let request = requests.first().expect("captured version request");
 
-	assert!(request.clear_environment);
-
-	for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]
-	{
-		assert_eq!(
-			request.environment.get(key).map(String::as_str),
-			Some("http://10.20.30.40:8080")
-		);
-	}
-	for forbidden in ["NO_PROXY", "no_proxy", "OPENAI_API_KEY", "CODEX_API_KEY"] {
+	for forbidden in [
+		"HTTP_PROXY",
+		"HTTPS_PROXY",
+		"ALL_PROXY",
+		"http_proxy",
+		"https_proxy",
+		"all_proxy",
+		"NO_PROXY",
+		"no_proxy",
+	] {
 		assert!(!request.environment.contains_key(forbidden));
 	}
 
 	assert_eq!(requests.len(), 1, "the continuity check must not invoke a model");
+}
+
+#[test]
+fn controlled_smoke_login_status_strips_inherited_proxy_environment() {
+	let mut execution_config = CodexExecutionConfig::isolated("/controlled/codex-home");
+
+	for (key, value) in [
+		("HTTP_PROXY", "http://203.0.113.1:8080"),
+		("HTTPS_PROXY", "http://203.0.113.2:8080"),
+		("ALL_PROXY", "socks5://203.0.113.3:8080"),
+		("http_proxy", "http://203.0.113.4:8080"),
+		("https_proxy", "http://203.0.113.5:8080"),
+		("all_proxy", "socks5://203.0.113.6:8080"),
+		("NO_PROXY", "*"),
+		("no_proxy", "localhost"),
+	] {
+		execution_config.allowed_environment.insert(key.to_owned(), value.to_owned());
+	}
+
+	let request = chatgpt_subscription_request(Path::new("/controlled/codex"), &execution_config);
+
+	assert!(request.clear_environment);
+	assert_eq!(request.program, "/controlled/codex");
+	assert_eq!(request.args, ["login", "status"]);
+	assert_eq!(
+		request.environment.get("CODEX_HOME").map(String::as_str),
+		Some("/controlled/codex-home")
+	);
+
+	for forbidden in [
+		"HTTP_PROXY",
+		"HTTPS_PROXY",
+		"ALL_PROXY",
+		"http_proxy",
+		"https_proxy",
+		"all_proxy",
+		"NO_PROXY",
+		"no_proxy",
+	] {
+		assert!(!request.environment.contains_key(forbidden));
+	}
 }
 
 #[test]
@@ -1578,8 +1619,6 @@ fn controlled_smoke_layout_separates_execution_from_every_protected_root() {
 		corpus_commitment,
 		codex_binary: temp.path().join("codex"),
 		codex_home,
-		codex_egress_proxy: CodexEgressProxyEndpoint::parse("http://10.20.30.40:8080")
-			.expect("proxy fixture"),
 		permission_probe_binary: temp.path().join("aiq-runner"),
 		toolchain_root: toolchain_root.clone(),
 		execution_lock: temp.path().join("execution.lock"),
@@ -1774,7 +1813,7 @@ fn real_codex_subscription_smoke_executes_fixed_public_example_once() {
 			.with_denied_roots(vec![repository_root.clone(), config.codex_home.clone()])
 			.with_model_toolchain(toolchain);
 
-		require_chatgpt_subscription(&config.codex_binary, &execution_config, None)?;
+		require_chatgpt_subscription(&config.codex_binary, &execution_config)?;
 
 		let codex_version = CodexAdapter::new(
 			SystemExecutor,
@@ -1858,7 +1897,6 @@ fn real_codex_controlled_subscription_smoke_executes_fixed_hidden_task_once() {
 		LocalDirectoryWorkspaceProvider::new(&config.baseline_root, execution, baseline_digests)
 			.expect("controlled workspace provider");
 	let execution_config = CodexExecutionConfig::isolated(config.codex_home.clone())
-		.with_egress_proxy(config.codex_egress_proxy.clone())
 		.with_denied_roots(denied_roots)
 		.with_permission_probe_executable(config.permission_probe_binary.clone())
 		.with_model_toolchain(corpus.model_toolchain);
