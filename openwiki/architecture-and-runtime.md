@@ -51,10 +51,11 @@ its verifier credential. It never receives the Codex authentication copy.
 
 The native runtime uses canonical non-overlapping paths, a clean source worktree
 at the declared commit, exact executable digests, mode-private writable roots,
-create-new outputs, and macOS atomic file operations. Before each paid command,
-the operator reruns the model-free binding checks. Codex uses the host's direct
-network connection. The first release does not depend on or run Linux or Docker;
-they remain a future deployment target outside first-release acceptance.
+create-new outputs, and macOS atomic file operations. Before paid preflight and
+paid run dispatch, the operator reruns the model-free binding checks. Codex uses
+the host's direct network connection. The first release does not depend on or
+run Linux or Docker; they remain a future deployment target outside
+first-release acceptance.
 
 After model-free validation, the only Official path runs one complete
 `72 × 17` matrix of 1,224 observations, replays it with the native verifier,
