@@ -221,12 +221,8 @@ mod tests {
 		fs::write(
 			&executable,
 			format!(
-				r#"import fs from 'node:fs';
-process.stdin.resume();
+				r#"process.stdin.resume();
 process.stdin.on('end', () => {{
-  if (fs.existsSync('fail-evaluator')) {{
-    process.exit(23);
-  }}
   setTimeout(() => process.stdout.write(process.argv.at(-1)), {delay_ms});
 }});
 "#
@@ -609,10 +605,15 @@ process.stdin.on('end', () => {{
 		fs::create_dir_all(&evaluator_root).expect("evaluator root");
 		fs::create_dir_all(&workspace).expect("candidate workspace");
 
-		let runtime = resolve_node_runtime(&root.join("runtime"));
-		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 1_000);
+		let mut runtime = resolve_node_runtime(&root.join("runtime"));
 
-		fs::write(evaluator_root.join("fail-evaluator"), []).expect("failure marker");
+		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
+
+		// This test verifies permit release, not timeout behavior. Force the existing
+		// execution-error path so host scheduling cannot change the failure class.
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 5_000);
+
+		force_evaluator_thread_spawn_failure_for_test(0);
 
 		let error = evaluate_fixture_with_runtime(
 			&binding,
@@ -624,8 +625,7 @@ process.stdin.on('end', () => {{
 		.expect_err("evaluator process failure must remain visible");
 
 		assert_eq!(error.kind(), EvaluationErrorKind::Execution);
-
-		fs::remove_file(evaluator_root.join("fail-evaluator")).expect("remove failure marker");
+		assert_eq!(*runtime.external_evaluator_gate.active.lock().expect("gate state"), 0);
 
 		evaluate_fixture_with_runtime(
 			&binding,
