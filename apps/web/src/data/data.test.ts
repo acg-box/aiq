@@ -1804,13 +1804,13 @@ void describe('presentation aggregates', () => {
       runtime_digest: template.runtimeDigest,
       run_class: 'official',
       permission_evidence_digest: template.permissionEvidenceDigest,
-      result_count: 2,
+      result_count: 3,
       passed_count: 0,
-      failed_count: 2,
+      failed_count: 3,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
-      observed_count: 2,
+      observed_count: 3,
       coverage_percent: 100,
       covered_domain_count: 1,
       provisional_domain_count: 0,
@@ -1840,25 +1840,38 @@ void describe('presentation aggregates', () => {
       cost_estimator_status: 'unavailable_missing_usage',
       cost_evidence_level: null,
     };
-    const executionFailure: RunResultRow = {
+    const timeout: RunResultRow = {
       ...evaluatorIncorrect,
-      id: 'result-execution-failure',
-      task: 'Execution-failure result',
-      explanation_code: 'adapter_execution_failure',
-      explanation_summary: 'The adapter process exited before it returned a response.',
+      id: 'result-timeout',
+      task: 'Timed-out result',
+      explanation_code: 'timeout',
+      explanation_summary: 'The task exceeded its time limit.',
       retryable: true,
     };
+    const budgetExceeded: RunResultRow = {
+      ...evaluatorIncorrect,
+      id: 'result-budget-exceeded',
+      task: 'Budget-exhausted result',
+      explanation_code: 'budget_exceeded',
+      explanation_summary: 'The task exceeded a resource budget.',
+      retryable: false,
+    };
 
-    const tasks = mapRunRow(row, [evaluatorIncorrect, executionFailure]).tasks;
+    const tasks = mapRunRow(row, [evaluatorIncorrect, timeout, budgetExceeded]).tasks;
     assert.deepEqual(tasks[0]?.explanation, {
       code: null,
       summary: 'The evaluator rejected the response.',
       retryable: null,
     });
     assert.deepEqual(tasks[1]?.explanation, {
-      code: 'adapter_execution_failure',
-      summary: 'The adapter process exited before it returned a response.',
+      code: 'timeout',
+      summary: 'The task exceeded its time limit.',
       retryable: true,
+    });
+    assert.deepEqual(tasks[2]?.explanation, {
+      code: 'budget_exceeded',
+      summary: 'The task exceeded a resource budget.',
+      retryable: false,
     });
   });
 
