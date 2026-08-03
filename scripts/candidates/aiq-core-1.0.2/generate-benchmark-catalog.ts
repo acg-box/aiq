@@ -3,6 +3,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Canonical generator for the active AIQ Core 1.0.2 source state. References
+// to 1.0.1 below are immutable predecessor and supersession history.
+
 export const DOMAINS = [
   'coding',
   'debugging',

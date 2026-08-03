@@ -323,7 +323,7 @@ const resultId = (value: number) => `result_${hex(value)}`;
 const nodeId = `node_${'a'.repeat(64)}`;
 const publicKey = 'b'.repeat(64);
 const syntheticSourceNodeId = 'node_synthetic_demo';
-const catalogDigest = 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+const catalogDigest = 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
 
 const matrix = [
   ['sol', 'low'],
@@ -363,7 +363,7 @@ const domainCounts = [8, 8, 7, 8, 7, 7, 7, 7, 6, 7] as const;
 function score(model: { family: string; reasoning_effort: string }): JsonObject {
   return {
     schema_version: 'aiq.score-report.v1',
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     model,
     tier: 'synthetic_complete',
     official_aiq: null,
@@ -425,10 +425,10 @@ function normalizedResult(
     matrix_batch_id: runId(1),
     run_id: runId(modelIndex + 2),
     task_id: `task-${String(taskIndex + 1).padStart(2, '0')}`,
-    task_version: '1.0.1',
+    task_version: '1.0.2',
     task_hash: sha256(taskIndex + 1),
     domain: domains[taskIndex % domains.length],
-    scorer_version: '1.0.0',
+    scorer_version: '1.0.2',
     model,
     source_status: 'completed',
     source_evaluation: 'correct',
@@ -544,14 +544,14 @@ function normalizedBatch(): JsonObject {
     content_hash: sha256(2),
     signer: { node_id: nodeId, public_key: publicKey },
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.1',
+    task_set_version: '1.0.2',
     task_set_hash: sha256(3),
     capability_validation_digest: null,
     provenance: null,
     run_class: null,
-    benchmark_version: 'aiq-core@1.0.1',
+    benchmark_version: 'aiq-core@1.0.2',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     runner_commit: 'd'.repeat(40),
     region: 'local-test',
     scheduled_unix_ms: 0,
@@ -678,9 +678,9 @@ function attestation(): JsonObject {
     task_set_hash: sha256(3),
     capability_validation_digest: null,
     provenance: null,
-    benchmark_version: 'aiq-core@1.0.1',
+    benchmark_version: 'aiq-core@1.0.2',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     verifier: { node_id: nodeId, public_key: publicKey },
     observed_unix_ms: 3,
     replay_status: 'commitments_verified',
@@ -907,13 +907,118 @@ await test('the current corpus commitment has one direct state', async () => {
       requireObjectProperty(requireObjectProperty(properties, 'catalog'), 'properties'),
       'task_set_version',
     ).const,
-    '1.0.1',
+    '1.0.2',
   );
   strictEqual(schema.additionalProperties, false);
 
   for (const retiredField of ['release_status', 'lineage', 'review']) {
     strictEqual(retiredField in properties, false);
   }
+});
+
+await test('public wire schemas bind only the active AIQ Core 1.0.2 release', async () => {
+  const schemas = await Promise.all(
+    [
+      'benchmarks/schema/result-package-v3.schema.json',
+      'benchmarks/schema/normalized-batch-v3.schema.json',
+      'benchmarks/schema/verifier-attestation-v3.schema.json',
+      'benchmarks/schema/corpus-commitment-v2.schema.json',
+    ].map(parseSchema),
+  );
+  const resultPackage = requireObjectAt(schemas, 0, 'release schemas');
+  const normalizedBatchSchema = requireObjectAt(schemas, 1, 'release schemas');
+  const attestationSchema = requireObjectAt(schemas, 2, 'release schemas');
+  const corpusCommitment = requireObjectAt(schemas, 3, 'release schemas');
+
+  const resultPayload = requireObjectProperty(
+    requireObjectProperty(resultPackage, 'properties'),
+    'payload',
+  );
+  const resultPayloadProperties = requireObjectProperty(resultPayload, 'properties');
+  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.2');
+  const resultDefinitions = requireObjectProperty(resultPackage, '$defs');
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(requireObjectProperty(resultDefinitions, 'taskResult'), 'properties'),
+      'task_version',
+    ).const,
+    '1.0.2',
+  );
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(
+        requireObjectProperty(resultDefinitions, 'runProvenance'),
+        'properties',
+      ),
+      'catalog_digest',
+    ).const,
+    catalogDigest,
+  );
+
+  const normalizedProperties = requireObjectProperty(normalizedBatchSchema, 'properties');
+  strictEqual(requireObjectProperty(normalizedProperties, 'task_set_id').const, 'aiq-core');
+  strictEqual(requireObjectProperty(normalizedProperties, 'task_set_version').const, '1.0.2');
+  strictEqual(
+    requireObjectProperty(normalizedProperties, 'benchmark_version').const,
+    'aiq-core@1.0.2',
+  );
+  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.2');
+  const normalizedDefinitions = requireObjectProperty(normalizedBatchSchema, '$defs');
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(
+        requireObjectProperty(normalizedDefinitions, 'normalizedTaskResult'),
+        'properties',
+      ),
+      'task_version',
+    ).const,
+    '1.0.2',
+  );
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(
+        requireObjectProperty(normalizedDefinitions, 'normalizedTaskResult'),
+        'properties',
+      ),
+      'scorer_version',
+    ).const,
+    '1.0.2',
+  );
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(
+        requireObjectProperty(normalizedDefinitions, 'scoreReport'),
+        'properties',
+      ),
+      'scoring_version',
+    ).const,
+    '1.0.2',
+  );
+
+  const attestationProperties = requireObjectProperty(attestationSchema, 'properties');
+  strictEqual(
+    requireObjectProperty(attestationProperties, 'benchmark_version').const,
+    'aiq-core@1.0.2',
+  );
+  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.2');
+
+  const corpusProperties = requireObjectProperty(corpusCommitment, 'properties');
+  const corpusCatalogProperties = requireObjectProperty(
+    requireObjectProperty(corpusProperties, 'catalog'),
+    'properties',
+  );
+  strictEqual(
+    requireObjectProperty(corpusCatalogProperties, 'identity_sha256').const,
+    catalogDigest,
+  );
+  const corpusDefinitions = requireObjectProperty(corpusCommitment, '$defs');
+  strictEqual(
+    requireObjectProperty(
+      requireObjectProperty(requireObjectProperty(corpusDefinitions, 'task'), 'properties'),
+      'task_version',
+    ).const,
+    '1.0.2',
+  );
 });
 
 await test('normalized and attestation provenance conditionals enforce the full policy', async () => {
@@ -1728,6 +1833,17 @@ await test('normalized aggregate and pricing evidence retain their fixed contrac
 await test('calibration stage pricing and context-band evidence mirror the normalized contract', async () => {
   const schema = await parseSchema('benchmarks/schema/calibration-verified-stage-v1.schema.json');
   const pricingSchema = resolveReference(schema, '#/$defs/pricing');
+  const properties = requireObjectProperty(schema, 'properties');
+
+  for (const [field, expected, changed] of [
+    ['task_set_id', 'aiq-core', 'other'],
+    ['task_set_version', '1.0.2', '1.0.1'],
+    ['benchmark_version', 'aiq-core@1.0.2', 'aiq-core@1.0.1'],
+  ] as const) {
+    const fieldSchema = requireObject(properties[field], `${field} schema`);
+    strictEqual(matchesSchema(expected, fieldSchema, schema), true, `${field} current value`);
+    strictEqual(matchesSchema(changed, fieldSchema, schema), false, `${field} stale value`);
+  }
 
   strictEqual(matchesSchema(pricing(), pricingSchema, schema), true);
 
@@ -1820,8 +1936,8 @@ await test('verifier environment example binds the current public task release',
   );
 
   strictEqual(environment.task_set_id, 'aiq-core');
-  strictEqual(environment.task_set_version, '1.0.1');
-  strictEqual(environment.benchmark_version, 'aiq-core@1.0.1');
+  strictEqual(environment.task_set_version, '1.0.2');
+  strictEqual(environment.benchmark_version, 'aiq-core@1.0.2');
   strictEqual(
     requireObjectProperty(environment, 'expected_provenance').catalog_digest,
     catalogDigest,

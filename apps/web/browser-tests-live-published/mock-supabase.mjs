@@ -58,7 +58,7 @@ const leaderboard = matrix.map((entry, index) => {
     coverage_percent: 100,
     failures: 0,
     missing: 0,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     score_status: 'official',
     synthetic: false,
   };
@@ -70,15 +70,15 @@ const runRows = matrix.map((entry, index) => ({
   matrix_id: entry.id,
   started_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:00:00.000Z`,
   completed_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:27:00.000Z`,
-  benchmark_version: 'aiq-core@1.0.1',
-  scoring_version: '1.0.0',
+  benchmark_version: 'aiq-core@1.0.2',
+  scoring_version: '1.0.2',
   prompt_set_digest: `sha256:${'2'.repeat(64)}`,
   runner_commit: '7a0c4d1',
   region: 'us-east-1',
   synthetic: false,
   corpus_release_id: 'corpus_2026.07.29',
   corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
-  catalog_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
+  catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
   task_set_digest: `sha256:${'5'.repeat(64)}`,
   preflight_digest: `sha256:${'6'.repeat(64)}`,
   runtime_digest: `sha256:${'7'.repeat(64)}`,
@@ -129,7 +129,7 @@ const pricingRates = [
 const calibrationRun = {
   run_id: calibrationRunId,
   classification: 'local_calibration_non_official',
-  scoring_version: '1.0.0',
+  scoring_version: '1.0.2',
   selected_task_count: 72,
   selected_model_count: 17,
   result_count: 1_224,
@@ -243,7 +243,7 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
       run_id: calibrationRunId,
       task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
-      task_version: '1.0.1',
+      task_version: '1.0.2',
       domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
@@ -392,8 +392,8 @@ for (const run of runRows) {
 }
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.1',
-  scoring_version: '1.0.0',
+  benchmark_version: 'aiq-core@1.0.2',
+  scoring_version: '1.0.2',
   published_at: '2026-07-29T16:00:00.000Z',
   principles: [
     'Estimate performance on the committed AIQ v1 fixed-fixture set.',
@@ -409,7 +409,7 @@ const scoringVersion = {
 };
 
 const taskCoverage = domainCounts.map(([domain, task_count]) => ({
-  scoring_version: '1.0.0',
+  scoring_version: '1.0.2',
   domain,
   weight: 0.1,
   task_count,

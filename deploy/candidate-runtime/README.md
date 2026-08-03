@@ -3,7 +3,7 @@
 This bundle is separate from `deploy/official-runtime`. It runs the fixed,
 non-Official release-gate calibration on one local Linux arm64 Docker Engine.
 It never converts candidate evidence into an Official result. AIQ Core `1.0.1`
-remains current; AIQ Core `1.0.2` is preregistered and not promoted. No real
+remains deployed in hosted production; AIQ Core `1.0.2` is preregistered and not promoted. No real
 candidate run has started, and no subscription limit has been observed.
 
 The three-repeat plan contains 3,672 core observations (`72 × 17 × 3`) and 306

@@ -62,7 +62,7 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden, self.compose)
         self.assertEqual(self.compose.count("container_name:"), 4)
-        self.assertEqual(self.compose.count("read_only: true"), 25)
+        self.assertEqual(self.compose.count("read_only: true"), 27)
 
     def test_exact_mount_policy_is_declared(self) -> None:
         for variable, (target, read_only) in RUNTIME.MOUNTS.items():
@@ -140,6 +140,58 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
         self.assertIn("--endpoint https://aiq.wiki", wrapper)
         self.assertIn('>"$record"', wrapper)
 
+    def test_runner_wrapper_reads_only_the_secret_needed_by_each_command(self) -> None:
+        wrapper = (ROOT / "runner-entrypoint.sh").read_text()
+        package = wrapper.split("    package)\n", 1)[1].split("      ;;", 1)[0]
+        submit = wrapper.split("    submit)\n", 1)[1].split("      ;;", 1)[0]
+        self.assertIn('AIQ_RUNNER_SIGNING_KEY="$(read_signing_key)"', package)
+        self.assertNotIn("submission_token_file", package)
+        self.assertIn('AIQ_RUNNER_SUBMISSION_TOKEN="$(read_submission_token)"', submit)
+        self.assertNotIn("signing_key_file", submit)
+        self.assertIn("--endpoint https://aiq.wiki", submit)
+        self.assertIn("reject_option --allow-loopback-http", submit)
+        self.assertIn("--workspace-root /inputs/baselines", wrapper)
+        self.assertNotIn("set -x", wrapper)
+
+    def test_runner_wrapper_enforces_the_official_command_shape(self) -> None:
+        wrapper = (ROOT / "runner-entrypoint.sh").read_text()
+        preflight = wrapper.split("    preflight)\n", 1)[1].split("      ;;", 1)[0]
+        run_branch = wrapper.split("    admit-permissions|run)\n", 1)[1].split("      ;;", 1)[0]
+        score = wrapper.split("    score)\n", 1)[1].split("      ;;", 1)[0]
+        package = wrapper.split("    package)\n", 1)[1].split("      ;;", 1)[0]
+        for branch in (preflight, run_branch, score, package):
+            self.assertIn("require_option --official-admission", branch)
+        self.assertIn("--public-tasks --hidden-tasks", run_branch)
+        self.assertIn("--run-class --task --model", run_branch)
+        self.assertIn("set -- --run-class official", run_branch)
+        self.assertIn("--public-tasks --hidden-tasks --bootstrap-samples --bootstrap-seed", score)
+        readme = (ROOT / "README.md").read_text()
+        self.assertNotIn("--observed-at RFC3339", readme)
+        self.assertEqual(readme.count("--observed-at 'unix-ms:<milliseconds>'"), 2)
+        self.assertNotIn("--run-class official", readme)
+
+    def test_runner_wrapper_bounds_secret_content_before_reading_it(self) -> None:
+        wrapper = (ROOT / "runner-entrypoint.sh").read_text()
+        signing = wrapper.split("read_signing_key() {\n", 1)[1].split("\n}\n", 1)[0]
+        token = wrapper.split("read_submission_token() {\n", 1)[1].split("\n}\n", 1)[0]
+        self.assertLess(signing.index("stat -c '%s'"), signing.index('cat "$signing_key_file"'))
+        self.assertIn("64|65", signing)
+        self.assertIn("^[0-9a-f]{64}$", signing)
+        self.assertLess(token.index("stat -c '%s'"), token.index('cat "$submission_token_file"'))
+        self.assertIn('-gt 4096', token)
+        self.assertIn("^[!-~]+$", token)
+
+    def test_runner_manager_has_exact_allowlisted_command_path(self) -> None:
+        self.assertEqual(
+            RUNTIME.RUNNER_COMMANDS,
+            {"admit-permissions", "preflight", "run", "score", "package", "submit"},
+        )
+        source = (ROOT / "runtime.py").read_text()
+        command_body = source.split("def runner_command(", 1)[1].split("\n\ndef down", 1)[0]
+        self.assertIn('require_current_evidence(evidence, runtime_binding(', command_body)
+        self.assertIn('"/usr/local/bin/aiq-runtime-entrypoint"', command_body)
+        self.assertNotIn('"--env"', command_body)
+
     def test_frozen_tree_digest_is_deterministic_and_content_sensitive(self) -> None:
         with private_temp() as directory:
             tree = directory / "tree"
@@ -188,6 +240,38 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
         }
         self.assertEqual(RUNTIME.receipt_content(content)["secrets"]["verifier_token"], metadata)
         self.assertEqual(RUNTIME.receipt_content(content)["mountpoints"]["codex_auth"], mountpoint)
+
+    def test_runner_secrets_are_runner_owned_read_only_mounts(self) -> None:
+        self.assertEqual(RUNTIME.SECRETS["runner_signing_key"], ("AIQ_RUNNER_SIGNING_KEY_FILE", 10001))
+        self.assertEqual(
+            RUNTIME.SECRETS["runner_submission_token"],
+            ("AIQ_RUNNER_SUBMISSION_TOKEN_FILE", 10001),
+        )
+        self.assertEqual(
+            RUNTIME.RUNNER_MOUNTS["AIQ_RUNNER_SIGNING_KEY_FILE"],
+            ("/run/secrets/runner-signing-key", True),
+        )
+        self.assertEqual(
+            RUNTIME.RUNNER_MOUNTS["AIQ_RUNNER_SUBMISSION_TOKEN_FILE"],
+            ("/run/secrets/runner-submission-token", True),
+        )
+
+    def test_operator_config_rejects_missing_or_extra_path_keys(self) -> None:
+        valid = {
+            "source_commit": "a" * 40,
+            "read_only": {name: f"/{name}" for name in set(RUNTIME.READ_ONLY) | set(RUNTIME.SECRETS)},
+            "writable": {name: f"/{name}" for name in RUNTIME.WRITABLE},
+        }
+        read_only, writable = RUNTIME.validate_config_shape(valid)
+        self.assertEqual(set(read_only), set(RUNTIME.READ_ONLY) | set(RUNTIME.SECRETS))
+        self.assertEqual(set(writable), set(RUNTIME.WRITABLE))
+        for changed in (
+            {**valid, "runner_signing_key": "secret"},
+            {**valid, "read_only": {**valid["read_only"], "inline_secret": "secret"}},
+            {**valid, "writable": {key: value for key, value in valid["writable"].items() if key != "results"}},
+        ):
+            with self.assertRaises(SystemExit):
+                RUNTIME.validate_config_shape(changed)
 
     def test_codex_auth_mountpoint_is_empty_private_and_owned_by_runner(self) -> None:
         valid = os.stat_result((stat.S_IFREG | 0o600, 1, 1, 1, 10001, 10001, 0, 0, 0, 0))

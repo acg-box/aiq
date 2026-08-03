@@ -31,6 +31,7 @@ mod tests {
 			WorkspaceManifest, WorkspaceManifestEntry, WorkspaceSnapshot, WorkspaceSnapshotEntry,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
+		scoring::AIQ_SCORING_VERSION,
 		task::{
 			EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationResult, EvaluatorCheck,
 			EvaluatorCheckFailureClass, EvaluatorOutcome, TaskDefinition,
@@ -198,7 +199,7 @@ mod tests {
 					.slot("2026-07-25", ScheduleOccurrence::Day)
 					.expect("slot"),
 				task_set_hash: format!("sha256:{}", "4".repeat(64)),
-				scoring_version: "1.0.0".to_owned(),
+				scoring_version: AIQ_SCORING_VERSION.to_owned(),
 				execution_concurrency: Some(1),
 				models: vec![model],
 				started_unix_ms: 1,

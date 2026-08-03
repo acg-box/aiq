@@ -68,7 +68,7 @@ const fixtureRunId = `run_${sha256Hex(
     slot: scheduleSlot,
     task_set_hash: taskSetHash,
     models: [...models],
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
   }),
 )}`;
 
@@ -80,7 +80,7 @@ function syntheticResults(): Record<string, unknown>[] {
         result_id: '',
         run_id: fixtureRunId,
         task_id: `task-${taskIndex}`,
-        task_version: '1.0.1',
+        task_version: '1.0.2',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'failed',
@@ -185,7 +185,7 @@ function productionProvenance(
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
-    catalog_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
+    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
     task_set_digest: digest('3'),
     evaluator_digest: digest('4'),
     runtime_digest: digest('5'),
@@ -217,7 +217,7 @@ function officialPackage(): Record<string, unknown> {
       task_set_hash: taskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
     }),
   )}`;
   const results = Array.from({ length: 72 }, (_, taskIndex) =>
@@ -228,7 +228,7 @@ function officialPackage(): Record<string, unknown> {
         result_id: '',
         run_id: runId,
         task_id: `task-${taskIndex}`,
-        task_version: '1.0.1',
+        task_version: '1.0.2',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'completed',
@@ -294,7 +294,7 @@ function calibrationPackage(): Record<string, unknown> {
       task_set_hash: selectedTaskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models: [selectedModel],
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
     }),
   )}`;
   const result = structuredClone((officialPayload.results as Record<string, unknown>[])[0]);
@@ -309,7 +309,7 @@ function calibrationPackage(): Record<string, unknown> {
     run_id: runId,
     schedule_slot: scheduleSlot,
     task_set_hash: selectedTaskSetHash,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     execution_concurrency: 17,
     models: [selectedModel],
     task_ids: ['task-0'],
@@ -349,7 +349,7 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       task_set_hash: taskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
     }),
   )}`;
   const taskMajorResults = structuredClone(officialPayload.results as Record<string, unknown>[]);
@@ -379,7 +379,7 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       run_id: runId,
       schedule_slot: scheduleSlot,
       task_set_hash: taskSetHash,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
       execution_concurrency: 17,
       models,
       task_ids: Array.from({ length: 72 }, (_, index) => `task-${index}`),
@@ -413,7 +413,7 @@ function signedPackage(
       ...scheduleSlot,
     },
     task_set_hash: taskSetHash,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     execution_concurrency: synthetic ? 1 : 17,
     started_unix_ms: 1,
     finished_unix_ms: 2,

@@ -153,6 +153,7 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(2);
+  await expect(page.getByText('v1.0.2', { exact: true })).toBeVisible();
   await expect(
     page.getByText('0 attempted · 0 adapter-invoked · 0 elapsed-observed'),
   ).toBeVisible();
