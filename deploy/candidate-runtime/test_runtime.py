@@ -119,7 +119,7 @@ class CandidateRuntimeTests(unittest.TestCase):
             runtime.env_payload({"AIQ_VALUE": "unsafe\nvalue"})
 
     def test_invalid_admission_does_not_touch_other_operator_inputs(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(prefix=".candidate-runtime-test-", dir=ROOT) as directory:
             root = Path(directory).resolve()
             admission = root / "admission.json"
             policy = root / "policy.json"
