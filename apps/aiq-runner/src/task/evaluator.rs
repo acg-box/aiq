@@ -747,8 +747,14 @@ process.stdin.on('end', () => {{
 	#[test]
 	fn checked_observation_returns_the_independent_raw_stdout_digest() {
 		let stdout = result_json(true);
+		let mut binding = echo_binding(&stdout);
+
+		// This test verifies the independent digest, not the timeout path. Give the
+		// two deterministic Node.js replay passes enough headroom on loaded CI hosts.
+		binding.timeout_ms = 5_000;
+
 		let observation = evaluate_observation_fixture(
-			&echo_binding(&stdout),
+			&binding,
 			"candidate output",
 			&fixture_registry(),
 			&env::temp_dir(),
