@@ -21,28 +21,28 @@ This public-safe state was verified on 2026-08-02:
 | Domain and DNS | Vercel has only `aiq.wiki` for Production and `www.aiq.wiki` as a `308` redirect to the apex; both domains report `configured_correctly` |
 | Cloudflare | Zone `aiq.wiki` in account `Cloudflare@acg.box` has exactly two DNS-only CNAMEs, `@` and `www`, both targeting `87af8e493f03b965.vercel-dns-017.com` |
 | Web configuration | The production environment-name set in [Vercel setup](#vercel-setup) is configured; secret values remain outside Git |
-| Database | Personal Supabase organization `ACG Box`, project `aiq`, reference `xxnszykaeapolqdnhalx`; one-shot production schema and reference initialization completed |
-| Reference state | 17 model configurations, three production nodes, and no published runs |
+| Database | Personal Supabase organization `ACG Box`, project `aiq`, reference `xxnszykaeapolqdnhalx`; the earlier AIQ Core `1.0.1` foundation is initialized, and the source-head greenfield reset is still pending |
+| Reference state | AIQ Core `1.0.1`; 17 model configurations, three production nodes, and no published or other genuine run data |
 | Storage | Private buckets `private-packages` and `private-artifacts` exist |
 | Runtime | `https://aiq.wiki/` returns `200`; `/api/readiness` returns `200` with `bounded_dependency_probe_passed`, `scope_ready: true`, and production mode |
 
 `https://www.aiq.wiki` preserves the request path and returns a `308` redirect
-to the apex domain. The removed Vercel project domain
-`aiq-acgbox.vercel.app` returns `404 DEPLOYMENT_NOT_FOUND` and is not a public
-origin.
+to the apex domain.
 
 No benchmark or Storage schedule and no cloud runner or verifier worker exist.
-A full real run has not been published. Official dispatch is blocked by the
-managed-policy gate: `Official runs require an exclusive managed aiq_benchmark
-allowlist and managed default; no model was invoked`. Current run work is
-calibration-only; calibration evidence is non-Official and cannot satisfy the
-Official publication gate. These facts do not establish final release
-acceptance.
+A real Official or candidate calibration run has not started. No subscription
+limit has been observed. Official dispatch is blocked by the managed-policy
+gate: `Official runs require an exclusive managed aiq_benchmark allowlist and
+managed default; no model was invoked`. Current run work is preparation only;
+calibration evidence is non-Official and cannot satisfy the Official publication
+gate. AIQ Core `1.0.2` is preregistered but not promoted or current. These facts
+do not establish final release acceptance.
 
 ## Release topology
 
-AIQ Wiki uses one production environment for its first greenfield release. No
-staging environment, database upgrade path, or compatibility state is required.
+AIQ Wiki uses one production environment for its first greenfield release. The
+database has one desired state and no migrations, upgrade path, or compatibility
+state.
 This repository does not define an automatic production trigger. The deployment
 owner must approve one exact source commit and bind every deployed surface to
 that commit before production traffic starts.
@@ -60,47 +60,40 @@ Record these release identities in the deployment evidence:
 The publisher is a distinct identity used through the gateway. It is not a
 separate deployable. Distributed remote nodes are not part of the first launch.
 
-## Personal free-tier preview
+## AIQ Core 1.0.2 candidate handoff
 
-The approved first review uses only the personal Vercel Hobby scope/account
-`acgbox` and the personal Supabase Free organization `ACG Box`. Do not select,
-import into, or bill a company team. Use the project name `aiq` in both Vercel
-and Supabase.
+The candidate release gate is not part of the current AIQ Core `1.0.1`
+production state. Its local Linux arm64 runtime can be provisioned on Apple
+Silicon through OrbStack. Provisioning the Docker context, host paths,
+ownership, ACLs, immutable flags, containers, or receipts does not deploy the
+runtime, start a real run, or promote the candidate.
 
-This preview is disposable and read-only. It needs no Storage bucket, runner,
-verifier, publisher, schedule, custom domain, DNS change, WAF, or server secret.
-Create a new empty Supabase project and run:
+The fixed three-repeat calibration contains 3,672 core and 306 contrast
+observations, for 3,978 total. It is separate from the Official `72 × 17` run of
+1,224 observations. The isolated assembler embeds exact public schemas, and
+promotion receipt validation requires `issued_at >= evidence.collected_at`.
+Gate artifacts do not publish efficiency evidence: signed unit artifacts retain
+measured latency and available provider-token counters, while the public
+aggregate gate source, evidence, and result artifacts omit those fields.
+Official or calibration publication owns the coverage-qualified aggregates and
+Standard API-equivalent estimate. Follow the canonical
+`deploy/candidate-runtime/README.md`; record actual evidence only after each
+command succeeds.
 
-```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
-cargo make init-preview-database
-```
+## Personal free-tier launch
 
-The command applies the one declarative schema and synthetic validation data in
-one transaction. It rejects reuse and leaves the Official publication views
-empty. Configure the Vercel project from the repository root with only:
+The first launch uses only the personal Vercel Hobby scope/account `acgbox` and
+the personal Supabase Free organization `ACG Box`. Do not select, import into,
+or bill a company team. Both project names are exactly `aiq`; there is no
+parallel review project or deployment profile. Measure actual usage after the
+first real publication and upgrade only if the free tiers are insufficient.
 
-```text
-AIQ_DEPLOYMENT_PROFILE=preview
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-```
-
-The explicit preview Web profile reads one bounded Supabase status view through
-anon RLS. The view returns one row only when the canonical preview matrix,
-cardinalities, scoring definition, synthetic boundary, and empty publication
-surface are valid; any production or unexpected evidence returns no row. The
-Web application then serves the checked-in synthetic fixtures. The global
-banner, synthetic labels, and `noindex` metadata prevent a production claim.
-Confirm every public page, all 17 configurations, one 72-task run, all
-trend ranges, method, radar, mobile layout, and accessibility. A `503` from
-`/api/readiness` is expected because the production write and verifier gateways
-are intentionally absent.
-
-Free-tier review is a product and read-path test, not a production benchmark
-run. Record Vercel and Supabase usage after the review window. Upgrade only if
-measured limits require it. Delete or retain the disposable projects by an
-explicit owner decision, but never convert this database into production.
+The current hosted database still represents the earlier AIQ Core `1.0.1`
+foundation. Repository head removes the obsolete auxiliary surface and requires
+exactly 12 public security-invoker views. Because the project has no migration
+or compatibility path, perform the one authorized greenfield reset and run
+`databases/init.ts` only after source freeze and before publishing real `1.0.2`
+data. Until that succeeds, do not claim that the hosted database matches head.
 
 ## Required and remaining external inputs
 

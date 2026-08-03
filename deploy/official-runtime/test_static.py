@@ -53,7 +53,7 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
             "name: aiq-official-verifier-internal",
             "internal: true",
             "ipv4_address: 172.30.0.2",
-            "ipv4_address: 172.32.0.2",
+            "ipv4_address: 10.248.32.2",
         ):
             self.assertIn(required, self.compose)
         for forbidden in (
@@ -105,6 +105,8 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
         for name in ("tinyproxy.conf", "tinyproxy-verifier.conf"):
             config = (ROOT / name).read_text()
             self.assertIn("ConnectPort 443", config)
+            self.assertIn("MaxClients 128", config)
+            self.assertNotIn("MaxClients 20", config)
             self.assertIn("FilterDefaultDeny Yes", config)
             self.assertNotIn("BasicAuth", config)
 
@@ -119,6 +121,15 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
         self.assertNotIn("--fail", denial_function)
         self.assertIn("--write-out '%{http_connect}'", denial_function)
         self.assertIn('[ "$connect_status" != 403 ]', denial_function)
+
+    def test_runner_canary_proves_proxy_capacity_before_default_deny(self) -> None:
+        canary = (ROOT / "runtime-canary.sh").read_text()
+        capacity = canary.index("probe_proxy_capacity")
+        denial = canary.index("proxy allowed a host outside its filter")
+        self.assertLess(capacity, denial)
+        self.assertIn("connections=64", canary)
+        self.assertIn("--limit-rate 128", canary)
+        self.assertIn("proxy_capacity_checked=64", canary)
 
     def test_verifier_wrapper_reads_secret_files_only_for_worker(self) -> None:
         wrapper = (ROOT / "verifier-entrypoint.sh").read_text()
@@ -188,6 +199,28 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
         with self.assertRaises(SystemExit), mock.patch.object(Path, "lstat", return_value=nonempty):
             RUNTIME.validate_empty_mountpoint(Path("/codex-home/auth.json"), "test", 10001)
 
+    def test_darwin_codex_auth_requires_owner_immutable_flag(self) -> None:
+        immutable = getattr(RUNTIME.stat, "UF_IMMUTABLE", 2)
+        path = Path("/protected/auth.json")
+        with (
+            mock.patch.object(RUNTIME.sys, "platform", "darwin"),
+            mock.patch.object(Path, "stat", return_value=mock.Mock(st_flags=0)),
+            self.assertRaisesRegex(SystemExit, "owner-immutable"),
+        ):
+            RUNTIME.require_darwin_immutable(path, "read_only.codex_auth")
+        with (
+            mock.patch.object(RUNTIME.sys, "platform", "darwin"),
+            mock.patch.object(Path, "stat", return_value=mock.Mock(st_flags=immutable)),
+        ):
+            RUNTIME.require_darwin_immutable(path, "read_only.codex_auth")
+
+    def test_runtime_manager_uses_exact_linux_aarch64_binary_policy(self) -> None:
+        source = (ROOT / "runtime.py").read_text()
+        self.assertIn('name in {"codex_binary", "runner_binary", "verifier_binary"}', source)
+        self.assertIn('allow_static=name == "codex_binary"', source)
+        self.assertIn('require_pie=name != "codex_binary"', source)
+        self.assertIn('service_uid=10003 if name == "verifier_binary" else 10001', source)
+
     def test_private_atomic_write_rejects_symlink(self) -> None:
         with private_temp() as directory:
             target = directory / "target"
@@ -250,8 +283,8 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
             "runner": {"aiq-official-runner-internal": {"IPAddress": "172.30.0.3"}},
             "runner_proxy": {"aiq-official-runner-internal": {"IPAddress": "172.30.0.2"},
                              "aiq-official-runner-proxy-egress": {"IPAddress": "172.31.0.2"}},
-            "verifier": {"aiq-official-verifier-internal": {"IPAddress": "172.32.0.3"}},
-            "verifier_proxy": {"aiq-official-verifier-internal": {"IPAddress": "172.32.0.2"},
+            "verifier": {"aiq-official-verifier-internal": {"IPAddress": "10.248.32.3"}},
+            "verifier_proxy": {"aiq-official-verifier-internal": {"IPAddress": "10.248.32.2"},
                                "aiq-official-verifier-proxy-egress": {"IPAddress": "172.33.0.2"}},
         }
         env = {variable: f"/controlled/{index}" for index, variable in enumerate(RUNTIME.MOUNTS)}

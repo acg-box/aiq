@@ -51,6 +51,32 @@ curl \
   --output /dev/null \
   https://example.com/
 
+probe_proxy_capacity() {
+  connections=64
+  index=0
+  pids=''
+  failures=0
+  while [ "$index" -lt "$connections" ]; do
+    curl \
+      --proxy http://172.30.0.2:3128 \
+      --silent \
+      --show-error \
+      --fail \
+      --connect-timeout 5 \
+      --max-time 15 \
+      --limit-rate 128 \
+      --output /dev/null \
+      https://example.com/ &
+    pids="$pids $!"
+    index=$((index + 1))
+  done
+  for pid in $pids; do
+    if ! wait "$pid"; then failures=$((failures + 1)); fi
+  done
+  test "$failures" -eq 0
+}
+probe_proxy_capacity
+
 if curl \
   --proxy http://172.30.0.2:3128 \
   --silent \
@@ -64,4 +90,4 @@ if curl \
   exit 1
 fi
 
-echo 'model_invoked=false linux_arm64=true seccomp=true bubblewrap=true direct_egress=false proxy_https=true proxy_default_deny=true'
+echo 'model_invoked=false linux_arm64=true seccomp=true bubblewrap=true direct_egress=false proxy_https=true proxy_capacity_checked=64 proxy_default_deny=true'

@@ -11,10 +11,14 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tomllib
 from typing import Never
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT.parent))
+from runtime_binary import validate_linux_aarch64_elf
+
 COMPOSE = ROOT / "compose.yaml"
 PROJECT = "aiq-official-runtime"
 CONTAINERS = {
@@ -196,6 +200,14 @@ def validate_secret(path: Path, label: str, service_uid: int) -> dict[str, objec
         "mount_policy": "read_only_file",
         "content_digest_recorded": False,
     }
+
+
+def require_darwin_immutable(path: Path, label: str) -> None:
+    if sys.platform != "darwin":
+        return
+    immutable = getattr(stat, "UF_IMMUTABLE", 0)
+    if immutable == 0 or not getattr(path.stat(), "st_flags", 0) & immutable:
+        fail(f"{label} must have the macOS owner-immutable flag")
 
 
 def validate_empty_mountpoint(path: Path, label: str, service_uid: int) -> dict[str, object]:
@@ -398,6 +410,17 @@ def validated_config(config_path: Path) -> tuple[dict[str, str], str, dict[str, 
     for name, (variable, kind) in READ_ONLY.items():
         path = declared_path(read_only.get(name), f"read_only.{name}")
         validate_kind(path, kind, f"read_only.{name}")
+        if name in {"codex_binary", "runner_binary", "verifier_binary"}:
+            try:
+                validate_linux_aarch64_elf(
+                    path,
+                    f"read_only.{name}",
+                    allow_static=name == "codex_binary",
+                    require_pie=name != "codex_binary",
+                    service_uid=10003 if name == "verifier_binary" else 10001,
+                )
+            except ValueError as error:
+                fail(str(error))
         paths[f"read_only.{name}"] = path
         env[variable] = str(path)
         inputs[name] = {
@@ -408,6 +431,8 @@ def validated_config(config_path: Path) -> tuple[dict[str, str], str, dict[str, 
     for name, (variable, service_uid) in SECRETS.items():
         path = declared_path(read_only.get(name), f"read_only.{name}")
         secret_metadata[name] = validate_secret(path, f"read_only.{name}", service_uid)
+        if name == "codex_auth":
+            require_darwin_immutable(path, "read_only.codex_auth")
         paths[f"read_only.{name}"] = path
         env[variable] = str(path)
     for name, (variable, service_uid, expected_mode) in WRITABLE.items():
@@ -696,8 +721,8 @@ def assert_runtime(env: dict[str, str]) -> dict[str, dict[str, object]]:
             fail(f"{role} network topology is not exact")
     if runner_proxy["NetworkSettings"]["Networks"]["aiq-official-runner-internal"]["IPAddress"] != "172.30.0.2":
         fail("runner proxy internal endpoint is not 172.30.0.2")
-    if verifier_proxy["NetworkSettings"]["Networks"]["aiq-official-verifier-internal"]["IPAddress"] != "172.32.0.2":
-        fail("verifier proxy internal endpoint is not 172.32.0.2")
+    if verifier_proxy["NetworkSettings"]["Networks"]["aiq-official-verifier-internal"]["IPAddress"] != "10.248.32.2":
+        fail("verifier proxy internal endpoint is not 10.248.32.2")
     assert_mount_policy(runner, env, RUNNER_MOUNTS)
     assert_mount_policy(verifier, env, VERIFIER_MOUNTS)
     verifier_environment = "\n".join(verifier["Config"].get("Env") or [])
@@ -979,7 +1004,7 @@ def receipt(config: Path, state: Path) -> None:
             "runner_proxy_endpoint": "172.30.0.2:3128",
             "verifier": ["aiq-official-verifier-internal"],
             "verifier_proxy": ["aiq-official-verifier-internal", "aiq-official-verifier-proxy-egress"],
-            "verifier_proxy_endpoint": "172.32.0.2:3128",
+            "verifier_proxy_endpoint": "10.248.32.2:3128",
             "host_ports": [],
         },
         "mount_policy": mounts,

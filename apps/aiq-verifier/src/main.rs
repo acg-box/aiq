@@ -4,7 +4,10 @@ use std::process::ExitCode;
 
 use aiq_runner as _;
 use clap as _;
+#[cfg(test)]
+use ed25519_dalek as _;
 use hex as _;
+use libc as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;

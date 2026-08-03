@@ -237,6 +237,18 @@ mod tests {
 			)
 		}
 
+		fn replay_evidence(&self) -> Result<replay::ProductionReplayEvidence, WorkerError> {
+			replay::replay_production_run(
+				&self.run,
+				&self.tasks,
+				&self.resolver,
+				&self.evaluator_root,
+				&self.evaluator_runtime,
+				&self.replay_root,
+				"123e4567-e89b-42d3-a456-426614174000",
+			)
+		}
+
 		fn make_failed(&mut self, kind: FailureKind) {
 			let result = &mut self.run.results[0];
 
@@ -521,9 +533,15 @@ mod tests {
 	#[test]
 	fn valid_completed_replay_uses_inline_response_and_cleans_workspace() {
 		let fixture = Fixture::completed("OK");
+		let evidence = fixture.replay_evidence().expect("valid replay evidence");
 
-		fixture.verify().expect("valid replay");
+		assert_eq!(evidence.provider_usage.len(), 1);
 
+		let replayed = evidence.evaluator_results[0].as_ref().expect("replayed evaluator result");
+
+		assert_eq!(replayed.outcome, EvaluatorOutcome::Correct);
+		assert_eq!(replayed.score, 1.0);
+		assert!(!replayed.checks.is_empty());
 		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
 	}
 
@@ -1415,6 +1433,7 @@ pub(crate) trait ReplayRun {
 		bytes: &[u8],
 	) -> Result<EvaluatorResultsBundle, RunValidationError>;
 }
+
 impl ReplayRun for RunRecord {
 	fn run_id(&self) -> &str {
 		&self.run_id
@@ -1435,6 +1454,7 @@ impl ReplayRun for RunRecord {
 		run_validation::validate_evaluator_results_bundle(self, bytes)
 	}
 }
+
 impl ReplayRun for CalibrationRunRecord {
 	fn run_id(&self) -> &str {
 		&self.run_id
@@ -1454,6 +1474,16 @@ impl ReplayRun for CalibrationRunRecord {
 	) -> Result<EvaluatorResultsBundle, RunValidationError> {
 		run_validation::validate_calibration_evaluator_results_bundle(self, bytes)
 	}
+}
+
+/// Evidence produced by one complete deterministic replay.
+///
+/// The evaluator vector is aligned with the signed run results. Completed
+/// results contain the independently recomputed evaluator result; all other
+/// terminal states contain `None`.
+pub(crate) struct ProductionReplayEvidence {
+	pub provider_usage: Vec<aiq_runner::runner::ProviderTokenUsage>,
+	pub evaluator_results: Vec<Option<EvaluationResult>>,
 }
 
 struct CandidateEvidence {
@@ -1535,6 +1565,32 @@ where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
 {
+	Ok(replay_production_run(
+		run,
+		tasks,
+		resolver,
+		evaluator_root,
+		evaluator_runtime,
+		replay_root,
+		claim_identity,
+	)?
+	.provider_usage)
+}
+
+/// Reconstructs candidates and returns every independently replayed evaluator result.
+pub(crate) fn replay_production_run<R, U>(
+	run: &U,
+	tasks: &[TaskDefinition],
+	resolver: &R,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+	replay_root: &Path,
+	claim_identity: &str,
+) -> Result<ProductionReplayEvidence, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
 	let replay = ReplayDirectory::create(replay_root, claim_identity)?;
 	let result = verify_production_run_in(
 		run,
@@ -1549,7 +1605,7 @@ where
 	match (result, cleanup) {
 		(Err(primary), _) => Err(primary),
 		(Ok(_), Err(cleanup)) => Err(cleanup),
-		(Ok(usage), Ok(())) => Ok(usage),
+		(Ok(evidence), Ok(())) => Ok(evidence),
 	}
 }
 
@@ -1560,7 +1616,7 @@ fn verify_production_run_in<R, U>(
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	claim_root: &Path,
-) -> Result<Vec<aiq_runner::runner::ProviderTokenUsage>, WorkerError>
+) -> Result<ProductionReplayEvidence, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
 	U: ReplayRun + ?Sized,
@@ -1568,6 +1624,7 @@ where
 	let evaluator_results = resolve_evaluator_results(run, resolver)?;
 	let task_map = controlled_task_map(tasks)?;
 	let mut provider_usage = vec![runner::ProviderTokenUsage::default(); run.results().len()];
+	let mut replayed_evaluator_results = (0..run.results().len()).map(|_| None).collect::<Vec<_>>();
 
 	for (index, result) in run.results().iter().enumerate() {
 		if !execution_attempted(result) {
@@ -1628,7 +1685,7 @@ where
 
 				resolver.maintain_lease()?;
 
-				replay_evaluator(
+				let replayed = replay_evaluator(
 					run.run_id(),
 					result,
 					task,
@@ -1639,6 +1696,8 @@ where
 					evaluator_runtime,
 					evaluator_result,
 				)?;
+
+				replayed_evaluator_results[index] = Some(replayed);
 
 				resolver.maintain_lease()?;
 			},
@@ -1668,7 +1727,7 @@ where
 
 	resolver.maintain_lease()?;
 
-	Ok(provider_usage)
+	Ok(ProductionReplayEvidence { provider_usage, evaluator_results: replayed_evaluator_results })
 }
 
 fn materialize_candidate<R>(
@@ -2038,7 +2097,7 @@ fn replay_evaluator(
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	expected: &EvaluationResult,
-) -> Result<(), WorkerError> {
+) -> Result<EvaluationResult, WorkerError> {
 	let evaluator = task.evaluator.as_ref().ok_or_else(|| {
 		WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
@@ -2152,7 +2211,7 @@ fn replay_evaluator(
 		));
 	}
 
-	Ok(())
+	Ok(replayed)
 }
 
 fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {

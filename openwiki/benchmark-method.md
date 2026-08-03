@@ -39,6 +39,27 @@ One current `aiq.corpus-commitment.v2` document binds every private task to that
 catalog. It also binds the baseline workspace, fixture bundle, evaluator,
 runtime, runner source, harness, tool policy, network policy, and environment.
 
+## AIQ Core 1.0.2 candidate gate
+
+AIQ Core `1.0.1` remains current. AIQ Core `1.0.2` is an immutable,
+preregistered candidate and has not been promoted. Its release gate is a
+non-Official, three-repeat calibration: 3,672 core observations
+(`72 × 17 × 3`) plus 306 paired-contrast observations
+(`3 × 2 × 17 × 3`), for 3,978 observations. This calibration is separate from
+the Official `72 × 17` publication run, which has 1,224 observations. No real
+candidate or Official model run has started, and no subscription limit has been
+observed.
+
+The release gate proves only whether `1.0.2` independently meets the
+preregistered absolute adequacy thresholds. It does not compare `1.0.2` with
+`1.0.1` and does not establish that `1.0.2` is superior to `1.0.1`.
+
+The isolated source assembler embeds exact copies of the public source-
+observation and release-evidence schemas. Tests require the embedded schemas to
+equal the checked-in schemas. A passing gate does not promote the candidate. A
+promotion receipt needs a distinct trusted promotion signer and a canonical
+`issued_at` that is not earlier than `evidence.collected_at`.
+
 ## Model matrix
 
 The matrix has 17 configurations:
@@ -102,6 +123,31 @@ aggregate result cannot identify each request's context band; an aggregate over
 that boundary is therefore unpriced rather than guessed. Regional uplift,
 hosted-tool fees, and subscription pricing are excluded. The value is an
 API-equivalent comparison, not actual subscription spend.
+
+Signed AIQ Core `1.0.2` execution-unit artifacts retain the embedded calibration
+task records, including measured latency and any available usage fields. The
+public aggregate release-gate source, evidence, and result artifacts omit these
+fields and do not publish efficiency or cost evidence.
+
+### External reference decisions
+
+Product research on 2026-08-03 reviewed the
+[Codex Radar overview](https://codexradar.com/en/) and its
+[distributed benchmark method](https://deng.codexradar.com/intro). Codex Radar
+usefully presents model quality beside estimated cost and elapsed time. Its
+distributed method also keeps subscription credentials on the runner, supports
+resume, and uses a separate clean verification environment. These are useful
+problem statements, not protocol authority for AIQ.
+
+AIQ keeps the three measures independent. It does not combine correctness,
+time, and cost into one ranking score. It retains task-level provenance and all
+history instead of a short rolling window. It also distinguishes observed
+Codex adapter time, provider-reported token counters, verifier-recomputed API
+equivalent cost, and actual subscription billing. Only the first three can be
+published by the current evidence protocol; actual subscription billing stays
+unknown. Distributed contributions remain non-Official until an independent
+verifier reproduces the deterministic evaluator result and a separate publisher
+accepts the signed package.
 
 ## Outcomes and scoring
 

@@ -1227,6 +1227,20 @@ void describe('presentation aggregates', () => {
     assert.equal(efficiency?.matrixBatchElapsedMs, 7_652_000);
     assert.equal(efficiency?.summedCellAdapterElapsedMs, 12_240_000);
 
+    await Promise.all(
+      [
+        { ...row, observed_time_coverage_percent: 99 },
+        { ...row, adapter_elapsed_observed_result_count: 71 },
+        { ...row, token_usage_sample_count: 73 },
+        { ...row, priced_result_count: 73, estimated_cost_sample_count: 73 },
+      ].map((invalid) =>
+        assert.rejects(
+          modelEfficiencyRepository([invalid]).listModelEfficiency([runId]),
+          /public_model_efficiency: invalid response shape/,
+        ),
+      ),
+    );
+
     const secondRunId = `run_${'e'.repeat(64)}`;
     await assert.rejects(
       modelEfficiencyRepository([

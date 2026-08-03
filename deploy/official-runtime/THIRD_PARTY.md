@@ -1,7 +1,8 @@
 # Third-party runtime record
 
-The two images use the Docker Official Image for Debian 12 `bookworm-slim` on
-Linux arm64. The image manifest is
+The four Official runtime images and four candidate runtime images use the
+Docker Official Image for Debian 12 `bookworm-slim` on Linux arm64. The image
+manifest is
 `sha256:9b67294679b30e5d6ab257b40594feeb4a4b81f7fcf4131f4decf0d6a212a9b0`.
 The base contains Debian packages under their package-specific licenses. See
 `/usr/share/doc/*/copyright` in each built image.
@@ -29,3 +30,9 @@ Moby profiles use Apache-2.0. The local profile allows only `clone`, `mount`,
 Bubblewrap needs these calls to create and populate its unprivileged namespaces.
 The upstream forced-`ENOSYS` handling for `clone3` stays active. All other
 default-denied calls stay denied.
+
+The candidate binary-export build stage uses the Docker Official Rust
+`1.97.1-bookworm` image pinned to OCI index digest
+`sha256:77fac8b98f9f46062bb680b6d25d5bcaabfc400143952ebc572e924bcbedc3fa`.
+Only the two GPL-3.0-only AIQ executables leave that build stage; the builder
+image is not a shipped runtime image.
