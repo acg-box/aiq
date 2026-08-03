@@ -35,7 +35,7 @@ export type ProductionDependencyProbe = (
 type DependencyName =
   | 'public_reads'
   | 'storage_buckets'
-  | 'service_rpc'
+  | 'role_scoped_rpc_contract'
   | 'production_reference'
   | 'verifier_rpc'
   | 'publisher_rpc';
@@ -189,10 +189,34 @@ export const REQUIRED_RPC_CONTRACT = {
     modes: [],
     grants: ROLE_GRANTS.verifier,
   },
+  aiq_stage_calibration_verification: {
+    arguments:
+      'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
+    result: 'text',
+    defaultCount: 0,
+    modes: [],
+    grants: ROLE_GRANTS.verifier,
+  },
+  aiq_record_calibration_attestation: {
+    arguments:
+      'attestation jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
+    result: 'text',
+    defaultCount: 0,
+    modes: [],
+    grants: ROLE_GRANTS.verifier,
+  },
   aiq_verify_and_publish: {
     arguments:
       'target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
     result: 'void',
+    defaultCount: 0,
+    modes: [],
+    grants: ROLE_GRANTS.publisher,
+  },
+  aiq_publish_calibration_evidence: {
+    arguments:
+      'target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
+    result: 'text',
     defaultCount: 0,
     modes: [],
     grants: ROLE_GRANTS.publisher,
@@ -1114,7 +1138,7 @@ async function probeProductionReference(
     isRecord(document) && isRecord(document.domain_counts) ? document.domain_counts : undefined;
   if (
     !isRecord(document) ||
-    Object.keys(document).length !== 15 ||
+    Object.keys(document).length !== 20 ||
     document.initialized !== true ||
     document.model_config_count !== 17 ||
     document.model_config_mismatch_count !== 0 ||
@@ -1133,7 +1157,12 @@ async function probeProductionReference(
     document.distinct_production_node_count !== 3 ||
     document.runner_count !== 1 ||
     document.verifier_count !== 1 ||
-    document.publisher_count !== 1
+    document.publisher_count !== 1 ||
+    document.private_table_count !== 40 ||
+    document.forced_rls_table_count !== 40 ||
+    document.public_view_count !== 12 ||
+    document.security_invoker_view_count !== 12 ||
+    document.hardened_gateway_role_count !== 2
   ) {
     throw new Error('production reference status is invalid');
   }
@@ -1230,7 +1259,7 @@ export const probeProductionDependencies: ProductionDependencyProbe = async ({
   await Promise.all([
     identifyDependency('public_reads', publicReadProbe),
     identifyDependency('storage_buckets', bucketProbe),
-    identifyDependency('service_rpc', probeRpcContract(serviceUrl, secretKey, signal)),
+    identifyDependency('role_scoped_rpc_contract', probeRpcContract(serviceUrl, secretKey, signal)),
     identifyDependency('verifier_rpc', verifierRoleProbe),
     identifyDependency('publisher_rpc', publisherRoleProbe),
     ...(requireProductionReference
