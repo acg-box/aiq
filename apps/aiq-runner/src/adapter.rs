@@ -18,11 +18,10 @@ use std::io::{Seek, SeekFrom};
 use std::mem::MaybeUninit;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::AsRawFd;
+#[cfg(target_os = "macos")]
+use std::os::unix::ffi::OsStrExt;
 #[cfg(unix)]
-use std::os::unix::{
-	ffi::OsStrExt,
-	fs::{MetadataExt, PermissionsExt},
-};
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 #[cfg(unix)]
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
@@ -2552,7 +2551,10 @@ fn held_directory_is_unlinked(held_directory: &File, metadata: &Metadata) -> boo
 	}
 
 	#[cfg(not(target_os = "macos"))]
-	return metadata.nlink() == 0;
+	{
+		let _ = held_directory;
+		return metadata.nlink() == 0;
+	}
 
 	#[cfg(target_os = "macos")]
 	{
