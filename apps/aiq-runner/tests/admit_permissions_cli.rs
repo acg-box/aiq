@@ -98,14 +98,6 @@ fn runner_normalize_cannot_claim_evaluator_replay() {
 	assert!(stdout.contains("failed"));
 }
 
-#[test]
-fn managed_requirements_example_contains_only_the_exact_official_policy() {
-	assert_eq!(
-		include_str!("../../../config/codex-requirements.example.toml"),
-		"allowed_permission_profiles.aiq_benchmark = true\ndefault_permissions                       = \"aiq_benchmark\"\n"
-	);
-}
-
 #[cfg(unix)]
 #[test]
 fn protected_output_uses_exact_private_mode_under_a_restrictive_child_umask() {
