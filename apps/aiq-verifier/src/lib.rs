@@ -4,6 +4,7 @@ mod replay;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::thread::{self, Builder};
 use std::{
 	collections::BTreeSet,
 	env, error,
@@ -14,7 +15,6 @@ use std::{
 	path::{Path, PathBuf},
 	process,
 	sync::{Condvar, Mutex},
-	thread,
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -1004,21 +1004,7 @@ where
 
 		lease.force()?;
 
-		thread::scope(|scope| {
-			let heartbeat = scope.spawn(|| lease.run_heartbeat());
-			let result = self.verify_claim_with_lease(claim, &lease);
-
-			lease.stop();
-
-			let heartbeat_result = heartbeat
-				.join()
-				.map_err(|_| WorkerError::transient("claim lease heartbeat failed"))?;
-
-			match (result, heartbeat_result) {
-				(_, Err(lease_error)) => Err(lease_error),
-				(result, Ok(())) => result,
-			}
-		})
+		lease.with_heartbeat(|| self.verify_claim_with_lease(claim, &lease))
 	}
 
 	fn verify_claim_with_lease(
@@ -1044,9 +1030,13 @@ where
 			Err(error) => return self.reject_and_complete(claim, lease, error),
 		};
 		let response = self.retry(|| {
-			lease.maintain()?;
-
-			lease.with_valid_lease(|| self.post_verification(&body))
+			lease.with_terminal_lease(
+				|| self.post_verification(&body),
+				|response| {
+					response.status == 200
+						&& verification_response_matches(&response.body, &prepared)
+				},
+			)
 		})?;
 
 		if response.status != 200 {
@@ -1067,14 +1057,9 @@ where
 			return Ok(PackageDisposition::LeaseLost(prepared.replay_scope));
 		}
 
-		match self.retry(|| {
-			lease.maintain()?;
+		let _acknowledgement = self.retry(|| self.acknowledge(claim, "completed"));
 
-			self.acknowledge(claim, "completed")
-		}) {
-			Ok(()) => Ok(PackageDisposition::Verified(prepared.replay_scope)),
-			Err(_) => Ok(PackageDisposition::LeaseLost(prepared.replay_scope)),
-		}
+		Ok(PackageDisposition::Verified(prepared.replay_scope))
 	}
 
 	fn download_package(&self, claim: &Claim) -> Result<Vec<u8>, WorkerError> {
@@ -1167,9 +1152,12 @@ where
 		let body = serde_json::to_vec(&rejection)
 			.map_err(|serialize_error| WorkerError::configuration(serialize_error.to_string()))?;
 		let response = self.retry(|| {
-			lease.maintain()?;
-
-			lease.with_valid_lease(|| self.post_verification(&body))
+			lease.with_terminal_lease(
+				|| self.post_verification(&body),
+				|response| {
+					response.status == 200 && rejection_response_matches(&response.body, claim)
+				},
+			)
 		})?;
 
 		if response.status != 200 {
@@ -1182,29 +1170,13 @@ where
 				)))
 			};
 		}
-
-		let status: RejectionGatewayResponse =
-			match parse_json(&response.body, "rejection response") {
-				Ok(status) => status,
-				Err(_) => return Ok(PackageDisposition::LeaseLost("verification_rejected")),
-			};
-
-		if status.status != "rejection_recorded_not_published"
-			|| status.published
-			|| status.matrix_batch_id != claim.idempotency_key
-			|| status.package_sha256 != claim.package_sha256
-		{
+		if !rejection_response_matches(&response.body, claim) {
 			return Ok(PackageDisposition::LeaseLost("verification_rejected"));
 		}
 
-		match self.retry(|| {
-			lease.maintain()?;
+		let _acknowledgement = self.retry(|| self.acknowledge(claim, "completed"));
 
-			self.acknowledge(claim, "completed")
-		}) {
-			Ok(()) => Ok(PackageDisposition::Rejected(reason)),
-			Err(_) => Ok(PackageDisposition::LeaseLost("verification_rejected")),
-		}
+		Ok(PackageDisposition::Rejected(reason))
 	}
 
 	fn post_verification(&self, body: &[u8]) -> Result<HttpResponse, WorkerError> {
@@ -1274,6 +1246,8 @@ struct ClaimLease<'a, T> {
 	state: Mutex<ClaimLeaseState>,
 	wakeup: Condvar,
 	interval: Duration,
+	#[cfg(test)]
+	heartbeat_spawn_failure: bool,
 }
 impl<'a, T> ClaimLease<'a, T>
 where
@@ -1287,9 +1261,12 @@ where
 				last_renewed: Instant::now(),
 				lost: None,
 				stopped: false,
+				terminal: false,
 			}),
 			wakeup: Condvar::new(),
 			interval: LEASE_RENEWAL_INTERVAL,
+			#[cfg(test)]
+			heartbeat_spawn_failure: false,
 		}
 	}
 
@@ -1303,6 +1280,10 @@ where
 	}
 
 	fn force(&self) -> Result<(), WorkerError> {
+		self.renew(true)
+	}
+
+	fn renew(&self, force: bool) -> Result<(), WorkerError> {
 		let mut state = self
 			.state
 			.lock()
@@ -1311,6 +1292,17 @@ where
 		if let Some(error) = &state.lost {
 			return Err(error.clone());
 		}
+
+		if state.terminal {
+			return Ok(());
+		}
+		if state.stopped {
+			return Err(WorkerError::transient("claim lease heartbeat stopped"));
+		}
+		if !force && state.last_renewed.elapsed() < self.interval {
+			return Ok(());
+		}
+
 		if let Err(error) = self.worker.retry(|| self.worker.renew_claim(self.claim)) {
 			state.lost = Some(error.clone());
 
@@ -1324,12 +1316,61 @@ where
 		Ok(())
 	}
 
+	fn with_heartbeat(
+		&self,
+		operation: impl FnOnce() -> Result<PackageDisposition, WorkerError>,
+	) -> Result<PackageDisposition, WorkerError> {
+		thread::scope(|scope| {
+			let stop_guard = ClaimLeaseStopGuard { lease: self };
+
+			#[cfg(test)]
+			if self.heartbeat_spawn_failure {
+				return Err(WorkerError::transient("claim lease heartbeat could not start"));
+			}
+
+			let heartbeat = Builder::new()
+				.name("aiq-verifier-lease-heartbeat".to_owned())
+				.spawn_scoped(scope, || self.run_heartbeat())
+				.map_err(|_| WorkerError::transient("claim lease heartbeat could not start"))?;
+			let result = operation();
+
+			drop(stop_guard);
+
+			let heartbeat_result = heartbeat
+				.join()
+				.map_err(|_| WorkerError::transient("claim lease heartbeat failed"))?;
+
+			match (result, heartbeat_result) {
+				(Ok(PackageDisposition::Verified(scope)), _) => {
+					Ok(PackageDisposition::Verified(scope))
+				},
+				(Ok(PackageDisposition::Rejected(reason)), _) => {
+					Ok(PackageDisposition::Rejected(reason))
+				},
+				(Ok(PackageDisposition::LeaseLost(scope)), _) => {
+					Ok(PackageDisposition::LeaseLost(scope))
+				},
+				(_, Err(lease_error)) => Err(lease_error),
+				(result, Ok(())) => result,
+			}
+		})
+	}
+
 	fn run_heartbeat(&self) -> Result<(), WorkerError> {
 		loop {
 			let state = self
 				.state
 				.lock()
 				.map_err(|_| WorkerError::transient("claim lease state is unavailable"))?;
+
+			if state.stopped {
+				return state.lost.clone().map_or(Ok(()), Err);
+			}
+
+			if let Some(error) = &state.lost {
+				return Err(error.clone());
+			}
+
 			let wait = self.interval.saturating_sub(state.last_renewed.elapsed());
 			let (state, _) = self
 				.wakeup
@@ -1350,7 +1391,7 @@ where
 
 			drop(state);
 
-			self.force()?;
+			self.renew(false)?;
 		}
 	}
 
@@ -1362,13 +1403,14 @@ where
 		self.wakeup.notify_all();
 	}
 
-	fn with_valid_lease<R>(
+	fn with_terminal_lease<R>(
 		&self,
 		operation: impl FnOnce() -> Result<R, WorkerError>,
+		terminal_response: impl FnOnce(&R) -> bool,
 	) -> Result<R, WorkerError> {
-		self.maintain()?;
+		self.renew(false)?;
 
-		let state = self
+		let mut state = self
 			.state
 			.lock()
 			.map_err(|_| WorkerError::transient("claim lease state is unavailable"))?;
@@ -1382,6 +1424,14 @@ where
 		}
 
 		let result = operation();
+		let terminal = result.as_ref().is_ok_and(terminal_response);
+
+		if terminal {
+			state.terminal = true;
+			state.stopped = true;
+
+			self.wakeup.notify_all();
+		}
 
 		drop(state);
 
@@ -1394,24 +1444,22 @@ where
 	T: Transport,
 {
 	fn maintain(&self) -> Result<(), WorkerError> {
-		let state = self
-			.state
-			.lock()
-			.map_err(|_| WorkerError::transient("claim lease state is unavailable"))?;
+		self.renew(false)
+	}
+}
 
-		if let Some(error) = &state.lost {
-			return Err(error.clone());
-		}
-
-		let renewal_due = state.last_renewed.elapsed() >= self.interval;
-
-		drop(state);
-
-		if renewal_due {
-			self.force()?;
-		}
-
-		Ok(())
+struct ClaimLeaseStopGuard<'lease, 'worker, T>
+where
+	T: Transport,
+{
+	lease: &'lease ClaimLease<'worker, T>,
+}
+impl<T> Drop for ClaimLeaseStopGuard<'_, '_, T>
+where
+	T: Transport,
+{
+	fn drop(&mut self) {
+		self.lease.stop();
 	}
 }
 
@@ -1419,6 +1467,7 @@ struct ClaimLeaseState {
 	last_renewed: Instant,
 	lost: Option<WorkerError>,
 	stopped: bool,
+	terminal: bool,
 }
 #[derive(Debug)]
 struct PreparedVerification {
@@ -1624,6 +1673,7 @@ enum ClaimResult {
 	Claimed(Claim),
 }
 
+#[derive(Debug)]
 enum PackageDisposition {
 	Verified(&'static str),
 	Rejected(ReasonCode),
@@ -2706,6 +2756,17 @@ fn verification_response_matches(body: &[u8], prepared: &PreparedVerification) -
 	}
 }
 
+fn rejection_response_matches(body: &[u8], claim: &Claim) -> bool {
+	let Ok(status) = parse_json::<RejectionGatewayResponse>(body, "rejection response") else {
+		return false;
+	};
+
+	status.status == "rejection_recorded_not_published"
+		&& !status.published
+		&& status.matrix_batch_id == claim.idempotency_key
+		&& status.package_sha256 == claim.package_sha256
+}
+
 fn enforce_verification_request_bound(body: &[u8]) -> Result<(), WorkerError> {
 	if body.len() > MAX_VERIFICATION_REQUEST_BYTES {
 		return Err(WorkerError::terminal(
@@ -3068,6 +3129,7 @@ fn utc_components(seconds: u64) -> Result<(i64, i64, i64, u64, u64, u64), Worker
 
 #[cfg(test)]
 mod tests {
+	use std::panic;
 	#[cfg(unix)]
 	use std::{
 		collections::{BTreeSet, VecDeque},
@@ -3077,7 +3139,7 @@ mod tests {
 		path::{Path, PathBuf},
 		process,
 		sync::{
-			Arc, Mutex,
+			Arc, Barrier, Mutex,
 			atomic::{AtomicBool, Ordering},
 		},
 		thread,
@@ -3130,6 +3192,10 @@ mod tests {
 	struct ArtifactTransport {
 		bytes: Vec<u8>,
 		kind: &'static str,
+	}
+
+	struct AckConflictTransport {
+		inner: FakeTransport,
 	}
 
 	struct TestArtifactSink;
@@ -3338,6 +3404,38 @@ mod tests {
 			Err(WorkerError::transient(
 				"synthetic verification must not resolve production artifacts",
 			))
+		}
+	}
+
+	impl Transport for AckConflictTransport {
+		fn post_json(
+			&self,
+			url: &str,
+			token: &Secret,
+			body: &[u8],
+		) -> Result<HttpResponse, WorkerError> {
+			let request: serde_json::Value = serde_json::from_slice(body)
+				.map_err(|error| WorkerError::transient(error.to_string()))?;
+
+			if request.get("action").and_then(serde_json::Value::as_str) == Some("ack") {
+				self.inner
+					.posts
+					.lock()
+					.map_err(|_| WorkerError::transient("fake transport lock failed"))?
+					.push_back("ack_conflict".to_owned());
+
+				return Ok(HttpResponse { status: 409, body: Vec::new() });
+			}
+
+			self.inner.post_json(url, token, body)
+		}
+
+		fn get_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
+			self.inner.get_object(url)
+		}
+
+		fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
+			self.inner.get_artifact_object(url)
 		}
 	}
 
@@ -4639,6 +4737,49 @@ mod tests {
 	}
 
 	#[test]
+	fn confirmed_publication_is_not_downgraded_by_post_terminal_ack_conflict() {
+		let runner_identity = SigningIdentity::from_secret([7; 32]);
+		let mut run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2000-01-01", ScheduleOccurrence::Day).expect("slot"),
+			&TestArtifactSink,
+		)
+		.expect("run");
+
+		submission::bind_synthetic_run_to_signer(&mut run, &runner_identity.node().node_id)
+			.expect("bind");
+
+		let envelope = runner_identity
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("sign");
+		let package = submission::serialize_signed_package(&envelope).expect("serialize");
+		let package_sha256 = hex::encode(Sha256::digest(&package));
+		let transport = AckConflictTransport {
+			inner: FakeTransport {
+				package: package.clone(),
+				posts: Mutex::new(VecDeque::new()),
+				terminal_claims: Mutex::new(Vec::new()),
+				verification_request_bytes: Mutex::new(Vec::new()),
+			},
+		};
+		let worker = test_worker(transport);
+		let mut claim = test_claim(run.run_id);
+
+		claim.package_sha256.clone_from(&package_sha256);
+
+		claim.body_bytes = package.len();
+		claim.object_content_sha256 = package_sha256;
+
+		assert!(matches!(
+			worker.verify_claim(&claim).expect("confirmed verification"),
+			PackageDisposition::Verified("commitments_verified")
+		));
+		assert_eq!(
+			worker.transport.inner.posts.lock().expect("posts").iter().collect::<Vec<_>>(),
+			vec!["renewed", "verified_published", "ack_conflict"]
+		);
+	}
+
+	#[test]
 	fn recomputed_recovery_attestation_is_fresh_valid_and_semantically_identical() {
 		let runner_identity = SigningIdentity::from_secret([7; 32]);
 		let mut run = runner::synthetic_demo(
@@ -4789,11 +4930,14 @@ mod tests {
 
 		let called = AtomicBool::new(false);
 		let blocked = lease
-			.with_valid_lease(|| {
-				called.store(true, Ordering::SeqCst);
+			.with_terminal_lease(
+				|| {
+					called.store(true, Ordering::SeqCst);
 
-				Ok(())
-			})
+					Ok(())
+				},
+				|_| true,
+			)
 			.expect_err("lost lease blocks terminal operation");
 
 		assert!(blocked.is_transient());
@@ -4822,6 +4966,117 @@ mod tests {
 		});
 
 		assert!(!worker.transport.requests.lock().expect("renewal requests").is_empty());
+	}
+
+	#[test]
+	fn heartbeat_stop_guard_survives_unwind() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::with_interval(&worker, &claim, Duration::from_secs(60));
+		let started = Instant::now();
+		let unwind = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _ = lease.with_heartbeat(|| panic!("fixture claim panic"));
+		}));
+
+		assert!(unwind.is_err());
+		assert!(started.elapsed() < Duration::from_secs(1));
+		assert!(lease.state.lock().expect("lease state").stopped);
+	}
+
+	#[test]
+	fn heartbeat_creation_failure_stops_without_running_the_claim() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let called = AtomicBool::new(false);
+		let mut lease = ClaimLease::with_interval(&worker, &claim, Duration::from_secs(60));
+
+		lease.heartbeat_spawn_failure = true;
+
+		let error = lease
+			.with_heartbeat(|| {
+				called.store(true, Ordering::SeqCst);
+
+				Ok(PackageDisposition::LeaseLost("fixture"))
+			})
+			.expect_err("heartbeat creation failure");
+
+		assert!(error.is_transient());
+		assert!(!called.load(Ordering::SeqCst));
+		assert!(lease.state.lock().expect("lease state").stopped);
+		assert!(worker.transport.requests.lock().expect("renewal requests").is_empty());
+	}
+
+	#[test]
+	fn terminal_response_stops_a_due_heartbeat_before_unlock() {
+		let worker =
+			test_worker(RenewalTransport { status: 409, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::with_interval(&worker, &claim, Duration::from_millis(100));
+
+		thread::scope(|scope| {
+			let heartbeat = thread::Builder::new()
+				.spawn_scoped(scope, || lease.run_heartbeat())
+				.expect("heartbeat starts");
+			let response = lease
+				.with_terminal_lease(
+					|| {
+						thread::sleep(Duration::from_millis(200));
+
+						Ok(HttpResponse { status: 200, body: Vec::new() })
+					},
+					|response| response.status == 200,
+				)
+				.expect("terminal response");
+
+			assert_eq!(response.status, 200);
+
+			heartbeat.join().expect("heartbeat joins").expect("terminal heartbeat stop");
+		});
+
+		let state = lease.state.lock().expect("lease state");
+
+		assert!(state.terminal);
+		assert!(state.stopped);
+		assert!(state.lost.is_none());
+		assert!(worker.transport.requests.lock().expect("renewal requests").is_empty());
+	}
+
+	#[test]
+	fn concurrent_lease_maintenance_renews_only_once_per_interval() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::new(&worker, &claim);
+		let callers = 8;
+		let barrier = Barrier::new(callers + 1);
+
+		lease.state.lock().expect("lease state").last_renewed =
+			Instant::now() - LEASE_RENEWAL_INTERVAL;
+		thread::scope(|scope| {
+			let mut workers = Vec::new();
+
+			for _ in 0..callers {
+				workers.push(
+					thread::Builder::new()
+						.spawn_scoped(scope, || {
+							barrier.wait();
+
+							lease.maintain()
+						})
+						.expect("maintenance thread starts"),
+				);
+			}
+
+			barrier.wait();
+
+			for worker in workers {
+				worker.join().expect("maintenance thread joins").expect("lease maintenance");
+			}
+		});
+
+		assert_eq!(worker.transport.requests.lock().expect("renewal requests").len(), 1);
 	}
 
 	#[test]
