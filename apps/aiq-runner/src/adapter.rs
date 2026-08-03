@@ -2544,33 +2544,28 @@ fn require_held_directory_unlinked(
 	}
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
+fn held_directory_is_unlinked(_held_directory: &File, metadata: &Metadata) -> bool {
+	metadata.is_dir() && metadata.nlink() == 0
+}
+
+#[cfg(target_os = "macos")]
 fn held_directory_is_unlinked(held_directory: &File, metadata: &Metadata) -> bool {
 	if !metadata.is_dir() {
 		return false;
 	}
 
-	#[cfg(not(target_os = "macos"))]
-	{
-		let _ = held_directory;
+	let mut path = [0_i8; PATH_MAX as usize];
+	let result = unsafe { libc::fcntl(held_directory.as_raw_fd(), F_GETPATH, path.as_mut_ptr()) };
 
-		return metadata.nlink() == 0;
+	if result != 0 {
+		return false;
 	}
-	#[cfg(target_os = "macos")]
-	{
-		let mut path = [0_i8; PATH_MAX as usize];
-		let result =
-			unsafe { libc::fcntl(held_directory.as_raw_fd(), F_GETPATH, path.as_mut_ptr()) };
 
-		if result != 0 {
-			return false;
-		}
+	let path = unsafe { CStr::from_ptr(path.as_ptr()) };
+	let path = Path::new(OsStr::from_bytes(path.to_bytes()));
 
-		let path = unsafe { CStr::from_ptr(path.as_ptr()) };
-		let path = Path::new(OsStr::from_bytes(path.to_bytes()));
-
-		matches!(fs::symlink_metadata(path), Err(error) if error.kind() == ErrorKind::NotFound)
-	}
+	matches!(fs::symlink_metadata(path), Err(error) if error.kind() == ErrorKind::NotFound)
 }
 
 fn scratch_remove_error_is_transient(error: &io::Error) -> bool {
