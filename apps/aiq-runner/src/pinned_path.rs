@@ -24,6 +24,24 @@ use std::{
 #[cfg(unix)]
 use libc::{O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW, O_RDONLY, O_RDWR};
 
+#[cfg(test)]
+thread_local! {
+	static FORCE_CREATE_CHILD_POST_OPEN_FAILURE: std::cell::Cell<bool> =
+		const { std::cell::Cell::new(false) };
+	static CREATE_CHILD_POST_OPEN_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+		const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn force_create_child_post_open_failure() {
+	FORCE_CREATE_CHILD_POST_OPEN_FAILURE.with(|forced| forced.set(true));
+}
+
+#[cfg(test)]
+pub(crate) fn set_create_child_post_open_hook(hook: impl FnOnce() + 'static) {
+	CREATE_CHILD_POST_OPEN_HOOK.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
 /// Held identity of one file and its parent directory.
 #[cfg(unix)]
 pub(crate) struct PinnedPathIdentity {
@@ -373,6 +391,144 @@ impl PinnedDirectoryIdentity {
 		Ok(file)
 	}
 
+	/// Creates and opens one new direct child directory beneath the held root.
+	pub(crate) fn create_child_directory(&self, name: &OsStr) -> Result<File, io::Error> {
+		self.verify().map_err(io::Error::other)?;
+
+		let name_c = component(name).map_err(io::Error::other)?;
+		let result =
+			unsafe { libc::mkdirat(self.directory_file.as_raw_fd(), name_c.as_ptr(), 0o700) };
+
+		if result != 0 {
+			return Err(io::Error::last_os_error());
+		}
+		let mut rollback = EmptyChildDirectoryRollback {
+			parent: self,
+			name: name_c,
+			held_directory: None,
+			armed: true,
+		};
+
+		let directory = openat_file(
+			self.directory_file.as_raw_fd(),
+			name,
+			O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+			0,
+		)?;
+		let metadata = directory.metadata()?;
+
+		if !metadata.is_dir() || metadata.uid() != unsafe { libc::geteuid() } {
+			return Err(io::Error::other("new protected child directory identity is unsafe"));
+		}
+		rollback.held_directory = Some(directory.try_clone()?);
+		#[cfg(test)]
+		if let Some(hook) = CREATE_CHILD_POST_OPEN_HOOK.with(|slot| slot.borrow_mut().take()) {
+			hook();
+		}
+		#[cfg(test)]
+		if FORCE_CREATE_CHILD_POST_OPEN_FAILURE.with(|forced| forced.replace(false)) {
+			return Err(io::Error::other("forced post-open child directory failure"));
+		}
+
+		self.verify().map_err(io::Error::other)?;
+		rollback.armed = false;
+
+		Ok(directory)
+	}
+
+	/// Atomically moves one direct child directory to a create-once name beneath
+	/// another held directory. Existing destinations are never replaced.
+	pub(crate) fn rename_child_noreplace_to(
+		&self,
+		source_name: &OsStr,
+		destination_directory: &Self,
+		destination_name: &OsStr,
+	) -> Result<(), io::Error> {
+		self.verify().map_err(io::Error::other)?;
+		destination_directory.verify().map_err(io::Error::other)?;
+
+		let source_name = component(source_name).map_err(io::Error::other)?;
+		let destination_name = component(destination_name).map_err(io::Error::other)?;
+		#[cfg(target_os = "linux")]
+		let result = unsafe {
+			libc::syscall(
+				libc::SYS_renameat2,
+				self.directory_file.as_raw_fd(),
+				source_name.as_ptr(),
+				destination_directory.directory_file.as_raw_fd(),
+				destination_name.as_ptr(),
+				libc::RENAME_NOREPLACE,
+			)
+		};
+		#[cfg(target_os = "macos")]
+		let result = unsafe {
+			libc::renameatx_np(
+				self.directory_file.as_raw_fd(),
+				source_name.as_ptr(),
+				destination_directory.directory_file.as_raw_fd(),
+				destination_name.as_ptr(),
+				libc::RENAME_EXCL,
+			)
+		};
+		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+		let result = -1;
+
+		if result == 0 {
+			self.verify().map_err(io::Error::other)?;
+			destination_directory.verify().map_err(io::Error::other)
+		} else {
+			#[cfg(any(target_os = "linux", target_os = "macos"))]
+			return Err(io::Error::last_os_error());
+			#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+			return Err(io::Error::new(
+				ErrorKind::Unsupported,
+				"atomic create-once rename is unavailable",
+			));
+		}
+	}
+
+	/// Verifies that a direct child directory still has the held directory identity.
+	pub(crate) fn verify_child_directory(
+		&self,
+		name: &OsStr,
+		held_directory: &File,
+	) -> Result<(), String> {
+		self.verify()?;
+
+		let held_metadata = held_directory
+			.metadata()
+			.map_err(|_| "cannot inspect held protected child directory".to_owned())?;
+		let current = self.child_directory(name, false)?;
+		let current_metadata = current
+			.metadata()
+			.map_err(|_| "cannot inspect current protected child directory".to_owned())?;
+
+		if !held_metadata.is_dir()
+			|| held_metadata.dev() != current_metadata.dev()
+			|| held_metadata.ino() != current_metadata.ino()
+		{
+			return Err("protected child directory identity changed".to_owned());
+		}
+
+		self.verify()
+	}
+
+	/// Removes one empty direct child directory from the held directory.
+	pub(crate) fn unlink_empty_child_directory(&self, name: &OsStr) -> Result<(), String> {
+		self.verify()?;
+
+		let name = component(name)?;
+		let result = unsafe {
+			libc::unlinkat(self.directory_file.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR)
+		};
+
+		if result == 0 {
+			self.verify()
+		} else {
+			Err("cannot remove protected empty child directory".to_owned())
+		}
+	}
+
 	/// Opens an existing direct child regular file beneath a held child directory.
 	pub(crate) fn open_child_file(&self, directory: &File, name: &OsStr) -> Result<File, String> {
 		let file = openat_file(directory.as_raw_fd(), name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC, 0)
@@ -479,6 +635,56 @@ impl PinnedDirectoryIdentity {
 		self.directory_file
 			.sync_all()
 			.map_err(|_| "cannot synchronize protected directory".to_owned())
+	}
+}
+
+#[cfg(unix)]
+struct EmptyChildDirectoryRollback<'a> {
+	parent: &'a PinnedDirectoryIdentity,
+	name: CString,
+	held_directory: Option<File>,
+	armed: bool,
+}
+
+#[cfg(unix)]
+impl Drop for EmptyChildDirectoryRollback<'_> {
+	fn drop(&mut self) {
+		if !self.armed || self.parent.verify().is_err() {
+			return;
+		}
+		let Some(held_directory) = self.held_directory.as_ref() else { return };
+		let descriptor = unsafe {
+			libc::openat(
+				self.parent.directory_file.as_raw_fd(),
+				self.name.as_ptr(),
+				O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+				0,
+			)
+		};
+
+		if descriptor < 0 {
+			return;
+		}
+
+		let current = unsafe { File::from_raw_fd(descriptor) };
+		let Ok(held_metadata) = held_directory.metadata() else { return };
+		let Ok(current_metadata) = current.metadata() else { return };
+
+		if !held_metadata.is_dir()
+			|| !current_metadata.is_dir()
+			|| held_metadata.dev() != current_metadata.dev()
+			|| held_metadata.ino() != current_metadata.ino()
+		{
+			return;
+		}
+
+		unsafe {
+			libc::unlinkat(
+				self.parent.directory_file.as_raw_fd(),
+				self.name.as_ptr(),
+				libc::AT_REMOVEDIR,
+			);
+		}
 	}
 }
 

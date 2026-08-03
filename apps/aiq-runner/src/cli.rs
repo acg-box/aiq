@@ -639,89 +639,102 @@ impl FutureProtectedFiles {
 		Self::prepare_with_locks(entries, directory_locks)
 	}
 
+	#[cfg(test)]
 	fn prepare_with_locks(
 		entries: &[FutureProtectedEntry],
 		directory_locks: FutureProtectedDirectoryLocks,
 	) -> Result<Self, Box<dyn std::error::Error>> {
-		let mut files = Self { created: BTreeMap::new(), directory_locks };
+		let mut files = Self::with_locks(directory_locks);
 
 		for entry in entries {
-			if entry.path == Path::new("-") {
-				continue;
-			}
-
-			let path = canonical_leaf_policy_path(&entry.path)?;
-
-			files.verify_directory_lock(&path)?;
-
-			let expected_bytes =
-				entry.recoverable_bytes.as_deref().unwrap_or(FUTURE_PROTECTED_PLACEHOLDER);
-
-			match fs::symlink_metadata(&path) {
-				Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-					return Err(format!(
-						"future protected category {} must be a regular file",
-						entry.category
-					)
-					.into());
-				},
-				Ok(_) if entry.must_be_new => {
-					if entry.recoverable_bytes.is_none() {
-						return Err(format!(
-							"future protected category {} must not exist before this run",
-							entry.category
-						)
-						.into());
-					}
-
-					let recovered = open_exact_reserved_file(
-						&path,
-						expected_bytes,
-						"future protected reservation",
-					)?;
-
-					if files
-						.created
-						.insert(
-							path.clone(),
-							FutureProtectedFile {
-								file: recovered,
-								remove_on_drop: false,
-								expected_bytes: expected_bytes.to_vec(),
-							},
-						)
-						.is_some()
-					{
-						return Err("future protected paths must be distinct".into());
-					}
-
-					continue;
-				},
-				Ok(_) => continue,
-				Err(error) if error.kind() == ErrorKind::NotFound => {},
-				Err(error) => return Err(error.into()),
-			}
-
-			let created_file =
-				write_new_bytes(&path, expected_bytes, "future protected placeholder")?;
-
-			if files
-				.created
-				.insert(
-					path.clone(),
-					FutureProtectedFile {
-						file: created_file,
-						remove_on_drop: !entry.must_be_new,
-						expected_bytes: expected_bytes.to_vec(),
-					},
-				)
-				.is_some()
-			{
-				return Err("future protected paths must be distinct".into());
-			}
+			files.prepare_entry(entry)?;
 		}
 
 		Ok(files)
+	}
+
+	fn with_locks(directory_locks: FutureProtectedDirectoryLocks) -> Self {
+		Self { created: BTreeMap::new(), directory_locks }
+	}
+
+	fn prepare_entry(
+		&mut self,
+		entry: &FutureProtectedEntry,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		if entry.path == Path::new("-") {
+			return Ok(());
+		}
+
+		let path = canonical_leaf_policy_path(&entry.path)?;
+
+		self.verify_directory_lock(&path)?;
+
+		let expected_bytes =
+			entry.recoverable_bytes.as_deref().unwrap_or(FUTURE_PROTECTED_PLACEHOLDER);
+
+		match fs::symlink_metadata(&path) {
+			Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+				return Err(format!(
+					"future protected category {} must be a regular file",
+					entry.category
+				)
+				.into());
+			},
+			Ok(_) if entry.must_be_new => {
+				if entry.recoverable_bytes.is_none() {
+					return Err(format!(
+						"future protected category {} must not exist before this run",
+						entry.category
+					)
+					.into());
+				}
+
+				let recovered = open_exact_reserved_file(
+					&path,
+					expected_bytes,
+					"future protected reservation",
+				)?;
+
+				if self
+					.created
+					.insert(
+						path.clone(),
+						FutureProtectedFile {
+							file: recovered,
+							remove_on_drop: false,
+							expected_bytes: expected_bytes.to_vec(),
+						},
+					)
+					.is_some()
+				{
+					return Err("future protected paths must be distinct".into());
+				}
+
+				return Ok(());
+			},
+			Ok(_) => return Ok(()),
+			Err(error) if error.kind() == ErrorKind::NotFound => {},
+			Err(error) => return Err(error.into()),
+		}
+
+		let created_file = write_new_bytes(&path, expected_bytes, "future protected placeholder")?;
+
+		if self
+			.created
+			.insert(
+				path.clone(),
+				FutureProtectedFile {
+					file: created_file,
+					remove_on_drop: !entry.must_be_new,
+					expected_bytes: expected_bytes.to_vec(),
+				},
+			)
+			.is_some()
+		{
+			return Err("future protected paths must be distinct".into());
+		}
+
+		Ok(())
 	}
 
 	fn write_created_pretty_json(
@@ -1966,6 +1979,10 @@ fn run_preflight(
 	output: PathBuf,
 	official_admission: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	let future_locks = acquire_preflight_future_protected_locks(&output)?;
+	let protected_output = canonical_leaf_policy_path(&output)?;
+
+	future_locks.verify(&protected_output)?;
 	let manifest = read_json::<CapabilityManifest>(&path)?;
 	let codex_binary = controlled_codex_binary(&codex_binary)?;
 	let evaluator_runtime = EvaluatorRuntime::resolve(&evaluator_runtime)?;
@@ -2063,8 +2080,12 @@ fn run_preflight(
 		admission.as_ref(),
 		official_protected.as_deref(),
 	)?;
+	future_locks.verify(&protected_output)?;
 
 	let report = adapter.validate_capabilities(&manifest);
+
+	binding.verify(&adapter)?;
+	future_locks.verify(&protected_output)?;
 
 	persist_completed_preflight(
 		&output,
@@ -2075,6 +2096,9 @@ fn run_preflight(
 		model_toolchain.digest(),
 		admission.as_ref().map(|(_, digest)| digest.as_str()),
 	)?;
+
+	future_locks.verify(&protected_output)?;
+	binding.output_parent.verify()?;
 
 	Ok(())
 }
@@ -3087,6 +3111,12 @@ fn acquire_run_future_protected_locks(
 	run_id: &str,
 ) -> Result<(Vec<FutureProtectedEntry>, FutureProtectedDirectoryLocks), Box<dyn std::error::Error>>
 {
+	validate_run_future_protected_paths(
+		&options.preflight_cache,
+		&options.checkpoint,
+		&options.output,
+	)?;
+
 	let entries = future_protected_entries(
 		options.run_class,
 		&options.preflight_cache,
@@ -3097,6 +3127,61 @@ fn acquire_run_future_protected_locks(
 	let locks = FutureProtectedDirectoryLocks::acquire(&entries)?;
 
 	Ok((entries, locks))
+}
+
+fn validate_run_future_protected_paths(
+	preflight_cache: &Path,
+	checkpoint: &Path,
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let preflight_attempt = resume::preflight_attempt_path(preflight_cache);
+	let mut paths = vec![
+		("preflight cache", preflight_cache),
+		("preflight attempt", preflight_attempt.as_path()),
+		("checkpoint", checkpoint),
+	];
+
+	if output != Path::new("-") {
+		paths.push(("durable run output", output));
+	}
+
+	let mut unique = BTreeMap::new();
+
+	for (label, path) in paths {
+		let path = canonical_leaf_policy_path(path)?;
+
+		if let Some(previous) = unique.insert(path, label) {
+			return Err(format!("{previous} and {label} paths must be distinct").into());
+		}
+	}
+
+	Ok(())
+}
+
+fn acquire_preflight_future_protected_locks(
+	output: &Path,
+) -> Result<FutureProtectedDirectoryLocks, Box<dyn std::error::Error>> {
+	if output == Path::new("-") {
+		return Err("capability preflight requires a durable output path".into());
+	}
+
+	let attempt = resume::preflight_attempt_path(output);
+	let entries = [
+		FutureProtectedEntry {
+			category: "preflight_cache",
+			path: output.to_owned(),
+			must_be_new: false,
+			recoverable_bytes: None,
+		},
+		FutureProtectedEntry {
+			category: "preflight_attempt",
+			path: attempt,
+			must_be_new: false,
+			recoverable_bytes: None,
+		},
+	];
+
+	FutureProtectedDirectoryLocks::acquire(&entries)
 }
 
 fn run_live(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
@@ -3124,7 +3209,18 @@ fn prepare_authorized_live_run(
 
 	let (future_entries, future_locks) =
 		acquire_run_future_protected_locks(&options, &prepared.run_id)?;
+	let mut future_files = FutureProtectedFiles::with_locks(future_locks);
+
+	for entry in future_entries.iter().filter(|entry| entry.category == "output") {
+		future_files.prepare_entry(entry)?;
+	}
+
 	let preflight = freeze_run_preflight(&options, admission.as_ref())?;
+
+	for entry in future_entries.iter().filter(|entry| entry.category != "output") {
+		future_files.prepare_entry(entry)?;
+	}
+
 	let capacity_admission = assess_run_capacity(
 		&options,
 		&preflight.report,
@@ -3142,8 +3238,7 @@ fn prepare_authorized_live_run(
 		run_id,
 		execution_window,
 	} = prepared;
-	let runtime =
-		prepare_live_runtime(&mut options, &corpus, &report.tasks, &future_entries, future_locks)?;
+	let runtime = prepare_live_runtime(&mut options, &corpus, &report.tasks, future_files)?;
 	let PreparedLiveRuntime {
 		adapter,
 		workspace_provider,
@@ -3242,8 +3337,7 @@ fn prepare_live_runtime(
 	options: &mut RunOptions,
 	corpus: &ValidatedCorpusCommitment,
 	tasks: &[TaskDefinition],
-	future_entries: &[FutureProtectedEntry],
-	future_locks: FutureProtectedDirectoryLocks,
+	future_files: FutureProtectedFiles,
 ) -> Result<PreparedLiveRuntime, Box<dyn std::error::Error>> {
 	options.codex_binary = controlled_codex_binary(&options.codex_binary)?;
 
@@ -3281,8 +3375,6 @@ fn prepare_live_runtime(
 	);
 	let permission_evidence =
 		verify_permission_evidence(&adapter, &execution_root, &protected_paths, options.run_class)?;
-	let future_files = FutureProtectedFiles::prepare_with_locks(future_entries, future_locks)?;
-
 	Ok(PreparedLiveRuntime {
 		adapter,
 		workspace_provider,
@@ -3337,12 +3429,15 @@ fn future_protected_entries(
 		},
 	];
 
-	if run_class == RunClass::Official {
+	if output != Path::new("-") {
 		entries.push(FutureProtectedEntry {
 			category: "output",
 			path: output.to_owned(),
 			must_be_new: true,
-			recoverable_bytes: Some(official_output_reservation(run_id)),
+			recoverable_bytes: Some(match run_class {
+				RunClass::Official => official_output_reservation(run_id),
+				RunClass::Calibration => calibration_output_reservation(run_id),
+			}),
 		});
 	}
 
@@ -3420,7 +3515,10 @@ fn write_selected_run(
 		SelectedRun::OfficialShape(run) => {
 			future_files.write_created_pretty_json(output, &run, "Official live output")
 		},
-		SelectedRun::Calibration(run) => write_json(output, &run),
+		SelectedRun::Calibration(run) if output == Path::new("-") => write_json(output, &run),
+		SelectedRun::Calibration(run) => {
+			future_files.write_created_pretty_json(output, &run, "calibration live output")
+		},
 	}
 }
 
@@ -4893,6 +4991,10 @@ fn official_output_reservation(run_id: &str) -> Vec<u8> {
 	format!("AIQ_OFFICIAL_OUTPUT_RESERVED_V1 {run_id}\n").into_bytes()
 }
 
+fn calibration_output_reservation(run_id: &str) -> Vec<u8> {
+	format!("AIQ_CALIBRATION_OUTPUT_RESERVED_V1 {run_id}\n").into_bytes()
+}
+
 fn has_exact_official_output_reservation(path: &Path, run_id: &str) -> bool {
 	let expected = official_output_reservation(run_id);
 
@@ -5623,6 +5725,42 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
+	fn standalone_preflight_holds_one_lock_for_its_state_parent() {
+		let root = fixture_root("standalone-preflight-directory-lock");
+		let moved = root.with_extension("moved");
+		let output = root.join("preflight.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		let first =
+			cli::acquire_preflight_future_protected_locks(&output).expect("first preflight writer");
+
+		assert!(cli::acquire_preflight_future_protected_locks(&output).is_err());
+
+		drop(first);
+		drop(
+			cli::acquire_preflight_future_protected_locks(&output)
+				.expect("preflight lock released after drop"),
+		);
+		assert!(cli::acquire_preflight_future_protected_locks(Path::new("-")).is_err());
+
+		let held =
+			cli::acquire_preflight_future_protected_locks(&output).expect("held preflight parent");
+
+		fs::rename(&root, &moved).expect("move locked parent");
+		fs::create_dir_all(&root).expect("replacement parent");
+
+		let protected_output = cli::canonical_leaf_policy_path(&output).expect("protected output");
+
+		assert!(held.verify(&protected_output).is_err());
+
+		drop(held);
+		fs::remove_dir_all(root).expect("fixture cleanup");
+		fs::remove_dir_all(moved).expect("moved fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
 	fn official_output_reservation_rejects_leaf_symlink_swaps_without_target_damage() {
 		let root = fixture_root("official-output-reservation-symlink-swap");
 		let preflight = root.join("preflight.json");
@@ -5724,7 +5862,7 @@ mod tests {
 	}
 
 	#[test]
-	fn calibration_does_not_reserve_its_final_output() {
+	fn calibration_protects_only_a_durable_final_output() {
 		let entries = cli::future_protected_entries(
 			RunClass::Calibration,
 			Path::new("preflight.json"),
@@ -5735,8 +5873,108 @@ mod tests {
 
 		assert_eq!(
 			entries.iter().map(|entry| entry.category).collect::<Vec<_>>(),
+			vec!["preflight_cache", "checkpoint", "output"]
+		);
+		assert!(entries[2].must_be_new);
+		assert_eq!(
+			entries[2].recoverable_bytes,
+			Some(cli::calibration_output_reservation(&format!("run_{}", "a".repeat(64))))
+		);
+
+		let stdout_entries = cli::future_protected_entries(
+			RunClass::Calibration,
+			Path::new("preflight.json"),
+			Path::new("checkpoint.json"),
+			Path::new("-"),
+			&format!("run_{}", "b".repeat(64)),
+		);
+
+		assert_eq!(
+			stdout_entries.iter().map(|entry| entry.category).collect::<Vec<_>>(),
 			vec!["preflight_cache", "checkpoint"]
 		);
+	}
+
+	#[test]
+	fn live_run_state_paths_are_distinct_before_preflight() {
+		let root = fixture_root("live-run-state-aliases");
+		let preflight = root.join("preflight.json");
+		let preflight_attempt = crate::resume::preflight_attempt_path(&preflight);
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("run.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		cli::validate_run_future_protected_paths(&preflight, &checkpoint, &output)
+			.expect("distinct durable paths");
+		cli::validate_run_future_protected_paths(&preflight, &checkpoint, Path::new("-"))
+			.expect("standard output is not a durable alias");
+
+		for aliased_output in [&preflight, &preflight_attempt, &checkpoint] {
+			assert!(
+				cli::validate_run_future_protected_paths(&preflight, &checkpoint, aliased_output,)
+					.is_err()
+			);
+		}
+		assert!(cli::validate_run_future_protected_paths(&preflight, &preflight, &output).is_err());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn calibration_finalizes_below_an_already_locked_parent() {
+		let root = fixture_root("calibration-shared-output-parent");
+		let preflight = root.join("preflight.json");
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("run.json");
+		let entries = cli::future_protected_entries(
+			RunClass::Calibration,
+			&preflight,
+			&checkpoint,
+			&output,
+			&format!("run_{}", "c".repeat(64)),
+		);
+
+		fs::create_dir_all(&root).expect("fixture root");
+		fs::write(&output, b"existing calibration output").expect("existing output");
+
+		assert!(cli::FutureProtectedFiles::prepare(&entries).is_err());
+		assert_eq!(
+			fs::read(&output).expect("preserved existing output"),
+			b"existing calibration output"
+		);
+
+		fs::remove_file(&output).expect("remove existing output fixture");
+		drop(cli::FutureProtectedFiles::prepare(&entries).expect("initial reservation"));
+		assert_eq!(
+			fs::read(&output).expect("calibration reservation"),
+			entries[2].recoverable_bytes.as_deref().expect("reservation bytes")
+		);
+
+		let mut protected = cli::FutureProtectedFiles::prepare(&entries)
+			.expect("recovered calibration reservation");
+
+		protected
+			.write_created_pretty_json(
+				&output,
+				&serde_json::json!({"complete": true}),
+				"calibration live output",
+			)
+			.expect("finalize calibration output with the held directory lock");
+		protected.disarm(&output);
+		drop(protected);
+
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(
+				&fs::read(&output).expect("calibration output")
+			)
+			.expect("calibration JSON"),
+			serde_json::json!({"complete": true})
+		);
+		assert!(!preflight.exists());
+		assert!(!checkpoint.exists());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]
