@@ -125,7 +125,7 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
   const catalogDigest = '2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
-  const catalogReleaseDigest = '45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b';
+  const catalogReleaseDigest = '54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6';
   const predecessorCatalogDigest =
     'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
   const staleCatalogDigest = 'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';

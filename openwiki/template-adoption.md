@@ -37,6 +37,5 @@ The source-head project constants include AIQ Core and scoring version `1.0.2`,
 task-metadata digest
 `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
 release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
-`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
-The production foundation remains on the historical `1.0.1` predecessor until
-the unpromoted candidate completes its authorized cutover.
+`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+This is the only greenfield launch contract.

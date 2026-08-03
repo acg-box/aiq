@@ -7,9 +7,7 @@ skip_core_tasks = true
 # | task                   | type      | cwd |
 # | ---------------------- | --------- | --- |
 # | check                   | composite |     |
-# | check-candidate-runtime | command   |     |
 # | check-database          | command   |     |
-# | check-official-runtime  | command   |     |
 # | check-rust              | command   |     |
 # | check-typescript        | command   |     |
 # | storage-lifecycle       | command   |     |
@@ -18,27 +16,15 @@ skip_core_tasks = true
 clear = true
 workspace = false
 dependencies = [
-	"check-candidate-runtime",
 	"check-database",
-	"check-official-runtime",
 	"check-rust",
 	"check-typescript",
 ]
-
-[tasks.check-candidate-runtime]
-workspace = false
-command = "python3"
-args = ["-B", "deploy/candidate-runtime/test_runtime.py"]
 
 [tasks.check-database]
 workspace = false
 command = "node"
 args = ["scripts/check-database-schema.ts"]
-
-[tasks.check-official-runtime]
-workspace = false
-command = "python3"
-args = ["deploy/official-runtime/test_static.py"]
 
 [tasks.check-rust]
 workspace = false
@@ -59,7 +45,6 @@ args = ["run", "storage:lifecycle"]
 # | task                        | type      | cwd |
 # | --------------------------- | --------- | --- |
 # | build                       | composite |     |
-# | build-candidate-linux-arm64 | command   |     |
 # | build-rust                  | command   |     |
 # | build-web                   | command   |     |
 
@@ -67,11 +52,6 @@ args = ["run", "storage:lifecycle"]
 clear = true
 workspace = false
 dependencies = ["build-rust", "build-web"]
-
-[tasks.build-candidate-linux-arm64]
-workspace = false
-command = "sh"
-args = ["deploy/candidate-runtime/build-binaries.sh"]
 
 [tasks.build-rust]
 workspace = false
@@ -288,9 +268,9 @@ private = true
 workspace = false
 script = '''
 case "$(uname -s)" in
-  Darwin|Linux) ;;
+  Darwin) ;;
   *)
-    echo "subscription smoke tasks are supported only on macOS and Linux." >&2
+    echo "subscription smoke tasks are supported only on macOS." >&2
     exit 2
     ;;
 esac
@@ -299,7 +279,7 @@ esac
 [tasks.require-subscription-smoke-platform.windows]
 script_runner = "@powershell"
 script = '''
-Write-Error "subscription smoke tasks are supported only on macOS and Linux."
+Write-Error "subscription smoke tasks are supported only on macOS."
 exit 2
 '''
 

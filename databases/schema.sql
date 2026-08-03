@@ -2379,7 +2379,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
       and task_set.metadata ->> 'catalog_release_identity_sha256' =
-        'sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b'
+        'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(

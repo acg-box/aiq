@@ -1,10 +1,9 @@
-import { createHash, createPublicKey, verify } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Canonical generator for the active AIQ Core 1.0.2 source state. References
-// to 1.0.1 below are immutable predecessor and supersession history.
+// Canonical generator for the active AIQ Core 1.0.2 catalog.
 
 export const DOMAINS = [
   'coding',
@@ -133,7 +132,7 @@ interface AcceptanceFixtureCommitment {
 export const AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256 =
   'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
 export const AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b';
+  'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6';
 
 const TASK_SET_VERSION = '1.0.2';
 const TASK_VERSION = '1.0.2';
@@ -142,19 +141,36 @@ const SCORER_VERSION = '1.0.2';
 export const COMMAND_EXECUTION_DISCLOSURE =
   'Runner/verifier telemetry records at least one command_execution event; this proves presence, not causality, while independently checked artifacts and, where present, receipts prove final-state correctness.';
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError('Canonical JSON requires finite numbers.');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value)
+      .toSorted()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(Reflect.get(value, key))}`)
+      .join(',')}}`;
+  }
+  throw new TypeError('Canonical JSON does not support this value.');
+}
+
+function digestValue(value: unknown): string {
+  return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
+}
+
 export interface Catalog {
   readonly schema_version: 'aiq.catalog.v1';
   readonly task_set_id: 'aiq-core';
   readonly task_set_version: typeof TASK_SET_VERSION;
+  readonly scoring_version: typeof SCORER_VERSION;
   readonly title: string;
-  readonly status: 'candidate_requires_controlled_release_gate';
+  readonly status: 'active';
   readonly generated_from: string;
-  readonly predecessor_catalog: {
-    readonly task_set_version: '1.0.1';
-    readonly task_identity_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
-    readonly digest_scope: 'ordered_full_task_metadata';
-    readonly source_commit: '4700e4c6e5e46ff9b3451d87b8761fb8da8365a0';
-  };
   readonly task_metadata_identity: {
     readonly algorithm: 'sha256';
     readonly canonicalization: 'aiq.sorted-key-json.v1';
@@ -162,10 +178,13 @@ export interface Catalog {
     readonly scope: 'ordered_full_task_metadata';
   };
   readonly catalog_release_identity: {
+    readonly release_identity: 'aiq-core/1.0.2';
+    readonly scoring_version: '1.0.2';
+    readonly task_metadata_identity: Catalog['task_metadata_identity'];
     readonly algorithm: 'sha256';
     readonly canonicalization: 'aiq.sorted-key-json.v1';
     readonly digest: string;
-    readonly scope: 'task_metadata_identity_release_policy_and_predecessor';
+    readonly scope: 'release_identity_scoring_version_and_ordered_task_metadata_identity';
   };
   readonly content_policy: {
     readonly public_repository: string;
@@ -178,327 +197,13 @@ export interface Catalog {
     readonly domain_difficulty: Readonly<Record<Domain, Readonly<Record<Difficulty, number>>>>;
     readonly difficulty_role: string;
   };
-  readonly release_gate_policy: ReleaseGatePolicy;
   readonly tasks: readonly CatalogTask[];
 }
 
-export interface ReleaseGatePolicy {
-  readonly policy_version: 'aiq.release-gate.v1';
+export interface CatalogReleaseIdentityInput {
   readonly release_identity: 'aiq-core/1.0.2';
-  readonly state: 'preregistered_not_evaluated';
-  readonly evidence_requirement: 'new_controlled_hidden_corpus';
-  readonly trust_root_requirement: 'runtime_pinned_out_of_band_digest';
-  readonly score_bands: {
-    readonly floor_max: 0.1;
-    readonly mid_min: 0.2;
-    readonly mid_max: 0.8;
-    readonly ceiling_min: 0.9;
-    readonly invariant_range_max: 0.05;
-  };
-  readonly aggregate_thresholds: {
-    readonly infrastructure_failures_max: 0;
-    readonly evaluator_failures_max: 0;
-    readonly floor_tasks_max: 7;
-    readonly ceiling_tasks_max: 7;
-    readonly mid_band_tasks_min: 43;
-    readonly invariant_tasks_max: 14;
-  };
-  readonly domain_thresholds: {
-    readonly mid_band_share_min: 0.5;
-    readonly floor_share_max: 0.3;
-    readonly ceiling_share_max: 0.3;
-  };
-  readonly paired_contrast_thresholds: {
-    readonly predeclared_contrasts_min: 3;
-    readonly directional_difference_aiq_min: 3;
-    readonly adjusted_lower_bound_must_exclude_zero: true;
-    readonly adjusted_lower_bound_method: 'model_clustered_one_sided_bonferroni_normal_approximation';
-    readonly familywise_alpha: 0.05;
-    readonly one_sided_critical_value: 2.128;
-  };
-  readonly predeclared_contrasts: readonly {
-    readonly contrast_id: string;
-    readonly expected_direction: 'reference_higher';
-    readonly paired_factor: string;
-    readonly controlled_pair_requirement: string;
-  }[];
-  readonly stability_thresholds: {
-    readonly complete_repeats_min: 3;
-    readonly aggregate_sd_aiq_max: 2;
-    readonly median_cell_range_max: 0.1;
-    readonly icc_min: 0.75;
-  };
-}
-
-export interface ReleaseGateEvidence {
-  readonly schema_version: 'aiq.release-gate-evidence.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly catalog_release_identity_digest: string;
-  readonly task_metadata_identity_digest: string;
-  readonly corpus_commitment_digest: string;
-  readonly model_matrix_digest: string;
-  readonly source_observations_digest: string;
-  readonly authority_digest: string;
-  readonly admission_digest: string;
-  readonly execution_plan_digest: string;
-  readonly model_id_mapping_digest: string;
-  readonly collected_at: string;
-  readonly repeat_ids: readonly string[];
-  readonly raw_cells: readonly ReleaseGateRawCell[];
-  readonly paired_contrasts: readonly {
-    readonly contrast_id: string;
-    readonly reference_variant_digest: string;
-    readonly challenge_variant_digest: string;
-    readonly pairs: readonly {
-      readonly repeat_id: string;
-      readonly model_id: string;
-      readonly reference_score: number;
-      readonly challenge_score: number;
-      readonly reference_result_digest: string;
-      readonly reference_result_package_digest: string;
-      readonly reference_verifier_attestation_digest: string;
-      readonly challenge_result_digest: string;
-      readonly challenge_result_package_digest: string;
-      readonly challenge_verifier_attestation_digest: string;
-    }[];
-  }[];
-}
-
-export interface ReleaseGateRawCell {
-  readonly universe_slot: number;
-  readonly repeat_id: string;
-  readonly task_id: string;
-  readonly domain: Domain;
-  readonly model_id: string;
-  readonly status: ReleaseGateRawCellStatus;
-  readonly reported_score: number | null;
-  readonly components: readonly ComponentEvidence[] | null;
-  readonly evaluator_digest: string | null;
-  readonly result_digest: string | null;
-  readonly result_package_digest: string | null;
-  readonly verification_digest: string | null;
-  readonly cell_evidence_binding_digest: string | null;
-  readonly verification_status: 'verified' | 'failed';
-  readonly attempts: readonly ReleaseGateAttempt[];
-}
-
-export type ReleaseGateRawCellStatus =
-  | 'completed'
-  | 'infrastructure_failure'
-  | 'model_failure'
-  | 'evaluator_failure'
-  | 'unsupported'
-  | 'unevaluated';
-
-export type ReleaseGateAttemptDisposition =
-  | 'completed'
-  | 'infrastructure_retryable'
-  | 'infrastructure_terminal'
-  | 'model_failure'
-  | 'evaluator_failure'
-  | 'unsupported'
-  | 'unevaluated';
-
-export interface ReleaseGateAttempt {
-  readonly attempt_number: number;
-  readonly scheduled_delay_seconds: 0 | 30 | 90;
-  /** Logical attempt time fixed by the signed repeat schedule and retry policy. */
-  readonly scheduled_for: string;
-  /** Actual start of the unit-level execution attempt that contains this cell. Cells in one unit can share this value. */
-  readonly started_at: string;
-  /** Whether this cell crossed the model-execution boundary during the unit attempt. */
-  readonly model_started: boolean;
-  readonly disposition: ReleaseGateAttemptDisposition;
-  readonly infrastructure_classification: 'pre_model_admission' | null;
-  readonly result_digest: string | null;
-  readonly result_package_digest: string | null;
-  readonly verifier_attestation_digest: string | null;
-}
-
-export interface ComponentEvidence {
-  readonly component_id: 'component_01' | 'component_02' | 'component_03' | 'component_04';
-  readonly assertions: readonly {
-    readonly assertion_id: string;
-    readonly passed: boolean;
-    readonly evidence_digest: string;
-  }[];
-  readonly weight_basis_points: 3000 | 2500 | 2000;
-  readonly passed_assertions: number;
-  readonly total_assertions: number;
-}
-
-export interface ModelMatrixConfiguration {
-  readonly model_id: string;
-  readonly family: 'sol' | 'terra' | 'luna';
-  readonly reasoning_effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
-  readonly execution_model_id: string;
-}
-
-export const FIXED_MODEL_MATRIX_IDENTITIES = [
-  { model_id: 'sol-low', family: 'sol', reasoning_effort: 'low' },
-  { model_id: 'sol-medium', family: 'sol', reasoning_effort: 'medium' },
-  { model_id: 'sol-high', family: 'sol', reasoning_effort: 'high' },
-  { model_id: 'sol-xhigh', family: 'sol', reasoning_effort: 'xhigh' },
-  { model_id: 'sol-max', family: 'sol', reasoning_effort: 'max' },
-  { model_id: 'sol-ultra', family: 'sol', reasoning_effort: 'ultra' },
-  { model_id: 'terra-low', family: 'terra', reasoning_effort: 'low' },
-  { model_id: 'terra-medium', family: 'terra', reasoning_effort: 'medium' },
-  { model_id: 'terra-high', family: 'terra', reasoning_effort: 'high' },
-  { model_id: 'terra-xhigh', family: 'terra', reasoning_effort: 'xhigh' },
-  { model_id: 'terra-max', family: 'terra', reasoning_effort: 'max' },
-  { model_id: 'terra-ultra', family: 'terra', reasoning_effort: 'ultra' },
-  { model_id: 'luna-low', family: 'luna', reasoning_effort: 'low' },
-  { model_id: 'luna-medium', family: 'luna', reasoning_effort: 'medium' },
-  { model_id: 'luna-high', family: 'luna', reasoning_effort: 'high' },
-  { model_id: 'luna-xhigh', family: 'luna', reasoning_effort: 'xhigh' },
-  { model_id: 'luna-max', family: 'luna', reasoning_effort: 'max' },
-] as const;
-
-export const MODEL_EXECUTION_ID_MAPPING = FIXED_MODEL_MATRIX_IDENTITIES.map(
-  ({ model_id: modelId }) => ({
-    canonical_model_id: modelId,
-    execution_model_id: `gpt-5.6-${modelId}`,
-  }),
-);
-
-export interface ExecutionModelSelection {
-  readonly base_model: 'gpt-5.6-sol' | 'gpt-5.6-terra' | 'gpt-5.6-luna';
-  readonly reasoning_effort: ModelMatrixConfiguration['reasoning_effort'];
-}
-
-export function resolveExecutionModelId(executionModelId: string): ExecutionModelSelection {
-  const mappingIndex = MODEL_EXECUTION_ID_MAPPING.findIndex(
-    ({ execution_model_id: candidate }) => candidate === executionModelId,
-  );
-  const identity = FIXED_MODEL_MATRIX_IDENTITIES[mappingIndex];
-  if (identity === undefined) {
-    throw new Error(`Unknown candidate execution model ID: ${executionModelId}.`);
-  }
-  return {
-    base_model: `gpt-5.6-${identity.family}`,
-    reasoning_effort: identity.reasoning_effort,
-  };
-}
-
-export interface ReleaseGateAdmission {
-  readonly schema_version: 'aiq.release-gate-admission.v1';
-  readonly signature_domain: 'aiq.release-gate-admission.v1';
-  readonly signature_encoding: 'aiq.sorted-key-json.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly catalog_release_identity_digest: string;
-  readonly task_metadata_identity_digest: string;
-  readonly corpus_commitment_digest: string;
-  readonly plan_id: string;
-  readonly execution_plan_digest: string;
-  readonly model_id_mapping_digest: string;
-  readonly issued_at: string;
-  readonly collection_not_before: string;
-  readonly collection_not_after: string;
-  readonly repeat_schedule: readonly {
-    readonly repeat_id: string;
-    readonly scheduled_at: string;
-    readonly contrast_arm_order: readonly string[];
-  }[];
-  readonly observation_universe: {
-    readonly task_ids: readonly string[];
-    readonly model_ids: readonly string[];
-    readonly raw_cell_count: number;
-    readonly contrast_pair_count: number;
-    readonly contrast_observation_count: number;
-  };
-  readonly infrastructure_retry_policy: {
-    readonly max_attempts: 3;
-    readonly backoff_seconds: readonly [0, 30, 90];
-    readonly retryable_classifications: readonly ['pre_model_admission'];
-    readonly model_or_evaluator_failures_retryable: false;
-  };
-  readonly model_matrix: {
-    readonly digest: string;
-    readonly configurations: readonly ModelMatrixConfiguration[];
-  };
-  readonly contrast_bindings: readonly {
-    readonly contrast_id: string;
-    readonly reference_variant_digest: string;
-    readonly challenge_variant_digest: string;
-  }[];
-  readonly signer: {
-    readonly key_id: string;
-    readonly algorithm: 'ed25519';
-  };
-  readonly signature: string;
-}
-
-export interface ReleaseGateAuthority {
-  readonly schema_version: 'aiq.release-gate-authority.v1';
-  readonly signature_domain: 'aiq.release-gate-authority.v1';
-  readonly signature_encoding: 'aiq.sorted-key-json.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly catalog_release_identity_digest: string;
-  readonly task_metadata_identity_digest: string;
-  readonly admission_digest: string;
-  readonly execution_plan_digest: string;
-  readonly model_id_mapping_digest: string;
-  readonly admission: ReleaseGateAdmission;
-  readonly source_observations_digest: string;
-  readonly signer: {
-    readonly key_id: string;
-    readonly algorithm: 'ed25519';
-  };
-  readonly signature: string;
-}
-
-export interface ReleaseGateTrustPolicy {
-  readonly schema_version: 'aiq.release-gate-trust.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly authority_signers: readonly TrustedSigner[];
-  readonly promotion_signers: readonly TrustedSigner[];
-}
-
-export interface ReleaseGateTrustRoot {
-  readonly schema_version: 'aiq.release-gate-trust-root.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly trust_policy_digest: string;
-}
-
-export const RELEASE_TRUST_POLICY_DIGEST_ENVIRONMENT = 'AIQ_CORE_1_0_2_RELEASE_TRUST_POLICY_SHA256';
-export const CANDIDATE_MODEL_MATRIX_SHA256 =
-  'sha256:c385d79e02d233b4594800a66199c2da59e8f6fd623fb808812a669ccba29757';
-
-interface TrustedSigner {
-  readonly key_id: string;
-  readonly algorithm: 'ed25519';
-  readonly public_key_spki_base64: string;
-  readonly public_key_fingerprint: string;
-}
-
-export interface PromotionReceipt {
-  readonly schema_version: 'aiq.promotion-receipt.v1';
-  readonly signature_domain: 'aiq.promotion-receipt.v1';
-  readonly signature_encoding: 'aiq.sorted-key-json.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly candidate_catalog_release_identity_digest: string;
-  readonly task_metadata_identity_digest: string;
-  readonly authority_digest: string;
-  readonly evidence_digest: string;
-  readonly gate_result_digest: string;
-  readonly promotion_state: 'released';
-  readonly issued_at: string;
-  readonly signer: {
-    readonly key_id: string;
-    readonly algorithm: 'ed25519';
-  };
-  readonly signature: string;
-}
-
-export interface ReleaseGateResult {
-  readonly schema_version: 'aiq.release-gate-result.v1';
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly candidate_status: 'candidate_requires_controlled_release_gate';
-  readonly passed: boolean;
-  readonly failures: readonly string[];
-  readonly authority_digest: string;
-  readonly evidence_digest: string;
-  readonly plan_id: string;
+  readonly scoring_version: '1.0.2';
+  readonly task_metadata_identity: Catalog['task_metadata_identity'];
 }
 
 const PROFILES: Readonly<Record<Domain, DomainProfile>> = {
@@ -591,1201 +296,6 @@ const DISCRIMINATION_CHECK: Readonly<Record<Domain, string>> = {
   reliability_recovery:
     'Seeded states separate safe continuation, identity preservation, reconciliation, and replay correctness.',
 };
-
-export const RELEASE_GATE_POLICY: ReleaseGatePolicy = {
-  policy_version: 'aiq.release-gate.v1',
-  release_identity: 'aiq-core/1.0.2',
-  state: 'preregistered_not_evaluated',
-  evidence_requirement: 'new_controlled_hidden_corpus',
-  trust_root_requirement: 'runtime_pinned_out_of_band_digest',
-  score_bands: {
-    floor_max: 0.1,
-    mid_min: 0.2,
-    mid_max: 0.8,
-    ceiling_min: 0.9,
-    invariant_range_max: 0.05,
-  },
-  aggregate_thresholds: {
-    infrastructure_failures_max: 0,
-    evaluator_failures_max: 0,
-    floor_tasks_max: 7,
-    ceiling_tasks_max: 7,
-    mid_band_tasks_min: 43,
-    invariant_tasks_max: 14,
-  },
-  domain_thresholds: {
-    mid_band_share_min: 0.5,
-    floor_share_max: 0.3,
-    ceiling_share_max: 0.3,
-  },
-  paired_contrast_thresholds: {
-    predeclared_contrasts_min: 3,
-    directional_difference_aiq_min: 3,
-    adjusted_lower_bound_must_exclude_zero: true,
-    adjusted_lower_bound_method: 'model_clustered_one_sided_bonferroni_normal_approximation',
-    familywise_alpha: 0.05,
-    one_sided_critical_value: 2.128,
-  },
-  predeclared_contrasts: [
-    {
-      contrast_id: 'coupled_constraints',
-      expected_direction: 'reference_higher',
-      paired_factor:
-        'One controlled pair adds interacting constraints while keeping the core work and scoring scale fixed.',
-      controlled_pair_requirement:
-        'Bind matched task variants, use the preregistered deterministic counterbalanced arm order, and compute the paired AIQ difference across the fixed model matrix.',
-    },
-    {
-      contrast_id: 'ambiguous_recovery_state',
-      expected_direction: 'reference_higher',
-      paired_factor:
-        'One controlled pair changes a complete checkpoint into an ambiguous but recoverable state.',
-      controlled_pair_requirement:
-        'Use the preregistered deterministic counterbalanced arm order, keep the intended final state fixed, and score safe state reconciliation separately from core task completion.',
-    },
-    {
-      contrast_id: 'plausible_incomplete_evidence',
-      expected_direction: 'reference_higher',
-      paired_factor:
-        'One controlled pair replaces complete evidence with a plausible but materially incomplete evidence set.',
-      controlled_pair_requirement:
-        'Use the preregistered deterministic counterbalanced arm order, keep requested claims fixed, and score unsupported inference separately from citation and artifact format.',
-    },
-  ],
-  stability_thresholds: {
-    complete_repeats_min: 3,
-    aggregate_sd_aiq_max: 2,
-    median_cell_range_max: 0.1,
-    icc_min: 0.75,
-  },
-};
-
-export const PREDECESSOR_CATALOG: Catalog['predecessor_catalog'] = {
-  task_set_version: '1.0.1',
-  task_identity_digest: 'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
-  digest_scope: 'ordered_full_task_metadata',
-  source_commit: '4700e4c6e5e46ff9b3451d87b8761fb8da8365a0',
-};
-
-function mean(values: readonly number[]): number {
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function sampleStandardDeviation(values: readonly number[]): number {
-  if (values.length < 2) return 0;
-  const average = mean(values);
-  return Math.sqrt(
-    values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1),
-  );
-}
-
-function median(values: readonly number[]): number {
-  const sorted = values.toSorted((left, right) => left - right);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2
-    : (sorted[middle] ?? 0);
-}
-
-function validUnitInterval(value: number): boolean {
-  return Number.isFinite(value) && value >= 0 && value <= 1;
-}
-
-function absoluteAgreementIcc(rows: readonly (readonly number[])[]): number {
-  const targetCount = rows.length;
-  const repeatCount = rows[0]?.length ?? 0;
-  if (targetCount < 2 || repeatCount < 2 || rows.some((row) => row.length !== repeatCount)) {
-    return Number.NaN;
-  }
-  const rowMeans = rows.map(mean);
-  const columnMeans = Array.from({ length: repeatCount }, (_, column) =>
-    mean(rows.map((row) => row[column] ?? 0)),
-  );
-  const grandMean = mean(rowMeans);
-  const rowMeanSquare =
-    (repeatCount * rowMeans.reduce((sum, value) => sum + (value - grandMean) ** 2, 0)) /
-    (targetCount - 1);
-  const columnMeanSquare =
-    (targetCount * columnMeans.reduce((sum, value) => sum + (value - grandMean) ** 2, 0)) /
-    (repeatCount - 1);
-  const errorMeanSquare =
-    rows.reduce(
-      (sum, row, rowIndex) =>
-        sum +
-        row.reduce(
-          (rowSum, value, columnIndex) =>
-            rowSum +
-            (value - (rowMeans[rowIndex] ?? 0) - (columnMeans[columnIndex] ?? 0) + grandMean) ** 2,
-          0,
-        ),
-      0,
-    ) /
-    ((targetCount - 1) * (repeatCount - 1));
-  const denominator =
-    rowMeanSquare +
-    (repeatCount - 1) * errorMeanSquare +
-    (repeatCount * (columnMeanSquare - errorMeanSquare)) / targetCount;
-  return denominator === 0 ? Number.NaN : (rowMeanSquare - errorMeanSquare) / denominator;
-}
-
-export function releaseEvidenceSourceDigest(
-  rawCells: ReleaseGateEvidence['raw_cells'],
-  pairedContrasts: ReleaseGateEvidence['paired_contrasts'],
-): string {
-  return digestValue({ raw_cells: rawCells, paired_contrasts: pairedContrasts });
-}
-
-export function releaseEvidenceModelMatrixDigest(
-  configurations: readonly ModelMatrixConfiguration[],
-): string {
-  return digestValue(
-    configurations.toSorted((left, right) =>
-      left.model_id < right.model_id ? -1 : left.model_id > right.model_id ? 1 : 0,
-    ),
-  );
-}
-
-export function releaseModelIdMappingDigest(): string {
-  return digestValue(MODEL_EXECUTION_ID_MAPPING);
-}
-
-export function releaseCellEvidenceBindingDigest(cell: unknown): string {
-  return digestValue({
-    schema_version: 'aiq.release-cell-evidence-binding.v1',
-    release_identity: 'aiq-core/1.0.2',
-    cell,
-  });
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
-    return JSON.stringify(value);
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new TypeError('Canonical JSON requires finite numbers.');
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (typeof value === 'object') {
-    return `{${Object.keys(value)
-      .toSorted()
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(Reflect.get(value, key))}`)
-      .join(',')}}`;
-  }
-  throw new TypeError('Canonical JSON does not support this value.');
-}
-
-function digestValue(value: unknown): string {
-  return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
-}
-
-function unsignedAuthority(
-  authority: ReleaseGateAuthority,
-): Omit<ReleaseGateAuthority, 'signature'> {
-  const { signature: _signature, ...unsigned } = authority;
-  return unsigned;
-}
-
-function unsignedAdmission(
-  admission: ReleaseGateAdmission,
-): Omit<ReleaseGateAdmission, 'signature'> {
-  const { signature: _signature, ...unsigned } = admission;
-  return unsigned;
-}
-
-function unsignedPromotionReceipt(receipt: PromotionReceipt): Omit<PromotionReceipt, 'signature'> {
-  const { signature: _signature, ...unsigned } = receipt;
-  return unsigned;
-}
-
-export function releaseAuthoritySigningBytes(authority: ReleaseGateAuthority): Buffer {
-  return Buffer.from(canonicalJson(unsignedAuthority(authority)), 'utf8');
-}
-
-export function releaseAdmissionSigningBytes(admission: ReleaseGateAdmission): Buffer {
-  return Buffer.from(canonicalJson(unsignedAdmission(admission)), 'utf8');
-}
-
-export function releaseAdmissionDigest(admission: ReleaseGateAdmission): string {
-  return digestValue(admission);
-}
-
-export function promotionReceiptSigningBytes(receipt: PromotionReceipt): Buffer {
-  return Buffer.from(canonicalJson(unsignedPromotionReceipt(receipt)), 'utf8');
-}
-
-export function releaseAuthorityDigest(authority: ReleaseGateAuthority): string {
-  return digestValue(authority);
-}
-
-export function releaseEvidenceDigest(evidence: ReleaseGateEvidence): string {
-  return digestValue(evidence);
-}
-
-export function releaseGateResultDigest(result: ReleaseGateResult): string {
-  return digestValue(result);
-}
-
-export function releaseGateTrustPolicyDigest(policy: ReleaseGateTrustPolicy): string {
-  return digestValue(policy);
-}
-
-export function runtimePinnedReleaseGateTrustRoot(
-  trustPolicy: ReleaseGateTrustPolicy,
-): ReleaseGateTrustRoot {
-  const pinnedDigest = process.env[RELEASE_TRUST_POLICY_DIGEST_ENVIRONMENT];
-  if (pinnedDigest === undefined) {
-    throw new Error(
-      `Missing protected runtime trust anchor ${RELEASE_TRUST_POLICY_DIGEST_ENVIRONMENT}.`,
-    );
-  }
-  if (!/^sha256:(?!0{64}$)[a-f0-9]{64}$/u.test(pinnedDigest)) {
-    throw new Error(
-      `${RELEASE_TRUST_POLICY_DIGEST_ENVIRONMENT} must contain one canonical nonzero SHA-256 digest.`,
-    );
-  }
-  if (releaseGateTrustPolicyDigest(trustPolicy) !== pinnedDigest) {
-    throw new Error('The trust policy does not match the independently pinned runtime anchor.');
-  }
-  return {
-    schema_version: 'aiq.release-gate-trust-root.v1',
-    release_identity: 'aiq-core/1.0.2',
-    trust_policy_digest: pinnedDigest,
-  };
-}
-
-function trustedSigner(
-  signers: readonly TrustedSigner[],
-  keyId: string,
-): TrustedSigner | undefined {
-  if (new Set(signers.map(({ key_id: candidate }) => candidate)).size !== signers.length) {
-    return undefined;
-  }
-  return signers.find(({ key_id: candidate }) => candidate === keyId);
-}
-
-function hasExactKeys(value: object, expected: readonly string[]): boolean {
-  return JSON.stringify(Object.keys(value).toSorted()) === JSON.stringify(expected.toSorted());
-}
-
-function signerShapeIsClosed(signer: ReleaseGateAuthority['signer'] | TrustedSigner): boolean {
-  const expected =
-    'public_key_spki_base64' in signer
-      ? ['algorithm', 'key_id', 'public_key_fingerprint', 'public_key_spki_base64']
-      : ['algorithm', 'key_id'];
-  return hasExactKeys(signer, expected);
-}
-
-function trustedSignerFingerprint(signer: TrustedSigner): string | null {
-  try {
-    const der = Buffer.from(signer.public_key_spki_base64, 'base64');
-    if (
-      signer.algorithm !== 'ed25519' ||
-      !/^[a-z0-9][a-z0-9._-]*$/u.test(signer.key_id) ||
-      der.toString('base64') !== signer.public_key_spki_base64
-    )
-      return null;
-    const publicKey = createPublicKey({
-      key: der,
-      format: 'der',
-      type: 'spki',
-    });
-    if (publicKey.asymmetricKeyType !== 'ed25519') return null;
-    const observed = `sha256:${createHash('sha256')
-      .update(publicKey.export({ format: 'der', type: 'spki' }))
-      .digest('hex')}`;
-    return signer.public_key_fingerprint === observed ? observed : null;
-  } catch {
-    return null;
-  }
-}
-
-function authorityShapeIsClosed(authority: ReleaseGateAuthority): boolean {
-  return (
-    hasExactKeys(authority, [
-      'admission',
-      'admission_digest',
-      'catalog_release_identity_digest',
-      'execution_plan_digest',
-      'model_id_mapping_digest',
-      'release_identity',
-      'schema_version',
-      'signature',
-      'signature_domain',
-      'signature_encoding',
-      'signer',
-      'source_observations_digest',
-      'task_metadata_identity_digest',
-    ]) &&
-    admissionShapeIsClosed(authority.admission) &&
-    signerShapeIsClosed(authority.signer)
-  );
-}
-
-function admissionShapeIsClosed(admission: ReleaseGateAdmission): boolean {
-  return (
-    hasExactKeys(admission, [
-      'catalog_release_identity_digest',
-      'collection_not_after',
-      'collection_not_before',
-      'contrast_bindings',
-      'corpus_commitment_digest',
-      'issued_at',
-      'infrastructure_retry_policy',
-      'execution_plan_digest',
-      'model_matrix',
-      'model_id_mapping_digest',
-      'observation_universe',
-      'plan_id',
-      'release_identity',
-      'repeat_schedule',
-      'schema_version',
-      'signature',
-      'signature_domain',
-      'signature_encoding',
-      'signer',
-      'task_metadata_identity_digest',
-    ]) &&
-    hasExactKeys(admission.observation_universe, [
-      'contrast_pair_count',
-      'contrast_observation_count',
-      'model_ids',
-      'raw_cell_count',
-      'task_ids',
-    ]) &&
-    hasExactKeys(admission.infrastructure_retry_policy, [
-      'backoff_seconds',
-      'max_attempts',
-      'model_or_evaluator_failures_retryable',
-      'retryable_classifications',
-    ]) &&
-    admission.repeat_schedule.every((entry) =>
-      hasExactKeys(entry, ['contrast_arm_order', 'repeat_id', 'scheduled_at']),
-    ) &&
-    hasExactKeys(admission.model_matrix, ['configurations', 'digest']) &&
-    admission.model_matrix.configurations.every((configuration) =>
-      hasExactKeys(configuration, ['family', 'execution_model_id', 'model_id', 'reasoning_effort']),
-    ) &&
-    admission.contrast_bindings.every((binding) =>
-      hasExactKeys(binding, [
-        'challenge_variant_digest',
-        'contrast_id',
-        'reference_variant_digest',
-      ]),
-    ) &&
-    signerShapeIsClosed(admission.signer)
-  );
-}
-
-function verifyEd25519(
-  bytes: Buffer,
-  signature: string,
-  signer: TrustedSigner | undefined,
-): boolean {
-  if (signer === undefined || signer.algorithm !== 'ed25519') return false;
-  try {
-    const signatureBytes = Buffer.from(signature, 'base64');
-    if (signatureBytes.length !== 64 || signatureBytes.toString('base64') !== signature) {
-      return false;
-    }
-    const publicKey = createPublicKey({
-      key: Buffer.from(signer.public_key_spki_base64, 'base64'),
-      format: 'der',
-      type: 'spki',
-    });
-    return (
-      publicKey.asymmetricKeyType === 'ed25519' && verify(null, bytes, publicKey, signatureBytes)
-    );
-  } catch {
-    return false;
-  }
-}
-
-function authorityIsTrusted(
-  authority: ReleaseGateAuthority,
-  trustPolicy: ReleaseGateTrustPolicy,
-): boolean {
-  const authorityKeyIds = new Set(trustPolicy.authority_signers.map(({ key_id: keyId }) => keyId));
-  const authorityFingerprints = trustPolicy.authority_signers.map(trustedSignerFingerprint);
-  const promotionFingerprints = trustPolicy.promotion_signers.map(trustedSignerFingerprint);
-  const allKeyIds = [...trustPolicy.authority_signers, ...trustPolicy.promotion_signers].map(
-    ({ key_id: keyId }) => keyId,
-  );
-  return (
-    authorityShapeIsClosed(authority) &&
-    trustPolicy.schema_version === 'aiq.release-gate-trust.v1' &&
-    trustPolicy.release_identity === authority.release_identity &&
-    hasExactKeys(trustPolicy, [
-      'authority_signers',
-      'promotion_signers',
-      'release_identity',
-      'schema_version',
-    ]) &&
-    trustPolicy.authority_signers.length > 0 &&
-    trustPolicy.promotion_signers.length > 0 &&
-    new Set(allKeyIds).size === allKeyIds.length &&
-    [...trustPolicy.authority_signers, ...trustPolicy.promotion_signers].every(
-      signerShapeIsClosed,
-    ) &&
-    trustPolicy.promotion_signers.every(({ key_id: keyId }) => !authorityKeyIds.has(keyId)) &&
-    authorityFingerprints.every((fingerprint) => fingerprint !== null) &&
-    promotionFingerprints.every((fingerprint) => fingerprint !== null) &&
-    new Set(authorityFingerprints).size === authorityFingerprints.length &&
-    new Set(promotionFingerprints).size === promotionFingerprints.length &&
-    promotionFingerprints.every((fingerprint) => !authorityFingerprints.includes(fingerprint)) &&
-    authority.schema_version === 'aiq.release-gate-authority.v1' &&
-    authority.signature_domain === authority.schema_version &&
-    authority.signature_encoding === 'aiq.sorted-key-json.v1' &&
-    authority.admission.schema_version === 'aiq.release-gate-admission.v1' &&
-    authority.admission.signature_domain === authority.admission.schema_version &&
-    authority.admission.signature_encoding === 'aiq.sorted-key-json.v1' &&
-    authority.admission_digest === releaseAdmissionDigest(authority.admission) &&
-    verifyEd25519(
-      releaseAdmissionSigningBytes(authority.admission),
-      authority.admission.signature,
-      trustedSigner(trustPolicy.authority_signers, authority.admission.signer.key_id),
-    ) &&
-    authority.signer.algorithm === 'ed25519' &&
-    verifyEd25519(
-      releaseAuthoritySigningBytes(authority),
-      authority.signature,
-      trustedSigner(trustPolicy.authority_signers, authority.signer.key_id),
-    )
-  );
-}
-
-function trustRootIsValid(
-  trustPolicy: ReleaseGateTrustPolicy,
-  runtimePinnedTrustRoot: ReleaseGateTrustRoot,
-): boolean {
-  return (
-    hasExactKeys(runtimePinnedTrustRoot, [
-      'release_identity',
-      'schema_version',
-      'trust_policy_digest',
-    ]) &&
-    runtimePinnedTrustRoot.schema_version === 'aiq.release-gate-trust-root.v1' &&
-    runtimePinnedTrustRoot.release_identity === trustPolicy.release_identity &&
-    validDigest(runtimePinnedTrustRoot.trust_policy_digest) &&
-    runtimePinnedTrustRoot.trust_policy_digest === releaseGateTrustPolicyDigest(trustPolicy)
-  );
-}
-
-const COMPONENT_WEIGHTS = new Map([
-  ['component_01', 3000],
-  ['component_02', 2500],
-  ['component_03', 2500],
-  ['component_04', 2000],
-] as const);
-
-function derivedTaskScore(components: readonly ComponentEvidence[] | null): number | null {
-  if (
-    components === null ||
-    components.length !== COMPONENT_WEIGHTS.size ||
-    components.some(
-      ({ component_id: componentId }, index) =>
-        componentId !== [...COMPONENT_WEIGHTS.keys()][index],
-    )
-  ) {
-    return null;
-  }
-  let score = 0;
-  for (const component of components) {
-    if (
-      !hasExactKeys(component, [
-        'assertions',
-        'component_id',
-        'passed_assertions',
-        'total_assertions',
-        'weight_basis_points',
-      ])
-    )
-      return null;
-    const assertionIds = component.assertions.map(({ assertion_id: assertionId }) => assertionId);
-    if (
-      component.assertions.length < 3 ||
-      component.weight_basis_points !== COMPONENT_WEIGHTS.get(component.component_id) ||
-      component.total_assertions !== component.assertions.length ||
-      component.passed_assertions !==
-        component.assertions.filter(({ passed: didPass }) => didPass).length ||
-      new Set(assertionIds).size !== assertionIds.length ||
-      assertionIds.some((assertionId, index) => assertionId !== publicAssertionId(index)) ||
-      component.assertions.some(
-        (assertion) =>
-          !hasExactKeys(assertion, ['assertion_id', 'evidence_digest', 'passed']) ||
-          typeof assertion.passed !== 'boolean' ||
-          !validDigest(assertion.evidence_digest),
-      )
-    ) {
-      return null;
-    }
-    const passed = component.assertions.filter(({ passed: didPass }) => didPass).length;
-    score +=
-      ((COMPONENT_WEIGHTS.get(component.component_id) ?? 0) / 10_000) *
-      (passed / component.assertions.length);
-  }
-  return Math.round((score + Number.EPSILON) * 1_000_000) / 1_000_000;
-}
-
-function publicAssertionId(index: number): string {
-  return `assertion_${String(index + 1).padStart(3, '0')}`;
-}
-
-function validDigest(value: string): boolean {
-  return /^sha256:(?!0{64}$)[a-f0-9]{64}$/u.test(value);
-}
-
-function validIdentifier(value: string): boolean {
-  return /^[a-z0-9][a-z0-9._-]*$/u.test(value);
-}
-
-function validCanonicalTimestamp(value: string): boolean {
-  return Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
-}
-
-export function promotionReceiptIssuedAtIsCausal(
-  issuedAt: string,
-  evidenceCollectedAt: string,
-): boolean {
-  return (
-    validCanonicalTimestamp(issuedAt) &&
-    validCanonicalTimestamp(evidenceCollectedAt) &&
-    Date.parse(issuedAt) >= Date.parse(evidenceCollectedAt)
-  );
-}
-
-function isReleaseAttemptArray(value: unknown): value is ReleaseGateRawCell['attempts'] {
-  return Array.isArray(value);
-}
-
-function releaseAttemptHasNoProvenance(attempt: ReleaseGateAttempt): boolean {
-  return (
-    attempt.result_digest === null &&
-    attempt.result_package_digest === null &&
-    attempt.verifier_attestation_digest === null
-  );
-}
-
-function releaseAttemptTimingIsValid(
-  attempt: ReleaseGateAttempt,
-  expectedDelaySeconds: number | undefined,
-  repeatScheduledAt: string | undefined,
-  nextRepeatScheduledAt: string | undefined,
-  collectionNotBefore: string,
-  collectionNotAfter: string,
-  previousStartedAt: string | undefined,
-): boolean {
-  if (
-    expectedDelaySeconds === undefined ||
-    repeatScheduledAt === undefined ||
-    !validCanonicalTimestamp(repeatScheduledAt) ||
-    (nextRepeatScheduledAt !== undefined && !validCanonicalTimestamp(nextRepeatScheduledAt)) ||
-    !validCanonicalTimestamp(collectionNotBefore) ||
-    !validCanonicalTimestamp(collectionNotAfter) ||
-    !validCanonicalTimestamp(attempt.scheduled_for) ||
-    !validCanonicalTimestamp(attempt.started_at) ||
-    (previousStartedAt !== undefined && !validCanonicalTimestamp(previousStartedAt))
-  ) {
-    return false;
-  }
-
-  const scheduledFor = Date.parse(attempt.scheduled_for);
-  const startedAt = Date.parse(attempt.started_at);
-  const repeatStart = Date.parse(repeatScheduledAt);
-  const collectionStart = Date.parse(collectionNotBefore);
-  const collectionEnd = Date.parse(collectionNotAfter);
-  return (
-    attempt.scheduled_delay_seconds === expectedDelaySeconds &&
-    scheduledFor === repeatStart + expectedDelaySeconds * 1000 &&
-    startedAt >= scheduledFor &&
-    startedAt >= repeatStart &&
-    startedAt >= collectionStart &&
-    startedAt <= collectionEnd &&
-    (nextRepeatScheduledAt === undefined || startedAt < Date.parse(nextRepeatScheduledAt)) &&
-    (previousStartedAt === undefined || startedAt > Date.parse(previousStartedAt))
-  );
-}
-
-function releaseTerminalAttemptMatchesStatus(
-  status: string,
-  attempt: ReleaseGateAttempt,
-  resultDigest: string | null,
-  resultPackageDigest: string | null,
-  verificationDigest: string | null,
-  retryableInfrastructureClassifications: readonly string[],
-): boolean {
-  switch (status) {
-    case 'completed':
-      return (
-        attempt.disposition === 'completed' &&
-        attempt.model_started &&
-        attempt.infrastructure_classification === null &&
-        attempt.result_digest === resultDigest &&
-        attempt.result_package_digest === resultPackageDigest &&
-        attempt.verifier_attestation_digest === verificationDigest
-      );
-    case 'infrastructure_failure':
-      return (
-        attempt.disposition === 'infrastructure_terminal' &&
-        !attempt.model_started &&
-        attempt.infrastructure_classification !== null &&
-        retryableInfrastructureClassifications.includes(attempt.infrastructure_classification) &&
-        releaseAttemptHasNoProvenance(attempt)
-      );
-    case 'model_failure':
-      return (
-        attempt.disposition === 'model_failure' &&
-        attempt.infrastructure_classification === null &&
-        releaseAttemptHasNoProvenance(attempt)
-      );
-    case 'evaluator_failure':
-      return (
-        attempt.disposition === 'evaluator_failure' &&
-        attempt.model_started &&
-        attempt.infrastructure_classification === null &&
-        releaseAttemptHasNoProvenance(attempt)
-      );
-    case 'unsupported':
-      return (
-        attempt.disposition === 'unsupported' &&
-        !attempt.model_started &&
-        attempt.infrastructure_classification === null &&
-        releaseAttemptHasNoProvenance(attempt)
-      );
-    case 'unevaluated':
-      return (
-        attempt.disposition === 'unevaluated' &&
-        attempt.infrastructure_classification === null &&
-        releaseAttemptHasNoProvenance(attempt)
-      );
-    default:
-      return false;
-  }
-}
-
-function expectedContrastArmOrder(repeatIndex: number): readonly string[] {
-  return RELEASE_GATE_POLICY.predeclared_contrasts.flatMap(({ contrast_id: contrastId }) =>
-    repeatIndex % 2 === 0
-      ? [`${contrastId}:reference`, `${contrastId}:challenge`]
-      : [`${contrastId}:challenge`, `${contrastId}:reference`],
-  );
-}
-
-export function evaluateReleaseGate(
-  evidence: ReleaseGateEvidence,
-  authority: ReleaseGateAuthority,
-  trustPolicy: ReleaseGateTrustPolicy,
-  runtimePinnedTrustRoot: ReleaseGateTrustRoot,
-): ReleaseGateResult {
-  const failures: string[] = [];
-  const policy = RELEASE_GATE_POLICY;
-  const scoreEpsilon = 1e-12;
-  const isFloor = (score: number): boolean => score <= policy.score_bands.floor_max + scoreEpsilon;
-  const isCeiling = (score: number): boolean =>
-    score >= policy.score_bands.ceiling_min - scoreEpsilon;
-  const isMid = (score: number): boolean =>
-    score >= policy.score_bands.mid_min - scoreEpsilon &&
-    score <= policy.score_bands.mid_max + scoreEpsilon;
-  const catalog = buildCatalog();
-  const admission = authority.admission;
-  const expectedTasks = new Map(
-    catalog.tasks.map(({ task_id: taskId, domain }) => [taskId, domain]),
-  );
-  const repeatIds = new Set(evidence.repeat_ids);
-  const plannedRepeatIds = admission.repeat_schedule.map(({ repeat_id: repeatId }) => repeatId);
-  const authorityModelIds = admission.model_matrix.configurations.map(
-    ({ model_id: modelId }) => modelId,
-  );
-  const modelIds = new Set(authorityModelIds);
-  const authorityContrastBindings = new Map(
-    admission.contrast_bindings.map((binding) => [binding.contrast_id, binding]),
-  );
-  const boundVariantDigests = admission.contrast_bindings.flatMap(
-    ({ reference_variant_digest: reference, challenge_variant_digest: challenge }) => [
-      reference,
-      challenge,
-    ],
-  );
-  const cellKeys = evidence.raw_cells.map(
-    ({ repeat_id: repeatId, task_id: taskId, model_id: modelId }) =>
-      `${repeatId}\u0000${taskId}\u0000${modelId}`,
-  );
-  const expectedCellCount = 72 * 17 * 3;
-  const expectedCellKeys = plannedRepeatIds.flatMap((repeatId) =>
-    admission.observation_universe.task_ids.flatMap((taskId) =>
-      authorityModelIds.map((modelId) => `${repeatId}\u0000${taskId}\u0000${modelId}`),
-    ),
-  );
-  const invalidRawCell = evidence.raw_cells.some((cell, cellIndex) => {
-    const {
-      universe_slot: universeSlot,
-      repeat_id: repeatId,
-      task_id: taskId,
-      domain,
-      model_id: modelId,
-      status,
-      reported_score: reportedScore,
-      components,
-      evaluator_digest: evaluatorDigest,
-      result_digest: resultDigest,
-      result_package_digest: resultPackageDigest,
-      verification_digest: verificationDigest,
-      cell_evidence_binding_digest: cellEvidenceBindingDigest,
-      verification_status: verificationStatus,
-      attempts,
-      ...unrecognizedCellFields
-    } = cell;
-    const { cell_evidence_binding_digest: _bindingDigest, ...unsignedCell } = cell;
-    const repeatIndex = admission.repeat_schedule.findIndex(
-      ({ repeat_id: scheduledRepeat }) => scheduledRepeat === repeatId,
-    );
-    const scheduledRepeatAt = admission.repeat_schedule[repeatIndex]?.scheduled_at;
-    const nextScheduledRepeatAt = admission.repeat_schedule[repeatIndex + 1]?.scheduled_at;
-    return (
-      Object.keys(unrecognizedCellFields).length !== 0 ||
-      universeSlot !== cellIndex + 1 ||
-      !isReleaseAttemptArray(attempts) ||
-      attempts.length < 1 ||
-      attempts.length > admission.infrastructure_retry_policy.max_attempts ||
-      attempts.some(
-        (attempt, index) =>
-          !hasExactKeys(attempt, [
-            'attempt_number',
-            'disposition',
-            'infrastructure_classification',
-            'result_digest',
-            'result_package_digest',
-            'scheduled_delay_seconds',
-            'scheduled_for',
-            'started_at',
-            'model_started',
-            'verifier_attestation_digest',
-          ]) ||
-          attempt.attempt_number !== index + 1 ||
-          !releaseAttemptTimingIsValid(
-            attempt,
-            admission.infrastructure_retry_policy.backoff_seconds[index],
-            scheduledRepeatAt,
-            nextScheduledRepeatAt,
-            admission.collection_not_before,
-            admission.collection_not_after,
-            attempts[index - 1]?.started_at,
-          ) ||
-          (index < attempts.length - 1
-            ? attempt.disposition !== 'infrastructure_retryable' ||
-              attempt.model_started ||
-              attempt.infrastructure_classification === null ||
-              !admission.infrastructure_retry_policy.retryable_classifications.includes(
-                attempt.infrastructure_classification,
-              ) ||
-              attempt.result_digest !== null ||
-              attempt.result_package_digest !== null ||
-              attempt.verifier_attestation_digest !== null
-            : !releaseTerminalAttemptMatchesStatus(
-                status,
-                attempt,
-                resultDigest,
-                resultPackageDigest,
-                verificationDigest,
-                admission.infrastructure_retry_policy.retryable_classifications,
-              )),
-      ) ||
-      !repeatIds.has(repeatId) ||
-      expectedTasks.get(taskId) !== domain ||
-      !modelIds.has(modelId) ||
-      (status === 'completed'
-        ? reportedScore === null ||
-          !validUnitInterval(reportedScore) ||
-          derivedTaskScore(components) !== reportedScore ||
-          evaluatorDigest === null ||
-          !validDigest(evaluatorDigest) ||
-          resultDigest === null ||
-          !validDigest(resultDigest) ||
-          resultPackageDigest === null ||
-          !validDigest(resultPackageDigest) ||
-          verificationDigest === null ||
-          !validDigest(verificationDigest) ||
-          cellEvidenceBindingDigest === null ||
-          !validDigest(cellEvidenceBindingDigest) ||
-          cellEvidenceBindingDigest !== releaseCellEvidenceBindingDigest(unsignedCell) ||
-          verificationStatus !== 'verified'
-        : reportedScore !== null ||
-          components !== null ||
-          evaluatorDigest !== null ||
-          resultDigest !== null ||
-          resultPackageDigest !== null ||
-          verificationDigest !== null ||
-          cellEvidenceBindingDigest !== null ||
-          verificationStatus !== 'failed')
-    );
-  });
-  const completedCellBoundDigests = evidence.raw_cells.flatMap((cell) =>
-    cell.status === 'completed'
-      ? [
-          cell.result_digest,
-          cell.result_package_digest,
-          cell.verification_digest,
-          cell.cell_evidence_binding_digest,
-        ].filter((digest): digest is string => digest !== null)
-      : [],
-  );
-  const contrastCellBoundDigests = evidence.paired_contrasts.flatMap(({ pairs }) =>
-    pairs.flatMap((pair) => [
-      pair.reference_result_digest,
-      pair.reference_result_package_digest,
-      pair.reference_verifier_attestation_digest,
-      pair.challenge_result_digest,
-      pair.challenge_result_package_digest,
-      pair.challenge_verifier_attestation_digest,
-    ]),
-  );
-  const cellBoundEvidenceDigests = [...completedCellBoundDigests, ...contrastCellBoundDigests];
-  if (
-    !authorityIsTrusted(authority, trustPolicy) ||
-    !trustRootIsValid(trustPolicy, runtimePinnedTrustRoot)
-  ) {
-    failures.push('invalid_authority');
-  }
-  if (
-    evidence.schema_version !== 'aiq.release-gate-evidence.v1' ||
-    authority.release_identity !== policy.release_identity ||
-    authority.catalog_release_identity_digest !== catalog.catalog_release_identity.digest ||
-    authority.task_metadata_identity_digest !== catalog.task_metadata_identity.digest ||
-    evidence.admission_digest !== authority.admission_digest ||
-    evidence.execution_plan_digest !== admission.execution_plan_digest ||
-    authority.execution_plan_digest !== admission.execution_plan_digest ||
-    !validDigest(admission.execution_plan_digest) ||
-    evidence.model_id_mapping_digest !== admission.model_id_mapping_digest ||
-    authority.model_id_mapping_digest !== admission.model_id_mapping_digest ||
-    admission.model_id_mapping_digest !== releaseModelIdMappingDigest() ||
-    authority.source_observations_digest !== evidence.source_observations_digest ||
-    !validIdentifier(admission.plan_id) ||
-    !validCanonicalTimestamp(admission.issued_at) ||
-    !validCanonicalTimestamp(admission.collection_not_before) ||
-    !validCanonicalTimestamp(admission.collection_not_after) ||
-    Date.parse(admission.issued_at) >= Date.parse(admission.collection_not_before) ||
-    Date.parse(admission.collection_not_before) >= Date.parse(admission.collection_not_after) ||
-    admission.repeat_schedule.length !== 3 ||
-    new Set(plannedRepeatIds).size !== plannedRepeatIds.length ||
-    admission.repeat_schedule.some(
-      ({ repeat_id: repeatId, scheduled_at: scheduledAt, contrast_arm_order: armOrder }, index) =>
-        !validIdentifier(repeatId) ||
-        !validCanonicalTimestamp(scheduledAt) ||
-        Date.parse(scheduledAt) < Date.parse(admission.collection_not_before) ||
-        Date.parse(scheduledAt) > Date.parse(admission.collection_not_after) ||
-        (index > 0 &&
-          Date.parse(scheduledAt) <=
-            Date.parse(admission.repeat_schedule[index - 1]?.scheduled_at ?? '')) ||
-        JSON.stringify(armOrder) !== JSON.stringify(expectedContrastArmOrder(index)),
-    ) ||
-    JSON.stringify(evidence.repeat_ids) !== JSON.stringify(plannedRepeatIds) ||
-    !validCanonicalTimestamp(evidence.collected_at) ||
-    Date.parse(evidence.collected_at) < Date.parse(admission.collection_not_before) ||
-    Date.parse(evidence.collected_at) > Date.parse(admission.collection_not_after) ||
-    evidence.authority_digest !== releaseAuthorityDigest(authority) ||
-    evidence.release_identity !== authority.release_identity ||
-    evidence.catalog_release_identity_digest !== authority.catalog_release_identity_digest ||
-    evidence.task_metadata_identity_digest !== authority.task_metadata_identity_digest ||
-    !validDigest(admission.corpus_commitment_digest) ||
-    evidence.corpus_commitment_digest !== admission.corpus_commitment_digest ||
-    admission.model_matrix.digest !== CANDIDATE_MODEL_MATRIX_SHA256 ||
-    evidence.model_matrix_digest !== admission.model_matrix.digest ||
-    admission.model_matrix.digest !==
-      releaseEvidenceModelMatrixDigest(admission.model_matrix.configurations) ||
-    admission.model_matrix.configurations.length !== FIXED_MODEL_MATRIX_IDENTITIES.length ||
-    modelIds.size !== 17 ||
-    admission.model_matrix.configurations.some(
-      (
-        {
-          model_id: modelId,
-          execution_model_id: executionModelId,
-          family,
-          reasoning_effort: effort,
-        },
-        index,
-      ) =>
-        !validIdentifier(modelId) ||
-        executionModelId !== MODEL_EXECUTION_ID_MAPPING[index]?.execution_model_id ||
-        modelId !== FIXED_MODEL_MATRIX_IDENTITIES[index]?.model_id ||
-        family !== FIXED_MODEL_MATRIX_IDENTITIES[index]?.family ||
-        effort !== FIXED_MODEL_MATRIX_IDENTITIES[index]?.reasoning_effort,
-    ) ||
-    JSON.stringify(admission.observation_universe.task_ids) !==
-      JSON.stringify([...expectedTasks.keys()]) ||
-    JSON.stringify(admission.observation_universe.model_ids) !==
-      JSON.stringify(authorityModelIds) ||
-    admission.observation_universe.raw_cell_count !== 72 * 17 * 3 ||
-    admission.observation_universe.contrast_pair_count !== 3 * 17 * 3 ||
-    admission.observation_universe.contrast_observation_count !== 3 * 2 * 17 * 3 ||
-    admission.infrastructure_retry_policy.max_attempts !== 3 ||
-    JSON.stringify(admission.infrastructure_retry_policy.backoff_seconds) !==
-      JSON.stringify([0, 30, 90]) ||
-    JSON.stringify(admission.infrastructure_retry_policy.retryable_classifications) !==
-      JSON.stringify(['pre_model_admission']) ||
-    admission.infrastructure_retry_policy.model_or_evaluator_failures_retryable ||
-    admission.contrast_bindings.length !== policy.predeclared_contrasts.length ||
-    authorityContrastBindings.size !== policy.predeclared_contrasts.length ||
-    new Set(boundVariantDigests).size !== policy.predeclared_contrasts.length * 2 ||
-    boundVariantDigests.some((digest) => !validDigest(digest)) ||
-    evidence.source_observations_digest !==
-      releaseEvidenceSourceDigest(evidence.raw_cells, evidence.paired_contrasts) ||
-    evidence.repeat_ids.length !== 3 ||
-    repeatIds.size !== evidence.repeat_ids.length ||
-    evidence.raw_cells.length !== expectedCellCount ||
-    JSON.stringify(cellKeys) !== JSON.stringify(expectedCellKeys) ||
-    new Set(cellKeys).size !== expectedCellCount ||
-    cellBoundEvidenceDigests.some((digest) => !validDigest(digest)) ||
-    new Set(cellBoundEvidenceDigests).size !== cellBoundEvidenceDigests.length ||
-    invalidRawCell
-  ) {
-    failures.push('invalid_evidence');
-  }
-
-  const infrastructureFailures = evidence.raw_cells.filter(
-    ({ status }) => status === 'infrastructure_failure',
-  ).length;
-  const evaluatorFailures = evidence.raw_cells.filter(
-    ({ status }) => status === 'evaluator_failure',
-  ).length;
-  const incompleteCells = evidence.raw_cells.filter(({ status }) => status !== 'completed').length;
-  const taskStatistics = catalog.tasks.map(({ task_id: taskId, domain }) => {
-    const scores = evidence.raw_cells
-      .filter((cell) => cell.task_id === taskId && cell.status === 'completed')
-      .flatMap(({ components }) => {
-        const score = derivedTaskScore(components);
-        return score === null ? [] : [score];
-      });
-    return {
-      task_id: taskId,
-      domain,
-      mean_score: scores.length === 0 ? Number.NaN : mean(scores),
-      score_range: scores.length === 0 ? Number.NaN : Math.max(...scores) - Math.min(...scores),
-    };
-  });
-  const floorTasks = taskStatistics.filter(({ mean_score: meanScore }) => isFloor(meanScore));
-  const ceilingTasks = taskStatistics.filter(({ mean_score: meanScore }) => isCeiling(meanScore));
-  const midTasks = taskStatistics.filter(({ mean_score: meanScore }) => isMid(meanScore));
-  const invariantTasks = taskStatistics.filter(
-    ({ score_range: scoreRange }) =>
-      scoreRange <= policy.score_bands.invariant_range_max + scoreEpsilon,
-  );
-
-  if (infrastructureFailures > policy.aggregate_thresholds.infrastructure_failures_max) {
-    failures.push('infrastructure_failures');
-  }
-  if (evaluatorFailures > policy.aggregate_thresholds.evaluator_failures_max) {
-    failures.push('evaluator_failures');
-  }
-  if (incompleteCells > 0) failures.push('incomplete_cells');
-  if (floorTasks.length > policy.aggregate_thresholds.floor_tasks_max) failures.push('floor_tasks');
-  if (ceilingTasks.length > policy.aggregate_thresholds.ceiling_tasks_max) {
-    failures.push('ceiling_tasks');
-  }
-  if (midTasks.length < policy.aggregate_thresholds.mid_band_tasks_min) {
-    failures.push('mid_band_tasks');
-  }
-  if (invariantTasks.length > policy.aggregate_thresholds.invariant_tasks_max) {
-    failures.push('invariant_tasks');
-  }
-
-  for (const domain of DOMAINS) {
-    const domainTasks = taskStatistics.filter((taskStatistic) => taskStatistic.domain === domain);
-    const share = (predicate: (candidate: (typeof domainTasks)[number]) => boolean): number =>
-      domainTasks.filter(predicate).length / domainTasks.length;
-    if (
-      share(({ mean_score: meanScore }) => isMid(meanScore)) <
-      policy.domain_thresholds.mid_band_share_min
-    ) {
-      failures.push(`domain_mid_band:${domain}`);
-    }
-    if (
-      share(({ mean_score: meanScore }) => isFloor(meanScore)) >
-      policy.domain_thresholds.floor_share_max
-    ) {
-      failures.push(`domain_floor:${domain}`);
-    }
-    if (
-      share(({ mean_score: meanScore }) => isCeiling(meanScore)) >
-      policy.domain_thresholds.ceiling_share_max
-    ) {
-      failures.push(`domain_ceiling:${domain}`);
-    }
-  }
-
-  const expectedPairCount = 3 * 17;
-  const expectedPairKeys = plannedRepeatIds.flatMap((repeatId) =>
-    authorityModelIds.map((modelId) => `${repeatId}\u0000${modelId}`),
-  );
-  const requiredContrastIds = policy.predeclared_contrasts.map(
-    ({ contrast_id: contrastId }) => contrastId,
-  );
-  const passingContrasts = evidence.paired_contrasts.filter((contrast) => {
-    const authorityBinding = authorityContrastBindings.get(contrast.contrast_id);
-    const pairKeys = contrast.pairs.map(
-      ({ repeat_id: repeatId, model_id: modelId }) => `${repeatId}\u0000${modelId}`,
-    );
-    const validPairs =
-      contrast.pairs.length === expectedPairCount &&
-      JSON.stringify(pairKeys) === JSON.stringify(expectedPairKeys) &&
-      new Set(pairKeys).size === expectedPairCount &&
-      contrast.pairs.every(
-        ({
-          repeat_id: repeatId,
-          model_id: modelId,
-          reference_score: reference,
-          challenge_score: challenge,
-          reference_result_digest: referenceResultDigest,
-          reference_result_package_digest: referencePackageDigest,
-          reference_verifier_attestation_digest: referenceAttestationDigest,
-          challenge_result_digest: challengeResultDigest,
-          challenge_result_package_digest: challengePackageDigest,
-          challenge_verifier_attestation_digest: challengeAttestationDigest,
-        }) =>
-          repeatIds.has(repeatId) &&
-          modelIds.has(modelId) &&
-          validUnitInterval(reference) &&
-          validUnitInterval(challenge) &&
-          [
-            referenceResultDigest,
-            referencePackageDigest,
-            referenceAttestationDigest,
-            challengeResultDigest,
-            challengePackageDigest,
-            challengeAttestationDigest,
-          ].every(validDigest),
-      );
-    if (!validPairs) return false;
-    const modelClusterDifferences = authorityModelIds.map((modelId) =>
-      mean(
-        contrast.pairs
-          .filter((pair) => pair.model_id === modelId)
-          .map(
-            ({ reference_score: reference, challenge_score: challenge }) =>
-              (reference - challenge) * 100,
-          ),
-      ),
-    );
-    const directionalDifferenceAiQ = mean(modelClusterDifferences);
-    const adjustedLowerBound =
-      directionalDifferenceAiQ -
-      (policy.paired_contrast_thresholds.one_sided_critical_value *
-        sampleStandardDeviation(modelClusterDifferences)) /
-        Math.sqrt(modelClusterDifferences.length);
-    return (
-      requiredContrastIds.includes(contrast.contrast_id) &&
-      authorityBinding?.reference_variant_digest === contrast.reference_variant_digest &&
-      authorityBinding.challenge_variant_digest === contrast.challenge_variant_digest &&
-      directionalDifferenceAiQ >=
-        policy.paired_contrast_thresholds.directional_difference_aiq_min - 1e-12 &&
-      adjustedLowerBound > scoreEpsilon
-    );
-  });
-  if (
-    evidence.paired_contrasts.length !== requiredContrastIds.length ||
-    new Set(evidence.paired_contrasts.map(({ contrast_id: contrastId }) => contrastId)).size !==
-      requiredContrastIds.length ||
-    passingContrasts.length !== requiredContrastIds.length
-  ) {
-    failures.push('paired_contrasts');
-  }
-
-  const completedCells = evidence.raw_cells.filter(
-    (cell) => cell.status === 'completed' && derivedTaskScore(cell.components) !== null,
-  );
-  const repeatAggregatesAiQ = evidence.repeat_ids.map(
-    (repeatId) =>
-      mean(
-        completedCells
-          .filter((cell) => cell.repeat_id === repeatId)
-          .map((cell) => derivedTaskScore(cell.components) ?? Number.NaN),
-      ) * 100,
-  );
-  const targetRows = [...expectedTasks.keys()].flatMap((taskId) =>
-    [...modelIds].map((modelId) =>
-      evidence.repeat_ids.map((repeatId) => {
-        const cell = completedCells.find(
-          (candidate) =>
-            candidate.task_id === taskId &&
-            candidate.model_id === modelId &&
-            candidate.repeat_id === repeatId,
-        );
-        return derivedTaskScore(cell?.components ?? null) ?? Number.NaN;
-      }),
-    ),
-  );
-  const aggregateSdAiQ = sampleStandardDeviation(repeatAggregatesAiQ);
-  const medianCellRange = median(
-    targetRows.map((scores) => Math.max(...scores) - Math.min(...scores)),
-  );
-  const icc = absoluteAgreementIcc(targetRows);
-  if (evidence.repeat_ids.length !== 3) {
-    failures.push('stability_repeats');
-  }
-  if (aggregateSdAiQ > policy.stability_thresholds.aggregate_sd_aiq_max + scoreEpsilon) {
-    failures.push('stability_aggregate_sd');
-  }
-  if (medianCellRange > policy.stability_thresholds.median_cell_range_max + scoreEpsilon) {
-    failures.push('stability_cell_range');
-  }
-  if (!Number.isFinite(icc) || icc < policy.stability_thresholds.icc_min - scoreEpsilon) {
-    failures.push('stability_icc');
-  }
-
-  return {
-    schema_version: 'aiq.release-gate-result.v1',
-    release_identity: 'aiq-core/1.0.2',
-    candidate_status: 'candidate_requires_controlled_release_gate',
-    passed: failures.length === 0,
-    failures,
-    authority_digest: releaseAuthorityDigest(authority),
-    evidence_digest: releaseEvidenceDigest(evidence),
-    plan_id: admission.plan_id,
-  };
-}
-
-export function verifyPromotionReceipt(
-  receipt: PromotionReceipt,
-  evidence: ReleaseGateEvidence,
-  authority: ReleaseGateAuthority,
-  trustPolicy: ReleaseGateTrustPolicy,
-  runtimePinnedTrustRoot: ReleaseGateTrustRoot,
-): boolean {
-  const result = evaluateReleaseGate(evidence, authority, trustPolicy, runtimePinnedTrustRoot);
-  const signer = trustedSigner(trustPolicy.promotion_signers, receipt.signer.key_id);
-  return (
-    result.passed &&
-    hasExactKeys(receipt, [
-      'authority_digest',
-      'candidate_catalog_release_identity_digest',
-      'evidence_digest',
-      'gate_result_digest',
-      'issued_at',
-      'promotion_state',
-      'release_identity',
-      'schema_version',
-      'signature',
-      'signature_domain',
-      'signature_encoding',
-      'signer',
-      'task_metadata_identity_digest',
-    ]) &&
-    signerShapeIsClosed(receipt.signer) &&
-    receipt.schema_version === 'aiq.promotion-receipt.v1' &&
-    receipt.signature_domain === receipt.schema_version &&
-    receipt.signature_encoding === 'aiq.sorted-key-json.v1' &&
-    receipt.release_identity === result.release_identity &&
-    receipt.candidate_catalog_release_identity_digest ===
-      buildCatalog().catalog_release_identity.digest &&
-    receipt.task_metadata_identity_digest === buildCatalog().task_metadata_identity.digest &&
-    receipt.authority_digest === result.authority_digest &&
-    receipt.evidence_digest === result.evidence_digest &&
-    receipt.gate_result_digest === releaseGateResultDigest(result) &&
-    receipt.promotion_state === 'released' &&
-    promotionReceiptIssuedAtIsCausal(receipt.issued_at, evidence.collected_at) &&
-    receipt.signer.algorithm === 'ed25519' &&
-    verifyEd25519(promotionReceiptSigningBytes(receipt), receipt.signature, signer)
-  );
-}
 
 const BASE_TASK_BUDGET: TaskBudget = { wall_seconds: 360, max_steps: 28, max_tool_calls: 18 };
 
@@ -3043,29 +1553,33 @@ export function buildCatalog(): Catalog {
     };
   });
 
+  const taskMetadataIdentity: Catalog['task_metadata_identity'] = {
+    algorithm: 'sha256',
+    canonicalization: 'aiq.sorted-key-json.v1',
+    digest: taskMetadataIdentityDigest(tasks),
+    scope: 'ordered_full_task_metadata',
+  };
+  const releaseIdentityInput: CatalogReleaseIdentityInput = {
+    release_identity: 'aiq-core/1.0.2',
+    scoring_version: SCORER_VERSION,
+    task_metadata_identity: taskMetadataIdentity,
+  };
+
   return {
     schema_version: 'aiq.catalog.v1',
     task_set_id: 'aiq-core',
     task_set_version: TASK_SET_VERSION,
+    scoring_version: SCORER_VERSION,
     title: 'AIQ Core Daily Work Benchmark',
-    status: 'candidate_requires_controlled_release_gate',
+    status: 'active',
     generated_from: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts',
-    predecessor_catalog: PREDECESSOR_CATALOG,
-    task_metadata_identity: {
-      algorithm: 'sha256',
-      canonicalization: 'aiq.sorted-key-json.v1',
-      digest: taskMetadataIdentityDigest(tasks),
-      scope: 'ordered_full_task_metadata',
-    },
+    task_metadata_identity: taskMetadataIdentity,
     catalog_release_identity: {
+      ...releaseIdentityInput,
       algorithm: 'sha256',
       canonicalization: 'aiq.sorted-key-json.v1',
-      digest: catalogReleaseIdentityDigest(
-        taskMetadataIdentityDigest(tasks),
-        RELEASE_GATE_POLICY,
-        PREDECESSOR_CATALOG,
-      ),
-      scope: 'task_metadata_identity_release_policy_and_predecessor',
+      digest: catalogReleaseIdentityDigest(releaseIdentityInput),
+      scope: 'release_identity_scoring_version_and_ordered_task_metadata_identity',
     },
     content_policy: {
       public_repository: 'Metadata, schemas, public examples, and synthetic scoring fixtures only.',
@@ -3078,9 +1592,8 @@ export function buildCatalog(): Catalog {
       difficulties: DIFFICULTY_QUOTAS,
       domain_difficulty: DOMAIN_DIFFICULTY_QUOTAS,
       difficulty_role:
-        'Difficulty is a provisional, non-ordinal coverage label. It is not an empirical rank, does not set score weight, and must not be interpreted as calibrated until the 1.0.2 controlled release gate passes.',
+        'Difficulty is a non-ordinal coverage label. It is not an empirical rank and does not set score weight.',
     },
-    release_gate_policy: RELEASE_GATE_POLICY,
     tasks,
   };
 }
@@ -3091,6 +1604,8 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   }
   if (
     catalog.task_set_version !== TASK_SET_VERSION ||
+    catalog.scoring_version !== SCORER_VERSION ||
+    catalog.catalog_release_identity.scoring_version !== catalog.scoring_version ||
     catalog.tasks.some(
       (catalogTask) =>
         catalogTask.task_version !== TASK_VERSION ||
@@ -3108,21 +1623,17 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   if (identifiers.size !== catalog.tasks.length) {
     throw new Error('Every benchmark task ID must be unique.');
   }
-  if (
-    JSON.stringify(catalog.release_gate_policy) !== JSON.stringify(RELEASE_GATE_POLICY) ||
-    JSON.stringify(catalog.predecessor_catalog) !== JSON.stringify(PREDECESSOR_CATALOG) ||
-    catalog.status !== 'candidate_requires_controlled_release_gate'
-  ) {
-    throw new Error('AIQ Core 1.0.2 requires the preregistered controlled release gate.');
+  if (catalog.status !== 'active') {
+    throw new Error('AIQ Core 1.0.2 must be active.');
   }
   for (const domain of DOMAINS) {
-    const count = catalog.tasks.filter((candidate) => candidate.domain === domain).length;
+    const count = catalog.tasks.filter((catalogTask) => catalogTask.domain === domain).length;
     if (count !== DOMAIN_QUOTAS[domain]) {
       throw new Error(`Domain ${domain} must contain ${String(DOMAIN_QUOTAS[domain])} tasks.`);
     }
     for (const difficulty of ['easy', 'medium', 'hard'] as const) {
       const domainDifficultyCount = catalog.tasks.filter(
-        (candidate) => candidate.domain === domain && candidate.difficulty === difficulty,
+        (catalogTask) => catalogTask.domain === domain && catalogTask.difficulty === difficulty,
       ).length;
       if (domainDifficultyCount !== DOMAIN_DIFFICULTY_QUOTAS[domain][difficulty]) {
         throw new Error(
@@ -3133,7 +1644,9 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   }
 
   for (const difficulty of ['easy', 'medium', 'hard'] as const) {
-    const count = catalog.tasks.filter((candidate) => candidate.difficulty === difficulty).length;
+    const count = catalog.tasks.filter(
+      (catalogTask) => catalogTask.difficulty === difficulty,
+    ).length;
     if (count !== DIFFICULTY_QUOTAS[difficulty]) {
       throw new Error(
         `Difficulty ${difficulty} must contain ${String(DIFFICULTY_QUOTAS[difficulty])} tasks.`,
@@ -3279,11 +1792,11 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
       `AIQ Core 1.0.2 task metadata identity changed without a versioned commitment update: ${observedTaskIdentity}.`,
     );
   }
-  const observedReleaseIdentity = catalogReleaseIdentityDigest(
-    observedTaskIdentity,
-    catalog.release_gate_policy,
-    catalog.predecessor_catalog,
-  );
+  const observedReleaseIdentity = catalogReleaseIdentityDigest({
+    release_identity: catalog.catalog_release_identity.release_identity,
+    scoring_version: catalog.catalog_release_identity.scoring_version,
+    task_metadata_identity: catalog.catalog_release_identity.task_metadata_identity,
+  });
   if (catalog.catalog_release_identity.digest !== observedReleaseIdentity) {
     throw new Error(
       `Catalog release identity does not match its task identity and policy: ${observedReleaseIdentity}.`,
@@ -3300,16 +1813,8 @@ export function taskMetadataIdentityDigest(tasks: readonly CatalogTask[]): strin
   return digestValue(tasks);
 }
 
-export function catalogReleaseIdentityDigest(
-  taskMetadataIdentity: string,
-  releaseGatePolicy: ReleaseGatePolicy,
-  predecessorCatalog: Catalog['predecessor_catalog'],
-): string {
-  return digestValue({
-    task_metadata_identity: taskMetadataIdentity,
-    release_gate_policy: releaseGatePolicy,
-    predecessor_catalog: predecessorCatalog,
-  });
+export function catalogReleaseIdentityDigest(identity: CatalogReleaseIdentityInput): string {
+  return digestValue(identity);
 }
 
 export async function writeCatalog(outputPath: string): Promise<void> {

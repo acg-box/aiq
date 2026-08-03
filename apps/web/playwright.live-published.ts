@@ -2,8 +2,10 @@ import { generateKeyPairSync } from 'node:crypto';
 
 import { defineConfig } from '@playwright/test';
 
-const applicationPort = 4_179;
-const supabasePort = 4_180;
+import { resolvePlaywrightCompanionPort, resolvePlaywrightPort } from './playwright-port.ts';
+
+const applicationPort = resolvePlaywrightPort(4_179, process.env.AIQ_PLAYWRIGHT_PORT);
+const supabasePort = resolvePlaywrightCompanionPort(applicationPort);
 const reuseExistingServer = process.env.AIQ_PLAYWRIGHT_REUSE_EXISTING_SERVER === '1';
 const privateJwk = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({
   format: 'jwk',

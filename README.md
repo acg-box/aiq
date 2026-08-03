@@ -4,38 +4,25 @@ AIQ records fixed-fixture AI and agent benchmark results. The repository
 contains a Rust runner, a Rust verifier, a Next.js application, the public AIQ
 Core catalog, and one declarative PostgreSQL schema.
 
-The production Web and database foundations are provisioned, but release
-acceptance is not complete. The personal Vercel scope `acgbox` hosts project
-`aiq` at `https://aiq.wiki`, with the production environment-name contract
-configured. `https://www.aiq.wiki` preserves the request path and redirects to
-the apex domain. The personal Supabase organization `ACG Box` hosts project
-`aiq` (`xxnszykaeapolqdnhalx`), initialized once with the earlier AIQ Core
-`1.0.1` schema and reference. The live database has 17 model configurations,
-three production nodes, no published runs, and private `private-packages` and
-`private-artifacts` buckets. Bounded runtime readiness and the empty real-data
-read path pass for that deployed `1.0.1` foundation. Repository head now
-targets AIQ Core `1.0.2`, scoring `1.0.2`, and an exact 12-view public inventory.
-It is not deployed, and its one greenfield database reset remains pending. No
-benchmark or Storage schedule and no cloud runner or verifier worker exist. A
-real candidate or Official model run has not started, and no subscription limit
-has been observed. AIQ Core `1.0.2` is not promoted. Production continues to use
-the older `1.0.1` foundation and contains no genuine run data until candidate
-validation, promotion, database reset, and deployment complete. Deployment
-readiness still requires the remaining gates in the deployment handoff.
+Release acceptance is not complete. The target personal resources are Supabase
+organization `ACG Box`, Supabase project `aiq`, Vercel scope `acgbox`, Vercel
+project `aiq`, and `https://aiq.wiki`. This repository does not claim that an
+external resource is configured until live acceptance records that evidence.
+No real Official model run has started. The first release is one greenfield AIQ
+Core `1.0.2` deployment.
 
 ## Product contract
 
 - Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`, with 72
   private controlled tasks in ten domains.
-- AIQ Core `1.0.2` remains an unpromoted preregistered candidate. AIQ Core
-  `1.0.1` is the deployed predecessor until the controlled cutover completes.
+- AIQ Core `1.0.2` is the only accepted launch contract.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v3` envelopes.
 - Every result keeps runner-observed elapsed time and, when Codex reports it,
   token usage and a versioned Standard API-equivalent cost estimate.
-- The verifier reconstructs candidate workspaces and replays deterministic
+- The verifier reconstructs submitted workspaces and replays deterministic
   evaluators before it signs `aiq.verifier-attestation.v3` evidence.
 - Production uses three distinct identities: runner, verifier, and publisher.
 - The Web application reads public database views and sends controlled writes
@@ -48,21 +35,11 @@ sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
 
 Its catalog release identity is
-`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
-The predecessor `1.0.1` identity remains in historical source and comparisons;
-it is not accepted by the source-head runtime or greenfield database state.
-
-The Official `72 × 17` run has 1,224 observations and is separate from the
-candidate calibration. The candidate calibration uses three fixed repeats:
-3,672 core observations plus 306 contrast observations, for 3,978 observations.
-The gate proves only that the candidate meets its preregistered absolute
-adequacy thresholds. It does not compare `1.0.2` with `1.0.1` or prove that the
-candidate is superior. Elapsed time, provider-token usage, and Standard
-API-equivalent cost are reported separately from AIQ. Signed candidate unit
-artifacts retain measured latency and available provider-token counters. The
-public aggregate gate source, evidence, and result artifacts omit efficiency
-fields; verified publication evidence owns the coverage-qualified aggregates
-and Standard API-equivalent estimate.
+`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+This greenfield launch accepts only `1.0.2`. The first Official `72 × 17` run
+has 1,224 observations.
+Elapsed time, provider-token usage, and Standard API-equivalent cost are
+reported separately from AIQ.
 
 ## Repository map
 
@@ -98,6 +75,8 @@ Useful runner commands:
 ```sh
 cargo run -p aiq-runner -- matrix
 cargo run -p aiq-runner -- validate --public-tasks benchmarks/examples/tasks
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo run -p aiq-runner -- --help
 cargo run -p aiq-verifier -- --help
 ```
@@ -132,9 +111,8 @@ inputs. Neither smoke creates a benchmark result.
 `databases/init.ts` is the only production initialization entry point. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
 data in one transaction. It rejects a database that already contains AIQ schema
-or roles. This is one greenfield desired state; the repository has no migration
-or compatibility path. Create another empty project after a failed
-initialization.
+or roles. This is the one greenfield desired state. Create another empty project
+after a failed initialization.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -145,7 +123,8 @@ cargo make init-database
 The production reference must contain the real controlled, non-synthetic AIQ
 Core `1.0.2` corpus commitment, its real canonical `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
-only after promotion; the repository contains no substitute promoted reference.
+only after the controlled corpus and final native binaries pass model-free
+validation; the repository contains no substitute production reference.
 A successful receipt reports scoring `1.0.2`, both source-head catalog
 identities, 72 tasks, 17 model configurations, and three nodes.
 
@@ -191,20 +170,23 @@ or to production.
 Official means a complete, non-synthetic 17-by-72 run with valid current
 bindings. A complete synthetic fixture uses the `synthetic_complete`
 classification, has no Official AIQ value, and is never ranking eligible. There
-is no additional provider ceremony.
+is one submission, native verification, and publication path.
 
 ## Official paid-work boundary
 
-The repository-owned Official runtime manager is the only documented runner
-command path for the bounded container. Run its commands in this order:
-`admit-permissions`, `preflight`, `run`, `score`, `package`, and `submit`.
-`admit-permissions` is model-free; `preflight` is the first paid step. The same
-private admission receipt binds preflight through package. The manager reads the
-runner signing key only for `package` and the submission token only for
-`submit`; it does not put either secret in Docker arguments, Compose
-configuration, or logs. See `deploy/official-runtime/README.md` for the exact
-`deploy/official-runtime/runtime.py` commands. This command support does not
-prove secret provisioning, runtime deployment, admission, or model execution.
+The only Official execution and publication path runs `aiq-runner` and
+`aiq-verifier` natively on the controlled Apple Silicon macOS host with direct
+network access. Use the release binaries in this order:
+`admit-permissions`, `preflight`, `run`, `score`, `package`, `submit`, and then
+verifier replay. `admit-permissions` is model-free; `preflight` is the first paid
+step. The same private admission receipt binds preflight through package.
+Provide the runner signing key only to `package`, the submission token only to
+`submit`, and verifier credentials only to the verifier command.
+The first release does not depend on or run Linux or Docker. They remain a
+future deployment target outside first-release acceptance.
+See [Operations and Validation](openwiki/operations.md) for the native command
+contract. Repository support does not prove that private inputs, credentials,
+or live model capabilities are configured.
 
 ## Security boundaries
 

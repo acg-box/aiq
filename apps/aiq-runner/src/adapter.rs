@@ -28,7 +28,6 @@ use std::{
 	net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream},
 	path::{Path, PathBuf},
 	process::{self, Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
-	str::FromStr,
 	sync::{
 		Arc,
 		mpsc::{self, RecvTimeoutError, Sender, SyncSender},
@@ -51,7 +50,6 @@ use sha2::{Digest, Sha256};
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem;
 
-use crate::candidate_release_gate::CANDIDATE_CODEX_EGRESS_PROXY_ENDPOINT;
 #[cfg(test)]
 use crate::corpus_commitment;
 use crate::{
@@ -157,98 +155,6 @@ pub trait ChildProcessObserver: Send + Sync {
 pub trait ArtifactSink {
 	/// Stores one bounded artifact and returns a content-addressed reference.
 	fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError>;
-}
-
-/// Exact fail-closed egress proxy endpoint for the outer Codex process.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexEgressProxyEndpoint {
-	socket: SocketAddrV4,
-}
-impl CodexEgressProxyEndpoint {
-	/// Accepts only `http://` with one canonical private IPv4 address and a nonprivileged port.
-	pub fn parse(value: &str) -> Result<Self, ExecutorError> {
-		let authority = value.strip_prefix("http://").ok_or_else(|| {
-			ExecutorError::new("--codex-egress-proxy must use http:// with a private IPv4 address")
-		})?;
-		let (address, port) = authority.split_once(':').ok_or_else(|| {
-			ExecutorError::new(
-				"--codex-egress-proxy must contain one private IPv4 address and one port",
-			)
-		})?;
-
-		if address.is_empty() || port.is_empty() || port.contains(':') {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy must contain one private IPv4 address and one port",
-			));
-		}
-
-		let address = Ipv4Addr::from_str(address).map_err(|_| {
-			ExecutorError::new("--codex-egress-proxy address must be numeric private IPv4")
-		})?;
-		let port = u16::from_str(port).map_err(|_| {
-			ExecutorError::new(
-				"--codex-egress-proxy port must be an integer from 1024 through 65535",
-			)
-		})?;
-
-		if !address.is_private() || address.is_loopback() {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy address must be non-loopback private IPv4",
-			));
-		}
-		if port < 1_024 {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy port must be an integer from 1024 through 65535",
-			));
-		}
-
-		let endpoint = Self { socket: SocketAddrV4::new(address, port) };
-
-		if endpoint.as_str() != value {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy must use the exact canonical http://IPv4:port form",
-			));
-		}
-
-		Ok(endpoint)
-	}
-
-	/// Accepts only the exact endpoint of the fixed candidate runner topology.
-	pub fn parse_candidate_runner(value: &str) -> Result<Self, ExecutorError> {
-		if value != CANDIDATE_CODEX_EGRESS_PROXY_ENDPOINT {
-			return Err(ExecutorError::new(
-				"candidate Codex egress proxy does not match the fixed runner topology",
-			));
-		}
-
-		let authority = value.strip_prefix("http://").ok_or_else(|| {
-			ExecutorError::new("candidate Codex egress proxy must use canonical HTTP")
-		})?;
-		let socket = SocketAddrV4::from_str(authority)
-			.map_err(|_| ExecutorError::new("candidate Codex egress proxy endpoint is invalid"))?;
-
-		Ok(Self { socket })
-	}
-
-	/// Returns the exact environment value used for each proxy variable.
-	#[must_use]
-	pub fn as_str(&self) -> String {
-		format!("http://{}", self.socket)
-	}
-}
-
-impl Display for CodexEgressProxyEndpoint {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(&self.as_str())
-	}
-}
-
-impl FromStr for CodexEgressProxyEndpoint {
-	type Err = ExecutorError;
-
-	fn from_str(value: &str) -> Result<Self, Self::Err> {
-		Self::parse(value)
-	}
 }
 
 /// A process request that does not use a shell.
@@ -637,8 +543,6 @@ pub struct CodexExecutionConfig {
 	pub permission_probe_executable: Option<PathBuf>,
 	/// Committed model-visible Node.js and ripgrep toolchain.
 	pub model_toolchain: Option<ValidatedModelToolchain>,
-	/// Exact proxy variables supplied only to the outer Codex process.
-	egress_proxy: Option<CodexEgressProxyEndpoint>,
 }
 impl CodexExecutionConfig {
 	/// Builds an explicit environment allowlist. Provider/API-key variables are never included.
@@ -673,16 +577,7 @@ impl CodexExecutionConfig {
 					None
 				}
 			},
-			egress_proxy: None,
 		}
-	}
-
-	/// Installs the exact fail-closed egress proxy for the outer Codex process.
-	#[must_use]
-	pub fn with_egress_proxy(mut self, endpoint: CodexEgressProxyEndpoint) -> Self {
-		self.egress_proxy = Some(endpoint);
-
-		self
 	}
 
 	/// Adds canonical sensitive roots that the benchmark workspace may be nested inside.
@@ -1130,7 +1025,7 @@ where
 		environment.insert("CODEX_HOME".to_owned(), codex_home);
 		environment.extend(extra_environment.clone());
 
-		apply_outer_proxy_environment(&mut environment, self.config.egress_proxy.as_ref());
+		clear_outer_proxy_environment(&mut environment);
 
 		let request = CommandRequest {
 			program: self.codex_binary.clone(),
@@ -1163,7 +1058,7 @@ where
 		environment.insert("CODEX_HOME".to_owned(), codex_home);
 		environment.extend(extra_environment.clone());
 
-		apply_outer_proxy_environment(&mut environment, self.config.egress_proxy.as_ref());
+		clear_outer_proxy_environment(&mut environment);
 
 		self.executor
 			.execute_json_rpc(
@@ -2278,24 +2173,13 @@ pub fn expected_official_permission_profile_digests(
 	})
 }
 
-fn apply_outer_proxy_environment(
-	environment: &mut BTreeMap<String, String>,
-	endpoint: Option<&CodexEgressProxyEndpoint>,
-) {
+fn clear_outer_proxy_environment(environment: &mut BTreeMap<String, String>) {
 	for key in CODEX_PROXY_ENVIRONMENT_KEYS {
 		environment.remove(key);
 	}
 
 	environment.remove("NO_PROXY");
 	environment.remove("no_proxy");
-
-	if let Some(endpoint) = endpoint {
-		let value = endpoint.as_str();
-
-		for key in CODEX_PROXY_ENVIRONMENT_KEYS {
-			environment.insert(key.to_owned(), value.clone());
-		}
-	}
 }
 
 fn spawn_process_thread<F, T>(name: &'static str, function: F) -> std::io::Result<JoinHandle<T>>
@@ -5381,95 +5265,22 @@ mod tests {
 	}
 
 	#[test]
-	fn codex_egress_proxy_parser_accepts_only_one_canonical_private_ipv4_endpoint() {
-		let accepted = super::CodexEgressProxyEndpoint::parse("http://10.23.45.67:3128")
-			.expect("canonical private proxy");
-
-		assert_eq!(accepted.as_str(), "http://10.23.45.67:3128");
-
-		for rejected in [
-			"https://10.23.45.67:3128",
-			"http://user@10.23.45.67:3128",
-			"http://proxy.internal:3128",
-			"http://127.0.0.1:3128",
-			"http://169.254.1.2:3128",
-			"http://8.8.8.8:3128",
-			"http://10.23.45.67:80",
-			"http://10.23.45.67:0",
-			"http://10.23.45.67:65536",
-			"http://10.23.45.67:03128",
-			"http://10.23.45.67:3128/",
-			"http://10.23.45.67:3128/path",
-			"http://10.23.45.67:3128?query",
-			"http://10.23.45.67:3128#fragment",
-			"http://10.23.45.67:3128:9",
-			" http://10.23.45.67:3128",
-		] {
-			assert!(
-				super::CodexEgressProxyEndpoint::parse(rejected).is_err(),
-				"{rejected} must be rejected"
-			);
-		}
-	}
-
-	#[test]
-	fn outer_codex_environment_uses_exact_proxy_variables_without_bypass_or_shell_inheritance() {
-		let root = test_controlled_root();
-		let proxy = super::CodexEgressProxyEndpoint::parse("http://192.168.50.4:8080")
-			.expect("private proxy");
-		let adapter = CodexAdapter::new(
-			FakeExecutor::from_order(vec![Ok(capture(0, b"ok".to_vec(), Vec::new()))]),
-			MemorySink::default(),
-			"codex",
-			CodexExecutionConfig::isolated(root.join("codex-home"))
-				.with_egress_proxy(proxy)
-				.with_denied_roots(vec![root.join("denied")]),
-		);
-
-		adapter.invoke(&invocation()).expect("capture must succeed");
-
-		let requests = adapter.executor.requests.borrow();
-		let request = requests.first().expect("request must be captured");
-
-		assert!(request.clear_environment);
-
-		for key in super::CODEX_PROXY_ENVIRONMENT_KEYS {
-			assert_eq!(
-				request.environment.get(key).map(String::as_str),
-				Some("http://192.168.50.4:8080")
-			);
-		}
-
-		assert!(!request.environment.contains_key("NO_PROXY"));
-		assert!(!request.environment.contains_key("no_proxy"));
-		assert!(
-			request
-				.args
-				.windows(2)
-				.any(|pair| { pair == ["--config", "shell_environment_policy.inherit=\"none\""] })
-		);
-		assert!(request.args.windows(2).any(|pair| {
-			pair == ["--config", "permissions.aiq_benchmark.network.enabled=false"]
-		}));
-		assert!(!request.args.iter().any(|argument| argument.contains("PROXY")));
-		assert!(!request.args.iter().any(|argument| argument.contains("proxy")));
-	}
-
-	#[test]
-	fn exact_proxy_environment_replaces_extra_values_and_removes_bypass() {
-		let proxy = super::CodexEgressProxyEndpoint::parse("http://172.20.0.9:8888")
-			.expect("private proxy");
+	fn direct_egress_removes_all_inherited_proxy_and_bypass_variables() {
 		let mut environment = BTreeMap::from([
 			("HTTP_PROXY".to_owned(), "http://203.0.113.1:9999".to_owned()),
-			("http_proxy".to_owned(), "http://203.0.113.2:9999".to_owned()),
+			("HTTPS_PROXY".to_owned(), "http://203.0.113.2:9999".to_owned()),
+			("ALL_PROXY".to_owned(), "socks5://203.0.113.3:9999".to_owned()),
+			("http_proxy".to_owned(), "http://203.0.113.4:9999".to_owned()),
+			("https_proxy".to_owned(), "http://203.0.113.5:9999".to_owned()),
+			("all_proxy".to_owned(), "socks5://203.0.113.6:9999".to_owned()),
 			("NO_PROXY".to_owned(), "*".to_owned()),
 			("no_proxy".to_owned(), "localhost".to_owned()),
 		]);
 
-		super::apply_outer_proxy_environment(&mut environment, Some(&proxy));
+		super::clear_outer_proxy_environment(&mut environment);
 
 		for key in super::CODEX_PROXY_ENVIRONMENT_KEYS {
-			assert_eq!(environment.get(key).map(String::as_str), Some("http://172.20.0.9:8888"));
+			assert!(!environment.contains_key(key));
 		}
 
 		assert!(!environment.contains_key("NO_PROXY"));
