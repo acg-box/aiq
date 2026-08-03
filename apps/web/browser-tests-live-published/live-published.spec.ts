@@ -122,6 +122,28 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
   ).toHaveCount(18);
+  const officialEfficiency = page.getByRole('region', { name: 'Official model efficiency' });
+  await expect(officialEfficiency).toContainText('1.6 h');
+  await expect(officialEfficiency).toContainText('unavailable missing usage');
+  await expect(officialEfficiency).toContainText('0/72 priced');
+  await expect(officialEfficiency).not.toContainText('$0');
+});
+
+test('the public index preserves the 588 passed and 636 failed public outcomes', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const publicIndex = page.getByRole('region', {
+    name: 'Descriptively ordered public index table',
+  });
+  await expect(publicIndex.getByRole('row')).toHaveCount(18);
+  const failedAndMissing = await publicIndex.locator('tbody tr td:nth-child(6)').allTextContents();
+  const failed = failedAndMissing.reduce(
+    (sum, value) => sum + Number(value.split('/')[0]?.trim()),
+    0,
+  );
+  expect(failed).toBe(636);
+  expect(17 * 72 - failed).toBe(588);
 });
 
 test('a partial Terra-only calibration derives a valid default and reports its selected subset', async ({
@@ -212,9 +234,10 @@ test('Official compare efficiency is limited to current leaderboard run identiti
   await expect(efficiency.getByRole('row')).toHaveCount(18);
   await expect(efficiency).toContainText('run-live-sol-low');
   await expect(efficiency).not.toContainText(calibrationRunId);
-  const contextBandEfficiency = efficiency.getByRole('row').filter({ hasText: 'sol · medium' });
-  await expect(contextBandEfficiency).toContainText('Unavailable');
-  await expect(contextBandEfficiency).toContainText('unavailable context band');
+  const missingUsageEfficiency = efficiency.getByRole('row').filter({ hasText: 'sol · medium' });
+  await expect(missingUsageEfficiency).toContainText('Unavailable');
+  await expect(missingUsageEfficiency).toContainText('unavailable missing usage');
+  await expect(missingUsageEfficiency).toContainText('input unavailable (unavailable)');
   await expect(efficiency).toContainText(
     '72 results · 72 attempted · 72 adapter-invoked · concurrency 17',
   );
@@ -228,9 +251,11 @@ test('Official compare efficiency is limited to current leaderboard run identiti
     'gpt-5.6-luna: input 200, cached input 20, cache-write input 250, output 1200 USD nanos/token',
   );
   await expect(efficiency).toContainText('Signed matrix batch wall-clock');
-  await expect(efficiency).toContainText('2.1 h');
+  await expect(efficiency).toContainText('1.6 h');
   await expect(efficiency).toContainText('count once across all 17 configurations');
   await expect(efficiency).toContainText('TTFT and TPS are unavailable');
+  await expect(efficiency).toContainText('This is not actual subscription spend.');
+  await expect(efficiency).not.toContainText('$0');
   await expect(efficiency.getByRole('link', { name: 'source' }).first()).toHaveAttribute(
     'href',
     'https://developers.openai.com/api/docs/pricing',
@@ -248,12 +273,17 @@ test('Official trends expose historical time and cost evidence', async ({ page }
   await expect(
     page.getByText('Summed cell adapter durations can overlap', { exact: false }).first(),
   ).toBeVisible();
+  const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
+  await expect(efficiency).toContainText('unavailable missing usage');
+  await expect(efficiency).not.toContainText('$0');
 });
 
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {
   await page.goto('/runs/run-live-sol-ultra');
   await expect(page.locator('.task-list > article')).toHaveCount(72);
   await expect(page.getByText('Official', { exact: true })).toBeVisible();
+  await expect(page.getByText('Passed', { exact: true }).locator('..')).toContainText('35');
+  await expect(page.getByText('Failed', { exact: true }).locator('..').first()).toContainText('37');
   const provenance = page.getByRole('heading', { name: 'Run provenance' }).locator('..');
   await expect(provenance).toContainText('corpus_2026.07.29');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
@@ -264,10 +294,29 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(
     page.getByText('Neither value is isolated model latency.', { exact: false }),
   ).toBeVisible();
-  await expect(page.locator('.task-list > article').first()).toContainText(
-    'Codex adapter elapsed:',
+  const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
+  await expect(efficiency).toContainText('1.6 h');
+  await expect(efficiency).toContainText('unavailable missing usage');
+  await expect(efficiency).not.toContainText('$0');
+  const taskResults = page.locator('.task-list > article');
+  await expect(taskResults.first()).toContainText('Codex adapter elapsed:');
+  await expect(taskResults.first()).toContainText('Tokens: input unavailable');
+  await expect(taskResults.first()).toContainText('API-equivalent cost: unavailable missing usage');
+  const evaluatorOutcomes = taskResults.filter({
+    hasText: 'The evaluator rejected the response.',
+  });
+  await expect(evaluatorOutcomes).toHaveCount(36);
+  await expect(evaluatorOutcomes.first()).toContainText('Evaluator outcome');
+  await expect(evaluatorOutcomes.first()).toContainText(
+    'This is an evaluator result, not an execution failure.',
   );
-  await expect(page.locator('.task-list > article').first()).toContainText('API-equivalent cost:');
+  await expect(evaluatorOutcomes.first()).not.toContainText('EXPLANATION_NOT_PUBLISHED');
+  const executionFailures = taskResults.filter({ hasText: 'adapter_execution_failure' });
+  await expect(executionFailures).toHaveCount(1);
+  await expect(executionFailures).toContainText(
+    'The adapter process exited before it returned a response.',
+  );
+  await expect(executionFailures).toContainText('Retryable: yes');
 });
 
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {

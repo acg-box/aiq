@@ -220,9 +220,21 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               <h3>{task.task}</h3>
               {task.explanation ? (
                 <div className="result-explanation">
-                  <code>{task.explanation.code}</code>
+                  {task.explanation.code ? (
+                    <code>{task.explanation.code}</code>
+                  ) : task.status === 'failed' ? (
+                    <strong>Evaluator outcome</strong>
+                  ) : (
+                    <strong>Published outcome</strong>
+                  )}
                   <p>{task.explanation.summary}</p>
-                  <small>Retryable: {task.explanation.retryable ? 'yes' : 'no'}</small>
+                  <small>
+                    {task.explanation.retryable === null
+                      ? task.status === 'failed'
+                        ? 'This is an evaluator result, not an execution failure.'
+                        : 'Retryability is not published.'
+                      : `Retryable: ${task.explanation.retryable ? 'yes' : 'no'}`}
+                  </small>
                 </div>
               ) : task.status !== 'passed' ? (
                 <div className="result-explanation">
