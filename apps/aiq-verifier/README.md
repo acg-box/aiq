@@ -43,6 +43,10 @@ The worker has bounded claim, lease, retry, polling, and HTTP timeout settings.
 It renews an active lease while it processes a package and records a controlled
 rejection when validation cannot continue.
 
+Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
+`32` to match controlled host capacity. Replay output stays in signed result
+order, independent of this setting.
+
 ## Verification flow
 
 1. Claim one unverified package from `/api/claims`.
