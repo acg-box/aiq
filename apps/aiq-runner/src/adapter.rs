@@ -4,6 +4,7 @@ pub(crate) mod process_group;
 
 #[cfg(test)]
 use std::cell::Cell;
+#[cfg(target_os = "macos")]
 use std::ffi::CStr;
 #[cfg(unix)]
 use std::ffi::OsStr;
@@ -22,6 +23,7 @@ use std::os::unix::{
 	ffi::OsStrExt,
 	fs::{MetadataExt, PermissionsExt},
 };
+#[cfg(unix)]
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::{
@@ -48,8 +50,8 @@ use libc::O_NOFOLLOW;
 use libc::ST_RDONLY;
 #[cfg(target_os = "macos")]
 use libc::UF_IMMUTABLE;
-#[cfg(unix)]
-use libc::{self, F_GETPATH, PATH_MAX};
+#[cfg(target_os = "macos")]
+use libc::{F_GETPATH, PATH_MAX};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
