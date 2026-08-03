@@ -231,13 +231,18 @@ class OfficialRuntimeStaticTests(unittest.TestCase):
                 RUNTIME.atomic_write_private(link, b"replacement")
             self.assertEqual(target.read_bytes(), b"unchanged")
 
-    def test_linux_compatible_private_temp_avoids_unsafe_tmp_ancestor(self) -> None:
+    def test_private_temp_uses_trusted_ancestor_and_rejects_unsafe_ancestor(self) -> None:
         with private_temp() as directory:
             value = directory / "input"
             value.write_bytes(b"x")
             self.assertEqual(RUNTIME.declared_path(str(value), "test"), value)
-        with self.assertRaises(SystemExit):
-            RUNTIME.declared_path("/tmp", "unsafe test path")
+            unsafe = directory / "unsafe"
+            unsafe.mkdir()
+            unsafe.chmod(0o777)
+            nested = unsafe / "input"
+            nested.write_bytes(b"x")
+            with self.assertRaises(SystemExit):
+                RUNTIME.declared_path(str(nested), "unsafe test path")
 
     def test_compose_environment_matches_config_exactly(self) -> None:
         with private_temp() as directory:
