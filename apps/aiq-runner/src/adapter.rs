@@ -5747,7 +5747,6 @@ mod tests {
 		assert_eq!(evidence.managed_requirements_status, "absent_expected");
 		assert_eq!(evidence.managed_requirements_digest(), planned.managed_requirements_digest());
 		assert_eq!(evidence.profile_selection_digest(), planned.profile_selection_digest());
-
 		assert!(!evidence.evidence_digest.is_empty());
 
 		cleanup.expect("fixture cleanup");
