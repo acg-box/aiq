@@ -1,5 +1,5 @@
 //! Command-line interface for local AIQ workflows.
-use std::fs::DirBuilder;
+use std::cmp::Ordering;
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	env,
@@ -7,9 +7,8 @@ use std::{
 	io::{self, ErrorKind, Read as _, Seek as _, SeekFrom, Write as _},
 	mem,
 	path::{Path, PathBuf},
-	process::{self, Stdio},
+	process,
 	str::FromStr,
-	sync::atomic::AtomicU64,
 	time::Duration,
 };
 #[cfg(unix)]
@@ -19,12 +18,11 @@ use std::{
 	os::fd::AsRawFd as _,
 	os::unix::{
 		ffi::OsStrExt as _,
-		fs::{DirBuilderExt as _, MetadataExt as _, OpenOptionsExt, PermissionsExt},
+		fs::{MetadataExt as _, OpenOptionsExt, PermissionsExt},
 	},
 };
 
 use clap::{Parser, Subcommand, ValueEnum};
-use jiff::Timestamp;
 use libc::O_NOFOLLOW;
 #[cfg(target_os = "linux")]
 use libc::{AT_FDCWD, RENAME_EXCHANGE, RENAME_NOREPLACE};
@@ -36,33 +34,15 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json;
 use sha2::{Digest, Sha256};
 
-use crate::candidate_release_gate::CANDIDATE_UNIT_OUTPUT_COUNT;
 use crate::official_admission::{
 	OfficialOutputPlan, OfficialPlanBinding, PermissionAdmissionReport,
 };
 use crate::pinned_path::{PinnedDirectoryIdentity, PinnedPathIdentity};
-use aiq_runner::candidate_attempt_journal::CandidateAttemptJournal;
 use aiq_runner::{
 	adapter::{
 		self, ArtifactSink, CapabilityValidationReport, CapabilityValidationStatus,
-		ChatgptCredentialObservation, CodexAdapter, CodexEgressProxyEndpoint, CodexExecutionConfig,
-		ConfigurationProbeStatus, Executor, LocalArtifactSink, ManagedPermissionProfileEvidence,
-		ProbeStatus, SystemExecutor,
-	},
-	candidate_artifacts::{
-		CandidateAttempt, CandidateAttemptDisposition, CandidateAttemptLogBundle,
-		CandidateEvaluatorResultBundle, CandidateInfrastructureClassification,
-		CandidateResultPackageBundle, CandidateSigningIdentity, CandidateVerifierReplayBundle,
-	},
-	candidate_attempt_journal::{
-		self, CandidateAttemptDecision, CandidateAttemptJournalStore, CandidateUnitAttemptState,
-	},
-	candidate_release_gate::{
-		self, CandidateAggregateExpectations, CandidateAuthorizationIdentity,
-		CandidateExecutionAuthorization, CandidateExecutionExpectations, CandidateExecutionPlan,
-		CandidateExecutionUnit, CandidateExecutionUnitKind, CandidateGateError,
-		CandidateOutputReservations, CandidateOutputState, CandidatePlanInputs,
-		CandidateReservationMode, MAX_CANDIDATE_PUBLIC_AUTHORITY_BYTES, ReleaseGateAdmissionV1,
+		ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus,
+		Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor,
 	},
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
@@ -80,9 +60,9 @@ use aiq_runner::{
 	},
 	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
 	runner::{
-		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord, FailureKind,
+		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
 		LocalDirectoryWorkspaceProvider, LocalRunExecution, MAX_RUN_JOBS, RUN_SCHEMA_VERSION,
-		ResultStatus, RunRecord, SelectedRun, TaskResult,
+		RunRecord, SelectedRun,
 	},
 	schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
 	scoring::{
@@ -99,16 +79,6 @@ use aiq_runner::{
 const MAX_CORPUS_COMMITMENT_BYTES: usize = 4 * 1_024 * 1_024;
 const MAX_CAPABILITY_MANIFEST_BYTES: usize = 512 * 1_024;
 const FUTURE_PROTECTED_PLACEHOLDER: &[u8] = b"AIQ_DENIED\n";
-const CANDIDATE_SOURCE_ASSEMBLER: &[u8] =
-	include_bytes!("../../../scripts/candidates/aiq-core-1.0.2/candidate-source-assembler.ts");
-const CANDIDATE_RELEASE_ASSEMBLER: &[u8] =
-	include_bytes!("../../../scripts/candidates/aiq-core-1.0.2/candidate-release.ts");
-const CANDIDATE_CATALOG_GENERATOR: &[u8] =
-	include_bytes!("../../../scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts");
-const MAX_CANDIDATE_ASSEMBLER_OUTPUT_BYTES: usize = 64 * 1_024 * 1_024;
-const CANDIDATE_TRUST_POLICY_DIGEST_ENV: &str = "AIQ_CORE_1_0_2_RELEASE_TRUST_POLICY_SHA256";
-
-static CANDIDATE_ASSEMBLER_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Local AIQ runner.
 #[derive(Debug, Parser)]
@@ -142,7 +112,6 @@ struct RunOptions {
 	observed_at: String,
 	codex_binary: String,
 	codex_home: PathBuf,
-	codex_egress_proxy: CodexEgressProxyEndpoint,
 	artifact_root: PathBuf,
 	preflight_cache: PathBuf,
 	official_admission: Option<PathBuf>,
@@ -154,15 +123,6 @@ struct RunOptions {
 	jobs: usize,
 	run_class: RunClass,
 	output: PathBuf,
-	candidate_schedule: Option<CandidateScheduleWindow>,
-}
-
-#[derive(Clone)]
-struct CandidateScheduleWindow {
-	slot: ScheduleSlot,
-	next_slot_unix_ms: u64,
-	unit_kind: CandidateExecutionUnitKind,
-	corpus_commitment_sha256: String,
 }
 
 struct PermissionAdmissionOptions {
@@ -182,7 +142,6 @@ struct PermissionAdmissionOptions {
 	observed_at: String,
 	codex_binary: String,
 	codex_home: PathBuf,
-	codex_egress_proxy: CodexEgressProxyEndpoint,
 	artifact_root: PathBuf,
 	preflight_cache: PathBuf,
 	checkpoint: PathBuf,
@@ -487,9 +446,9 @@ impl PublicTaskLoadIssue {
 		let scope = match (public_match, hidden_match) {
 			(Some(public), Some(hidden)) => {
 				match public.components().count().cmp(&hidden.components().count()) {
-					std::cmp::Ordering::Less => "hidden_tasks",
-					std::cmp::Ordering::Greater => "public_tasks",
-					std::cmp::Ordering::Equal => "task_source",
+					Ordering::Less => "hidden_tasks",
+					Ordering::Greater => "public_tasks",
+					Ordering::Equal => "task_source",
 				}
 			},
 			(Some(_), None) => "public_tasks",
@@ -646,7 +605,6 @@ struct OfficialPlanningInputs<'a> {
 	evaluator_runtime: &'a Path,
 	codex_toolchain_root: &'a Path,
 	codex_binary: &'a str,
-	codex_egress_proxy: &'a CodexEgressProxyEndpoint,
 	codex_home: &'a Path,
 	artifact_root: &'a Path,
 	schedule: &'a Path,
@@ -1080,54 +1038,6 @@ struct DemoOutputs<'a> {
 	metadata: Option<&'a Path>,
 }
 
-#[derive(Serialize)]
-struct CandidateAssemblerArtifact {
-	unit_id: String,
-	artifact_class: &'static str,
-	artifact: serde_json::Value,
-}
-
-#[derive(Serialize)]
-struct CandidateAssemblerInput<'a> {
-	operation: &'static str,
-	admission: &'a ReleaseGateAdmissionV1,
-	authority: Option<serde_json::Value>,
-	runtime_pinned_trust_policy: Option<serde_json::Value>,
-	expectations: &'a CandidateExecutionExpectations,
-	authorization: &'a CandidateExecutionAuthorization,
-	artifacts: Vec<CandidateAssemblerArtifact>,
-	collected_at: &'a str,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct CandidateAssemblerOutput {
-	source_observations: serde_json::Value,
-	release_gate_evidence: serde_json::Value,
-	release_gate_result: serde_json::Value,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct CandidateSourceDerivationOutput {
-	source_observations: serde_json::Value,
-	source_observations_digest: String,
-}
-
-struct CandidateAssemblerDirectory {
-	root: PathBuf,
-	files: Vec<PathBuf>,
-}
-impl Drop for CandidateAssemblerDirectory {
-	fn drop(&mut self) {
-		for path in self.files.iter().rev() {
-			let _ = fs::remove_file(path);
-		}
-
-		let _ = fs::remove_dir(&self.root);
-	}
-}
-
 struct ValidationOptions {
 	public_tasks: Option<PathBuf>,
 	hidden_tasks: Option<PathBuf>,
@@ -1157,15 +1067,6 @@ impl From<RunClassArgument> for RunClass {
 	}
 }
 
-impl From<CandidateReservationArgument> for CandidateReservationMode {
-	fn from(value: CandidateReservationArgument) -> Self {
-		match value {
-			CandidateReservationArgument::Fresh => Self::Fresh,
-			CandidateReservationArgument::ResumeExactPlan => Self::ResumeExactPlan,
-		}
-	}
-}
-
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
@@ -1175,10 +1076,38 @@ enum Command {
 		#[arg(long, default_value = "-")]
 		output: PathBuf,
 	},
-	/// Execute the closed AIQ Core candidate-release lifecycle.
-	Candidate {
-		#[command(subcommand)]
-		command: CandidateCommand,
+	/// Validate the immutable 72-task AIQ Core corpus without invoking Codex.
+	ValidateCoreCorpus {
+		#[arg(long)]
+		hidden_tasks: PathBuf,
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		#[arg(long)]
+		source_root: PathBuf,
+		#[arg(long)]
+		evaluator_root: PathBuf,
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
+	},
+	/// Validate the immutable six-variant controlled contrast corpus without invoking Codex.
+	ValidateContrastCorpus {
+		#[arg(long)]
+		hidden_tasks: PathBuf,
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		/// Exact canonical contrast commitment digest expected by the caller.
+		#[arg(long)]
+		expected_corpus_sha256: String,
+		#[arg(long)]
+		source_root: PathBuf,
+		#[arg(long)]
+		evaluator_root: PathBuf,
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
 	},
 	/// Actively validate and persist an authenticated, expiring capability report.
 	Preflight {
@@ -1201,9 +1130,6 @@ enum Command {
 		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
 		#[arg(long, value_parser = parse_controlled_codex_home)]
 		codex_home: PathBuf,
-		/// Exact private HTTP proxy used only by the outer Codex process.
-		#[arg(long, value_parser = parse_codex_egress_proxy)]
-		codex_egress_proxy: CodexEgressProxyEndpoint,
 		/// Controlled local sink for bounded preflight artifacts.
 		#[arg(long, default_value = ".aiq-artifacts")]
 		artifact_root: PathBuf,
@@ -1267,9 +1193,6 @@ enum Command {
 		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
 		#[arg(long, value_parser = parse_controlled_codex_home)]
 		codex_home: PathBuf,
-		/// Exact private HTTP proxy used only by outer Codex processes.
-		#[arg(long, value_parser = parse_codex_egress_proxy)]
-		codex_egress_proxy: CodexEgressProxyEndpoint,
 		/// Controlled local artifact sink.
 		#[arg(long)]
 		artifact_root: PathBuf,
@@ -1384,9 +1307,6 @@ enum Command {
 		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
 		#[arg(long, value_parser = parse_controlled_codex_home)]
 		codex_home: PathBuf,
-		/// Exact private HTTP proxy used only by outer Codex processes.
-		#[arg(long, value_parser = parse_codex_egress_proxy)]
-		codex_egress_proxy: CodexEgressProxyEndpoint,
 		/// Controlled local artifact sink.
 		#[arg(long, default_value = ".aiq-artifacts")]
 		artifact_root: PathBuf,
@@ -1547,7 +1467,7 @@ enum Command {
 		/// Safe Unix-millisecond time when verification completed.
 		#[arg(long)]
 		observed_unix_ms: u64,
-		/// Candidate reconstruction and deterministic evaluator replay disposition.
+		/// Result workspace reconstruction and deterministic evaluator replay disposition.
 		#[arg(long, value_enum)]
 		replay_status: ReplayMode,
 		/// Output path for the exact `aiq.normalized-batch.v3` database stage.
@@ -1573,147 +1493,6 @@ enum Command {
 		network_sentinel_port: u16,
 	},
 }
-
-#[derive(Debug, Subcommand)]
-enum CandidateCommand {
-	/// Validate the immutable 72-task core corpus without invoking Codex.
-	ValidateCorpus {
-		/// Closed signed control-plane and corpus references for this validation.
-		#[arg(long)]
-		expectations: PathBuf,
-		#[arg(long)]
-		public_tasks: Option<PathBuf>,
-		#[arg(long)]
-		hidden_tasks: Option<PathBuf>,
-		#[arg(long)]
-		corpus_commitment: PathBuf,
-		#[arg(long)]
-		source_root: PathBuf,
-		#[arg(long)]
-		evaluator_root: PathBuf,
-		#[arg(long)]
-		evaluator_runtime: PathBuf,
-		#[arg(long)]
-		codex_toolchain_root: PathBuf,
-	},
-	/// Validate the immutable six-arm contrast corpus without invoking Codex.
-	ValidateContrastCorpus {
-		/// Closed signed control-plane and corpus references for this validation.
-		#[arg(long)]
-		expectations: PathBuf,
-		#[arg(long)]
-		hidden_tasks: PathBuf,
-		#[arg(long)]
-		corpus_commitment: PathBuf,
-		#[arg(long)]
-		source_root: PathBuf,
-		#[arg(long)]
-		evaluator_root: PathBuf,
-		#[arg(long)]
-		evaluator_runtime: PathBuf,
-		#[arg(long)]
-		codex_toolchain_root: PathBuf,
-	},
-	/// Build the deterministic twenty-one-unit private plan without invoking a model.
-	Plan {
-		/// Canonical signed public admission JSON.
-		#[arg(long)]
-		admission: PathBuf,
-		/// Canonical public trust policy protected by the runtime digest pin.
-		#[arg(long)]
-		release_trust_policy: PathBuf,
-		/// Closed private plan-input JSON.
-		#[arg(long)]
-		inputs: PathBuf,
-		/// Create-new private execution-plan JSON.
-		#[arg(long)]
-		output: PathBuf,
-	},
-	/// Sign one validated private plan as the execution authorization.
-	Authorize {
-		/// Canonical signed public admission JSON.
-		#[arg(long)]
-		admission: PathBuf,
-		/// Canonical public trust policy protected by the runtime digest pin.
-		#[arg(long)]
-		release_trust_policy: PathBuf,
-		/// Private execution-plan JSON produced by candidate plan.
-		#[arg(long)]
-		plan: PathBuf,
-		/// Environment variable containing the distinct authorization Ed25519 secret.
-		#[arg(long, default_value = "AIQ_CANDIDATE_AUTHORIZATION_KEY")]
-		signing_key_env: String,
-		/// Exact create-new authorization path committed by the plan.
-		#[arg(long)]
-		output: PathBuf,
-	},
-	/// Execute all seven plan-bound units in one signed repeat partition.
-	RunRepeat {
-		/// Closed out-of-band authorization and corpus pins for this invocation.
-		#[arg(long)]
-		expectations: PathBuf,
-		/// Exact repeat identifier from the signed admission.
-		#[arg(long)]
-		repeat_id: String,
-		/// Fresh reservation for repeat one, or exact-plan resume.
-		#[arg(long, value_enum)]
-		reservation_mode: CandidateReservationArgument,
-		/// Environment variable containing the authorized runner Ed25519 secret.
-		#[arg(long, default_value = "AIQ_CANDIDATE_RUNNER_SIGNING_KEY")]
-		runner_signing_key_env: String,
-	},
-	/// Sign and fill per-cell attempt evidence after independent replay.
-	FinalizeRepeat {
-		/// Closed out-of-band authorization and corpus pins for this invocation.
-		#[arg(long)]
-		expectations: PathBuf,
-		/// Exact repeat identifier whose seven verifier bundles are complete.
-		#[arg(long)]
-		repeat_id: String,
-		/// Environment variable containing the authorized runner Ed25519 secret.
-		#[arg(long, default_value = "AIQ_CANDIDATE_RUNNER_SIGNING_KEY")]
-		runner_signing_key_env: String,
-	},
-	/// Derive and create-once fill the public-safe source observations before authority signing.
-	DeriveAggregateSource {
-		/// Closed authorization and corpus expectations for the model-free derivation.
-		#[arg(long)]
-		expectations: PathBuf,
-	},
-	/// Build the unsigned release-authority input from the exact derived source.
-	ReleaseAuthorityInput {
-		#[arg(long)]
-		expectations: PathBuf,
-		#[arg(long)]
-		signer_key_id: String,
-		#[arg(long)]
-		output: PathBuf,
-	},
-	/// Build the final closed aggregate expectations from independently supplied authority inputs.
-	AggregateExpectations {
-		#[arg(long)]
-		execution_expectations: PathBuf,
-		#[arg(long)]
-		release_authority: PathBuf,
-		#[arg(long)]
-		release_trust_policy: PathBuf,
-		#[arg(long)]
-		output: PathBuf,
-	},
-	/// Assemble and create-once fill both final public-safe aggregate outputs.
-	Aggregate {
-		/// Closed authorization, authority, policy, and collection-time expectations.
-		#[arg(long)]
-		expectations: PathBuf,
-	},
-}
-
-#[derive(Clone, Copy, Debug, ValueEnum)]
-enum CandidateReservationArgument {
-	Fresh,
-	ResumeExactPlan,
-}
-
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ReplayMode {
 	/// The verifier replayed scoring and commitments only; production is not publishable.
@@ -1735,25 +1514,10 @@ enum OfficialPostrunOutput {
 	Score,
 	Package,
 }
-
-#[derive(Clone, Copy)]
-enum CandidateRepeatPhase {
-	Run(CandidateReservationMode),
-	Finalize,
-}
-impl CandidateRepeatPhase {
-	fn reservation_mode(self) -> CandidateReservationMode {
-		match self {
-			Self::Run(mode) => mode,
-			Self::Finalize => CandidateReservationMode::ResumeExactPlan,
-		}
-	}
-}
-
 enum CorpusValidationMode {
 	Released,
-	CandidateCore,
-	CandidateContrast { expected_corpus_sha256: String },
+	Core,
+	Contrast { expected_corpus_sha256: String },
 }
 
 fn read_held_bounded_file(
@@ -1815,7 +1579,9 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			&output,
 			&MatrixReport { schema_version: "aiq.matrix.v1", models: MODEL_MATRIX.to_vec() },
 		)?,
-		Command::Candidate { command } => run_candidate_command(command)?,
+		command @ (Command::ValidateCoreCorpus { .. }
+		| Command::ValidateContrastCorpus { .. }
+		| Command::Validate { .. }) => dispatch_corpus_validation(command)?,
 		Command::Preflight {
 			capabilities,
 			corpus_commitment,
@@ -1823,7 +1589,6 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			codex_toolchain_root,
 			codex_binary,
 			codex_home,
-			codex_egress_proxy,
 			artifact_root,
 			expires_in_seconds,
 			output,
@@ -1835,30 +1600,11 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			codex_toolchain_root,
 			codex_binary,
 			codex_home,
-			codex_egress_proxy,
 			artifact_root,
 			expires_in_seconds,
 			output,
 			official_admission.as_deref(),
 		)?,
-		Command::Validate {
-			public_tasks,
-			hidden_tasks,
-			corpus_commitment,
-			source_root,
-			evaluator_root,
-			evaluator_runtime,
-			codex_toolchain_root,
-		} => run_validation(ValidationOptions {
-			public_tasks,
-			hidden_tasks,
-			corpus_commitment,
-			source_root,
-			evaluator_root,
-			evaluator_runtime,
-			codex_toolchain_root,
-			mode: CorpusValidationMode::Released,
-		})?,
 		command @ Command::AdmitPermissions { .. } => dispatch_permission_admission(command)?,
 		command @ Command::Run { .. } => dispatch_run(command)?,
 		Command::Score {
@@ -1921,6 +1667,67 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 	}
 
 	Ok(())
+}
+
+fn dispatch_corpus_validation(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let options = match command {
+		Command::ValidateCoreCorpus {
+			hidden_tasks,
+			corpus_commitment,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+		} => ValidationOptions {
+			public_tasks: None,
+			hidden_tasks: Some(hidden_tasks),
+			corpus_commitment: Some(corpus_commitment),
+			source_root: Some(source_root),
+			evaluator_root: Some(evaluator_root),
+			evaluator_runtime: Some(evaluator_runtime),
+			codex_toolchain_root: Some(codex_toolchain_root),
+			mode: CorpusValidationMode::Core,
+		},
+		Command::ValidateContrastCorpus {
+			hidden_tasks,
+			corpus_commitment,
+			expected_corpus_sha256,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+		} => ValidationOptions {
+			public_tasks: None,
+			hidden_tasks: Some(hidden_tasks),
+			corpus_commitment: Some(corpus_commitment),
+			source_root: Some(source_root),
+			evaluator_root: Some(evaluator_root),
+			evaluator_runtime: Some(evaluator_runtime),
+			codex_toolchain_root: Some(codex_toolchain_root),
+			mode: CorpusValidationMode::Contrast { expected_corpus_sha256 },
+		},
+		Command::Validate {
+			public_tasks,
+			hidden_tasks,
+			corpus_commitment,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+		} => ValidationOptions {
+			public_tasks,
+			hidden_tasks,
+			corpus_commitment,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+			mode: CorpusValidationMode::Released,
+		},
+		_ => unreachable!("corpus validation dispatcher requires a validation command"),
+	};
+
+	run_validation(options)
 }
 
 fn dispatch_package(command: Command) -> Result<(), Box<dyn std::error::Error>> {
@@ -2037,7 +1844,6 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		observed_at,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		artifact_root,
 		preflight_cache,
 		official_admission,
@@ -2071,7 +1877,6 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		observed_at,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		artifact_root,
 		preflight_cache,
 		official_admission,
@@ -2083,1256 +1888,7 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		jobs,
 		run_class: run_class.into(),
 		output,
-		candidate_schedule: None,
 	})
-}
-
-fn run_candidate_command(command: CandidateCommand) -> Result<(), Box<dyn std::error::Error>> {
-	match command {
-		command @ (CandidateCommand::ValidateCorpus { .. }
-		| CandidateCommand::ValidateContrastCorpus { .. }) => {
-			run_candidate_validation_command(command)?;
-		},
-		command @ (CandidateCommand::Plan { .. } | CandidateCommand::Authorize { .. }) => {
-			run_candidate_bootstrap_command(command)?;
-		},
-		CandidateCommand::RunRepeat {
-			expectations,
-			repeat_id,
-			reservation_mode,
-			runner_signing_key_env,
-		} => execute_candidate_repeat_command(
-			expectations,
-			repeat_id,
-			runner_signing_key_env,
-			CandidateRepeatPhase::Run(reservation_mode.into()),
-		)?,
-		CandidateCommand::FinalizeRepeat { expectations, repeat_id, runner_signing_key_env } => {
-			execute_candidate_repeat_command(
-				expectations,
-				repeat_id,
-				runner_signing_key_env,
-				CandidateRepeatPhase::Finalize,
-			)?;
-		},
-		CandidateCommand::DeriveAggregateSource { expectations } => {
-			execute_candidate_source_derivation_command(&expectations)?;
-		},
-		CandidateCommand::ReleaseAuthorityInput { expectations, signer_key_id, output } => {
-			build_candidate_release_authority_input(&expectations, &signer_key_id, &output)?;
-		},
-		CandidateCommand::AggregateExpectations {
-			execution_expectations,
-			release_authority,
-			release_trust_policy,
-			output,
-		} => build_candidate_aggregate_expectations(
-			&execution_expectations,
-			&release_authority,
-			&release_trust_policy,
-			&output,
-		)?,
-		CandidateCommand::Aggregate { expectations } => {
-			execute_candidate_aggregate_command(&expectations)?;
-		},
-	}
-
-	Ok(())
-}
-
-fn run_candidate_validation_command(
-	command: CandidateCommand,
-) -> Result<(), Box<dyn std::error::Error>> {
-	match command {
-		CandidateCommand::ValidateCorpus {
-			expectations,
-			public_tasks,
-			hidden_tasks,
-			corpus_commitment,
-			source_root,
-			evaluator_root,
-			evaluator_runtime,
-			codex_toolchain_root,
-		} => {
-			let expectations: CandidateExecutionExpectations =
-				read_candidate_canonical_json(&expectations)?;
-			let (authorization, _, _) =
-				candidate_release_gate::verify_candidate_runner_preparation_authorization(
-					&expectations,
-				)?;
-
-			validate_candidate_corpus_command_paths(
-				&authorization,
-				CandidateExecutionUnitKind::Core,
-				public_tasks.as_deref(),
-				hidden_tasks.as_deref(),
-				&corpus_commitment,
-				&source_root,
-				&evaluator_root,
-				&evaluator_runtime,
-				&codex_toolchain_root,
-			)?;
-			run_validation(ValidationOptions {
-				public_tasks,
-				hidden_tasks,
-				corpus_commitment: Some(corpus_commitment),
-				source_root: Some(source_root),
-				evaluator_root: Some(evaluator_root),
-				evaluator_runtime: Some(evaluator_runtime),
-				codex_toolchain_root: Some(codex_toolchain_root),
-				mode: CorpusValidationMode::CandidateCore,
-			})?;
-		},
-		CandidateCommand::ValidateContrastCorpus {
-			expectations,
-			hidden_tasks,
-			corpus_commitment,
-			source_root,
-			evaluator_root,
-			evaluator_runtime,
-			codex_toolchain_root,
-		} => {
-			let expectations: CandidateExecutionExpectations =
-				read_candidate_canonical_json(&expectations)?;
-			let (authorization, _, _) =
-				candidate_release_gate::verify_candidate_runner_preparation_authorization(
-					&expectations,
-				)?;
-
-			validate_candidate_corpus_command_paths(
-				&authorization,
-				CandidateExecutionUnitKind::Contrast,
-				None,
-				Some(&hidden_tasks),
-				&corpus_commitment,
-				&source_root,
-				&evaluator_root,
-				&evaluator_runtime,
-				&codex_toolchain_root,
-			)?;
-			run_validation(ValidationOptions {
-				public_tasks: None,
-				hidden_tasks: Some(hidden_tasks),
-				corpus_commitment: Some(corpus_commitment),
-				source_root: Some(source_root),
-				evaluator_root: Some(evaluator_root),
-				evaluator_runtime: Some(evaluator_runtime),
-				codex_toolchain_root: Some(codex_toolchain_root),
-				mode: CorpusValidationMode::CandidateContrast {
-					expected_corpus_sha256: expectations.contrast_corpus_commitment_sha256,
-				},
-			})?;
-		},
-		_ => unreachable!("candidate validation dispatcher received a non-validation command"),
-	}
-
-	Ok(())
-}
-
-fn run_candidate_bootstrap_command(
-	command: CandidateCommand,
-) -> Result<(), Box<dyn std::error::Error>> {
-	match command {
-		CandidateCommand::Plan { admission, release_trust_policy, inputs, output } => {
-			let admission_record = candidate_release_gate::read_trusted_candidate_admission(
-				&admission,
-				&release_trust_policy,
-			)?;
-			let inputs: CandidatePlanInputs = read_candidate_canonical_json(&inputs)?;
-
-			if canonical_policy_path(&inputs.signed_admission_path)?
-				!= canonical_policy_path(&admission)?
-			{
-				return Err(
-					"candidate plan input does not reference the supplied signed admission".into(),
-				);
-			}
-
-			let plan =
-				candidate_release_gate::build_candidate_execution_plan(&admission_record, inputs)?;
-
-			candidate_release_gate::write_candidate_canonical_create_once(&output, &plan)?;
-		},
-		CandidateCommand::Authorize {
-			admission,
-			release_trust_policy,
-			plan,
-			signing_key_env,
-			output,
-		} => {
-			let admission = candidate_release_gate::read_trusted_candidate_admission(
-				&admission,
-				&release_trust_policy,
-			)?;
-			let plan: CandidateExecutionPlan = read_candidate_canonical_json(&plan)?;
-
-			plan.validate_against_admission(&admission)?;
-
-			if canonical_leaf_policy_path(&output)?
-				!= canonical_leaf_policy_path(&plan.authorization_path)?
-			{
-				return Err("candidate authorization output differs from the private plan".into());
-			}
-
-			let identity = CandidateAuthorizationIdentity::from_secret(
-				signing_secret_from_environment(&signing_key_env)?,
-			);
-			let authorization = identity.authorize(plan, &admission)?;
-
-			candidate_release_gate::write_execution_authorization_create_once(
-				&output,
-				&authorization,
-				&admission,
-				&identity.signer().node_id,
-				&identity.signer().public_key,
-			)?;
-		},
-		_ => unreachable!("candidate bootstrap dispatcher received a non-bootstrap command"),
-	}
-
-	Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn validate_candidate_corpus_command_paths(
-	authorization: &CandidateExecutionAuthorization,
-	kind: CandidateExecutionUnitKind,
-	public_tasks: Option<&Path>,
-	hidden_tasks: Option<&Path>,
-	corpus_commitment: &Path,
-	source_root: &Path,
-	evaluator_root: &Path,
-	evaluator_runtime: &Path,
-	codex_toolchain_root: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-	if public_tasks.is_some() {
-		return Err("candidate release validation requires the controlled hidden corpus".into());
-	}
-
-	let hidden_tasks =
-		hidden_tasks.ok_or("candidate release validation requires --hidden-tasks")?;
-	let plan = &authorization.plan;
-	let (expected_tasks, expected_commitment) = match kind {
-		CandidateExecutionUnitKind::Core => {
-			(&plan.controlled_inputs.core_tasks_root, &plan.core_corpus_commitment_path)
-		},
-		CandidateExecutionUnitKind::Contrast => {
-			(&plan.controlled_inputs.contrast_tasks_root, &plan.contrast_corpus_commitment_path)
-		},
-	};
-
-	for (provided, expected, label) in [
-		(hidden_tasks, expected_tasks.as_path(), "task root"),
-		(corpus_commitment, expected_commitment.as_path(), "corpus commitment"),
-		(source_root, plan.controlled_inputs.source_root.as_path(), "source root"),
-		(evaluator_root, plan.controlled_inputs.evaluator_root.as_path(), "evaluator root"),
-		(
-			evaluator_runtime,
-			plan.controlled_inputs.evaluator_runtime.as_path(),
-			"evaluator runtime",
-		),
-		(
-			codex_toolchain_root,
-			plan.controlled_inputs.codex_toolchain_root.as_path(),
-			"Codex toolchain root",
-		),
-	] {
-		if canonical_policy_path(provided)? != canonical_policy_path(expected)? {
-			return Err(
-				format!("candidate validation {label} does not match the signed plan").into()
-			);
-		}
-	}
-
-	Ok(())
-}
-
-fn execute_candidate_repeat_command(
-	expectations_path: PathBuf,
-	repeat_id: String,
-	runner_signing_key_env: String,
-	phase: CandidateRepeatPhase,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let expectations: CandidateExecutionExpectations =
-		read_candidate_canonical_json(&expectations_path)?;
-
-	candidate_release_gate::verify_trusted_candidate_admission(&expectations)?;
-
-	let runner_identity = CandidateSigningIdentity::from_secret(signing_secret_from_environment(
-		&runner_signing_key_env,
-	)?);
-
-	candidate_release_gate::execute_repeat_after_authorization(
-		&expectations,
-		phase.reservation_mode(),
-		&repeat_id,
-		&runner_identity.node().node_id,
-		|authorization, admission, _corpus, repeat, outputs| {
-			candidate_release_gate::validate_candidate_runner_executable_binding(
-				&authorization.plan,
-			)?;
-
-			for unit in repeat.units {
-				let result = match phase {
-					CandidateRepeatPhase::Run(_) => run_candidate_unit(
-						authorization,
-						admission,
-						unit,
-						&runner_identity,
-						outputs,
-					),
-					CandidateRepeatPhase::Finalize => finalize_candidate_unit_attempts(
-						authorization,
-						admission,
-						unit,
-						&runner_identity,
-						outputs,
-					),
-				};
-
-				result.map_err(|error| CandidateGateError::new(error.to_string()))?;
-			}
-
-			Ok(())
-		},
-	)?;
-
-	Ok(())
-}
-
-fn candidate_assembler_artifacts(
-	plan: &CandidateExecutionPlan,
-	outputs: &mut CandidateOutputReservations,
-) -> Result<Vec<CandidateAssemblerArtifact>, Box<dyn std::error::Error>> {
-	let mut artifacts = Vec::with_capacity(CANDIDATE_UNIT_OUTPUT_COUNT);
-
-	for unit in &plan.execution_units {
-		for (artifact_class, key) in [
-			("result_package_bundle", format!("{}/result_package_bundle", unit.unit_id)),
-			("evaluator_result_bundle", format!("{}/evaluator_result_bundle", unit.unit_id)),
-			("verifier_replay_bundle", format!("{}/verifier_replay_bundle", unit.unit_id)),
-			("attempt_log_bundle", format!("{}/attempt_log_bundle", unit.unit_id)),
-		] {
-			artifacts.push(CandidateAssemblerArtifact {
-				unit_id: unit.unit_id.clone(),
-				artifact_class,
-				artifact: parse_canonical_candidate_bytes(&outputs.read_filled(&key)?)?,
-			});
-		}
-	}
-
-	if artifacts.len() != CANDIDATE_UNIT_OUTPUT_COUNT {
-		return Err("candidate aggregate did not derive exactly 84 signed artifacts".into());
-	}
-
-	Ok(artifacts)
-}
-
-fn execute_candidate_source_derivation_command(
-	expectations_path: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let expectations: CandidateExecutionExpectations =
-		read_candidate_canonical_json(expectations_path)?;
-	let (derived, _) = derive_candidate_source(&expectations)?;
-
-	io::stdout().write_all(&protocol::canonical_json(
-		&serde_json::json!({"source_observations_digest": derived}),
-	)?)?;
-	io::stdout().write_all(b"\n")?;
-
-	Ok(())
-}
-
-fn derive_candidate_source(
-	expectations: &CandidateExecutionExpectations,
-) -> Result<(String, ReleaseGateAdmissionV1), Box<dyn std::error::Error>> {
-	let derived = candidate_release_gate::execute_after_authorization(
-		expectations,
-		CandidateReservationMode::ResumeExactPlan,
-		|authorization, admission, _corpus, outputs| {
-			candidate_release_gate::validate_candidate_runner_executable_binding(
-				&authorization.plan,
-			)?;
-
-			let input = CandidateAssemblerInput {
-				operation: "derive_source",
-				admission,
-				authority: None,
-				runtime_pinned_trust_policy: None,
-				expectations,
-				authorization,
-				artifacts: candidate_assembler_artifacts(&authorization.plan, outputs)
-					.map_err(|error| CandidateGateError::new(error.to_string()))?,
-				collected_at: &expectations.observed_at,
-			};
-			let derived: CandidateSourceDerivationOutput = execute_fixed_candidate_assembler(
-				&authorization.plan,
-				&protocol::canonical_json(&input)
-					.map_err(|error| CandidateGateError::new(error.to_string()))?,
-				None,
-			)
-			.map_err(|error| CandidateGateError::new(error.to_string()))?;
-
-			if derived.source_observations_digest.len() != 71
-				|| !derived.source_observations_digest.starts_with("sha256:")
-				|| !derived.source_observations_digest[7..]
-					.bytes()
-					.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-			{
-				return Err(CandidateGateError::new("candidate source digest is invalid"));
-			}
-
-			let source = canonical_candidate_document(&derived.source_observations)
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-
-			fill_or_verify_candidate_aggregate(outputs, "aggregate/source_observations", &source)
-				.map_err(|error| CandidateGateError::new(error.to_string()))?;
-
-			Ok((derived.source_observations_digest, admission.clone()))
-		},
-	)?;
-
-	Ok(derived)
-}
-
-fn build_candidate_release_authority_input(
-	expectations_path: &Path,
-	signer_key_id: &str,
-	output: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-	if signer_key_id.is_empty()
-		|| signer_key_id.len() > 128
-		|| !signer_key_id.as_bytes()[0].is_ascii_lowercase()
-			&& !signer_key_id.as_bytes()[0].is_ascii_digit()
-		|| !signer_key_id.bytes().all(|byte| {
-			byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
-		}) {
-		return Err("candidate release-authority signer key ID is invalid".into());
-	}
-
-	let expectations: CandidateExecutionExpectations =
-		read_candidate_canonical_json(expectations_path)?;
-	let (source_observations_digest, admission) = derive_candidate_source(&expectations)?;
-	let authority = serde_json::json!({
-		"schema_version": "aiq.release-gate-authority.v1",
-		"signature_domain": "aiq.release-gate-authority.v1",
-		"signature_encoding": "aiq.sorted-key-json.v1",
-		"release_identity": candidate_release_gate::RELEASE_IDENTITY,
-		"catalog_release_identity_digest": candidate_release_gate::CANDIDATE_CATALOG_RELEASE_IDENTITY_SHA256,
-		"task_metadata_identity_digest": candidate_release_gate::CANDIDATE_TASK_IDENTITY_SHA256,
-		"admission_digest": expectations.signed_admission_sha256,
-		"execution_plan_digest": expectations.execution_plan_sha256,
-		"model_id_mapping_digest": candidate_release_gate::CANDIDATE_MODEL_ID_MAPPING_SHA256,
-		"admission": admission,
-		"source_observations_digest": source_observations_digest,
-		"signer": {"key_id": signer_key_id, "algorithm": "ed25519"},
-		"signature": "",
-	});
-
-	candidate_release_gate::write_candidate_canonical_create_once(output, &authority)?;
-
-	Ok(())
-}
-
-fn build_candidate_aggregate_expectations(
-	execution_path: &Path,
-	authority_path: &Path,
-	trust_policy_path: &Path,
-	output: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let execution: CandidateExecutionExpectations = read_candidate_canonical_json(execution_path)?;
-	let (_, authority_bytes) = candidate_release_gate::read_canonical_candidate_reference(
-		authority_path,
-		MAX_CANDIDATE_PUBLIC_AUTHORITY_BYTES,
-	)?;
-	let _ = candidate_release_gate::read_canonical_candidate_reference(
-		trust_policy_path,
-		MAX_CANDIDATE_PUBLIC_AUTHORITY_BYTES,
-	)?;
-	let aggregate = CandidateAggregateExpectations {
-		collected_at: execution.observed_at.clone(),
-		execution,
-		release_authority_path: fs::canonicalize(authority_path)?,
-		release_authority_sha256: raw_sha256(&authority_bytes),
-		release_trust_policy_path: fs::canonicalize(trust_policy_path)?,
-	};
-
-	aggregate.validate()?;
-
-	candidate_release_gate::write_candidate_canonical_create_once(output, &aggregate)?;
-
-	Ok(())
-}
-
-fn execute_candidate_aggregate_command(
-	expectations_path: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let aggregate: CandidateAggregateExpectations =
-		read_candidate_canonical_json(expectations_path)?;
-
-	aggregate.validate()?;
-
-	let trust_policy_digest = candidate_trust_policy_digest_from_environment()?;
-
-	candidate_release_gate::execute_after_authorization(
-		&aggregate.execution,
-		CandidateReservationMode::ResumeExactPlan,
-		|authorization, admission, _corpus, outputs| {
-			candidate_release_gate::validate_candidate_runner_executable_binding(
-				&authorization.plan,
-			)?;
-
-			run_candidate_aggregate(
-				&aggregate,
-				authorization,
-				admission,
-				outputs,
-				&trust_policy_digest,
-			)
-			.map_err(|error| CandidateGateError::new(error.to_string()))
-		},
-	)?;
-
-	Ok(())
-}
-
-fn run_candidate_aggregate(
-	aggregate: &CandidateAggregateExpectations,
-	authorization: &CandidateExecutionAuthorization,
-	admission: &ReleaseGateAdmissionV1,
-	outputs: &mut CandidateOutputReservations,
-	trust_policy_digest: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let plan = &authorization.plan;
-
-	for path in [&aggregate.release_authority_path, &aggregate.release_trust_policy_path] {
-		if plan.output_paths().iter().any(|(_, output)| *output == path.as_path()) {
-			return Err("candidate aggregate public inputs cannot alias signed outputs".into());
-		}
-	}
-
-	let (authority, authority_bytes) = candidate_release_gate::read_canonical_candidate_reference(
-		&aggregate.release_authority_path,
-		MAX_CANDIDATE_PUBLIC_AUTHORITY_BYTES,
-	)?;
-
-	if raw_sha256(&authority_bytes) != aggregate.release_authority_sha256
-		|| authority.get("admission") != Some(&serde_json::to_value(admission)?)
-	{
-		return Err("candidate aggregate authority does not match its independent pins".into());
-	}
-
-	let (trust_policy, trust_policy_bytes) =
-		candidate_release_gate::read_canonical_candidate_reference(
-			&aggregate.release_trust_policy_path,
-			MAX_CANDIDATE_PUBLIC_AUTHORITY_BYTES,
-		)?;
-
-	if raw_sha256(&trust_policy_bytes) != trust_policy_digest {
-		return Err(
-			"candidate aggregate trust policy does not match the protected runtime pin".into()
-		);
-	}
-
-	let input = CandidateAssemblerInput {
-		operation: "finalize",
-		admission,
-		authority: Some(authority),
-		runtime_pinned_trust_policy: Some(trust_policy),
-		expectations: &aggregate.execution,
-		authorization,
-		artifacts: candidate_assembler_artifacts(plan, outputs)?,
-		collected_at: &aggregate.collected_at,
-	};
-	let assembled: CandidateAssemblerOutput = execute_fixed_candidate_assembler(
-		plan,
-		&protocol::canonical_json(&input)?,
-		Some(trust_policy_digest),
-	)?;
-	let source_bytes = canonical_candidate_document(&assembled.source_observations)?;
-	let evidence_bytes = canonical_candidate_document(&assembled.release_gate_evidence)?;
-
-	// Parsing this closed value proves that the fixed assembler evaluated the
-	// gate. It is deliberately not another plan-selectable output.
-	if !assembled.release_gate_result.is_object() {
-		return Err("candidate source assembler returned an invalid gate result".into());
-	}
-
-	fill_or_verify_candidate_aggregate(outputs, "aggregate/source_observations", &source_bytes)?;
-	fill_or_verify_candidate_aggregate(
-		outputs,
-		"aggregate/release_gate_evidence",
-		&evidence_bytes,
-	)?;
-
-	Ok(())
-}
-
-fn parse_canonical_candidate_bytes(
-	bytes: &[u8],
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let value: serde_json::Value = serde_json::from_slice(bytes)?;
-	let canonical = protocol::canonical_json(&value)?;
-
-	if bytes != canonical && bytes.strip_suffix(b"\n") != Some(canonical.as_slice()) {
-		return Err("candidate unit artifact bytes are not canonical JSON".into());
-	}
-
-	Ok(value)
-}
-
-fn fill_or_verify_candidate_aggregate(
-	outputs: &mut CandidateOutputReservations,
-	key: &str,
-	expected: &[u8],
-) -> Result<(), Box<dyn std::error::Error>> {
-	match outputs.states().get(key) {
-		Some(CandidateOutputState::Reserved) => {
-			outputs.fill(key, expected)?;
-		},
-		Some(CandidateOutputState::Filled { sha256 }) if sha256 == &raw_sha256(expected) => {
-			if outputs.read_filled(key)? != expected {
-				return Err("candidate aggregate resume bytes do not match the exact digest".into());
-			}
-		},
-		Some(CandidateOutputState::Filled { .. }) => {
-			return Err("candidate aggregate resume digest does not match recomputed output".into());
-		},
-		None => return Err("candidate aggregate reservation is missing".into()),
-	}
-
-	Ok(())
-}
-
-fn execute_fixed_candidate_assembler<T>(
-	plan: &CandidateExecutionPlan,
-	input: &[u8],
-	trust_policy_digest: Option<&str>,
-) -> Result<T, Box<dyn std::error::Error>>
-where
-	T: DeserializeOwned + Serialize,
-{
-	let directory = create_candidate_assembler_directory(&plan.output_root)?;
-	let assembler_path = directory.root.join("candidate-source-assembler.ts");
-	let runtime = EvaluatorRuntime::resolve(&plan.controlled_inputs.evaluator_runtime)?;
-
-	if runtime.executable_digest() != plan.runtime.evaluator_runtime_sha256 {
-		return Err("candidate aggregate runtime differs from the signed plan".into());
-	}
-
-	let mut child = process::Command::new(runtime.executable());
-
-	child
-		.arg("--experimental-strip-types")
-		.arg(&assembler_path)
-		.current_dir(&directory.root)
-		.stdin(Stdio::piped())
-		.stdout(Stdio::piped())
-		.stderr(Stdio::null())
-		.env_clear();
-
-	if let Some(digest) = trust_policy_digest {
-		child.env(CANDIDATE_TRUST_POLICY_DIGEST_ENV, digest);
-	}
-
-	let mut child = child.spawn()?;
-
-	child.stdin.take().ok_or("candidate assembler stdin is unavailable")?.write_all(input)?;
-
-	let output = child.wait_with_output()?;
-
-	if !output.status.success()
-		|| output.stdout.is_empty()
-		|| output.stdout.len() > MAX_CANDIDATE_ASSEMBLER_OUTPUT_BYTES
-	{
-		return Err(
-			"fixed candidate source assembly failed without exposing private content".into()
-		);
-	}
-
-	let assembled: T = serde_json::from_slice(&output.stdout)?;
-	let canonical = protocol::canonical_json(&assembled)?;
-
-	if output.stdout != canonical && output.stdout.strip_suffix(b"\n") != Some(canonical.as_slice())
-	{
-		return Err("fixed candidate source assembler returned noncanonical output".into());
-	}
-
-	Ok(assembled)
-}
-
-fn candidate_trust_policy_digest_from_environment() -> Result<String, Box<dyn std::error::Error>> {
-	let value = env::var(CANDIDATE_TRUST_POLICY_DIGEST_ENV)
-		.map_err(|_| "candidate aggregate protected trust-policy digest is unavailable")?;
-	let Some(digest) = value.strip_prefix("sha256:") else {
-		return Err("candidate aggregate protected trust-policy digest is invalid".into());
-	};
-
-	if digest.len() != 64
-		|| digest == "0".repeat(64)
-		|| !digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-	{
-		return Err("candidate aggregate protected trust-policy digest is invalid".into());
-	}
-
-	Ok(value)
-}
-
-fn create_candidate_assembler_directory(
-	output_root: &Path,
-) -> Result<CandidateAssemblerDirectory, Box<dyn std::error::Error>> {
-	let mut root = None;
-
-	for _ in 0..128 {
-		let counter =
-			CANDIDATE_ASSEMBLER_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-		let candidate =
-			output_root.join(format!(".candidate-source-assembler-{}-{counter}", process::id()));
-		let mut builder = DirBuilder::new();
-
-		#[cfg(unix)]
-		builder.mode(0o700);
-
-		match builder.create(&candidate) {
-			Ok(()) => {
-				root = Some(candidate);
-
-				break;
-			},
-			Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
-			Err(error) => return Err(error.into()),
-		}
-	}
-
-	let root = root.ok_or("candidate assembler temporary namespace is exhausted")?;
-	let mut directory = CandidateAssemblerDirectory { root, files: Vec::new() };
-
-	for (name, bytes) in [
-		("candidate-source-assembler.ts", CANDIDATE_SOURCE_ASSEMBLER),
-		("candidate-release.ts", CANDIDATE_RELEASE_ASSEMBLER),
-		("generate-benchmark-catalog.ts", CANDIDATE_CATALOG_GENERATOR),
-	] {
-		let path = directory.root.join(name);
-		let mut options = OpenOptions::new();
-
-		options.write(true).create_new(true);
-		#[cfg(unix)]
-		options.mode(0o600).custom_flags(O_NOFOLLOW);
-
-		let mut file = options.open(&path)?;
-
-		file.write_all(bytes)?;
-		file.sync_all()?;
-		directory.files.push(path);
-	}
-
-	File::open(&directory.root)?.sync_all()?;
-
-	Ok(directory)
-}
-
-fn run_candidate_unit(
-	authorization: &CandidateExecutionAuthorization,
-	admission: &ReleaseGateAdmissionV1,
-	unit: &CandidateExecutionUnit,
-	runner_identity: &CandidateSigningIdentity,
-	outputs: &mut CandidateOutputReservations,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let result_key = format!("{}/result_package_bundle", unit.unit_id);
-	let evaluator_key = format!("{}/evaluator_result_bundle", unit.unit_id);
-	let states = outputs.states();
-	let result_state = states.get(&result_key).ok_or("candidate result reservation is missing")?;
-	let evaluator_state =
-		states.get(&evaluator_key).ok_or("candidate evaluator reservation is missing")?;
-	let mut attempt_journal =
-		CandidateAttemptJournalStore::open(&unit.attempt_journal_path, authorization, unit)?;
-
-	if reconcile_completed_candidate_outputs(
-		authorization,
-		unit,
-		result_state,
-		evaluator_state,
-		&mut attempt_journal,
-	)? {
-		return Ok(());
-	}
-
-	let result_bundle = if matches!(result_state, CandidateOutputState::Filled { .. }) {
-		let bundle: CandidateResultPackageBundle = read_json(&unit.outputs.result_package_bundle)?;
-
-		bundle.verify(authorization, unit)?;
-
-		bundle
-	} else {
-		let actual_start = candidate_attempt_journal::canonical_now()?;
-		let attempt =
-			match attempt_journal.begin_or_resume(authorization, unit, admission, &actual_start)? {
-				CandidateAttemptDecision::Start(attempt)
-				| CandidateAttemptDecision::Resume(attempt) => attempt,
-				CandidateAttemptDecision::Completed(_) => {
-					return Err("candidate journal is complete but result output is missing".into());
-				},
-				CandidateAttemptDecision::TerminalInfrastructure(_) => {
-					return Err("candidate infrastructure retry policy is exhausted".into());
-				},
-			};
-		let options =
-			candidate_unit_run_options(authorization, admission, unit, &attempt.started_at)?;
-		let active_capability_probes =
-			options.refresh_preflight || !options.preflight_cache.exists();
-
-		if active_capability_probes {
-			attempt_journal.mark_model_started(authorization, unit, attempt.attempt_number)?;
-		}
-
-		let prepared = match prepare_authorized_live_run(options) {
-			Ok(prepared) => prepared,
-			Err(error) => {
-				if !active_capability_probes && attempt.state == CandidateUnitAttemptState::Prepared
-				{
-					attempt_journal.mark_infrastructure_failure(
-						authorization,
-						unit,
-						admission,
-						attempt.attempt_number,
-						candidate_release_gate::CandidateAttemptFailure::PreModelAdmission,
-					)?;
-				}
-
-				return Err(error);
-			},
-		};
-
-		if !active_capability_probes {
-			attempt_journal.mark_model_started(authorization, unit, attempt.attempt_number)?;
-		}
-
-		let executed = execute_authorized_live_run(prepared)?;
-		let run = match executed.run {
-			SelectedRun::Calibration(run) => run,
-			SelectedRun::OfficialShape(_) => {
-				return Err("candidate execution unexpectedly produced an Official run".into());
-			},
-		};
-
-		aiq_runner::run_validation::validate_candidate_unit_calibration_run_record_with_tasks(
-			&run,
-			&executed.tasks,
-			unit,
-		)?;
-
-		CandidateResultPackageBundle::sign(authorization, unit, run, runner_identity)?
-	};
-	let evaluator_bundle =
-		candidate_evaluator_result_bundle(authorization, unit, &result_bundle, runner_identity)?;
-
-	if matches!(result_state, CandidateOutputState::Reserved) {
-		outputs.fill(&result_key, &canonical_candidate_document(&result_bundle)?)?;
-	}
-	if matches!(evaluator_state, CandidateOutputState::Reserved) {
-		outputs.fill(&evaluator_key, &canonical_candidate_document(&evaluator_bundle)?)?;
-	}
-
-	let attempt_number = attempt_journal
-		.journal()
-		.attempts
-		.last()
-		.ok_or("candidate successful unit lacks an attempt")?
-		.attempt_number;
-
-	attempt_journal.mark_completed(authorization, unit, attempt_number)?;
-
-	Ok(())
-}
-
-fn reconcile_completed_candidate_outputs(
-	authorization: &CandidateExecutionAuthorization,
-	unit: &CandidateExecutionUnit,
-	result_state: &CandidateOutputState,
-	evaluator_state: &CandidateOutputState,
-	attempt_journal: &mut CandidateAttemptJournalStore,
-) -> Result<bool, Box<dyn std::error::Error>> {
-	match (result_state, evaluator_state) {
-		(CandidateOutputState::Filled { .. }, CandidateOutputState::Filled { .. }) => {
-			let last = attempt_journal
-				.journal()
-				.attempts
-				.last()
-				.ok_or("candidate completed outputs lack an attempt journal")?;
-
-			match last.state {
-				CandidateUnitAttemptState::Completed => Ok(true),
-				CandidateUnitAttemptState::ModelStarted => {
-					attempt_journal.mark_completed(authorization, unit, last.attempt_number)?;
-
-					Ok(true)
-				},
-				_ => Err("candidate completed outputs conflict with the attempt journal".into()),
-			}
-		},
-		(CandidateOutputState::Reserved, CandidateOutputState::Filled { .. }) => {
-			Err("candidate evaluator bundle exists without its result package bundle".into())
-		},
-		_ => Ok(false),
-	}
-}
-
-fn candidate_evaluator_result_bundle(
-	authorization: &CandidateExecutionAuthorization,
-	unit: &CandidateExecutionUnit,
-	result_bundle: &CandidateResultPackageBundle,
-	runner_identity: &CandidateSigningIdentity,
-) -> Result<CandidateEvaluatorResultBundle, Box<dyn std::error::Error>> {
-	let run_payload = result_bundle.verify(authorization, unit)?;
-	let evaluator_bytes = submission::read_evaluator_results_artifact(
-		&authorization.plan.controlled_inputs.artifact_root,
-		&run_payload.run.evaluator_results_artifact,
-	)?;
-	let evaluator_results =
-		aiq_runner::run_validation::validate_calibration_evaluator_results_bundle(
-			&run_payload.run,
-			&evaluator_bytes,
-		)?;
-
-	Ok(CandidateEvaluatorResultBundle::sign(
-		authorization,
-		unit,
-		result_bundle,
-		&evaluator_results,
-		runner_identity,
-	)?)
-}
-
-fn finalize_candidate_unit_attempts(
-	authorization: &CandidateExecutionAuthorization,
-	admission: &ReleaseGateAdmissionV1,
-	unit: &CandidateExecutionUnit,
-	runner_identity: &CandidateSigningIdentity,
-	outputs: &mut CandidateOutputReservations,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let result_key = format!("{}/result_package_bundle", unit.unit_id);
-	let evaluator_key = format!("{}/evaluator_result_bundle", unit.unit_id);
-	let verifier_key = format!("{}/verifier_replay_bundle", unit.unit_id);
-	let attempt_key = format!("{}/attempt_log_bundle", unit.unit_id);
-	let states = outputs.states();
-
-	for key in [&result_key, &evaluator_key, &verifier_key] {
-		if !matches!(states.get(key), Some(CandidateOutputState::Filled { .. })) {
-			return Err(format!("candidate attempt finalization requires filled {key}").into());
-		}
-	}
-
-	let attempt_state =
-		states.get(&attempt_key).ok_or("candidate attempt-log reservation is missing")?;
-	let result_bundle: CandidateResultPackageBundle =
-		read_json(&unit.outputs.result_package_bundle)?;
-	let evaluator_bundle: CandidateEvaluatorResultBundle =
-		read_json(&unit.outputs.evaluator_result_bundle)?;
-	let verifier_bundle: CandidateVerifierReplayBundle =
-		read_json(&unit.outputs.verifier_replay_bundle)?;
-	let run_payload = result_bundle.verify(authorization, unit)?;
-
-	evaluator_bundle.verify(authorization, unit, &result_bundle)?;
-	verifier_bundle.verify(authorization, unit, &result_bundle, &evaluator_bundle)?;
-
-	if matches!(attempt_state, CandidateOutputState::Filled { .. }) {
-		let attempt_bundle: CandidateAttemptLogBundle =
-			read_json(&unit.outputs.attempt_log_bundle)?;
-
-		attempt_bundle.verify(
-			authorization,
-			unit,
-			&result_bundle,
-			&evaluator_bundle,
-			&verifier_bundle,
-		)?;
-
-		return Ok(());
-	}
-
-	let journal =
-		CandidateAttemptJournalStore::open(&unit.attempt_journal_path, authorization, unit)?;
-
-	journal.validate_against_admission(authorization, unit, admission)?;
-
-	if journal
-		.journal()
-		.attempts
-		.last()
-		.is_none_or(|attempt| attempt.state != CandidateUnitAttemptState::Completed)
-	{
-		return Err("candidate attempt journal is not complete".into());
-	}
-
-	let attempts = run_payload
-		.run
-		.results
-		.iter()
-		.enumerate()
-		.map(|(index, result)| {
-			candidate_cell_attempts(
-				journal.journal(),
-				result,
-				&result_bundle,
-				&verifier_bundle,
-				index,
-			)
-		})
-		.collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
-	let attempt_bundle = CandidateAttemptLogBundle::sign(
-		authorization,
-		unit,
-		&result_bundle,
-		&evaluator_bundle,
-		&verifier_bundle,
-		attempts,
-		runner_identity,
-	)?;
-
-	outputs.fill(&attempt_key, &canonical_candidate_document(&attempt_bundle)?)?;
-
-	Ok(())
-}
-
-fn candidate_cell_attempts(
-	journal: &CandidateAttemptJournal,
-	result: &TaskResult,
-	results: &CandidateResultPackageBundle,
-	replays: &CandidateVerifierReplayBundle,
-	index: usize,
-) -> Result<Vec<CandidateAttempt>, Box<dyn std::error::Error>> {
-	let terminal_index =
-		journal.attempts.len().checked_sub(1).ok_or("candidate attempt journal is empty")?;
-
-	journal
-		.attempts
-		.iter()
-		.enumerate()
-		.map(|(attempt_index, attempt)| {
-			let (disposition, infrastructure_classification, model_started) =
-				if attempt_index < terminal_index {
-					(
-						CandidateAttemptDisposition::InfrastructureRetryable,
-						Some(candidate_infrastructure_classification(
-							attempt
-								.infrastructure_classification
-								.ok_or("candidate retry lacks infrastructure classification")?,
-						)?),
-						false,
-					)
-				} else {
-					candidate_terminal_attempt(result)?
-				};
-			let completed = disposition == CandidateAttemptDisposition::Completed;
-
-			Ok(CandidateAttempt {
-				attempt_number: usize::from(attempt.attempt_number),
-				scheduled_delay_seconds: attempt.scheduled_delay_seconds,
-				scheduled_for: attempt.scheduled_for.clone(),
-				started_at: attempt.started_at.clone(),
-				model_started,
-				disposition,
-				infrastructure_classification,
-				result_digest: completed.then(|| result.content_hash()).transpose()?,
-				result_package_digest: completed
-					.then(|| results.cells[index].digest())
-					.transpose()?,
-				verifier_attestation_digest: completed
-					.then(|| replays.cells[index].digest())
-					.transpose()?,
-			})
-		})
-		.collect()
-}
-
-fn candidate_terminal_attempt(
-	result: &TaskResult,
-) -> Result<
-	(CandidateAttemptDisposition, Option<CandidateInfrastructureClassification>, bool),
-	Box<dyn std::error::Error>,
-> {
-	let failure_kind = result.failure.as_ref().map(|failure| failure.kind);
-	let attempted = !matches!(
-		failure_kind,
-		Some(
-			FailureKind::CapabilityUnavailable
-				| FailureKind::CapabilityValidationFailed
-				| FailureKind::WorkspaceUnavailable
-		)
-	);
-
-	match result.status {
-		ResultStatus::Completed => Ok((CandidateAttemptDisposition::Completed, None, true)),
-		ResultStatus::Unsupported => Ok((CandidateAttemptDisposition::Unsupported, None, false)),
-		ResultStatus::Unevaluated => {
-			Ok((CandidateAttemptDisposition::Unevaluated, None, attempted))
-		},
-		ResultStatus::Failed => match failure_kind {
-			Some(
-				FailureKind::CapabilityUnavailable
-				| FailureKind::CapabilityValidationFailed
-				| FailureKind::WorkspaceUnavailable,
-			) => Ok((
-				CandidateAttemptDisposition::InfrastructureTerminal,
-				Some(CandidateInfrastructureClassification::PreModelAdmission),
-				false,
-			)),
-			Some(FailureKind::EvaluatorFailure) => {
-				Ok((CandidateAttemptDisposition::EvaluatorFailure, None, true))
-			},
-			Some(_) => Ok((CandidateAttemptDisposition::ModelFailure, None, attempted)),
-			None => Err("candidate failed result lacks a failure classification".into()),
-		},
-	}
-}
-
-fn candidate_infrastructure_classification(
-	classification: candidate_release_gate::CandidateAttemptFailure,
-) -> Result<CandidateInfrastructureClassification, Box<dyn std::error::Error>> {
-	match classification {
-		candidate_release_gate::CandidateAttemptFailure::PreModelAdmission => {
-			Ok(CandidateInfrastructureClassification::PreModelAdmission)
-		},
-		candidate_release_gate::CandidateAttemptFailure::ModelFailure
-		| candidate_release_gate::CandidateAttemptFailure::EvaluatorFailure => {
-			Err("candidate infrastructure journal contains a non-infrastructure failure".into())
-		},
-	}
-}
-
-fn candidate_unit_run_options(
-	authorization: &CandidateExecutionAuthorization,
-	admission: &ReleaseGateAdmissionV1,
-	unit: &CandidateExecutionUnit,
-	observed_at: &str,
-) -> Result<RunOptions, Box<dyn std::error::Error>> {
-	let controlled = &authorization.plan.controlled_inputs;
-	let (hidden_tasks, workspace_root) = match unit.kind {
-		CandidateExecutionUnitKind::Core => {
-			(controlled.core_tasks_root.clone(), controlled.core_workspace_root.clone())
-		},
-		CandidateExecutionUnitKind::Contrast => {
-			(controlled.contrast_tasks_root.clone(), controlled.contrast_workspace_root.clone())
-		},
-	};
-	let candidate_schedule = candidate_schedule_window(admission, unit)?;
-	let slot_date = candidate_schedule.slot.local_date.clone();
-	let occurrence = match candidate_schedule.slot.occurrence {
-		ScheduleOccurrence::Day => "day",
-		ScheduleOccurrence::Night => "night",
-	}
-	.to_owned();
-	let codex_binary = controlled
-		.codex_binary
-		.to_str()
-		.ok_or("candidate Codex binary path is not UTF-8")?
-		.to_owned();
-
-	Ok(RunOptions {
-		public_tasks: None,
-		hidden_tasks: Some(hidden_tasks),
-		corpus_commitment: unit.corpus_commitment_path.clone(),
-		source_root: controlled.source_root.clone(),
-		capabilities: controlled.capabilities.clone(),
-		workspace_root,
-		execution_root: controlled.execution_root.clone(),
-		evaluator_root: controlled.evaluator_root.clone(),
-		evaluator_runtime: controlled.evaluator_runtime.clone(),
-		codex_toolchain_root: controlled.codex_toolchain_root.clone(),
-		schedule: controlled.schedule.clone(),
-		slot_date,
-		occurrence,
-		observed_at: observed_at.to_owned(),
-		codex_binary,
-		codex_home: controlled.codex_home.clone(),
-		codex_egress_proxy: CodexEgressProxyEndpoint::parse_candidate_runner(
-			&controlled.codex_egress_proxy,
-		)?,
-		artifact_root: controlled.artifact_root.clone(),
-		preflight_cache: unit.preflight_path.clone(),
-		official_admission: None,
-		refresh_preflight: false,
-		preflight_ttl_seconds: 86_400,
-		checkpoint: unit.checkpoint_path.clone(),
-		task_selectors: unit.ordered_task_ids.clone(),
-		model_selectors: unit.models.iter().map(|model| model.execution_model_id.clone()).collect(),
-		jobs: controlled.jobs,
-		run_class: RunClass::Calibration,
-		output: unit.outputs.result_package_bundle.clone(),
-		candidate_schedule: Some(candidate_schedule),
-	})
-}
-
-fn candidate_schedule_window(
-	admission: &ReleaseGateAdmissionV1,
-	unit: &CandidateExecutionUnit,
-) -> Result<CandidateScheduleWindow, Box<dyn std::error::Error>> {
-	let repeat_index = admission
-		.repeat_schedule
-		.iter()
-		.position(|repeat| repeat.repeat_id == unit.repeat_id)
-		.ok_or("candidate repeat is not in the signed admission")?;
-	let scheduled_at = &admission.repeat_schedule[repeat_index].scheduled_at;
-
-	if scheduled_at.len() != 24 || !scheduled_at.ends_with(":00.000Z") || !scheduled_at.is_ascii() {
-		return Err(
-			"candidate repeat schedule must use a canonical whole-minute UTC timestamp".into()
-		);
-	}
-
-	let scheduled_unix_ms = u64::try_from(
-		scheduled_at
-			.parse::<Timestamp>()
-			.map_err(|_| "candidate repeat timestamp is invalid")?
-			.as_millisecond(),
-	)?;
-	let next_timestamp = admission
-		.repeat_schedule
-		.get(repeat_index + 1)
-		.map_or(admission.collection_not_after.as_str(), |repeat| repeat.scheduled_at.as_str());
-	let next_slot_unix_ms = u64::try_from(
-		next_timestamp
-			.parse::<Timestamp>()
-			.map_err(|_| "candidate partition timestamp is invalid")?
-			.as_millisecond(),
-	)?;
-
-	if next_slot_unix_ms <= scheduled_unix_ms {
-		return Err("candidate repeat partition is empty or reversed".into());
-	}
-
-	let occurrence = if repeat_index.is_multiple_of(2) {
-		ScheduleOccurrence::Day
-	} else {
-		ScheduleOccurrence::Night
-	};
-	let slot = ScheduleSlot {
-		local_date: scheduled_at[0..10].to_owned(),
-		occurrence,
-		local_time: scheduled_at[11..16].to_owned(),
-		timezone: "UTC".to_owned(),
-	};
-
-	if slot.scheduled_unix_ms()? != scheduled_unix_ms {
-		return Err("candidate schedule slot does not preserve the signed timestamp".into());
-	}
-
-	Ok(CandidateScheduleWindow {
-		slot,
-		next_slot_unix_ms,
-		unit_kind: unit.kind,
-		corpus_commitment_sha256: unit.corpus_commitment_sha256.clone(),
-	})
-}
-
-fn canonical_candidate_document(
-	value: &impl Serialize,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-	let mut bytes = protocol::canonical_json(value)?;
-
-	bytes.push(b'\n');
-
-	Ok(bytes)
 }
 
 fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::error::Error>> {
@@ -3353,7 +1909,6 @@ fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::er
 		observed_at,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		artifact_root,
 		preflight_cache,
 		checkpoint,
@@ -3384,7 +1939,6 @@ fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::er
 		observed_at,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		artifact_root,
 		preflight_cache,
 		checkpoint,
@@ -3404,7 +1958,6 @@ fn run_preflight(
 	codex_toolchain_root: PathBuf,
 	codex_binary: String,
 	codex_home: PathBuf,
-	codex_egress_proxy: CodexEgressProxyEndpoint,
 	artifact_root: PathBuf,
 	expires_in_seconds: u64,
 	output: PathBuf,
@@ -3429,7 +1982,6 @@ fn run_preflight(
 			&evaluator_runtime,
 			&model_toolchain,
 			&codex_binary,
-			&codex_egress_proxy,
 			&codex_home,
 			&artifact_root,
 			&output,
@@ -3478,7 +2030,6 @@ fn run_preflight(
 		codex_binary.clone(),
 		CodexExecutionConfig::isolated(codex_home.clone())
 			.with_denied_roots(denied_roots)
-			.with_egress_proxy(codex_egress_proxy)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
 	let profile_workspace = admission
@@ -3695,7 +2246,6 @@ fn verify_preflight_matches_official_plan(
 	evaluator_runtime: &EvaluatorRuntime,
 	model_toolchain: &ValidatedModelToolchain,
 	codex_binary: &str,
-	codex_egress_proxy: &CodexEgressProxyEndpoint,
 	codex_home: &Path,
 	artifact_root: &Path,
 	output: &Path,
@@ -3717,7 +2267,6 @@ fn verify_preflight_matches_official_plan(
 		evaluator_runtime.executable().display().to_string(),
 		model_toolchain.root().display().to_string(),
 		protocol::canonical_hash(&adapter::chatgpt_credential_observation(codex_home)?)?,
-		codex_egress_proxy.to_string(),
 	);
 	let expected = (
 		plan.capability_manifest_digest.clone(),
@@ -3733,7 +2282,6 @@ fn verify_preflight_matches_official_plan(
 		plan.evaluator_runtime.clone(),
 		plan.codex_toolchain_root.clone(),
 		plan.codex_credential_digest.clone(),
-		plan.codex_egress_proxy.clone(),
 	);
 
 	if protocol::canonical_hash(&actual)? != protocol::canonical_hash(&expected)? {
@@ -3848,7 +2396,6 @@ fn prepare_permission_admission(
 		observed_at: options.observed_at.clone(),
 		codex_binary: options.codex_binary.clone(),
 		codex_home: options.codex_home.clone(),
-		codex_egress_proxy: options.codex_egress_proxy.clone(),
 		artifact_root: options.artifact_root.clone(),
 		preflight_cache: options.preflight_cache.clone(),
 		official_admission: None,
@@ -3860,7 +2407,6 @@ fn prepare_permission_admission(
 		jobs: options.jobs,
 		run_class: RunClass::Official,
 		output: options.planned_output.clone(),
-		candidate_schedule: None,
 	};
 	let prepared_run = prepare_run_model_free(&planning_options)?;
 	let evaluator_runtime = EvaluatorRuntime::resolve(&options.evaluator_runtime)?;
@@ -3883,7 +2429,6 @@ fn prepare_permission_admission(
 			evaluator_runtime: &options.evaluator_runtime,
 			codex_toolchain_root: &options.codex_toolchain_root,
 			codex_binary: &options.codex_binary,
-			codex_egress_proxy: &options.codex_egress_proxy,
 			codex_home: &options.codex_home,
 			artifact_root: &options.artifact_root,
 			schedule: &options.schedule,
@@ -3935,7 +2480,6 @@ fn prepare_permission_admission(
 		artifact_sink,
 		options.codex_binary.clone(),
 		CodexExecutionConfig::isolated(options.codex_home.clone())
-			.with_egress_proxy(options.codex_egress_proxy.clone())
 			.with_denied_roots(denied_roots)
 			.with_model_toolchain(model_toolchain),
 	);
@@ -3995,25 +2539,23 @@ fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::
 				&task_report.tasks,
 				source_root,
 			)?,
-			CorpusValidationMode::CandidateCore => {
-				if !scoring::task_bindings_match_candidate_catalog(&task_report.tasks) {
-					return Err(
-						"candidate tasks do not match the immutable AIQ Core 1.0.2 catalog".into(),
-					);
+			CorpusValidationMode::Core => {
+				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
+					return Err("tasks do not match the immutable AIQ Core 1.0.2 catalog".into());
 				}
 
-				corpus_commitment::validate_candidate_corpus_commitment(
+				corpus_commitment::validate_core_corpus_commitment(
 					corpus_path,
 					&task_report.tasks,
 					source_root,
 				)?
 			},
-			CorpusValidationMode::CandidateContrast { expected_corpus_sha256 } => {
+			CorpusValidationMode::Contrast { expected_corpus_sha256 } => {
 				if task_report.tasks.len() != 6 {
-					return Err("candidate contrast validation requires exactly six tasks".into());
+					return Err("contrast validation requires exactly six tasks".into());
 				}
 
-				corpus_commitment::validate_candidate_contrast_corpus_commitment(
+				corpus_commitment::validate_contrast_corpus_commitment(
 					corpus_path,
 					&task_report.tasks,
 					source_root,
@@ -4136,10 +2678,6 @@ fn parse_controlled_codex_home(value: &str) -> Result<PathBuf, String> {
 	controlled_codex_home(Path::new(value)).map_err(|error| error.to_string())
 }
 
-fn parse_codex_egress_proxy(value: &str) -> Result<CodexEgressProxyEndpoint, String> {
-	CodexEgressProxyEndpoint::parse(value).map_err(|error| error.to_string())
-}
-
 fn validate_run_mode_options(
 	options: &RunOptions,
 	official_shape: bool,
@@ -4175,55 +2713,11 @@ fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn s
 
 	validate_run_mode_options(options, official_shape)?;
 
-	let corpus = if let Some(candidate) = &options.candidate_schedule {
-		if options.run_class != RunClass::Calibration {
-			return Err("candidate corpus validation is calibration-only".into());
-		}
-
-		let corpus = match candidate.unit_kind {
-			CandidateExecutionUnitKind::Core => {
-				if report.tasks.len() != 72
-					|| !scoring::task_bindings_match_candidate_catalog(&report.tasks)
-				{
-					return Err(
-						"candidate core run does not load the exact 72-task 1.0.2 catalog".into()
-					);
-				}
-
-				corpus_commitment::validate_candidate_corpus_commitment(
-					&options.corpus_commitment,
-					&report.tasks,
-					&options.source_root,
-				)?
-			},
-			CandidateExecutionUnitKind::Contrast => {
-				if report.tasks.len() != 6 {
-					return Err(
-						"candidate contrast run does not load the exact six-arm corpus".into()
-					);
-				}
-
-				corpus_commitment::validate_candidate_contrast_corpus_commitment(
-					&options.corpus_commitment,
-					&report.tasks,
-					&options.source_root,
-					&candidate.corpus_commitment_sha256,
-				)?
-			},
-		};
-
-		if corpus.canonical_sha256() != candidate.corpus_commitment_sha256 {
-			return Err("candidate corpus digest differs from the signed execution unit".into());
-		}
-
-		corpus
-	} else {
-		corpus_commitment::validate_corpus_commitment(
-			&options.corpus_commitment,
-			&selected_tasks,
-			&options.source_root,
-		)?
-	};
+	let corpus = corpus_commitment::validate_corpus_commitment(
+		&options.corpus_commitment,
+		&selected_tasks,
+		&options.source_root,
+	)?;
 	let (slot, seconds_until_next_slot, scheduled_unix_ms, next_slot_unix_ms) =
 		run_schedule_bounds(options)?;
 	let (model_free_available, model_free_unsupported) = if options.run_class == RunClass::Official
@@ -4348,7 +2842,6 @@ fn build_official_plan(
 		artifact_root: resume::directory_identity(inputs.artifact_root, "artifact root")?,
 		codex_home: resume::directory_identity(inputs.codex_home, "Codex home")?,
 		codex_binary,
-		codex_egress_proxy: inputs.codex_egress_proxy.to_string(),
 		schedule: canonical_policy_path(inputs.schedule)?.display().to_string(),
 		schedule_digest: protocol::canonical_hash(&schedule)?,
 		slot: prepared.slot.clone(),
@@ -4420,24 +2913,6 @@ fn official_output_plan(
 fn run_schedule_bounds(
 	options: &RunOptions,
 ) -> Result<(ScheduleSlot, u64, u64, u64), Box<dyn std::error::Error>> {
-	if let Some(candidate) = &options.candidate_schedule {
-		candidate.slot.validate()?;
-
-		let scheduled_unix_ms = candidate.slot.scheduled_unix_ms()?;
-		let interval_ms = candidate
-			.next_slot_unix_ms
-			.checked_sub(scheduled_unix_ms)
-			.filter(|interval| *interval > 0 && interval.is_multiple_of(1_000))
-			.ok_or("candidate execution partition is not a positive whole-second interval")?;
-
-		return Ok((
-			candidate.slot.clone(),
-			interval_ms / 1_000,
-			scheduled_unix_ms,
-			candidate.next_slot_unix_ms,
-		));
-	}
-
 	let schedule: ScheduleConfig = read_json(&options.schedule)?;
 	let occurrence = ScheduleOccurrence::from_str(&options.occurrence)?;
 	let slot = schedule.slot(&options.slot_date, occurrence)?;
@@ -4517,8 +2992,7 @@ fn freeze_run_preflight(
 		validate_live_protected_layout(options, &protected_paths, &model_toolchain)?;
 	let execution_config = CodexExecutionConfig::isolated(options.codex_home.clone())
 		.with_denied_roots(denied_roots)
-		.with_model_toolchain(model_toolchain.clone())
-		.with_egress_proxy(options.codex_egress_proxy.clone());
+		.with_model_toolchain(model_toolchain.clone());
 	let adapter = CodexAdapter::new(
 		SystemExecutor,
 		artifact_sink,
@@ -4648,15 +3122,6 @@ fn prepare_authorized_live_run(
 	let (future_entries, future_locks) =
 		acquire_run_future_protected_locks(&options, &prepared.run_id)?;
 	let preflight = freeze_run_preflight(&options, admission.as_ref())?;
-
-	if options.candidate_schedule.is_some() && !candidate_preflight_all_available(&preflight.report)
-	{
-		return Err(
-			"candidate preflight did not establish all 17 configurations as available; no benchmark task was dispatched"
-				.into(),
-		);
-	}
-
 	let capacity_admission = assess_run_capacity(
 		&options,
 		&preflight.report,
@@ -4743,7 +3208,6 @@ fn verify_official_admitted_plan(
 			evaluator_runtime: &options.evaluator_runtime,
 			codex_toolchain_root: &options.codex_toolchain_root,
 			codex_binary: &options.codex_binary,
-			codex_egress_proxy: &options.codex_egress_proxy,
 			codex_home: &options.codex_home,
 			artifact_root: &options.artifact_root,
 			schedule: &options.schedule,
@@ -4766,14 +3230,6 @@ fn verify_official_admitted_plan(
 	}
 
 	Ok(())
-}
-
-fn candidate_preflight_all_available(report: &CapabilityValidationReport) -> bool {
-	report.models.len() == MODEL_MATRIX.len()
-		&& report.models.iter().all(|entry| {
-			entry.status == CapabilityValidationStatus::Available
-				&& entry.probe.status == ConfigurationProbeStatus::Available
-		})
 }
 
 fn prepare_live_runtime(
@@ -4814,7 +3270,6 @@ fn prepare_live_runtime(
 		artifact_sink,
 		options.codex_binary.clone(),
 		CodexExecutionConfig::isolated(options.codex_home.clone())
-			.with_egress_proxy(options.codex_egress_proxy.clone())
 			.with_denied_roots(denied_roots)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
@@ -6354,18 +4809,6 @@ where
 	Ok(serde_json::from_slice(&bytes)?)
 }
 
-fn read_candidate_canonical_json<T>(path: &Path) -> Result<T, Box<dyn std::error::Error>>
-where
-	T: DeserializeOwned,
-{
-	let (value, _) = candidate_release_gate::read_canonical_candidate_reference(
-		path,
-		MAX_CANDIDATE_PUBLIC_AUTHORITY_BYTES,
-	)?;
-
-	Ok(serde_json::from_value(value)?)
-}
-
 fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Box<dyn std::error::Error>> {
 	let mut bytes = serde_json::to_vec_pretty(value)?;
 
@@ -6841,16 +5284,16 @@ mod tests {
 		requests: Rc<RefCell<Vec<CommandRequest>>>,
 	}
 
+	struct SuccessfulBoundaryExecutor {
+		requests: Rc<RefCell<Vec<CommandRequest>>>,
+	}
+
 	impl Executor for BoundaryExecutor {
 		fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
 			self.requests.borrow_mut().push(request.clone());
 
 			Err(ExecutorError::new("recording profile boundary reached"))
 		}
-	}
-
-	struct SuccessfulBoundaryExecutor {
-		requests: Rc<RefCell<Vec<CommandRequest>>>,
 	}
 
 	impl Executor for SuccessfulBoundaryExecutor {
@@ -6869,6 +5312,23 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn official_cli_exposes_no_proxy_mode() {
+		let command = <cli::Cli as clap::CommandFactory>::command();
+
+		for subcommand_name in ["admit-permissions", "preflight", "run"] {
+			let subcommand =
+				command.find_subcommand(subcommand_name).expect("Official direct command");
+
+			assert!(
+				subcommand
+					.get_arguments()
+					.all(|argument| argument.get_id() != "codex_egress_proxy"),
+				"{subcommand_name} must not expose a proxy mode"
+			);
+		}
+	}
+
 	fn fixture_root(name: &str) -> PathBuf {
 		let suffix =
 			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
@@ -6884,17 +5344,39 @@ mod tests {
 	}
 
 	#[test]
-	fn candidate_cli_exposes_only_the_closed_contrast_and_finalization_inputs() {
+	fn corpus_validators_are_top_level_and_legacy_lifecycle_is_absent() {
+		let common = [
+			"--hidden-tasks",
+			"/controlled/tasks",
+			"--corpus-commitment",
+			"/controlled/corpus.json",
+			"--source-root",
+			"/controlled/source",
+			"--evaluator-root",
+			"/controlled/evaluators",
+			"--evaluator-runtime",
+			"/controlled/bin/node",
+			"--codex-toolchain-root",
+			"/controlled/toolchain",
+		];
+		let core = super::Cli::try_parse_from(
+			["aiq-runner", "validate-core-corpus"].into_iter().chain(common),
+		);
+
+		assert!(matches!(
+			core,
+			Ok(super::Cli { command: super::Command::ValidateCoreCorpus { .. } })
+		));
+
 		let contrast = super::Cli::try_parse_from([
 			"aiq-runner",
-			"candidate",
 			"validate-contrast-corpus",
-			"--expectations",
-			"/controlled/execution-expectations.json",
 			"--hidden-tasks",
 			"/controlled/contrast-tasks",
 			"--corpus-commitment",
 			"/controlled/contrast-corpus.json",
+			"--expected-corpus-sha256",
+			"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			"--source-root",
 			"/controlled/source",
 			"--evaluator-root",
@@ -6907,39 +5389,10 @@ mod tests {
 
 		assert!(matches!(
 			contrast,
-			Ok(super::Cli {
-				command: super::Command::Candidate {
-					command: super::CandidateCommand::ValidateContrastCorpus { .. }
-				}
-			})
+			Ok(super::Cli { command: super::Command::ValidateContrastCorpus { .. } })
 		));
-
-		let finalize = super::Cli::try_parse_from([
-			"aiq-runner",
-			"candidate",
-			"finalize-repeat",
-			"--expectations",
-			"/controlled/expectations.json",
-			"--repeat-id",
-			"repeat-1",
-		]);
-
-		assert!(matches!(
-			finalize,
-			Ok(super::Cli {
-				command: super::Command::Candidate {
-					command: super::CandidateCommand::FinalizeRepeat { .. }
-				}
-			})
-		));
-		assert!(
-			super::Cli::try_parse_from([
-				"aiq-runner",
-				"validate",
-				"--candidate-release-calibration",
-			])
-			.is_err()
-		);
+		assert!(super::Cli::try_parse_from(["aiq-runner", "candidate", "plan"]).is_err());
+		assert!(super::Cli::try_parse_from(["aiq-runner", "replay-candidate"]).is_err());
 	}
 
 	fn ineligible_managed_profile() -> ManagedPermissionProfileEvidence {
@@ -7524,10 +5977,6 @@ mod tests {
 			observed_at: "unix-ms:1".to_owned(),
 			codex_binary: root.join("codex").display().to_string(),
 			codex_home: root.join("codex-home"),
-			codex_egress_proxy: crate::adapter::CodexEgressProxyEndpoint::parse(
-				"http://10.20.30.40:8080",
-			)
-			.expect("proxy fixture"),
 			artifact_root: root.join("artifacts"),
 			preflight_cache: root.join("preflight.json"),
 			checkpoint: report.clone(),
@@ -7674,55 +6123,5 @@ mod tests {
 		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
-	}
-
-	#[test]
-	fn candidate_preflight_requires_all_seventeen_active_configurations() {
-		let models = crate::model::MODEL_MATRIX
-			.into_iter()
-			.map(|model| {
-				serde_json::json!({
-					"model": model,
-					"status": "available",
-					"reason": "active probe succeeded",
-					"probe": {
-						"status": "available",
-						"codex_version": "test",
-						"observed_at": "2026-08-03T00:00:00.000Z",
-						"result_digest": format!("sha256:{}", "a".repeat(64)),
-						"result_preview": "AIQ_PREFLIGHT_OK",
-						"artifacts": [],
-						"evidence_digest": format!("sha256:{}", "b".repeat(64)),
-						"failure": null
-					}
-				})
-			})
-			.collect::<Vec<_>>();
-		let report = |models| {
-			serde_json::from_value::<crate::adapter::CapabilityValidationReport>(
-				serde_json::json!({
-					"schema_version": "aiq.capability-validation.v2",
-					"node_id": format!("node_{}", "c".repeat(64)),
-					"manifest_issues": [],
-					"cli_probe": {"status": "available", "version": "test", "failure": null},
-					"authentication_probe": {
-						"status": "available",
-						"mode": "chatgpt_subscription",
-						"failure": null
-					},
-					"models": models
-				}),
-			)
-			.expect("capability report")
-		};
-
-		assert!(super::candidate_preflight_all_available(&report(models.clone())));
-		assert!(!super::candidate_preflight_all_available(&report(models[..16].to_vec())));
-
-		let mut unsupported = models;
-
-		unsupported[0]["status"] = "unsupported".into();
-
-		assert!(!super::candidate_preflight_all_available(&report(unsupported)));
 	}
 }

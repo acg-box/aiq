@@ -24,10 +24,8 @@ Repository source has one active full-catalog Official contract: AIQ Core
 `1.0.2` with scoring `1.0.2`, task-metadata digest
 `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
 release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
-`sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
-Production still runs the earlier `1.0.1` foundation, so the current `1.0.2`
-source contract is not deployed. No real release-gate or Official run has
-started.
+`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+This is the only launch contract. No real Official run exists.
 
 ## Identity boundary
 
@@ -42,52 +40,27 @@ Production uses three Ed25519 identities:
 The gateway mints short-lived custom-role JWTs for verifier and publisher RPCs.
 The browser never receives those credentials.
 
-## Bounded Official runtime
+## Native macOS runtime
 
-`deploy/official-runtime` supplies a local Linux arm64 deployment mechanism with
-four non-root, read-only-root containers: runner, runner proxy, verifier, and
-verifier proxy. Runner and verifier occupy separate internal networks. The runner
-proxy permits only approved Codex hosts plus its canary host; the verifier proxy
-permits the production gateway, Supabase, and its canary host while explicitly
-denying Codex and OpenAI hosts. Neither side receives a Docker socket or host
-port, and all containers drop capabilities and use `no-new-privileges`.
+The first release runs the release builds of `aiq-runner` and `aiq-verifier`
+directly on one controlled Apple Silicon macOS host. The runner receives the
+private corpus, fresh workspaces, a separate immutable Codex authentication
+copy, and only the runner credential needed by the active command. The verifier
+receives the committed corpus, evaluator assets, submitted artifacts, and only
+its verifier credential. It never receives the Codex authentication copy.
 
-The runtime manager requires a local Docker daemon with Linux `aarch64` and
-seccomp, canonical non-overlapping paths, a clean source worktree at the declared
-commit, frozen read-only inputs, and exact private ownership on writable roots and
-secret files. It recomputes deterministic `aiq.frozen-tree.v1` summaries during
-create, validation, and receipt generation. It records secret mount metadata but
-never opens or hashes secret contents. Model-free runner and verifier canaries
-prove the sandbox and proxy boundaries before the private deployment receipt v2
-is issued. [Operations and Validation](operations.md) owns the commands, while
-[Deployment Handoff](deployment-handoff.md) treats the receipt as launch evidence.
-The bundle does not schedule benchmark commands, invoke Codex during validation,
-claim a package automatically, or prove that a production worker is deployed.
-The runtime manager is also the repository-owned command boundary for Official
-runner secrets. Its `admit-permissions`, `preflight`, `run`, `score`, `package`,
-and `submit` subcommands invoke the mounted runner through the fixed allowlist.
-The wrapper reads the runner signing key only for `package` and the submission
-token only for `submit`; it does not place either value in Docker arguments,
-Compose configuration, or logs.
+The native runtime uses canonical non-overlapping paths, a clean source worktree
+at the declared commit, exact executable digests, mode-private writable roots,
+create-new outputs, and macOS atomic file operations. Before each paid command,
+the operator reruns the model-free binding checks. Codex uses the host's direct
+network connection. The first release does not depend on or run Linux or Docker;
+they remain a future deployment target outside first-release acceptance.
 
-## Candidate runtime
-
-`deploy/candidate-runtime` is a separate local Linux arm64 runtime for the
-preregistered AIQ Core `1.0.2` release-gate calibration. On Apple Silicon, its
-host procedure uses the local OrbStack Docker Engine. Host-path, ownership, ACL,
-immutable-flag, and Docker-context preparation only provision the local runtime;
-they do not deploy it, start a real run, or promote the candidate.
-
-The fixed candidate plan has three repeats and 21 execution units. It produces
-3,672 core observations and 306 contrast observations, for 3,978 observations.
-This evidence is non-Official and separate from the Official `72 × 17` run of
-1,224 observations. The runner copies fixed assembly programs into an isolated
-directory. The source assembler embeds exact copies of the two public assembly
-schemas, and tests bind them to the checked-in schema files. Promotion receipt
-verification requires a passing gate, a distinct trusted promotion signer, and
-`issued_at >= evidence.collected_at`.
-
-No candidate real run has started, and no subscription limit has been observed.
+After model-free validation, the only Official path runs one complete
+`72 × 17` matrix of 1,224 observations, replays it with the native verifier,
+and publishes the verified batch. [Operations and Validation](operations.md)
+owns the native commands, and [Deployment Handoff](deployment-handoff.md) owns
+external service configuration and production acceptance.
 
 ## Runner flow
 
@@ -125,7 +98,7 @@ A live run uses fresh task workspaces and content-addressed artifacts. It writes
 a durable checkpoint and creates one `aiq.run.v3` record. Official run output is
 held by an exact run-bound reservation so only the unchanged run may recover it
 after interruption; score and package outputs remain create-new. Parent ownership,
-nonblocking advisory locks, link checks, and Linux or macOS atomic writes form the
+nonblocking advisory locks, link checks, and macOS atomic writes form the
 trusted single-writer boundary. An Official run is non-synthetic, complete, and
 exactly 17 by 72. Calibration accepts a deterministic subset but remains
 untrusted, non-Official, and ineligible for ranking.
@@ -148,7 +121,7 @@ private Storage before it queues an unverified inbox record. Queue receipt does
 not publish the run.
 
 The verifier claims a bounded lease, downloads only claim-bound artifacts,
-reconstructs candidate workspaces, and replays committed evaluators with the
+reconstructs submitted workspaces, and replays committed evaluators with the
 committed runtime. Production requires the `evaluator_replayed` disposition.
 
 The verification route performs three ordered database actions for Official
@@ -200,11 +173,11 @@ Browser roles do not have private-table write access.
 AIQ database. It accepts only the AIQ Core `1.0.2` catalog and scoring `1.0.2`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
-verifier, and publisher identities. Operationally, [Deployment Handoff](deployment-handoff.md)
-requires promotion before preparing that reference; the initializer validates
-its shape and bindings but does not prove promotion. It inserts the reference
-with the model matrix. There are no migrations, compatibility layers,
-dual-version mode, or preservation path for this greenfield state.
+verifier, and publisher identities. Operationally,
+[Deployment Handoff](deployment-handoff.md) requires model-free validation of
+the controlled corpus and final native binaries before preparing that
+reference. The initializer validates its shape and bindings. It inserts the
+reference with the model matrix as the one greenfield desired state.
 
 ## Storage boundary
 

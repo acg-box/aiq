@@ -1,3 +1,0 @@
-^aiq\.wiki:443$
-^xxnszykaeapolqdnhalx\.supabase\.co:443$
-^example\.com:443$

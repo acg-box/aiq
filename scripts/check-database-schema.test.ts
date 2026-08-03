@@ -248,7 +248,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
     [schema.replace('aiq-core@1.0.2', 'aiq-core@1.0.1'), /expected to not match/],
     [
       schema.replace(
-        'sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b',
+        'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6',
         'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
       ),
       /expected to not match/,

@@ -7,40 +7,18 @@ tags: ['operations', 'validation', 'runbook']
 
 # Operations and Validation
 
-## Hosted production state
+## Release status
 
-The personal Vercel scope `acgbox` hosts project `aiq` at `https://aiq.wiki`.
-The only Vercel project domains are the Production apex and `www.aiq.wiki`,
-which preserves the request path and returns a `308` redirect to the apex. Both
-domains report `configured_correctly`. The Cloudflare zone `aiq.wiki` in account
-`Cloudflare@acg.box` has exactly two DNS-only CNAMEs, `@` and `www`, both
-targeting `87af8e493f03b965.vercel-dns-017.com`.
+Release acceptance is not complete. The intended personal resources are
+Supabase organization `ACG Box`, Supabase project `aiq`, Vercel scope `acgbox`,
+Vercel project `aiq`, and apex domain `https://aiq.wiki`. Do not infer their
+current external state from repository text. Record it only after live checks.
 
-The production environment-name set in [Web configuration](#web-configuration)
-is configured; values remain outside Git. The personal Supabase organization
-`ACG Box` hosts project `aiq`
-(`xxnszykaeapolqdnhalx`). Its earlier AIQ Core `1.0.1` schema and reference
-initialization completed. The real database has 17 model configurations, three
-production nodes, no published runs or other genuine run data, and private
-`private-packages` and `private-artifacts` buckets.
-
-The apex home returns `200`. The production readiness endpoint returns `200`
-with `bounded_dependency_probe_passed`, `scope_ready: true`, and production
-mode for the deployed `1.0.1` foundation. The empty real-data read path passes.
-Repository head makes AIQ Core `1.0.2` and scoring `1.0.2` the current contract,
-with an exact 12-view public inventory and one greenfield database state. It is
-not deployed; freeze and validate the bound source before the greenfield
-database reset and deployment.
-
-No benchmark or Storage schedule and no cloud runner or verifier worker exist.
-A real Official or candidate calibration run has not started. No subscription
-limit has been observed. Official dispatch is blocked by the managed-policy
-gate: `Official runs require an exclusive managed aiq_benchmark allowlist and
-managed default; no model was invoked`. AIQ Core `1.0.1` remains deployed; AIQ
-Core `1.0.2` is the preregistered source-head target and is not promoted.
-Calibration
-evidence is non-Official and cannot satisfy the Official publication gate. This
-state is not final release acceptance.
+Repository head defines one greenfield AIQ Core `1.0.2` contract, scoring
+`1.0.2`, and one 12-view database desired state. A real Official run has not
+started. The only Official path is the native macOS run, native verifier replay,
+production publication, domain checks, and public read validation described
+below.
 
 ## Toolchain
 
@@ -105,26 +83,31 @@ Before a live run:
    `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
    the release-policy identity is `aiq-core/1.0.2`, and the catalog
    release-identity digest is
-   `sha256:45bf2e9d5287fd4f83e46bc3cb5c3ccb8778756465e81bfd567d111480eefc4b`.
+   `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
 3. Create distinct runner, verifier, and publisher Ed25519 identities.
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
    preflight output.
-5. Configure the exact Codex executable, Codex home, private proxy, capability
+5. Configure the exact native Codex executable, separate Codex home, capability
    manifest, and approved schedule.
 
-Use a protected credential source. Linux requires `auth.json` on a read-only
-file-system mount. Local macOS validation requires a separate private Codex
-home whose copied `auth.json` is owner immutable with `uchg`. Do not make the
-active Codex profile immutable.
+Use a separate private Codex home whose copied `auth.json` is owner immutable
+with `uchg`. Do not make the active Codex profile immutable. Build
+`aiq-runner` and `aiq-verifier` with `cargo build --locked --release`; bind the
+exact Mach-O arm64 executable digests in the controlled corpus and run plan.
 
 Use CLI help as the exact command authority:
 
 ```sh
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- preflight --help
 cargo run -p aiq-runner -- run --help
 ```
+
+Run both model-free corpus validators before `admit-permissions`. They validate
+the controlled 72-task AIQ Core corpus and the separate six-unit contrast corpus.
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
 exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, exclusive
@@ -156,12 +139,10 @@ cargo run -p aiq-runner -- package --help
 cargo run -p aiq-runner -- submit --help
 ```
 
-For direct local CLI use, expose the signing key only to `package` and the
-submission token only to `submit`. In the bounded Official runtime, provide
-`runner_signing_key` and `runner_submission_token` as separate single-link
-`10001:10001`, mode-`0600` files; the protected wrapper reads each secret only
-for its authorized command. `score` emits a non-Official calibration score
-bundle when its saved run is calibration.
+Expose the signing key only to `package` and the submission token only to
+`submit`. Keep each secret in a distinct mode-`0600`, single-link file outside
+the source repository and load it only for the active command. `score` emits a
+non-Official calibration score bundle when its saved run is calibration.
 `package` binds the run's execution concurrency, signs the calibration payload,
 and rejects a conflicting concurrency declaration. `submit` validates and
 uploads every signed content-addressed artifact before sending the package to
@@ -176,100 +157,46 @@ verifier, which reconstructs the selected workspaces, replays evaluators,
 recomputes scores and efficiency evidence, and emits the calibration stage and
 attestation contracts from [Benchmark Method](benchmark-method.md).
 
-## Bounded Official runtime
+## Native macOS Official runtime
 
-The local runtime in `deploy/official-runtime` requires Python 3.11 or newer and
-a local Docker daemon reporting Linux `aarch64` with seccomp. Copy
-`operator.example.toml` outside Git and supply canonical, non-overlapping,
-symlink-free paths. Freeze every non-secret read-only input, keep the source
-worktree clean at the declared commit, create runner writable roots as
-`10001:10001` and verifier replay/record roots as `10003:10003`, and provide each
-secret as a separate single-link mode-`0600` file. The manager records only secret
-metadata, not secret content.
+Run the release binaries directly on the controlled Apple Silicon host. Keep the
+source worktree clean at the declared commit. Keep private inputs and all output
+roots canonical, non-overlapping, symlink-free, and writable only by the current
+user. The runner uses the host's direct Codex connection. Linux and Docker remain
+future deployment targets; first-release commands and acceptance run natively on
+the Mac.
 
-```sh
-deploy/official-runtime/runtime.py create --config /controlled/operator.toml --state /controlled/runtime-state
-deploy/official-runtime/runtime.py up --state /controlled/runtime-state
-deploy/official-runtime/runtime.py validate --config /controlled/operator.toml --state /controlled/runtime-state
-deploy/official-runtime/runtime.py receipt --config /controlled/operator.toml --state /controlled/runtime-state
-```
-
-Validation recomputes frozen-tree bindings and runs model-free canaries for the
-runner sandbox, the separated networks, direct-egress denial, proxy allowlists,
-and the verifier's lack of Codex access. Retain the private deployment receipt v2.
-Run one runner command at a time. Use the repository-owned manager path for the
-complete Official sequence; do not invoke the runner directly in the container:
+Run one paid command at a time in this order:
 
 ```text
-deploy/official-runtime/runtime.py admit-permissions
-deploy/official-runtime/runtime.py preflight
-deploy/official-runtime/runtime.py run
-deploy/official-runtime/runtime.py score
-deploy/official-runtime/runtime.py package
-deploy/official-runtime/runtime.py submit
+target/release/aiq-runner admit-permissions ...
+target/release/aiq-runner preflight ...
+target/release/aiq-runner run ...
+target/release/aiq-runner score ...
+target/release/aiq-runner package ...
+target/release/aiq-runner submit ...
 ```
 
-`admit-permissions` is model-free. `preflight` is the first paid step. The same
-private admission receipt binds preflight, run, score, and package. The wrapper
-supplies fixed input paths and `https://aiq.wiki`, reads the runner signing key
-only for `package`, and reads the submission token only for `submit`. It does
-not place these secrets in Docker arguments, Compose configuration, or logs.
-The canonical concrete argument lists are in
-`deploy/official-runtime/README.md`. Stop only this stack with
-`runtime.py down --state /controlled/runtime-state`. The canonical path and mount
-contract remains in `deploy/official-runtime/README.md`; this mechanism implements
-the trust boundaries in [Architecture and Runtime](architecture-and-runtime.md)
-but is not evidence of an active production worker.
-
-## Candidate release-gate runtime
-
-`deploy/candidate-runtime` owns the separate local Linux arm64 procedure for the
-preregistered AIQ Core `1.0.2` gate. On Apple Silicon, use the local OrbStack
-Docker Engine and retain the ordinary operator's Docker home and context when
-opening the protected provisioning shell. Verify that both contexts resolve the
-same local Unix socket, Linux `aarch64`, and seccomp. ACL removal, exact numeric
-ownership, and immutable flags apply only to dedicated candidate paths. These
-steps provision a local runtime; they do not deploy it or start model work.
-
-The fixed plan has three repeats: 3,672 core plus 306 contrast observations,
-for 3,978 total. The separate Official `72 × 17` run has 1,224 observations. It
-has no task, model, contrast-arm, or unit selectors. `prepare` creates and signs
-the deterministic 21-unit plan. For each repeat, run `run-repeat`,
-`verify-repeat`, and `finalize-repeat` in order, then run `aggregate` after all
-three repeats. Repeat one creates all 86 exact-plan reservations; later repeats
-reopen them. Runner and verifier stop before transferring the declared roots
-between their UIDs, and each transfer receives a create-new private receipt. An
-interrupted repeat stage is retried with the same repeat number rather than a new
-plan.
-
-The isolated assembler carries exact public source-observation and evidence
-schemas. Promotion is a later explicit operation and rejects a receipt timestamp
-earlier than evidence collection. Gate artifacts do not carry
-Official/calibration efficiency publication evidence: signed unit artifacts
-retain measured latency and available provider-token counters, but the public
-aggregate gate artifacts omit them. Use `deploy/candidate-runtime/README.md` as
-the command authority. This lifecycle executes the preregistered gate in
-[Benchmark Method](benchmark-method.md) within the isolation boundaries in
-[Architecture and Runtime](architecture-and-runtime.md). No candidate real run
-has started.
+`admit-permissions` is model-free. `preflight` is the first paid step. Pass the
+same private admission receipt through preflight, run, score, and package. Keep
+the checkpoint, run reservation, artifacts, and preflight cache after an
+interruption; resume the unchanged run instead of creating another paid run.
+The first release executes one complete 17-by-72 Official matrix.
 
 ## Verifier worker
 
 Keep the verifier token and signing key only in the verifier environment. Provide
 the private tasks, evaluator registry, corpus commitment, toolchain, runtime,
-environment metadata, and a fresh replay root. In the bounded runtime, the
-verifier has its own container, network, default-deny proxy, UID, replay root, and
-record root, with no Codex binary or Codex home.
+environment metadata, and a fresh replay root. Do not provide the Codex home or
+runner signing key to the verifier process.
 
 ```sh
 cargo run -p aiq-verifier -- --help
 ```
 
 After a real package has been submitted and an operator authorizes a claim, run
-one bounded worker through `aiq-verifier-entrypoint` as described by
-`deploy/official-runtime/README.md`. The wrapper reads the secret files only at
-worker startup, supplies them to the child, and writes create-new private JSONL
-records. The worker claims bounded leases from `/api/claims`, reconstructs
+the native verifier for one bounded lease. It writes create-new private JSONL
+records. The worker claims the lease from `/api/claims`, reconstructs
 workspaces, replays evaluators, and posts the stage and attestation to
 `/api/verifications`. Production requires `evaluator_replayed`. For calibration,
 the gateway stages the replayed evidence and immutable attestation under the
@@ -280,11 +207,9 @@ of rows is valid until a verified calibration has completed this transition.
 
 ## Fresh database initialization
 
-The current production project has already completed the earlier `1.0.1`
-one-shot initialization. Source head cannot upgrade or preserve it. After
-source freeze and validation, reset to a replacement empty Supabase database,
-and do not apply AIQ objects before initialization. Use a direct
-PostgreSQL URL, not the public Data API URL.
+Create an empty Supabase database for this greenfield release. Do not apply any
+AIQ objects before initialization. Use a direct PostgreSQL URL, not the public
+Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -293,13 +218,12 @@ cargo make init-database
 ```
 
 The command uses one connection and one transaction. It rejects existing AIQ
-schema or roles. After the operational promotion gate in
-[Deployment Handoff](deployment-handoff.md), prepare a separately controlled
-production reference containing a non-synthetic AIQ Core `1.0.2` corpus
+schema or roles. After the controlled corpus and final native binaries pass the
+model-free checks in [Deployment Handoff](deployment-handoff.md), prepare a
+separately controlled production reference containing a non-synthetic AIQ Core `1.0.2` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
-identities. Initialization validates those fields and bindings but does not
-prove promotion. The repository defines one greenfield desired state, with no
-migration, compatibility, dual-version, or data-preservation path. The receipt
+identities. Initialization validates those fields and bindings. The repository
+defines one greenfield desired state. The receipt
 must report scoring `1.0.2`, both catalog identities, 72 tasks, 17 model
 configurations, and three production nodes. This one-shot behavior enforces the
 database boundary in [Architecture and Runtime](architecture-and-runtime.md);
@@ -324,7 +248,7 @@ Do not run the synthetic fixture in production.
 
 ## Web configuration
 
-The production environment-name set below is configured for Vercel project
+Configure the production environment-name set below for Vercel project
 `acgbox/aiq`. Values remain outside Git. Preserve this name set and the
 browser-safe/server-only boundary when rotating a value.
 

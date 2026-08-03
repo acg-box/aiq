@@ -64,40 +64,6 @@ jobs:
       - name: Build Rust workspace
         run: cargo make build-rust
 
-  rust-linux-arm64-binaries:
-    name: Linux arm64 binary build
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - name: Fetch latest code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: true
-          rustflags: ''
-
-      - name: Build Linux arm64 production binaries
-        run: cargo build --locked --release --package aiq-runner --package aiq-verifier
-
-      - name: Validate Linux arm64 production binaries
-        run: |
-          staging="$(mktemp --directory /tmp/aiq-linux-arm64-staging.XXXXXX)"
-          publish_parent="$(mktemp --directory /tmp/aiq-linux-arm64-publish.XXXXXX)"
-          target="$publish_parent/output"
-          trap 'rm --force --recursive -- "$staging" "$publish_parent"' EXIT
-          install --mode=0555 -- target/release/aiq-runner "$staging/aiq-runner"
-          install --mode=0555 -- target/release/aiq-verifier "$staging/aiq-verifier"
-          python3 deploy/candidate-runtime/binary_builder.py "$staging" "$target"
-          "$target/aiq-runner" --version
-          "$target/aiq-verifier" --version
-
-      - name: Check the bounded Official runtime contract
-        run: python3 deploy/official-runtime/test_static.py
-
-      - name: Check the bounded candidate runtime contract
-        run: python3 -B deploy/candidate-runtime/test_runtime.py
-
   toml-check:
     name: TOML check
     runs-on: ubuntu-latest
