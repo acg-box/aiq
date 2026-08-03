@@ -2553,9 +2553,9 @@ fn held_directory_is_unlinked(held_directory: &File, metadata: &Metadata) -> boo
 	#[cfg(not(target_os = "macos"))]
 	{
 		let _ = held_directory;
+
 		return metadata.nlink() == 0;
 	}
-
 	#[cfg(target_os = "macos")]
 	{
 		let mut path = [0_i8; PATH_MAX as usize];
