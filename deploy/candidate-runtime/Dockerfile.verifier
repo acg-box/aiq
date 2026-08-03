@@ -1,0 +1,20 @@
+FROM debian:bookworm-slim@sha256:9b67294679b30e5d6ab257b40594feeb4a4b81f7fcf4131f4decf0d6a212a9b0
+ARG DEBIAN_FRONTEND=noninteractive
+ARG SNAPSHOT=20260714T000000Z
+ARG SOURCE_COMMIT
+LABEL org.opencontainers.image.source="https://github.com/acg-box/aiq" \
+      org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.opencontainers.image.licenses="GPL-3.0-only"
+RUN printf '%s\n' "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${SNAPSHOT} bookworm main" > /etc/apt/sources.list \
+ && rm -f /etc/apt/sources.list.d/debian.sources \
+ && apt-get -o Acquire::Check-Valid-Until=false update \
+ && apt-get install --yes --no-install-recommends ca-certificates=20230311+deb12u1 curl=7.88.1-10+deb12u15 \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 10003 aiqverifier && useradd --uid 10003 --gid 10003 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin aiqverifier \
+ && install -d -o root -g root -m 0755 /run/secrets
+COPY --chown=0:0 --chmod=0555 deploy/candidate-runtime/verifier-entrypoint.sh /usr/local/bin/aiq-candidate-verifier-entrypoint
+COPY --chown=0:0 --chmod=0555 deploy/candidate-runtime/canary.sh /usr/local/bin/aiq-candidate-canary
+USER 10003:10003
+WORKDIR /candidate/verifier-replay
+ENTRYPOINT ["/usr/local/bin/aiq-candidate-verifier-entrypoint"]
+CMD ["hold"]

@@ -30,32 +30,6 @@ await test('schema and synthetic demo data have separate final-state owners', as
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
 });
 
-await test('preview status is a bounded browser-readable invoker view', async () => {
-  const [schema, syntheticDemo] = await sources();
-  assert.throws(
-    () =>
-      checkDatabaseSchemaSources(
-        schema.replace(
-          'grant select on table public.aiq_preview_status_v1 to anon;',
-          'revoke select on table public.aiq_preview_status_v1 from anon;',
-        ),
-        syntheticDemo,
-      ),
-    /aiq_preview_status_v1 to anon/,
-  );
-  assert.throws(
-    () =>
-      checkDatabaseSchemaSources(
-        schema.replace(
-          'create view public.aiq_preview_status_v1 with (security_invoker = true)',
-          'create view public.aiq_preview_status_v1',
-        ),
-        syntheticDemo,
-      ),
-    /security_invoker|invoker security/,
-  );
-});
-
 await test('checker rejects an exposed base table or missing forced RLS', async () => {
   const [schema, syntheticDemo] = await sources();
   assert.throws(
@@ -140,6 +114,20 @@ await test('checker rejects an extra public view or transaction-start claim leas
   assert.throws(
     () => checkDatabaseSchemaSources(changed, syntheticDemo),
     /wall clock|claim_expires_at/,
+  );
+});
+
+await test('checker rejects an obsolete public security-invoker view and browser grant', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const extraView = `
+create view public.aiq_obsolete_preview_status with (security_invoker = true) as select true as ready;
+grant select on table public.aiq_obsolete_preview_status to anon, authenticated;
+`;
+  const changed = schema.replace('\ncommit;', `${extraView}\ncommit;`);
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /Only the inventoried read views can be public/,
   );
 });
 

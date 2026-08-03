@@ -21,7 +21,9 @@ Use this order when claims differ:
 
 For database work, `databases/schema.sql` is the sole desired state and
 `databases/init.ts` is the fresh initialization command. Runtime inspection is
-evidence about one environment, not editing authority.
+evidence about one environment, not editing authority. The current database
+contract is one greenfield desired state, not a migration or compatibility
+history.
 
 ## Update procedure
 
@@ -45,6 +47,7 @@ Before completion, search the maintained pages for:
 
 - removed components and commands;
 - old schema or package versions;
+- confusion between current AIQ Core `1.0.1` and candidate `1.0.2`;
 - wrong task, model, or identity counts;
 - stale catalog digests;
 - links to missing files or headings;

@@ -51,6 +51,7 @@ use sha2::{Digest, Sha256};
 #[cfg(windows)]
 use windows_sys::Win32::Storage::FileSystem;
 
+use crate::candidate_release_gate::CANDIDATE_CODEX_EGRESS_PROXY_ENDPOINT;
 #[cfg(test)]
 use crate::corpus_commitment;
 use crate::{
@@ -210,6 +211,23 @@ impl CodexEgressProxyEndpoint {
 		}
 
 		Ok(endpoint)
+	}
+
+	/// Accepts only the exact endpoint of the fixed candidate runner topology.
+	pub fn parse_candidate_runner(value: &str) -> Result<Self, ExecutorError> {
+		if value != CANDIDATE_CODEX_EGRESS_PROXY_ENDPOINT {
+			return Err(ExecutorError::new(
+				"candidate Codex egress proxy does not match the fixed runner topology",
+			));
+		}
+
+		let authority = value.strip_prefix("http://").ok_or_else(|| {
+			ExecutorError::new("candidate Codex egress proxy must use canonical HTTP")
+		})?;
+		let socket = SocketAddrV4::from_str(authority)
+			.map_err(|_| ExecutorError::new("candidate Codex egress proxy endpoint is invalid"))?;
+
+		Ok(Self { socket })
 	}
 
 	/// Returns the exact environment value used for each proxy variable.

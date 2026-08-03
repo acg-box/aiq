@@ -527,16 +527,7 @@ void test('production readiness attests the exact schema and gateway role shape'
     assert.match(schema, new RegExp(`'${field}'`));
   }
   assert.match(schema, /private_table_count=40 and forced_rls_table_count=40/);
-  assert.match(schema, /public_view_count=13 and security_invoker_view_count=13/);
+  assert.match(schema, /public_view_count=12 and security_invoker_view_count=12/);
+  assert.match(schema, /canonical_public_view_count=12/);
   assert.match(schema, /pg_catalog\.pg_has_role\('authenticator',gateway_role\.rolname,'MEMBER'\)/);
-});
-
-void test('preview readiness requires an empty calibration surface', () => {
-  for (const field of [
-    'calibration_run_count',
-    'calibration_result_count',
-    'calibration_score_count',
-  ]) {
-    assert.match(schema, new RegExp(`status\\.${field} = 0`));
-  }
 });

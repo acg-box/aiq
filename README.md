@@ -9,17 +9,24 @@ acceptance is not complete. The personal Vercel scope `acgbox` hosts project
 `aiq` at `https://aiq.wiki`, with the production environment-name contract
 configured. `https://www.aiq.wiki` preserves the request path and redirects to
 the apex domain. The personal Supabase organization `ACG Box` hosts project
-`aiq` (`xxnszykaeapolqdnhalx`), initialized once with the production schema and
-reference. The live database has 17 model configurations, three production
+`aiq` (`xxnszykaeapolqdnhalx`), initialized once with the earlier AIQ Core
+`1.0.1` schema and reference. The live database has 17 model configurations, three production
 nodes, no published runs, and private `private-packages` and
 `private-artifacts` buckets. Bounded runtime readiness and the empty real-data
-read path pass. No benchmark or Storage schedule and no cloud runner or
-verifier worker exist. A full real run has not been published, so deployment
-readiness still requires the remaining gates in the deployment handoff.
+read path pass for that deployed `1.0.1` foundation. Repository head now
+requires an exact 12-view public inventory and is not deployed; its one
+greenfield database reset remains pending. No benchmark or Storage schedule and
+no cloud runner or verifier worker exist. A real candidate or Official model run has not started,
+and no subscription limit has been observed. Deployment readiness still
+requires the remaining gates in the deployment handoff.
+Production still uses AIQ Core `1.0.1` and contains no genuine run data. AIQ
+Core `1.0.2` is a preregistered candidate only. Its three-repeat release-gate
+calibration has not started.
 
 ## Product contract
 
 - AIQ Core `1.0.1` has 72 private controlled tasks in ten domains.
+- AIQ Core `1.0.2` is a preregistered candidate. It is not current or promoted.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
@@ -37,6 +44,18 @@ The frozen public catalog digest is:
 ```text
 sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc
 ```
+
+The Official `72 × 17` run has 1,224 observations and is separate from the
+candidate calibration. The candidate calibration uses three fixed repeats:
+3,672 core observations plus 306 contrast observations, for 3,978 observations.
+The gate proves only that the candidate meets its preregistered absolute
+adequacy thresholds. It does not compare `1.0.2` with `1.0.1` or prove that the
+candidate is superior. Elapsed time, provider-token usage, and Standard
+API-equivalent cost are reported separately from AIQ. Signed candidate unit
+artifacts retain measured latency and available provider-token counters. The
+public aggregate gate source, evidence, and result artifacts omit efficiency
+fields; verified publication evidence owns the coverage-qualified aggregates
+and Standard API-equivalent estimate.
 
 ## Repository map
 
@@ -106,7 +125,9 @@ inputs. Neither smoke creates a benchmark result.
 `databases/init.ts` is the only production initialization entry point. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
 data in one transaction. It rejects a database that already contains AIQ schema
-or roles. Create another empty project after a failed initialization.
+or roles. This is one greenfield desired state; the repository has no migration
+or compatibility path. Create another empty project after a failed
+initialization.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -140,38 +161,6 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
 
 Do not apply the synthetic flow to the initialized production-shape database
 or to production.
-
-## Disposable AIQ Wiki free preview
-
-The first hosted review can use one new Supabase Free project in the personal
-`ACG Box` organization and one Vercel Hobby project in the personal `acgbox`
-scope/account. It does not need a runner, verifier, Storage bucket, write-route
-secret, schedule, domain, or DNS change.
-
-Initialize the new disposable database once:
-
-```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
-cargo make init-preview-database
-```
-
-Configure only these Vercel values:
-
-```text
-AIQ_DEPLOYMENT_PROFILE=preview
-NEXT_PUBLIC_SUPABASE_URL=<project API origin>
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
-```
-
-The preview requires the live Supabase schema and RLS read path to work. One
-bounded status view returns a row only when the required preview matrix,
-cardinalities, scoring definition, synthetic boundary, and empty publication
-surface are valid. The Web application then shows the full checked-in synthetic
-demonstration. Every page has a persistent AIQ Wiki preview banner, synthetic
-complete runs say `not Official`, and search indexing is disabled.
-`/api/readiness` returns `503` until the later production write and verifier
-gateways are configured; this is expected for this read-only preview. Discard
-this database before production initialization.
 
 ## Production data flow
 

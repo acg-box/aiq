@@ -124,7 +124,7 @@ select pg_temp.aiq_assert(
     'provider_tokens_evidence_level', 'verifier_recomputed',
     'provider_tokens_source', 'provider_reported',
     'source_result_id', 'result_' || repeat('b', 64),
-    'standard_api_equivalent_usd_nanos', 272000000,
+    'standard_api_equivalent_usd_nanos', 54400000,
     'task_id', 'coding-01',
     'wall_time_evidence_level', 'runner_observed'
   )),

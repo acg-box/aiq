@@ -55,6 +55,25 @@ is issued. [Operations and Validation](operations.md) owns the commands, while
 The bundle does not schedule benchmark commands, invoke Codex during validation,
 claim a package automatically, or prove that a production worker is deployed.
 
+## Candidate runtime
+
+`deploy/candidate-runtime` is a separate local Linux arm64 runtime for the
+preregistered AIQ Core `1.0.2` release-gate calibration. On Apple Silicon, its
+host procedure uses the local OrbStack Docker Engine. Host-path, ownership, ACL,
+immutable-flag, and Docker-context preparation only provision the local runtime;
+they do not deploy it, start a real run, or promote the candidate.
+
+The fixed candidate plan has three repeats and 21 execution units. It produces
+3,672 core observations and 306 contrast observations, for 3,978 observations.
+This evidence is non-Official and separate from the Official `72 × 17` run of
+1,224 observations. The runner copies fixed assembly programs into an isolated
+directory. The source assembler embeds exact copies of the two public assembly
+schemas, and tests bind them to the checked-in schema files. Promotion receipt
+verification requires a passing gate, a distinct trusted promotion signer, and
+`issued_at >= evidence.collected_at`.
+
+No candidate real run has started, and no subscription limit has been observed.
+
 ## Runner flow
 
 Before any paid Official preflight, `admit-permissions` validates the exact
@@ -160,15 +179,12 @@ trend RPC provide browser reads; calibration adds bounded run, score, result,
 and model-efficiency views that require an explicit calibration publication
 marker. They expose fixed public-safe failure explanations and omit packages,
 signatures, raw provider events, artifacts, and private failure details.
-
-The preview-status view returns one row only when the disposable database has
-the required matrix, cardinalities, scoring definition, synthetic boundary, and
-empty Official and calibration publication surfaces. It otherwise returns no
-private counts. Browser roles do not have private-table write access.
+Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
 AIQ database. It inserts the current public catalog, scoring definition, model
 matrix, corpus commitment, and runner/verifier/publisher identities.
+There are no migrations or compatibility layers for this greenfield state.
 
 ## Storage boundary
 
@@ -181,15 +197,9 @@ held objects.
 ## Public application
 
 The Next.js server reads public views through the configured Supabase API. The
-exact `AIQ_DEPLOYMENT_PROFILE=preview` branch requires both browser-safe
-Supabase values and reads one bounded status row. That row exists only when the
-17-configuration synthetic preview invariants hold and no published or
-non-synthetic evidence exists. The Web application then serves checked-in
-synthetic fixtures.
-Unexpected live evidence fails closed rather than being masked. The preview
-remains synthetic under the [Benchmark Method](benchmark-method.md): it adds a
-persistent banner, labels complete fixtures as not Official, and emits
-`noindex` metadata.
+production path requires both browser-safe Supabase values and serves only live
+public evidence. Development uses checked-in synthetic fixtures only when both
+values are absent. Partial or malformed configuration fails closed.
 
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
@@ -214,31 +224,18 @@ The readiness probe includes these public-read contracts under
 
 ```mermaid
 flowchart TD
-    Start["Create public data repository"] --> Profile{"Deployment profile"}
-    Profile -->|invalid value| Invalid["Fail closed"]
-    Profile -->|preview| PublicConfig{"Both public Supabase values valid"}
-    PublicConfig -->|no| Invalid
-    PublicConfig -->|yes| Live["Read live public views"]
-    Live --> Empty{"Exact preview-status row"}
-    Empty -->|no| Invalid
-    Empty -->|yes| Preview["Serve synthetic preview fixtures"]
-    Profile -->|standard| Standard{"Public Supabase configuration"}
-    Standard -->|valid| Production["Serve live public evidence"]
-    Standard -->|absent in development| Seed["Serve local seed data"]
-    Standard -->|otherwise| Invalid
+    Start["Create public data repository"] --> Config{"Public Supabase configuration"}
+    Config -->|valid| Production["Serve live public evidence"]
+    Config -->|both absent in development| Seed["Serve local synthetic fixtures"]
+    Config -->|partial, malformed, or absent in production| Invalid["Fail closed"]
 ```
 
-The flow shows how standard, local seed, preview, and invalid configurations
+The flow shows how production, local synthetic, and invalid configurations
 select a public-data repository.
-
-The repository selection flow validates the preview database before substituting
-explicit synthetic fixtures; [Operations and Validation](operations.md) owns the
-commands that initialize and smoke this path.
 
 `GET /api/readiness` checks configuration shape and bounded production
 dependencies. It does not claim that a deployment or benchmark run is complete,
-and the read-only preview returns `503` because its write and verifier gateways
-are intentionally absent.
+and it fails closed when a required production dependency is absent.
 
 ## Distributed radar
 
