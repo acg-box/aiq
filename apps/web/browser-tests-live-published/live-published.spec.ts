@@ -311,12 +311,16 @@ test('the published run exposes complete task and provenance evidence', async ({
     'This is an evaluator result, not an execution failure.',
   );
   await expect(evaluatorOutcomes.first()).not.toContainText('EXPLANATION_NOT_PUBLISHED');
-  const executionFailures = taskResults.filter({ hasText: 'adapter_execution_failure' });
-  await expect(executionFailures).toHaveCount(1);
-  await expect(executionFailures).toContainText(
-    'The adapter process exited before it returned a response.',
-  );
-  await expect(executionFailures).toContainText('Retryable: yes');
+  const budgetExceeded = taskResults.filter({ hasText: 'budget_exceeded' });
+  await expect(budgetExceeded).toHaveCount(1);
+  await expect(budgetExceeded).toContainText('The task exceeded a resource budget.');
+  await expect(budgetExceeded).toContainText('Retryable: no');
+
+  await page.goto('/runs/run-live-sol-max');
+  const timeout = page.locator('.task-list > article').filter({ hasText: 'timeout' });
+  await expect(timeout).toHaveCount(1);
+  await expect(timeout).toContainText('The task exceeded its time limit.');
+  await expect(timeout).toContainText('Retryable: yes');
 });
 
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {

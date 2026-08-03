@@ -46,12 +46,32 @@ const matrix = [
   })),
 );
 
+const canonicalPublicExecutionFailures = {
+  timeout: {
+    code: 'timeout',
+    summary: 'The task exceeded its time limit.',
+    retryable: true,
+  },
+  budgetExceeded: {
+    code: 'budget_exceeded',
+    summary: 'The task exceeded a resource budget.',
+    retryable: false,
+  },
+};
+
 const officialOutcomeCounts = matrix.map((_, index) => {
   const passed = index < 10 ? 35 : 34;
-  const executionFailures = index < 6 ? 1 : 0;
+  const executionFailure =
+    index < 5
+      ? canonicalPublicExecutionFailures.timeout
+      : index === 5
+        ? canonicalPublicExecutionFailures.budgetExceeded
+        : null;
+  const executionFailures = executionFailure ? 1 : 0;
   return {
     passed,
     failed: 72 - passed,
+    executionFailure,
     executionFailures,
     evaluatorIncorrect: 72 - passed - executionFailures,
   };
@@ -62,14 +82,26 @@ const officialOutcomeTotals = officialOutcomeCounts.reduce(
     failed: totals.failed + outcomes.failed,
     evaluatorIncorrect: totals.evaluatorIncorrect + outcomes.evaluatorIncorrect,
     executionFailures: totals.executionFailures + outcomes.executionFailures,
+    timeouts: totals.timeouts + (outcomes.executionFailure?.code === 'timeout' ? 1 : 0),
+    budgetExceeded:
+      totals.budgetExceeded + (outcomes.executionFailure?.code === 'budget_exceeded' ? 1 : 0),
   }),
-  { passed: 0, failed: 0, evaluatorIncorrect: 0, executionFailures: 0 },
+  {
+    passed: 0,
+    failed: 0,
+    evaluatorIncorrect: 0,
+    executionFailures: 0,
+    timeouts: 0,
+    budgetExceeded: 0,
+  },
 );
 if (
   officialOutcomeTotals.passed !== 588 ||
   officialOutcomeTotals.failed !== 636 ||
   officialOutcomeTotals.evaluatorIncorrect !== 630 ||
   officialOutcomeTotals.executionFailures !== 6 ||
+  officialOutcomeTotals.timeouts !== 5 ||
+  officialOutcomeTotals.budgetExceeded !== 1 ||
   officialOutcomeTotals.passed + officialOutcomeTotals.evaluatorIncorrect !== 1_218
 ) {
   throw new Error('The live-published fixture does not match the pending Official outcome shape.');
@@ -399,7 +431,8 @@ for (const [runIndex, run] of runRows.entries()) {
     for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
       globalIndex += 1;
       const passed = globalIndex <= outcomes.passed;
-      const executionFailure = !passed && globalIndex > 72 - outcomes.executionFailures;
+      const executionFailure =
+        !passed && globalIndex > 72 - outcomes.executionFailures ? outcomes.executionFailure : null;
       runResults.push({
         run_id: run.id,
         id: `aiq-v1-${domain}-${String(taskIndex + 1).padStart(2, '0')}`,
@@ -407,13 +440,13 @@ for (const [runIndex, run] of runRows.entries()) {
         domain,
         status: passed ? 'passed' : 'failed',
         score: passed ? 1 : 0,
-        explanation_code: executionFailure ? 'adapter_execution_failure' : null,
+        explanation_code: executionFailure?.code ?? null,
         explanation_summary: passed
           ? null
           : executionFailure
-            ? 'The adapter process exited before it returned a response.'
+            ? executionFailure.summary
             : 'The evaluator rejected the response.',
-        retryable: executionFailure ? true : null,
+        retryable: executionFailure?.retryable ?? null,
         tools: ['repository search', 'test runner'],
         latency_ms: 7_500 + globalIndex * 137,
         latency_evidence_level: 'runner_observed',
