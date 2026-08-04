@@ -15,10 +15,16 @@ Vercel project `aiq`, and apex domain `https://aiq.wiki`. Do not infer their
 current external state from repository text. Record it only after live checks.
 
 Repository head defines one greenfield AIQ Core `1.0.2` contract, scoring
-`1.0.2`, and one 12-view database desired state. A real Official run has not
-started. The only Official path is the native macOS run, native verifier replay,
-production publication, domain checks, and public read validation described
-below.
+`1.0.2`, and one 12-view database desired state. The native Apple Silicon macOS
+runner completed one real Official benchmark batch. It covered 17 configurations
+and 72 tasks, for 1,224 task-level observations. This is one batch, not 1,224
+separate benchmark runs. Of these observations, 1,218 completed and 6 had
+genuine failures. The wall-clock time was `1:37:24.411`. Verified public token
+and API-equivalent cost aggregates remain unavailable until verifier replay. The
+retained provider evidence contains supported counters for 1,218 observations,
+but it contains no provider-reported total-token counter. Actual subscription
+spend is unknown. Do not report missing values as zero. Native verifier replay
+and production publication remain pending.
 
 ## Toolchain
 
@@ -205,6 +211,13 @@ runner signing key to the verifier process.
 
 ```sh
 cargo run -p aiq-verifier -- --help
+```
+
+Use bounded replay parallelism for new claims. The default is four workers. Set
+it explicitly when controlled evidence must record the selected value:
+
+```sh
+target/release/aiq-verifier --replay-jobs 4 ...
 ```
 
 After a real package has been submitted and an operator authorizes a claim, run
