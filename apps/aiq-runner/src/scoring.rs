@@ -522,11 +522,9 @@ pub fn score_model_with_context(
 	} else {
 		None
 	};
-	let completion_bounds = if conditional_observed_aiq.is_some() {
-		Some(completion_bounds(&accumulators)?)
-	} else {
-		None
-	};
+	let completion_bounds = conditional_observed_aiq
+		.map(|observed_aiq| completion_bounds(&accumulators, observed_aiq))
+		.transpose()?;
 
 	Ok(ScoreReport {
 		schema_version: "aiq.score-report.v1".to_owned(),
@@ -843,19 +841,25 @@ fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
 
 fn completion_bounds(
 	accumulators: &BTreeMap<Domain, DomainAccumulator>,
+	conditional_observed_aiq: f64,
 ) -> Result<CompletionBounds, ScoreError> {
 	if accumulators.len() != 10 {
 		return Err(ScoreError::new("completion bounds require 10 planned domains"));
+	}
+	if accumulators.values().any(|domain| domain.expected == 0) {
+		return Err(ScoreError::new("completion bounds require planned tasks in every domain"));
+	}
+	if accumulators.values().all(|domain| domain.observations.len() == domain.expected) {
+		return Ok(CompletionBounds {
+			lower: conditional_observed_aiq,
+			upper: conditional_observed_aiq,
+		});
 	}
 
 	let mut lower = 0.0;
 	let mut upper = 0.0;
 
 	for domain in accumulators.values() {
-		if domain.expected == 0 {
-			return Err(ScoreError::new("completion bounds require planned tasks in every domain"));
-		}
-
 		let planned = domain.expected as f64;
 		let observed = domain.observations.len() as f64;
 		let score_sum = domain.observations.iter().map(|item| item.score).sum::<f64>();
@@ -864,15 +868,11 @@ fn completion_bounds(
 		upper += (score_sum + planned - observed) / planned;
 	}
 
-	let lower = 10.0 * lower;
-	let mut upper = 10.0 * upper;
-
-	// Complete fixtures make both bounds mathematically equal, but the upper-bound
-	// construction can round below the lower bound after adding and removing the
-	// unobserved-task term. Preserve the construction invariant at that boundary.
-	if upper < lower {
-		upper = lower;
-	}
+	// The 0/1 missing-task construction contains the conditional score
+	// mathematically. Clamp only a floating-point boundary crossing back to that
+	// independently computed score.
+	let lower = (10.0 * lower).min(conditional_observed_aiq);
+	let upper = (10.0 * upper).max(conditional_observed_aiq);
 
 	Ok(CompletionBounds { lower, upper })
 }
@@ -1695,25 +1695,95 @@ mod tests {
 	}
 
 	#[test]
+	fn provisional_completion_bounds_contain_conditional_aiq_at_float_boundaries() {
+		let tasks = official_tasks();
+		let incomplete_domains = tasks
+			.iter()
+			.map(|task| task.domain)
+			.collect::<std::collections::BTreeSet<_>>()
+			.into_iter()
+			.take(2)
+			.collect::<std::collections::BTreeSet<_>>();
+
+		for boundary_score in [0.0, 1.0] {
+			let mut omitted_domains = std::collections::BTreeSet::new();
+			let interior_scores = if boundary_score == 0.0 {
+				[0.524_270_278, 0.953_256_301, 0.959_894_504, 0.463_890_471]
+			} else {
+				[0.927_463_856, 0.448_971_087, 0.302_988_898, 0.369_582_169]
+			};
+			let results = tasks
+				.iter()
+				.enumerate()
+				.filter_map(|(index, task)| {
+					if incomplete_domains.contains(&task.domain)
+						&& omitted_domains.insert(task.domain)
+					{
+						return None;
+					}
+
+					let score = if incomplete_domains.contains(&task.domain) {
+						boundary_score
+					} else {
+						interior_scores[index % interior_scores.len()]
+					};
+
+					Some(result(task, score))
+				})
+				.collect::<Vec<_>>();
+			let report = scoring::score_model_with_options(
+				&tasks,
+				&results,
+				MODEL_MATRIX[0],
+				ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+			)
+			.expect("provisional fixture must score");
+			let aiq = report.conditional_observed_aiq.expect("conditional AIQ");
+			let bounds = report.completion_bounds.expect("provisional completion bounds");
+
+			assert_eq!(report.tier, ScoreTier::Provisional);
+			assert!(bounds.lower <= aiq, "lower bound must contain {aiq}");
+			assert!(aiq <= bounds.upper, "upper bound must contain {aiq}");
+
+			if boundary_score == 0.0 {
+				assert_eq!(bounds.lower, aiq);
+			} else {
+				assert_eq!(bounds.upper, aiq);
+			}
+		}
+	}
+
+	#[test]
 	fn complete_fixture_completion_bounds_preserve_aiq_and_order() {
 		let tasks = official_tasks();
-		let results = tasks.iter().map(|task| result(task, 0.001)).collect::<Vec<_>>();
-		let report = scoring::score_model_with_options(
-			&tasks,
-			&results,
-			MODEL_MATRIX[0],
-			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
-		)
-		.expect("complete fixture must score");
-		let aiq = report.conditional_observed_aiq.expect("complete fixture AIQ");
-		let bounds = report.completion_bounds.expect("complete fixture completion bounds");
+		let score_patterns: &[&[f64]] = &[
+			&[0.001],
+			&[0.1, 0.2, 0.3],
+			&[0.123_456_789, 0.987_654_321, 0.333_333_333, 0.777_777_777],
+		];
 
-		assert_eq!(report.tier, ScoreTier::SyntheticComplete);
-		assert_eq!(report.scoring_version, AIQ_SCORING_VERSION);
-		assert_eq!(aiq, 0.100_000_000_000_000_02);
-		assert_eq!(bounds.lower, aiq);
-		assert_eq!(bounds.upper, aiq);
-		assert!(bounds.lower <= bounds.upper);
+		for pattern in score_patterns {
+			let results = tasks
+				.iter()
+				.enumerate()
+				.map(|(index, task)| result(task, pattern[index % pattern.len()]))
+				.collect::<Vec<_>>();
+			let report = scoring::score_model_with_options(
+				&tasks,
+				&results,
+				MODEL_MATRIX[0],
+				ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+			)
+			.expect("complete fixture must score");
+			let aiq = report.conditional_observed_aiq.expect("complete fixture AIQ");
+			let bounds = report.completion_bounds.expect("complete fixture completion bounds");
+
+			assert_eq!(report.tier, ScoreTier::SyntheticComplete);
+			assert_eq!(report.scoring_version, AIQ_SCORING_VERSION);
+			assert_eq!(bounds.lower, aiq, "lower bound for pattern {pattern:?}");
+			assert_eq!(bounds.upper, aiq, "upper bound for pattern {pattern:?}");
+			assert!(bounds.lower <= bounds.upper);
+		}
 	}
 
 	#[test]
