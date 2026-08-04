@@ -140,6 +140,16 @@ void test('separates verifier and publisher RPC authority', () => {
   assert.match(schema, /production_publisher_identity_is_authorized\(/);
 });
 
+void test('bounds only the Official staging RPC with its full database budget', () => {
+  const stageFunction =
+    schema.match(
+      /create function public\.aiq_stage_verifier_result\(stage jsonb,[\s\S]*?\n\$\$;/,
+    )?.[0] ?? '';
+
+  assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '50s'/);
+  assert.equal(schema.match(/SET statement_timeout to '50s'/g)?.length, 1);
+});
+
 void test('keeps efficiency evidence nullable, bounded, and non-Official', () => {
   const exactKeys =
     schema.match(/create function aiq_private\.has_exact_jsonb_keys[\s\S]*?\n\$\$;/i)?.[0] ?? '';
