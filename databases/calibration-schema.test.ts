@@ -150,6 +150,23 @@ void test('bounds only the Official staging RPC with its full database budget', 
   assert.equal(schema.match(/SET statement_timeout to '50s'/g)?.length, 1);
 });
 
+void test('binds the Official stage task-set hash to all catalog fixture commitments', () => {
+  const stageVerifier =
+    schema.match(/create function aiq_private\.stage_verifier_result_core[\s\S]*?\n\$_\$;/)?.[0] ??
+    '';
+
+  assert.match(stageVerifier, /task_set\.task_count = 72/);
+  assert.match(
+    stageVerifier,
+    /stage ->> 'task_set_hash' = \(\s*select aiq_private\.jcs_sha256\(\s*jsonb_agg\(task_hash order by task_hash collate "C"\)\s*\)\s*from \(\s*select 'sha256:' \|\| catalog\.fixture_commitment as task_hash\s*from aiq_private\.aiq_task_catalog catalog\s*where catalog\.task_set_id = task_set\.task_set_id\s*and catalog\.task_set_version = task_set\.task_set_version\s*and catalog\.fixture_commitment is not null\s*\) catalog_hashes\s*\)/,
+  );
+  assert.doesNotMatch(stageVerifier, /select distinct 'sha256:' \|\| catalog\.fixture_commitment/);
+  assert.doesNotMatch(
+    stageVerifier,
+    /\('sha256:' \|\| task_set\.catalog_sha256\) = stage ->> 'task_set_hash'/,
+  );
+});
+
 void test('keeps efficiency evidence nullable, bounded, and non-Official', () => {
   const exactKeys =
     schema.match(/create function aiq_private\.has_exact_jsonb_keys[\s\S]*?\n\$\$;/i)?.[0] ?? '';
