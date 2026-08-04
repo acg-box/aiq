@@ -143,9 +143,12 @@ test('unauthenticated production writes return uncached 401 responses without pu
   expect(await compareEvidenceSnapshot(page)).toEqual(before);
 });
 
-test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }) => {
+test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const runPath = await getActualRunPath(page);
+  if (testInfo.config.metadata.productionEvidenceVariants === true) {
+    expect(runPath).toMatch(/^\/runs\/run_[0-9a-f]{64}$/);
+  }
   const paths = ['/', '/compare', '/runs', runPath, '/trends?range=all', '/method', '/radar'];
 
   for (const path of paths) {
