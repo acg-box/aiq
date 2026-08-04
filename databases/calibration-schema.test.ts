@@ -530,6 +530,13 @@ void test('keeps public grants and pricing lookup indexes narrow', () => {
   assert.doesNotMatch(schema, /create index calibration_(?:model_scores|task_results)_run_idx/);
 });
 
+void test('exposes the Official prompt-set digest in canonical sha256 form', () => {
+  const publicRuns = schema.match(/create view public\.public_runs[\s\S]*?;\n/)?.[0] ?? '';
+
+  assert.match(publicRuns, /\('sha256:'::text \|\| run\.prompt_set_digest\) as prompt_set_digest/);
+  assert.doesNotMatch(publicRuns, /^\s+run\.prompt_set_digest,/m);
+});
+
 void test('production readiness attests the exact schema and gateway role shape', () => {
   for (const field of [
     'private_table_count',
