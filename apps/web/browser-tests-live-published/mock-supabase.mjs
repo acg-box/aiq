@@ -6,6 +6,7 @@ const port = Number.parseInt(process.argv[2] ?? '', 10);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
   throw new Error('Supply one valid mock Supabase port.');
 }
+const emptyCalibrationEvidence = process.env.AIQ_MOCK_EMPTY_CALIBRATION_EVIDENCE === '1';
 
 /** @type {ReadonlyArray<readonly [string, number]>} */
 const domainCounts = [
@@ -739,7 +740,7 @@ const server = createServer((request, response) => {
   if (url.pathname === '/rest/v1/public_calibration_runs') {
     const exactId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
     const exactStartedAt = url.searchParams.get('started_at')?.replace(/^eq\./, '');
-    const rows = [subsetCalibrationRun, calibrationRun].filter(
+    const rows = (emptyCalibrationEvidence ? [] : [subsetCalibrationRun, calibrationRun]).filter(
       (run) =>
         (!exactId || run.run_id === exactId) &&
         (!exactStartedAt || run.started_at === exactStartedAt),
