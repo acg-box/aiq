@@ -8349,6 +8349,7 @@ $$;
 create function public.aiq_verify_and_publish(target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer) returns void
     language plpgsql security DEFINER
     SET search_path to ''
+    SET statement_timeout to '110s'
     as $$
 declare
   claimed aiq_private.aiq_submission_inbox%rowtype;
