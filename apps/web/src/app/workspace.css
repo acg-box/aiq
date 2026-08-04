@@ -724,8 +724,24 @@ details[open]::details-content {
 	}
 
 	.snapshot-metrics {
-		grid-template-columns: repeat(5, minmax(138px, 1fr));
-		overflow-x: auto;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.snapshot-metrics > div {
+		min-height: 104px;
+		border-top: 1px solid var(--line);
+	}
+
+	.snapshot-metrics > div:nth-child(odd) {
+		border-left: 0;
+	}
+
+	.snapshot-metrics > div:nth-child(-n + 2) {
+		border-top: 0;
+	}
+
+	.snapshot-metrics > div:last-child:nth-child(odd) {
+		grid-column: 1 / -1;
 	}
 
 	.workspace-intro h1 {
