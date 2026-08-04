@@ -142,7 +142,7 @@ const runRows = matrix.map((entry, index) => {
     runner_commit: '7a0c4d1',
     region: 'us-east-1',
     synthetic: false,
-    corpus_release_id: 'corpus_2026.07.29',
+    corpus_release_id: 'corpus_2026.08.02-aiq-core-1.0.2-controlled.1',
     corpus_commitment_sha256:
       'sha256:5b8cfddaacefcd58274b880815fd3f955bd319396755d041f2f30d000555624f',
     catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
