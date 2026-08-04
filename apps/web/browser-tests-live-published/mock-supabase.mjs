@@ -672,7 +672,14 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === '/rest/v1/public_runs') {
     const exactId = url.searchParams.get('id')?.replace(/^eq\./, '');
-    const rows = exactId ? runRows.filter((run) => run.id === exactId) : runRows;
+    const cursorExpression = url.searchParams.get('or') ?? '';
+    const olderId = /id\.gt\.([^,)]+)/.exec(cursorExpression)?.[1];
+    const newerId = /id\.lt\.([^,)]+)/.exec(cursorExpression)?.[1];
+    const ordered = [...runRows];
+    ordered.sort((left, right) => left.id.localeCompare(right.id));
+    const rows = exactId
+      ? ordered.filter((run) => run.id === exactId)
+      : ordered.filter((run) => (!olderId || run.id > olderId) && (!newerId || run.id < newerId));
     json(response, limited(url, rows));
     return;
   }
