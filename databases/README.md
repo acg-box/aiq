@@ -173,6 +173,12 @@ and not disclose its connection string. The same test requires both browser
 roles to see the complete 17-model, three-node, one-scoring-version, and
 ten-domain public reference shape.
 
+The PostgreSQL 17 artifact resolver concurrency check holds the Storage deletion
+gate, starts all six artifact resolutions for one verifier claim, and then
+releases the gate. It requires every resolver to complete without SQLSTATE
+`40P01`. Three parallel replay waves must leave exactly six immutable claim
+bindings, six activation events, and six active claim Storage references.
+
 Run the rollback-only calibration publication proof against the same freshly
 initialized disposable database. It uses the initializer-owned exact catalog
 and does not add or replace catalog rows.
