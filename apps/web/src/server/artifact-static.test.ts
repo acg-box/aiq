@@ -48,6 +48,15 @@ await test('artifact transport keeps private metadata and narrow role RPCs', asy
     schema,
     /requested_kind = 'evaluator-results\.json'[\s\S]*evaluator_results_artifact,content_hash[\s\S]*requested_sha256[\s\S]*evaluator_results_artifact,bytes[\s\S]*artifact\.byte_size/,
   );
+  assert.match(
+    artifactResolutionFunction,
+    /claimed\.envelope #> '\{payload,capability_validation,models\}'/,
+  );
+  assert.match(artifactResolutionFunction, /capability_model #> '\{probe,artifacts\}'/);
+  assert.match(
+    artifactResolutionFunction,
+    /select capability_reference\.reference[\s\S]*\) claimed_reference\(reference\)[\s\S]*reference ->> 'kind' = requested_kind[\s\S]*reference ->> 'content_hash' = 'sha256:' \|\| requested_sha256[\s\S]*reference ->> 'uri' = 'aiq-artifact:\/\/sha256\/' \|\| requested_sha256 \|\| '\/' \|\| requested_kind[\s\S]*reference ->> 'bytes'[\s\S]*artifact\.byte_size/,
+  );
 });
 
 await test('artifact HTTP routes do not return private Storage identity', async () => {
