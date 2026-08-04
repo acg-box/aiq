@@ -1,43 +1,54 @@
 ---
 type: 'Handoff'
 title: 'Deployment Handoff'
-description: 'Greenfield Supabase, Vercel, native runner, domain, and production acceptance work.'
+description: 'Accepted Supabase, Vercel, native Official publication topology, production checks, and remaining schedule work.'
 tags: ['deployment', 'handoff', 'supabase', 'vercel']
 ---
 
 # Deployment Handoff
 
-AIQ is not accepted as deployed until every item in this handoff has current
-live evidence. Repository text must not infer external state from a previous
-attempt.
+AIQ production has current live evidence for the first Official publication.
+Use this handoff to preserve that accepted topology and to track the remaining
+operational work. Do not infer future schedules, workers, or later publications
+from the first launch evidence.
 
 ## First-release topology
 
-The first release uses these exact surfaces:
+The accepted first release uses these exact surfaces:
 
-| Surface | Required target |
+| Surface | Accepted target |
 | ------- | --------------- |
-| Database and Storage | Personal Supabase organization `ACG Box`, project `aiq` |
+| Database and Storage | Personal Supabase organization `ACG Box`, project `aiq`, reference `xxnszykaeapolqdnhalx`, PostgreSQL 17.6 |
 | Web and gateway | Personal Vercel scope `acgbox`, project `aiq` |
 | Public origin | `https://aiq.wiki` |
 | Runner | Native Apple Silicon macOS `aiq-runner` release binary |
 | Verifier | Native Apple Silicon macOS `aiq-verifier` release binary |
+| Storage | Private `aiq-submission-packages` and `aiq-runner-artifacts` buckets |
 
 The same macOS host operates the runner and verifier natively in separate
 command environments with direct network access. The verifier must not receive
 the Codex home or runner signing key. The first release does not depend on or run
 Linux or Docker. They remain a future deployment target outside this handoff.
 
-This is one greenfield AIQ Core `1.0.2` state. The required first publication is
-one complete `17 × 72 = 1,224` task-level observation Official batch. This is
-one benchmark batch, not 1,224 separate runs. The native macOS runner completed
-that batch. Of its 1,224 terminal observations,
-1,218 completed and 6 had genuine failures. The wall-clock time was
-`1:37:24.411`. Verified public token and API-equivalent cost aggregates remain
-unavailable until verifier replay. The retained provider evidence contains
-supported counters for 1,218 observations, but it contains no provider-reported
-total-token counter. Actual subscription spend is unknown. Do not report missing
-values as zero. Verifier replay and publication remain pending.
+This is one greenfield AIQ Core `1.0.2` state. The first publication is one
+complete `17 × 72 = 1,224` task-level result Official matrix, not 1,224 separate
+benchmark runs. The native macOS runner completed it, the native verifier
+replayed it, and the distinct publisher published it as `trusted_verified`.
+Of the results, 1,218 completed and 6 failed: 329 `correct`, 259 `partial`, 630
+`incorrect`, 5 `timeout`, and 1 `budget_exhausted`. Signed wall time is
+5,844,411 ms (`1:37:24.411`).
+
+Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
+`unavailable_missing_usage`. The $125.403257240 priced subtotal is a Standard
+API-equivalent estimate for the 1,208 priced results, not actual ChatGPT
+subscription spend or a complete matrix total. Missing cost values are not zero.
+Public views expose 17 runs, 1,224 results, and 17 rows each for the leaderboard,
+model-efficiency, and model-matrix projections. Publication created 4,395
+artifact bindings, including 19 capability artifacts. The interpretation of
+these public-safe measures belongs to [Benchmark Method](benchmark-method.md).
+
+Production merge and deployment commit is
+`725b88954359ab8f0950f896674b3e8684d3ae85`.
 
 ## Immutable release evidence
 
@@ -59,9 +70,10 @@ keys must stay outside Git and public evidence.
 
 ## Supabase setup
 
-Use the personal Free organization `ACG Box`. The project name must be exactly
-`aiq`. Start with an empty PostgreSQL database. Do not load synthetic fixtures
-or any older AIQ schema.
+The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6. Its
+one-shot production initialization is complete. Do not rerun the initializer or
+load synthetic fixtures into this project. The procedure below applies only to a
+replacement empty project.
 
 1. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
@@ -93,9 +105,10 @@ Do not load `databases/synthetic-demo.sql` into production.
 
 ## Vercel setup
 
-Use the personal Hobby scope `acgbox`. The project name must be exactly `aiq`.
-Configure the Web root and build settings from the repository. Do not attach the
-public domain until the real Official run is ready for publication.
+The personal Vercel scope `acgbox` hosts project `aiq` and its accepted
+production deployment at `https://aiq.wiki`. Preserve the browser-safe and
+server-only configuration boundary when rotating values or replacing the
+deployment.
 
 Configure browser-safe values:
 
@@ -208,16 +221,12 @@ published result.
 
 ## Domain and DNS
 
-After the verified 1,224-observation run is ready, attach `aiq.wiki` to the
-personal Vercel project `aiq`. Confirm the `aiq.wiki` Cloudflare zone through a
-current read-only live check. Use only the DNS records that Vercel currently
-requires. Keep Cloudflare proxying disabled until Vercel domain verification
-and TLS pass.
-
-The apex domain is canonical. If `www.aiq.wiki` is configured, it must preserve
-the request path and redirect to the apex. Remove obsolete Vercel projects,
-aliases, and domains only after exact read-only inspection confirms their
-targets.
+`aiq.wiki` is attached to the personal Vercel project `aiq` with valid TLS and
+is the canonical production origin. `www.aiq.wiki` preserves the request path
+and returns a permanent `308` redirect to the apex. Generated, automatic
+`*.vercel.app` URLs cannot be permanently deleted. The current generated URLs
+emit `noindex`. Remove any other obsolete Vercel projects, aliases, or domains
+only after exact read-only inspection confirms their targets.
 
 ## Storage operations
 
@@ -232,33 +241,46 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 
 ## Launch checklist
 
-- [ ] Repository checks pass at the approved commit.
-- [ ] Native 72-task and contrast validation passes with zero model calls.
-- [ ] The controlled Codex capability preflight records all 17 real statuses.
-- [ ] Supabase project `ACG Box/aiq` is initialized once from
-      `databases/schema.sql`.
-- [ ] Both Storage buckets are private and browser roles cannot write private
-      tables.
-- [ ] Vercel project `acgbox/aiq` is bound to the approved commit and server
-      secrets are absent from browser bundles.
-- [ ] Runner, verifier, and publisher identities are distinct.
-- [x] One complete non-synthetic 17-by-72 run contains 1,224 terminal
-      observations: 1,218 completed and 6 had genuine failures. Its wall-clock
-      time is `1:37:24.411`. Retained provider evidence contains supported token
-      counters for 1,218 observations, but no provider-reported total-token
-      counter. Verified public aggregates remain pending, and actual
-      subscription spend is unknown.
-- [ ] The native verifier reconstructs, replays, attests, and submits the run.
-- [ ] The publisher completes only the fully verified batch.
-- [ ] `aiq.wiki` resolves to the approved Vercel deployment with valid TLS.
-- [ ] Home, comparison, trends, run detail, method, and radar pages work against
-      real published data on desktop and mobile viewports.
-- [ ] `/api/readiness`, public reads, write-route protection, and retention
-      checks pass from the public origin.
-- [ ] Obsolete Vercel aliases or projects are removed after exact target review.
+- [x] Repository, controlled corpus, native binary, and capability evidence bind
+      the approved production source and AIQ Core `1.0.2` contract.
+- [x] Supabase project `ACG Box/aiq` is initialized from `databases/schema.sql`;
+      both production Storage buckets are private.
+- [x] Vercel project `acgbox/aiq` serves the accepted deployment without exposing
+      server-only values to the browser.
+- [x] Runner, verifier, and publisher identities are distinct.
+- [x] One complete non-synthetic 17-by-72 matrix contains 1,224 terminal results,
+      including 1,218 completed and 6 failed results.
+- [x] The native verifier reconstructed and replayed the matrix, and the distinct
+      publisher published it as `trusted_verified`.
+- [x] `aiq.wiki` resolves with valid TLS; `www.aiq.wiki` redirects permanently
+      while preserving paths.
+- [ ] Run the read-only production acceptance gate after each production
+      publication or deployment change. It covers public pages, exact matrix
+      counts, evidence semantics, readiness, write rejection, mobile layout,
+      and selected accessibility rules.
+- [ ] Provision the separately owned twice-daily benchmark schedule and record its
+      next run without changing the accepted execution contract.
+- [ ] Remove obsolete Vercel aliases or projects after exact target review.
 
-If the greenfield database initializer fails after it starts, discard that new
-project and create another empty `aiq` project. Do not open public traffic until
-the complete checklist passes.
+Run the bounded, secret-free production acceptance gate after publication or a
+production deployment change:
 
-No command in this handoff performs deployment automatically.
+```sh
+AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production
+```
+
+The browser blocks non-read requests. The gate expects exactly one 17-by-72
+Official matrix and fails if later runs exist until the release contract is
+deliberately revised. For a local contract check without a production read, run
+`npm run test:browser:production-contract --workspace @aiq/web`. These checks
+validate the accepted public surface described in
+[Operations and Validation](operations.md); they do not schedule future work.
+
+If a replacement greenfield database initializer fails after it starts, discard
+that new project and create another empty `aiq` project.
+
+No command in this handoff performs deployment or recurring scheduling
+automatically. No cloud runner or verifier worker and no benchmark or Storage
+schedule currently exist. The twice-daily benchmark schedule and its next run
+remain pending operator work; this documentation does not authorize recurring
+automation.
