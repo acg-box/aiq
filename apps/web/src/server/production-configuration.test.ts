@@ -211,4 +211,25 @@ void describe('route-scoped production configuration', () => {
       assert.ok(client > guard, `${route} must validate before constructing a client`);
     }
   });
+
+  void it('keeps the long verification route server-only and within the Hobby duration limit', async () => {
+    const repositoryRoot = resolve(import.meta.dirname, '../../../..');
+    const [source, claimsSource, artifactResolveSource, handlerSource] = await Promise.all([
+      readFile(resolve(repositoryRoot, 'apps/web/src/app/api/verifications/route.ts'), 'utf8'),
+      readFile(resolve(repositoryRoot, 'apps/web/src/app/api/claims/route.ts'), 'utf8'),
+      readFile(resolve(repositoryRoot, 'apps/web/src/app/api/artifacts/resolve/route.ts'), 'utf8'),
+      readFile(resolve(repositoryRoot, 'apps/web/src/server/verification-handler.ts'), 'utf8'),
+    ]);
+
+    assert.match(source, /import 'server-only';/);
+    assert.match(source, /export const maxDuration = 300;/);
+    assert.match(source, /verificationRpcRoleClientOptions/);
+    assert.doesNotMatch(claimsSource, /verificationRpcRoleClientOptions/);
+    assert.doesNotMatch(artifactResolveSource, /verificationRpcRoleClientOptions/);
+    assert.doesNotMatch(source, /NEXT_PUBLIC_(?:AIQ|SUPABASE)_(?:VERIFIER|PUBLISHER|SECRET|JWT)/);
+    assert.match(
+      handlerSource,
+      /global: \{ fetch: createVerificationSupabaseFetch\(parentSignal\) \}/,
+    );
+  });
 });

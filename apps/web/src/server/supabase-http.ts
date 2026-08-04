@@ -1,4 +1,5 @@
 const DEFAULT_SUPABASE_HTTP_TIMEOUT_MS = 10_000;
+export const VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS = 120_000;
 
 interface BoundedFetchOptions {
   fetchImplementation: typeof fetch;
@@ -92,6 +93,14 @@ export function createBoundedSupabaseFetch(parentSignal?: AbortSignal): typeof f
     fetchImplementation: globalThis.fetch,
     parentSignal,
     timeoutMs: DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
+  });
+}
+
+export function createVerificationSupabaseFetch(parentSignal?: AbortSignal): typeof fetch {
+  return createBoundedFetch({
+    fetchImplementation: globalThis.fetch,
+    parentSignal,
+    timeoutMs: VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
   });
 }
 

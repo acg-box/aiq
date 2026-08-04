@@ -1,9 +1,40 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createBoundedSupabaseFetchForTests } from './supabase-http.ts';
+import {
+  createBoundedSupabaseFetch,
+  createBoundedSupabaseFetchForTests,
+  createVerificationSupabaseFetch,
+  VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
+} from './supabase-http.ts';
 
 void describe('bounded Supabase HTTP fetch', () => {
+  void it('keeps ordinary calls at 10 seconds and verification RPCs at 120 seconds', async (t) => {
+    assert.equal(VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS, 120_000);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let observedSignal: AbortSignal | undefined;
+    t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
+      observedSignal = init?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    });
+
+    const ordinaryRequest = createBoundedSupabaseFetch()(
+      'https://example.supabase.co/rest/v1/public_runs',
+    );
+    t.mock.timers.tick(9_999);
+    assert.equal(observedSignal?.aborted, false);
+    t.mock.timers.tick(1);
+    await assert.rejects(ordinaryRequest, { name: 'SupabaseHttpTimeoutError' });
+
+    const verificationRequest = createVerificationSupabaseFetch()(
+      'https://example.supabase.co/rest/v1/rpc/aiq_stage_verifier_result',
+    );
+    t.mock.timers.tick(119_999);
+    assert.equal(observedSignal?.aborted, false);
+    t.mock.timers.tick(1);
+    await assert.rejects(verificationRequest, { name: 'SupabaseHttpTimeoutError' });
+  });
+
   void it('returns a successful response unchanged', async () => {
     const expected = Response.json({ ok: true }, { status: 201 });
     const boundedFetch = createBoundedSupabaseFetchForTests({
