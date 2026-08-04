@@ -1605,25 +1605,6 @@ use aiq_runner::{
 /// Successful production replay scope recorded by the worker.
 pub(crate) const PRODUCTION_REPLAY_SCOPE: &str = "candidate_reconstructed_and_evaluator_replayed";
 
-/// Resolves every signed model-capability probe artifact before publication.
-///
-/// Candidate replay does not otherwise consume these run-level artifacts. The
-/// resolution still has to cross the claim-bound gateway so that publication
-/// retention can prove ownership of every signed capability evidence object.
-pub(crate) fn verify_capability_artifacts<R>(
-	report: &CapabilityValidationReport,
-	resolver: &R,
-) -> Result<(), WorkerError>
-where
-	R: ArtifactResolverClient + ?Sized,
-{
-	for artifact in report.models.iter().flat_map(|entry| &entry.probe.artifacts) {
-		resolve_exact(artifact, resolver)?;
-	}
-
-	resolver.maintain_lease()
-}
-
 pub(crate) trait ReplayRun: Sync {
 	fn run_id(&self) -> &str;
 	fn results(&self) -> &[TaskResult];
@@ -1772,6 +1753,25 @@ impl ReplayScheduler {
 			cancelled: false,
 		}
 	}
+}
+
+/// Resolves every signed model-capability probe artifact before publication.
+///
+/// Candidate replay does not otherwise consume these run-level artifacts. The
+/// resolution still has to cross the claim-bound gateway so that publication
+/// retention can prove ownership of every signed capability evidence object.
+pub(crate) fn verify_capability_artifacts<R>(
+	report: &CapabilityValidationReport,
+	resolver: &R,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+{
+	for artifact in report.models.iter().flat_map(|entry| &entry.probe.artifacts) {
+		resolve_exact(artifact, resolver)?;
+	}
+
+	resolver.maintain_lease()
 }
 
 /// Reconstructs all attempted candidates and replays every completed evaluator result.

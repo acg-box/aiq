@@ -1970,6 +1970,7 @@ fn official_replay_evidence(
 			vec![runner::ProviderTokenUsage::default(); run.results.len()],
 		));
 	}
+
 	let capability_validation = run.capability_validation.as_ref().ok_or_else(|| {
 		WorkerError::terminal(
 			ReasonCode::InvalidReplayEvidence,
@@ -3702,8 +3703,7 @@ mod tests {
 
 	impl LocalReplayFixture {
 		fn new() -> Self {
-			let unique =
-				SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+			let unique = Self::unique();
 			let root =
 				env::temp_dir().join(format!("aiq-verifier-local-{}-{unique}", process::id()));
 			let artifact_root = root.join("artifacts");
@@ -3821,6 +3821,10 @@ mod tests {
 				manifest_path,
 				capability_artifact_path,
 			}
+		}
+
+		fn unique() -> u128 {
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos()
 		}
 
 		fn candidate_artifacts(
