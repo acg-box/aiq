@@ -6,8 +6,10 @@ domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
-AIQ Core `1.0.2` is the only first-release contract. No real Official model run
-has started.
+AIQ Core `1.0.2` is the only first-release contract. The native runner completed
+the first real Official benchmark batch: 17 configurations by 72 tasks, or
+1,224 task-level observations. The result remains unpublished until verifier
+replay and publisher publication complete.
 
 ## Public authority
 

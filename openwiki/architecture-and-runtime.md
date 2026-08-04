@@ -25,7 +25,10 @@ Repository source has one active full-catalog Official contract: AIQ Core
 `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
 release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
 `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-This is the only launch contract. No real Official run exists.
+This is the only launch contract. The first real Official benchmark batch
+completed on the native macOS runner. Its 1,224 task-level observations are one
+17-by-72 batch, not 1,224 separate benchmark runs. It remains unpublished until
+verifier replay and publisher acceptance.
 
 ## Identity boundary
 
