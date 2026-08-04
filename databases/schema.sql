@@ -659,26 +659,47 @@ begin
         requested_kind <> 'evaluator-results.json'
         and exists (
       select 1
-      from jsonb_array_elements(
-        case
-          when jsonb_typeof(claimed.envelope #> '{payload,results}') = 'array'
-          then claimed.envelope #> '{payload,results}'
-          else '[]'::jsonb
-        end
-      ) result
-      cross join lateral jsonb_array_elements(
-        case
-          when jsonb_typeof(result -> 'artifacts') = 'array'
-          then result -> 'artifacts'
-          else '[]'::jsonb
-        end
-        ||
-        case
-          when jsonb_typeof(result -> 'workspace_manifest') = 'object'
-          then jsonb_build_array(result -> 'workspace_manifest')
-          else '[]'::jsonb
-        end
-      ) reference
+      from (
+        select result_reference.reference
+        from jsonb_array_elements(
+          case
+            when jsonb_typeof(claimed.envelope #> '{payload,results}') = 'array'
+            then claimed.envelope #> '{payload,results}'
+            else '[]'::jsonb
+          end
+        ) result
+        cross join lateral jsonb_array_elements(
+          case
+            when jsonb_typeof(result -> 'artifacts') = 'array'
+            then result -> 'artifacts'
+            else '[]'::jsonb
+          end
+          ||
+          case
+            when jsonb_typeof(result -> 'workspace_manifest') = 'object'
+            then jsonb_build_array(result -> 'workspace_manifest')
+            else '[]'::jsonb
+          end
+        ) result_reference(reference)
+        union all
+        select capability_reference.reference
+        from jsonb_array_elements(
+          case
+            when jsonb_typeof(
+              claimed.envelope #> '{payload,capability_validation,models}'
+            ) = 'array'
+            then claimed.envelope #> '{payload,capability_validation,models}'
+            else '[]'::jsonb
+          end
+        ) capability_model
+        cross join lateral jsonb_array_elements(
+          case
+            when jsonb_typeof(capability_model #> '{probe,artifacts}') = 'array'
+            then capability_model #> '{probe,artifacts}'
+            else '[]'::jsonb
+          end
+        ) capability_reference(reference)
+      ) claimed_reference(reference)
       where reference ->> 'kind' = requested_kind
         and reference ->> 'content_hash' = 'sha256:' || requested_sha256
         and reference ->> 'uri' = 'aiq-artifact://sha256/' || requested_sha256 || '/' || requested_kind
