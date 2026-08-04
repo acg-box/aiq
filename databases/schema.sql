@@ -8249,6 +8249,7 @@ $_$;
 create function public.aiq_stage_verifier_result(stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer) returns text
     language plpgsql security DEFINER
     SET search_path to ''
+    SET statement_timeout to '50s'
     as $$
 begin
   perform aiq_private.require_request_role('aiq_verifier');
