@@ -424,7 +424,9 @@ test('a partial Terra-only calibration derives a valid default and reports its s
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'terra · medium',
   );
-  await expect(page.getByRole('status')).toContainText('Showing 5 of 5 result cells');
+  await expect(page.getByRole('status', { name: 'Calibration result count' })).toContainText(
+    'Showing 5 of 5 result cells',
+  );
   await expect(page.getByLabel('Model and reasoning configuration').locator('option')).toHaveCount(
     1,
   );
@@ -453,7 +455,9 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'sol · low',
   );
-  await expect(page.getByRole('status')).toContainText('Showing 72 of 1,224 result cells');
+  await expect(page.getByRole('status', { name: 'Calibration result count' })).toContainText(
+    'Showing 72 of 1,224 result cells',
+  );
   const selector = page.getByLabel('Model and reasoning configuration');
   await expect(selector.locator('option')).toHaveCount(17);
   const results = page.getByRole('region', { name: 'Calibration results' });
@@ -520,6 +524,7 @@ test('Official compare efficiency is limited to current leaderboard run identiti
   await expect(efficiency).toContainText('1.6 h');
   await expect(efficiency).toContainText('count once across all 17 configurations');
   await expect(efficiency).toContainText('TTFT and TPS are unavailable');
+  await expect(efficiency).toContainText('They are not billed Codex or ChatGPT subscription cost.');
   await expect(efficiency).toContainText('This is not actual subscription spend.');
   await expect(efficiency).not.toContainText('$0');
   await expect(efficiency.getByRole('link', { name: 'source' }).first()).toHaveAttribute(
@@ -711,7 +716,7 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(taskResults.first()).toContainText('Tokens: input 1,361');
   await expect(taskResults.first()).toContainText('total unavailable');
   await expect(taskResults.first()).toContainText(
-    'API-equivalent cost: $0.001011 · token evidence verifier-recomputed · cost evidence verifier-recomputed',
+    'Estimated Standard API-equivalent cost: $0.001011 · token evidence verifier-recomputed · cost evidence verifier-recomputed',
   );
   const evaluatorOutcomes = taskResults.filter({
     hasText: 'The evaluator rejected the response.',

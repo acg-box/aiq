@@ -2,6 +2,7 @@
 
 mod replay;
 
+use std::collections::BTreeMap;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 #[cfg(test)]
@@ -32,7 +33,7 @@ use aiq_runner::{
 		self, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
-	model::MODEL_MATRIX,
+	model::{MODEL_MATRIX, ModelConfig},
 	normalization::{
 		self, AttestedDeploymentMetadata, MAX_VERIFICATION_REQUEST_BYTES, NormalizedBatchStage,
 		ReplayStatus, VerifiedPackageIdentity, VerifierAttestationV2, VerifierSigningIdentity,
@@ -44,14 +45,18 @@ use aiq_runner::{
 	run_validation,
 	runner::{
 		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
+		TaskResult,
 	},
 	scoring::{
-		self, AIQ_CORE_TASK_IDENTITY_SHA256, OfficialCalibrationDiagnostic,
+		self, AIQ_CORE_TASK_IDENTITY_SHA256, FalseOnly, OfficialCalibrationDiagnostic,
 		OfficialCalibrationPolicy, OfficialCalibrationSummary, ScoreContext, ScoreOptions,
 		ScoreReport,
 	},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
-	task::{DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskSource, Visibility},
+	task::{
+		self, DirectoryTaskSource, EvaluationResult, EvaluatorOutcome, EvaluatorRuntime,
+		TaskDefinition, TaskSource, Visibility,
+	},
 };
 
 const MAX_GATEWAY_RESPONSE_BYTES: usize = 64 * 1_024;
@@ -73,6 +78,9 @@ const ADDITIONAL_MODES_HELP: &str = "Additional modes:
   aiq-verifier verify-local --help
       Replay one production package offline and write create-new stage and attestation files.
       This mode does not publish or assign cloud trust.
+  aiq-verifier diagnose-rescore --help
+      Verify one source package, then replay it with a candidate evaluator set.
+      This mode writes one permanently non-Official create-new diagnostic report.
 
 Run `aiq-verifier <mode> --help` for the exact mode arguments.";
 
@@ -403,6 +411,89 @@ struct VerifyLocalCli {
 	/// New output path for the signed `aiq.verifier-attestation.v3`.
 	#[arg(long)]
 	attestation_output: PathBuf,
+}
+
+/// Offline source-verification and candidate-evaluator diagnostic settings.
+#[derive(Debug, Parser)]
+#[command(
+	name = "aiq-verifier diagnose-rescore",
+	version,
+	about = "Verify one source package and rescore it with candidate evaluators without publication"
+)]
+struct DiagnoseRescoreCli {
+	#[arg(long)]
+	package: PathBuf,
+	#[arg(long)]
+	artifact_root: PathBuf,
+	#[arg(long)]
+	source_tasks: PathBuf,
+	#[arg(long)]
+	source_environment: PathBuf,
+	#[arg(long)]
+	source_evaluator_root: PathBuf,
+	#[arg(long)]
+	source_corpus_commitment: PathBuf,
+	#[arg(long)]
+	source_evaluator_runtime: PathBuf,
+	#[arg(long)]
+	source_codex_toolchain_root: PathBuf,
+	#[arg(long)]
+	candidate_tasks: PathBuf,
+	#[arg(long)]
+	candidate_source_root: PathBuf,
+	#[arg(long)]
+	candidate_evaluator_root: PathBuf,
+	#[arg(long)]
+	candidate_corpus_commitment: PathBuf,
+	#[arg(long)]
+	candidate_evaluator_runtime: PathBuf,
+	#[arg(long)]
+	candidate_codex_toolchain_root: PathBuf,
+	#[arg(long)]
+	replay_root: PathBuf,
+	#[arg(
+		long,
+		default_value_t = DEFAULT_REPLAY_JOBS,
+		value_parser = parse_replay_jobs
+	)]
+	replay_jobs: usize,
+	/// New path for the permanently non-Official diagnostic report.
+	#[arg(long)]
+	output: PathBuf,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticRescoreCell {
+	task_id: String,
+	model: ModelConfig,
+	source_status: ResultStatus,
+	source_evaluation: runner::EvaluationOutcome,
+	source_task_score: Option<f64>,
+	candidate_evaluation: runner::EvaluationOutcome,
+	candidate_task_score: f64,
+	preserved_runtime_failure: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DiagnosticRescoreReport {
+	schema_version: &'static str,
+	classification: &'static str,
+	official_eligible: FalseOnly,
+	ranking_eligible: FalseOnly,
+	source_package_sha256: String,
+	source_run_id: String,
+	source_corpus_commitment_sha256: String,
+	candidate_corpus_commitment_sha256: String,
+	candidate_task_set_digest: String,
+	candidate_evaluator_digest: String,
+	replay_scope: &'static str,
+	result_count: usize,
+	replayed_result_count: usize,
+	preserved_runtime_failure_count: usize,
+	cells: Vec<DiagnosticRescoreCell>,
+	official_calibration: OfficialCalibrationDiagnostic,
 }
 
 /// Production verifier-environment validation settings.
@@ -1702,6 +1793,31 @@ struct RegularInput {
 	canonical_path: PathBuf,
 }
 
+struct ConfiguredEvaluatorSet {
+	tasks: Vec<TaskDefinition>,
+	evaluator_root: PathBuf,
+	evaluator_runtime: EvaluatorRuntime,
+	toolchain_root: PathBuf,
+	corpus_commitment_sha256: String,
+	task_set_digest: String,
+	evaluator_digest: String,
+}
+
+struct ConfiguredSourceEvaluatorSet {
+	set: ConfiguredEvaluatorSet,
+	environment: VerifierEnvironment,
+}
+
+struct ConfiguredCandidateEvaluatorSet {
+	set: ConfiguredEvaluatorSet,
+	source_root: PathBuf,
+}
+
+struct DiagnosticSourcePackage {
+	run: RunRecord,
+	sha256: String,
+}
+
 /// Stable rejection reason understood by operators and automation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1811,6 +1927,13 @@ pub fn run_cli() -> Result<(), WorkerError> {
 			local_arguments.extend(arguments.iter().skip(2).cloned());
 
 			return run_verify_local(VerifyLocalCli::parse_from(local_arguments));
+		}
+		if command == "diagnose-rescore" {
+			let mut diagnostic_arguments = vec![OsString::from("aiq-verifier diagnose-rescore")];
+
+			diagnostic_arguments.extend(arguments.iter().skip(2).cloned());
+
+			return run_diagnose_rescore(DiagnoseRescoreCli::parse_from(diagnostic_arguments));
 		}
 		if command == "validate-environment" {
 			let mut validate_arguments = vec![OsString::from("aiq-verifier validate-environment")];
@@ -2385,6 +2508,25 @@ where
 	Ok(())
 }
 
+fn write_create_new_json<T>(target: &OutputTarget, value: &T) -> Result<(), WorkerError>
+where
+	T: Serialize,
+{
+	let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| {
+		WorkerError::configuration(format!("diagnostic serialization failed: {error}"))
+	})?;
+
+	bytes.push(b'\n');
+
+	let temporary = create_temporary_output(target, "diagnostic", &bytes)?;
+
+	fs::hard_link(&temporary.path, &target.path).map_err(|error| {
+		WorkerError::configuration(format!(
+			"cannot install diagnostic output without overwrite: {error}"
+		))
+	})
+}
+
 fn regular_file_bytes(path: &Path, label: &str, max_bytes: usize) -> Result<Vec<u8>, WorkerError> {
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
@@ -2753,6 +2895,387 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 		&cli.attestation_output,
 	)
 	.map(|_| ())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn configure_source_evaluator_set(
+	tasks_path: &Path,
+	environment_path: &Path,
+	evaluator_root_path: &Path,
+	corpus_commitment: &Path,
+	evaluator_runtime_path: &Path,
+	toolchain_root_path: &Path,
+	label: &str,
+) -> Result<ConfiguredSourceEvaluatorSet, WorkerError> {
+	let environment: VerifierEnvironment =
+		read_regular_json(environment_path, &format!("{label} verifier environment"))?;
+
+	validate_environment(&environment)?;
+
+	if environment.synthetic_test || environment.expected_provenance.is_none() {
+		return Err(WorkerError::configuration(format!(
+			"{label} requires a production verifier environment"
+		)));
+	}
+
+	let tasks_root = controlled_root(tasks_path, &format!("{label} task root"))?;
+	let tasks = load_local_tasks(&tasks_root)?;
+	let evaluator_root = controlled_root(evaluator_root_path, &format!("{label} evaluator root"))?;
+	let toolchain_root =
+		controlled_root(toolchain_root_path, &format!("{label} model toolchain root"))?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(evaluator_runtime_path)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let expected = environment.expected_provenance.as_ref().ok_or_else(|| {
+		WorkerError::configuration(format!("{label} environment lacks expected provenance"))
+	})?;
+
+	corpus_commitment::validate_evaluator_runtime_commitment(
+		corpus_commitment,
+		&expected.corpus_commitment_sha256,
+		&evaluator_runtime,
+		&toolchain_root,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	validate_evaluator_bindings(&tasks, &evaluator_root, &evaluator_runtime)?;
+
+	let task_set_digest = task::task_set_hash(&tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let evaluator_digest = corpus_commitment::evaluator_digest(&tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	if task_set_digest != expected.task_set_digest || evaluator_digest != expected.evaluator_digest
+	{
+		return Err(WorkerError::configuration(format!(
+			"{label} tasks do not match the configured corpus identity"
+		)));
+	}
+
+	let corpus_commitment_sha256 = expected.corpus_commitment_sha256.clone();
+
+	Ok(ConfiguredSourceEvaluatorSet {
+		environment,
+		set: ConfiguredEvaluatorSet {
+			tasks,
+			evaluator_root,
+			evaluator_runtime,
+			toolchain_root,
+			corpus_commitment_sha256,
+			task_set_digest,
+			evaluator_digest,
+		},
+	})
+}
+
+#[allow(clippy::too_many_arguments)]
+fn configure_candidate_evaluator_set(
+	tasks_path: &Path,
+	source_root_path: &Path,
+	evaluator_root_path: &Path,
+	corpus_commitment_path: &Path,
+	evaluator_runtime_path: &Path,
+	toolchain_root_path: &Path,
+) -> Result<ConfiguredCandidateEvaluatorSet, WorkerError> {
+	let tasks_root = controlled_root(tasks_path, "candidate task root")?;
+	let source_root = controlled_root(source_root_path, "candidate source root")?;
+	let evaluator_root = controlled_root(evaluator_root_path, "candidate evaluator root")?;
+	let toolchain_root = controlled_root(toolchain_root_path, "candidate model toolchain root")?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(evaluator_runtime_path)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let tasks = load_local_tasks(&tasks_root)?;
+	let corpus = corpus_commitment::validate_core_corpus_commitment(
+		corpus_commitment_path,
+		&tasks,
+		&source_root,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	corpus
+		.validate_evaluator_runtime(&evaluator_runtime)
+		.and_then(|()| {
+			corpus.validate_model_toolchain(&toolchain_root, &evaluator_runtime).map(|_| ())
+		})
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	validate_evaluator_bindings(&tasks, &evaluator_root, &evaluator_runtime)?;
+
+	let task_set_digest = task::task_set_hash(&tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let evaluator_digest = corpus_commitment::evaluator_digest(&tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	Ok(ConfiguredCandidateEvaluatorSet {
+		source_root,
+		set: ConfiguredEvaluatorSet {
+			tasks,
+			evaluator_root,
+			evaluator_runtime,
+			toolchain_root,
+			corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
+			task_set_digest,
+			evaluator_digest,
+		},
+	})
+}
+
+fn read_diagnostic_source_package(path: &Path) -> Result<DiagnosticSourcePackage, WorkerError> {
+	let package_bytes = regular_file_bytes(path, "signed package", MAX_SUBMISSION_BYTES)?;
+	let sha256 = hex::encode(Sha256::digest(&package_bytes));
+	let envelope: SubmissionEnvelope = serde_json::from_slice(&package_bytes).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package is not a valid result envelope",
+		)
+	})?;
+	let verified = envelope.verify(&BTreeSet::new()).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageSignature,
+			"package identity, content hash, or signature is invalid",
+		)
+	})?;
+
+	if verified.payload_type != RUN_PAYLOAD_TYPE {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"diagnostic rescore requires an Official source run package",
+		));
+	}
+
+	let run: RunRecord = serde_json::from_value(verified.payload).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package payload is not a run record",
+		)
+	})?;
+
+	submission::validate_run_signer_binding(&run, &verified.signer.node_id).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageSignature,
+			"package signer does not match source run provenance",
+		)
+	})?;
+
+	Ok(DiagnosticSourcePackage { run, sha256 })
+}
+
+fn validate_diagnostic_roots(
+	source: &ConfiguredSourceEvaluatorSet,
+	candidate: &ConfiguredCandidateEvaluatorSet,
+	artifact_resolver: &LocalArtifactResolver,
+	replay_root: &Path,
+) -> Result<(), WorkerError> {
+	for (label, root) in [
+		("source evaluator root", source.set.evaluator_root.as_path()),
+		("source model toolchain root", source.set.toolchain_root.as_path()),
+		("candidate source root", candidate.source_root.as_path()),
+		("candidate evaluator root", candidate.set.evaluator_root.as_path()),
+		("candidate model toolchain root", candidate.set.toolchain_root.as_path()),
+	] {
+		if roots_overlap(root, replay_root) || roots_overlap(root, &artifact_resolver.root) {
+			return Err(WorkerError::configuration(format!(
+				"{label} must be separate from the artifact and replay roots"
+			)));
+		}
+	}
+
+	if roots_overlap(&artifact_resolver.root, replay_root) {
+		return Err(WorkerError::configuration(
+			"artifact and replay roots must be separate directory trees",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_diagnostic_source_run(
+	run: &RunRecord,
+	source: &ConfiguredSourceEvaluatorSet,
+	artifact_resolver: &LocalArtifactResolver,
+) -> Result<usize, WorkerError> {
+	run_validation::validate_run_record(run, Some(&source.set.tasks)).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"source run does not match its controlled tasks",
+		)
+	})?;
+
+	if run.synthetic || run.provenance.as_ref() != source.environment.expected_provenance.as_ref() {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"source run is not the expected non-synthetic matrix",
+		));
+	}
+
+	let failure_count =
+		run.results.iter().filter(|result| result.status == ResultStatus::Failed).count();
+
+	let capability_validation = run.capability_validation.as_ref().ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"source run lacks capability validation evidence",
+		)
+	})?;
+
+	replay::verify_capability_artifacts(capability_validation, artifact_resolver)?;
+
+	Ok(failure_count)
+}
+
+fn run_diagnose_rescore(cli: DiagnoseRescoreCli) -> Result<(), WorkerError> {
+	let output_target = OutputTarget::new(&cli.output, "diagnostic output")?;
+	let source_package = read_diagnostic_source_package(&cli.package)?;
+	let run = &source_package.run;
+	let source = configure_source_evaluator_set(
+		&cli.source_tasks,
+		&cli.source_environment,
+		&cli.source_evaluator_root,
+		&cli.source_corpus_commitment,
+		&cli.source_evaluator_runtime,
+		&cli.source_codex_toolchain_root,
+		"source",
+	)?;
+	let candidate = configure_candidate_evaluator_set(
+		&cli.candidate_tasks,
+		&cli.candidate_source_root,
+		&cli.candidate_evaluator_root,
+		&cli.candidate_corpus_commitment,
+		&cli.candidate_evaluator_runtime,
+		&cli.candidate_codex_toolchain_root,
+	)?;
+	let artifact_resolver = LocalArtifactResolver::new(&cli.artifact_root)?;
+	let replay_root = controlled_root(&cli.replay_root, "replay root")?;
+
+	validate_diagnostic_roots(&source, &candidate, &artifact_resolver, &replay_root)?;
+
+	let failure_count = validate_diagnostic_source_run(run, &source, &artifact_resolver)?;
+
+	replay::verify_production_run(
+		run,
+		&source.set.tasks,
+		&artifact_resolver,
+		&source.set.evaluator_root,
+		&source.set.evaluator_runtime,
+		&replay_root,
+		&format!("diagnostic-source-{}", source_package.sha256),
+		cli.replay_jobs,
+	)?;
+
+	let rescored = replay::diagnose_rescore_run(
+		run,
+		&candidate.set.tasks,
+		&artifact_resolver,
+		&candidate.set.evaluator_root,
+		&candidate.set.evaluator_runtime,
+		&replay_root,
+		&format!("diagnostic-candidate-{}", source_package.sha256),
+		cli.replay_jobs,
+	)?;
+	let (diagnostic_results, cells) =
+		materialize_diagnostic_results(run, &candidate.set.tasks, &rescored.evaluator_results)?;
+	let official_calibration =
+		scoring::diagnose_official_calibration(&candidate.set.tasks, &diagnostic_results).map_err(
+			|error| {
+				WorkerError::terminal(
+					ReasonCode::NormalizationMismatch,
+					format!("candidate Official calibration diagnosis failed: {error}"),
+				)
+			},
+		)?;
+	let report = DiagnosticRescoreReport {
+		schema_version: "aiq.diagnostic-rescore.v1",
+		classification: "historical_candidate_evaluator_diagnostic_non_official",
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		source_package_sha256: format!("sha256:{}", source_package.sha256),
+		source_run_id: run.run_id.clone(),
+		source_corpus_commitment_sha256: source.set.corpus_commitment_sha256,
+		candidate_corpus_commitment_sha256: candidate.set.corpus_commitment_sha256,
+		candidate_task_set_digest: candidate.set.task_set_digest,
+		candidate_evaluator_digest: candidate.set.evaluator_digest,
+		replay_scope: "source_verified_and_candidate_evaluator_replayed",
+		result_count: cells.len(),
+		replayed_result_count: cells.len() - failure_count,
+		preserved_runtime_failure_count: failure_count,
+		cells,
+		official_calibration,
+	};
+
+	write_create_new_json(&output_target, &report)
+}
+
+fn materialize_diagnostic_results(
+	run: &RunRecord,
+	candidate_tasks: &[TaskDefinition],
+	evaluator_results: &[Option<EvaluationResult>],
+) -> Result<(Vec<TaskResult>, Vec<DiagnosticRescoreCell>), WorkerError> {
+	if evaluator_results.len() != run.results.len() {
+		return Err(WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"candidate evaluator results are not aligned with the source matrix",
+		));
+	}
+
+	let tasks = candidate_tasks
+		.iter()
+		.map(|task| (task.task_id.as_str(), task))
+		.collect::<BTreeMap<_, _>>();
+	let mut diagnostic_results = Vec::with_capacity(run.results.len());
+	let mut cells = Vec::with_capacity(run.results.len());
+
+	for (source, candidate_result) in run.results.iter().zip(evaluator_results) {
+		let task = tasks.get(source.task_id.as_str()).ok_or_else(|| {
+			WorkerError::terminal(
+				ReasonCode::InvalidReplayEvidence,
+				"candidate task mapping is incomplete",
+			)
+		})?;
+		let mut diagnostic = source.clone();
+
+		diagnostic.result_id.clear();
+		diagnostic.task_version.clone_from(&task.task_version);
+
+		diagnostic.task_hash =
+			task.content_hash().map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+		let (evaluation, score, preserved_runtime_failure) = match candidate_result {
+			Some(result) if source.status == ResultStatus::Completed => {
+				let evaluation = match result.outcome {
+					EvaluatorOutcome::Correct => runner::EvaluationOutcome::Correct,
+					EvaluatorOutcome::Partial => runner::EvaluationOutcome::Partial,
+					EvaluatorOutcome::Incorrect => runner::EvaluationOutcome::Incorrect,
+				};
+
+				diagnostic.evaluation = evaluation;
+				diagnostic.task_score = Some(result.score);
+				diagnostic.failure = None;
+
+				(evaluation, result.score, false)
+			},
+			None if source.status == ResultStatus::Failed && source.task_score == Some(0.0) => {
+				(diagnostic.evaluation, 0.0, true)
+			},
+			_ => {
+				return Err(WorkerError::terminal(
+					ReasonCode::EvaluatorReplayMismatch,
+					"candidate outcomes do not preserve source runtime failures",
+				));
+			},
+		};
+
+		cells.push(DiagnosticRescoreCell {
+			task_id: source.task_id.clone(),
+			model: source.model,
+			source_status: source.status,
+			source_evaluation: source.evaluation,
+			source_task_score: source.task_score,
+			candidate_evaluation: evaluation,
+			candidate_task_score: score,
+			preserved_runtime_failure,
+		});
+		diagnostic_results.push(diagnostic);
+	}
+
+	Ok((diagnostic_results, cells))
 }
 
 fn run_validate_environment(cli: ValidateEnvironmentCli) -> Result<(), WorkerError> {
@@ -3324,14 +3847,14 @@ mod tests {
 
 	use crate::{
 		ArtifactResolveAttemptError, ArtifactResolverClient, Claim, ClaimLease, Cli,
-		DEFAULT_REPLAY_JOBS, ErrorKind, HttpArtifactResolver, HttpResponse, LEASE_RENEWAL_INTERVAL,
-		LeaseMaintenance, LocalArtifactResolver, MAX_OPERATOR_ERROR_DETAIL_BYTES,
-		MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic, OperatorErrorClass, PackageDisposition,
-		PreparationRequest, PreparedEvidence, PreparedVerification, RECORD_SCHEMA,
-		REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode,
-		RejectionGatewayResponse, Secret, Transport, UreqTransport, ValidateEnvironmentCli,
-		VerificationGatewayResponse, VerificationRecord, VerifierEnvironment, VerifyLocalCli,
-		Worker, WorkerError, replay,
+		DEFAULT_REPLAY_JOBS, DiagnoseRescoreCli, ErrorKind, HttpArtifactResolver, HttpResponse,
+		LEASE_RENEWAL_INTERVAL, LeaseMaintenance, LocalArtifactResolver,
+		MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic,
+		OperatorErrorClass, PackageDisposition, PreparationRequest, PreparedEvidence,
+		PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL,
+		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, Secret, Transport,
+		UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse, VerificationRecord,
+		VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
@@ -3356,6 +3879,8 @@ mod tests {
 		submission,
 		task::EvaluatorRuntime,
 	};
+
+	static LOCAL_REPLAY_FIXTURE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
 
 	struct FakeTransport {
 		package: Vec<u8>,
@@ -3890,8 +4415,12 @@ mod tests {
 			}
 		}
 
-		fn unique() -> u128 {
-			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos()
+		fn unique() -> String {
+			let timestamp =
+				SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+			let sequence = LOCAL_REPLAY_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+
+			format!("{timestamp}-{sequence}")
 		}
 
 		fn candidate_artifacts(
@@ -3983,22 +4512,11 @@ mod tests {
 		}
 
 		fn write_artifact(root: &Path, kind: &str, bytes: &[u8]) -> (ArtifactReference, PathBuf) {
-			let digest = hex::encode(Sha256::digest(bytes));
-			let directory = root.join(&digest);
-			let path = directory.join(kind);
+			let sink = adapter::LocalArtifactSink::new(root).expect("fixture artifact sink");
+			let reference = sink.put(kind, bytes).expect("fixture artifact bytes");
+			let path = root.join(reference.content_hash.trim_start_matches("sha256:")).join(kind);
 
-			fs::create_dir(&directory).expect("artifact digest directory");
-			fs::write(&path, bytes).expect("artifact bytes");
-
-			(
-				ArtifactReference {
-					kind: kind.to_owned(),
-					content_hash: format!("sha256:{digest}"),
-					uri: format!("aiq-artifact://sha256/{digest}/{kind}"),
-					bytes: u64::try_from(bytes.len()).expect("artifact size"),
-				},
-				path,
-			)
+			(reference, path)
 		}
 
 		fn prepare(
@@ -4197,6 +4715,8 @@ mod tests {
 		assert!(help.contains("aiq-verifier verify-local --help"));
 		assert!(help.contains("write create-new stage and attestation files"));
 		assert!(help.contains("does not publish or assign cloud trust"));
+		assert!(help.contains("aiq-verifier diagnose-rescore --help"));
+		assert!(help.contains("permanently non-Official create-new diagnostic report"));
 	}
 
 	#[test]
@@ -4238,6 +4758,115 @@ mod tests {
 
 		assert!(VerifyLocalCli::try_parse_from(overridden).is_err());
 	}
+
+	#[test]
+	fn diagnose_rescore_cli_requires_source_provenance_and_candidate_source_authority() {
+		let arguments = [
+			"aiq-verifier diagnose-rescore",
+			"--package",
+			"package.json",
+			"--artifact-root",
+			"artifacts",
+			"--source-tasks",
+			"source-tasks",
+			"--source-environment",
+			"source-environment.json",
+			"--source-evaluator-root",
+			"source-evaluators",
+			"--source-corpus-commitment",
+			"source-corpus.json",
+			"--source-evaluator-runtime",
+			"/source/node",
+			"--source-codex-toolchain-root",
+			"/source/toolchain",
+			"--candidate-tasks",
+			"candidate-tasks",
+			"--candidate-source-root",
+			"candidate-source-snapshot",
+			"--candidate-evaluator-root",
+			"candidate-evaluators",
+			"--candidate-corpus-commitment",
+			"candidate-corpus.json",
+			"--candidate-evaluator-runtime",
+			"/candidate/node",
+			"--candidate-codex-toolchain-root",
+			"/candidate/toolchain",
+			"--replay-root",
+			"replay",
+			"--output",
+			"diagnostic.json",
+		];
+
+		assert!(DiagnoseRescoreCli::try_parse_from(arguments).is_ok());
+		assert!(DiagnoseRescoreCli::try_parse_from(&arguments[..arguments.len() - 2]).is_err());
+
+		let mut obsolete_candidate_environment = arguments.to_vec();
+
+		obsolete_candidate_environment
+			.extend(["--candidate-environment", "candidate-environment.json"]);
+
+		assert!(DiagnoseRescoreCli::try_parse_from(obsolete_candidate_environment).is_err());
+
+		let mut forbidden = arguments.to_vec();
+
+		forbidden.extend(["--attestation-output", "attestation.json"]);
+
+		assert!(DiagnoseRescoreCli::try_parse_from(forbidden).is_err());
+	}
+
+	#[test]
+	fn diagnostic_output_is_create_new_and_preserves_the_first_report() {
+		let root = temporary_test_root("diagnostic-create-new");
+		let output = root.join("diagnostic.json");
+		let target =
+			super::OutputTarget::new(&output, "diagnostic output").expect("new diagnostic output");
+
+		super::write_create_new_json(&target, &serde_json::json!({ "sequence": 1 }))
+			.expect("first diagnostic report");
+
+		let first = fs::read(&output).expect("first diagnostic bytes");
+		let error = super::write_create_new_json(&target, &serde_json::json!({ "sequence": 2 }))
+			.expect_err("existing diagnostic output must not be overwritten");
+
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(&first).expect("diagnostic JSON"),
+			serde_json::json!({ "sequence": 1 })
+		);
+		assert_eq!(fs::read(&output).expect("preserved diagnostic bytes"), first);
+		assert_eq!(error.kind, ErrorKind::Configuration);
+
+		fs::remove_dir_all(root).expect("remove fixture");
+	}
+
+	#[test]
+	fn diagnostic_source_accepts_a_valid_official_matrix_with_reused_artifact_content() {
+		let fixture = LocalReplayFixture::new();
+		let envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("signed Official fixture package");
+		let run: runner::RunRecord =
+			serde_json::from_value(envelope.payload).expect("Official fixture run");
+		let source = super::ConfiguredSourceEvaluatorSet {
+			environment: fixture.environment.clone(),
+			set: super::ConfiguredEvaluatorSet {
+				tasks: fixture.tasks.clone(),
+				evaluator_root: fixture.evaluator_root.clone(),
+				evaluator_runtime: fixture.evaluator_runtime.clone(),
+				toolchain_root: fixture.root.join("toolchain"),
+				corpus_commitment_sha256: "sha256:fixture".to_owned(),
+				task_set_digest: run.task_set_hash.clone(),
+				evaluator_digest: "sha256:fixture".to_owned(),
+			},
+		};
+		let resolver =
+			LocalArtifactResolver::new(&fixture.artifact_root).expect("fixture artifact resolver");
+
+		assert_eq!(
+			super::validate_diagnostic_source_run(&run, &source, &resolver)
+				.expect("valid Official source matrix"),
+			0
+		);
+	}
+
 	fn temporary_test_root(label: &str) -> PathBuf {
 		let unique =
 			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
@@ -4439,6 +5068,28 @@ mod tests {
 			assert!(!attestation.exists());
 			assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
 		}
+	}
+
+	#[test]
+	fn local_replay_fixture_artifacts_are_idempotent_without_overwriting_mismatches() {
+		let root = temporary_test_root("local-artifact-idempotence");
+		let (first, path) = LocalReplayFixture::write_artifact(&root, "stdout.jsonl", b"same");
+		let (repeated, repeated_path) =
+			LocalReplayFixture::write_artifact(&root, "stdout.jsonl", b"same");
+
+		assert_eq!(repeated, first);
+		assert_eq!(repeated_path, path);
+
+		fs::write(&path, b"different").expect("replace fixture artifact with mismatched bytes");
+
+		let mismatch = panic::catch_unwind(|| {
+			LocalReplayFixture::write_artifact(&root, "stdout.jsonl", b"same");
+		});
+
+		assert!(mismatch.is_err());
+		assert_eq!(fs::read(&path).expect("preserved mismatched artifact"), b"different");
+
+		fs::remove_dir_all(root).expect("remove fixture");
 	}
 
 	#[test]

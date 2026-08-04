@@ -161,7 +161,9 @@ the controlled 72-task AIQ Core corpus and the separate six-unit Contrast
 corpus. Their shared Rust validator now fails closed unless each runner subtree uses
 `identity_kind: source_only` with a null `built_binary_sha256`. The checked Core
 JSON schema enforces the same rule. Contrast has equivalent shared typed
-enforcement even though it has no separate checked-in JSON schema.
+enforcement even though it has no separate checked-in JSON schema. Contrast is
+an operator-enforced release gate before admission. It is not an input to the
+Official admission receipt and does not add cells to the 1,224-cell matrix.
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
 exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, and planned
@@ -180,7 +182,17 @@ outputs are create-new. Keep every future-output parent owner-controlled and
 single-writer because the runner takes nonblocking advisory locks before paid
 probing and holds them through finalization.
 
+Permission-canary evidence v2 retains the read-only, write-denial, and network
+denial boundaries. It also directly executes the committed Node.js and ripgrep
+absolute paths. A corpus, toolchain, or permission-evidence digest change
+invalidates the complete downstream chain. Create a new admission, preflight,
+checkpoint, run, score, package, verifier environment, replay stage, and
+attestation. Do not reuse evidence from the changed plan.
+
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
+This is one run with 1,224 task-model cells, not 1,224 runs. Use `--jobs 32` only
+when the admission capacity check accepts that exact value, and pass the same
+value through the admitted plan.
 Repository support for admission does not prove that the production permission
 canaries pass on the selected host. The `run` command defaults to calibration
 and accepts repeated `--task` and `--model` arguments for a deterministic
@@ -292,6 +304,14 @@ verifier role, then uses the distinct publisher role to reconcile retained
 package and artifact evidence and publish only the non-Official calibration
 marker. Public pages appear at `/calibrations` and `/calibrations/[id]`; absence
 of rows is valid until a verified calibration has completed this transition.
+
+Use `aiq-verifier diagnose-rescore --help` for offline candidate-evaluator
+diagnosis. This mode first verifies the signed source package, artifacts,
+provenance, and complete source evaluator replay. It then replays the preserved
+matrix cells with the candidate source, tasks, evaluators, runtime, and
+toolchain. Its output is one create-new, permanently non-Official and
+non-ranking diagnostic. The command cannot publish and does not create a stage
+or attestation.
 
 ## Fresh database initialization
 

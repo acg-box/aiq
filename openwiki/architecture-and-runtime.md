@@ -105,7 +105,10 @@ capacity, worker count, and permission boundary. The runner starts Codex with
 strict CLI configuration that selects the explicit `aiq_benchmark` profile and
 requires external managed requirements to be absent, then runs the sandbox
 canaries and validates the planned preflight, checkpoint, run, score, and package
-paths. It writes one private create-once
+paths. Permission-canary evidence v2 preserves the filesystem read-only and
+write-denial checks and network denial. It also executes the committed Node.js
+and ripgrep absolute paths directly inside the benchmark boundary. The runner
+writes one private create-once
 `aiq.official-permission-admission.v2` receipt without invoking a model. Paid
 preflight validates the public catalog, current corpus commitment, controlled
 toolchain, evaluator runtime, source manifest, capability manifest,
@@ -141,6 +144,13 @@ trusted single-writer boundary. An Official run is non-synthetic, complete, and
 exactly 17 by 72. Calibration accepts a deterministic subset but remains
 untrusted, non-Official, and ineligible for ranking.
 
+The complete Official matrix is one run with 1,224 task-model cells, not 1,224
+runs. An admitted host can execute it with `--jobs 32` when the conservative
+capacity check accepts that value. A corpus, toolchain, or permission-evidence
+digest change defines a different plan. It requires a new admission, preflight,
+checkpoint, run, score, package, verifier environment, replay stage, and
+attestation; evidence from the changed plan cannot authorize the new one.
+
 After each paid invocation, the runner retains the available invocation and
 workspace evidence before cleanup. Authentication, subscription-limit, or
 workspace-integrity boundaries cancel remaining paid cells; checkpoints do not
@@ -163,6 +173,13 @@ It resolves and digest/size-checks every signed capability-probe artifact so
 publication retention can prove ownership of that run-level evidence, then
 reconstructs submitted workspaces and replays committed evaluators with the
 committed runtime. Production requires the `evaluator_replayed` disposition.
+
+The offline `diagnose-rescore` mode is separate from verification and
+publication. It verifies the source package signature, provenance, artifacts,
+and complete source evaluator replay before it uses the candidate source, tasks,
+evaluators, runtime, and toolchain to replay the preserved matrix cells. The
+create-new diagnostic is permanently non-Official and non-ranking. It cannot
+publish, create a verifier stage, or sign an attestation.
 
 The verification route performs three ordered database actions for Official
 evidence: stage `aiq.normalized-batch.v3`, record the immutable verifier
@@ -239,7 +256,11 @@ public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
 The public site is a professional analysis workbench backed by real historical
-production evidence. The overview leads with a chart of the scored
+production evidence. Its scientific score context identifies the observation
+count, fixed-fixture task-sensitivity interval, coverage, missing cells, runtime
+status, scoring method, and provenance. Cost is an estimated Standard
+API-equivalent comparison, not an actual ChatGPT or Codex subscription bill. The
+overview leads with a chart of the scored
 17-configuration matrix and supports dot, bar, and ordered-horizontal
 presentations with task-sensitivity intervals. It fetches the complete run behind the
 highest point estimate and uses that run for a task-outcome card, a ten-domain

@@ -76,7 +76,6 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
         api: {
           value: (dimension: number) => number;
           coord: (value: readonly number[]) => readonly [number, number];
-          style: (style: Record<string, unknown>) => Record<string, unknown>;
         },
       ) => {
         const index = api.value(0);
@@ -88,17 +87,17 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
             {
               type: 'line',
               shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
-              style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+              style: { stroke: 'var(--interval)', lineWidth: 1.5 },
             },
             {
               type: 'line',
               shape: { x1: low[0] - 4, y1: low[1], x2: low[0] + 4, y2: low[1] },
-              style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+              style: { stroke: 'var(--interval)', lineWidth: 1.5 },
             },
             {
               type: 'line',
               shape: { x1: high[0] - 4, y1: high[1], x2: high[0] + 4, y2: high[1] },
-              style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+              style: { stroke: 'var(--interval)', lineWidth: 1.5 },
             },
           ],
         };
@@ -143,7 +142,6 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
               api: {
                 value: (dimension: number) => number;
                 coord: (value: readonly number[]) => readonly [number, number];
-                style: (style: Record<string, unknown>) => Record<string, unknown>;
               },
             ) => {
               const index = api.value(1);
@@ -155,17 +153,17 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
                   {
                     type: 'line',
                     shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
-                    style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                    style: { stroke: 'var(--interval)', lineWidth: 1.5 },
                   },
                   {
                     type: 'line',
                     shape: { x1: low[0], y1: low[1] - 4, x2: low[0], y2: low[1] + 4 },
-                    style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                    style: { stroke: 'var(--interval)', lineWidth: 1.5 },
                   },
                   {
                     type: 'line',
                     shape: { x1: high[0], y1: high[1] - 4, x2: high[0], y2: high[1] + 4 },
-                    style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                    style: { stroke: 'var(--interval)', lineWidth: 1.5 },
                   },
                 ],
               };
@@ -273,7 +271,12 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
       )}
       <details className="chart-data-disclosure">
         <summary>Read {scored.length} configuration values</summary>
-        <div className="table-scroll" tabIndex={0}>
+        <div
+          className="table-scroll"
+          role="region"
+          aria-label="AIQ configuration values"
+          tabIndex={0}
+        >
           <table>
             <caption>Descriptive AIQ index values, highest point estimate first.</caption>
             <thead>

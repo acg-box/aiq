@@ -284,7 +284,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                   {task.totalTokens?.toLocaleString() ?? 'unavailable'}
                 </span>
                 <span>
-                  API-equivalent cost:{' '}
+                  Estimated Standard API-equivalent cost:{' '}
                   {task.standardApiEquivalentUsdNanos === null
                     ? task.costEstimatorStatus.replaceAll('_', ' ')
                     : `$${(task.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(6)}`}{' '}
