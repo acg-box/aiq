@@ -5,6 +5,7 @@ import {
   validateProductionEfficiencyEvidence,
   validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
+import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production reads stay serial to bound load on the public origin. */
 
@@ -51,7 +52,6 @@ async function expectPublishedPage(
   expectedOrigin: string,
   path: string,
   heading?: string,
-  evidenceLabel = 'Data provenance',
 ) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
@@ -59,15 +59,7 @@ async function expectPublishedPage(
   const mainHeading = page.locator('main h1');
   await expect(mainHeading).toBeVisible();
   if (heading) await expect(mainHeading).toContainText(heading);
-  const primaryEvidence = page.getByLabel(evidenceLabel, { exact: true });
-  await expect(primaryEvidence).toBeVisible();
-  await expect(primaryEvidence.getByText('Published evidence', { exact: true })).toBeVisible();
-  await expect(primaryEvidence.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-  await expect(primaryEvidence.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
-  await expect(primaryEvidence.getByText('No published evidence', { exact: true })).toHaveCount(0);
-  await expect(
-    primaryEvidence.getByText('Published evidence unavailable', { exact: true }),
-  ).toHaveCount(0);
+  await expectProductionPageEvidence(page, path);
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
   );
@@ -454,7 +446,6 @@ test('production method, trends, and radar preserve transparent evidence semanti
     expectedOrigin,
     '/trends?range=all',
     'The past remains part of the record',
-    'Matrix entries provenance',
   );
   await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Trend series' }).getByRole('listitem')).toHaveCount(
