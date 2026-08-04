@@ -153,6 +153,10 @@ export interface RunOutcomeSummary {
   anyCreditRate: number | null;
 }
 
+export function formatAnyCreditRate(rate: number | null): string {
+  return rate === null ? '—' : `${rate.toFixed(0)}%`;
+}
+
 /**
  * Keep the user-facing outcome mix aligned with the immutable task score.
  * Exact public outcomes are the semantic source of truth. Execution status is

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { summarizeRunDomains, summarizeRunOutcomes } from '../data/format.ts';
+import { formatAnyCreditRate, summarizeRunDomains, summarizeRunOutcomes } from '../data/format.ts';
 import type { BenchmarkRun } from '../data/types.ts';
 
 export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
@@ -23,7 +23,7 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
           <h2 id="outcome-card-heading">Task outcomes, not model IQ</h2>
         </div>
         <strong className="outcome-rate">
-          {outcomes.anyCreditRate === null ? '—' : `${outcomes.anyCreditRate.toFixed(0)}%`}
+          {formatAnyCreditRate(outcomes.anyCreditRate)}
           <small>completed tasks earning any credit</small>
         </strong>
       </div>

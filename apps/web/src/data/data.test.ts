@@ -6,6 +6,7 @@ import {
   classifyRunSummaryCompleteness,
   classifyObservationRecency,
   filterTrendPoints,
+  formatAnyCreditRate,
   formatConfidenceInterval,
   formatLastObservation,
   formatTrustLevel,
@@ -751,6 +752,37 @@ void describe('presentation aggregates', () => {
       total: 7,
       anyCreditRate: (2 / 3) * 100,
     });
+  });
+
+  void it('does not present an all-runtime run as all failed', () => {
+    const source = seedRuns[0];
+    assert.ok(source);
+    const run = {
+      ...source,
+      tasks: source.tasks.map((task) =>
+        Object.assign({}, task, {
+          outcome: 'timeout' as const,
+          executionStatus: 'runtime_issue' as const,
+          score: 0,
+          explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
+        }),
+      ),
+    };
+    const summary = summarizeRunOutcomes(run);
+    assert.deepEqual(summary, {
+      correct: 0,
+      partial: 0,
+      incorrect: 0,
+      runtimeIssues: 72,
+      invalid: 0,
+      missing: 0,
+      notApplicable: 0,
+      anyCredit: 0,
+      completedOutcomes: 0,
+      total: 72,
+      anyCreditRate: null,
+    });
+    assert.equal(formatAnyCreditRate(summary.anyCreditRate), '—');
   });
 
   void it('keeps synthetic calibration invocation counts and efficiency evidence unavailable', async () => {
