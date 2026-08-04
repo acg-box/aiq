@@ -724,6 +724,123 @@ declare
   synthetic boolean;
 begin
   perform aiq_private.require_request_role('aiq_verifier');
+  -- A completed exact retry must not repeat the full 1,224-result validation.
+  -- Validate the bounded identity first, serialize the batch, bind it to the
+  -- immutable signed package, and then prove every stored staging invariant.
+  if jsonb_typeof(stage) is distinct from 'object'
+    or octet_length(stage::text) > 4194304
+    or aiq_private.jsonb_wire_value_is_bounded(stage) is distinct from true
+    or not aiq_private.has_exact_jsonb_keys(
+      stage,
+      array[
+        'benchmark_version', 'capability_validation_digest', 'content_hash',
+        'efficiency', 'execution_concurrency', 'finished_unix_ms',
+        'matrix_batch_id', 'normalization_digest',
+        'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
+        'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
+        'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
+        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version'
+      ]::text[]
+    )
+    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
+    or not coalesce(stage ->> 'matrix_batch_id' ~ '^run_[0-9a-f]{64}$', false)
+    or not aiq_private.jsonb_sha256_field_is_valid(stage, 'package_sha256', false)
+    or not aiq_private.jsonb_sha256_field_is_valid(stage, 'content_hash', true)
+    or jsonb_typeof(stage -> 'synthetic') is distinct from 'boolean'
+    or jsonb_typeof(stage -> 'signer') is distinct from 'object'
+    or not aiq_private.has_exact_jsonb_keys(
+      stage -> 'signer', array['node_id', 'public_key']::text[]
+    )
+    or aiq_private.node_public_key_matches_id(
+      stage -> 'signer' ->> 'node_id', stage -> 'signer' ->> 'public_key'
+    ) is distinct from true
+  then
+    raise exception 'invalid aiq.normalized-batch.v3 envelope'
+      using errcode = '22023';
+  end if;
+
+  batch_id := stage ->> 'matrix_batch_id';
+  package_id := stage ->> 'package_sha256';
+  synthetic := (stage ->> 'synthetic')::boolean;
+  stage_provenance := stage -> 'provenance';
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'aiq.v3.batch-lock:' || batch_id || ':' || package_id,
+      71783153620529
+    )
+  );
+  select * into inbox
+  from aiq_private.aiq_submission_inbox queued
+  where queued.idempotency_key = batch_id
+    and queued.package_sha256 = package_id
+  for update;
+  if not found then
+    raise exception 'immutable submission inbox record not found'
+      using errcode = 'P0002';
+  end if;
+  if aiq_private.result_package_v3_is_valid(inbox.envelope) is distinct from true
+    or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
+    or inbox.envelope -> 'payload' -> 'provenance' is distinct from stage_provenance
+    or inbox.envelope -> 'payload' -> 'synthetic' is distinct from stage -> 'synthetic'
+    or inbox.envelope -> 'payload' -> 'execution_concurrency'
+      is distinct from stage -> 'execution_concurrency'
+    or inbox.envelope -> 'signer' is distinct from stage -> 'signer'
+    or inbox.envelope ->> 'content_hash' is distinct from stage ->> 'content_hash'
+  then
+    raise exception 'official result package is not bound to normalized batch v3'
+      using errcode = '22023';
+  end if;
+  if inbox.state is not distinct from 'processed' and exists (
+    select 1
+    from aiq_private.aiq_matrix_batches batch
+    join aiq_private.aiq_result_packages package
+      on package.package_sha256 = batch.package_sha256
+    where batch.matrix_batch_id = batch_id
+      and batch.package_sha256 = package_id
+      and batch.normalized_stage is not distinct from stage
+      and batch.run_provenance is not distinct from
+        nullif(stage_provenance, 'null'::jsonb)
+      and package.schema_version = 'aiq.result-package.v3'
+      and package.provenance =
+        '{"schema_version":"aiq.package-binding.v3"}'::jsonb
+      and package.envelope is not distinct from inbox.envelope
+      and package.run_provenance is not distinct from batch.run_provenance
+      and (
+        select count(*)
+        from aiq_private.aiq_package_runs link
+        where link.package_sha256 = package_id
+      ) = 17
+      and (
+        select count(*)
+        from aiq_private.aiq_task_results result
+        join aiq_private.aiq_package_runs link on link.run_id = result.run_id
+        where link.package_sha256 = package_id
+      ) = 1224
+      and (
+        select count(*) from aiq_private.efficiency_official_models efficiency
+        join aiq_private.aiq_package_runs link using(run_id)
+        where link.package_sha256=package_id
+      ) = 17
+      and (
+        select count(*)
+        from aiq_private.aiq_verification_audit audit
+        where audit.inbox_id = inbox.inbox_id
+          and audit.package_sha256 = package_id
+          and audit.event_type = 'staged'
+      ) = 1
+      and not exists (
+        select 1 from aiq_private.aiq_package_runs link
+        join aiq_private.aiq_runs run on run.run_id = link.run_id
+        where link.package_sha256 = package_id
+          and run.run_provenance is distinct from batch.run_provenance
+      )
+  ) then
+    return batch_id;
+  end if;
+  if inbox.state is distinct from 'queued' then
+    raise exception 'submission is not eligible for staging' using errcode = '55000';
+  end if;
+
   if jsonb_typeof(stage) is distinct from 'object'
     or octet_length(stage::text) > 4194304
     or aiq_private.jsonb_wire_value_is_bounded(stage) is distinct from true
@@ -805,16 +922,6 @@ begin
       using errcode = '22023';
   end if;
 
-  batch_id := stage ->> 'matrix_batch_id';
-  package_id := stage ->> 'package_sha256';
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(
-      'aiq.v3.batch-lock:' || batch_id || ':' || package_id,
-      71783153620529
-    )
-  );
-  synthetic := (stage ->> 'synthetic')::boolean;
-  stage_provenance := stage -> 'provenance';
   if (
       synthetic
       and (
@@ -837,80 +944,6 @@ begin
   then
     raise exception 'normalized run-class and provenance policy is invalid'
       using errcode = '22023';
-  end if;
-
-  select * into inbox
-  from aiq_private.aiq_submission_inbox queued
-  where queued.idempotency_key = batch_id
-    and queued.package_sha256 = package_id
-  for update;
-  if not found then
-    raise exception 'immutable submission inbox record not found'
-      using errcode = 'P0002';
-  end if;
-  if aiq_private.result_package_v3_is_valid(inbox.envelope) is distinct from true
-    or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
-    or inbox.envelope -> 'payload' -> 'provenance' is distinct from
-      stage_provenance
-    or inbox.envelope -> 'payload' -> 'synthetic' is distinct from stage -> 'synthetic'
-    or inbox.envelope -> 'payload' -> 'execution_concurrency'
-      is distinct from stage -> 'execution_concurrency'
-    or inbox.envelope -> 'signer' is distinct from stage -> 'signer'
-    or inbox.envelope ->> 'content_hash' is distinct from stage ->> 'content_hash'
-  then
-    raise exception 'official result package is not bound to normalized batch v3'
-      using errcode = '22023';
-  end if;
-
-  if inbox.state is not distinct from 'processed' and exists (
-    select 1
-    from aiq_private.aiq_matrix_batches batch
-    join aiq_private.aiq_result_packages package
-      on package.package_sha256 = batch.package_sha256
-    where batch.matrix_batch_id = batch_id
-      and batch.package_sha256 = package_id
-      and batch.normalized_stage is not distinct from stage
-      and batch.run_provenance is not distinct from
-        nullif(stage_provenance, 'null'::jsonb)
-      and package.schema_version = 'aiq.result-package.v3'
-      and package.provenance =
-        '{"schema_version":"aiq.package-binding.v3"}'::jsonb
-      and package.envelope is not distinct from inbox.envelope
-      and package.run_provenance is not distinct from batch.run_provenance
-      and (
-        select count(*)
-        from aiq_private.aiq_package_runs link
-        where link.package_sha256 = package_id
-      ) = 17
-      and (
-        select count(*)
-        from aiq_private.aiq_task_results result
-        join aiq_private.aiq_package_runs link on link.run_id = result.run_id
-        where link.package_sha256 = package_id
-      ) = 1224
-      and (
-        select count(*) from aiq_private.efficiency_official_models efficiency
-        join aiq_private.aiq_package_runs link using(run_id)
-        where link.package_sha256=package_id
-      ) = 17
-      and (
-        select count(*)
-        from aiq_private.aiq_verification_audit audit
-        where audit.inbox_id = inbox.inbox_id
-          and audit.package_sha256 = package_id
-          and audit.event_type = 'staged'
-      ) = 1
-      and not exists (
-        select 1 from aiq_private.aiq_package_runs link
-        join aiq_private.aiq_runs run on run.run_id = link.run_id
-        where link.package_sha256 = package_id
-          and run.run_provenance is distinct from batch.run_provenance
-      )
-  ) then
-    return batch_id;
-  end if;
-  if inbox.state is distinct from 'queued' then
-    raise exception 'submission is not eligible for staging' using errcode = '55000';
   end if;
 
   -- Serialize the first staging transition with runner lifecycle changes.
@@ -4447,7 +4480,9 @@ declare
   supplied_domains jsonb;
   efficiency_entry jsonb;
   pricing jsonb;
-  pricing_digest text;
+  computed_pricing_digest text;
+  signed_results_by_id jsonb;
+  result_efficiency_by_id jsonb;
 begin
   perform aiq_private.require_request_role('aiq_verifier');
   if jsonb_typeof(stage) is distinct from 'object' then
@@ -4648,6 +4683,12 @@ begin
     raise exception 'submission is not eligible for staging' using errcode = '55000';
   end if;
   payload := inbox.envelope -> 'payload';
+  select jsonb_object_agg(result ->> 'result_id', result)
+  into signed_results_by_id
+  from jsonb_array_elements(payload -> 'results') result;
+  select jsonb_object_agg(evidence ->> 'source_result_id', evidence)
+  into result_efficiency_by_id
+  from jsonb_array_elements(stage -> 'result_efficiency') evidence;
 
   if inbox.envelope ->> 'schema_version' is distinct from 'aiq.result-package.v3'
     or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
@@ -4670,18 +4711,17 @@ begin
     or (stage ->> 'finished_unix_ms')::bigint
       is distinct from (payload ->> 'finished_unix_ms')::bigint
     or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
-      where not exists(select 1 from jsonb_array_elements(payload->'results') source
-        where source->>'result_id'=evidence->>'source_result_id'
-          and source->>'task_id'=evidence->>'task_id'
-          and source->'model'=evidence->'model'))
+      where signed_results_by_id -> (evidence->>'source_result_id') is null
+        or signed_results_by_id #>> array[evidence->>'source_result_id','task_id']
+          is distinct from evidence->>'task_id'
+        or signed_results_by_id #> array[evidence->>'source_result_id','model']
+          is distinct from evidence->'model')
     or exists(
       select 1
       from jsonb_array_elements(stage->'result_efficiency') evidence
-      join jsonb_array_elements(payload->'results') source
-        on source->>'result_id'=evidence->>'source_result_id'
-        and source->>'task_id'=evidence->>'task_id'
-        and source->'model'=evidence->'model'
-      where source#>>'{failure,kind}' in (
+      where signed_results_by_id #>> array[
+        evidence->>'source_result_id','failure','kind'
+      ] in (
         'capability_unavailable','capability_validation_failed','workspace_unavailable'
       ) and (
         evidence->'observed_wall_ms'<>'null'::jsonb
@@ -4738,17 +4778,17 @@ begin
   end if;
 
   pricing := stage->'pricing';
-  pricing_digest := aiq_private.jcs_sha256(pricing);
+  computed_pricing_digest := aiq_private.jcs_sha256(pricing);
   insert into aiq_private.efficiency_pricing_methods(
     pricing_digest,method,version,as_of,source,currency,processing_tier,
     rates,formula,limitations,pricing_record
   ) values(
-    pricing_digest,pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
+    computed_pricing_digest,pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
     pricing->>'source',pricing->>'currency',pricing->>'processing_tier',pricing->'rates',
     pricing->>'formula',array[pricing->>'limitation'],pricing
-  ) on conflict (pricing_digest) do nothing;
+  ) on conflict on constraint efficiency_pricing_methods_pkey do nothing;
   if not exists(select 1 from aiq_private.efficiency_pricing_methods method
-    where method.pricing_digest=pricing_digest and method.pricing_record=pricing)
+    where method.pricing_digest=computed_pricing_digest and method.pricing_record=pricing)
   then raise exception 'conflicting Official pricing evidence' using errcode='23505'; end if;
 
   if not exists (
@@ -4921,9 +4961,7 @@ begin
       from jsonb_array_elements(stage -> 'runs') run,
            jsonb_array_elements(run -> 'results') normalized
       left join lateral (
-        select value
-        from jsonb_array_elements(payload -> 'results')
-        where value ->> 'result_id' = normalized ->> 'source_result_id'
+        select signed_results_by_id -> (normalized ->> 'source_result_id') as value
       ) signed on true
       left join aiq_private.aiq_task_catalog task
         on task.task_set_id = stage ->> 'task_set_id'
@@ -5399,7 +5437,7 @@ begin
         else 'unavailable_missing_usage' end,
       case when efficiency_entry->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
         then 'verifier_recomputed' end,
-      pricing_digest,efficiency_entry
+      computed_pricing_digest,efficiency_entry
     );
     insert into aiq_private.aiq_package_runs
       (package_sha256, run_id, model_config_id, matrix_order)
@@ -5438,7 +5476,7 @@ begin
       verified.evidence->>'provider_tokens_evidence_level',
       (verified.evidence->>'standard_api_equivalent_usd_nanos')::bigint,
       verified.evidence->>'cost_status',verified.evidence->>'cost_evidence_level',
-      pricing_digest,package_id,
+      computed_pricing_digest,package_id,
       (value -> 'provenance') || jsonb_build_object(
         'source_result_id', value ->> 'source_result_id',
         'task_hash', value ->> 'task_hash',
@@ -5447,11 +5485,7 @@ begin
       )
     from jsonb_array_elements(normalized_results)
     cross join lateral (
-      select telemetry.value as evidence
-      from jsonb_array_elements(stage->'result_efficiency') telemetry(value)
-      where telemetry.value->>'source_result_id'=value->>'source_result_id'
-        and telemetry.value->'model'=value->'model'
-        and telemetry.value->>'task_id'=value->>'task_id'
+      select result_efficiency_by_id -> (value->>'source_result_id') as evidence
     ) verified;
 
     insert into aiq_private.aiq_score_snapshots (
