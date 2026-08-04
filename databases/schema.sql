@@ -9701,7 +9701,7 @@ create view public.public_runs with (security_invoker = true) as
     run.completed_at,
     run.benchmark_version,
     run.scoring_version,
-    run.prompt_set_digest,
+    ('sha256:'::text || run.prompt_set_digest) as prompt_set_digest,
     run.runner_commit,
     run.region,
     run.synthetic,
