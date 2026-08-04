@@ -33,6 +33,7 @@ import {
   SUPABASE_ROLE_TOKEN_TTL_SECONDS,
 } from './supabase-role-token.ts';
 import { canonicalJson, sha256Hex } from './submission-contract.ts';
+import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const token = 'verifier-ingress-token';
 const runId = `run_${'1'.repeat(64)}`;
@@ -71,7 +72,7 @@ function productionProvenance(
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
-    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+    catalog_digest: FROZEN_CATALOG_DIGEST,
     task_set_digest: digest('4'),
     evaluator_digest: digest('3'),
     runtime_digest: digest('7'),
@@ -256,14 +257,14 @@ function signedVerification(
     content_hash: digest('3'),
     signer: runnerIdentity.node,
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.2',
+    task_set_version: '1.0.3',
     task_set_hash: digest('4'),
     capability_validation_digest: capabilityValidationDigest,
     provenance,
     run_class: synthetic ? null : 'official',
-    benchmark_version: 'aiq-core@1.0.2',
+    benchmark_version: 'aiq-core@1.0.3',
     prompt_set_digest: digest('5'),
-    scoring_version: '1.0.2',
+    scoring_version: '1.0.3',
     runner_commit: 'a'.repeat(40),
     region: 'test',
     scheduled_unix_ms: 1_753_376_400_000,
@@ -334,7 +335,7 @@ function signedCalibrationVerification(
   const scoreReports = models.map((model) => ({
     schema_version: 'aiq.calibration-score-report.v1',
     run_class: 'calibration',
-    scoring_version: '1.0.2',
+    scoring_version: '1.0.3',
     model,
     descriptive_status: 'coverage_only',
     official_eligible: false,
@@ -417,7 +418,7 @@ function signedCalibrationVerification(
       uri: `aiq-artifact://sha256/${'e'.repeat(64)}/evaluator-results.json`,
       bytes: 1,
     },
-    scoring_version: '1.0.2',
+    scoring_version: '1.0.3',
     execution_concurrency: 17,
     task_ids: taskIds,
     models,
@@ -425,8 +426,8 @@ function signedCalibrationVerification(
     result_efficiency: calibrationResultEfficiency,
     pricing: pricing(),
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.2',
-    benchmark_version: 'aiq-core@1.0.2',
+    task_set_version: '1.0.3',
+    benchmark_version: 'aiq-core@1.0.3',
     prompt_set_digest: digest('5'),
     runner_commit: 'a'.repeat(40),
     region: 'test',
@@ -457,7 +458,7 @@ function signedCalibrationVerification(
     score_reports_digest: stage.score_reports_digest,
     telemetry_digest: stage.telemetry_digest,
     capability_validation_digest: stage.capability_validation_digest,
-    scoring_version: '1.0.2',
+    scoring_version: '1.0.3',
     execution_concurrency: stage.execution_concurrency,
     observed_unix_ms: 4,
     replay_status: 'evaluator_replayed',

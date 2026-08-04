@@ -63,7 +63,7 @@ export default async function TrendsPage({
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Longitudinal evidence</span>
-        <h1>The past remains part of the record.</h1>
+        <h1>Benchmark history</h1>
         <p>
           Follow published fixed-fixture observations from the last day through all retained
           history. Each point carries its task count and task-resampling sensitivity interval.

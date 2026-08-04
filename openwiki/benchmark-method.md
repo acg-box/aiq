@@ -9,8 +9,8 @@ tags: ['benchmark', 'method', 'scoring']
 
 ## Fixture
 
-Repository source targets AIQ Core `1.0.2`, benchmark release
-`aiq-core@1.0.2`, and scoring implementation `1.0.2`. It contains 72 fixed
+Repository source targets AIQ Core `1.0.3`, benchmark release
+`aiq-core@1.0.3`, and scoring implementation `1.0.3`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -32,25 +32,43 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
+sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1
 ```
 
-The release-policy identity is `aiq-core/1.0.2`. Its catalog
+The release-policy identity is `aiq-core/1.0.3`. Its catalog
 release-identity digest is
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
+The scorer-manifest identity is
+`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
+and the evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 
-One current `aiq.corpus-commitment.v2` document binds every private task to that
-catalog. It also binds the baseline workspace, fixture bundle, evaluator,
-runtime, runner source, harness, tool policy, network policy, and environment.
+The independently audited source-only candidate commitment is
+`sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`,
+and native validation passes all 72 tasks. Its runtime `task_set_hash` is
+`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+The distinct controlled generated-task tree identity is
+`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+The separate six-task AIQ Core Contrast calibration commitment is
+`sha256:df3028d576c91f9b57e6aa23a94f0b1ffb61fd04b53a141fe9f0160c08a7c5d9`;
+its ordered metadata catalog identity is
+`sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
+The production commitment is created only after clean-commit native release
+binding. It binds every
+private task to the catalog and also binds the baseline workspace, fixture
+bundle, evaluator, runtime, runner source, harness, tool policy, network policy,
+and environment.
 
 ## Published Official evidence
 
-Production publishes one complete, non-synthetic Official `72 × 17` matrix, or
-1,224 results. Before the paid run, model-free validation checks all 72 core task
-definitions, six contrast variants, 648 fixed evaluator bindings, toolchain
-identities, source bindings, and deterministic evaluator outputs on the native
-macOS host. Contrast tests are validation evidence; they do not add rows to the
-Official matrix. Use the top-level model-free validators for these two
+Production publishes one historical AIQ Core `1.0.2`, non-synthetic Official
+`72 × 17` matrix, or 1,224 results. The current `1.0.3` release gate checks all
+72 Core task definitions and 432 fixed evaluator bindings: gold,
+alternate-correct, partial, adversarial-format, empty, and timeout for every
+task. The separate six-task Contrast calibration checks 36 bindings. Both
+validators also bind toolchain identities, source inputs, and deterministic
+evaluator outputs on the native macOS host. Contrast evidence does not add rows
+to the Official matrix. Use the top-level model-free validators for these two
 controlled corpora:
 
 ```sh
@@ -142,7 +160,7 @@ that boundary is therefore unpriced rather than guessed. Regional uplift,
 hosted-tool fees, and subscription pricing are excluded. The value is an
 API-equivalent comparison, not actual subscription spend.
 
-Signed AIQ Core `1.0.2` result packages retain measured latency and any available
+Signed result packages retain measured latency and any available
 usage fields. Public aggregates include only verified, coverage-qualified timing,
 token, and Standard API-equivalent cost evidence.
 

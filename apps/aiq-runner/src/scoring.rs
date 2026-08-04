@@ -1,7 +1,7 @@
 //! Transparent, versioned AIQ scoring.
 
 use std::{
-	collections::BTreeMap,
+	collections::{BTreeMap, BTreeSet},
 	fmt::{Display, Formatter},
 };
 
@@ -9,30 +9,64 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::{
-	model::ModelConfig,
+	model::{MODEL_MATRIX, ModelConfig},
 	protocol::{self, TrustTier},
 	runner::{EvaluationOutcome, FailureKind, ResultStatus, TaskResult},
 	task::{Domain, TaskDefinition},
 };
 
+type CalibrationMatrix<'a> = BTreeMap<(&'a str, ModelConfig), &'a TaskResult>;
+
+type CalibrationMatrixEvidence<'a> = (CalibrationMatrix<'a>, BTreeSet<Domain>);
+
+type CalibrationTaskStatistics<'a> = BTreeMap<&'a str, (f64, f64)>;
+
+type CalibrationStatisticsEvidence<'a> =
+	(CalibrationTaskStatistics<'a>, UniversalCalibrationCounts);
+
 /// Current scoring implementation version.
-pub const AIQ_SCORING_VERSION: &str = "1.0.2";
+pub const AIQ_SCORING_VERSION: &str = "1.0.3";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
-pub const AIQ_TASK_SET_VERSION: &str = "1.0.2";
+pub const AIQ_TASK_SET_VERSION: &str = "1.0.3";
 /// Current benchmark release identifier.
-pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.2";
+pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.3";
 /// Frozen full-metadata commitment for the current AIQ Core release.
 pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
-	"sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937";
+	"sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
 pub const DEFAULT_BOOTSTRAP_SEED: u64 = 0x41_49_51_5f_56_31;
+/// Fixed empirical publication-calibration policy identity.
+pub const OFFICIAL_CALIBRATION_POLICY_VERSION: &str = "aiq.official-calibration-policy.v1";
+/// Complete fixed-fixture task count required by the calibration policy.
+pub const OFFICIAL_CALIBRATION_TASKS: usize = 72;
+/// Inclusive lower bound for an informative item's mean credit across the matrix.
+pub const OFFICIAL_CALIBRATION_INFORMATIVE_FACILITY_MIN: f64 = 0.10;
+/// Inclusive upper bound for an informative item's mean credit across the matrix.
+pub const OFFICIAL_CALIBRATION_INFORMATIVE_FACILITY_MAX: f64 = 0.90;
+/// Minimum across-model task-credit range for an informative item.
+pub const OFFICIAL_CALIBRATION_INFORMATIVE_TASK_RANGE_MIN: f64 = 0.10;
+/// Minimum fraction of tasks whose facility is in the informative band.
+pub const OFFICIAL_CALIBRATION_MIN_INFORMATIVE_TASK_RATE: f64 = 0.50;
+/// Minimum fraction of tasks with non-uniform credit across configurations.
+pub const OFFICIAL_CALIBRATION_MIN_NON_UNIFORM_TASK_RATE: f64 = 0.50;
+/// Maximum fraction of tasks with universal semantic zero credit.
+pub const OFFICIAL_CALIBRATION_MAX_UNIVERSAL_SEMANTIC_ZERO_RATE: f64 = 0.10;
+/// Maximum fraction of tasks with universal full credit.
+pub const OFFICIAL_CALIBRATION_MAX_UNIVERSAL_FULL_CREDIT_RATE: f64 = 0.10;
+/// Inclusive lower bound for each domain's mean facility.
+pub const OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MIN: f64 = 0.10;
+/// Inclusive upper bound for each domain's mean facility.
+pub const OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MAX: f64 = 0.90;
+/// Minimum range, on the 0-100 scale, across model macro-domain scores.
+pub const OFFICIAL_CALIBRATION_MIN_MODEL_SCORE_RANGE: f64 = 3.0;
 
 const TASK_RESAMPLING_SENSITIVITY_METHOD: &str =
 	"finite_cluster_calibrated_percentile_sensitivity_v1";
+const CALIBRATION_COMPARISON_TOLERANCE: f64 = 1e-12;
 const SCORE_RULE: &str = "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
 const CALIBRATION_SCORE_RULE: &str = "Calibration analysis only. Values are transparent descriptive aggregates for the selected evidence. This report has no publication classification and is not ranking eligible. When present, the task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
 
@@ -94,6 +128,130 @@ pub struct ScoreContext {
 	///
 	/// Complete local task results do not grant this authority.
 	pub receiver_authorized_publication: bool,
+}
+
+/// Versioned fixed-fixture publication-calibration policy.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficialCalibrationPolicy {
+	/// Stable policy identity.
+	pub version: String,
+	/// Required task count.
+	pub required_tasks: usize,
+	/// Required model-configuration count.
+	pub required_model_configurations: usize,
+	/// Inclusive informative-facility lower bound.
+	pub informative_facility_min: f64,
+	/// Inclusive informative-facility upper bound.
+	pub informative_facility_max: f64,
+	/// Minimum across-model task-credit range for an informative item.
+	pub informative_task_range_min: f64,
+	/// Minimum informative-task fraction.
+	pub min_informative_task_rate: f64,
+	/// Minimum non-uniform-task fraction.
+	pub min_non_uniform_task_rate: f64,
+	/// Maximum universal semantic-zero fraction.
+	pub max_universal_semantic_zero_rate: f64,
+	/// Maximum universal full-credit fraction.
+	pub max_universal_full_credit_rate: f64,
+	/// Inclusive per-domain mean-facility lower bound.
+	pub domain_facility_min: f64,
+	/// Inclusive per-domain mean-facility upper bound.
+	pub domain_facility_max: f64,
+	/// Minimum range across 0-100 macro-domain model scores.
+	pub min_model_score_range: f64,
+}
+impl Default for OfficialCalibrationPolicy {
+	fn default() -> Self {
+		Self {
+			version: OFFICIAL_CALIBRATION_POLICY_VERSION.to_owned(),
+			required_tasks: OFFICIAL_CALIBRATION_TASKS,
+			required_model_configurations: MODEL_MATRIX.len(),
+			informative_facility_min: OFFICIAL_CALIBRATION_INFORMATIVE_FACILITY_MIN,
+			informative_facility_max: OFFICIAL_CALIBRATION_INFORMATIVE_FACILITY_MAX,
+			informative_task_range_min: OFFICIAL_CALIBRATION_INFORMATIVE_TASK_RANGE_MIN,
+			min_informative_task_rate: OFFICIAL_CALIBRATION_MIN_INFORMATIVE_TASK_RATE,
+			min_non_uniform_task_rate: OFFICIAL_CALIBRATION_MIN_NON_UNIFORM_TASK_RATE,
+			max_universal_semantic_zero_rate: OFFICIAL_CALIBRATION_MAX_UNIVERSAL_SEMANTIC_ZERO_RATE,
+			max_universal_full_credit_rate: OFFICIAL_CALIBRATION_MAX_UNIVERSAL_FULL_CREDIT_RATE,
+			domain_facility_min: OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MIN,
+			domain_facility_max: OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MAX,
+			min_model_score_range: OFFICIAL_CALIBRATION_MIN_MODEL_SCORE_RANGE,
+		}
+	}
+}
+
+/// One domain's fixed-fixture facility diagnostics.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficialCalibrationDomainSummary {
+	/// Domain identity.
+	pub domain: Domain,
+	/// Number of tasks in this domain.
+	pub tasks: usize,
+	/// Mean task credit across every model and task in this domain.
+	pub mean_facility: f64,
+	/// Tasks in the inclusive informative facility band.
+	pub informative_tasks: usize,
+	/// Tasks with the minimum across-model credit range.
+	pub non_uniform_tasks: usize,
+}
+
+/// Matrix-level calibration evidence kept separate from the AIQ score.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficialCalibrationSummary {
+	/// Stable policy identity applied to this observation.
+	pub policy_version: String,
+	/// Observed fixed-fixture task count.
+	pub tasks: usize,
+	/// Observed model-configuration count.
+	pub model_configurations: usize,
+	/// Tasks in the inclusive informative facility band.
+	pub informative_tasks: usize,
+	/// Informative tasks divided by all tasks.
+	pub informative_task_rate: f64,
+	/// Tasks with the minimum across-model credit range.
+	pub non_uniform_tasks: usize,
+	/// Non-uniform tasks divided by all tasks.
+	pub non_uniform_task_rate: f64,
+	/// Tasks for which every model received a valid zero.
+	pub universal_zero_tasks: usize,
+	/// Tasks for which every model completed but received an incorrect zero.
+	pub universal_semantic_zero_tasks: usize,
+	/// Tasks for which every model received an attributable runtime-failure zero.
+	pub universal_runtime_zero_tasks: usize,
+	/// Tasks whose universal zeros mix semantic rejection and runtime failure.
+	pub universal_mixed_zero_tasks: usize,
+	/// Tasks for which every model received full credit.
+	pub universal_full_credit_tasks: usize,
+	/// Per-domain fixed-fixture facility evidence.
+	pub domains: Vec<OfficialCalibrationDomainSummary>,
+	/// Lowest 0-100 macro-domain model score.
+	pub min_model_score: f64,
+	/// Highest 0-100 macro-domain model score.
+	pub max_model_score: f64,
+	/// Highest minus lowest macro-domain model score.
+	pub model_score_range: f64,
+}
+
+/// Transparent result of applying the fixed calibration policy.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfficialCalibrationDiagnostic {
+	/// Exact fixed policy.
+	pub policy: OfficialCalibrationPolicy,
+	/// Exact observed summary.
+	pub observed: OfficialCalibrationSummary,
+	/// Deterministically ordered publication-blocking findings.
+	pub violations: Vec<String>,
+}
+impl OfficialCalibrationDiagnostic {
+	/// Whether the matrix meets every fixed policy threshold.
+	#[must_use]
+	pub fn passed(&self) -> bool {
+		self.violations.is_empty()
+	}
 }
 
 /// A zero-sized value whose JSON representation is always boolean `false`.
@@ -316,6 +474,15 @@ impl Display for ScoreError {
 
 impl std::error::Error for ScoreError {}
 
+#[derive(Clone, Copy, Debug, Default)]
+struct UniversalCalibrationCounts {
+	all_zero: usize,
+	semantic_zero: usize,
+	runtime_zero: usize,
+	mixed_zero: usize,
+	full_credit: usize,
+}
+
 #[derive(Default)]
 struct DomainAccumulator {
 	expected: usize,
@@ -398,6 +565,50 @@ impl DeterministicRandom {
 			}
 		}
 	}
+}
+
+/// Diagnoses one complete 17-by-72 Official matrix without changing AIQ weights.
+pub fn diagnose_official_calibration(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+) -> Result<OfficialCalibrationDiagnostic, ScoreError> {
+	let policy = OfficialCalibrationPolicy::default();
+	let (matrix, expected_domains) = calibration_matrix(tasks, results, &policy)?;
+	let (task_statistics, counts) = calibration_task_statistics(tasks, &matrix)?;
+	let informative_tasks = task_statistics
+		.values()
+		.filter(|(facility, range)| calibration_informative(&policy, *facility, *range))
+		.count();
+	let informative_task_rate = informative_tasks as f64 / tasks.len() as f64;
+	let non_uniform_tasks = task_statistics
+		.values()
+		.filter(|(_, range)| calibration_non_uniform(&policy, *range))
+		.count();
+	let non_uniform_task_rate = non_uniform_tasks as f64 / tasks.len() as f64;
+	let domains = calibration_domain_summaries(tasks, &task_statistics, expected_domains, &policy);
+	let (min_model_score, max_model_score, model_score_range) =
+		calibration_model_score_range(tasks, &matrix, &domains);
+	let observed = OfficialCalibrationSummary {
+		policy_version: policy.version.clone(),
+		tasks: tasks.len(),
+		model_configurations: MODEL_MATRIX.len(),
+		informative_tasks,
+		informative_task_rate,
+		non_uniform_tasks,
+		non_uniform_task_rate,
+		universal_zero_tasks: counts.all_zero,
+		universal_semantic_zero_tasks: counts.semantic_zero,
+		universal_runtime_zero_tasks: counts.runtime_zero,
+		universal_mixed_zero_tasks: counts.mixed_zero,
+		universal_full_credit_tasks: counts.full_credit,
+		domains,
+		min_model_score,
+		max_model_score,
+		model_score_range,
+	};
+	let violations = calibration_violations(&policy, &observed);
+
+	Ok(OfficialCalibrationDiagnostic { policy, observed, violations })
 }
 
 /// Scores one model with production AIQ v1 bootstrap settings.
@@ -618,6 +829,279 @@ pub(crate) fn task_bindings_match_core_catalog(tasks: &[TaskDefinition]) -> bool
 	task_bindings_match_frozen_catalog(tasks)
 }
 
+fn calibration_matrix<'a>(
+	tasks: &[TaskDefinition],
+	results: &'a [TaskResult],
+	policy: &OfficialCalibrationPolicy,
+) -> Result<CalibrationMatrixEvidence<'a>, ScoreError> {
+	if tasks.len() != policy.required_tasks {
+		return Err(ScoreError::new(format!(
+			"Official calibration requires exactly {} tasks",
+			policy.required_tasks
+		)));
+	}
+
+	let tasks_by_id =
+		tasks.iter().map(|task| (task.task_id.as_str(), task)).collect::<BTreeMap<_, _>>();
+
+	if tasks_by_id.len() != tasks.len() {
+		return Err(ScoreError::new("Official calibration task identifiers must be unique"));
+	}
+
+	let expected_domains = tasks.iter().map(|task| task.domain).collect::<BTreeSet<_>>();
+
+	if expected_domains.len() != 10 {
+		return Err(ScoreError::new("Official calibration requires all 10 domains"));
+	}
+
+	let mut matrix = BTreeMap::new();
+
+	for result in results {
+		let Some(task) = tasks_by_id.get(result.task_id.as_str()) else {
+			return Err(ScoreError::new(
+				"Official calibration results contain an unexpected task or model",
+			));
+		};
+
+		if result.task_version != task.task_version || !MODEL_MATRIX.contains(&result.model) {
+			return Err(ScoreError::new(
+				"Official calibration results contain an unexpected task or model",
+			));
+		}
+		if matrix.insert((result.task_id.as_str(), result.model), result).is_some() {
+			return Err(ScoreError::new(
+				"Official calibration results contain a duplicate task-model cell",
+			));
+		}
+	}
+
+	let expected_cells = tasks
+		.len()
+		.checked_mul(MODEL_MATRIX.len())
+		.ok_or_else(|| ScoreError::new("Official calibration matrix cardinality overflows"))?;
+
+	if matrix.len() != expected_cells {
+		return Err(ScoreError::new("Official calibration requires a complete model-task matrix"));
+	}
+
+	Ok((matrix, expected_domains))
+}
+
+fn calibration_task_statistics<'a>(
+	tasks: &'a [TaskDefinition],
+	matrix: &CalibrationMatrix<'_>,
+) -> Result<CalibrationStatisticsEvidence<'a>, ScoreError> {
+	let mut statistics = BTreeMap::new();
+	let mut counts = UniversalCalibrationCounts::default();
+
+	for task in tasks {
+		let task_results = MODEL_MATRIX
+			.iter()
+			.map(|model| {
+				matrix
+					.get(&(task.task_id.as_str(), *model))
+					.copied()
+					.ok_or_else(|| ScoreError::new("Official calibration matrix cell is missing"))
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+		let scores = task_results
+			.iter()
+			.map(|result| {
+				result.task_score.filter(|score| score.is_finite() && (0.0..=1.0).contains(score))
+			})
+			.collect::<Option<Vec<_>>>()
+			.ok_or_else(|| {
+				ScoreError::new("Official calibration requires a valid score in every cell")
+			})?;
+		let facility = scores.iter().sum::<f64>() / scores.len() as f64;
+		let minimum = scores.iter().copied().fold(f64::INFINITY, f64::min);
+		let maximum = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+
+		statistics.insert(task.task_id.as_str(), (facility, maximum - minimum));
+
+		let semantic_zero = task_results.iter().all(|result| {
+			result.status == ResultStatus::Completed
+				&& result.evaluation == EvaluationOutcome::Incorrect
+				&& result.task_score == Some(0.0)
+				&& result.failure.is_none()
+		});
+		let runtime_zero = task_results.iter().all(|result| {
+			result.status == ResultStatus::Failed
+				&& result.evaluation == EvaluationOutcome::NotEvaluated
+				&& result.task_score == Some(0.0)
+				&& zero_failure(result)
+		});
+		let valid_zero = task_results.iter().all(|result| {
+			result.task_score == Some(0.0)
+				&& (result.status == ResultStatus::Completed && result.failure.is_none()
+					|| result.status == ResultStatus::Failed && zero_failure(result))
+		});
+
+		if valid_zero {
+			counts.all_zero += 1;
+
+			if semantic_zero {
+				counts.semantic_zero += 1;
+			} else if runtime_zero {
+				counts.runtime_zero += 1;
+			} else {
+				counts.mixed_zero += 1;
+			}
+		}
+		if scores.iter().all(|score| *score == 1.0) {
+			counts.full_credit += 1;
+		}
+	}
+
+	Ok((statistics, counts))
+}
+
+fn calibration_in_facility_band(policy: &OfficialCalibrationPolicy, facility: f64) -> bool {
+	facility + CALIBRATION_COMPARISON_TOLERANCE >= policy.informative_facility_min
+		&& facility <= policy.informative_facility_max + CALIBRATION_COMPARISON_TOLERANCE
+}
+
+fn calibration_non_uniform(policy: &OfficialCalibrationPolicy, range: f64) -> bool {
+	range + CALIBRATION_COMPARISON_TOLERANCE >= policy.informative_task_range_min
+}
+
+fn calibration_informative(policy: &OfficialCalibrationPolicy, facility: f64, range: f64) -> bool {
+	calibration_in_facility_band(policy, facility) && calibration_non_uniform(policy, range)
+}
+
+fn calibration_domain_summaries(
+	tasks: &[TaskDefinition],
+	statistics: &CalibrationTaskStatistics<'_>,
+	domains: BTreeSet<Domain>,
+	policy: &OfficialCalibrationPolicy,
+) -> Vec<OfficialCalibrationDomainSummary> {
+	domains
+		.into_iter()
+		.map(|domain| {
+			let facilities = tasks
+				.iter()
+				.filter(|task| task.domain == domain)
+				.map(|task| statistics[task.task_id.as_str()])
+				.collect::<Vec<_>>();
+
+			OfficialCalibrationDomainSummary {
+				domain,
+				tasks: facilities.len(),
+				mean_facility: facilities.iter().map(|(facility, _)| facility).sum::<f64>()
+					/ facilities.len() as f64,
+				informative_tasks: facilities
+					.iter()
+					.filter(|(facility, range)| calibration_informative(policy, *facility, *range))
+					.count(),
+				non_uniform_tasks: facilities
+					.iter()
+					.filter(|(_, range)| calibration_non_uniform(policy, *range))
+					.count(),
+			}
+		})
+		.collect()
+}
+
+fn calibration_model_score_range(
+	tasks: &[TaskDefinition],
+	matrix: &CalibrationMatrix<'_>,
+	domains: &[OfficialCalibrationDomainSummary],
+) -> (f64, f64, f64) {
+	let model_scores = MODEL_MATRIX.iter().map(|model| {
+		let domain_total = domains
+			.iter()
+			.map(|domain| {
+				let scores = tasks
+					.iter()
+					.filter(|task| task.domain == domain.domain)
+					.map(|task| matrix[&(task.task_id.as_str(), *model)].task_score.unwrap_or(0.0));
+				let (sum, count) =
+					scores.fold((0.0, 0_usize), |(sum, count), score| (sum + score, count + 1));
+
+				sum / count as f64
+			})
+			.sum::<f64>();
+
+		domain_total / domains.len() as f64 * 100.0
+	});
+	let (minimum, maximum) = model_scores
+		.fold((f64::INFINITY, f64::NEG_INFINITY), |(minimum, maximum), score| {
+			(minimum.min(score), maximum.max(score))
+		});
+
+	(minimum, maximum, maximum - minimum)
+}
+
+fn calibration_violations(
+	policy: &OfficialCalibrationPolicy,
+	observed: &OfficialCalibrationSummary,
+) -> Vec<String> {
+	let mut violations = Vec::new();
+
+	if observed.universal_runtime_zero_tasks > 0 || observed.universal_mixed_zero_tasks > 0 {
+		violations.push(format!(
+			"universal runtime-failure zeros are not permitted (runtime: {}, mixed: {})",
+			observed.universal_runtime_zero_tasks, observed.universal_mixed_zero_tasks
+		));
+	}
+
+	let semantic_zero_rate = observed.universal_semantic_zero_tasks as f64 / observed.tasks as f64;
+
+	if semantic_zero_rate > policy.max_universal_semantic_zero_rate {
+		violations.push(format!(
+			"universal semantic-zero rate {semantic_zero_rate:.6} exceeds {:.6}",
+			policy.max_universal_semantic_zero_rate
+		));
+	}
+
+	let full_credit_rate = observed.universal_full_credit_tasks as f64 / observed.tasks as f64;
+
+	if full_credit_rate > policy.max_universal_full_credit_rate {
+		violations.push(format!(
+			"universal full-credit rate {full_credit_rate:.6} exceeds {:.6}",
+			policy.max_universal_full_credit_rate
+		));
+	}
+	if observed.informative_task_rate < policy.min_informative_task_rate {
+		violations.push(format!(
+			"informative-task rate {:.6} is below {:.6}",
+			observed.informative_task_rate, policy.min_informative_task_rate
+		));
+	}
+	if observed.non_uniform_task_rate < policy.min_non_uniform_task_rate {
+		violations.push(format!(
+			"non-uniform-task rate {:.6} is below {:.6}",
+			observed.non_uniform_task_rate, policy.min_non_uniform_task_rate
+		));
+	}
+
+	for domain in &observed.domains {
+		if domain.mean_facility + CALIBRATION_COMPARISON_TOLERANCE < policy.domain_facility_min
+			|| domain.mean_facility > policy.domain_facility_max + CALIBRATION_COMPARISON_TOLERANCE
+			|| domain.informative_tasks == 0
+			|| domain.non_uniform_tasks == 0
+		{
+			violations.push(format!(
+				"domain {:?} is degenerate (mean facility {:.6}, informative tasks {}, non-uniform tasks {})",
+				domain.domain,
+				domain.mean_facility,
+				domain.informative_tasks,
+				domain.non_uniform_tasks
+			));
+		}
+	}
+
+	if observed.model_score_range + CALIBRATION_COMPARISON_TOLERANCE < policy.min_model_score_range
+	{
+		violations.push(format!(
+			"macro-domain model-score range {:.6} is below {:.6}",
+			observed.model_score_range, policy.min_model_score_range
+		));
+	}
+
+	violations
+}
+
 fn task_bindings_match_catalog(
 	tasks: &[TaskDefinition],
 	catalog: FrozenCatalog,
@@ -798,7 +1282,7 @@ fn publication_tier(
 }
 
 fn frozen_catalog() -> Result<FrozenCatalog, serde_json::Error> {
-	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"))
+	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json"))
 }
 
 fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
@@ -1071,7 +1555,10 @@ fn mean(values: &[f64]) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-	use std::mem;
+	use std::{
+		collections::{BTreeMap, BTreeSet},
+		mem,
+	};
 
 	use crate::{
 		model::MODEL_MATRIX,
@@ -1150,6 +1637,279 @@ mod tests {
 				local_trust: TrustTier::Untrusted,
 			},
 		}
+	}
+
+	fn matrix_results(tasks: &[TaskDefinition]) -> Vec<TaskResult> {
+		MODEL_MATRIX
+			.into_iter()
+			.enumerate()
+			.flat_map(|(model_index, model)| {
+				tasks.iter().map(move |task| {
+					let mut result = result(task, model_index as f64 / 16.0);
+
+					result.model = model;
+
+					if result.task_score.is_some_and(|score| score > 0.0 && score < 1.0) {
+						result.evaluation = EvaluationOutcome::Partial;
+					}
+
+					result
+				})
+			})
+			.collect()
+	}
+
+	#[test]
+	fn official_calibration_rejects_floor_and_ceiling_saturation() {
+		let tasks = official_tasks();
+
+		for score in [0.0, 1.0] {
+			let mut results = matrix_results(&tasks);
+
+			for result in &mut results {
+				result.task_score = Some(score);
+				result.evaluation = if score == 0.0 {
+					EvaluationOutcome::Incorrect
+				} else {
+					EvaluationOutcome::Correct
+				};
+			}
+
+			let diagnostic =
+				scoring::diagnose_official_calibration(&tasks, &results).expect("complete matrix");
+
+			assert!(!diagnostic.passed());
+			assert!(diagnostic.violations.iter().any(|value| value.contains(if score == 0.0 {
+				"semantic-zero"
+			} else {
+				"full-credit"
+			})));
+		}
+	}
+
+	#[test]
+	fn official_calibration_universal_semantic_zero_count_boundary_is_exact() {
+		let tasks = official_tasks();
+		let one_per_domain = tasks
+			.iter()
+			.fold(BTreeMap::new(), |mut selected, task| {
+				selected.entry(task.domain).or_insert_with(|| task.task_id.clone());
+
+				selected
+			})
+			.into_values()
+			.collect::<Vec<_>>();
+
+		for (count, expected_pass) in [(7, true), (8, false)] {
+			let selected = one_per_domain.iter().take(count).collect::<BTreeSet<_>>();
+			let mut results = matrix_results(&tasks);
+
+			for result in &mut results {
+				if selected.contains(&result.task_id) {
+					result.task_score = Some(0.0);
+					result.evaluation = EvaluationOutcome::Incorrect;
+				}
+			}
+
+			let diagnostic =
+				scoring::diagnose_official_calibration(&tasks, &results).expect("matrix");
+
+			assert_eq!(diagnostic.observed.universal_semantic_zero_tasks, count);
+			assert_eq!(diagnostic.passed(), expected_pass, "{:?}", diagnostic.violations);
+		}
+	}
+
+	#[test]
+	fn official_calibration_classifies_runtime_and_semantic_universal_zeros_separately() {
+		let tasks = official_tasks();
+		let mut results = matrix_results(&tasks);
+		let semantic_id = tasks[0].task_id.clone();
+		let runtime_id = tasks[1].task_id.clone();
+		let mixed_id = tasks[2].task_id.clone();
+
+		for result in &mut results {
+			if result.task_id == semantic_id
+				|| result.task_id == runtime_id
+				|| result.task_id == mixed_id
+			{
+				result.evaluation = EvaluationOutcome::Incorrect;
+				result.task_score = Some(0.0);
+			}
+			if result.task_id == runtime_id
+				|| result.task_id == mixed_id && result.model == MODEL_MATRIX[0]
+			{
+				result.status = ResultStatus::Failed;
+				result.evaluation = EvaluationOutcome::NotEvaluated;
+				result.response = None;
+				result.failure = Some(ResultFailure {
+					kind: FailureKind::Timeout,
+					message: "fixture timeout".to_owned(),
+					exit_code: None,
+					retryable: false,
+				});
+			}
+		}
+
+		let diagnostic =
+			scoring::diagnose_official_calibration(&tasks, &results).expect("complete matrix");
+
+		assert_eq!(diagnostic.observed.universal_semantic_zero_tasks, 1);
+		assert_eq!(diagnostic.observed.universal_runtime_zero_tasks, 1);
+		assert_eq!(diagnostic.observed.universal_mixed_zero_tasks, 1);
+		assert!(!diagnostic.passed());
+		assert!(diagnostic.violations[0].contains("runtime-failure"));
+	}
+
+	#[test]
+	fn official_calibration_requires_informative_items_domain_coverage_and_model_spread() {
+		let tasks = official_tasks();
+		let mut uninformative = matrix_results(&tasks);
+
+		for result in &mut uninformative {
+			result.task_score = Some(0.95);
+			result.evaluation = EvaluationOutcome::Partial;
+		}
+
+		let diagnostic = scoring::diagnose_official_calibration(&tasks, &uninformative)
+			.expect("complete matrix");
+
+		assert!(diagnostic.violations.iter().any(|value| value.contains("informative-task")));
+		assert!(diagnostic.violations.iter().any(|value| value.contains("domain")));
+		assert!(diagnostic.violations.iter().any(|value| value.contains("model-score range")));
+	}
+
+	#[test]
+	fn official_calibration_rejects_one_degenerate_domain() {
+		let tasks = official_tasks();
+		let mut results = matrix_results(&tasks);
+		let domain = tasks[0].domain;
+
+		for result in &mut results {
+			if tasks
+				.iter()
+				.find(|task| task.task_id == result.task_id)
+				.is_some_and(|task| task.domain == domain)
+			{
+				result.task_score = Some(0.05);
+				result.evaluation = EvaluationOutcome::Partial;
+			}
+		}
+
+		let diagnostic = scoring::diagnose_official_calibration(&tasks, &results).expect("matrix");
+
+		assert!(
+			diagnostic.violations.iter().any(|value| value.contains(&format!("domain {domain:?}")))
+		);
+	}
+
+	#[test]
+	fn official_calibration_rejects_inadequate_model_spread() {
+		let tasks = official_tasks();
+		let mut results = matrix_results(&tasks);
+
+		for result in &mut results {
+			result.task_score = Some(0.5);
+			result.evaluation = EvaluationOutcome::Partial;
+		}
+
+		let diagnostic = scoring::diagnose_official_calibration(&tasks, &results).expect("matrix");
+
+		assert_eq!(diagnostic.observed.model_score_range, 0.0);
+		assert_eq!(diagnostic.observed.informative_tasks, 0);
+		assert_eq!(diagnostic.observed.non_uniform_tasks, 0);
+		assert!(diagnostic.violations.iter().any(|value| value.contains("non-uniform-task")));
+		assert!(diagnostic.violations.iter().any(|value| value.contains("model-score range")));
+	}
+
+	#[test]
+	fn official_calibration_is_deterministic_and_includes_exact_boundaries() {
+		let tasks = official_tasks();
+		let mut results = matrix_results(&tasks);
+		let low_id = tasks[0].task_id.clone();
+		let high_id = tasks[1].task_id.clone();
+
+		for result in &mut results {
+			if result.task_id == low_id {
+				result.task_score = Some(0.10);
+			} else if result.task_id == high_id {
+				result.task_score = Some(0.90);
+			}
+			if result.task_score.is_some_and(|score| score > 0.0 && score < 1.0) {
+				result.evaluation = EvaluationOutcome::Partial;
+			}
+		}
+
+		let first = scoring::diagnose_official_calibration(&tasks, &results).expect("matrix");
+		let second = scoring::diagnose_official_calibration(&tasks, &results).expect("matrix");
+
+		assert_eq!(first, second);
+		assert!(first.passed(), "{:?}", first.violations);
+		assert_eq!(first.observed.informative_tasks, 70);
+
+		for result in &mut results {
+			let score = if result.model == MODEL_MATRIX[0] {
+				0.45
+			} else if result.model == MODEL_MATRIX[16] {
+				0.55
+			} else {
+				0.5
+			};
+
+			result.task_score = Some(score);
+			result.evaluation = EvaluationOutcome::Partial;
+		}
+
+		let exact_task_range =
+			scoring::diagnose_official_calibration(&tasks, &results).expect("boundary matrix");
+
+		assert!(exact_task_range.passed(), "{:?}", exact_task_range.violations);
+		assert_eq!(exact_task_range.observed.informative_tasks, 72);
+
+		for result in &mut results {
+			result.task_score = Some(if result.model == MODEL_MATRIX[0] {
+				0.485
+			} else if result.model == MODEL_MATRIX[16] {
+				0.515
+			} else {
+				0.5
+			});
+		}
+
+		let exact_spread =
+			scoring::diagnose_official_calibration(&tasks, &results).expect("boundary matrix");
+
+		assert!(
+			(exact_spread.observed.model_score_range
+				- scoring::OFFICIAL_CALIBRATION_MIN_MODEL_SCORE_RANGE)
+				.abs() < 1e-10
+		);
+		assert!(!exact_spread.violations.iter().any(|value| value.contains("model-score range")));
+	}
+
+	#[test]
+	fn official_calibration_rejects_duplicates_and_incomplete_cells() {
+		let tasks = official_tasks();
+		let mut duplicate = matrix_results(&tasks);
+
+		duplicate.push(duplicate[0].clone());
+
+		assert!(
+			scoring::diagnose_official_calibration(&tasks, &duplicate)
+				.expect_err("duplicate")
+				.to_string()
+				.contains("duplicate")
+		);
+
+		let mut incomplete = matrix_results(&tasks);
+
+		incomplete.pop();
+
+		assert!(
+			scoring::diagnose_official_calibration(&tasks, &incomplete)
+				.expect_err("incomplete")
+				.to_string()
+				.contains("complete model-task matrix")
+		);
 	}
 
 	#[test]
@@ -1505,7 +2265,7 @@ mod tests {
 	fn mismatched_task_scorer_version_cannot_be_official() {
 		let mut tasks = official_tasks();
 
-		tasks[0].scorer_version = "1.0.1".to_owned();
+		tasks[0].scorer_version = "1.0.2".to_owned();
 
 		let results = tasks.iter().map(|task| result(task, 1.0)).collect::<Vec<_>>();
 		let report = scoring::score_model_with_options(

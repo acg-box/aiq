@@ -108,12 +108,20 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       </p>
       <div className="run-stats">
         <div>
-          <span>Passed</span>
-          <strong>{summary.passed}</strong>
+          <span>Correct</span>
+          <strong>{summary.correct}</strong>
         </div>
         <div>
-          <span>Failed</span>
-          <strong>{summary.failed}</strong>
+          <span>Partial</span>
+          <strong>{summary.partial}</strong>
+        </div>
+        <div>
+          <span>Incorrect</span>
+          <strong>{summary.incorrect}</strong>
+        </div>
+        <div>
+          <span>Runtime issue</span>
+          <strong>{summary.runtimeIssues}</strong>
         </div>
         <div>
           <span>Invalid</span>
@@ -159,7 +167,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             <h2>Score and coverage by domain</h2>
           </div>
           <p>
-            Scores use observed succeeded and failed attempts. Coverage keeps missing and invalid
+            Scores use completed outcomes and runtime issues. Coverage keeps missing and invalid
             work in the denominator.
           </p>
         </div>
@@ -175,8 +183,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                 <th scope="col">Domain</th>
                 <th scope="col">Observed score</th>
                 <th scope="col">Coverage</th>
-                <th scope="col">Succeeded</th>
-                <th scope="col">Failed</th>
+                <th scope="col">Completed</th>
+                <th scope="col">Runtime issue</th>
                 <th scope="col">Missing</th>
                 <th scope="col">Invalid</th>
                 <th scope="col">N/A</th>
@@ -188,11 +196,11 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                   <th scope="row">{domain.domain.replaceAll('_', ' ')}</th>
                   <td>{domain.score === null ? 'No score' : `${domain.score.toFixed(1)}%`}</td>
                   <td>
-                    {domain.coveragePercent.toFixed(1)}% ({domain.succeeded + domain.failed}/
+                    {domain.coveragePercent.toFixed(1)}% ({domain.completed + domain.runtimeIssues}/
                     {domain.total})
                   </td>
-                  <td>{domain.succeeded}</td>
-                  <td>{domain.failed}</td>
+                  <td>{domain.completed}</td>
+                  <td>{domain.runtimeIssues}</td>
                   <td>{domain.missing}</td>
                   <td>{domain.invalid}</td>
                   <td>{domain.notApplicable}</td>
@@ -208,7 +216,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             <span className="eyebrow">Task results</span>
             <h2>Outcome by domain</h2>
           </div>
-          <p>Failure and missing states include machine-readable codes and human explanations.</p>
+          <p>
+            Runtime issue, invalid, missing, and not-applicable states include machine-readable
+            codes and human explanations when the public contract provides them.
+          </p>
         </div>
         <div className="task-list">
           {run.tasks.map((task) => (
@@ -222,8 +233,8 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
               }
             >
               <header>
-                <span className={`result result-${task.status}`}>
-                  {task.status.replace('_', ' ')}
+                <span className={`result result-${task.executionStatus}`}>
+                  {task.outcome.replaceAll('_', ' ')} · {task.executionStatus.replace('_', ' ')}
                 </span>
                 <strong>
                   {task.score === null ? 'No score' : `${(task.score * 100).toFixed(0)}%`}
@@ -235,21 +246,21 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                 <div className="result-explanation">
                   {task.explanation.code ? (
                     <code>{task.explanation.code}</code>
-                  ) : task.status === 'failed' ? (
-                    <strong>Evaluator outcome</strong>
+                  ) : task.executionStatus === 'runtime_issue' ? (
+                    <strong>Runtime issue</strong>
                   ) : (
                     <strong>Published outcome</strong>
                   )}
                   <p>{task.explanation.summary}</p>
                   <small>
                     {task.explanation.retryable === null
-                      ? task.status === 'failed'
-                        ? 'This is an evaluator result, not an execution failure.'
+                      ? task.executionStatus === 'runtime_issue'
+                        ? 'The execution did not complete normally.'
                         : 'Retryability is not published.'
                       : `Retryable: ${task.explanation.retryable ? 'yes' : 'no'}`}
                   </small>
                 </div>
-              ) : task.status !== 'passed' ? (
+              ) : task.executionStatus !== 'completed' ? (
                 <div className="result-explanation">
                   <code>EXPLANATION_NOT_PUBLISHED</code>
                   <p>No public explanation was supplied for this outcome.</p>

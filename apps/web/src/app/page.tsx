@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { CalibrationEfficiency } from '../components/calibration-efficiency.tsx';
 import { DataNote } from '../components/data-note.tsx';
+import { EfficiencyPlot } from '../components/efficiency-plot.tsx';
 import { LeaderboardTable } from '../components/leaderboard-table.tsx';
 import { ModelMatrixChart } from '../components/model-matrix-chart.tsx';
 import { OfficialEfficiencyTable } from '../components/official-efficiency-table.tsx';
@@ -10,12 +11,8 @@ import { RunOutcomeCard } from '../components/run-outcome-card.tsx';
 import { ScoreRing } from '../components/score-ring.tsx';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
-import {
-  isScoredLeaderboardEntry,
-  type BenchmarkRun,
-  type LeaderboardEntry,
-} from '../data/types.ts';
-import { summarizeRunOutcomes } from '../data/format.ts';
+import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
+import { formatHumanDuration } from '../data/format-duration.ts';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,13 +24,6 @@ function formatDate(value: string | undefined): string {
     year: 'numeric',
     timeZone: 'UTC',
   }).format(new Date(value));
-}
-
-function scoreRange(entries: readonly LeaderboardEntry[]) {
-  const scored = entries.filter(isScoredLeaderboardEntry);
-  if (scored.length === 0) return null;
-  const scores = scored.map((entry) => entry.score);
-  return { low: Math.min(...scores), high: Math.max(...scores) };
 }
 
 export default async function OverviewPage() {
@@ -92,7 +82,12 @@ export default async function OverviewPage() {
     ),
   ]);
 
-  const sampleTotal = leaderboard.reduce((sum, entry) => sum + (entry.sampleSize ?? 0), 0);
+  const taskCellCounts = leaderboard.map((entry) => entry.sampleSize);
+  const sampleTotal =
+    taskCellCounts.length > 0 &&
+    taskCellCounts.every((taskCellCount): taskCellCount is number => taskCellCount !== null)
+      ? taskCellCounts.reduce((sum, taskCellCount) => sum + taskCellCount, 0)
+      : null;
   const coveredEntries = leaderboard.filter((entry) => entry.coveragePercent !== null);
   const averageCoverage =
     coveredEntries.length === 0
@@ -100,8 +95,9 @@ export default async function OverviewPage() {
       : coveredEntries.reduce((sum, entry) => sum + (entry.coveragePercent ?? 0), 0) /
         coveredEntries.length;
   const latestRun = latestRunResult.data;
-  const latestOutcomes = latestRun ? summarizeRunOutcomes(latestRun) : null;
-  const range = scoreRange(leaderboard);
+  const latestEfficiency = officialEfficiencyResult.data.find(
+    (row) => row.runId === highestPointEstimate?.runId,
+  );
   const overviewProvenance =
     leaderboardResult.state === 'synthetic'
       ? 'synthetic'
@@ -123,92 +119,88 @@ export default async function OverviewPage() {
 
   return (
     <>
-      <section className="hero page-shell">
-        <div className="hero-copy">
-          <span className="eyebrow">{overviewEyebrow}</span>
-          <h1>
-            What can a model <em>actually do?</em>
-          </h1>
+      <section className="workspace-hero page-shell">
+        <header className="workspace-intro">
+          <div>
+            <span className="eyebrow">{overviewEyebrow}</span>
+            <h1>Benchmark overview</h1>
+          </div>
           <p>
-            Start with the latest 17-configuration snapshot. Then inspect the task outcomes, domain
-            balance, time, and cost behind every point.
+            17 model and reasoning configurations, with score, uncertainty, coverage, runtime, cost,
+            and task evidence kept together.
           </p>
-          <div className="hero-actions">
-            <Link className="button primary" href="#leaderboard">
-              See the latest matrix
-            </Link>
-            <Link className="button secondary" href="/compare">
-              Compare configurations
-            </Link>
-          </div>
-          <p className="hero-note">
-            AIQ is a fixed-fixture task index from 0–100, not an IQ estimate or a claim about
-            general intelligence.
-          </p>
-        </div>
-        <div className="hero-score" aria-label="Latest matrix snapshot">
-          {highestPointEstimate ? (
-            <ScoreRing score={highestPointEstimate.score} label={scoreLabel} unit="AIQ index" />
-          ) : (
-            <div className="score-ring score-ring-empty" aria-label="No published score yet">
-              <span>—</span>
-              <small>AIQ index</small>
+        </header>
+        <div className="benchmark-snapshot" aria-label="Latest matrix snapshot">
+          <div className="snapshot-leader">
+            {highestPointEstimate ? (
+              <ScoreRing score={highestPointEstimate.score} label={scoreLabel} unit="AIQ index" />
+            ) : (
+              <div className="score-ring score-ring-empty" aria-label="No published score yet">
+                <span>—</span>
+                <small>AIQ index</small>
+              </div>
+            )}
+            <div>
+              <span className="snapshot-label">Leading configuration</span>
+              <strong>
+                {highestPointEstimate
+                  ? `${highestPointEstimate.modelFamily} / ${highestPointEstimate.reasoningTier}`
+                  : 'No published score yet'}
+              </strong>
+              <small>{highestPointEstimate?.modelName ?? 'Awaiting a complete matrix'}</small>
             </div>
-          )}
-          <div className="hero-score-copy">
-            <span className="eyebrow">
-              {overviewProvenance === 'synthetic'
-                ? 'Synthetic demo snapshot'
-                : 'Latest matrix snapshot'}
-            </span>
-            <strong>
-              {highestPointEstimate
-                ? `${highestPointEstimate.modelFamily} · ${highestPointEstimate.reasoningTier}`
-                : 'No published score yet'}
-            </strong>
-            <small>
-              {highestPointEstimate
-                ? `${highestPointEstimate.modelName} · ${formatDate(latestRun?.completedAt)}`
-                : 'The 17 configurations remain visible until a complete run is verified.'}
-            </small>
-            <dl className="hero-facts">
-              <div>
-                <dt>Full / partial credit</dt>
-                <dd>{latestOutcomes ? `${latestOutcomes.passed}/${latestOutcomes.total}` : '—'}</dd>
-              </div>
-              <div>
-                <dt>Index range</dt>
-                <dd>{range ? `${range.low.toFixed(1)}–${range.high.toFixed(1)}` : '—'}</dd>
-              </div>
-            </dl>
           </div>
-        </div>
-      </section>
-
-      <section className="signal-strip" aria-label="Index summary">
-        <div>
-          <span>Configurations</span>
-          <strong>{leaderboard.length}</strong>
-          <small>6 Sol · 6 Terra · 5 Luna</small>
-        </div>
-        <div>
-          <span>Task cells scored</span>
-          <strong>{sampleTotal.toLocaleString()}</strong>
-          <small>17 × 72 task cells in this snapshot</small>
-        </div>
-        <div>
-          <span>Top task credit</span>
-          <strong>
-            {latestOutcomes?.successRate === null || !latestOutcomes
-              ? '—'
-              : `${latestOutcomes.successRate.toFixed(0)}%`}
-          </strong>
-          <small>correct + partial on the top run</small>
-        </div>
-        <div>
-          <span>Result coverage</span>
-          <strong>{averageCoverage === null ? 'Unknown' : `${averageCoverage.toFixed(1)}%`}</strong>
-          <small>coverage is not correctness</small>
+          <dl className="snapshot-metrics" tabIndex={0} aria-label="Benchmark evidence metrics">
+            <div>
+              <dt>Task-sensitivity interval</dt>
+              <dd>
+                {highestPointEstimate
+                  ? `${highestPointEstimate.ciLow.toFixed(1)}–${highestPointEstimate.ciHigh.toFixed(1)}`
+                  : '—'}
+              </dd>
+              <dd className="snapshot-note">task-resampling sensitivity</dd>
+            </div>
+            <div>
+              <dt>Coverage</dt>
+              <dd>
+                {highestPointEstimate ? `${highestPointEstimate.coveragePercent.toFixed(1)}%` : '—'}
+              </dd>
+              <dd className="snapshot-note">
+                {highestPointEstimate?.sampleSize == null
+                  ? 'Sample size unavailable'
+                  : `${highestPointEstimate.sampleSize} fixed task cells`}
+              </dd>
+            </div>
+            <div>
+              <dt>Latest verified</dt>
+              <dd>{latestRun ? formatDate(latestRun.completedAt) : 'Unavailable'}</dd>
+              <dd className="snapshot-note">
+                {latestRun
+                  ? latestRun.synthetic
+                    ? 'synthetic seed'
+                    : 'trusted publication'
+                  : 'No published run evidence'}
+              </dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd>
+                {latestEfficiency?.summedCellAdapterElapsedMs == null
+                  ? 'Unavailable'
+                  : formatHumanDuration(latestEfficiency.summedCellAdapterElapsedMs)}
+              </dd>
+              <dd className="snapshot-note">summed cell adapter time</dd>
+            </div>
+            <div>
+              <dt>API-equivalent cost</dt>
+              <dd>
+                {latestEfficiency?.standardApiEquivalentUsdNanos == null
+                  ? 'Unavailable'
+                  : `$${(latestEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(2)}`}
+              </dd>
+              <dd className="snapshot-note">Standard pricing estimate</dd>
+            </div>
+          </dl>
         </div>
       </section>
 
@@ -219,17 +211,24 @@ export default async function OverviewPage() {
       <section className="page-shell section-block overview-priority" id="leaderboard">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Latest matrix</span>
-            <h2>Who leads, and why?</h2>
+            <span className="eyebrow">
+              17 configurations ·{' '}
+              {sampleTotal === null
+                ? 'task cells unavailable'
+                : `${sampleTotal.toLocaleString()} task cells`}
+            </span>
+            <h2>Current configuration matrix</h2>
           </div>
           <p>
-            The chart gives the fast answer. The outcome card explains what the leading point
-            contains. Open any run when you need the task-level evidence.
+            Average coverage{' '}
+            {averageCoverage === null ? 'unavailable' : `${averageCoverage.toFixed(1)}%`}. Filter by
+            model family or change the visual encoding without changing the underlying evidence.
           </p>
         </div>
         <ReadStateNote result={leaderboardResult} subject="Latest matrix" />
         <ModelMatrixChart entries={leaderboard} />
         {latestRun ? <RunOutcomeCard run={latestRun} /> : null}
+        <EfficiencyPlot entries={leaderboard} rows={officialEfficiencyResult.data} />
         <details className="leaderboard-disclosure">
           <summary>Show all {leaderboard.length} configurations and intervals</summary>
           <LeaderboardTable entries={leaderboard} />

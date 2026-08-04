@@ -12,18 +12,26 @@ Use this handoff to preserve that accepted topology and to track the remaining
 operational work. Do not infer future schedules, workers, or later publications
 from the first launch evidence.
 
+Live production remains the historical AIQ Core `1.0.2` matrix described below.
+Repository source now accepts AIQ Core `1.0.3`, but its final controlled corpus
+commitment with native binary bindings, first real run, and publication are still
+pending. Model-free native validation passes all 72 tasks; the runtime
+`task_set_hash` is
+`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+Do not treat the source-head change as a deployment claim.
+
 ## First-release topology
 
 The accepted first release uses these exact surfaces:
 
-| Surface | Accepted target |
-| ------- | --------------- |
+| Surface              | Accepted target                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Database and Storage | Personal Supabase organization `ACG Box`, project `aiq`, reference `xxnszykaeapolqdnhalx`, PostgreSQL 17.6 |
-| Web and gateway | Personal Vercel scope `acgbox`, project `aiq` |
-| Public origin | `https://aiq.wiki` |
-| Runner | Native Apple Silicon macOS `aiq-runner` release binary |
-| Verifier | Native Apple Silicon macOS `aiq-verifier` release binary |
-| Storage | Private `aiq-submission-packages` and `aiq-runner-artifacts` buckets |
+| Web and gateway      | Personal Vercel scope `acgbox`, project `aiq`                                                              |
+| Public origin        | `https://aiq.wiki`                                                                                         |
+| Runner               | Native Apple Silicon macOS `aiq-runner` release binary                                                     |
+| Verifier             | Native Apple Silicon macOS `aiq-verifier` release binary                                                   |
+| Storage              | Private `aiq-submission-packages` and `aiq-runner-artifacts` buckets                                       |
 
 The same macOS host operates the runner and verifier natively in separate
 command environments with direct network access. The verifier must not receive
@@ -63,32 +71,36 @@ vercel inspect aiq.wiki --scope acgbox --format=json
 
 Record these values after each action succeeds:
 
-| Surface | Required evidence |
-| ------- | ----------------- |
-| Source | Approved commit and clean worktree status |
-| Runner | Source commit, Mach-O arm64 identity, and executable SHA-256 |
-| Verifier | Source commit, Mach-O arm64 identity, and executable SHA-256 |
-| Corpus | Release ID, commitment SHA-256, 72 task count, and evaluator runtime identity |
-| Database | Source commit, `databases/schema.sql` SHA-256, and initialization receipt |
-| Vercel | Deployment ID, source commit, project, scope, and production origin |
-| Domain | Vercel domain state, Cloudflare DNS records, TLS, and redirect behavior |
-| Publication | Run ID, 1,224 result count, verifier attestation, and publication receipt |
+| Surface     | Required evidence                                                             |
+| ----------- | ----------------------------------------------------------------------------- |
+| Source      | Approved commit and clean worktree status                                     |
+| Runner      | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
+| Verifier    | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
+| Corpus      | Release ID, commitment SHA-256, 72 task count, and evaluator runtime identity |
+| Database    | Source commit, `databases/schema.sql` SHA-256, and initialization receipt     |
+| Vercel      | Deployment ID, source commit, project, scope, and production origin           |
+| Domain      | Vercel domain state, Cloudflare DNS records, TLS, and redirect behavior       |
+| Publication | Run ID, 1,224 result count, verifier attestation, and publication receipt     |
 
 Private task content, credentials, signing seeds, access tokens, and service
 keys must stay outside Git and public evidence.
 
 ## Supabase setup
 
-The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6. Its
-one-shot production initialization is complete. Do not rerun the initializer or
-load synthetic fixtures into this project. The procedure below applies only to a
-replacement empty project.
+The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6.
+Historical AIQ Core `1.0.2` state remains live until the `1.0.3` cutover. Before
+that cutover, verify the accepted backups, remove only the historical AIQ schema
+and roles plus the exact AIQ-owned public views and RPC overloads, and initialize
+the empty AIQ namespace once. Review the live dependency closure first and
+preserve all Supabase-managed and non-AIQ objects. Do not load synthetic fixtures
+into this project.
 
 1. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
 2. Create private Storage buckets for submission packages and runner artifacts.
-3. Prepare one private production-reference document. Bind the 72-task corpus,
-   current catalog identities, and distinct runner, verifier, and publisher
+3. Prepare one private production-reference
+   document. Bind the 72-task AIQ Core `1.0.3` corpus, current catalog identities,
+   and distinct runner, verifier, and publisher
    public identities.
 4. Apply the desired state once through a direct PostgreSQL connection:
 
@@ -100,7 +112,7 @@ cargo make init-database
 
 The initializer must be the first AIQ database action. It uses one transaction
 and rejects existing AIQ objects. Confirm that the receipt reports scoring
-`1.0.2`, 72 tasks, 17 model configurations, three distinct identities, and the
+`1.0.3`, 72 tasks, 17 model configurations, three distinct identities, and the
 expected public-view inventory.
 
 Run the database checks:
@@ -296,8 +308,10 @@ revised. For a local contract check without a production read, run
 validate the accepted public surface described in
 [Operations and Validation](operations.md); they do not schedule future work.
 
-If a replacement greenfield database initializer fails after it starts, discard
-that new project and create another empty `aiq` project.
+If greenfield initialization fails, confirm that its transaction rolled back and
+that the AIQ namespace is empty before retrying. If exact AIQ objects remain,
+remove only those objects after rechecking the accepted backups. Do not introduce
+a migration or compatibility path.
 
 No command in this handoff performs deployment or recurring scheduling
 automatically. No cloud runner or verifier worker and no benchmark or Storage

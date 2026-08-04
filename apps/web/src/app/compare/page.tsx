@@ -42,9 +42,9 @@ export default async function ComparePage() {
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Comparison studio</span>
-        <h1>One model is not one behavior.</h1>
+        <h1>Configuration comparison</h1>
         <p>
-          Compare exact model and reasoning-level pairs. Keep sample size, coverage, failure counts,
+          Compare exact model and reasoning-level pairs. Keep sample size, coverage, runtime issues,
           scoring version, and task-set sensitivity beside each fixed-fixture point estimate. The
           public comparison is descriptive because aggregate leaderboard rows do not contain the
           paired-task evidence required for a statistically supported difference.

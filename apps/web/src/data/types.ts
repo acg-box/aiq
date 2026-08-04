@@ -2,7 +2,12 @@ import type { PublicDataConfiguration } from './public-configuration.ts';
 
 export type ReasoningTier = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 export type ModelFamily = 'Sol' | 'Terra' | 'Luna';
-export type RunStatus = 'passed' | 'failed' | 'invalid' | 'missing' | 'not_applicable';
+export type ExecutionStatus =
+  | 'completed'
+  | 'runtime_issue'
+  | 'invalid'
+  | 'missing'
+  | 'not_applicable';
 export type CalibrationModelFamily = 'sol' | 'terra' | 'luna';
 export const CALIBRATION_OUTCOMES = [
   'correct',
@@ -46,7 +51,7 @@ export interface LeaderboardEntry {
   ciHigh: number | null;
   sampleSize: number | null;
   coveragePercent: number | null;
-  failures: number | null;
+  runtimeIssues: number | null;
   missing: number | null;
   scoringVersion: string | null;
   scoreStatus: LeaderboardStatus;
@@ -60,7 +65,7 @@ type ScoredLeaderboardValues = LeaderboardEntry & {
   ciHigh: number;
   sampleSize: number;
   coveragePercent: number;
-  failures: number;
+  runtimeIssues: number;
   missing: number;
   scoringVersion: string;
   runId: string;
@@ -80,7 +85,7 @@ export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is Scor
     entry.ciHigh !== null &&
     entry.sampleSize !== null &&
     entry.coveragePercent !== null &&
-    entry.failures !== null &&
+    entry.runtimeIssues !== null &&
     entry.missing !== null &&
     entry.scoringVersion !== null &&
     entry.runId !== null &&
@@ -92,6 +97,7 @@ export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is Scor
 export interface TrendPoint {
   entryId: string;
   runId: string | null;
+  scoringVersion: string;
   recordedAt: string;
   bucketStartedAt: string;
   bucketEndedAt: string;
@@ -108,7 +114,8 @@ export interface TaskResult {
   id: string;
   task: string;
   domain: string;
-  status: RunStatus;
+  outcome: CalibrationOutcome;
+  executionStatus: ExecutionStatus;
   score: number | null;
   explanation: {
     code: string | null;
@@ -166,7 +173,7 @@ export interface PublicCalibrationResult {
   modelFamily: CalibrationModelFamily;
   reasoningEffort: ReasoningTier;
   outcome: CalibrationOutcome;
-  status: RunStatus;
+  executionStatus: ExecutionStatus;
   failureCode: string | null;
   explanationCode: string | null;
   explanationSummary: string | null;
@@ -368,11 +375,14 @@ export interface RunResultSummary {
   coveragePercent: number | null;
   coveredDomainCount: number;
   provisionalDomainCount: number;
-  passed: number;
-  failed: number;
-  invalid: number;
-  missing: number;
-  notApplicable: number;
+  correctCount: number;
+  partialCount: number;
+  incorrectCount: number;
+  runtimeIssueCount: number;
+  invalidCount: number;
+  missingCount: number;
+  notApplicableCount: number;
+  completedCount: number;
 }
 
 export type BenchmarkRunSummary = Omit<BenchmarkRun, 'tasks'> & {

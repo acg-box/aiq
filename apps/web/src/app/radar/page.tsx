@@ -33,7 +33,7 @@ export default async function RadarPage() {
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Execution radar</span>
-        <h1>Know the runner behind the result.</h1>
+        <h1>Runner provenance</h1>
         <p>
           Registry identity, signed capability and observation records, assignment history, and
           trust-layer aggregation are separate evidence. None of these records is a live heartbeat.
