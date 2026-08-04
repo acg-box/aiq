@@ -5,8 +5,14 @@ import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { classifyRunSummaryCompleteness } from '../../data/format.ts';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Run history' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Run history',
+  path: '/runs',
+  description:
+    'Inspect the public history of complete, coverage-only, and missing-result AIQ runs.',
+});
 export const dynamic = 'force-dynamic';
 
 type RunsSearchParams = { before?: string; after?: string };

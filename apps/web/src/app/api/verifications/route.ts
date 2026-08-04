@@ -11,6 +11,7 @@ import {
 import { inspectVerificationConfiguration } from '../../../server/production-configuration.ts';
 import { createSupabaseRoleTokenIssuer } from '../../../server/supabase-role-token.ts';
 import type {
+  ValidatedCalibrationVerification,
   ValidatedVerification,
   VerificationClaim,
   VerifierRejection,
@@ -112,6 +113,33 @@ export async function POST(request: Request): Promise<Response> {
     async publish(verification: ValidatedVerification): Promise<void> {
       await callRpc(publisherClient(), 'aiq_verify_and_publish', {
         target_run_id: verification.stage.matrix_batch_id,
+        target_package_sha256: verification.stage.package_sha256,
+        target_inbox_id: verification.claim.inbox_id,
+        supplied_lease_token: verification.claim.lease_token,
+        supplied_attempt: verification.claim.attempt,
+      });
+    },
+    async stageCalibration(verification: ValidatedCalibrationVerification): Promise<unknown> {
+      return callRpc(verifierClient(), 'aiq_stage_calibration_verification', {
+        stage: verification.stage,
+        target_inbox_id: verification.claim.inbox_id,
+        supplied_lease_token: verification.claim.lease_token,
+        supplied_attempt: verification.claim.attempt,
+      });
+    },
+    async recordCalibrationAttestation(
+      verification: ValidatedCalibrationVerification,
+    ): Promise<unknown> {
+      return callRpc(verifierClient(), 'aiq_record_calibration_attestation', {
+        attestation: verification.attestation,
+        target_inbox_id: verification.claim.inbox_id,
+        supplied_lease_token: verification.claim.lease_token,
+        supplied_attempt: verification.claim.attempt,
+      });
+    },
+    async publishCalibration(verification: ValidatedCalibrationVerification): Promise<unknown> {
+      return callRpc(publisherClient(), 'aiq_publish_calibration_evidence', {
+        target_run_id: verification.stage.run_id,
         target_package_sha256: verification.stage.package_sha256,
         target_inbox_id: verification.claim.inbox_id,
         supplied_lease_token: verification.claim.lease_token,

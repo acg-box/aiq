@@ -6,18 +6,25 @@ use std::{
 	fmt::{self, Debug, Display},
 	fs, iter,
 	path::{Path, PathBuf},
+	thread,
 	time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use ureq::http::{Uri, uri::PathAndQuery};
+use ureq::{
+	Body,
+	http::{Response, Uri, uri::PathAndQuery},
+};
 
+use crate::adapter::CapabilityValidationReport;
+use crate::protocol::{CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, TrustTier};
+use crate::runner::MAX_RUN_JOBS;
 use crate::{
 	adapter::ArtifactReference,
 	protocol::{self, SubmissionEnvelope},
 	run_validation,
-	runner::{MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord},
+	runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult},
 };
 
 /// Maximum signed package size accepted for submission.
@@ -26,6 +33,19 @@ pub const MAX_SUBMISSION_BYTES: usize = 4 * 1_024 * 1_024;
 pub const MAX_SIGNED_PACKAGE_BYTES: usize = MAX_SUBMISSION_BYTES - 240 * 1_024;
 /// Maximum retained artifact accepted through the Vercel ingress boundary.
 pub const MAX_ARTIFACT_BYTES: usize = 4 * 1_024 * 1_024;
+/// Default maximum number of artifact uploads in flight.
+pub const DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY: usize = 8;
+/// Maximum accepted artifact-upload concurrency.
+pub const MAX_ARTIFACT_UPLOAD_CONCURRENCY: usize = 32;
+
+const MAX_TRANSPORT_ATTEMPTS: usize = 3;
+const MAX_TRANSPORT_RESPONSE_BYTES: u64 = 64 * 1_024;
+const TRANSPORT_RETRY_DELAY: Duration = Duration::from_millis(500);
+const DEFAULT_RETRY_POLICY: RetryPolicy = RetryPolicy {
+	max_attempts: MAX_TRANSPORT_ATTEMPTS,
+	delay: TRANSPORT_RETRY_DELAY,
+	sleep: thread::sleep,
+};
 
 /// Injectable outbound submission transport.
 pub trait SubmissionTransport {
@@ -40,6 +60,93 @@ pub trait ArtifactUploadTransport {
 		&self,
 		request: &ArtifactUploadRequest,
 	) -> Result<TransportResponse, TransportFailure>;
+}
+
+/// Strictly decoded and semantically validated signed-package payload.
+///
+/// Calibration remains a separate type so callers cannot accidentally pass it
+/// to Official normalization or publication code as a [`RunRecord`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum ValidatedSubmissionPayload {
+	/// Existing `aiq.run.v3` payload.
+	Official(RunRecord),
+	/// Explicitly non-Official `aiq.calibration-run.v3` payload.
+	Calibration(CalibrationRunRecord),
+}
+impl ValidatedSubmissionPayload {
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		match self {
+			Self::Official(run) => &run.evaluator_results_artifact,
+			Self::Calibration(run) => &run.evaluator_results_artifact,
+		}
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		match self {
+			Self::Official(run) => &run.results,
+			Self::Calibration(run) => &run.results,
+		}
+	}
+
+	fn capability_validation(&self) -> Option<&CapabilityValidationReport> {
+		match self {
+			Self::Official(run) => run.capability_validation.as_ref(),
+			Self::Calibration(run) => Some(&run.capability_validation),
+		}
+	}
+}
+
+/// Low-level network failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransportFailureKind {
+	/// Connection, DNS, TLS, or protocol failure.
+	Network,
+	/// Global transport timeout.
+	Timeout,
+}
+
+/// Classified submission outcome.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmissionOutcomeKind {
+	/// Server accepted the package into the unverified queue.
+	Accepted,
+	/// Server reports that the idempotency key was already accepted.
+	Duplicate,
+	/// Server reports a conflicting idempotency key or payload.
+	Conflict,
+	/// Other client-side HTTP error.
+	ClientError,
+	/// Server-side HTTP error.
+	ServerError,
+	/// Network, DNS, TLS, or protocol failure.
+	Network,
+	/// Transport timeout.
+	Timeout,
+	/// Local configuration or package validation failure.
+	Configuration,
+}
+impl SubmissionOutcomeKind {
+	/// Returns whether the package entered the queue or was already queued exactly.
+	#[must_use]
+	pub const fn is_success(self) -> bool {
+		matches!(self, Self::Accepted | Self::Duplicate)
+	}
+
+	/// Returns the stable wire name used in operator diagnostics.
+	#[must_use]
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Accepted => "accepted",
+			Self::Duplicate => "duplicate",
+			Self::Conflict => "conflict",
+			Self::ClientError => "client_error",
+			Self::ServerError => "server_error",
+			Self::Network => "network",
+			Self::Timeout => "timeout",
+			Self::Configuration => "configuration",
+		}
+	}
 }
 
 /// A bearer token that does not implement serialization and redacts debug output.
@@ -118,14 +225,19 @@ pub struct TransportFailure {
 
 /// Blocking HTTPS transport backed by ureq and rustls.
 pub struct HttpsTransport {
-	timeout: Duration,
+	agent: ureq::Agent,
 	allow_loopback_http: bool,
 }
 impl HttpsTransport {
 	/// Creates a transport with a global request timeout.
 	#[must_use]
-	pub const fn new(timeout: Duration, allow_loopback_http: bool) -> Self {
-		Self { timeout, allow_loopback_http }
+	pub fn new(timeout: Duration, allow_loopback_http: bool) -> Self {
+		let config = ureq::Agent::config_builder()
+			.timeout_global(Some(timeout))
+			.http_status_as_error(false)
+			.build();
+
+		Self { agent: config.into(), allow_loopback_http }
 	}
 }
 
@@ -140,9 +252,8 @@ impl SubmissionTransport for HttpsTransport {
 			});
 		}
 
-		let config = ureq::Agent::config_builder().timeout_global(Some(self.timeout)).build();
-		let agent: ureq::Agent = config.into();
-		let response = agent
+		let response = self
+			.agent
 			.post(&request.url)
 			.header("Authorization", &format!("Bearer {}", request.bearer_token.expose()))
 			.header("Content-Type", "application/json")
@@ -150,7 +261,7 @@ impl SubmissionTransport for HttpsTransport {
 			.send(&request.body);
 
 		match response {
-			Ok(response) => Ok(TransportResponse { status: response.status().as_u16() }),
+			Ok(response) => Ok(transport_response_status(response)),
 			Err(ureq::Error::StatusCode(status)) => Ok(TransportResponse { status }),
 			Err(error) => Err(TransportFailure {
 				kind: if matches!(error, ureq::Error::Timeout(_)) {
@@ -178,9 +289,8 @@ impl ArtifactUploadTransport for HttpsTransport {
 			});
 		}
 
-		let config = ureq::Agent::config_builder().timeout_global(Some(self.timeout)).build();
-		let agent: ureq::Agent = config.into();
-		let response = agent
+		let response = self
+			.agent
 			.post(&request.url)
 			.header("Authorization", &format!("Bearer {}", request.bearer_token.expose()))
 			.header("Content-Type", "application/octet-stream")
@@ -192,7 +302,7 @@ impl ArtifactUploadTransport for HttpsTransport {
 			.send(&request.body);
 
 		match response {
-			Ok(response) => Ok(TransportResponse { status: response.status().as_u16() }),
+			Ok(response) => Ok(transport_response_status(response)),
 			Err(ureq::Error::StatusCode(status)) => Ok(TransportResponse { status }),
 			Err(error) => Err(TransportFailure {
 				kind: if matches!(error, ureq::Error::Timeout(_)) {
@@ -258,35 +368,28 @@ impl Display for SubmissionError {
 	}
 }
 
-/// Low-level network failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TransportFailureKind {
-	/// Connection, DNS, TLS, or protocol failure.
-	Network,
-	/// Global transport timeout.
-	Timeout,
+enum ArtifactUploadOutcome {
+	Stored,
+	Duplicate,
 }
 
-/// Classified submission outcome.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SubmissionOutcomeKind {
-	/// Server accepted the package into the unverified queue.
-	Accepted,
-	/// Server reports that the idempotency key was already accepted.
-	Duplicate,
-	/// Server reports a conflicting idempotency key or payload.
-	Conflict,
-	/// Other client-side HTTP error.
-	ClientError,
-	/// Server-side HTTP error.
-	ServerError,
-	/// Network, DNS, TLS, or protocol failure.
-	Network,
-	/// Transport timeout.
-	Timeout,
-	/// Local configuration or package validation failure.
-	Configuration,
+#[derive(Clone, Copy)]
+struct RetryPolicy {
+	max_attempts: usize,
+	delay: Duration,
+	sleep: fn(Duration),
+}
+
+#[derive(Clone, Copy)]
+struct TransportPolicy {
+	allow_loopback_http: bool,
+	retry: RetryPolicy,
+}
+impl TransportPolicy {
+	const fn production(allow_loopback_http: bool) -> Self {
+		Self { allow_loopback_http, retry: DEFAULT_RETRY_POLICY }
+	}
 }
 
 /// Serializes a signed package as compact JCS and enforces the transport bound.
@@ -298,21 +401,7 @@ pub fn serialize_signed_package(envelope: &SubmissionEnvelope) -> Result<Vec<u8>
 		)
 	})?;
 
-	let run: RunRecord = serde_json::from_value(envelope.payload.clone()).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package payload is not a RunRecord: {error}"),
-		)
-	})?;
-
-	run_validation::validate_run_record(&run, None).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package RunRecord validation failed: {error}"),
-		)
-	})?;
-
-	validate_run_signer_binding(&run, &envelope.signer.node_id)?;
+	decode_validated_payload(envelope)?;
 
 	let bytes = protocol::canonical_json(envelope).map_err(|error| {
 		SubmissionError::new(
@@ -387,6 +476,26 @@ pub fn validate_run_signer_binding(
 	Ok(())
 }
 
+/// Confirms that a signed calibration's preflight and result provenance name
+/// its package signer.
+pub fn validate_calibration_signer_binding(
+	run: &CalibrationRunRecord,
+	signer_node_id: &str,
+) -> Result<(), SubmissionError> {
+	let provenance_matches =
+		run.results.iter().all(|result| result.provenance.node_id == signer_node_id);
+	let preflight_matches = run.capability_validation.node_id == signer_node_id;
+
+	if !provenance_matches || !preflight_matches {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"signed calibration package signer does not match run provenance and preflight node_id",
+		));
+	}
+
+	Ok(())
+}
+
 /// Uploads every unique signed artifact before submitting the package that claims it.
 pub fn submit_signed_package_with_artifacts<T>(
 	transport: &T,
@@ -404,7 +513,7 @@ where
 		body,
 		artifact_root,
 		bearer_token,
-		false,
+		TransportPolicy::production(false),
 	)
 }
 
@@ -425,7 +534,53 @@ where
 		body,
 		artifact_root,
 		bearer_token,
-		true,
+		TransportPolicy::production(true),
+	)
+}
+
+/// Uploads unique artifacts with bounded concurrency before submitting the package.
+pub fn submit_signed_package_with_artifacts_concurrently<T>(
+	transport: &T,
+	endpoint: &str,
+	body: Vec<u8>,
+	artifact_root: &Path,
+	bearer_token: SecretToken,
+	artifact_upload_concurrency: usize,
+) -> Result<SubmissionBundleOutcome, SubmissionError>
+where
+	T: ArtifactUploadTransport + SubmissionTransport + Sync,
+{
+	submit_signed_package_with_artifacts_concurrent_policy(
+		transport,
+		endpoint,
+		body,
+		artifact_root,
+		bearer_token,
+		artifact_upload_concurrency,
+		TransportPolicy::production(false),
+	)
+}
+
+/// Uploads concurrently through HTTP only when the endpoint is a loopback origin.
+pub fn submit_signed_package_with_artifacts_concurrently_allowing_loopback<T>(
+	transport: &T,
+	endpoint: &str,
+	body: Vec<u8>,
+	artifact_root: &Path,
+	bearer_token: SecretToken,
+	artifact_upload_concurrency: usize,
+) -> Result<SubmissionBundleOutcome, SubmissionError>
+where
+	T: ArtifactUploadTransport + SubmissionTransport + Sync,
+{
+	submit_signed_package_with_artifacts_concurrent_policy(
+		transport,
+		endpoint,
+		body,
+		artifact_root,
+		bearer_token,
+		artifact_upload_concurrency,
+		TransportPolicy::production(true),
 	)
 }
 
@@ -439,7 +594,13 @@ pub fn submit_signed_package<T>(
 where
 	T: SubmissionTransport,
 {
-	submit_signed_package_policy(transport, endpoint, body, bearer_token, false)
+	submit_signed_package_policy(
+		transport,
+		endpoint,
+		body,
+		bearer_token,
+		TransportPolicy::production(false),
+	)
 }
 
 /// Reads and verifies the evaluator-results artifact bound by a saved run.
@@ -465,9 +626,16 @@ pub fn read_evaluator_results_artifact(
 	read_artifact(&root, &artifact.kind, digest, artifact.bytes)
 }
 
+fn transport_response_status(mut response: Response<Body>) -> TransportResponse {
+	let status = response.status().as_u16();
+	let _ = response.body_mut().with_config().limit(MAX_TRANSPORT_RESPONSE_BYTES).read_to_vec();
+
+	TransportResponse { status }
+}
+
 fn validate_signed_package(
 	body: &[u8],
-) -> Result<(SubmissionEnvelope, RunRecord), SubmissionError> {
+) -> Result<(SubmissionEnvelope, ValidatedSubmissionPayload), SubmissionError> {
 	if body.len() > MAX_SIGNED_PACKAGE_BYTES {
 		return Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
@@ -489,23 +657,83 @@ fn validate_signed_package(
 		)
 	})?;
 
-	let run: RunRecord = serde_json::from_value(envelope.payload.clone()).map_err(|error| {
-		SubmissionError::new(
+	let payload = decode_validated_payload(&envelope)?;
+
+	Ok((envelope, payload))
+}
+
+fn decode_validated_payload(
+	envelope: &SubmissionEnvelope,
+) -> Result<ValidatedSubmissionPayload, SubmissionError> {
+	match envelope.payload_type.as_str() {
+		RUN_PAYLOAD_TYPE => {
+			let run: RunRecord =
+				serde_json::from_value(envelope.payload.clone()).map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("signed package payload is not a RunRecord: {error}"),
+					)
+				})?;
+
+			run_validation::validate_run_record(&run, None).map_err(|error| {
+				SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					format!("signed package RunRecord validation failed: {error}"),
+				)
+			})?;
+
+			require_packaged_execution_concurrency(run.execution_concurrency, "Official")?;
+			validate_run_signer_binding(&run, &envelope.signer.node_id)?;
+
+			Ok(ValidatedSubmissionPayload::Official(run))
+		},
+		CALIBRATION_RUN_PAYLOAD_TYPE => {
+			if envelope.claimed_trust != TrustTier::Untrusted {
+				return Err(SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					"calibration packages must claim untrusted handling",
+				));
+			}
+
+			let run: CalibrationRunRecord = serde_json::from_value(envelope.payload.clone())
+				.map_err(|error| {
+					SubmissionError::new(
+						SubmissionOutcomeKind::Configuration,
+						format!("signed package payload is not a CalibrationRunRecord: {error}"),
+					)
+				})?;
+
+			run_validation::validate_calibration_run_record(&run).map_err(|error| {
+				SubmissionError::new(
+					SubmissionOutcomeKind::Configuration,
+					format!("signed package CalibrationRunRecord validation failed: {error}"),
+				)
+			})?;
+
+			require_packaged_execution_concurrency(run.execution_concurrency, "calibration")?;
+			validate_calibration_signer_binding(&run, &envelope.signer.node_id)?;
+
+			Ok(ValidatedSubmissionPayload::Calibration(run))
+		},
+		_ => Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
-			format!("signed package payload is not a RunRecord: {error}"),
-		)
-	})?;
+			"signed package payload type is unsupported",
+		)),
+	}
+}
 
-	run_validation::validate_run_record(&run, None).map_err(|error| {
-		SubmissionError::new(
+fn require_packaged_execution_concurrency(
+	execution_concurrency: Option<usize>,
+	classification: &str,
+) -> Result<(), SubmissionError> {
+	if execution_concurrency.is_some_and(|jobs| (1..=MAX_RUN_JOBS).contains(&jobs)) {
+		Ok(())
+	} else {
+		Err(SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
-			format!("signed package RunRecord validation failed: {error}"),
-		)
-	})?;
-
-	validate_run_signer_binding(&run, &envelope.signer.node_id)?;
-
-	Ok((envelope, run))
+			format!("{classification} packages require a bound execution concurrency"),
+		))
+	}
 }
 
 fn artifact_kind_limit(kind: &str) -> Option<usize> {
@@ -518,18 +746,18 @@ fn artifact_kind_limit(kind: &str) -> Option<usize> {
 }
 
 fn collect_artifact_references(
-	run: &RunRecord,
+	payload: &ValidatedSubmissionPayload,
 ) -> Result<BTreeMap<(String, String), u64>, SubmissionError> {
-	let result_artifacts = run
-		.results
+	let result_artifacts = payload
+		.results()
 		.iter()
 		.flat_map(|result| result.artifacts.iter().chain(result.workspace_manifest.iter()));
-	let preflight_artifacts = run.capability_validation.iter().flat_map(|report| {
+	let preflight_artifacts = payload.capability_validation().into_iter().flat_map(|report| {
 		report.models.iter().flat_map(|validation| validation.probe.artifacts.iter())
 	});
 	let mut references = BTreeMap::new();
 
-	for artifact in iter::once(&run.evaluator_results_artifact)
+	for artifact in iter::once(payload.evaluator_results_artifact())
 		.chain(result_artifacts)
 		.chain(preflight_artifacts)
 	{
@@ -678,80 +906,43 @@ fn submit_signed_package_with_artifacts_policy<T>(
 	body: Vec<u8>,
 	artifact_root: &Path,
 	bearer_token: SecretToken,
-	allow_loopback_http: bool,
+	policy: TransportPolicy,
 ) -> Result<SubmissionBundleOutcome, SubmissionError>
 where
 	T: ArtifactUploadTransport + SubmissionTransport,
 {
-	validate_endpoint(endpoint, allow_loopback_http)?;
+	validate_endpoint(endpoint, policy.allow_loopback_http)?;
 
-	let (envelope, run) = validate_signed_package(&body)?;
+	let (envelope, payload) = validate_signed_package(&body)?;
 	let root = canonical_artifact_root(artifact_root)?;
-	let references = collect_artifact_references(&run)?;
+	let references = collect_artifact_references(&payload)?;
 	let mut stored = 0;
 	let mut duplicate = 0;
 
 	for ((kind, digest), expected_bytes) in &references {
 		let bytes = read_artifact(&root, kind, digest, *expected_bytes)?;
-		let response = transport
-			.upload(&ArtifactUploadRequest {
+		let response = upload_with_retry(
+			transport,
+			&ArtifactUploadRequest {
 				url: format!("{}/api/artifacts", endpoint.trim_end_matches('/')),
 				body: bytes,
 				idempotency_key: envelope.idempotency_key.clone(),
 				kind: kind.clone(),
 				digest: digest.clone(),
 				bearer_token: bearer_token.duplicate(),
-			})
-			.map_err(|failure| {
-				SubmissionError::new(
-					match failure.kind {
-						TransportFailureKind::Network => SubmissionOutcomeKind::Network,
-						TransportFailureKind::Timeout => SubmissionOutcomeKind::Timeout,
-					},
-					failure.message,
-				)
-			})?;
+			},
+			policy.retry,
+		)
+		.map_err(classify_transport_failure)?;
 
-		match response.status {
-			200..=207 | 209..=299 => stored += 1,
-			208 => duplicate += 1,
-			409 => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::Conflict,
-					"artifact ingress reported an immutable content-address conflict",
-				));
-			},
-			400..=499 => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::ClientError,
-					format!(
-						"artifact ingress rejected the signed reference with HTTP {}",
-						response.status
-					),
-				));
-			},
-			500..=599 => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::ServerError,
-					format!("artifact ingress is unavailable with HTTP {}", response.status),
-				));
-			},
-			_ => {
-				return Err(SubmissionError::new(
-					SubmissionOutcomeKind::Network,
-					"artifact ingress returned an invalid HTTP status",
-				));
-			},
+		match classify_artifact_upload_response(response)? {
+			ArtifactUploadOutcome::Stored => stored += 1,
+			ArtifactUploadOutcome::Duplicate => duplicate += 1,
 		}
 	}
 
-	let package = submit_signed_package_policy(
-		transport,
-		endpoint,
-		body,
-		bearer_token.duplicate(),
-		allow_loopback_http,
-	)?;
+	let package =
+		submit_signed_package_policy(transport, endpoint, body, bearer_token.duplicate(), policy)?;
 
 	Ok(SubmissionBundleOutcome {
 		schema_version: "aiq.submission-outcome.v1",
@@ -762,32 +953,214 @@ where
 	})
 }
 
+fn classify_artifact_upload_response(
+	response: TransportResponse,
+) -> Result<ArtifactUploadOutcome, SubmissionError> {
+	match response.status {
+		200..=207 | 209..=299 => Ok(ArtifactUploadOutcome::Stored),
+		208 => Ok(ArtifactUploadOutcome::Duplicate),
+		409 => Err(SubmissionError::new(
+			SubmissionOutcomeKind::Conflict,
+			"artifact ingress reported an immutable content-address conflict",
+		)),
+		400..=499 => Err(SubmissionError::new(
+			SubmissionOutcomeKind::ClientError,
+			format!("artifact ingress rejected the signed reference with HTTP {}", response.status),
+		)),
+		500..=599 => Err(SubmissionError::new(
+			SubmissionOutcomeKind::ServerError,
+			format!("artifact ingress is unavailable with HTTP {}", response.status),
+		)),
+		_ => Err(SubmissionError::new(
+			SubmissionOutcomeKind::Network,
+			"artifact ingress returned an invalid HTTP status",
+		)),
+	}
+}
+
+fn send_with_retry<T>(
+	transport: &T,
+	request: &SubmissionRequest,
+	retry_policy: RetryPolicy,
+) -> Result<TransportResponse, TransportFailure>
+where
+	T: SubmissionTransport,
+{
+	retry_transport_operation(|| transport.send(request), retry_policy)
+}
+
+fn upload_with_retry<T>(
+	transport: &T,
+	request: &ArtifactUploadRequest,
+	retry_policy: RetryPolicy,
+) -> Result<TransportResponse, TransportFailure>
+where
+	T: ArtifactUploadTransport,
+{
+	retry_transport_operation(|| transport.upload(request), retry_policy)
+}
+
+fn retry_transport_operation<F>(
+	mut operation: F,
+	retry_policy: RetryPolicy,
+) -> Result<TransportResponse, TransportFailure>
+where
+	F: FnMut() -> Result<TransportResponse, TransportFailure>,
+{
+	let mut attempt = 1;
+
+	loop {
+		let outcome = operation();
+
+		if attempt >= retry_policy.max_attempts || !transport_outcome_is_retryable(&outcome) {
+			return outcome;
+		}
+
+		(retry_policy.sleep)(retry_policy.delay);
+
+		attempt += 1;
+	}
+}
+
+fn transport_outcome_is_retryable(outcome: &Result<TransportResponse, TransportFailure>) -> bool {
+	match outcome {
+		Err(_) => true,
+		Ok(response) => matches!(response.status, 408 | 429 | 500..=599),
+	}
+}
+
+fn submit_signed_package_with_artifacts_concurrent_policy<T>(
+	transport: &T,
+	endpoint: &str,
+	body: Vec<u8>,
+	artifact_root: &Path,
+	bearer_token: SecretToken,
+	artifact_upload_concurrency: usize,
+	policy: TransportPolicy,
+) -> Result<SubmissionBundleOutcome, SubmissionError>
+where
+	T: ArtifactUploadTransport + SubmissionTransport + Sync,
+{
+	if !(1..=MAX_ARTIFACT_UPLOAD_CONCURRENCY).contains(&artifact_upload_concurrency) {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			format!(
+				"artifact upload concurrency must be between 1 and {MAX_ARTIFACT_UPLOAD_CONCURRENCY}"
+			),
+		));
+	}
+
+	validate_endpoint(endpoint, policy.allow_loopback_http)?;
+
+	let (envelope, payload) = validate_signed_package(&body)?;
+	let root = canonical_artifact_root(artifact_root)?;
+	let references = collect_artifact_references(&payload)?;
+	let artifact_url = format!("{}/api/artifacts", endpoint.trim_end_matches('/'));
+	let mut reference_iter = references.iter();
+	let mut stored = 0;
+	let mut duplicate = 0;
+
+	loop {
+		let batch = reference_iter.by_ref().take(artifact_upload_concurrency).collect::<Vec<_>>();
+
+		if batch.is_empty() {
+			break;
+		}
+
+		let outcomes = thread::scope(|scope| {
+			let handles = batch
+				.into_iter()
+				.map(|((kind, digest), expected_bytes)| {
+					let token = bearer_token.duplicate();
+					let idempotency_key = envelope.idempotency_key.clone();
+					let root = &root;
+					let artifact_url = &artifact_url;
+
+					scope.spawn(move || {
+						let bytes = read_artifact(root, kind, digest, *expected_bytes)?;
+						let response = upload_with_retry(
+							transport,
+							&ArtifactUploadRequest {
+								url: artifact_url.clone(),
+								body: bytes,
+								idempotency_key,
+								kind: kind.clone(),
+								digest: digest.clone(),
+								bearer_token: token,
+							},
+							policy.retry,
+						)
+						.map_err(classify_transport_failure)?;
+
+						classify_artifact_upload_response(response)
+					})
+				})
+				.collect::<Vec<_>>();
+
+			handles
+				.into_iter()
+				.map(|handle| {
+					handle.join().unwrap_or_else(|_| {
+						Err(SubmissionError::new(
+							SubmissionOutcomeKind::Network,
+							"artifact upload worker terminated unexpectedly",
+						))
+					})
+				})
+				.collect::<Vec<_>>()
+		});
+
+		for outcome in outcomes {
+			match outcome? {
+				ArtifactUploadOutcome::Stored => stored += 1,
+				ArtifactUploadOutcome::Duplicate => duplicate += 1,
+			}
+		}
+	}
+
+	let package =
+		submit_signed_package_policy(transport, endpoint, body, bearer_token.duplicate(), policy)?;
+
+	Ok(SubmissionBundleOutcome {
+		schema_version: "aiq.submission-outcome.v1",
+		artifacts_total: references.len(),
+		artifacts_stored: stored,
+		artifacts_duplicate: duplicate,
+		package,
+	})
+}
+
+fn classify_transport_failure(failure: TransportFailure) -> SubmissionError {
+	SubmissionError::new(
+		match failure.kind {
+			TransportFailureKind::Network => SubmissionOutcomeKind::Network,
+			TransportFailureKind::Timeout => SubmissionOutcomeKind::Timeout,
+		},
+		failure.message,
+	)
+}
+
 fn submit_signed_package_policy<T>(
 	transport: &T,
 	endpoint: &str,
 	body: Vec<u8>,
 	bearer_token: SecretToken,
-	allow_loopback_http: bool,
+	policy: TransportPolicy,
 ) -> Result<SubmissionOutcome, SubmissionError>
 where
 	T: SubmissionTransport,
 {
-	validate_endpoint(endpoint, allow_loopback_http)?;
+	validate_endpoint(endpoint, policy.allow_loopback_http)?;
 
 	let (envelope, _) = validate_signed_package(&body)?;
 	let idempotency_key = envelope.idempotency_key;
 	let url = format!("{}/api/submissions", endpoint.trim_end_matches('/'));
-	let response = transport
-		.send(&SubmissionRequest { url, body, idempotency_key, bearer_token })
-		.map_err(|failure| {
-			SubmissionError::new(
-				match failure.kind {
-					TransportFailureKind::Network => SubmissionOutcomeKind::Network,
-					TransportFailureKind::Timeout => SubmissionOutcomeKind::Timeout,
-				},
-				failure.message,
-			)
-		})?;
+	let response = send_with_retry(
+		transport,
+		&SubmissionRequest { url, body, idempotency_key, bearer_token },
+		policy.retry,
+	)
+	.map_err(classify_transport_failure)?;
 	let kind = match response.status {
 		200..=207 | 209..=299 => SubmissionOutcomeKind::Accepted,
 		208 => SubmissionOutcomeKind::Duplicate,
@@ -850,12 +1223,18 @@ mod tests {
 		env, fs,
 		path::PathBuf,
 		process,
-		time::{SystemTime, UNIX_EPOCH},
+		sync::{
+			Mutex,
+			atomic::{AtomicUsize, Ordering},
+		},
+		thread,
+		time::{Duration, SystemTime, UNIX_EPOCH},
 	};
 
 	use serde_json;
 	use sha2::{Digest, Sha256};
 
+	use crate::scoring;
 	use crate::{
 		adapter::{
 			self, ArtifactReference, ArtifactSink, AuthenticationProbe, CapabilityValidation,
@@ -871,12 +1250,13 @@ mod tests {
 			ResultFailure, ResultStatus, ToolUsage,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
+		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_VERSION},
 		submission::{
 			self, ArtifactUploadRequest, ArtifactUploadTransport, MAX_SUBMISSION_BYTES,
 			SecretToken, SubmissionOutcomeKind, SubmissionRequest, SubmissionTransport,
 			TransportFailure, TransportFailureKind, TransportResponse,
 		},
-		task::{EvaluatorCheck, EvaluatorCheckFailureClass},
+		task::{self, EvaluatorCheck, EvaluatorCheckFailureClass},
 	};
 
 	struct FakeTransport {
@@ -886,10 +1266,51 @@ mod tests {
 
 	struct FailingTransport(TransportFailureKind);
 
+	struct CountingPackageTransport {
+		status: u16,
+		attempts: AtomicUsize,
+	}
+
 	struct BundleTransport {
 		artifact_status: u16,
 		submission_status: u16,
 		events: RefCell<Vec<String>>,
+	}
+
+	struct ConcurrentTransport {
+		active: AtomicUsize,
+		maximum_active: AtomicUsize,
+		artifact_status: Option<u16>,
+		artifacts: Mutex<Vec<String>>,
+		packages: AtomicUsize,
+	}
+
+	struct RetryRecoveryTransport {
+		artifact_attempts: Mutex<BTreeMap<String, usize>>,
+		package_attempts: AtomicUsize,
+		events: Mutex<Vec<String>>,
+	}
+
+	impl ConcurrentTransport {
+		fn new(artifact_status: Option<u16>) -> Self {
+			Self {
+				active: AtomicUsize::new(0),
+				maximum_active: AtomicUsize::new(0),
+				artifact_status,
+				artifacts: Mutex::new(Vec::new()),
+				packages: AtomicUsize::new(0),
+			}
+		}
+	}
+
+	impl RetryRecoveryTransport {
+		fn new() -> Self {
+			Self {
+				artifact_attempts: Mutex::new(BTreeMap::new()),
+				package_attempts: AtomicUsize::new(0),
+				events: Mutex::new(Vec::new()),
+			}
+		}
 	}
 
 	impl SubmissionTransport for FailingTransport {
@@ -898,6 +1319,17 @@ mod tests {
 			_request: &SubmissionRequest,
 		) -> Result<TransportResponse, TransportFailure> {
 			Err(TransportFailure { kind: self.0, message: "transport fixture".to_owned() })
+		}
+	}
+
+	impl SubmissionTransport for CountingPackageTransport {
+		fn send(
+			&self,
+			_request: &SubmissionRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			self.attempts.fetch_add(1, Ordering::SeqCst);
+
+			Ok(TransportResponse { status: self.status })
 		}
 	}
 
@@ -936,6 +1368,104 @@ mod tests {
 
 			Ok(TransportResponse { status: self.artifact_status })
 		}
+	}
+
+	impl SubmissionTransport for ConcurrentTransport {
+		fn send(
+			&self,
+			_request: &SubmissionRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			self.packages.fetch_add(1, Ordering::SeqCst);
+
+			Ok(TransportResponse { status: 202 })
+		}
+	}
+
+	impl ArtifactUploadTransport for ConcurrentTransport {
+		fn upload(
+			&self,
+			request: &ArtifactUploadRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+
+			self.maximum_active.fetch_max(active, Ordering::SeqCst);
+
+			thread::sleep(Duration::from_millis(5));
+
+			self.artifacts.lock().expect("artifact event lock").push(request.digest.clone());
+			self.active.fetch_sub(1, Ordering::SeqCst);
+
+			let status = self.artifact_status.unwrap_or_else(|| {
+				if request.kind == "evaluator-results.json"
+					|| request.body.first().is_some_and(|byte| byte % 2 == 0)
+				{
+					208
+				} else {
+					201
+				}
+			});
+
+			Ok(TransportResponse { status })
+		}
+	}
+
+	impl SubmissionTransport for RetryRecoveryTransport {
+		fn send(
+			&self,
+			_request: &SubmissionRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			let attempt = self.package_attempts.fetch_add(1, Ordering::SeqCst) + 1;
+
+			self.events.lock().expect("retry event lock").push(format!("package:{attempt}"));
+
+			Ok(TransportResponse { status: if attempt == 1 { 429 } else { 202 } })
+		}
+	}
+
+	impl ArtifactUploadTransport for RetryRecoveryTransport {
+		fn upload(
+			&self,
+			request: &ArtifactUploadRequest,
+		) -> Result<TransportResponse, TransportFailure> {
+			let attempt = {
+				let mut attempts = self.artifact_attempts.lock().expect("artifact attempt lock");
+				let attempt = attempts.entry(request.digest.clone()).or_default();
+
+				*attempt += 1;
+
+				*attempt
+			};
+
+			self.events
+				.lock()
+				.expect("retry event lock")
+				.push(format!("artifact:{}:{attempt}", request.digest));
+
+			match attempt {
+				1 => Err(TransportFailure {
+					kind: TransportFailureKind::Network,
+					message: "transient DNS fixture".to_owned(),
+				}),
+				2 => Ok(TransportResponse { status: 503 }),
+				_ => Ok(TransportResponse {
+					status: if request.kind == "evaluator-results.json" { 208 } else { 201 },
+				}),
+			}
+		}
+	}
+
+	fn ignore_retry_delay(_delay: Duration) {}
+
+	fn test_retry_policy() -> super::RetryPolicy {
+		super::RetryPolicy {
+			max_attempts: super::MAX_TRANSPORT_ATTEMPTS,
+			delay: Duration::ZERO,
+			sleep: ignore_retry_delay,
+		}
+	}
+
+	fn test_transport_policy(allow_loopback_http: bool) -> super::TransportPolicy {
+		super::TransportPolicy { allow_loopback_http, retry: test_retry_policy() }
 	}
 
 	fn temporary_root(label: &str) -> PathBuf {
@@ -985,6 +1515,34 @@ mod tests {
 
 		run.results[0].artifacts.push(reference.clone());
 		run.results[1].artifacts.push(reference);
+
+		submission::bind_synthetic_run_to_signer(&mut run, &identity.node().node_id)
+			.expect("synthetic fixture must bind");
+
+		let envelope = identity
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("fixture must sign");
+
+		submission::serialize_signed_package(&envelope).expect("fixture package")
+	}
+
+	fn signed_body_with_unique_artifacts(root: &PathBuf, count: u8) -> Vec<u8> {
+		let sink = LocalArtifactSink::new(root).expect("fixture sink");
+		let identity = SigningIdentity::from_secret([9; 32]);
+		let mut run = runner::synthetic_demo(
+			ScheduleConfig::default()
+				.slot("2024-02-29", ScheduleOccurrence::Day)
+				.expect("fixture slot"),
+			&sink,
+		)
+		.expect("fixture run");
+
+		for marker in 1..=count {
+			let reference = sink.put("stdout.jsonl", &[marker]).expect("fixture artifact");
+			let result_index = usize::from(marker) % run.results.len();
+
+			run.results[result_index].artifacts.push(reference);
+		}
 
 		submission::bind_synthetic_run_to_signer(&mut run, &identity.node().node_id)
 			.expect("synthetic fixture must bind");
@@ -1229,6 +1787,7 @@ mod tests {
 				(format!("c{}", "c".repeat(31)), u32::MAX),
 				(format!("d{}", "d".repeat(31)), u32::MAX),
 			]),
+			provider_tokens: runner::ProviderTokenUsage::default(),
 		};
 		result.latency.wall_ms = 9_007_199_254_740_991;
 		result.evaluator_checks = (0..6)
@@ -1363,7 +1922,6 @@ mod tests {
 	fn maximum_calibration_envelope(
 		identity: &SigningIdentity,
 		failed_run: &runner::RunRecord,
-		task_ids: BTreeMap<String, String>,
 	) -> SubmissionEnvelope {
 		let mut provenance = failed_run.provenance.clone().expect("maximum fixture provenance");
 
@@ -1379,6 +1937,9 @@ mod tests {
 		)
 		.expect("calibration run id");
 		let mut results = failed_run.results.clone();
+		let task_count = results.len() / failed_run.models.len();
+		let selected_task_ids =
+			results[..task_count].iter().map(|result| result.task_id.clone()).collect();
 
 		for result in &mut results {
 			result.run_id.clone_from(&run_id);
@@ -1400,8 +1961,9 @@ mod tests {
 			schedule_slot: failed_run.schedule_slot.clone(),
 			task_set_hash: failed_run.task_set_hash.clone(),
 			scoring_version: failed_run.scoring_version.clone(),
+			execution_concurrency: failed_run.execution_concurrency,
 			models: failed_run.models.clone(),
-			task_ids: task_ids.into_values().collect(),
+			task_ids: selected_task_ids,
 			started_unix_ms: failed_run.started_unix_ms,
 			finished_unix_ms: failed_run.finished_unix_ms,
 			capability_validation: failed_run
@@ -1431,7 +1993,7 @@ mod tests {
 		SubmissionEnvelope,
 		SubmissionEnvelope,
 	) {
-		let (identity, run, task_ids, evaluator_results_bytes) = maximum_completed_shape();
+		let (identity, run, _task_ids, evaluator_results_bytes) = maximum_completed_shape();
 		let completed = identity
 			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
 			.expect("completed fixture must sign");
@@ -1488,7 +2050,7 @@ mod tests {
 				TrustTier::Untrusted,
 			)
 			.expect("overbound fixture must sign");
-		let calibration = maximum_calibration_envelope(&identity, &failed_run, task_ids);
+		let calibration = maximum_calibration_envelope(&identity, &failed_run);
 
 		(
 			completed,
@@ -1617,6 +2179,123 @@ mod tests {
 	}
 
 	#[test]
+	fn retry_policy_is_bounded_and_retries_only_transient_outcomes() {
+		let mut failing_attempts = 0;
+		let failure = super::retry_transport_operation(
+			|| {
+				failing_attempts += 1;
+
+				Err(TransportFailure {
+					kind: TransportFailureKind::Timeout,
+					message: "timeout fixture".to_owned(),
+				})
+			},
+			test_retry_policy(),
+		)
+		.expect_err("persistent timeout must exhaust the retry bound");
+
+		assert_eq!(failure.kind, TransportFailureKind::Timeout);
+		assert_eq!(failing_attempts, super::MAX_TRANSPORT_ATTEMPTS);
+
+		for retryable_kind in [TransportFailureKind::Network, TransportFailureKind::Timeout] {
+			let mut attempts = 0;
+			let response = super::retry_transport_operation(
+				|| {
+					attempts += 1;
+
+					if attempts == 1 {
+						Err(TransportFailure {
+							kind: retryable_kind,
+							message: "transient transport fixture".to_owned(),
+						})
+					} else {
+						Ok(TransportResponse { status: 201 })
+					}
+				},
+				test_retry_policy(),
+			)
+			.expect("transient transport failure must recover");
+
+			assert_eq!(response.status, 201);
+			assert_eq!(attempts, 2);
+		}
+		for retryable_status in [408, 429, 500, 503, 599] {
+			let mut attempts = 0;
+			let response = super::retry_transport_operation(
+				|| {
+					attempts += 1;
+
+					Ok(TransportResponse {
+						status: if attempts == 1 { retryable_status } else { 201 },
+					})
+				},
+				test_retry_policy(),
+			)
+			.expect("transient HTTP status must recover");
+
+			assert_eq!(response.status, 201);
+			assert_eq!(attempts, 2);
+		}
+		for terminal_status in [400, 401, 409, 422] {
+			let mut attempts = 0;
+			let response = super::retry_transport_operation(
+				|| {
+					attempts += 1;
+
+					Ok(TransportResponse { status: terminal_status })
+				},
+				test_retry_policy(),
+			)
+			.expect("terminal HTTP response remains a response");
+
+			assert_eq!(response.status, terminal_status);
+			assert_eq!(attempts, 1);
+		}
+	}
+
+	#[test]
+	fn transient_artifact_and_package_failures_recover_before_package_submission() {
+		let root = temporary_root("artifact-retry-recovery");
+		let body = signed_body_with_artifact(&root, b"retry fixture\n");
+		let transport = RetryRecoveryTransport::new();
+		let outcome = super::submit_signed_package_with_artifacts_concurrent_policy(
+			&transport,
+			"https://example.vercel.app",
+			body,
+			&root,
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+			2,
+			test_transport_policy(false),
+		)
+		.expect("transient failures must recover within the retry bound");
+
+		assert_eq!(outcome.artifacts_total, 2);
+		assert_eq!(outcome.artifacts_stored, 1);
+		assert_eq!(outcome.artifacts_duplicate, 1);
+		assert_eq!(outcome.package.kind, SubmissionOutcomeKind::Accepted);
+		assert_eq!(transport.package_attempts.load(Ordering::SeqCst), 2);
+		assert!(
+			transport
+				.artifact_attempts
+				.lock()
+				.expect("artifact attempt lock")
+				.values()
+				.all(|attempts| *attempts == super::MAX_TRANSPORT_ATTEMPTS)
+		);
+
+		let events = transport.events.lock().expect("retry event lock");
+		let first_package = events
+			.iter()
+			.position(|event| event.starts_with("package:"))
+			.expect("package attempts");
+
+		assert_eq!(first_package, 2 * super::MAX_TRANSPORT_ATTEMPTS);
+		assert!(events[first_package..].iter().all(|event| event.starts_with("package:")));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
 	fn artifact_aware_submission_uploads_unique_evidence_before_the_package() {
 		let root = temporary_root("artifact-order");
 		let body = signed_body_with_artifact(&root, b"{\"type\":\"fixture\"}\n");
@@ -1645,6 +2324,88 @@ mod tests {
 		assert!(events[0].starts_with("artifact:evaluator-results.json:"));
 		assert!(events[1].starts_with("artifact:stdout.jsonl:"));
 		assert!(events[2].starts_with("package:run_"));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn concurrent_artifact_uploads_are_bounded_and_count_completion_order_independently() {
+		let root = temporary_root("artifact-concurrency");
+		let body = signed_body_with_unique_artifacts(&root, 8);
+		let transport = ConcurrentTransport::new(None);
+		let outcome = submission::submit_signed_package_with_artifacts_concurrently(
+			&transport,
+			"https://example.vercel.app",
+			body,
+			&root,
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+			3,
+		)
+		.expect("concurrent bundle must submit");
+
+		assert_eq!(outcome.artifacts_total, 9);
+		assert_eq!(outcome.artifacts_stored, 4);
+		assert_eq!(outcome.artifacts_duplicate, 5);
+		assert_eq!(transport.packages.load(Ordering::SeqCst), 1);
+		assert!((2..=3).contains(&transport.maximum_active.load(Ordering::SeqCst)));
+
+		let artifacts = transport.artifacts.lock().expect("artifact event lock");
+		let unique = artifacts.iter().collect::<BTreeSet<_>>();
+
+		assert_eq!(artifacts.len(), 9);
+		assert_eq!(unique.len(), 9);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn concurrent_artifact_error_drains_the_batch_and_stops_before_more_work() {
+		let root = temporary_root("artifact-concurrency-error");
+		let body = signed_body_with_unique_artifacts(&root, 8);
+		let transport = ConcurrentTransport::new(Some(503));
+		let error = super::submit_signed_package_with_artifacts_concurrent_policy(
+			&transport,
+			"https://example.vercel.app",
+			body,
+			&root,
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+			3,
+			test_transport_policy(false),
+		)
+		.expect_err("artifact server error must stop submission");
+
+		assert_eq!(error.kind(), SubmissionOutcomeKind::ServerError);
+		assert_eq!(transport.packages.load(Ordering::SeqCst), 0);
+		assert_eq!(
+			transport.artifacts.lock().expect("artifact event lock").len(),
+			3 * super::MAX_TRANSPORT_ATTEMPTS
+		);
+		assert_eq!(transport.active.load(Ordering::SeqCst), 0);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn concurrent_artifact_upload_rejects_out_of_range_worker_counts() {
+		let root = temporary_root("artifact-concurrency-bounds");
+		let body = signed_body_with_unique_artifacts(&root, 1);
+
+		for concurrency in [0, submission::MAX_ARTIFACT_UPLOAD_CONCURRENCY + 1] {
+			let transport = ConcurrentTransport::new(None);
+			let error = submission::submit_signed_package_with_artifacts_concurrently(
+				&transport,
+				"https://example.vercel.app",
+				body.clone(),
+				&root,
+				SecretToken::new("secret".to_owned()).expect("fixture token"),
+				concurrency,
+			)
+			.expect_err("out-of-range concurrency must fail closed");
+
+			assert_eq!(error.kind(), SubmissionOutcomeKind::Configuration);
+			assert!(transport.artifacts.lock().expect("artifact event lock").is_empty());
+			assert_eq!(transport.packages.load(Ordering::SeqCst), 0);
+		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
@@ -1875,16 +2636,49 @@ mod tests {
 			(503, SubmissionOutcomeKind::ServerError),
 		] {
 			let transport = FakeTransport { status, request: RefCell::new(None) };
-			let outcome = submission::submit_signed_package(
+			let outcome = super::submit_signed_package_policy(
 				&transport,
 				"https://example.vercel.app",
 				signed_body(),
 				SecretToken::new("secret".to_owned()).expect("fixture token"),
+				test_transport_policy(false),
 			)
 			.expect("status must classify");
 
 			assert_eq!(outcome.kind, expected);
 		}
+	}
+
+	#[test]
+	fn only_accepted_and_exact_duplicate_are_successful_package_outcomes() {
+		for kind in [SubmissionOutcomeKind::Accepted, SubmissionOutcomeKind::Duplicate] {
+			assert!(kind.is_success());
+		}
+		for kind in [
+			SubmissionOutcomeKind::Conflict,
+			SubmissionOutcomeKind::ClientError,
+			SubmissionOutcomeKind::ServerError,
+			SubmissionOutcomeKind::Network,
+			SubmissionOutcomeKind::Timeout,
+			SubmissionOutcomeKind::Configuration,
+		] {
+			assert!(!kind.is_success());
+		}
+	}
+
+	#[test]
+	fn package_conflict_is_terminal_without_a_retry() {
+		let transport = CountingPackageTransport { status: 409, attempts: AtomicUsize::new(0) };
+		let outcome = submission::submit_signed_package(
+			&transport,
+			"https://example.vercel.app",
+			signed_body(),
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+		)
+		.expect("package conflict remains a classified response");
+
+		assert_eq!(outcome.kind, SubmissionOutcomeKind::Conflict);
+		assert_eq!(transport.attempts.load(Ordering::SeqCst), 1);
 	}
 
 	#[test]
@@ -1991,6 +2785,22 @@ mod tests {
 	}
 
 	#[test]
+	fn packaged_official_wire_rejects_missing_execution_concurrency() {
+		let envelope: SubmissionEnvelope =
+			serde_json::from_slice(&signed_body()).expect("fixture envelope");
+		let mut run: runner::RunRecord =
+			serde_json::from_value(envelope.payload).expect("fixture run");
+
+		run.execution_concurrency = None;
+
+		let envelope = SigningIdentity::from_secret([9; 32])
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("missing-concurrency envelope remains structurally signable");
+
+		assert!(submission::serialize_signed_package(&envelope).is_err());
+	}
+
+	#[test]
 	fn checked_in_v3_fixture_is_a_canonical_rust_verified_full_package() {
 		let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 			.join("../../benchmarks/fixtures/result-package-v3.synthetic.json");
@@ -2001,14 +2811,43 @@ mod tests {
 			.expect("checked-in fixture must verify");
 		let run: runner::RunRecord =
 			serde_json::from_value(envelope.payload.clone()).expect("checked-in fixture run");
+		let tasks = runner::synthetic_demo_tasks();
 		let scheduled_unix_ms =
 			run.schedule_slot.scheduled_unix_ms().expect("checked-in fixture schedule");
 
 		assert_eq!(canonical, fixture);
+		assert_eq!(canonical, signed_body());
 		assert_eq!(run.started_unix_ms, scheduled_unix_ms);
 		assert_eq!(run.finished_unix_ms, scheduled_unix_ms);
+		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(envelope.payload["models"].as_array().map(Vec::len), Some(17));
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
+		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.2");
+		assert_eq!(
+			AIQ_CORE_TASK_IDENTITY_SHA256,
+			"sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
+		);
+		assert!(tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION));
+		assert!(scoring::task_bindings_match_frozen_catalog(&tasks));
+		assert_eq!(
+			run.task_set_hash,
+			task::task_set_hash(&tasks).expect("current synthetic task-set hash")
+		);
+
+		for result in &run.results {
+			let expected = tasks
+				.iter()
+				.find(|task| {
+					task.task_id == result.task_id && task.task_version == result.task_version
+				})
+				.expect("fixture result must bind a current catalog task");
+
+			assert_eq!(result.task_version, AIQ_TASK_SET_VERSION);
+			assert_eq!(
+				result.task_hash,
+				expected.content_hash().expect("current synthetic task hash")
+			);
+		}
 	}
 
 	#[test]
@@ -2044,14 +2883,38 @@ mod tests {
 		run_validation::validate_calibration_run_record(&calibration_record)
 			.expect("maximum calibration record must validate");
 
-		let calibration_bytes =
-			protocol::canonical_json(&calibration_envelope).expect("canonical calibration");
+		let mut missing_concurrency = calibration_record.clone();
 
-		assert_eq!(bytes.len(), 3_746_328);
+		missing_concurrency.execution_concurrency = None;
+
+		let missing_concurrency_envelope = SigningIdentity::from_secret([7; 32])
+			.sign(
+				&missing_concurrency.run_id,
+				protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+				&missing_concurrency,
+				TrustTier::Untrusted,
+			)
+			.expect("missing-concurrency calibration remains structurally signable");
+
+		assert!(submission::serialize_signed_package(&missing_concurrency_envelope).is_err());
+
+		let calibration_bytes = submission::serialize_signed_package(&calibration_envelope)
+			.expect("valid calibration package must enter artifact submission");
+		let transport = FakeTransport { status: 202, request: RefCell::new(None) };
+		let calibration_submission = submission::submit_signed_package(
+			&transport,
+			"https://example.vercel.app",
+			calibration_bytes.clone(),
+			SecretToken::new("secret".to_owned()).expect("fixture token"),
+		)
+		.expect("valid calibration package submission");
+
+		assert_eq!(calibration_submission.kind, SubmissionOutcomeKind::Accepted);
+		assert_eq!(bytes.len(), 3_746_354);
 		assert_eq!(evaluator_results_bytes, 2_310_969);
 		assert_eq!(failed_bundle_bytes, 6_177);
-		assert_eq!(failed_bytes.len(), 3_920_133);
-		assert_eq!(calibration_bytes.len(), 3_925_055);
+		assert_eq!(failed_bytes.len(), 3_920_159);
+		assert_eq!(calibration_bytes.len(), 3_925_081);
 		assert!(submission::serialize_signed_package(&overbound_envelope).is_err());
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
 		assert!(
@@ -2170,7 +3033,7 @@ mod tests {
 	}
 
 	#[test]
-	fn calibration_packages_are_locally_signable_but_not_submittable() {
+	fn structurally_incomplete_calibration_packages_are_not_submittable() {
 		let run_id = "run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 		let payload = serde_json::json!({
 			"schema_version": protocol::CALIBRATION_RUN_PAYLOAD_TYPE,

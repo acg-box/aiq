@@ -3,6 +3,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Canonical generator for the active AIQ Core 1.0.2 catalog.
+
 export const DOMAINS = [
   'coding',
   'debugging',
@@ -18,6 +20,7 @@ export const DOMAINS = [
 
 type Domain = (typeof DOMAINS)[number];
 type Difficulty = 'easy' | 'medium' | 'hard';
+type RevisionKind = 'replacement' | 'retargeted' | 'rebalanced';
 
 interface TaskDraft {
   readonly domain: Domain;
@@ -47,6 +50,13 @@ export interface CatalogTask {
   readonly domain: Domain;
   readonly difficulty: Difficulty;
   readonly summary: string;
+  readonly design_revision: {
+    readonly supersedes_task_version: '1.0.1';
+    readonly kind: RevisionKind;
+    readonly objective: string;
+    readonly task_specific_delta: string;
+    readonly controlled_corpus_requirements: readonly string[];
+  };
   readonly input_contract: {
     readonly kind: string;
     readonly fixture_profile: string;
@@ -67,6 +77,20 @@ export interface CatalogTask {
     readonly deterministic: true;
     readonly partial_credit: true;
     readonly pass_conditions: readonly string[];
+    readonly scoring_contract: {
+      readonly aggregation: 'weighted_assertion_fraction';
+      readonly assertion_scoring: 'binary_equal_weight_within_component';
+      readonly missing_or_error_score: 0;
+      readonly rounding: 'no_intermediate_rounding_final_six_decimals';
+      readonly formula: 'sum(component_weight_basis_points / 10000 * passed_assertions / total_assertions)';
+      readonly score_range: readonly [0, 1];
+      readonly minimum_assertions_per_component: 3;
+      readonly components: readonly {
+        readonly component_id: string;
+        readonly weight_basis_points: number;
+        readonly criterion: string;
+      }[];
+    };
     readonly acceptance_fixture_commitments: Readonly<
       Record<AcceptanceFixtureClass, AcceptanceFixtureCommitment>
     >;
@@ -74,10 +98,11 @@ export interface CatalogTask {
   readonly tags: readonly string[];
   readonly visibility: 'hidden';
   readonly provenance: {
-    readonly origin: 'original_benchmark_design';
+    readonly origin: 'calibration_driven_redesign';
     readonly owner: 'AIQ benchmark maintainers';
-    readonly recorded_date: '2026-07-24';
-    readonly source: 'scripts/generate-benchmark-catalog.ts';
+    readonly recorded_date: '2026-08-02';
+    readonly predecessor_task_version: '1.0.1';
+    readonly source: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts';
   };
   readonly leakage_review: {
     readonly status: 'public_design_versioned_private_content_required';
@@ -90,7 +115,10 @@ export interface CatalogTask {
 type AcceptanceFixtureClass =
   | 'gold'
   | 'alternate_correct'
-  | 'partial'
+  | 'partial_low'
+  | 'partial_high'
+  | 'near_miss'
+  | 'paired_contrast'
   // This combined class covers adversarial content and output-format attacks.
   | 'adversarial_format'
   | 'empty'
@@ -101,23 +129,62 @@ interface AcceptanceFixtureCommitment {
   readonly status: 'required_in_controlled_source';
 }
 
-export const AIQ_CORE_V1_TASK_IDENTITY_SHA256 =
-  'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+export const AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256 =
+  'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
+export const AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256 =
+  'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6';
+
+const TASK_SET_VERSION = '1.0.2';
+const TASK_VERSION = '1.0.2';
+const SCORER_VERSION = '1.0.2';
 
 export const COMMAND_EXECUTION_DISCLOSURE =
   'Runner/verifier telemetry records at least one command_execution event; this proves presence, not causality, while independently checked artifacts and, where present, receipts prove final-state correctness.';
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new TypeError('Canonical JSON requires finite numbers.');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object') {
+    return `{${Object.keys(value)
+      .toSorted()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(Reflect.get(value, key))}`)
+      .join(',')}}`;
+  }
+  throw new TypeError('Canonical JSON does not support this value.');
+}
+
+function digestValue(value: unknown): string {
+  return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
+}
+
 export interface Catalog {
   readonly schema_version: 'aiq.catalog.v1';
   readonly task_set_id: 'aiq-core';
-  readonly task_set_version: '1.0.0';
+  readonly task_set_version: typeof TASK_SET_VERSION;
+  readonly scoring_version: typeof SCORER_VERSION;
   readonly title: string;
-  readonly status: 'public_designs_versioned_private_content_required';
+  readonly status: 'active';
   readonly generated_from: string;
-  readonly identity_commitment: {
+  readonly task_metadata_identity: {
     readonly algorithm: 'sha256';
+    readonly canonicalization: 'aiq.sorted-key-json.v1';
     readonly digest: string;
     readonly scope: 'ordered_full_task_metadata';
+  };
+  readonly catalog_release_identity: {
+    readonly release_identity: 'aiq-core/1.0.2';
+    readonly scoring_version: '1.0.2';
+    readonly task_metadata_identity: Catalog['task_metadata_identity'];
+    readonly algorithm: 'sha256';
+    readonly canonicalization: 'aiq.sorted-key-json.v1';
+    readonly digest: string;
+    readonly scope: 'release_identity_scoring_version_and_ordered_task_metadata_identity';
   };
   readonly content_policy: {
     readonly public_repository: string;
@@ -131,6 +198,12 @@ export interface Catalog {
     readonly difficulty_role: string;
   };
   readonly tasks: readonly CatalogTask[];
+}
+
+export interface CatalogReleaseIdentityInput {
+  readonly release_identity: 'aiq-core/1.0.2';
+  readonly scoring_version: '1.0.2';
+  readonly task_metadata_identity: Catalog['task_metadata_identity'];
 }
 
 const PROFILES: Readonly<Record<Domain, DomainProfile>> = {
@@ -148,11 +221,83 @@ const PROFILES: Readonly<Record<Domain, DomainProfile>> = {
   reliability_recovery: { allowedTools: ['filesystem_read', 'filesystem_write'] },
 };
 
-const DIFFICULTY_BUDGETS: Readonly<Record<Difficulty, TaskBudget>> = {
-  easy: { wall_seconds: 240, max_steps: 18, max_tool_calls: 12 },
-  medium: { wall_seconds: 360, max_steps: 28, max_tool_calls: 18 },
-  hard: { wall_seconds: 540, max_steps: 40, max_tool_calls: 26 },
+const PRIOR_FLOOR_TASKS = new Set([
+  'data-processing-02',
+  'debugging-02',
+  'debugging-05',
+  'documentation-communication-03',
+  'documentation-communication-04',
+  'documentation-communication-05',
+  'documentation-communication-06',
+  'documentation-communication-07',
+  'instruction-following-03',
+  'instruction-following-04',
+  'reliability-recovery-04',
+  'reliability-recovery-06',
+  'repository-understanding-01',
+  'repository-understanding-05',
+  'repository-understanding-06',
+  'repository-understanding-07',
+  'retrieval-verification-02',
+  'retrieval-verification-05',
+  'tool-use-01',
+  'tool-use-07',
+]);
+
+const PRIOR_CEILING_TASKS = new Set([
+  'planning-execution-05',
+  'data-processing-05',
+  'repository-understanding-03',
+  'coding-03',
+  'data-processing-04',
+  'instruction-following-06',
+  'planning-execution-07',
+  'tool-use-03',
+  'tool-use-05',
+  'debugging-08',
+  'instruction-following-05',
+  'reliability-recovery-05',
+  'coding-01',
+  'coding-02',
+  'coding-05',
+  'coding-06',
+  'coding-07',
+  'debugging-01',
+  'debugging-03',
+  'debugging-04',
+  'instruction-following-01',
+  'instruction-following-02',
+  'planning-execution-01',
+  'planning-execution-03',
+  'planning-execution-06',
+  'reliability-recovery-01',
+  'reliability-recovery-03',
+]);
+
+const DISCRIMINATION_CHECK: Readonly<Record<Domain, string>> = {
+  coding:
+    'Seeded near-miss implementations separate core correctness, boundary behavior, and regression preservation.',
+  debugging:
+    'Seeded plausible fixes separate symptom suppression, root-cause repair, and preservation of adjacent behavior.',
+  repository_understanding:
+    'Seeded partial inventories separate locally plausible answers from complete, source-linked ownership traces.',
+  data_processing:
+    'Seeded partial outputs separate row-level correctness, reconciliation, and policy-compliant edge handling.',
+  retrieval_verification:
+    'Seeded claim variants separate source selection, exact support, scope preservation, and calibrated uncertainty.',
+  documentation_communication:
+    'Seeded drafts separate factual completeness, audience fit, operational usability, and unsupported claims.',
+  planning_execution:
+    'Seeded plans separate feasibility, dependency safety, rollback preservation, and executable evidence.',
+  tool_use:
+    'Seeded traces separate tool invocation from correct selection, bounded execution, and artifact-backed results.',
+  instruction_following:
+    'Seeded outputs separate primary-task success, constraint coverage, precedence handling, and prohibited actions.',
+  reliability_recovery:
+    'Seeded states separate safe continuation, identity preservation, reconciliation, and replay correctness.',
 };
+
+const BASE_TASK_BUDGET: TaskBudget = { wall_seconds: 360, max_steps: 28, max_tool_calls: 18 };
 
 const COMPLEX_INPUT_PATTERN =
   /(?:architecture_change|claim_audit|concurrent|cross_platform|distributed|migration_design|multi_(?:document|file|tool)|service_repository|temporal|workflow_and_build)/u;
@@ -160,10 +305,9 @@ const COMPACT_INPUT_PATTERN =
   /(?:captured_limit|constrained_response|interrupted_capability|maintenance_scheduling|repository_question|structured_writing)/u;
 
 function taskBudget(draft: TaskDraft, allowedTools: readonly string[]): TaskBudget {
-  const base = DIFFICULTY_BUDGETS[draft.difficulty];
-  let wallSeconds = base.wall_seconds;
-  let maxSteps = base.max_steps;
-  let maxToolCalls = base.max_tool_calls;
+  let wallSeconds = BASE_TASK_BUDGET.wall_seconds;
+  let maxSteps = BASE_TASK_BUDGET.max_steps;
+  let maxToolCalls = BASE_TASK_BUDGET.max_tool_calls;
 
   if (!allowedTools.includes('filesystem_write')) {
     wallSeconds -= 30;
@@ -1246,14 +1390,17 @@ function acceptanceFixtureCommitments(
   taskId: string,
 ): Readonly<Record<AcceptanceFixtureClass, AcceptanceFixtureCommitment>> {
   const commitment = (fixtureClass: AcceptanceFixtureClass): AcceptanceFixtureCommitment => ({
-    handle: `aiq-acceptance://${taskId}/v1/${fixtureClass.replaceAll('_', '-')}`,
+    handle: `aiq-acceptance://${taskId}/v2/${fixtureClass.replaceAll('_', '-')}`,
     status: 'required_in_controlled_source',
   });
 
   return {
     gold: commitment('gold'),
     alternate_correct: commitment('alternate_correct'),
-    partial: commitment('partial'),
+    partial_low: commitment('partial_low'),
+    partial_high: commitment('partial_high'),
+    near_miss: commitment('near_miss'),
+    paired_contrast: commitment('paired_contrast'),
     adversarial_format: commitment('adversarial_format'),
     empty: commitment('empty'),
     timeout: commitment('timeout'),
@@ -1310,18 +1457,47 @@ export function buildCatalog(): Catalog {
     const profile = PROFILES[draft.domain];
     const allowedTools = profile.allowedTools;
     const budget = taskBudget(draft, allowedTools);
+    const revisionKind: RevisionKind = PRIOR_FLOOR_TASKS.has(taskId)
+      ? 'replacement'
+      : PRIOR_CEILING_TASKS.has(taskId)
+        ? 'retargeted'
+        : 'rebalanced';
+    const rubricCriteria = [...draft.checks, DISCRIMINATION_CHECK[draft.domain]];
+    const rubricWeights = [3000, 2500, 2500, 2000] as const;
 
     return {
       task_id: taskId,
-      task_version: '1.0.0',
+      task_version: TASK_VERSION,
       title: draft.title,
       domain: draft.domain,
       difficulty: draft.difficulty,
-      summary: draft.summary,
+      summary: `${draft.summary} Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.`,
+      design_revision: {
+        supersedes_task_version: '1.0.1',
+        kind: revisionKind,
+        objective:
+          revisionKind === 'replacement'
+            ? 'Replace the predecessor floor behavior with bounded entry points, staged partial outcomes, and independently measurable checks.'
+            : revisionKind === 'retargeted'
+              ? 'Retarget the predecessor ceiling behavior with coupled constraints, seeded near misses, and independently measurable checks.'
+              : 'Rebalance the predecessor design around staged partial outcomes and a deterministic middle-discrimination rubric.',
+        task_specific_delta:
+          revisionKind === 'replacement'
+            ? `Replace the prior controlled scenario with two independently attainable stages: first "${draft.checks[0]}", then "${draft.checks[1]}"; reserve full credit for also satisfying "${draft.checks[2]}" and the domain discrimination check.`
+            : revisionKind === 'retargeted'
+              ? `Add matched near-miss variants where "${draft.checks[0]}" holds while either "${draft.checks[1]}" or "${draft.checks[2]}" fails; score each outcome independently before the domain discrimination check.`
+              : `Split the controlled scenario into task-specific evidence for "${draft.checks[0]}", "${draft.checks[1]}", and "${draft.checks[2]}" before applying the domain discrimination check.`,
+        controlled_corpus_requirements: [
+          'Provide at least three deterministic assertions for each published scoring component.',
+          'Include low-partial, high-partial, near-miss, alternate-correct, empty, timeout, and paired-contrast cases.',
+          'Ensure no single assertion or output-format check contributes more than 0.20 to the task score.',
+          'Document exact expected score vectors for every acceptance case before model execution.',
+        ],
+      },
       input_contract: {
         kind: draft.inputKind,
         fixture_profile: `aiq-fixture://${taskId}/v1`,
-        content_handle: `aiq-controlled-task://aiq-core/1.0.0/${taskId}`,
+        content_handle: `aiq-controlled-task://aiq-core/${TASK_VERSION}/${taskId}`,
       },
       cluster_id:
         CLUSTER_OVERRIDES[taskId] ??
@@ -1330,24 +1506,40 @@ export function buildCatalog(): Catalog {
       budget,
       evaluator: {
         kind: draft.scorer,
-        scorer_version: '1.0.0',
+        scorer_version: SCORER_VERSION,
         execution_protocol: 'aiq.evaluator-protocol.v1',
         binding_requirement: 'controlled_hidden_task_required',
         deterministic: true,
         partial_credit: true,
         pass_conditions:
           draft.domain === 'tool_use'
-            ? [...draft.checks, COMMAND_EXECUTION_DISCLOSURE]
-            : draft.checks,
+            ? [...rubricCriteria, COMMAND_EXECUTION_DISCLOSURE]
+            : rubricCriteria,
+        scoring_contract: {
+          aggregation: 'weighted_assertion_fraction',
+          assertion_scoring: 'binary_equal_weight_within_component',
+          missing_or_error_score: 0,
+          rounding: 'no_intermediate_rounding_final_six_decimals',
+          formula:
+            'sum(component_weight_basis_points / 10000 * passed_assertions / total_assertions)',
+          score_range: [0, 1],
+          minimum_assertions_per_component: 3,
+          components: rubricCriteria.map((criterion, componentIndex) => ({
+            component_id: `component_${String(componentIndex + 1).padStart(2, '0')}`,
+            weight_basis_points: rubricWeights[componentIndex] ?? 0,
+            criterion,
+          })),
+        },
         acceptance_fixture_commitments: acceptanceFixtureCommitments(taskId),
       },
       tags: draft.tags,
       visibility: 'hidden',
       provenance: {
-        origin: 'original_benchmark_design',
+        origin: 'calibration_driven_redesign',
         owner: 'AIQ benchmark maintainers',
-        recorded_date: '2026-07-24',
-        source: 'scripts/generate-benchmark-catalog.ts',
+        recorded_date: '2026-08-02',
+        predecessor_task_version: '1.0.1',
+        source: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts',
       },
       leakage_review: {
         status: 'public_design_versioned_private_content_required',
@@ -1361,17 +1553,33 @@ export function buildCatalog(): Catalog {
     };
   });
 
+  const taskMetadataIdentity: Catalog['task_metadata_identity'] = {
+    algorithm: 'sha256',
+    canonicalization: 'aiq.sorted-key-json.v1',
+    digest: taskMetadataIdentityDigest(tasks),
+    scope: 'ordered_full_task_metadata',
+  };
+  const releaseIdentityInput: CatalogReleaseIdentityInput = {
+    release_identity: 'aiq-core/1.0.2',
+    scoring_version: SCORER_VERSION,
+    task_metadata_identity: taskMetadataIdentity,
+  };
+
   return {
     schema_version: 'aiq.catalog.v1',
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.0',
+    task_set_version: TASK_SET_VERSION,
+    scoring_version: SCORER_VERSION,
     title: 'AIQ Core Daily Work Benchmark',
-    status: 'public_designs_versioned_private_content_required',
-    generated_from: 'scripts/generate-benchmark-catalog.ts',
-    identity_commitment: {
+    status: 'active',
+    generated_from: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts',
+    task_metadata_identity: taskMetadataIdentity,
+    catalog_release_identity: {
+      ...releaseIdentityInput,
       algorithm: 'sha256',
-      digest: taskIdentityDigest(tasks),
-      scope: 'ordered_full_task_metadata',
+      canonicalization: 'aiq.sorted-key-json.v1',
+      digest: catalogReleaseIdentityDigest(releaseIdentityInput),
+      scope: 'release_identity_scoring_version_and_ordered_task_metadata_identity',
     },
     content_policy: {
       public_repository: 'Metadata, schemas, public examples, and synthetic scoring fixtures only.',
@@ -1384,7 +1592,7 @@ export function buildCatalog(): Catalog {
       difficulties: DIFFICULTY_QUOTAS,
       domain_difficulty: DOMAIN_DIFFICULTY_QUOTAS,
       difficulty_role:
-        'Difficulty is a provisional coverage label. AIQ v1 does not apply a separate difficulty weight; labels require real-model calibration before use.',
+        'Difficulty is a non-ordinal coverage label. It is not an empirical rank and does not set score weight.',
     },
     tasks,
   };
@@ -1395,17 +1603,19 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     throw new Error(`The catalog must contain 72 tasks; found ${String(catalog.tasks.length)}.`);
   }
   if (
-    catalog.task_set_version !== '1.0.0' ||
+    catalog.task_set_version !== TASK_SET_VERSION ||
+    catalog.scoring_version !== SCORER_VERSION ||
+    catalog.catalog_release_identity.scoring_version !== catalog.scoring_version ||
     catalog.tasks.some(
       (catalogTask) =>
-        catalogTask.task_version !== '1.0.0' ||
-        catalogTask.evaluator.scorer_version !== '1.0.0' ||
+        catalogTask.task_version !== TASK_VERSION ||
+        catalogTask.evaluator.scorer_version !== SCORER_VERSION ||
         catalogTask.input_contract.content_handle !==
-          `aiq-controlled-task://aiq-core/1.0.0/${catalogTask.task_id}`,
+          `aiq-controlled-task://aiq-core/${TASK_VERSION}/${catalogTask.task_id}`,
     )
   ) {
     throw new Error(
-      'The current AIQ Core catalog requires task-set, task, scorer, and content-handle version 1.0.0.',
+      'The current AIQ Core catalog requires task-set, task, content-handle, and scorer version 1.0.2.',
     );
   }
 
@@ -1413,14 +1623,17 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   if (identifiers.size !== catalog.tasks.length) {
     throw new Error('Every benchmark task ID must be unique.');
   }
+  if (catalog.status !== 'active') {
+    throw new Error('AIQ Core 1.0.2 must be active.');
+  }
   for (const domain of DOMAINS) {
-    const count = catalog.tasks.filter((candidate) => candidate.domain === domain).length;
+    const count = catalog.tasks.filter((catalogTask) => catalogTask.domain === domain).length;
     if (count !== DOMAIN_QUOTAS[domain]) {
       throw new Error(`Domain ${domain} must contain ${String(DOMAIN_QUOTAS[domain])} tasks.`);
     }
     for (const difficulty of ['easy', 'medium', 'hard'] as const) {
       const domainDifficultyCount = catalog.tasks.filter(
-        (candidate) => candidate.domain === domain && candidate.difficulty === difficulty,
+        (catalogTask) => catalogTask.domain === domain && catalogTask.difficulty === difficulty,
       ).length;
       if (domainDifficultyCount !== DOMAIN_DIFFICULTY_QUOTAS[domain][difficulty]) {
         throw new Error(
@@ -1431,7 +1644,9 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   }
 
   for (const difficulty of ['easy', 'medium', 'hard'] as const) {
-    const count = catalog.tasks.filter((candidate) => candidate.difficulty === difficulty).length;
+    const count = catalog.tasks.filter(
+      (catalogTask) => catalogTask.difficulty === difficulty,
+    ).length;
     if (count !== DIFFICULTY_QUOTAS[difficulty]) {
       throw new Error(
         `Difficulty ${difficulty} must contain ${String(DIFFICULTY_QUOTAS[difficulty])} tasks.`,
@@ -1454,11 +1669,15 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   const acceptanceClasses: readonly AcceptanceFixtureClass[] = [
     'gold',
     'alternate_correct',
-    'partial',
+    'partial_low',
+    'partial_high',
+    'near_miss',
+    'paired_contrast',
     'adversarial_format',
     'empty',
     'timeout',
   ];
+  const taskSpecificDeltas = new Set<string>();
   for (const catalogTask of catalog.tasks) {
     if (
       JSON.stringify(Object.keys(catalogTask.evaluator.acceptance_fixture_commitments)) !==
@@ -1471,6 +1690,21 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     if (!/^[a-z_]+-cluster-[0-9]{2}$/u.test(catalogTask.cluster_id)) {
       throw new Error(`Task ${catalogTask.task_id} has an invalid cluster identity.`);
     }
+    if (
+      catalogTask.design_revision.supersedes_task_version !== '1.0.1' ||
+      !catalogTask.design_revision.task_specific_delta.includes(
+        catalogTask.evaluator.pass_conditions[0] ?? '',
+      ) ||
+      catalogTask.design_revision.controlled_corpus_requirements.length !== 4 ||
+      catalogTask.evaluator.scoring_contract.components.length !== 4 ||
+      catalogTask.evaluator.scoring_contract.components.reduce(
+        (sum, component) => sum + component.weight_basis_points,
+        0,
+      ) !== 10_000
+    ) {
+      throw new Error(`Task ${catalogTask.task_id} does not have the required 1.0.2 redesign.`);
+    }
+    taskSpecificDeltas.add(catalogTask.design_revision.task_specific_delta);
     const allowedToolTokens = new Set([
       'none',
       'filesystem_read',
@@ -1506,6 +1740,9 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
       throw new Error(`Task ${catalogTask.task_id} has a stale calibrated budget.`);
     }
   }
+  if (taskSpecificDeltas.size !== catalog.tasks.length) {
+    throw new Error('Every AIQ Core 1.0.2 task requires a distinct task-specific design delta.');
+  }
 
   const clusterCounts = DOMAINS.map((domain) => {
     const clusters = new Set(
@@ -1528,7 +1765,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     catalog.tasks.map((catalogTask) => JSON.stringify(catalogTask.budget)),
   );
   if (
-    distinctBudgets.size < 12 ||
+    distinctBudgets.size < 9 ||
     catalog.tasks.some(
       ({ budget }) =>
         budget.wall_seconds < 150 ||
@@ -1540,25 +1777,44 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     )
   ) {
     throw new Error(
-      'Task budgets are not sufficiently calibrated or are outside the frozen bounds.',
+      'Task budgets do not reflect enough input/tool scope variation or are outside the frozen bounds.',
     );
   }
 
-  const observedIdentity = taskIdentityDigest(catalog.tasks);
-  if (catalog.identity_commitment.digest !== observedIdentity) {
+  const observedTaskIdentity = taskMetadataIdentityDigest(catalog.tasks);
+  if (catalog.task_metadata_identity.digest !== observedTaskIdentity) {
     throw new Error(
-      `Catalog identity commitment does not match its ordered task metadata: ${observedIdentity}.`,
+      `Task metadata identity does not match its ordered task metadata: ${observedTaskIdentity}.`,
     );
   }
-  if (observedIdentity !== AIQ_CORE_V1_TASK_IDENTITY_SHA256) {
+  if (observedTaskIdentity !== AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256) {
     throw new Error(
-      `AIQ Core 1.0.0 task identity changed without a versioned commitment update: ${observedIdentity}.`,
+      `AIQ Core 1.0.2 task metadata identity changed without a versioned commitment update: ${observedTaskIdentity}.`,
+    );
+  }
+  const observedReleaseIdentity = catalogReleaseIdentityDigest({
+    release_identity: catalog.catalog_release_identity.release_identity,
+    scoring_version: catalog.catalog_release_identity.scoring_version,
+    task_metadata_identity: catalog.catalog_release_identity.task_metadata_identity,
+  });
+  if (catalog.catalog_release_identity.digest !== observedReleaseIdentity) {
+    throw new Error(
+      `Catalog release identity does not match its task identity and policy: ${observedReleaseIdentity}.`,
+    );
+  }
+  if (observedReleaseIdentity !== AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256) {
+    throw new Error(
+      `AIQ Core 1.0.2 catalog release identity changed without a versioned commitment update: ${observedReleaseIdentity}.`,
     );
   }
 }
 
-export function taskIdentityDigest(tasks: readonly CatalogTask[]): string {
-  return `sha256:${createHash('sha256').update(JSON.stringify(tasks)).digest('hex')}`;
+export function taskMetadataIdentityDigest(tasks: readonly CatalogTask[]): string {
+  return digestValue(tasks);
+}
+
+export function catalogReleaseIdentityDigest(identity: CatalogReleaseIdentityInput): string {
+  return digestValue(identity);
 }
 
 export async function writeCatalog(outputPath: string): Promise<void> {
@@ -1570,7 +1826,7 @@ export async function writeCatalog(outputPath: string): Promise<void> {
 
 if (import.meta.main) {
   const outputPath = fileURLToPath(
-    new URL('../benchmarks/catalog/aiq-core-v1.json', import.meta.url),
+    new URL('../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json', import.meta.url),
   );
   await writeCatalog(outputPath);
 }

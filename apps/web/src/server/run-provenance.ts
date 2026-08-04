@@ -1,6 +1,6 @@
 export const RUN_PROVENANCE_SCHEMA = 'aiq.run-provenance.v2';
 export const FROZEN_CATALOG_DIGEST =
-  'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+  'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
 
 const releaseIdPattern = /^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\s\S])/;
 const nonzeroDigestPattern = /^sha256:(?!0{64}(?![\s\S]))[a-f0-9]{64}(?![\s\S])/;

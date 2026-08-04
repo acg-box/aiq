@@ -3,37 +3,47 @@
 mod replay;
 
 #[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::thread::{self, Builder};
 use std::{
-	cell::Cell,
 	collections::BTreeSet,
 	env, error,
 	ffi::OsString,
 	fmt::{Debug, Display, Formatter},
 	fs::{self, OpenOptions},
-	io::Write,
+	io::{Read, Write},
 	path::{Path, PathBuf},
-	process, thread,
+	process,
+	sync::{Condvar, Mutex},
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use clap::Parser;
+use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use ureq::{self, Body, http::Response};
 
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
-	corpus_commitment::{self, RunProvenanceCommitment},
+	calibration_verification::{
+		self, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+	},
+	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::MODEL_MATRIX,
 	normalization::{
 		self, AttestedDeploymentMetadata, MAX_VERIFICATION_REQUEST_BYTES, NormalizedBatchStage,
 		ReplayStatus, VerifiedPackageIdentity, VerifierAttestationV2, VerifierSigningIdentity,
 	},
-	protocol::{self, SubmissionEnvelope},
+	protocol::{
+		self, CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, SubmissionEnvelope, TrustTier,
+		VerifiedSubmission,
+	},
 	run_validation,
-	runner::{self, FailureKind, ResultStatus, RunRecord},
-	scoring::{self, AIQ_CORE_V1_TASK_IDENTITY_SHA256, ScoreContext, ScoreOptions, ScoreReport},
+	runner::{
+		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
+	},
+	scoring::{self, AIQ_CORE_TASK_IDENTITY_SHA256, ScoreContext, ScoreOptions, ScoreReport},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
 	task::{DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskSource, Visibility},
 };
@@ -43,14 +53,24 @@ const MAX_OBJECT_RESPONSE_BYTES: usize = MAX_SUBMISSION_BYTES + 1;
 const MAX_ARTIFACT_RESPONSE_BYTES: usize = MAX_ARTIFACT_BYTES + 1;
 const RENEWED_LEASE_SECONDS: u64 = 900;
 const LEASE_RENEWAL_INTERVAL: Duration = Duration::from_secs(300);
+const DEFAULT_REPLAY_JOBS: usize = 4;
+const MAX_REPLAY_JOBS: usize = 32;
 const VERIFIER_REJECTION_SCHEMA: &str = "aiq.verifier-rejection.v2";
 const RECORD_SCHEMA: &str = "aiq.verifier-record.v1";
 const MAX_OPERATOR_ERROR_DETAIL_BYTES: usize = 256;
 const REDACTED_ERROR_CODE: &str = "details_redacted";
 const REDACTED_ERROR_DETAIL: &str = "Additional error detail was redacted.";
+const ADDITIONAL_MODES_HELP: &str = "Additional modes:
+  aiq-verifier validate-environment --environment <ENVIRONMENT>
+      Validate production environment metadata without secrets or service access.
+  aiq-verifier verify-local --help
+      Replay one production package offline and write create-new stage and attestation files.
+      This mode does not publish or assign cloud trust.
+
+Run `aiq-verifier <mode> --help` for the exact mode arguments.";
 
 /// Narrow client contract for authenticated content-addressed artifact resolution.
-pub trait ArtifactResolverClient {
+pub trait ArtifactResolverClient: Sync {
 	/// Renews the claim when replay work approaches the lease maintenance interval.
 	fn maintain_lease(&self) -> Result<(), WorkerError> {
 		Ok(())
@@ -65,7 +85,7 @@ pub trait ArtifactResolverClient {
 	) -> Result<Vec<u8>, WorkerError>;
 }
 
-trait Transport {
+trait Transport: Sync {
 	fn post_json(
 		&self,
 		url: &str,
@@ -76,13 +96,13 @@ trait Transport {
 	fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError>;
 }
 
-trait LeaseMaintenance {
+trait LeaseMaintenance: Sync {
 	fn maintain(&self) -> Result<(), WorkerError>;
 }
 
 /// Command-line settings for one bounded verifier invocation.
 #[derive(Debug, Parser)]
-#[command(name = "aiq-verifier", version, about)]
+#[command(name = "aiq-verifier", version, about, after_help = ADDITIONAL_MODES_HELP)]
 pub struct Cli {
 	/// Vercel deployment origin. The worker uses `/api/claims` and `/api/verifications`.
 	#[arg(long)]
@@ -155,6 +175,13 @@ pub struct Cli {
 	/// Global timeout for each HTTP request.
 	#[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=300))]
 	timeout_seconds: u64,
+	/// Maximum candidate replays that may run at the same time.
+	#[arg(
+		long,
+		default_value_t = DEFAULT_REPLAY_JOBS,
+		value_parser = parse_replay_jobs
+	)]
+	replay_jobs: usize,
 	/// Permit plain HTTP only when the endpoint is a loopback address.
 	#[arg(long, default_value_t = false)]
 	allow_loopback_http: bool,
@@ -326,6 +353,13 @@ struct VerifyLocalCli {
 	/// Private parent for fresh reconstructed candidate workspaces.
 	#[arg(long)]
 	replay_root: PathBuf,
+	/// Maximum candidate replays that may run at the same time.
+	#[arg(
+		long,
+		default_value_t = DEFAULT_REPLAY_JOBS,
+		value_parser = parse_replay_jobs
+	)]
+	replay_jobs: usize,
 	/// Environment variable containing the verifier's 32-byte Ed25519 secret.
 	#[arg(long, default_value = "AIQ_VERIFIER_SIGNING_KEY")]
 	signing_key_env: String,
@@ -408,6 +442,16 @@ struct VerificationGatewayResponse {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct CalibrationVerificationGatewayResponse {
+	status: String,
+	run_id: String,
+	package_sha256: String,
+	official_eligible: bool,
+	ranking_eligible: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RejectionGatewayResponse {
 	status: String,
 	published: bool,
@@ -477,6 +521,13 @@ struct VerificationRequest<'a> {
 	claim: TerminalClaim<'a>,
 	stage: &'a NormalizedBatchStage,
 	attestation: &'a VerifierAttestationV2,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CalibrationVerificationRequest<'a> {
+	claim: TerminalClaim<'a>,
+	stage: &'a CalibrationVerifiedStageV1,
+	attestation: &'a CalibrationVerifierAttestationV1,
 }
 
 #[derive(Clone, Debug)]
@@ -635,26 +686,36 @@ impl ArtifactResolverClient for LocalArtifactResolver {
 			));
 		}
 
-		let canonical = fs::canonicalize(&path).map_err(|_| {
+		let expected_bytes = usize::try_from(expected_bytes).map_err(|_| {
 			WorkerError::terminal(
-				ReasonCode::ArtifactEvidenceUnavailable,
-				"local artifact cannot be resolved",
+				ReasonCode::ArtifactEvidenceMismatch,
+				"local artifact byte count is outside the verifier limit",
 			)
 		})?;
+		let input = read_owned_regular_input(&path, "local replay artifact", expected_bytes)
+			.map_err(|_| {
+				WorkerError::terminal(
+					ReasonCode::ArtifactEvidenceMismatch,
+					"local artifact changed while it was read",
+				)
+			})?;
 
-		if !canonical.starts_with(&self.root) {
+		if !input.canonical_path.starts_with(&self.root) {
 			return Err(WorkerError::terminal(
 				ReasonCode::ArtifactEvidenceMismatch,
 				"local artifact escapes its controlled root",
 			));
 		}
+		if input.bytes.len() != expected_bytes
+			|| hex::encode(Sha256::digest(&input.bytes)) != digest
+		{
+			return Err(WorkerError::terminal(
+				ReasonCode::ArtifactEvidenceMismatch,
+				"local artifact bytes do not match the signed content address",
+			));
+		}
 
-		fs::read(canonical).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::ArtifactEvidenceUnavailable,
-				"local artifact cannot be read",
-			)
-		})
+		Ok(input.bytes)
 	}
 }
 
@@ -663,8 +724,12 @@ struct UreqTransport {
 	allow_loopback_http: bool,
 }
 impl UreqTransport {
-	fn new(timeout: Duration, allow_loopback_http: bool) -> Self {
-		let config = ureq::Agent::config_builder().timeout_global(Some(timeout)).build();
+	fn new(timeout: Duration, allow_loopback_http: bool, replay_jobs: usize) -> Self {
+		let config = ureq::Agent::config_builder()
+			.timeout_global(Some(timeout))
+			.max_idle_connections(replay_jobs)
+			.max_idle_connections_per_host(replay_jobs)
+			.build();
 
 		Self { agent: config.into(), allow_loopback_http }
 	}
@@ -757,6 +822,7 @@ struct Worker<T> {
 	evaluator_root: PathBuf,
 	evaluator_runtime: Option<EvaluatorRuntime>,
 	replay_root: PathBuf,
+	replay_jobs: usize,
 }
 impl<T> Worker<T>
 where
@@ -938,6 +1004,14 @@ where
 
 		lease.force()?;
 
+		lease.with_heartbeat(|| self.verify_claim_with_lease(claim, &lease))
+	}
+
+	fn verify_claim_with_lease(
+		&self,
+		claim: &Claim,
+		lease: &ClaimLease<'_, T>,
+	) -> Result<PackageDisposition, WorkerError> {
 		let package_bytes = match self.retry(|| {
 			lease.maintain()?;
 
@@ -945,25 +1019,24 @@ where
 		}) {
 			Ok(bytes) => bytes,
 			Err(error) if error.is_transient() => return Err(error),
-			Err(error) => return self.reject_and_complete(claim, &lease, error),
+			Err(error) => return self.reject_and_complete(claim, lease, error),
 		};
-		let prepared = match self.prepare_verification(claim, &package_bytes, &lease) {
+		let prepared = match self.prepare_verification(claim, &package_bytes, lease) {
 			Ok(prepared) => prepared,
-			Err(error) => return self.reject_and_complete(claim, &lease, error),
+			Err(error) => return self.reject_and_complete(claim, lease, error),
 		};
-		let request = VerificationRequest {
-			claim: claim.into(),
-			stage: &prepared.stage,
-			attestation: &prepared.attestation,
-		};
-		let body = match serialize_verification_request(&request) {
+		let body = match serialize_prepared_verification(claim, &prepared) {
 			Ok(body) => body,
-			Err(error) => return self.reject_and_complete(claim, &lease, error),
+			Err(error) => return self.reject_and_complete(claim, lease, error),
 		};
 		let response = self.retry(|| {
-			lease.maintain()?;
-
-			self.post_verification(&body)
+			lease.with_terminal_lease(
+				|| self.post_verification(&body),
+				|response| {
+					response.status == 200
+						&& verification_response_matches(&response.body, &prepared)
+				},
+			)
 		})?;
 
 		if response.status != 200 {
@@ -973,35 +1046,20 @@ where
 
 			return self.reject_and_complete(
 				claim,
-				&lease,
+				lease,
 				WorkerError::terminal(
 					ReasonCode::NormalizationMismatch,
 					"verification gateway rejected the locally validated normalization",
 				),
 			);
 		}
-
-		let status: VerificationGatewayResponse =
-			match parse_json(&response.body, "verification response") {
-				Ok(status) => status,
-				Err(_) => return Ok(PackageDisposition::LeaseLost(prepared.replay_scope)),
-			};
-
-		if status.status != "verified_published"
-			|| status.matrix_batch_id != prepared.stage.matrix_batch_id
-			|| status.package_sha256 != prepared.stage.package_sha256
-		{
+		if !verification_response_matches(&response.body, &prepared) {
 			return Ok(PackageDisposition::LeaseLost(prepared.replay_scope));
 		}
 
-		match self.retry(|| {
-			lease.maintain()?;
+		let _acknowledgement = self.retry(|| self.acknowledge(claim, "completed"));
 
-			self.acknowledge(claim, "completed")
-		}) {
-			Ok(()) => Ok(PackageDisposition::Verified(prepared.replay_scope)),
-			Err(_) => Ok(PackageDisposition::LeaseLost(prepared.replay_scope)),
-		}
+		Ok(PackageDisposition::Verified(prepared.replay_scope))
 	}
 
 	fn download_package(&self, claim: &Claim) -> Result<Vec<u8>, WorkerError> {
@@ -1063,13 +1121,14 @@ where
 			signing_identity: &self.signing_identity,
 			observed_unix_ms: now_unix_ms()?,
 			require_production: false,
+			replay_jobs: self.replay_jobs,
 		})
 	}
 
 	fn reject_and_complete(
 		&self,
 		claim: &Claim,
-		lease: &dyn LeaseMaintenance,
+		lease: &ClaimLease<'_, T>,
 		error: WorkerError,
 	) -> Result<PackageDisposition, WorkerError> {
 		let ErrorKind::Terminal(reason) = error.kind else {
@@ -1093,9 +1152,12 @@ where
 		let body = serde_json::to_vec(&rejection)
 			.map_err(|serialize_error| WorkerError::configuration(serialize_error.to_string()))?;
 		let response = self.retry(|| {
-			lease.maintain()?;
-
-			self.post_verification(&body)
+			lease.with_terminal_lease(
+				|| self.post_verification(&body),
+				|response| {
+					response.status == 200 && rejection_response_matches(&response.body, claim)
+				},
+			)
 		})?;
 
 		if response.status != 200 {
@@ -1108,29 +1170,13 @@ where
 				)))
 			};
 		}
-
-		let status: RejectionGatewayResponse =
-			match parse_json(&response.body, "rejection response") {
-				Ok(status) => status,
-				Err(_) => return Ok(PackageDisposition::LeaseLost("verification_rejected")),
-			};
-
-		if status.status != "rejection_recorded_not_published"
-			|| status.published
-			|| status.matrix_batch_id != claim.idempotency_key
-			|| status.package_sha256 != claim.package_sha256
-		{
+		if !rejection_response_matches(&response.body, claim) {
 			return Ok(PackageDisposition::LeaseLost("verification_rejected"));
 		}
 
-		match self.retry(|| {
-			lease.maintain()?;
+		let _acknowledgement = self.retry(|| self.acknowledge(claim, "completed"));
 
-			self.acknowledge(claim, "completed")
-		}) {
-			Ok(()) => Ok(PackageDisposition::Rejected(reason)),
-			Err(_) => Ok(PackageDisposition::LeaseLost("verification_rejected")),
-		}
+		Ok(PackageDisposition::Rejected(reason))
 	}
 
 	fn post_verification(&self, body: &[u8]) -> Result<HttpResponse, WorkerError> {
@@ -1197,21 +1243,199 @@ where
 struct ClaimLease<'a, T> {
 	worker: &'a Worker<T>,
 	claim: &'a Claim,
-	last_renewed: Cell<Instant>,
+	state: Mutex<ClaimLeaseState>,
+	wakeup: Condvar,
+	interval: Duration,
+	#[cfg(test)]
+	heartbeat_spawn_failure: bool,
 }
 impl<'a, T> ClaimLease<'a, T>
 where
 	T: Transport,
 {
 	fn new(worker: &'a Worker<T>, claim: &'a Claim) -> Self {
-		Self { worker, claim, last_renewed: Cell::new(Instant::now()) }
+		Self {
+			worker,
+			claim,
+			state: Mutex::new(ClaimLeaseState {
+				last_renewed: Instant::now(),
+				lost: None,
+				stopped: false,
+				terminal: false,
+			}),
+			wakeup: Condvar::new(),
+			interval: LEASE_RENEWAL_INTERVAL,
+			#[cfg(test)]
+			heartbeat_spawn_failure: false,
+		}
+	}
+
+	#[cfg(test)]
+	fn with_interval(worker: &'a Worker<T>, claim: &'a Claim, interval: Duration) -> Self {
+		let mut lease = Self::new(worker, claim);
+
+		lease.interval = interval;
+
+		lease
 	}
 
 	fn force(&self) -> Result<(), WorkerError> {
-		self.worker.retry(|| self.worker.renew_claim(self.claim))?;
-		self.last_renewed.set(Instant::now());
+		self.renew(true)
+	}
+
+	fn renew(&self, force: bool) -> Result<(), WorkerError> {
+		let mut state = self
+			.state
+			.lock()
+			.map_err(|_| WorkerError::transient("claim lease state is unavailable"))?;
+
+		if let Some(error) = &state.lost {
+			return Err(error.clone());
+		}
+
+		if state.terminal {
+			return Ok(());
+		}
+		if state.stopped {
+			return Err(WorkerError::transient("claim lease heartbeat stopped"));
+		}
+		if !force && state.last_renewed.elapsed() < self.interval {
+			return Ok(());
+		}
+
+		if let Err(error) = self.worker.retry(|| self.worker.renew_claim(self.claim)) {
+			state.lost = Some(error.clone());
+
+			self.wakeup.notify_all();
+
+			return Err(error);
+		}
+
+		state.last_renewed = Instant::now();
 
 		Ok(())
+	}
+
+	fn with_heartbeat(
+		&self,
+		operation: impl FnOnce() -> Result<PackageDisposition, WorkerError>,
+	) -> Result<PackageDisposition, WorkerError> {
+		thread::scope(|scope| {
+			let stop_guard = ClaimLeaseStopGuard { lease: self };
+
+			#[cfg(test)]
+			if self.heartbeat_spawn_failure {
+				return Err(WorkerError::transient("claim lease heartbeat could not start"));
+			}
+
+			let heartbeat = Builder::new()
+				.name("aiq-verifier-lease-heartbeat".to_owned())
+				.spawn_scoped(scope, || self.run_heartbeat())
+				.map_err(|_| WorkerError::transient("claim lease heartbeat could not start"))?;
+			let result = operation();
+
+			drop(stop_guard);
+
+			let heartbeat_result = heartbeat
+				.join()
+				.map_err(|_| WorkerError::transient("claim lease heartbeat failed"))?;
+
+			match (result, heartbeat_result) {
+				(Ok(PackageDisposition::Verified(scope)), _) => {
+					Ok(PackageDisposition::Verified(scope))
+				},
+				(Ok(PackageDisposition::Rejected(reason)), _) => {
+					Ok(PackageDisposition::Rejected(reason))
+				},
+				(Ok(PackageDisposition::LeaseLost(scope)), _) => {
+					Ok(PackageDisposition::LeaseLost(scope))
+				},
+				(_, Err(lease_error)) => Err(lease_error),
+				(result, Ok(())) => result,
+			}
+		})
+	}
+
+	fn run_heartbeat(&self) -> Result<(), WorkerError> {
+		loop {
+			let state = self
+				.state
+				.lock()
+				.map_err(|_| WorkerError::transient("claim lease state is unavailable"))?;
+
+			if state.stopped {
+				return state.lost.clone().map_or(Ok(()), Err);
+			}
+
+			if let Some(error) = &state.lost {
+				return Err(error.clone());
+			}
+
+			let wait = self.interval.saturating_sub(state.last_renewed.elapsed());
+			let (state, _) = self
+				.wakeup
+				.wait_timeout(state, wait)
+				.map_err(|_| WorkerError::transient("claim lease heartbeat is unavailable"))?;
+
+			if state.stopped {
+				return state.lost.clone().map_or(Ok(()), Err);
+			}
+
+			if let Some(error) = &state.lost {
+				return Err(error.clone());
+			}
+
+			if state.last_renewed.elapsed() < self.interval {
+				continue;
+			}
+
+			drop(state);
+
+			self.renew(false)?;
+		}
+	}
+
+	fn stop(&self) {
+		let mut state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+		state.stopped = true;
+
+		self.wakeup.notify_all();
+	}
+
+	fn with_terminal_lease<R>(
+		&self,
+		operation: impl FnOnce() -> Result<R, WorkerError>,
+		terminal_response: impl FnOnce(&R) -> bool,
+	) -> Result<R, WorkerError> {
+		self.renew(false)?;
+
+		let mut state = self
+			.state
+			.lock()
+			.map_err(|_| WorkerError::transient("claim lease state is unavailable"))?;
+
+		if let Some(error) = &state.lost {
+			return Err(error.clone());
+		}
+
+		if state.stopped {
+			return Err(WorkerError::transient("claim lease heartbeat stopped"));
+		}
+
+		let result = operation();
+		let terminal = result.as_ref().is_ok_and(terminal_response);
+
+		if terminal {
+			state.terminal = true;
+			state.stopped = true;
+
+			self.wakeup.notify_all();
+		}
+
+		drop(state);
+
+		result
 	}
 }
 
@@ -1220,19 +1444,57 @@ where
 	T: Transport,
 {
 	fn maintain(&self) -> Result<(), WorkerError> {
-		if self.last_renewed.get().elapsed() >= LEASE_RENEWAL_INTERVAL {
-			self.force()?;
-		}
-
-		Ok(())
+		self.renew(false)
 	}
 }
 
+struct ClaimLeaseStopGuard<'lease, 'worker, T>
+where
+	T: Transport,
+{
+	lease: &'lease ClaimLease<'worker, T>,
+}
+impl<T> Drop for ClaimLeaseStopGuard<'_, '_, T>
+where
+	T: Transport,
+{
+	fn drop(&mut self) {
+		self.lease.stop();
+	}
+}
+
+struct ClaimLeaseState {
+	last_renewed: Instant,
+	lost: Option<WorkerError>,
+	stopped: bool,
+	terminal: bool,
+}
 #[derive(Debug)]
 struct PreparedVerification {
-	stage: NormalizedBatchStage,
-	attestation: VerifierAttestationV2,
+	evidence: PreparedEvidence,
 	replay_scope: &'static str,
+}
+impl PreparedVerification {
+	fn run_id(&self) -> &str {
+		match &self.evidence {
+			PreparedEvidence::Official { stage, .. } => &stage.matrix_batch_id,
+			PreparedEvidence::Calibration { stage, .. } => &stage.run_id,
+		}
+	}
+
+	fn package_sha256(&self) -> &str {
+		match &self.evidence {
+			PreparedEvidence::Official { stage, .. } => &stage.package_sha256,
+			PreparedEvidence::Calibration { stage, .. } => &stage.package_sha256,
+		}
+	}
+
+	fn expected_gateway_status(&self) -> &'static str {
+		match self.evidence {
+			PreparedEvidence::Official { .. } => "verified_published",
+			PreparedEvidence::Calibration { .. } => "calibration_verified_published",
+		}
+	}
 }
 
 struct PreparationRequest<'a> {
@@ -1249,6 +1511,7 @@ struct PreparationRequest<'a> {
 	signing_identity: &'a VerifierSigningIdentity,
 	observed_unix_ms: u64,
 	require_production: bool,
+	replay_jobs: usize,
 }
 
 struct OutputTarget {
@@ -1290,6 +1553,43 @@ impl Drop for TemporaryOutput {
 	fn drop(&mut self) {
 		let _ = fs::remove_file(&self.path);
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FileIdentity {
+	#[cfg(unix)]
+	device: u64,
+	#[cfg(unix)]
+	inode: u64,
+}
+impl FileIdentity {
+	fn from_metadata(metadata: &fs::Metadata) -> Self {
+		Self {
+			#[cfg(unix)]
+			device: metadata.dev(),
+			#[cfg(unix)]
+			inode: metadata.ino(),
+		}
+	}
+
+	fn matches(self, metadata: &fs::Metadata) -> bool {
+		#[cfg(unix)]
+		{
+			self.device == metadata.dev() && self.inode == metadata.ino()
+		}
+
+		#[cfg(not(unix))]
+		{
+			let _ = metadata;
+
+			true
+		}
+	}
+}
+
+struct RegularInput {
+	bytes: Vec<u8>,
+	canonical_path: PathBuf,
 }
 
 /// Stable rejection reason understood by operators and automation.
@@ -1347,6 +1647,12 @@ impl ReasonCode {
 	}
 }
 
+#[derive(Debug)]
+enum PreparedEvidence {
+	Official { stage: NormalizedBatchStage, attestation: VerifierAttestationV2 },
+	Calibration { stage: CalibrationVerifiedStageV1, attestation: CalibrationVerifierAttestationV1 },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum OperatorErrorClass {
@@ -1367,6 +1673,7 @@ enum ClaimResult {
 	Claimed(Claim),
 }
 
+#[derive(Debug)]
 enum PackageDisposition {
 	Verified(&'static str),
 	Rejected(ReasonCode),
@@ -1433,6 +1740,30 @@ fn prepare_package_verification(
 			"package identity, content hash, or signature is invalid",
 		)
 	})?;
+
+	match verified.payload_type.as_str() {
+		RUN_PAYLOAD_TYPE => prepare_official_verification(request, verified),
+		CALIBRATION_RUN_PAYLOAD_TYPE => {
+			if envelope.claimed_trust != TrustTier::Untrusted {
+				return Err(WorkerError::terminal(
+					ReasonCode::InvalidPackageProtocol,
+					"calibration package must claim untrusted handling",
+				));
+			}
+
+			prepare_calibration_verification(request, verified)
+		},
+		_ => Err(WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package payload type is unsupported",
+		)),
+	}
+}
+
+fn prepare_official_verification(
+	request: PreparationRequest<'_>,
+	verified: VerifiedSubmission,
+) -> Result<PreparedVerification, WorkerError> {
 	let run: RunRecord = serde_json::from_value(verified.payload).map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidPackageProtocol,
@@ -1472,23 +1803,7 @@ fn prepare_package_verification(
 		));
 	}
 
-	let (replay_status, replay_scope) = if run.synthetic {
-		(ReplayStatus::CommitmentsVerified, "commitments_verified")
-	} else {
-		replay::verify_production_run(
-			&run,
-			request.tasks,
-			request.resolver,
-			request.evaluator_root,
-			request.evaluator_runtime.ok_or_else(|| {
-				WorkerError::configuration("production replay lacks an evaluator runtime")
-			})?,
-			request.replay_root,
-			request.replay_identity,
-		)?;
-
-		(ReplayStatus::EvaluatorReplayed, PRODUCTION_REPLAY_SCOPE)
-	};
+	let (replay_status, replay_scope, provider_usage) = official_replay_evidence(&run, &request)?;
 	let scores = recompute_scores(request.tasks, &run)?;
 	let metadata = metadata_for(&run, request.environment)?;
 	let package = VerifiedPackageIdentity {
@@ -1496,7 +1811,7 @@ fn prepare_package_verification(
 		content_hash: verified.content_hash,
 		signer: verified.signer,
 	};
-	let stage =
+	let mut stage =
 		normalization::normalize_verified_batch(&run, request.tasks, &scores, &package, &metadata)
 			.map_err(|_| {
 				WorkerError::terminal(
@@ -1504,6 +1819,36 @@ fn prepare_package_verification(
 					"deterministic normalization replay failed",
 				)
 			})?;
+	let (result_efficiency, efficiency, pricing) =
+		calibration_verification::build_efficiency_evidence(
+			&run.results,
+			&provider_usage,
+			run.synthetic,
+		)
+		.map_err(|_| {
+			WorkerError::terminal(
+				ReasonCode::NormalizationMismatch,
+				"deterministic efficiency recomputation failed",
+			)
+		})?;
+
+	stage.result_efficiency = result_efficiency;
+	stage.efficiency = efficiency;
+	stage.pricing = pricing;
+	stage.normalization_digest = stage.compute_normalization_digest().map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			"efficiency-bound normalization digest failed",
+		)
+	})?;
+
+	stage.verify().map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			"efficiency-bound normalization validation failed",
+		)
+	})?;
+
 	let attestation = request
 		.signing_identity
 		.attest(&stage, request.observed_unix_ms, replay_status)
@@ -1516,7 +1861,164 @@ fn prepare_package_verification(
 
 	self_check_attestation(&attestation, &stage, request.signing_identity)?;
 
-	Ok(PreparedVerification { stage, attestation, replay_scope })
+	Ok(PreparedVerification {
+		evidence: PreparedEvidence::Official { stage, attestation },
+		replay_scope,
+	})
+}
+
+fn official_replay_evidence(
+	run: &RunRecord,
+	request: &PreparationRequest<'_>,
+) -> Result<(ReplayStatus, &'static str, Vec<ProviderTokenUsage>), WorkerError> {
+	if run.synthetic {
+		return Ok((
+			ReplayStatus::CommitmentsVerified,
+			"commitments_verified",
+			vec![runner::ProviderTokenUsage::default(); run.results.len()],
+		));
+	}
+
+	let provider_usage = replay::verify_production_run(
+		run,
+		request.tasks,
+		request.resolver,
+		request.evaluator_root,
+		request.evaluator_runtime.ok_or_else(|| {
+			WorkerError::configuration("production replay lacks an evaluator runtime")
+		})?,
+		request.replay_root,
+		request.replay_identity,
+		request.replay_jobs,
+	)?;
+
+	Ok((ReplayStatus::EvaluatorReplayed, PRODUCTION_REPLAY_SCOPE, provider_usage))
+}
+
+fn prepare_calibration_verification(
+	request: PreparationRequest<'_>,
+	verified: VerifiedSubmission,
+) -> Result<PreparedVerification, WorkerError> {
+	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package payload is not a calibration run record",
+		)
+	})?;
+	let tasks = selected_calibration_tasks(&run, request.tasks)?;
+
+	run_validation::validate_calibration_run_record_with_tasks(&run, &tasks).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"signed calibration does not match the controlled task selection",
+		)
+	})?;
+	submission::validate_calibration_signer_binding(&run, &verified.signer.node_id).map_err(
+		|_| {
+			WorkerError::terminal(
+				ReasonCode::InvalidPackageSignature,
+				"package signer does not match signed calibration provenance",
+			)
+		},
+	)?;
+
+	if request.environment.synthetic_test {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"calibration evidence requires a non-synthetic verifier environment",
+		));
+	}
+
+	let mut expected_provenance =
+		request.environment.expected_provenance.clone().ok_or_else(|| {
+			WorkerError::terminal(
+				ReasonCode::InvalidRunProvenance,
+				"calibration verifier environment lacks expected provenance",
+			)
+		})?;
+
+	expected_provenance.run_class = RunClass::Calibration;
+
+	if run.provenance != expected_provenance {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"signed calibration provenance does not match the verifier environment",
+		));
+	}
+
+	let provider_usage = replay::verify_production_run(
+		&run,
+		&tasks,
+		request.resolver,
+		request.evaluator_root,
+		request.evaluator_runtime.ok_or_else(|| {
+			WorkerError::configuration("calibration replay lacks an evaluator runtime")
+		})?,
+		request.replay_root,
+		request.replay_identity,
+		request.replay_jobs,
+	)?;
+	let metadata = calibration_metadata_for(&run, request.environment)?;
+	let package = VerifiedPackageIdentity {
+		package_sha256: request.package_sha256.to_owned(),
+		content_hash: verified.content_hash,
+		signer: verified.signer,
+	};
+	let (stage, attestation) = calibration_verification::verify_and_attest_calibration_run(
+		request.signing_identity,
+		&run,
+		&tasks,
+		&package,
+		&metadata,
+		&provider_usage,
+		request.observed_unix_ms,
+	)
+	.map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			"calibration recomputation or verifier attestation construction failed",
+		)
+	})?;
+
+	attestation.verify(&stage, request.signing_identity.node()).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			"calibration verifier attestation self-check failed",
+		)
+	})?;
+
+	Ok(PreparedVerification {
+		evidence: PreparedEvidence::Calibration { stage, attestation },
+		replay_scope: PRODUCTION_REPLAY_SCOPE,
+	})
+}
+
+fn selected_calibration_tasks(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<Vec<TaskDefinition>, WorkerError> {
+	let mut selected = Vec::with_capacity(run.task_ids.len());
+	let mut seen = BTreeSet::new();
+
+	for task_id in &run.task_ids {
+		let task = tasks.iter().find(|task| &task.task_id == task_id).ok_or_else(|| {
+			WorkerError::terminal(
+				ReasonCode::InvalidRunProvenance,
+				"calibration selects a task absent from controlled sources",
+			)
+		})?;
+
+		if !seen.insert(task_id) {
+			return Err(WorkerError::terminal(
+				ReasonCode::InvalidRunProvenance,
+				"calibration task selection contains duplicates",
+			));
+		}
+
+		selected.push(task.clone());
+	}
+
+	Ok(selected)
 }
 
 fn self_check_attestation(
@@ -1548,21 +2050,28 @@ fn verify_and_write_local(
 
 	let prepared = prepare_package_verification(request)?;
 
-	if prepared.replay_scope != PRODUCTION_REPLAY_SCOPE
-		|| prepared.attestation.replay_status != ReplayStatus::EvaluatorReplayed
-	{
+	if prepared.replay_scope != PRODUCTION_REPLAY_SCOPE {
 		return Err(WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
 			"offline production replay did not derive evaluator_replayed",
 		));
 	}
 
-	write_outputs_atomically(
-		stage_output,
-		attestation_output,
-		&prepared.stage,
-		&prepared.attestation,
-	)?;
+	match &prepared.evidence {
+		PreparedEvidence::Official { stage, attestation } => {
+			if attestation.replay_status != ReplayStatus::EvaluatorReplayed {
+				return Err(WorkerError::terminal(
+					ReasonCode::EvaluatorReplayMismatch,
+					"offline production replay did not derive evaluator_replayed",
+				));
+			}
+
+			write_outputs_atomically(stage_output, attestation_output, stage, attestation)?;
+		},
+		PreparedEvidence::Calibration { stage, attestation } => {
+			write_outputs_atomically(stage_output, attestation_output, stage, attestation)?;
+		},
+	}
 
 	Ok(prepared)
 }
@@ -1588,6 +2097,29 @@ fn metadata_for(
 		started_unix_ms: run.started_unix_ms,
 		finished_unix_ms: run.finished_unix_ms,
 		synthetic_test: environment.synthetic_test,
+	})
+}
+
+fn calibration_metadata_for(
+	run: &CalibrationRunRecord,
+	environment: &VerifierEnvironment,
+) -> Result<AttestedDeploymentMetadata, WorkerError> {
+	Ok(AttestedDeploymentMetadata {
+		task_set_id: environment.task_set_id.clone(),
+		task_set_version: environment.task_set_version.clone(),
+		benchmark_version: environment.benchmark_version.clone(),
+		prompt_set_digest: run.provenance.prompt_digest.clone(),
+		runner_commit: environment.runner_commit.clone(),
+		region: environment.region.clone(),
+		scheduled_unix_ms: run.schedule_slot.scheduled_unix_ms().map_err(|error| {
+			WorkerError::terminal(
+				ReasonCode::InvalidRunProvenance,
+				format!("calibration schedule conversion failed: {error}"),
+			)
+		})?,
+		started_unix_ms: run.started_unix_ms,
+		finished_unix_ms: run.finished_unix_ms,
+		synthetic_test: false,
 	})
 }
 
@@ -1632,12 +2164,16 @@ fn create_temporary_output(
 	Err(WorkerError::configuration(format!("cannot reserve a temporary {label} path")))
 }
 
-fn write_outputs_atomically(
+fn write_outputs_atomically<S, A>(
 	stage_output: &Path,
 	attestation_output: &Path,
-	stage: &NormalizedBatchStage,
-	attestation: &VerifierAttestationV2,
-) -> Result<(), WorkerError> {
+	stage: &S,
+	attestation: &A,
+) -> Result<(), WorkerError>
+where
+	S: Serialize,
+	A: Serialize,
+{
 	let stage_target = OutputTarget::new(stage_output, "stage output")?;
 	let attestation_target = OutputTarget::new(attestation_output, "attestation output")?;
 
@@ -1694,6 +2230,95 @@ fn regular_file_bytes(path: &Path, label: &str, max_bytes: usize) -> Result<Vec<
 	}
 
 	fs::read(path).map_err(|error| WorkerError::configuration(format!("{label}: {error}")))
+}
+
+fn has_one_link(metadata: &std::fs::Metadata) -> bool {
+	#[cfg(unix)]
+	{
+		metadata.nlink() == 1
+	}
+
+	#[cfg(not(unix))]
+	{
+		let _ = metadata;
+
+		true
+	}
+}
+
+fn read_owned_regular_input(
+	path: &Path,
+	label: &str,
+	max_bytes: usize,
+) -> Result<RegularInput, WorkerError> {
+	if path == Path::new("-") {
+		return Err(WorkerError::configuration(format!("{label} must be a regular-file path")));
+	}
+
+	let before = fs::symlink_metadata(path)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+
+	if before.file_type().is_symlink()
+		|| !before.is_file()
+		|| !has_one_link(&before)
+		|| usize::try_from(before.len()).ok().is_none_or(|size| size > max_bytes)
+	{
+		return Err(WorkerError::configuration(format!(
+			"{label} must be a bounded, single-link regular file"
+		)));
+	}
+
+	let canonical_path = fs::canonicalize(path)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+	let mut options = OpenOptions::new();
+
+	options.read(true);
+	#[cfg(unix)]
+	options.custom_flags(O_NOFOLLOW);
+
+	let mut file = options
+		.open(path)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+	let opened =
+		file.metadata().map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+	let identity = FileIdentity::from_metadata(&opened);
+	let after_open = fs::symlink_metadata(path)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+
+	if !opened.is_file()
+		|| !has_one_link(&opened)
+		|| !identity.matches(&before)
+		|| after_open.file_type().is_symlink()
+		|| !identity.matches(&after_open)
+	{
+		return Err(WorkerError::configuration(format!(
+			"{label} changed identity while it was opened"
+		)));
+	}
+
+	let mut bytes = Vec::new();
+
+	Read::by_ref(&mut file)
+		.take(u64::try_from(max_bytes).unwrap_or(u64::MAX) + 1)
+		.read_to_end(&mut bytes)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+
+	let after_read =
+		file.metadata().map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+	let path_after_read = fs::symlink_metadata(path)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+
+	if bytes.len() > max_bytes
+		|| u64::try_from(bytes.len()).ok() != Some(after_read.len())
+		|| !has_one_link(&after_read)
+		|| !identity.matches(&after_read)
+		|| path_after_read.file_type().is_symlink()
+		|| !identity.matches(&path_after_read)
+	{
+		return Err(WorkerError::configuration(format!("{label} changed while it was read")));
+	}
+
+	Ok(RegularInput { bytes, canonical_path })
 }
 
 fn read_regular_json<T>(path: &Path, label: &str) -> Result<T, WorkerError>
@@ -1842,6 +2467,7 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		transport: UreqTransport::new(
 			Duration::from_secs(cli.timeout_seconds),
 			cli.allow_loopback_http,
+			cli.replay_jobs,
 		),
 		endpoint,
 		token,
@@ -1856,6 +2482,7 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		evaluator_root,
 		evaluator_runtime,
 		replay_root,
+		replay_jobs: cli.replay_jobs,
 	};
 
 	worker.run(cli.max_claims, cli.max_idle_polls)
@@ -1951,6 +2578,7 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 			signing_identity: &signing_identity,
 			observed_unix_ms: cli.observed_unix_ms,
 			require_production: true,
+			replay_jobs: cli.replay_jobs,
 		},
 		&cli.stage_output,
 		&cli.attestation_output,
@@ -2074,6 +2702,71 @@ fn serialize_verification_request(
 	Ok(body)
 }
 
+fn serialize_prepared_verification(
+	claim: &Claim,
+	prepared: &PreparedVerification,
+) -> Result<Vec<u8>, WorkerError> {
+	match &prepared.evidence {
+		PreparedEvidence::Official { stage, attestation } => {
+			serialize_verification_request(&VerificationRequest {
+				claim: claim.into(),
+				stage,
+				attestation,
+			})
+		},
+		PreparedEvidence::Calibration { stage, attestation } => {
+			let body = serde_json::to_vec(&CalibrationVerificationRequest {
+				claim: claim.into(),
+				stage,
+				attestation,
+			})
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+			enforce_verification_request_bound(&body)?;
+
+			Ok(body)
+		},
+	}
+}
+
+fn verification_response_matches(body: &[u8], prepared: &PreparedVerification) -> bool {
+	match &prepared.evidence {
+		PreparedEvidence::Official { .. } => {
+			parse_json::<VerificationGatewayResponse>(body, "verification response").is_ok_and(
+				|status| {
+					status.status == prepared.expected_gateway_status()
+						&& status.matrix_batch_id == prepared.run_id()
+						&& status.package_sha256 == prepared.package_sha256()
+				},
+			)
+		},
+		PreparedEvidence::Calibration { .. } => {
+			parse_json::<CalibrationVerificationGatewayResponse>(
+				body,
+				"calibration verification response",
+			)
+			.is_ok_and(|status| {
+				status.status == prepared.expected_gateway_status()
+					&& status.run_id == prepared.run_id()
+					&& status.package_sha256 == prepared.package_sha256()
+					&& !status.official_eligible
+					&& !status.ranking_eligible
+			})
+		},
+	}
+}
+
+fn rejection_response_matches(body: &[u8], claim: &Claim) -> bool {
+	let Ok(status) = parse_json::<RejectionGatewayResponse>(body, "rejection response") else {
+		return false;
+	};
+
+	status.status == "rejection_recorded_not_published"
+		&& !status.published
+		&& status.matrix_batch_id == claim.idempotency_key
+		&& status.package_sha256 == claim.package_sha256
+}
+
 fn enforce_verification_request_bound(body: &[u8]) -> Result<(), WorkerError> {
 	if body.len() > MAX_VERIFICATION_REQUEST_BYTES {
 		return Err(WorkerError::terminal(
@@ -2133,6 +2826,18 @@ fn validate_endpoint(endpoint: &str, allow_loopback_http: bool) -> Result<String
 	} else {
 		Err(WorkerError::configuration("endpoint must use HTTPS; test HTTP is limited to loopback"))
 	}
+}
+
+fn parse_replay_jobs(value: &str) -> Result<usize, String> {
+	let jobs = value
+		.parse::<usize>()
+		.map_err(|_| "replay jobs must be an integer between 1 and 32".to_owned())?;
+
+	if !(1..=MAX_REPLAY_JOBS).contains(&jobs) {
+		return Err("replay jobs must be between 1 and 32".to_owned());
+	}
+
+	Ok(jobs)
 }
 
 fn validate_claim(claim: &Claim) -> Result<(), WorkerError> {
@@ -2203,11 +2908,11 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 		|| environment.synthetic_test != environment.expected_provenance.is_none()
 		|| environment.expected_provenance.as_ref().is_some_and(|provenance| {
 			provenance.prompt_digest != environment.prompt_set_digest
-				|| provenance.catalog_digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+				|| provenance.catalog_digest != AIQ_CORE_TASK_IDENTITY_SHA256
 		}) || environment.runner_commit.len() < 7
 		|| environment.runner_commit.len() > 40
 		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
-		|| environment.region.is_empty()
+		|| !valid_identifier(&environment.region, 64)
 		|| environment.artifact_resolver_endpoint.as_ref().is_some_and(|url| {
 			!url.starts_with("https://")
 				|| url.ends_with('/')
@@ -2218,6 +2923,14 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 	}
 
 	Ok(())
+}
+
+fn valid_identifier(value: &str, maximum_bytes: usize) -> bool {
+	!value.is_empty()
+		&& value.len() <= maximum_bytes
+		&& value
+			.bytes()
+			.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
 }
 
 fn verifier_environment_has_placeholders(environment: &VerifierEnvironment) -> bool {
@@ -2416,6 +3129,8 @@ fn utc_components(seconds: u64) -> Result<(i64, i64, i64, u64, u64, u64), Worker
 
 #[cfg(test)]
 mod tests {
+	use std::panic;
+	#[cfg(unix)]
 	use std::{
 		collections::{BTreeSet, VecDeque},
 		env, fs,
@@ -2423,7 +3138,10 @@ mod tests {
 		net::TcpListener,
 		path::{Path, PathBuf},
 		process,
-		sync::{Arc, Mutex},
+		sync::{
+			Arc, Barrier, Mutex,
+			atomic::{AtomicBool, Ordering},
+		},
 		thread,
 		time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 	};
@@ -2432,16 +3150,20 @@ mod tests {
 	use sha2::{Digest, Sha256};
 
 	use crate::{
-		ArtifactResolverClient, Claim, ClaimLease, Cli, ErrorKind, HttpArtifactResolver,
-		HttpResponse, LEASE_RENEWAL_INTERVAL, LeaseMaintenance, LocalArtifactResolver,
-		MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic,
-		OperatorErrorClass, PackageDisposition, PreparationRequest, RECORD_SCHEMA,
-		REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode,
-		RejectionGatewayResponse, Secret, Transport, UreqTransport, ValidateEnvironmentCli,
-		VerificationGatewayResponse, VerificationRecord, VerifierEnvironment, VerifyLocalCli,
-		Worker, WorkerError, replay,
+		ArtifactResolverClient, Claim, ClaimLease, Cli, DEFAULT_REPLAY_JOBS, ErrorKind,
+		HttpArtifactResolver, HttpResponse, LEASE_RENEWAL_INTERVAL, LeaseMaintenance,
+		LocalArtifactResolver, MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES,
+		OperatorDiagnostic, OperatorErrorClass, PackageDisposition, PreparationRequest,
+		PreparedEvidence, PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE,
+		REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, Secret,
+		Transport, UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse,
+		VerificationRecord, VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
+	};
+	use aiq_runner::calibration_verification::{
+		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	};
 	use aiq_runner::{
+		AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
 		adapter::{
 			self, ArtifactReference, ArtifactSink, AuthenticationProbe, CapabilityValidation,
 			CapabilityValidationReport, CapabilityValidationStatus, CliProbe, ConfigurationProbe,
@@ -2449,10 +3171,12 @@ mod tests {
 		},
 		corpus_commitment::{RunClass, RunProvenanceCommitment},
 		model::MODEL_MATRIX,
-		normalization::{ReplayStatus, VerifierSigningIdentity},
+		normalization::{
+			NormalizedBatchStage, ReplayStatus, VerifierAttestationV2, VerifierSigningIdentity,
+		},
 		protocol::{self, SigningIdentity, TrustTier},
 		resume, run_validation,
-		runner::{self, WorkspaceManifest, WorkspaceSnapshot},
+		runner::{self, CalibrationRunRecord, WorkspaceManifest, WorkspaceSnapshot},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
 		submission,
 		task::EvaluatorRuntime,
@@ -2470,20 +3194,11 @@ mod tests {
 		kind: &'static str,
 	}
 
-	struct TestArtifactSink;
-	impl ArtifactSink for TestArtifactSink {
-		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
-			let digest = hex::encode(Sha256::digest(bytes));
-
-			Ok(ArtifactReference {
-				kind: kind.to_owned(),
-				content_hash: format!("sha256:{digest}"),
-				uri: format!("aiq-artifact://sha256/{digest}/{kind}"),
-				bytes: u64::try_from(bytes.len())
-					.map_err(|_| ExecutorError::new("fixture artifact is too large"))?,
-			})
-		}
+	struct AckConflictTransport {
+		inner: FakeTransport,
 	}
+
+	struct TestArtifactSink;
 
 	struct RenewalTransport {
 		status: u16,
@@ -2504,6 +3219,20 @@ mod tests {
 		package_sha256: String,
 		evaluator_results_path: PathBuf,
 		manifest_path: PathBuf,
+	}
+
+	impl ArtifactSink for TestArtifactSink {
+		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
+			let digest = hex::encode(Sha256::digest(bytes));
+
+			Ok(ArtifactReference {
+				kind: kind.to_owned(),
+				content_hash: format!("sha256:{digest}"),
+				uri: format!("aiq-artifact://sha256/{digest}/{kind}"),
+				bytes: u64::try_from(bytes.len())
+					.map_err(|_| ExecutorError::new("fixture artifact is too large"))?,
+			})
+		}
 	}
 
 	impl LeaseMaintenance for NoopLease {
@@ -2678,6 +3407,38 @@ mod tests {
 		}
 	}
 
+	impl Transport for AckConflictTransport {
+		fn post_json(
+			&self,
+			url: &str,
+			token: &Secret,
+			body: &[u8],
+		) -> Result<HttpResponse, WorkerError> {
+			let request: serde_json::Value = serde_json::from_slice(body)
+				.map_err(|error| WorkerError::transient(error.to_string()))?;
+
+			if request.get("action").and_then(serde_json::Value::as_str) == Some("ack") {
+				self.inner
+					.posts
+					.lock()
+					.map_err(|_| WorkerError::transient("fake transport lock failed"))?
+					.push_back("ack_conflict".to_owned());
+
+				return Ok(HttpResponse { status: 409, body: Vec::new() });
+			}
+
+			self.inner.post_json(url, token, body)
+		}
+
+		fn get_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
+			self.inner.get_object(url)
+		}
+
+		fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
+			self.inner.get_artifact_object(url)
+		}
+	}
+
 	impl LocalReplayFixture {
 		fn new() -> Self {
 			let unique =
@@ -2757,9 +3518,9 @@ mod tests {
 			let package_sha256 = hex::encode(Sha256::digest(&package));
 			let environment = VerifierEnvironment {
 				schema_version: "aiq.verifier-environment.v2".to_owned(),
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				benchmark_version: "aiq-core@1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: provenance.prompt_digest.clone(),
 				expected_provenance: Some(provenance),
 				runner_commit: "d".repeat(40),
@@ -2815,6 +3576,70 @@ mod tests {
 			(manifest_reference, manifest_path, snapshot_reference, stdout_reference)
 		}
 
+		fn convert_to_calibration(&mut self) {
+			let envelope: protocol::SubmissionEnvelope =
+				serde_json::from_slice(&self.package).expect("official envelope");
+			let official: runner::RunRecord =
+				serde_json::from_value(envelope.payload).expect("official payload");
+			let mut provenance = official.provenance.expect("production provenance");
+
+			provenance.run_class = RunClass::Calibration;
+
+			let run_id = resume::classified_run_id(
+				&official.schedule_slot,
+				&official.task_set_hash,
+				&provenance.corpus_commitment_sha256,
+				&official.models,
+				RunClass::Calibration,
+			)
+			.expect("calibration run id");
+			let mut results = official.results;
+
+			for result in &mut results {
+				result.run_id.clone_from(&run_id);
+
+				result.result_id = format!(
+					"result_{}",
+					result
+						.content_hash()
+						.expect("calibration result hash")
+						.trim_start_matches("sha256:")
+				);
+			}
+
+			let calibration = CalibrationRunRecord {
+				schema_version: runner::CALIBRATION_RUN_SCHEMA_VERSION.to_owned(),
+				official_eligible: false,
+				classification: "local_calibration_non_official".to_owned(),
+				run_id: run_id.clone(),
+				schedule_slot: official.schedule_slot,
+				task_set_hash: official.task_set_hash,
+				scoring_version: official.scoring_version,
+				execution_concurrency: Some(17),
+				models: official.models,
+				task_ids: self.tasks.iter().map(|task| task.task_id.clone()).collect(),
+				started_unix_ms: official.started_unix_ms,
+				finished_unix_ms: official.finished_unix_ms,
+				capability_validation: official.capability_validation.expect("preflight"),
+				provenance,
+				evaluator_results_artifact: official.evaluator_results_artifact,
+				results,
+			};
+			let identity = SigningIdentity::from_secret([7; 32]);
+			let envelope = identity
+				.sign(
+					&run_id,
+					protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+					&calibration,
+					TrustTier::Untrusted,
+				)
+				.expect("signed calibration package");
+
+			self.package =
+				submission::serialize_signed_package(&envelope).expect("calibration package bytes");
+			self.package_sha256 = hex::encode(Sha256::digest(&self.package));
+		}
+
 		fn write_artifact(root: &Path, kind: &str, bytes: &[u8]) -> (ArtifactReference, PathBuf) {
 			let digest = hex::encode(Sha256::digest(bytes));
 			let directory = root.join(&digest);
@@ -2839,11 +3664,21 @@ mod tests {
 			stage_output: &Path,
 			attestation_output: &Path,
 		) -> Result<super::PreparedVerification, WorkerError> {
+			self.prepare_with_jobs(stage_output, attestation_output, DEFAULT_REPLAY_JOBS)
+		}
+
+		fn prepare_with_jobs(
+			&self,
+			stage_output: &Path,
+			attestation_output: &Path,
+			replay_jobs: usize,
+		) -> Result<super::PreparedVerification, WorkerError> {
 			self.prepare_bytes(
 				&self.package,
 				&self.package_sha256,
 				stage_output,
 				attestation_output,
+				replay_jobs,
 			)
 		}
 
@@ -2853,6 +3688,7 @@ mod tests {
 			package_sha256: &str,
 			stage_output: &Path,
 			attestation_output: &Path,
+			replay_jobs: usize,
 		) -> Result<super::PreparedVerification, WorkerError> {
 			let resolver = LocalArtifactResolver::new(&self.artifact_root)?;
 			let signing_identity = VerifierSigningIdentity::from_secret([8; 32]);
@@ -2872,6 +3708,7 @@ mod tests {
 					signing_identity: &signing_identity,
 					observed_unix_ms: 1_000,
 					require_production: true,
+					replay_jobs,
 				},
 				stage_output,
 				attestation_output,
@@ -2883,6 +3720,53 @@ mod tests {
 		fn drop(&mut self) {
 			let _ = fs::remove_dir_all(&self.root);
 		}
+	}
+
+	fn official_evidence(
+		prepared: &PreparedVerification,
+	) -> (&NormalizedBatchStage, &VerifierAttestationV2) {
+		match &prepared.evidence {
+			PreparedEvidence::Official { stage, attestation } => (stage, attestation),
+			PreparedEvidence::Calibration { .. } => panic!("expected Official evidence"),
+		}
+	}
+
+	fn assert_calibration_attestation_mutations_rejected(
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
+	) {
+		let mut changed = stage.clone();
+
+		changed.pricing.currency = "EUR".to_owned();
+		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
+
+		assert!(attestation.verify(&changed, &attestation.verifier).is_err());
+
+		let mut changed = stage.clone();
+
+		changed.scores[0].score.schema_version = "aiq.calibration-score-report.future".to_owned();
+		changed.score_reports_digest =
+			protocol::canonical_hash(&changed.scores).expect("changed score digest");
+		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
+
+		assert!(attestation.verify(&changed, &attestation.verifier).is_err());
+
+		let mut changed = stage.clone();
+
+		changed.scores[0].score.fixed_fixture_aiq =
+			changed.scores[0].score.fixed_fixture_aiq.map(|value| (value - 0.01).max(0.0));
+		changed.score_reports_digest =
+			protocol::canonical_hash(&changed.scores).expect("changed score digest");
+		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
+
+		assert!(attestation.verify(&changed, &attestation.verifier).is_err());
+
+		let mut uppercase_signature = attestation.clone();
+
+		uppercase_signature.signature = uppercase_signature.signature.to_ascii_uppercase();
+
+		assert_ne!(uppercase_signature.signature, attestation.signature);
+		assert!(uppercase_signature.verify(stage, &attestation.verifier).is_err());
 	}
 
 	#[test]
@@ -2927,6 +3811,52 @@ mod tests {
 	}
 
 	#[test]
+	fn replay_jobs_default_and_bounds_are_strict() {
+		let base = [
+			"aiq-verifier",
+			"--endpoint",
+			"https://gateway.invalid",
+			"--synthetic-demo-tasks",
+			"--environment",
+			"environment.json",
+			"--replay-root",
+			"replay",
+		];
+		let parsed = Cli::try_parse_from(base).expect("default replay jobs");
+
+		assert_eq!(parsed.replay_jobs, DEFAULT_REPLAY_JOBS);
+
+		for accepted in ["1", "32"] {
+			let mut arguments = base.to_vec();
+
+			arguments.extend(["--replay-jobs", accepted]);
+
+			assert_eq!(
+				Cli::try_parse_from(arguments).expect("bounded replay jobs").replay_jobs,
+				accepted.parse::<usize>().expect("fixture integer")
+			);
+		}
+		for rejected in ["0", "33", "not-an-integer"] {
+			let mut arguments = base.to_vec();
+
+			arguments.extend(["--replay-jobs", rejected]);
+
+			assert!(Cli::try_parse_from(arguments).is_err());
+		}
+	}
+
+	#[test]
+	fn top_level_help_exposes_offline_and_environment_validation_modes() {
+		let help = <Cli as clap::CommandFactory>::command().render_long_help().to_string();
+
+		assert!(help.contains("aiq-verifier validate-environment --environment <ENVIRONMENT>"));
+		assert!(help.contains("without secrets or service access"));
+		assert!(help.contains("aiq-verifier verify-local --help"));
+		assert!(help.contains("write create-new stage and attestation files"));
+		assert!(help.contains("does not publish or assign cloud trust"));
+	}
+
+	#[test]
 	fn verify_local_cli_requires_every_controlled_input_and_has_no_replay_status_override() {
 		let arguments = [
 			"aiq-verifier verify-local",
@@ -2965,30 +3895,46 @@ mod tests {
 
 		assert!(VerifyLocalCli::try_parse_from(overridden).is_err());
 	}
+	fn temporary_test_root(label: &str) -> PathBuf {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir().join(format!("aiq-verifier-{label}-{}-{unique}", process::id()));
 
+		fs::create_dir(&root).expect("fixture directory");
+
+		root
+	}
 	#[test]
 	fn local_replay_reconstructs_all_1224_results_and_writes_deterministic_evidence() {
 		let fixture = LocalReplayFixture::new();
 		let first_stage = fixture.root.join("first-stage.json");
 		let first_attestation = fixture.root.join("first-attestation.json");
-		let first =
-			fixture.prepare(&first_stage, &first_attestation).expect("first offline replay");
+		let first = fixture
+			.prepare_with_jobs(&first_stage, &first_attestation, 1)
+			.expect("single-job offline replay");
 		let second_stage = fixture.root.join("second-stage.json");
 		let second_attestation = fixture.root.join("second-attestation.json");
-		let second =
-			fixture.prepare(&second_stage, &second_attestation).expect("second offline replay");
+		let second = fixture
+			.prepare_with_jobs(&second_stage, &second_attestation, DEFAULT_REPLAY_JOBS)
+			.expect("parallel offline replay");
+		let request =
+			super::serialize_prepared_verification(&test_claim(first.run_id().to_owned()), &first)
+				.expect("bounded Official verification request");
+		let (first_stage_evidence, first_attestation_evidence) = official_evidence(&first);
+		let (second_stage_evidence, second_attestation_evidence) = official_evidence(&second);
 
-		assert_eq!(first.stage.runs.len(), 17);
-		assert!(first.stage.runs.iter().all(|run| run.results.len() == 72));
-		assert!(!first.stage.synthetic);
-		assert_eq!(first.attestation.replay_status, ReplayStatus::EvaluatorReplayed);
+		assert_eq!(first_stage_evidence.runs.len(), 17);
+		assert!(request.len() <= MAX_VERIFICATION_REQUEST_BYTES);
+		assert!(first_stage_evidence.runs.iter().all(|run| run.results.len() == 72));
+		assert!(!first_stage_evidence.synthetic);
+		assert_eq!(first_attestation_evidence.replay_status, ReplayStatus::EvaluatorReplayed);
 		assert_eq!(
-			first.attestation.policy,
+			first_attestation_evidence.policy,
 			aiq_runner::normalization::VerificationPolicy::Production
 		);
 		assert_eq!(first.replay_scope, replay::PRODUCTION_REPLAY_SCOPE);
-		assert_eq!(first.stage, second.stage);
-		assert_eq!(first.attestation, second.attestation);
+		assert_eq!(first_stage_evidence, second_stage_evidence);
+		assert_eq!(first_attestation_evidence, second_attestation_evidence);
 		assert_eq!(
 			fs::read(first_stage).expect("first stage"),
 			fs::read(second_stage).expect("second stage")
@@ -2998,6 +3944,64 @@ mod tests {
 			fs::read(second_attestation).expect("second attestation")
 		);
 		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
+	fn local_calibration_replay_publishes_only_non_official_efficiency_evidence() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_calibration();
+
+		let prepared = fixture
+			.prepare(
+				&fixture.root.join("calibration-stage.json"),
+				&fixture.root.join("calibration-attestation.json"),
+			)
+			.expect("calibration offline replay");
+		let request = super::serialize_prepared_verification(
+			&test_claim(prepared.run_id().to_owned()),
+			&prepared,
+		)
+		.expect("bounded calibration verification request");
+		let PreparedEvidence::Calibration { stage, attestation } = prepared.evidence else {
+			panic!("expected calibration evidence");
+		};
+
+		assert_eq!(stage.execution_concurrency, 17);
+
+		let mut missing_stage = serde_json::to_value(&stage).expect("serialize calibration stage");
+
+		missing_stage
+			.as_object_mut()
+			.expect("calibration stage object")
+			.remove("execution_concurrency");
+
+		assert!(
+			serde_json::from_value::<
+				aiq_runner::calibration_verification::CalibrationVerifiedStageV1,
+			>(missing_stage)
+			.is_err()
+		);
+
+		let mut null_attestation =
+			serde_json::to_value(&attestation).expect("serialize calibration attestation");
+
+		null_attestation["execution_concurrency"] = serde_json::Value::Null;
+
+		assert!(
+			serde_json::from_value::<
+				aiq_runner::calibration_verification::CalibrationVerifierAttestationV1,
+			>(null_attestation)
+			.is_err()
+		);
+		assert!(request.len() <= MAX_VERIFICATION_REQUEST_BYTES);
+		assert_eq!(stage.result_efficiency.len(), 72 * 17);
+		assert_eq!(stage.scores.len(), 17);
+		assert_eq!(stage.trust, TrustTier::Untrusted);
+		assert_eq!(attestation.stage_digest, stage.stage_digest);
+		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
+
+		assert_calibration_attestation_mutations_rejected(&stage, &attestation);
 	}
 
 	#[test]
@@ -3075,7 +4079,7 @@ mod tests {
 		let stage = fixture.root.join("stage.json");
 		let attestation = fixture.root.join("attestation.json");
 		let error = fixture
-			.prepare_bytes(&package, &package_sha256, &stage, &attestation)
+			.prepare_bytes(&package, &package_sha256, &stage, &attestation, DEFAULT_REPLAY_JOBS)
 			.expect_err("signature tampering must reject");
 
 		assert_eq!(error.kind, ErrorKind::Terminal(ReasonCode::InvalidPackageSignature));
@@ -3126,6 +4130,39 @@ mod tests {
 		assert!(!attestation.exists());
 	}
 
+	#[test]
+	fn local_artifact_resolver_requires_the_content_address() {
+		let root = temporary_test_root("artifact-content-address");
+		let artifact_root = root.join("artifacts");
+		let bytes = b"plan-bound artifact";
+		let digest = hex::encode(Sha256::digest(bytes));
+		let digest_root = artifact_root.join(&digest);
+
+		fs::create_dir(&artifact_root).expect("artifact root");
+		fs::create_dir(&digest_root).expect("digest root");
+		fs::write(digest_root.join("stdout.jsonl"), bytes).expect("artifact");
+
+		let resolver = LocalArtifactResolver::new(&artifact_root).expect("resolver");
+
+		assert_eq!(
+			resolver
+				.resolve(&digest, "stdout.jsonl", bytes.len() as u64)
+				.expect("content-addressed artifact"),
+			bytes
+		);
+
+		fs::write(digest_root.join("stdout.jsonl"), b"plan-bound artifacU")
+			.expect("same-size tamper");
+
+		let error = resolver
+			.resolve(&digest, "stdout.jsonl", bytes.len() as u64)
+			.expect_err("digest mismatch must reject");
+
+		assert_eq!(error.kind, ErrorKind::Terminal(ReasonCode::ArtifactEvidenceMismatch));
+
+		fs::remove_dir_all(root).expect("remove fixture");
+	}
+
 	fn test_worker<T>(transport: T) -> Worker<T> {
 		Worker {
 			transport,
@@ -3135,9 +4172,9 @@ mod tests {
 			tasks: runner::synthetic_demo_tasks(),
 			environment: VerifierEnvironment {
 				schema_version: "aiq.verifier-environment.v2".to_owned(),
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				benchmark_version: "aiq-core@1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: format!("sha256:{}", "c".repeat(64)),
 				expected_provenance: None,
 				runner_commit: "d".repeat(40),
@@ -3153,6 +4190,7 @@ mod tests {
 			evaluator_root: PathBuf::from("/unused-evaluator"),
 			evaluator_runtime: None,
 			replay_root: PathBuf::from("/unused-replay"),
+			replay_jobs: DEFAULT_REPLAY_JOBS,
 		}
 	}
 
@@ -3237,7 +4275,7 @@ mod tests {
 			run_class: RunClass::Official,
 			corpus_release_id: "corpus_fixture".to_owned(),
 			corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
-			catalog_digest: aiq_runner::scoring::AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+			catalog_digest: aiq_runner::scoring::AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
 			task_set_digest,
 			evaluator_digest: format!("sha256:{}", "8".repeat(64)),
 			runtime_digest: format!("sha256:{}", "9".repeat(64)),
@@ -3371,6 +4409,26 @@ mod tests {
 
 		crate::validate_environment(&environment)
 			.expect("test-owned fixture must remain structurally and semantically self-consistent");
+	}
+
+	#[test]
+	fn verifier_region_uses_the_public_identifier_grammar() {
+		let source = include_str!("../tests/fixtures/valid-synthetic-verifier-environment.json");
+		let environment: VerifierEnvironment = serde_json::from_str(source)
+			.expect("test-owned fixture must match the exact Rust shape");
+
+		for invalid in ["us east 1".to_owned(), "x".repeat(65)] {
+			let mut changed = environment.clone();
+
+			changed.region = invalid;
+
+			assert_eq!(
+				crate::validate_environment(&changed)
+					.expect_err("invalid region must fail closed")
+					.message,
+				"verifier environment is invalid"
+			);
+		}
 	}
 
 	#[test]
@@ -3578,7 +4636,7 @@ mod tests {
 
 			stream.write_all(body).expect("body");
 		});
-		let transport = UreqTransport::new(Duration::from_secs(2), true);
+		let transport = UreqTransport::new(Duration::from_secs(2), true, DEFAULT_REPLAY_JOBS);
 		let response =
 			transport.get_object(&format!("http://{address}/signed-object")).expect("download");
 
@@ -3679,6 +4737,49 @@ mod tests {
 	}
 
 	#[test]
+	fn confirmed_publication_is_not_downgraded_by_post_terminal_ack_conflict() {
+		let runner_identity = SigningIdentity::from_secret([7; 32]);
+		let mut run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2000-01-01", ScheduleOccurrence::Day).expect("slot"),
+			&TestArtifactSink,
+		)
+		.expect("run");
+
+		submission::bind_synthetic_run_to_signer(&mut run, &runner_identity.node().node_id)
+			.expect("bind");
+
+		let envelope = runner_identity
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("sign");
+		let package = submission::serialize_signed_package(&envelope).expect("serialize");
+		let package_sha256 = hex::encode(Sha256::digest(&package));
+		let transport = AckConflictTransport {
+			inner: FakeTransport {
+				package: package.clone(),
+				posts: Mutex::new(VecDeque::new()),
+				terminal_claims: Mutex::new(Vec::new()),
+				verification_request_bytes: Mutex::new(Vec::new()),
+			},
+		};
+		let worker = test_worker(transport);
+		let mut claim = test_claim(run.run_id);
+
+		claim.package_sha256.clone_from(&package_sha256);
+
+		claim.body_bytes = package.len();
+		claim.object_content_sha256 = package_sha256;
+
+		assert!(matches!(
+			worker.verify_claim(&claim).expect("confirmed verification"),
+			PackageDisposition::Verified("commitments_verified")
+		));
+		assert_eq!(
+			worker.transport.inner.posts.lock().expect("posts").iter().collect::<Vec<_>>(),
+			vec!["renewed", "verified_published", "ack_conflict"]
+		);
+	}
+
+	#[test]
 	fn recomputed_recovery_attestation_is_fresh_valid_and_semantically_identical() {
 		let runner_identity = SigningIdentity::from_secret([7; 32]);
 		let mut run = runner::synthetic_demo(
@@ -3717,21 +4818,21 @@ mod tests {
 		let recovered = worker
 			.prepare_verification(&claim, &package, &NoopLease)
 			.expect("recovered preparation");
+		let (first_stage, first_attestation) = official_evidence(&first);
+		let (recovered_stage, recovered_attestation) = official_evidence(&recovered);
 
-		assert_eq!(first.stage, recovered.stage);
+		assert_eq!(first_stage, recovered_stage);
 
-		first
-			.attestation
-			.verify(&first.stage, worker.signing_identity.node())
+		first_attestation
+			.verify(first_stage, worker.signing_identity.node())
 			.expect("first signature");
-		recovered
-			.attestation
-			.verify(&recovered.stage, worker.signing_identity.node())
+		recovered_attestation
+			.verify(recovered_stage, worker.signing_identity.node())
 			.expect("recovery signature");
 
-		let mut first_value = serde_json::to_value(&first.attestation).expect("first JSON");
+		let mut first_value = serde_json::to_value(first_attestation).expect("first JSON");
 		let mut recovered_value =
-			serde_json::to_value(&recovered.attestation).expect("recovery JSON");
+			serde_json::to_value(recovered_attestation).expect("recovery JSON");
 		let first_object = first_value.as_object_mut().expect("first object");
 		let recovered_object = recovered_value.as_object_mut().expect("recovery object");
 
@@ -3756,9 +4857,9 @@ mod tests {
 			run.schedule_slot.scheduled_unix_ms().expect("resolved signed schedule");
 		let environment = VerifierEnvironment {
 			schema_version: "aiq.verifier-environment.v2".to_owned(),
-			task_set_id: "aiq-core".to_owned(),
-			task_set_version: "1.0.0".to_owned(),
-			benchmark_version: "aiq-core@1.0.0".to_owned(),
+			task_set_id: AIQ_TASK_SET_ID.to_owned(),
+			task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+			benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 			prompt_set_digest: run.task_set_hash.clone(),
 			expected_provenance: None,
 			runner_commit: "0000000000000000000000000000000000000000".to_owned(),
@@ -3794,7 +4895,9 @@ mod tests {
 		let claim = test_claim(format!("run_{}", "b".repeat(64)));
 		let lease = ClaimLease::new(&worker, &claim);
 
-		lease.last_renewed.set(Instant::now() - LEASE_RENEWAL_INTERVAL);
+		lease.state.lock().expect("lease state").last_renewed =
+			Instant::now() - LEASE_RENEWAL_INTERVAL;
+
 		lease.maintain().expect("renew lease");
 
 		let requests = worker.transport.requests.lock().expect("renewal requests");
@@ -3809,6 +4912,171 @@ mod tests {
 				"lease_token": claim.lease_token,
 			})
 		);
+	}
+
+	#[test]
+	fn heartbeat_records_lease_loss_and_blocks_terminal_operations() {
+		let worker =
+			test_worker(RenewalTransport { status: 409, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::with_interval(&worker, &claim, Duration::from_millis(1));
+		let heartbeat_error = thread::scope(|scope| {
+			let heartbeat = scope.spawn(|| lease.run_heartbeat());
+
+			heartbeat.join().expect("heartbeat joins").expect_err("lease loss")
+		});
+
+		assert!(heartbeat_error.is_transient());
+
+		let called = AtomicBool::new(false);
+		let blocked = lease
+			.with_terminal_lease(
+				|| {
+					called.store(true, Ordering::SeqCst);
+
+					Ok(())
+				},
+				|_| true,
+			)
+			.expect_err("lost lease blocks terminal operation");
+
+		assert!(blocked.is_transient());
+		assert!(!called.load(Ordering::SeqCst));
+	}
+
+	#[test]
+	fn heartbeat_renews_and_joins_before_claim_completion() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::with_interval(&worker, &claim, Duration::from_millis(1));
+
+		thread::scope(|scope| {
+			let heartbeat = scope.spawn(|| lease.run_heartbeat());
+			let deadline = Instant::now() + Duration::from_secs(1);
+
+			while worker.transport.requests.lock().expect("renewal requests").is_empty() {
+				assert!(Instant::now() < deadline, "heartbeat did not renew the lease");
+
+				thread::yield_now();
+			}
+
+			lease.stop();
+			heartbeat.join().expect("heartbeat joins").expect("heartbeat stops cleanly");
+		});
+
+		assert!(!worker.transport.requests.lock().expect("renewal requests").is_empty());
+	}
+
+	#[test]
+	fn heartbeat_stop_guard_survives_unwind() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::with_interval(&worker, &claim, Duration::from_secs(60));
+		let started = Instant::now();
+		let unwind = panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let _ = lease.with_heartbeat(|| panic!("fixture claim panic"));
+		}));
+
+		assert!(unwind.is_err());
+		assert!(started.elapsed() < Duration::from_secs(1));
+		assert!(lease.state.lock().expect("lease state").stopped);
+	}
+
+	#[test]
+	fn heartbeat_creation_failure_stops_without_running_the_claim() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let called = AtomicBool::new(false);
+		let mut lease = ClaimLease::with_interval(&worker, &claim, Duration::from_secs(60));
+
+		lease.heartbeat_spawn_failure = true;
+
+		let error = lease
+			.with_heartbeat(|| {
+				called.store(true, Ordering::SeqCst);
+
+				Ok(PackageDisposition::LeaseLost("fixture"))
+			})
+			.expect_err("heartbeat creation failure");
+
+		assert!(error.is_transient());
+		assert!(!called.load(Ordering::SeqCst));
+		assert!(lease.state.lock().expect("lease state").stopped);
+		assert!(worker.transport.requests.lock().expect("renewal requests").is_empty());
+	}
+
+	#[test]
+	fn terminal_response_stops_a_due_heartbeat_before_unlock() {
+		let worker =
+			test_worker(RenewalTransport { status: 409, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::with_interval(&worker, &claim, Duration::from_millis(100));
+
+		thread::scope(|scope| {
+			let heartbeat = thread::Builder::new()
+				.spawn_scoped(scope, || lease.run_heartbeat())
+				.expect("heartbeat starts");
+			let response = lease
+				.with_terminal_lease(
+					|| {
+						thread::sleep(Duration::from_millis(200));
+
+						Ok(HttpResponse { status: 200, body: Vec::new() })
+					},
+					|response| response.status == 200,
+				)
+				.expect("terminal response");
+
+			assert_eq!(response.status, 200);
+
+			heartbeat.join().expect("heartbeat joins").expect("terminal heartbeat stop");
+		});
+
+		let state = lease.state.lock().expect("lease state");
+
+		assert!(state.terminal);
+		assert!(state.stopped);
+		assert!(state.lost.is_none());
+		assert!(worker.transport.requests.lock().expect("renewal requests").is_empty());
+	}
+
+	#[test]
+	fn concurrent_lease_maintenance_renews_only_once_per_interval() {
+		let worker =
+			test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+		let claim = test_claim(format!("run_{}", "b".repeat(64)));
+		let lease = ClaimLease::new(&worker, &claim);
+		let callers = 8;
+		let barrier = Barrier::new(callers + 1);
+
+		lease.state.lock().expect("lease state").last_renewed =
+			Instant::now() - LEASE_RENEWAL_INTERVAL;
+		thread::scope(|scope| {
+			let mut workers = Vec::new();
+
+			for _ in 0..callers {
+				workers.push(
+					thread::Builder::new()
+						.spawn_scoped(scope, || {
+							barrier.wait();
+
+							lease.maintain()
+						})
+						.expect("maintenance thread starts"),
+				);
+			}
+
+			barrier.wait();
+
+			for worker in workers {
+				worker.join().expect("maintenance thread joins").expect("lease maintenance");
+			}
+		});
+
+		assert_eq!(worker.transport.requests.lock().expect("renewal requests").len(), 1);
 	}
 
 	#[test]

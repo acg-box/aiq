@@ -1,6 +1,6 @@
 //! Command-line interface for local AIQ workflows.
+use std::cmp::Ordering;
 use std::{
-	cmp::Ordering,
 	collections::{BTreeMap, BTreeSet},
 	env,
 	fs::{self, File, OpenOptions},
@@ -13,26 +13,41 @@ use std::{
 };
 #[cfg(unix)]
 use std::{
+	ffi::CString,
 	fs::Permissions,
-	os::unix::fs::{MetadataExt as _, OpenOptionsExt, PermissionsExt},
+	os::fd::AsRawFd as _,
+	os::unix::{
+		ffi::OsStrExt as _,
+		fs::{MetadataExt as _, OpenOptionsExt, PermissionsExt},
+	},
 };
 
 use clap::{Parser, Subcommand, ValueEnum};
 use libc::O_NOFOLLOW;
+#[cfg(target_os = "linux")]
+use libc::{AT_FDCWD, RENAME_EXCHANGE, RENAME_NOREPLACE};
+#[cfg(unix)]
+use libc::{LOCK_EX, LOCK_NB};
+#[cfg(target_vendor = "apple")]
+use libc::{RENAME_EXCL, RENAME_SWAP};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json;
 use sha2::{Digest, Sha256};
 
+use crate::official_admission::{
+	OfficialOutputPlan, OfficialPlanBinding, PermissionAdmissionReport,
+};
 use crate::pinned_path::{PinnedDirectoryIdentity, PinnedPathIdentity};
 use aiq_runner::{
 	adapter::{
 		self, ArtifactSink, CapabilityValidationReport, CapabilityValidationStatus,
-		ChatgptCredentialObservation, CodexAdapter, CodexEgressProxyEndpoint, CodexExecutionConfig,
-		ConfigurationProbeStatus, Executor, LocalArtifactSink, ManagedPermissionProfileEvidence,
-		ProbeStatus, SystemExecutor,
+		ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus,
+		Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor,
 	},
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
-		self, ExecutionToolPolicy, RunClass, ValidatedCorpusCommitment, ValidatedModelToolchain,
+		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, ValidatedCorpusCommitment,
+		ValidatedModelToolchain,
 	},
 	isolation::{self, ProtectedBenchmarkPath},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
@@ -47,16 +62,17 @@ use aiq_runner::{
 	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
 	runner::{
 		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
-		LocalDirectoryWorkspaceProvider, LocalRunExecution, RUN_SCHEMA_VERSION, RunRecord,
-		SelectedRun,
+		LocalDirectoryWorkspaceProvider, LocalRunExecution, MAX_RUN_JOBS, RUN_SCHEMA_VERSION,
+		RunRecord, SelectedRun,
 	},
 	schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
 	scoring::{
-		self, AIQ_SCORING_VERSION, CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions,
-		ScoreReport,
+		self, AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
+		CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions, ScoreReport,
 	},
 	submission::{
-		self, HttpsTransport, MAX_SIGNED_PACKAGE_BYTES, MAX_SUBMISSION_BYTES, SecretToken,
+		self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY,
+		MAX_SUBMISSION_BYTES, SecretToken, SubmissionBundleOutcome,
 	},
 	task::{
 		self, DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskLoadIssue, TaskLoadReport,
@@ -66,6 +82,7 @@ use aiq_runner::{
 
 const MAX_CORPUS_COMMITMENT_BYTES: usize = 4 * 1_024 * 1_024;
 const MAX_CAPABILITY_MANIFEST_BYTES: usize = 512 * 1_024;
+const FUTURE_PROTECTED_PLACEHOLDER: &[u8] = b"AIQ_DENIED\n";
 
 /// Local AIQ runner.
 #[derive(Debug, Parser)]
@@ -80,6 +97,7 @@ impl Cli {
 		run_general_cli_command(self.command)
 	}
 }
+
 #[derive(Clone)]
 struct RunOptions {
 	public_tasks: Option<PathBuf>,
@@ -98,9 +116,9 @@ struct RunOptions {
 	observed_at: String,
 	codex_binary: String,
 	codex_home: PathBuf,
-	codex_egress_proxy: CodexEgressProxyEndpoint,
 	artifact_root: PathBuf,
 	preflight_cache: PathBuf,
+	official_admission: Option<PathBuf>,
 	refresh_preflight: bool,
 	preflight_ttl_seconds: u64,
 	checkpoint: PathBuf,
@@ -109,6 +127,61 @@ struct RunOptions {
 	jobs: usize,
 	run_class: RunClass,
 	output: PathBuf,
+}
+
+struct PermissionAdmissionOptions {
+	public_tasks: Option<PathBuf>,
+	hidden_tasks: Option<PathBuf>,
+	corpus_commitment: PathBuf,
+	source_root: PathBuf,
+	capabilities: PathBuf,
+	workspace_root: PathBuf,
+	execution_root: PathBuf,
+	evaluator_root: PathBuf,
+	evaluator_runtime: PathBuf,
+	codex_toolchain_root: PathBuf,
+	schedule: PathBuf,
+	slot_date: String,
+	occurrence: String,
+	observed_at: String,
+	codex_binary: String,
+	codex_home: PathBuf,
+	artifact_root: PathBuf,
+	preflight_cache: PathBuf,
+	checkpoint: PathBuf,
+	jobs: usize,
+	planned_output: PathBuf,
+	planned_score_output: PathBuf,
+	planned_package_output: PathBuf,
+	report_output: PathBuf,
+}
+
+struct PreparedPermissionAdmission {
+	adapter: CodexAdapter<SystemExecutor, LocalArtifactSink>,
+	execution_root: PathBuf,
+	protected_paths: Vec<ProtectedBenchmarkPath>,
+	plan: OfficialPlanBinding,
+}
+
+struct BenchmarkProtectedPathInputs<'a> {
+	public_tasks: Option<&'a Path>,
+	hidden_tasks: Option<&'a Path>,
+	source_root: &'a Path,
+	workspace_root: &'a Path,
+	evaluator_root: &'a Path,
+	artifact_root: &'a Path,
+	codex_home: &'a Path,
+	codex_binary: &'a Path,
+	corpus_commitment: &'a Path,
+	capabilities: &'a Path,
+	schedule: &'a Path,
+	preflight_cache: &'a Path,
+	checkpoint: &'a Path,
+	planned_output: &'a Path,
+	planned_score_output: Option<&'a Path>,
+	planned_package_output: Option<&'a Path>,
+	report_output: Option<&'a Path>,
+	official_admission: Option<&'a Path>,
 }
 
 struct ExactFileBinding {
@@ -290,7 +363,9 @@ impl PreflightAdmissionBinding {
 
 		if adapter.verify_managed_permission_profile(self.profile_workspace.path())? != self.profile
 		{
-			return Err("managed permission profile changed before a capability probe".into());
+			return Err(
+				"explicit permission profile evidence changed before a capability probe".into()
+			);
 		}
 
 		self.artifact_root.verify()?;
@@ -428,11 +503,10 @@ struct PreparedRun {
 	report: TaskLoadReport,
 	selected_models: Vec<ModelConfig>,
 	corpus: ValidatedCorpusCommitment,
-	capacity_admission: CapacityAdmission,
+	conservative_capacity: CapacityAdmission,
 	slot: ScheduleSlot,
 	task_set_hash: String,
 	run_id: String,
-	preflight: PreflightCache,
 	execution_window: ExecutionWindow,
 }
 
@@ -461,6 +535,14 @@ struct AuthorizedRun {
 	execution_window: ExecutionWindow,
 }
 
+struct ExecutedLiveRun {
+	run: SelectedRun,
+	tasks: Vec<TaskDefinition>,
+	options: RunOptions,
+	future_files: FutureProtectedFiles,
+	dispatch_deadline: DispatchDeadline,
+}
+
 struct PreparedLiveRuntime {
 	adapter: CodexAdapter<SystemExecutor, LocalArtifactSink>,
 	workspace_provider: LocalDirectoryWorkspaceProvider,
@@ -469,7 +551,7 @@ struct PreparedLiveRuntime {
 	model_toolchain: ValidatedModelToolchain,
 	manifest: CapabilityManifest,
 	future_files: FutureProtectedFiles,
-	permission_evidence: PermissionEvidenceDigests,
+	permission_evidence: VerifiedPermissionEvidence,
 	runner_executable_digest: String,
 	codex_executable_digest: String,
 	codex_home_commitment: String,
@@ -487,6 +569,7 @@ struct DispatchDeadline {
 	next_slot_unix_ms: u64,
 }
 
+#[derive(Debug)]
 struct PermissionEvidenceDigests {
 	permission_policy_digest: String,
 	managed_requirements_digest: String,
@@ -505,55 +588,157 @@ impl PermissionEvidenceDigests {
 	}
 }
 
+#[derive(Debug)]
+struct VerifiedPermissionEvidence {
+	profile: ManagedPermissionProfileEvidence,
+	digests: PermissionEvidenceDigests,
+}
+impl VerifiedPermissionEvidence {
+	fn combined_digest(&self) -> Result<String, ProtocolError> {
+		self.digests.combined_digest()
+	}
+}
+
+struct OfficialPlanningInputs<'a> {
+	public_tasks: Option<&'a Path>,
+	hidden_tasks: Option<&'a Path>,
+	corpus_commitment: &'a Path,
+	capabilities: &'a Path,
+	source_root: &'a Path,
+	workspace_root: &'a Path,
+	execution_root: &'a Path,
+	evaluator_root: &'a Path,
+	evaluator_runtime: &'a Path,
+	codex_toolchain_root: &'a Path,
+	codex_binary: &'a str,
+	codex_home: &'a Path,
+	artifact_root: &'a Path,
+	schedule: &'a Path,
+	observed_at: &'a str,
+	preflight_cache: &'a Path,
+	checkpoint: &'a Path,
+	run_output: &'a Path,
+	score_output: &'a Path,
+	package_output: &'a Path,
+	reserved_run_output_for: Option<&'a str>,
+}
+
+struct FutureProtectedEntry {
+	category: &'static str,
+	path: PathBuf,
+	must_be_new: bool,
+	recoverable_bytes: Option<Vec<u8>>,
+}
+
 #[derive(Default)]
 struct FutureProtectedFiles {
 	created: BTreeMap<PathBuf, FutureProtectedFile>,
+	directory_locks: FutureProtectedDirectoryLocks,
 }
 impl FutureProtectedFiles {
-	fn prepare(entries: &[(&str, &Path, bool)]) -> Result<Self, Box<dyn std::error::Error>> {
-		let mut files = Self::default();
+	#[cfg(test)]
+	fn prepare(entries: &[FutureProtectedEntry]) -> Result<Self, Box<dyn std::error::Error>> {
+		let directory_locks = FutureProtectedDirectoryLocks::acquire(entries)?;
 
-		for (category, path, must_be_new) in entries {
-			if *path == Path::new("-") {
-				continue;
-			}
+		Self::prepare_with_locks(entries, directory_locks)
+	}
 
-			let path = canonical_policy_path(path)?;
+	#[cfg(test)]
+	fn prepare_with_locks(
+		entries: &[FutureProtectedEntry],
+		directory_locks: FutureProtectedDirectoryLocks,
+	) -> Result<Self, Box<dyn std::error::Error>> {
+		let mut files = Self::with_locks(directory_locks);
 
-			match fs::symlink_metadata(&path) {
-				Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-					return Err(format!(
-						"future protected category {category} must be a regular file"
-					)
-					.into());
-				},
-				Ok(_) if *must_be_new => {
-					return Err(format!(
-						"future protected category {category} must not exist before this run"
-					)
-					.into());
-				},
-				Ok(_) => continue,
-				Err(error) if error.kind() == ErrorKind::NotFound => {},
-				Err(error) => return Err(error.into()),
-			}
-
-			let created_file =
-				write_new_bytes(&path, b"AIQ_DENIED\n", "future protected placeholder")?;
-
-			if files
-				.created
-				.insert(
-					path.clone(),
-					FutureProtectedFile { file: created_file, remove_on_drop: !must_be_new },
-				)
-				.is_some()
-			{
-				return Err("future protected paths must be distinct".into());
-			}
+		for entry in entries {
+			files.prepare_entry(entry)?;
 		}
 
 		Ok(files)
+	}
+
+	fn with_locks(directory_locks: FutureProtectedDirectoryLocks) -> Self {
+		Self { created: BTreeMap::new(), directory_locks }
+	}
+
+	fn prepare_entry(
+		&mut self,
+		entry: &FutureProtectedEntry,
+	) -> Result<(), Box<dyn std::error::Error>> {
+		if entry.path == Path::new("-") {
+			return Ok(());
+		}
+
+		let path = canonical_leaf_policy_path(&entry.path)?;
+
+		self.verify_directory_lock(&path)?;
+
+		let expected_bytes =
+			entry.recoverable_bytes.as_deref().unwrap_or(FUTURE_PROTECTED_PLACEHOLDER);
+
+		match fs::symlink_metadata(&path) {
+			Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+				return Err(format!(
+					"future protected category {} must be a regular file",
+					entry.category
+				)
+				.into());
+			},
+			Ok(_) if entry.must_be_new => {
+				if entry.recoverable_bytes.is_none() {
+					return Err(format!(
+						"future protected category {} must not exist before this run",
+						entry.category
+					)
+					.into());
+				}
+
+				let recovered = open_exact_reserved_file(
+					&path,
+					expected_bytes,
+					"future protected reservation",
+				)?;
+
+				if self
+					.created
+					.insert(
+						path.clone(),
+						FutureProtectedFile {
+							file: recovered,
+							remove_on_drop: false,
+							expected_bytes: expected_bytes.to_vec(),
+						},
+					)
+					.is_some()
+				{
+					return Err("future protected paths must be distinct".into());
+				}
+
+				return Ok(());
+			},
+			Ok(_) => return Ok(()),
+			Err(error) if error.kind() == ErrorKind::NotFound => {},
+			Err(error) => return Err(error.into()),
+		}
+
+		let created_file = write_new_bytes(&path, expected_bytes, "future protected placeholder")?;
+
+		if self
+			.created
+			.insert(
+				path.clone(),
+				FutureProtectedFile {
+					file: created_file,
+					remove_on_drop: !entry.must_be_new,
+					expected_bytes: expected_bytes.to_vec(),
+				},
+			)
+			.is_some()
+		{
+			return Err("future protected paths must be distinct".into());
+		}
+
+		Ok(())
 	}
 
 	fn write_created_pretty_json(
@@ -562,7 +747,10 @@ impl FutureProtectedFiles {
 		value: &impl Serialize,
 		label: &str,
 	) -> Result<(), Box<dyn std::error::Error>> {
-		let path = canonical_policy_path(path)?;
+		let path = canonical_leaf_policy_path(path)?;
+
+		self.verify_directory_lock(&path)?;
+
 		let created = self
 			.created
 			.get_mut(&path)
@@ -571,24 +759,28 @@ impl FutureProtectedFiles {
 
 		bytes.push(b'\n');
 
-		require_exact_created_file(&path, b"AIQ_DENIED\n", &created.file, label)?;
-
-		created.file.set_len(0)?;
-		created.file.seek(SeekFrom::Start(0))?;
-		created.file.write_all(&bytes)?;
-		created.file.sync_all()?;
-
-		require_exact_created_file(&path, &bytes, &created.file, label)?;
+		created.file = atomically_replace_exact_created_file(
+			&path,
+			&created.expected_bytes,
+			&created.file,
+			&bytes,
+			label,
+		)?;
+		created.expected_bytes = bytes;
 
 		Ok(())
 	}
 
+	fn verify_directory_lock(&self, path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+		self.directory_locks.verify(path).map_err(Into::into)
+	}
+
 	fn was_created(&self, path: &Path) -> bool {
-		canonical_policy_path(path).is_ok_and(|path| self.created.contains_key(&path))
+		canonical_leaf_policy_path(path).is_ok_and(|path| self.created.contains_key(&path))
 	}
 
 	fn disarm(&mut self, path: &Path) {
-		if let Ok(path) = canonical_policy_path(path) {
+		if let Ok(path) = canonical_leaf_policy_path(path) {
 			self.created.remove(&path);
 		}
 	}
@@ -598,7 +790,7 @@ impl FutureProtectedFiles {
 			if created.remove_on_drop {
 				let _ = remove_exact_created_file(
 					&path,
-					b"AIQ_DENIED\n",
+					&created.expected_bytes,
 					&created.file,
 					"future protected placeholder",
 				);
@@ -613,9 +805,128 @@ impl Drop for FutureProtectedFiles {
 	}
 }
 
+#[derive(Default)]
+struct FutureProtectedDirectoryLocks {
+	locks: BTreeMap<PathBuf, FutureProtectedDirectoryLock>,
+}
+impl FutureProtectedDirectoryLocks {
+	fn acquire(entries: &[FutureProtectedEntry]) -> Result<Self, Box<dyn std::error::Error>> {
+		let mut parents = BTreeSet::new();
+
+		for entry in entries {
+			if entry.path != Path::new("-") {
+				let path = canonical_leaf_policy_path(&entry.path)?;
+				let parent = path.parent().ok_or("future protected path has no parent")?;
+
+				parents.insert(parent.to_owned());
+			}
+		}
+
+		let mut locks = BTreeMap::new();
+
+		for parent in parents {
+			let lock = FutureProtectedDirectoryLock::acquire(&parent)?;
+			let _ = locks.insert(parent, lock);
+		}
+
+		Ok(Self { locks })
+	}
+
+	fn verify(&self, path: &Path) -> Result<(), String> {
+		let parent = path.parent().ok_or("future protected path has no parent")?;
+		let lock =
+			self.locks.get(parent).ok_or("future protected parent is not locked by this run")?;
+
+		lock.verify()
+	}
+}
+
 struct FutureProtectedFile {
 	file: File,
 	remove_on_drop: bool,
+	expected_bytes: Vec<u8>,
+}
+
+struct FutureProtectedDirectoryLock {
+	#[cfg(unix)]
+	file: File,
+	#[cfg(unix)]
+	path: PathBuf,
+	#[cfg(unix)]
+	device: u64,
+	#[cfg(unix)]
+	inode: u64,
+	#[cfg(not(unix))]
+	_unavailable: (),
+}
+impl FutureProtectedDirectoryLock {
+	fn acquire(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+		#[cfg(not(unix))]
+		{
+			let _ = path;
+
+			return Err("future protected directory locking is unavailable on this platform".into());
+		}
+		#[cfg(unix)]
+		{
+			let file = File::open(path)?;
+			let metadata = file.metadata()?;
+
+			if !metadata.is_dir()
+				|| metadata.uid() != unsafe { libc::geteuid() }
+				|| metadata.permissions().mode() & 0o022 != 0
+			{
+				return Err(
+				"future protected parent must be an owner-controlled directory without group or other write access"
+					.into(),
+				);
+			}
+			// SAFETY: the held descriptor is valid for this call and remains live in Self.
+			let lock_result = unsafe { libc::flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
+
+			if lock_result != 0 {
+				return Err(
+					"another AIQ writer already holds the future protected parent lock".into()
+				);
+			}
+
+			let lock =
+				Self { file, path: path.to_owned(), device: metadata.dev(), inode: metadata.ino() };
+
+			lock.verify()?;
+
+			Ok(lock)
+		}
+	}
+
+	fn verify(&self) -> Result<(), String> {
+		#[cfg(not(unix))]
+		return Err("future protected directory locking is unavailable on this platform".to_owned());
+
+		#[cfg(unix)]
+		{
+			let held = self
+				.file
+				.metadata()
+				.map_err(|_| "cannot inspect the held future protected parent lock".to_owned())?;
+			let current = fs::symlink_metadata(&self.path)
+				.map_err(|_| "future protected parent path changed".to_owned())?;
+
+			if current.file_type().is_symlink()
+				|| !current.is_dir()
+				|| current.uid() != unsafe { libc::geteuid() }
+				|| current.permissions().mode() & 0o022 != 0
+				|| held.dev() != self.device
+				|| held.ino() != self.inode
+				|| current.dev() != self.device
+				|| current.ino() != self.inode
+			{
+				return Err("future protected parent identity changed while locked".to_owned());
+			}
+
+			Ok(())
+		}
+	}
 }
 
 #[derive(Default)]
@@ -746,10 +1057,20 @@ struct DemoOutputs<'a> {
 	metadata: Option<&'a Path>,
 }
 
+struct ValidationOptions {
+	public_tasks: Option<PathBuf>,
+	hidden_tasks: Option<PathBuf>,
+	corpus_commitment: Option<PathBuf>,
+	source_root: Option<PathBuf>,
+	evaluator_root: Option<PathBuf>,
+	evaluator_runtime: Option<PathBuf>,
+	codex_toolchain_root: Option<PathBuf>,
+	mode: CorpusValidationMode,
+}
+
 impl From<ReplayMode> for ReplayStatus {
 	fn from(value: ReplayMode) -> Self {
 		match value {
-			ReplayMode::EvaluatorReplayed => Self::EvaluatorReplayed,
 			ReplayMode::CommitmentsVerified => Self::CommitmentsVerified,
 			ReplayMode::Failed => Self::Failed,
 		}
@@ -774,6 +1095,39 @@ enum Command {
 		#[arg(long, default_value = "-")]
 		output: PathBuf,
 	},
+	/// Validate the immutable 72-task AIQ Core corpus without invoking Codex.
+	ValidateCoreCorpus {
+		#[arg(long)]
+		hidden_tasks: PathBuf,
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		#[arg(long)]
+		source_root: PathBuf,
+		#[arg(long)]
+		evaluator_root: PathBuf,
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
+	},
+	/// Validate the immutable six-variant controlled contrast corpus without invoking Codex.
+	ValidateContrastCorpus {
+		#[arg(long)]
+		hidden_tasks: PathBuf,
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		/// Exact canonical contrast commitment digest expected by the caller.
+		#[arg(long)]
+		expected_corpus_sha256: String,
+		#[arg(long)]
+		source_root: PathBuf,
+		#[arg(long)]
+		evaluator_root: PathBuf,
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
+	},
 	/// Actively validate and persist an authenticated, expiring capability report.
 	Preflight {
 		/// Capability manifest to compare with the local Codex CLI.
@@ -795,9 +1149,6 @@ enum Command {
 		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
 		#[arg(long, value_parser = parse_controlled_codex_home)]
 		codex_home: PathBuf,
-		/// Exact private HTTP proxy used only by the outer Codex process.
-		#[arg(long, value_parser = parse_codex_egress_proxy)]
-		codex_egress_proxy: CodexEgressProxyEndpoint,
 		/// Controlled local sink for bounded preflight artifacts.
 		#[arg(long, default_value = ".aiq-artifacts")]
 		artifact_root: PathBuf,
@@ -805,6 +1156,85 @@ enum Command {
 		#[arg(long, default_value_t = 86_400)]
 		expires_in_seconds: u64,
 		/// Machine-readable persisted preflight JSON.
+		#[arg(long)]
+		output: PathBuf,
+		/// Successful model-free Official admission receipt for this exact paid preflight.
+		#[arg(long)]
+		official_admission: Option<PathBuf>,
+	},
+	/// Prove the exact Official Codex permission boundary without invoking a model.
+	AdmitPermissions {
+		/// Directory of public-example task JSON files.
+		#[arg(long)]
+		public_tasks: Option<PathBuf>,
+		/// Controlled directory of hidden task JSON files.
+		#[arg(long)]
+		hidden_tasks: Option<PathBuf>,
+		/// Current public-safe controlled-corpus commitment.
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		/// Repository root used to verify every committed runner source byte.
+		#[arg(long)]
+		source_root: PathBuf,
+		/// Capability manifest protected from benchmark children.
+		#[arg(long)]
+		capabilities: PathBuf,
+		/// Controlled root containing one workspace directory per task identifier.
+		#[arg(long)]
+		workspace_root: PathBuf,
+		/// Separate controlled root for fresh per-run, model, and task working copies.
+		#[arg(long)]
+		execution_root: PathBuf,
+		/// Controlled registry root for committed external evaluator scripts.
+		#[arg(long)]
+		evaluator_root: PathBuf,
+		/// Absolute Node.js runtime path for committed external evaluator scripts.
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		/// Absolute controlled Node.js and ripgrep toolchain root.
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
+		/// Approved schedule JSON protected from benchmark children.
+		#[arg(long)]
+		schedule: PathBuf,
+		/// Exact local Official slot date in YYYY-MM-DD format.
+		#[arg(long)]
+		slot_date: String,
+		/// Exact Official slot occurrence: day or night.
+		#[arg(long)]
+		occurrence: String,
+		/// Exact provenance observation value planned for the Official run.
+		#[arg(long, value_parser = parse_run_observed_at)]
+		observed_at: String,
+		/// Absolute executable inspected, checked for executability, and canonicalized before use.
+		#[arg(long, value_parser = parse_controlled_codex_binary)]
+		codex_binary: String,
+		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
+		#[arg(long, value_parser = parse_controlled_codex_home)]
+		codex_home: PathBuf,
+		/// Controlled local artifact sink.
+		#[arg(long)]
+		artifact_root: PathBuf,
+		/// Planned persisted preflight cache path. It may be absent before paid preflight or
+		/// retained for an exact unchanged resume, and is protected from benchmark children.
+		#[arg(long)]
+		preflight_cache: PathBuf,
+		/// Planned durable per-attempt checkpoint. This command does not reserve it.
+		#[arg(long)]
+		checkpoint: PathBuf,
+		/// Maximum concurrent live model and task workers used for conservative admission.
+		#[arg(long)]
+		jobs: usize,
+		/// Planned create-once Official run output. This command does not reserve it.
+		#[arg(long)]
+		planned_output: PathBuf,
+		/// Planned create-once Official score output.
+		#[arg(long)]
+		planned_score_output: PathBuf,
+		/// Planned create-once signed Official package output.
+		#[arg(long)]
+		planned_package_output: PathBuf,
+		/// Durable private permission-admission JSON receipt.
 		#[arg(long)]
 		output: PathBuf,
 	},
@@ -897,15 +1327,15 @@ enum Command {
 		/// Absolute existing non-symlink directory for the operator's subscription Codex home.
 		#[arg(long, value_parser = parse_controlled_codex_home)]
 		codex_home: PathBuf,
-		/// Exact private HTTP proxy used only by outer Codex processes.
-		#[arg(long, value_parser = parse_codex_egress_proxy)]
-		codex_egress_proxy: CodexEgressProxyEndpoint,
 		/// Controlled local artifact sink.
 		#[arg(long, default_value = ".aiq-artifacts")]
 		artifact_root: PathBuf,
 		/// Persisted authenticated preflight report reused until expiry.
 		#[arg(long, default_value = ".aiq-preflight.json")]
 		preflight_cache: PathBuf,
+		/// Successful model-free Official admission receipt. Required for Official runs.
+		#[arg(long)]
+		official_admission: Option<PathBuf>,
 		/// Ignore a valid cache and actively repeat capability probes.
 		#[arg(long)]
 		refresh_preflight: bool,
@@ -952,6 +1382,9 @@ enum Command {
 		/// Output JSON file, or `-` for standard output.
 		#[arg(long, default_value = "-")]
 		output: PathBuf,
+		/// Exact Official admission receipt required for a real Official run.
+		#[arg(long)]
+		official_admission: Option<PathBuf>,
 	},
 	/// Produce explicitly synthetic data without invoking Codex.
 	Demo {
@@ -997,6 +1430,13 @@ enum Command {
 		/// Global HTTPS timeout in seconds.
 		#[arg(long, default_value_t = 30)]
 		timeout_seconds: u64,
+		/// Maximum artifact uploads in flight, from 1 through 32.
+		#[arg(
+			long,
+			default_value_t = DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY,
+			value_parser = parse_artifact_upload_concurrency
+		)]
+		artifact_upload_concurrency: usize,
 		/// Permit plain HTTP only when the endpoint is a loopback origin.
 		#[arg(long, default_value_t = false)]
 		allow_loopback_http: bool,
@@ -1012,9 +1452,15 @@ enum Command {
 		/// Environment variable containing a 32-byte Ed25519 secret as hexadecimal.
 		#[arg(long, default_value = "AIQ_RUNNER_SIGNING_KEY")]
 		signing_key_env: String,
+		/// Declared maximum concurrent task executions. Required when a real saved run predates this binding.
+		#[arg(long)]
+		execution_concurrency: Option<usize>,
 		/// Output signed-envelope JSON file.
 		#[arg(long)]
 		output: PathBuf,
+		/// Exact Official admission receipt required for a real Official run.
+		#[arg(long)]
+		official_admission: Option<PathBuf>,
 	},
 	/// Print the public node identity derived from one signing key.
 	Identity {
@@ -1048,7 +1494,7 @@ enum Command {
 		/// Safe Unix-millisecond time when verification completed.
 		#[arg(long)]
 		observed_unix_ms: u64,
-		/// Candidate reconstruction and deterministic evaluator replay disposition.
+		/// Result workspace reconstruction and deterministic evaluator replay disposition.
 		#[arg(long, value_enum)]
 		replay_status: ReplayMode,
 		/// Output path for the exact `aiq.normalized-batch.v3` database stage.
@@ -1074,11 +1520,8 @@ enum Command {
 		network_sentinel_port: u16,
 	},
 }
-
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ReplayMode {
-	/// The verifier reconstructed candidate workspaces and replayed deterministic evaluators.
-	EvaluatorReplayed,
 	/// The verifier replayed scoring and commitments only; production is not publishable.
 	CommitmentsVerified,
 	/// Verification failed. This result is rejection evidence and is not publishable.
@@ -1091,6 +1534,17 @@ enum RunClassArgument {
 	Calibration,
 	/// Complete non-synthetic 72-task by 17-model run.
 	Official,
+}
+
+#[derive(Clone, Copy)]
+enum OfficialPostrunOutput {
+	Score,
+	Package,
+}
+enum CorpusValidationMode {
+	Released,
+	Core,
+	Contrast { expected_corpus_sha256: String },
 }
 
 fn read_held_bounded_file(
@@ -1152,6 +1606,9 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			&output,
 			&MatrixReport { schema_version: "aiq.matrix.v1", models: MODEL_MATRIX.to_vec() },
 		)?,
+		command @ (Command::ValidateCoreCorpus { .. }
+		| Command::ValidateContrastCorpus { .. }
+		| Command::Validate { .. }) => dispatch_corpus_validation(command)?,
 		Command::Preflight {
 			capabilities,
 			corpus_commitment,
@@ -1159,10 +1616,10 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			codex_toolchain_root,
 			codex_binary,
 			codex_home,
-			codex_egress_proxy,
 			artifact_root,
 			expires_in_seconds,
 			output,
+			official_admission,
 		} => run_preflight(
 			capabilities,
 			corpus_commitment,
@@ -1170,28 +1627,12 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			codex_toolchain_root,
 			codex_binary,
 			codex_home,
-			codex_egress_proxy,
 			artifact_root,
 			expires_in_seconds,
 			output,
+			official_admission.as_deref(),
 		)?,
-		Command::Validate {
-			public_tasks,
-			hidden_tasks,
-			corpus_commitment,
-			source_root,
-			evaluator_root,
-			evaluator_runtime,
-			codex_toolchain_root,
-		} => run_validation(
-			public_tasks,
-			hidden_tasks,
-			corpus_commitment,
-			source_root,
-			evaluator_root,
-			evaluator_runtime,
-			codex_toolchain_root,
-		)?,
+		command @ Command::AdmitPermissions { .. } => dispatch_permission_admission(command)?,
 		command @ Command::Run { .. } => dispatch_run(command)?,
 		Command::Score {
 			public_tasks,
@@ -1200,6 +1641,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			bootstrap_samples,
 			bootstrap_seed,
 			output,
+			official_admission,
 		} => run_score(
 			public_tasks,
 			hidden_tasks,
@@ -1207,6 +1649,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			bootstrap_samples,
 			bootstrap_seed,
 			output,
+			official_admission.as_deref(),
 		)?,
 		Command::Demo {
 			slot_date,
@@ -1235,6 +1678,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			endpoint,
 			token_env,
 			timeout_seconds,
+			artifact_upload_concurrency,
 			allow_loopback_http,
 		} => run_submit(
 			&package,
@@ -1242,17 +1686,100 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			&endpoint,
 			&token_env,
 			timeout_seconds,
+			artifact_upload_concurrency,
 			allow_loopback_http,
 		)?,
-		Command::Package { run, artifact_root, signing_key_env, output } => {
-			run_package(&run, &artifact_root, &signing_key_env, &output)?;
-		},
+		command @ Command::Package { .. } => dispatch_package(command)?,
 		Command::Identity { signing_key_env } => run_identity(&signing_key_env)?,
 		command @ Command::Normalize { .. } => run_normalize_command(command)?,
 		command @ Command::PermissionProbe { .. } => dispatch_permission_probe(command)?,
 	}
 
 	Ok(())
+}
+
+fn dispatch_corpus_validation(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let options = match command {
+		Command::ValidateCoreCorpus {
+			hidden_tasks,
+			corpus_commitment,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+		} => ValidationOptions {
+			public_tasks: None,
+			hidden_tasks: Some(hidden_tasks),
+			corpus_commitment: Some(corpus_commitment),
+			source_root: Some(source_root),
+			evaluator_root: Some(evaluator_root),
+			evaluator_runtime: Some(evaluator_runtime),
+			codex_toolchain_root: Some(codex_toolchain_root),
+			mode: CorpusValidationMode::Core,
+		},
+		Command::ValidateContrastCorpus {
+			hidden_tasks,
+			corpus_commitment,
+			expected_corpus_sha256,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+		} => ValidationOptions {
+			public_tasks: None,
+			hidden_tasks: Some(hidden_tasks),
+			corpus_commitment: Some(corpus_commitment),
+			source_root: Some(source_root),
+			evaluator_root: Some(evaluator_root),
+			evaluator_runtime: Some(evaluator_runtime),
+			codex_toolchain_root: Some(codex_toolchain_root),
+			mode: CorpusValidationMode::Contrast { expected_corpus_sha256 },
+		},
+		Command::Validate {
+			public_tasks,
+			hidden_tasks,
+			corpus_commitment,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+		} => ValidationOptions {
+			public_tasks,
+			hidden_tasks,
+			corpus_commitment,
+			source_root,
+			evaluator_root,
+			evaluator_runtime,
+			codex_toolchain_root,
+			mode: CorpusValidationMode::Released,
+		},
+		_ => unreachable!("corpus validation dispatcher requires a validation command"),
+	};
+
+	run_validation(options)
+}
+
+fn dispatch_package(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::Package {
+		run,
+		artifact_root,
+		signing_key_env,
+		execution_concurrency,
+		output,
+		official_admission,
+	} = command
+	else {
+		unreachable!("package dispatcher requires a package command");
+	};
+
+	run_package(
+		&run,
+		&artifact_root,
+		&signing_key_env,
+		execution_concurrency,
+		&output,
+		official_admission.as_deref(),
+	)
 }
 
 fn safe_task_issue_message(code: &str) -> &'static str {
@@ -1346,9 +1873,9 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		observed_at,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		artifact_root,
 		preflight_cache,
+		official_admission,
 		refresh_preflight,
 		preflight_ttl_seconds,
 		checkpoint,
@@ -1379,9 +1906,9 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		observed_at,
 		codex_binary,
 		codex_home,
-		codex_egress_proxy,
 		artifact_root,
 		preflight_cache,
+		official_admission,
 		refresh_preflight,
 		preflight_ttl_seconds,
 		checkpoint,
@@ -1393,6 +1920,65 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 	})
 }
 
+fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::AdmitPermissions {
+		public_tasks,
+		hidden_tasks,
+		corpus_commitment,
+		source_root,
+		capabilities,
+		workspace_root,
+		execution_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		schedule,
+		slot_date,
+		occurrence,
+		observed_at,
+		codex_binary,
+		codex_home,
+		artifact_root,
+		preflight_cache,
+		checkpoint,
+		jobs,
+		planned_output,
+		planned_score_output,
+		planned_package_output,
+		output,
+	} = command
+	else {
+		unreachable!("permission admission dispatcher requires an admit-permissions command");
+	};
+
+	run_permission_admission(PermissionAdmissionOptions {
+		public_tasks,
+		hidden_tasks,
+		corpus_commitment,
+		source_root,
+		capabilities,
+		workspace_root,
+		execution_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		schedule,
+		slot_date,
+		occurrence,
+		observed_at,
+		codex_binary,
+		codex_home,
+		artifact_root,
+		preflight_cache,
+		checkpoint,
+		jobs,
+		planned_output,
+		planned_score_output,
+		planned_package_output,
+		report_output: output,
+	})
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_preflight(
 	path: PathBuf,
@@ -1401,40 +1987,83 @@ fn run_preflight(
 	codex_toolchain_root: PathBuf,
 	codex_binary: String,
 	codex_home: PathBuf,
-	codex_egress_proxy: CodexEgressProxyEndpoint,
 	artifact_root: PathBuf,
 	expires_in_seconds: u64,
 	output: PathBuf,
+	official_admission: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	let future_locks = acquire_preflight_future_protected_locks(&output)?;
+	let protected_output = canonical_leaf_policy_path(&output)?;
+
+	future_locks.verify(&protected_output)?;
+
 	let manifest = read_json::<CapabilityManifest>(&path)?;
 	let codex_binary = controlled_codex_binary(&codex_binary)?;
 	let evaluator_runtime = EvaluatorRuntime::resolve(&evaluator_runtime)?;
 	let policy = corpus_commitment::read_execution_tool_policy(&corpus_commitment)?;
-	let model_toolchain = corpus_commitment::validate_model_toolchain(
-		&codex_toolchain_root,
-		&policy,
-		&evaluator_runtime,
-	)?;
-	let observed_unix_ms = resume::unix_ms();
-	let expires_unix_ms = observed_unix_ms
-		.checked_add(expires_in_seconds.checked_mul(1_000).ok_or("preflight expiry overflows")?)
-		.ok_or("preflight expiry overflows")?;
+	let model_toolchain =
+		preflight_model_toolchain(&codex_toolchain_root, &policy, &evaluator_runtime)?;
+	let admission = official_admission.map(read_successful_official_admission).transpose()?;
+
+	if let Some((report, _)) = &admission {
+		verify_preflight_matches_official_plan(
+			report,
+			&path,
+			&corpus_commitment,
+			&evaluator_runtime,
+			&model_toolchain,
+			&codex_binary,
+			&codex_home,
+			&artifact_root,
+			&output,
+		)?;
+	}
+
+	let (observed_unix_ms, expires_unix_ms) = preflight_window(expires_in_seconds)?;
 	let artifact_sink = LocalArtifactSink::new(&artifact_root)?;
-	let denied_roots = standalone_preflight_denied_roots(
-		&path,
-		&corpus_commitment,
-		&artifact_root,
-		model_toolchain.root(),
-	)?;
+	let official_protected = admission
+		.as_ref()
+		.map(|(receipt, _)| {
+			let plan = receipt.plan.as_ref().ok_or("Official admission receipt omits its plan")?;
+			let receipt_path =
+				official_admission.ok_or("Official admission path is unavailable")?;
+
+			official_plan_protected_paths(plan, receipt_path)
+		})
+		.transpose()?;
+	let denied_roots = if let Some(protected) = &official_protected {
+		let plan = admission
+			.as_ref()
+			.and_then(|(receipt, _)| receipt.plan.as_ref())
+			.ok_or("Official admission receipt omits its plan")?;
+
+		isolation::validate_protected_layout(
+			protected,
+			Some(Path::new(&plan.execution_root)),
+			&[model_toolchain.root().to_owned()],
+		)?;
+
+		benchmark_denied_roots(protected)?
+	} else {
+		standalone_preflight_denied_roots(
+			&path,
+			&corpus_commitment,
+			&artifact_root,
+			model_toolchain.root(),
+		)?
+	};
 	let adapter = CodexAdapter::new(
 		SystemExecutor,
 		artifact_sink,
 		codex_binary.clone(),
 		CodexExecutionConfig::isolated(codex_home.clone())
 			.with_denied_roots(denied_roots)
-			.with_egress_proxy(codex_egress_proxy)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
+	let profile_workspace = admission
+		.as_ref()
+		.and_then(|(receipt, _)| receipt.plan.as_ref())
+		.map_or(artifact_root.as_path(), |plan| Path::new(&plan.execution_root));
 	let binding = PreflightAdmissionBinding::capture(
 		&adapter,
 		PreflightAdmissionInputs {
@@ -1446,7 +2075,7 @@ fn run_preflight(
 			model_toolchain: &model_toolchain,
 			codex_binary: &codex_binary,
 			codex_home: &codex_home,
-			profile_workspace: &artifact_root,
+			profile_workspace,
 			artifact_root: &artifact_root,
 			output: &output,
 		},
@@ -1454,7 +2083,18 @@ fn run_preflight(
 
 	binding.verify(&adapter)?;
 
+	verify_preflight_official_permissions(
+		&adapter,
+		admission.as_ref(),
+		official_protected.as_deref(),
+	)?;
+
+	future_locks.verify(&protected_output)?;
+
 	let report = adapter.validate_capabilities(&manifest);
+
+	binding.verify(&adapter)?;
+	future_locks.verify(&protected_output)?;
 
 	persist_completed_preflight(
 		&output,
@@ -1463,20 +2103,454 @@ fn run_preflight(
 		observed_unix_ms,
 		expires_unix_ms,
 		model_toolchain.digest(),
+		admission.as_ref().map(|(_, digest)| digest.as_str()),
 	)?;
+
+	future_locks.verify(&protected_output)?;
+	binding.output_parent.verify()?;
 
 	Ok(())
 }
 
-fn run_validation(
-	public_tasks: Option<PathBuf>,
-	hidden_tasks: Option<PathBuf>,
-	corpus_commitment: Option<PathBuf>,
-	source_root: Option<PathBuf>,
-	evaluator_root: Option<PathBuf>,
-	evaluator_runtime: Option<PathBuf>,
-	codex_toolchain_root: Option<PathBuf>,
+fn preflight_window(expires_in_seconds: u64) -> Result<(u64, u64), &'static str> {
+	let observed_unix_ms = resume::unix_ms();
+	let expires_unix_ms = observed_unix_ms
+		.checked_add(expires_in_seconds.checked_mul(1_000).ok_or("preflight expiry overflows")?)
+		.ok_or("preflight expiry overflows")?;
+
+	Ok((observed_unix_ms, expires_unix_ms))
+}
+
+fn preflight_model_toolchain(
+	root: &Path,
+	policy: &ExecutionToolPolicy,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<ValidatedModelToolchain, CorpusCommitmentError> {
+	corpus_commitment::validate_model_toolchain(root, policy, evaluator_runtime)
+}
+
+fn verify_preflight_official_permissions<E, S>(
+	adapter: &CodexAdapter<E, S>,
+	admission: Option<&(PermissionAdmissionReport, String)>,
+	protected_paths: Option<&[ProtectedBenchmarkPath]>,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
+	let Some((receipt, _)) = admission else {
+		return Ok(());
+	};
+	let plan = receipt.plan.as_ref().ok_or("Official admission receipt omits its plan")?;
+	let expected_profile = receipt
+		.managed_profile
+		.as_ref()
+		.ok_or("Official admission receipt omits permission profile evidence")?;
+	let current_profile =
+		adapter.verify_managed_permission_profile(Path::new(&plan.execution_root))?;
+
+	if &current_profile != expected_profile {
+		return Err(
+			"explicit permission profile evidence changed after Official admission; no model was invoked"
+				.into(),
+		);
+	}
+
+	let current_evidence = verify_permission_evidence_with_profile(
+		adapter,
+		Path::new(&plan.execution_root),
+		protected_paths.ok_or("Official protected plan is unavailable")?,
+		RunClass::Official,
+		current_profile,
+	)?;
+	let current_digest = current_evidence.combined_digest()?;
+
+	if receipt.permission_evidence_digest.as_deref() != Some(&current_digest) {
+		return Err(
+			"permission evidence or canaries changed after Official admission; no model was invoked"
+				.into(),
+		);
+	}
+
+	Ok(())
+}
+
+fn run_permission_admission(
+	mut options: PermissionAdmissionOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	validate_permission_admission_outputs(&options.planned_output, &options.report_output)?;
+	validate_permission_admission_output_aliases(&options)?;
+
+	let observed_unix_ms = resume::unix_ms();
+	let mut managed_profile = None;
+	let mut plan = None;
+	let assessment = (|| {
+		let prepared = prepare_permission_admission(&mut options)?;
+
+		plan = Some(prepared.plan.clone());
+
+		let profile =
+			prepared.adapter.verify_managed_permission_profile(&prepared.execution_root)?;
+
+		managed_profile = Some(profile.clone());
+
+		verify_permission_evidence_with_profile(
+			&prepared.adapter,
+			&prepared.execution_root,
+			&prepared.protected_paths,
+			RunClass::Official,
+			profile,
+		)
+	})();
+	let (report, denied) =
+		permission_admission_report(observed_unix_ms, managed_profile, plan, assessment)?;
+
+	write_private_json_receipt(&options.report_output, &report)?;
+
+	if denied {
+		return Err("Official permission admission denied; no model was invoked".into());
+	}
+
+	Ok(())
+}
+
+fn permission_admission_report(
+	observed_unix_ms: u64,
+	managed_profile: Option<ManagedPermissionProfileEvidence>,
+	plan: Option<OfficialPlanBinding>,
+	assessment: Result<VerifiedPermissionEvidence, Box<dyn std::error::Error>>,
+) -> Result<(PermissionAdmissionReport, bool), Box<dyn std::error::Error>> {
+	match assessment {
+		Ok(evidence) => {
+			let plan = plan.ok_or("successful Official admission has no exact plan")?;
+			let permission_evidence_digest = evidence.combined_digest()?;
+
+			Ok((
+				PermissionAdmissionReport {
+					schema_version: "aiq.official-permission-admission.v2".to_owned(),
+					official_permission_eligible: true,
+					model_invoked: false,
+					observed_unix_ms,
+					managed_profile: Some(evidence.profile),
+					permission_policy_digest: Some(evidence.digests.permission_policy_digest),
+					canary_digest: Some(evidence.digests.canary_digest),
+					permission_evidence_digest: Some(permission_evidence_digest),
+					plan: Some(plan),
+					failure: None,
+				},
+				false,
+			))
+		},
+		Err(error) => Ok((
+			PermissionAdmissionReport {
+				schema_version: "aiq.official-permission-admission.v2".to_owned(),
+				official_permission_eligible: false,
+				model_invoked: false,
+				observed_unix_ms,
+				managed_profile,
+				permission_policy_digest: None,
+				canary_digest: None,
+				permission_evidence_digest: None,
+				plan: None,
+				failure: Some(error.to_string()),
+			},
+			true,
+		)),
+	}
+}
+
+fn read_successful_official_admission(
+	path: &Path,
+) -> Result<(PermissionAdmissionReport, String), Box<dyn std::error::Error>> {
+	let metadata = fs::symlink_metadata(path)?;
+
+	if metadata.file_type().is_symlink() || !metadata.is_file() {
+		return Err("Official admission receipt must be a non-symlink regular file".into());
+	}
+	#[cfg(unix)]
+	if metadata.nlink() != 1 || metadata.permissions().mode() & 0o777 != 0o600 {
+		return Err(
+			"Official admission receipt must be private and have no hard-link aliases".into()
+		);
+	}
+
+	let report = read_json::<PermissionAdmissionReport>(path)?;
+
+	if report.schema_version != "aiq.official-permission-admission.v2"
+		|| !report.official_permission_eligible
+		|| report.model_invoked
+		|| report.plan.is_none()
+		|| report.permission_evidence_digest.is_none()
+		|| report.failure.is_some()
+	{
+		return Err("Official admission receipt is not a successful exact model-free plan".into());
+	}
+
+	let digest = protocol::canonical_hash(&report)?;
+
+	Ok((report, digest))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify_preflight_matches_official_plan(
+	report: &PermissionAdmissionReport,
+	capabilities: &Path,
+	corpus_commitment: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+	model_toolchain: &ValidatedModelToolchain,
+	codex_binary: &str,
+	codex_home: &Path,
+	artifact_root: &Path,
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let plan = report.plan.as_ref().ok_or("Official admission receipt omits its plan")?;
+	let corpus_value = read_json::<serde_json::Value>(corpus_commitment)?;
+	let manifest = read_json::<CapabilityManifest>(capabilities)?;
+	let actual = (
+		protocol::canonical_hash(&manifest)?,
+		protocol::canonical_hash(&corpus_value)?,
+		evaluator_runtime.executable_digest().to_owned(),
+		model_toolchain.digest().to_owned(),
+		corpus_commitment::codex_executable_digest(codex_binary)?,
+		resume::directory_identity(codex_home, "Codex home")?,
+		resume::directory_identity(artifact_root, "artifact root")?,
+		canonical_policy_path(output)?.display().to_string(),
+		canonical_policy_path(capabilities)?.display().to_string(),
+		canonical_policy_path(corpus_commitment)?.display().to_string(),
+		evaluator_runtime.executable().display().to_string(),
+		model_toolchain.root().display().to_string(),
+		protocol::canonical_hash(&adapter::chatgpt_credential_observation(codex_home)?)?,
+	);
+	let expected = (
+		plan.capability_manifest_digest.clone(),
+		plan.corpus_commitment_digest.clone(),
+		plan.evaluator_runtime_digest.clone(),
+		plan.model_toolchain_digest.clone(),
+		plan.codex_executable_digest.clone(),
+		plan.codex_home.clone(),
+		plan.artifact_root.clone(),
+		plan.outputs.preflight_cache.clone(),
+		plan.capabilities.clone(),
+		plan.corpus_commitment.clone(),
+		plan.evaluator_runtime.clone(),
+		plan.codex_toolchain_root.clone(),
+		plan.codex_credential_digest.clone(),
+	);
+
+	if protocol::canonical_hash(&actual)? != protocol::canonical_hash(&expected)? {
+		return Err(
+			"paid preflight inputs do not match the exact Official admission receipt".into()
+		);
+	}
+
+	Ok(())
+}
+
+fn validate_permission_admission_outputs(
+	planned_output: &Path,
+	report_output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if planned_output == Path::new("-") || report_output == Path::new("-") {
+		return Err(
+			"Official permission admission requires durable planned and report outputs".into()
+		);
+	}
+
+	let planned_output = canonical_policy_path(planned_output)?;
+	let report_output = canonical_policy_path(report_output)?;
+
+	if planned_output == report_output {
+		return Err("permission admission --output must be distinct from --planned-output".into());
+	}
+
+	for (label, path) in [
+		("planned Official output", &planned_output),
+		("permission admission report", &report_output),
+	] {
+		match fs::symlink_metadata(path) {
+			Err(error) if error.kind() == ErrorKind::NotFound => {},
+			Err(error) => return Err(error.into()),
+			Ok(metadata) if metadata.file_type().is_symlink() => {
+				return Err(format!("{label} must not be a symlink").into());
+			},
+			Ok(_) => return Err(format!("{label} must not exist before admission").into()),
+		}
+	}
+
+	Ok(())
+}
+
+fn validate_permission_admission_output_aliases(
+	options: &PermissionAdmissionOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let report = canonical_policy_path(&options.report_output)?;
+	let planned = canonical_policy_path(&options.planned_output)?;
+	let preflight_attempt = resume::preflight_attempt_path(&options.preflight_cache);
+	let mut other_paths = vec![
+		options.corpus_commitment.as_path(),
+		options.source_root.as_path(),
+		options.capabilities.as_path(),
+		options.workspace_root.as_path(),
+		options.execution_root.as_path(),
+		options.evaluator_root.as_path(),
+		options.evaluator_runtime.as_path(),
+		options.codex_toolchain_root.as_path(),
+		options.schedule.as_path(),
+		Path::new(&options.codex_binary),
+		options.codex_home.as_path(),
+		options.artifact_root.as_path(),
+		options.preflight_cache.as_path(),
+		preflight_attempt.as_path(),
+		options.checkpoint.as_path(),
+		options.planned_output.as_path(),
+		options.planned_score_output.as_path(),
+		options.planned_package_output.as_path(),
+	];
+
+	other_paths.extend(options.public_tasks.as_deref());
+	other_paths.extend(options.hidden_tasks.as_deref());
+
+	for path in other_paths {
+		if canonical_policy_path(path).is_ok_and(|path| path == report) {
+			return Err(
+				"permission admission --output must be distinct from every controlled path".into(),
+			);
+		}
+	}
+	for path in [&options.checkpoint, &preflight_attempt] {
+		if canonical_policy_path(path).is_ok_and(|path| path == planned) {
+			return Err(
+				"--planned-output must be distinct from checkpoint and preflight attempt paths"
+					.into(),
+			);
+		}
+	}
+
+	Ok(())
+}
+
+fn prepare_permission_admission(
+	options: &mut PermissionAdmissionOptions,
+) -> Result<PreparedPermissionAdmission, Box<dyn std::error::Error>> {
+	let planning_options = RunOptions {
+		public_tasks: options.public_tasks.clone(),
+		hidden_tasks: options.hidden_tasks.clone(),
+		corpus_commitment: options.corpus_commitment.clone(),
+		source_root: options.source_root.clone(),
+		capabilities: options.capabilities.clone(),
+		workspace_root: options.workspace_root.clone(),
+		execution_root: options.execution_root.clone(),
+		evaluator_root: options.evaluator_root.clone(),
+		evaluator_runtime: options.evaluator_runtime.clone(),
+		codex_toolchain_root: options.codex_toolchain_root.clone(),
+		schedule: options.schedule.clone(),
+		slot_date: options.slot_date.clone(),
+		occurrence: options.occurrence.clone(),
+		observed_at: options.observed_at.clone(),
+		codex_binary: options.codex_binary.clone(),
+		codex_home: options.codex_home.clone(),
+		artifact_root: options.artifact_root.clone(),
+		preflight_cache: options.preflight_cache.clone(),
+		official_admission: None,
+		refresh_preflight: false,
+		preflight_ttl_seconds: 86_400,
+		checkpoint: options.checkpoint.clone(),
+		task_selectors: Vec::new(),
+		model_selectors: Vec::new(),
+		jobs: options.jobs,
+		run_class: RunClass::Official,
+		output: options.planned_output.clone(),
+	};
+	let prepared_run = prepare_run_model_free(&planning_options)?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(&options.evaluator_runtime)?;
+
+	prepared_run.corpus.validate_evaluator_runtime(&evaluator_runtime)?;
+
+	let model_toolchain = prepared_run
+		.corpus
+		.validate_model_toolchain(&options.codex_toolchain_root, &evaluator_runtime)?;
+	let plan = build_official_plan(
+		OfficialPlanningInputs {
+			public_tasks: options.public_tasks.as_deref(),
+			hidden_tasks: options.hidden_tasks.as_deref(),
+			corpus_commitment: &options.corpus_commitment,
+			capabilities: &options.capabilities,
+			source_root: &options.source_root,
+			workspace_root: &options.workspace_root,
+			execution_root: &options.execution_root,
+			evaluator_root: &options.evaluator_root,
+			evaluator_runtime: &options.evaluator_runtime,
+			codex_toolchain_root: &options.codex_toolchain_root,
+			codex_binary: &options.codex_binary,
+			codex_home: &options.codex_home,
+			artifact_root: &options.artifact_root,
+			schedule: &options.schedule,
+			observed_at: &options.observed_at,
+			preflight_cache: &options.preflight_cache,
+			checkpoint: &options.checkpoint,
+			run_output: &options.planned_output,
+			score_output: &options.planned_score_output,
+			package_output: &options.planned_package_output,
+			reserved_run_output_for: None,
+		},
+		&prepared_run,
+	)?;
+
+	options.codex_binary = controlled_codex_binary(&options.codex_binary)?;
+
+	let artifact_sink = LocalArtifactSink::new(&options.artifact_root)?;
+	let protected_paths = benchmark_protected_paths_from(BenchmarkProtectedPathInputs {
+		public_tasks: options.public_tasks.as_deref(),
+		hidden_tasks: options.hidden_tasks.as_deref(),
+		source_root: &options.source_root,
+		workspace_root: &options.workspace_root,
+		evaluator_root: &options.evaluator_root,
+		artifact_root: &options.artifact_root,
+		codex_home: &options.codex_home,
+		codex_binary: Path::new(&options.codex_binary),
+		corpus_commitment: &options.corpus_commitment,
+		capabilities: &options.capabilities,
+		schedule: &options.schedule,
+		preflight_cache: &options.preflight_cache,
+		checkpoint: &options.checkpoint,
+		planned_output: &options.planned_output,
+		planned_score_output: Some(&options.planned_score_output),
+		planned_package_output: Some(&options.planned_package_output),
+		report_output: Some(&options.report_output),
+		official_admission: None,
+	})?;
+	let execution_root = fs::canonicalize(&options.execution_root)?;
+
+	isolation::validate_protected_layout(
+		&protected_paths,
+		Some(&execution_root),
+		&[model_toolchain.root().to_owned()],
+	)?;
+
+	let denied_roots = benchmark_denied_roots(&protected_paths)?;
+	let adapter = CodexAdapter::new(
+		SystemExecutor,
+		artifact_sink,
+		options.codex_binary.clone(),
+		CodexExecutionConfig::isolated(options.codex_home.clone())
+			.with_denied_roots(denied_roots)
+			.with_model_toolchain(model_toolchain),
+	);
+
+	Ok(PreparedPermissionAdmission { adapter, execution_root, protected_paths, plan })
+}
+
+fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::Error>> {
+	let ValidationOptions {
+		public_tasks,
+		hidden_tasks,
+		corpus_commitment,
+		source_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		mode,
+	} = options;
 	let task_report = load_tasks(public_tasks.as_deref(), hidden_tasks.as_deref())?;
 
 	if !task_report.issues.is_empty() {
@@ -1512,11 +2586,36 @@ fn run_validation(
 		let codex_toolchain_root = codex_toolchain_root
 			.as_deref()
 			.ok_or("external task validation requires --codex-toolchain-root")?;
-		let corpus = corpus_commitment::validate_corpus_commitment(
-			corpus_path,
-			&task_report.tasks,
-			source_root,
-		)?;
+		let corpus = match &mode {
+			CorpusValidationMode::Released => corpus_commitment::validate_corpus_commitment(
+				corpus_path,
+				&task_report.tasks,
+				source_root,
+			)?,
+			CorpusValidationMode::Core => {
+				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
+					return Err("tasks do not match the immutable AIQ Core 1.0.2 catalog".into());
+				}
+
+				corpus_commitment::validate_core_corpus_commitment(
+					corpus_path,
+					&task_report.tasks,
+					source_root,
+				)?
+			},
+			CorpusValidationMode::Contrast { expected_corpus_sha256 } => {
+				if task_report.tasks.len() != 6 {
+					return Err("contrast validation requires exactly six tasks".into());
+				}
+
+				corpus_commitment::validate_contrast_corpus_commitment(
+					corpus_path,
+					&task_report.tasks,
+					source_root,
+					expected_corpus_sha256,
+				)?
+			},
+		};
 
 		corpus.validate_evaluator_runtime(&evaluator_runtime)?;
 		corpus.validate_model_toolchain(codex_toolchain_root, &evaluator_runtime)?;
@@ -1530,6 +2629,7 @@ fn run_validation(
 		|| corpus_commitment.is_some()
 		|| source_root.is_some()
 		|| codex_toolchain_root.is_some()
+		|| !matches!(mode, CorpusValidationMode::Released)
 	{
 		return Err("evaluator options require at least one external task".into());
 	}
@@ -1631,10 +2731,6 @@ fn parse_controlled_codex_home(value: &str) -> Result<PathBuf, String> {
 	controlled_codex_home(Path::new(value)).map_err(|error| error.to_string())
 }
 
-fn parse_codex_egress_proxy(value: &str) -> Result<CodexEgressProxyEndpoint, String> {
-	CodexEgressProxyEndpoint::parse(value).map_err(|error| error.to_string())
-}
-
 fn validate_run_mode_options(
 	options: &RunOptions,
 	official_shape: bool,
@@ -1651,11 +2747,7 @@ fn validate_run_mode_options(
 	Ok(())
 }
 
-fn prepare_run(
-	options: &RunOptions,
-	preflight: PreflightCache,
-) -> Result<PreparedRun, Box<dyn std::error::Error>> {
-	let capability_validation = &preflight.report;
+fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn std::error::Error>> {
 	let mut report = load_tasks(options.public_tasks.as_deref(), options.hidden_tasks.as_deref())?;
 
 	if !report.issues.is_empty() {
@@ -1681,11 +2773,19 @@ fn prepare_run(
 	)?;
 	let (slot, seconds_until_next_slot, scheduled_unix_ms, next_slot_unix_ms) =
 		run_schedule_bounds(options)?;
-	let capacity_admission = assess_run_capacity(
-		options,
-		capability_validation,
+	let (model_free_available, model_free_unsupported) = if options.run_class == RunClass::Official
+	{
+		(MODEL_MATRIX.as_slice(), [].as_slice())
+	} else {
+		([].as_slice(), MODEL_MATRIX.as_slice())
+	};
+	let conservative_capacity = capacity::assess_capacity(
 		&selected_tasks,
 		&selected_models,
+		model_free_available,
+		model_free_unsupported,
+		&protocol::canonical_hash(&"aiq.model-free-official-capacity.v1")?,
+		options.jobs,
 		seconds_until_next_slot,
 	)?;
 	let task_set_hash = task::task_set_hash(&selected_tasks)?;
@@ -1703,12 +2803,163 @@ fn prepare_run(
 		report,
 		selected_models,
 		corpus,
-		capacity_admission,
+		conservative_capacity,
 		slot,
 		task_set_hash,
 		run_id,
-		preflight,
 		execution_window: ExecutionWindow { scheduled_unix_ms, next_slot_unix_ms },
+	})
+}
+
+fn build_official_plan(
+	inputs: OfficialPlanningInputs<'_>,
+	prepared: &PreparedRun,
+) -> Result<OfficialPlanBinding, Box<dyn std::error::Error>> {
+	if prepared.selected_models != MODEL_MATRIX || prepared.report.tasks.len() != 72 {
+		return Err("Official planning requires the exact 72-by-17 selection".into());
+	}
+
+	let evaluator_root = controlled_evaluator_root(inputs.evaluator_root)?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(inputs.evaluator_runtime)?;
+
+	prepared.corpus.validate_evaluator_runtime(&evaluator_runtime)?;
+
+	let model_toolchain = prepared
+		.corpus
+		.validate_model_toolchain(inputs.codex_toolchain_root, &evaluator_runtime)?;
+
+	validate_external_evaluator_bindings(
+		&prepared.report.tasks,
+		&evaluator_root,
+		&evaluator_runtime,
+	)?;
+
+	LocalDirectoryWorkspaceProvider::new(
+		inputs.workspace_root,
+		inputs.execution_root,
+		prepared.corpus.baseline_workspace_digests().clone(),
+	)?;
+
+	let manifest = read_json::<CapabilityManifest>(inputs.capabilities)?;
+	let manifest_issues = adapter::validate_capability_manifest(&manifest);
+
+	if !manifest_issues.is_empty() {
+		return Err(
+			format!("capability manifest is invalid: {}", manifest_issues.join("; ")).into()
+		);
+	}
+
+	let codex_binary = controlled_codex_binary(inputs.codex_binary)?;
+	let output_plan = official_output_plan(
+		inputs.preflight_cache,
+		inputs.checkpoint,
+		inputs.run_output,
+		inputs.score_output,
+		inputs.package_output,
+		inputs.reserved_run_output_for,
+	)?;
+	let schedule: ScheduleConfig = read_json(inputs.schedule)?;
+
+	Ok(OfficialPlanBinding {
+		run_id: prepared.run_id.clone(),
+		task_ids: prepared.report.tasks.iter().map(|task| task.task_id.clone()).collect(),
+		task_set_hash: prepared.task_set_hash.clone(),
+		corpus_commitment_digest: prepared.corpus.canonical_sha256().to_owned(),
+		catalog_digest: prepared.corpus.catalog_digest().to_owned(),
+		source_manifest_digest: prepared.corpus.source_manifest_digest().to_owned(),
+		evaluator_digest: corpus_commitment::evaluator_digest(&prepared.report.tasks)?,
+		capability_manifest_digest: protocol::canonical_hash(&manifest)?,
+		model_toolchain_digest: model_toolchain.digest().to_owned(),
+		evaluator_runtime_digest: evaluator_runtime.executable_digest().to_owned(),
+		runner_executable_digest: corpus_commitment::runner_executable_digest()?,
+		codex_executable_digest: corpus_commitment::codex_executable_digest(&codex_binary)?,
+		codex_credential_digest: protocol::canonical_hash(
+			&adapter::chatgpt_credential_observation(inputs.codex_home)?,
+		)?,
+		public_tasks: inputs
+			.public_tasks
+			.map(|path| canonical_policy_path(path).map(|path| path.display().to_string()))
+			.transpose()?,
+		hidden_tasks: inputs
+			.hidden_tasks
+			.map(|path| canonical_policy_path(path).map(|path| path.display().to_string()))
+			.transpose()?,
+		corpus_commitment: canonical_policy_path(inputs.corpus_commitment)?.display().to_string(),
+		capabilities: canonical_policy_path(inputs.capabilities)?.display().to_string(),
+		source_root: resume::directory_identity(inputs.source_root, "source root")?,
+		workspace_root: resume::directory_identity(inputs.workspace_root, "workspace root")?,
+		execution_root: resume::directory_identity(inputs.execution_root, "execution root")?,
+		evaluator_root: evaluator_root.display().to_string(),
+		evaluator_runtime: evaluator_runtime.executable().display().to_string(),
+		codex_toolchain_root: model_toolchain.root().display().to_string(),
+		artifact_root: resume::directory_identity(inputs.artifact_root, "artifact root")?,
+		codex_home: resume::directory_identity(inputs.codex_home, "Codex home")?,
+		codex_binary,
+		schedule: canonical_policy_path(inputs.schedule)?.display().to_string(),
+		schedule_digest: protocol::canonical_hash(&schedule)?,
+		slot: prepared.slot.clone(),
+		observed_at: inputs.observed_at.to_owned(),
+		jobs: prepared.conservative_capacity.configured_jobs,
+		conservative_capacity_digest: prepared.conservative_capacity.digest()?,
+		outputs: output_plan,
+	})
+}
+
+fn official_output_plan(
+	preflight_cache: &Path,
+	checkpoint: &Path,
+	run_output: &Path,
+	score_output: &Path,
+	package_output: &Path,
+	reserved_run_output_for: Option<&str>,
+) -> Result<OfficialOutputPlan, Box<dyn std::error::Error>> {
+	let paths = [preflight_cache, checkpoint, run_output, score_output, package_output];
+
+	if paths.iter().any(|path| *path == Path::new("-")) {
+		return Err("Official planning requires durable output paths".into());
+	}
+
+	let canonical =
+		paths.into_iter().map(canonical_leaf_policy_path).collect::<Result<Vec<_>, _>>()?;
+	let unique = canonical.iter().collect::<BTreeSet<_>>();
+
+	if unique.len() != canonical.len() {
+		return Err(
+			"Official preflight, checkpoint, run, score, and package paths must be distinct".into(),
+		);
+	}
+
+	for (index, (label, path)) in [
+		("Official run output", &canonical[2]),
+		("Official score output", &canonical[3]),
+		("Official package output", &canonical[4]),
+	]
+	.into_iter()
+	.enumerate()
+	{
+		match fs::symlink_metadata(path) {
+			Err(error) if error.kind() == ErrorKind::NotFound => {},
+			Err(error) => return Err(error.into()),
+			Ok(_)
+				if index == 0
+					&& reserved_run_output_for.is_some_and(|run_id| {
+						has_exact_official_output_reservation(path, run_id)
+					}) => {},
+			Ok(_) => return Err(format!("{label} must not exist before admission").into()),
+		}
+	}
+
+	Ok(OfficialOutputPlan {
+		preflight_cache: canonical[0].display().to_string(),
+		preflight_attempt: canonical_leaf_policy_path(&resume::preflight_attempt_path(
+			preflight_cache,
+		))?
+		.display()
+		.to_string(),
+		checkpoint: canonical[1].display().to_string(),
+		run_output: canonical[2].display().to_string(),
+		score_output: canonical[3].display().to_string(),
+		package_output: canonical[4].display().to_string(),
 	})
 }
 
@@ -1768,7 +3019,9 @@ fn validate_live_protected_layout(
 
 fn freeze_run_preflight(
 	options: &RunOptions,
+	official_admission: Option<&(PermissionAdmissionReport, String)>,
 ) -> Result<PreflightCache, Box<dyn std::error::Error>> {
+	let official_admission_digest = official_admission.map(|(_, digest)| digest.as_str());
 	let evaluator_runtime = resolve_run_evaluator_runtime(options)?;
 	let toolchain_policy =
 		corpus_commitment::read_execution_tool_policy(&options.corpus_commitment)?;
@@ -1792,14 +3045,43 @@ fn freeze_run_preflight(
 		validate_live_protected_layout(options, &protected_paths, &model_toolchain)?;
 	let execution_config = CodexExecutionConfig::isolated(options.codex_home.clone())
 		.with_denied_roots(denied_roots)
-		.with_model_toolchain(model_toolchain.clone())
-		.with_egress_proxy(options.codex_egress_proxy.clone());
+		.with_model_toolchain(model_toolchain.clone());
 	let adapter = CodexAdapter::new(
 		SystemExecutor,
 		artifact_sink,
 		controlled_codex_binary(&options.codex_binary)?,
 		execution_config,
 	);
+
+	if let Some((receipt, _)) = official_admission {
+		let expected_profile = receipt
+			.managed_profile
+			.as_ref()
+			.ok_or("Official admission receipt omits permission profile evidence")?;
+		let current_profile = adapter.verify_managed_permission_profile(&options.execution_root)?;
+
+		if &current_profile != expected_profile {
+			return Err(
+				"explicit permission profile evidence changed after Official admission; no model was invoked"
+					.into(),
+			);
+		}
+
+		let current_evidence = verify_permission_evidence_with_profile(
+			&adapter,
+			&options.execution_root,
+			&protected_paths,
+			RunClass::Official,
+			current_profile,
+		)?;
+
+		if receipt.permission_evidence_digest.as_deref()
+			!= Some(current_evidence.combined_digest()?.as_str())
+		{
+			return Err("permission evidence or canaries changed after Official admission; no model was invoked".into());
+		}
+	}
+
 	let force_refresh = options.refresh_preflight || !options.preflight_cache.exists();
 	let preflight_binding = force_refresh
 		.then(|| {
@@ -1826,8 +3108,18 @@ fn freeze_run_preflight(
 		binding.verify(&adapter)?;
 	}
 
-	let preflight =
-		load_run_preflight(&adapter, &manifest, options, force_refresh, model_toolchain.digest())?;
+	let preflight = load_run_preflight(
+		&adapter,
+		&manifest,
+		options,
+		force_refresh,
+		model_toolchain.digest(),
+		official_admission_digest,
+	)?;
+
+	if preflight.official_admission_digest.as_deref() != official_admission_digest {
+		return Err("preflight cache does not match the exact Official admission receipt".into());
+	}
 
 	capability_partition(&preflight.report)?;
 
@@ -1840,21 +3132,139 @@ fn resolve_run_evaluator_runtime(
 	Ok(EvaluatorRuntime::resolve(&options.evaluator_runtime)?)
 }
 
-fn run_live(mut options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
-	let preflight = freeze_run_preflight(&options)?;
-	let prepared = prepare_run(&options, preflight)?;
+fn acquire_run_future_protected_locks(
+	options: &RunOptions,
+	run_id: &str,
+) -> Result<(Vec<FutureProtectedEntry>, FutureProtectedDirectoryLocks), Box<dyn std::error::Error>>
+{
+	validate_run_future_protected_paths(
+		&options.preflight_cache,
+		&options.checkpoint,
+		&options.output,
+	)?;
+
+	let entries = future_protected_entries(
+		options.run_class,
+		&options.preflight_cache,
+		&options.checkpoint,
+		&options.output,
+		run_id,
+	);
+	let locks = FutureProtectedDirectoryLocks::acquire(&entries)?;
+
+	Ok((entries, locks))
+}
+
+fn validate_run_future_protected_paths(
+	preflight_cache: &Path,
+	checkpoint: &Path,
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let preflight_attempt = resume::preflight_attempt_path(preflight_cache);
+	let mut paths = vec![
+		("preflight cache", preflight_cache),
+		("preflight attempt", preflight_attempt.as_path()),
+		("checkpoint", checkpoint),
+	];
+
+	if output != Path::new("-") {
+		paths.push(("durable run output", output));
+	}
+
+	let mut unique = BTreeMap::new();
+
+	for (label, path) in paths {
+		let path = canonical_leaf_policy_path(path)?;
+
+		if let Some(previous) = unique.insert(path, label) {
+			return Err(format!("{previous} and {label} paths must be distinct").into());
+		}
+	}
+
+	Ok(())
+}
+
+fn acquire_preflight_future_protected_locks(
+	output: &Path,
+) -> Result<FutureProtectedDirectoryLocks, Box<dyn std::error::Error>> {
+	if output == Path::new("-") {
+		return Err("capability preflight requires a durable output path".into());
+	}
+
+	let attempt = resume::preflight_attempt_path(output);
+	let entries = [
+		FutureProtectedEntry {
+			category: "preflight_cache",
+			path: output.to_owned(),
+			must_be_new: false,
+			recoverable_bytes: None,
+		},
+		FutureProtectedEntry {
+			category: "preflight_attempt",
+			path: attempt,
+			must_be_new: false,
+			recoverable_bytes: None,
+		},
+	];
+
+	FutureProtectedDirectoryLocks::acquire(&entries)
+}
+
+fn run_live(options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
+	complete_live_run(prepare_authorized_live_run(options)?)
+}
+
+fn prepare_authorized_live_run(
+	mut options: RunOptions,
+) -> Result<AuthorizedRun, Box<dyn std::error::Error>> {
+	let prepared = prepare_run_model_free(&options)?;
+	let admission = match (options.run_class, options.official_admission.as_deref()) {
+		(RunClass::Official, Some(path)) => Some(read_successful_official_admission(path)?),
+		(RunClass::Official, None) => {
+			return Err(
+				"Official run requires --official-admission before any paid preflight".into()
+			);
+		},
+		(RunClass::Calibration, Some(_)) => {
+			return Err("calibration runs must not consume an Official admission receipt".into());
+		},
+		(RunClass::Calibration, None) => None,
+	};
+
+	verify_official_admitted_plan(&options, &prepared, admission.as_ref())?;
+
+	let (future_entries, future_locks) =
+		acquire_run_future_protected_locks(&options, &prepared.run_id)?;
+	let mut future_files = FutureProtectedFiles::with_locks(future_locks);
+
+	for entry in future_entries.iter().filter(|entry| entry.category == "output") {
+		future_files.prepare_entry(entry)?;
+	}
+
+	let preflight = freeze_run_preflight(&options, admission.as_ref())?;
+
+	for entry in future_entries.iter().filter(|entry| entry.category != "output") {
+		future_files.prepare_entry(entry)?;
+	}
+
+	let capacity_admission = assess_run_capacity(
+		&options,
+		&preflight.report,
+		&prepared.report.tasks,
+		&prepared.selected_models,
+		prepared.conservative_capacity.seconds_until_next_slot,
+	)?;
 	let PreparedRun {
 		report,
 		selected_models,
 		corpus,
-		capacity_admission,
+		conservative_capacity: _,
 		slot,
 		task_set_hash,
 		run_id,
-		preflight,
 		execution_window,
 	} = prepared;
-	let runtime = prepare_live_runtime(&mut options, &corpus, &report.tasks)?;
+	let runtime = prepare_live_runtime(&mut options, &corpus, &report.tasks, future_files)?;
 	let PreparedLiveRuntime {
 		adapter,
 		workspace_provider,
@@ -1870,7 +3280,16 @@ fn run_live(mut options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 	} = runtime;
 	let permission_evidence_digest = permission_evidence.combined_digest()?;
 
-	complete_live_run(AuthorizedRun {
+	if let Some((report, _)) = &admission
+		&& report.permission_evidence_digest.as_deref() != Some(&permission_evidence_digest)
+	{
+		return Err(
+			"permission evidence changed after Official admission; no task model was invoked"
+				.into(),
+		);
+	}
+
+	Ok(AuthorizedRun {
 		capacity_admission,
 		report,
 		selected_models,
@@ -1895,10 +3314,56 @@ fn run_live(mut options: RunOptions) -> Result<(), Box<dyn std::error::Error>> {
 		options,
 	})
 }
+
+fn verify_official_admitted_plan(
+	options: &RunOptions,
+	prepared: &PreparedRun,
+	admission: Option<&(PermissionAdmissionReport, String)>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let Some((report, _)) = admission else { return Ok(()) };
+	let admitted = report.plan.as_ref().ok_or("Official admission receipt omits its plan")?;
+	let expected = build_official_plan(
+		OfficialPlanningInputs {
+			public_tasks: options.public_tasks.as_deref(),
+			hidden_tasks: options.hidden_tasks.as_deref(),
+			corpus_commitment: &options.corpus_commitment,
+			capabilities: &options.capabilities,
+			source_root: &options.source_root,
+			workspace_root: &options.workspace_root,
+			execution_root: &options.execution_root,
+			evaluator_root: &options.evaluator_root,
+			evaluator_runtime: &options.evaluator_runtime,
+			codex_toolchain_root: &options.codex_toolchain_root,
+			codex_binary: &options.codex_binary,
+			codex_home: &options.codex_home,
+			artifact_root: &options.artifact_root,
+			schedule: &options.schedule,
+			observed_at: &options.observed_at,
+			preflight_cache: &options.preflight_cache,
+			checkpoint: &options.checkpoint,
+			run_output: &options.output,
+			score_output: Path::new(&admitted.outputs.score_output),
+			package_output: Path::new(&admitted.outputs.package_output),
+			reserved_run_output_for: Some(&prepared.run_id),
+		},
+		prepared,
+	)?;
+
+	if &expected != admitted {
+		return Err(
+			"Official run inputs do not match the exact admission receipt; no model was invoked"
+				.into(),
+		);
+	}
+
+	Ok(())
+}
+
 fn prepare_live_runtime(
 	options: &mut RunOptions,
 	corpus: &ValidatedCorpusCommitment,
 	tasks: &[TaskDefinition],
+	future_files: FutureProtectedFiles,
 ) -> Result<PreparedLiveRuntime, Box<dyn std::error::Error>> {
 	options.codex_binary = controlled_codex_binary(&options.codex_binary)?;
 
@@ -1926,17 +3391,14 @@ fn prepare_live_runtime(
 	let protected_paths = benchmark_protected_paths(options)?;
 	let (execution_root, denied_roots) =
 		validate_live_protected_layout(options, &protected_paths, &model_toolchain)?;
-	let future_entries = future_protected_entries(options);
 	let adapter = CodexAdapter::new(
 		SystemExecutor,
 		artifact_sink,
 		options.codex_binary.clone(),
 		CodexExecutionConfig::isolated(options.codex_home.clone())
-			.with_egress_proxy(options.codex_egress_proxy.clone())
 			.with_denied_roots(denied_roots)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
-	let future_files = FutureProtectedFiles::prepare(&future_entries)?;
 	let permission_evidence =
 		verify_permission_evidence(&adapter, &execution_root, &protected_paths, options.run_class)?;
 
@@ -1972,32 +3434,87 @@ fn validate_external_evaluator_bindings(
 	Ok(())
 }
 
-fn future_protected_entries(options: &RunOptions) -> Vec<(&'static str, &Path, bool)> {
-	vec![
-		("preflight_cache", options.preflight_cache.as_path(), false),
-		("checkpoint", options.checkpoint.as_path(), false),
-		("output", options.output.as_path(), options.run_class == RunClass::Official),
-	]
+fn future_protected_entries(
+	run_class: RunClass,
+	preflight_cache: &Path,
+	checkpoint: &Path,
+	output: &Path,
+	run_id: &str,
+) -> Vec<FutureProtectedEntry> {
+	let mut entries = vec![
+		FutureProtectedEntry {
+			category: "preflight_cache",
+			path: preflight_cache.to_owned(),
+			must_be_new: false,
+			recoverable_bytes: None,
+		},
+		FutureProtectedEntry {
+			category: "checkpoint",
+			path: checkpoint.to_owned(),
+			must_be_new: false,
+			recoverable_bytes: None,
+		},
+	];
+
+	if output != Path::new("-") {
+		entries.push(FutureProtectedEntry {
+			category: "output",
+			path: output.to_owned(),
+			must_be_new: true,
+			recoverable_bytes: Some(match run_class {
+				RunClass::Official => official_output_reservation(run_id),
+				RunClass::Calibration => calibration_output_reservation(run_id),
+			}),
+		});
+	}
+
+	entries
 }
 
-fn verify_permission_evidence(
-	adapter: &CodexAdapter<SystemExecutor, LocalArtifactSink>,
+fn verify_permission_evidence<E, S>(
+	adapter: &CodexAdapter<E, S>,
 	execution_root: &Path,
 	protected_paths: &[ProtectedBenchmarkPath],
 	run_class: RunClass,
-) -> Result<PermissionEvidenceDigests, Box<dyn std::error::Error>> {
+) -> Result<VerifiedPermissionEvidence, Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
 	let profile = adapter.verify_managed_permission_profile(execution_root)?;
 
+	verify_permission_evidence_with_profile(
+		adapter,
+		execution_root,
+		protected_paths,
+		run_class,
+		profile,
+	)
+}
+
+fn verify_permission_evidence_with_profile<E, S>(
+	adapter: &CodexAdapter<E, S>,
+	execution_root: &Path,
+	protected_paths: &[ProtectedBenchmarkPath],
+	run_class: RunClass,
+	profile: ManagedPermissionProfileEvidence,
+) -> Result<VerifiedPermissionEvidence, Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
 	if run_class == RunClass::Official && !profile.official_eligible {
-		return Err("Official runs require an exclusive managed aiq_benchmark allowlist and managed default; no model was invoked".into());
+		return Err("Official runs require no external managed requirements and must select the explicit aiq_benchmark profile; no model was invoked".into());
 	}
 
-	Ok(PermissionEvidenceDigests {
+	let digests = PermissionEvidenceDigests {
 		permission_policy_digest: adapter.permission_policy_digest(execution_root)?,
 		managed_requirements_digest: profile.managed_requirements_digest().to_owned(),
 		profile_selection_digest: profile.profile_selection_digest().to_owned(),
 		canary_digest: verify_codex_permission_boundary(adapter, execution_root, protected_paths)?,
-	})
+	};
+
+	Ok(VerifiedPermissionEvidence { profile, digests })
 }
 
 fn validate_selected_run(
@@ -2025,7 +3542,10 @@ fn write_selected_run(
 		SelectedRun::OfficialShape(run) => {
 			future_files.write_created_pretty_json(output, &run, "Official live output")
 		},
-		SelectedRun::Calibration(run) => write_json(output, &run),
+		SelectedRun::Calibration(run) if output == Path::new("-") => write_json(output, &run),
+		SelectedRun::Calibration(run) => {
+			future_files.write_created_pretty_json(output, &run, "calibration live output")
+		},
 	}
 }
 
@@ -2056,7 +3576,21 @@ fn write_selected_run_and_disarm(
 	write_result
 }
 
-fn complete_live_run(mut context: AuthorizedRun) -> Result<(), Box<dyn std::error::Error>> {
+fn complete_live_run(context: AuthorizedRun) -> Result<(), Box<dyn std::error::Error>> {
+	let mut executed = execute_authorized_live_run(context)?;
+
+	write_selected_run_and_disarm(
+		executed.run,
+		&executed.tasks,
+		&executed.options,
+		&mut executed.future_files,
+		&executed.dispatch_deadline,
+	)
+}
+
+fn execute_authorized_live_run(
+	mut context: AuthorizedRun,
+) -> Result<ExecutedLiveRun, Box<dyn std::error::Error>> {
 	let validation = context.preflight.report.clone();
 
 	context.future_files.disarm(&context.options.preflight_cache);
@@ -2119,14 +3653,11 @@ fn complete_live_run(mut context: AuthorizedRun) -> Result<(), Box<dyn std::erro
 		},
 	)?;
 
-	write_selected_run_and_disarm(
-		run,
-		&report.tasks,
-		&options,
-		&mut future_files,
-		&dispatch_deadline,
-	)
+	validate_selected_run(&run, &report.tasks)?;
+
+	Ok(ExecutedLiveRun { run, tasks: report.tasks, options, future_files, dispatch_deadline })
 }
+
 fn build_live_run_commitments(
 	context: &AuthorizedRun,
 	validation: &CapabilityValidationReport,
@@ -2154,7 +3685,7 @@ fn build_live_run_commitments(
 	Ok(RunCommitments {
 		run_id: context.run_id.clone(),
 		schedule_slot: context.slot.clone(),
-		catalog_digest: resume::catalog_digest(),
+		catalog_digest: context.corpus.catalog_digest().to_owned(),
 		task_set_hash: context.task_set_hash.clone(),
 		scoring_version: AIQ_SCORING_VERSION.to_owned(),
 		evaluator_digest,
@@ -2246,6 +3777,7 @@ fn with_completion_execution_boundary<T>(
 
 	write_output()
 }
+
 fn capability_partition(
 	report: &CapabilityValidationReport,
 ) -> Result<(Vec<ModelConfig>, Vec<ModelConfig>), Box<dyn std::error::Error>> {
@@ -2278,6 +3810,46 @@ fn capability_partition(
 fn benchmark_protected_paths(
 	options: &RunOptions,
 ) -> Result<Vec<ProtectedBenchmarkPath>, Box<dyn std::error::Error>> {
+	let planned_postrun = options
+		.official_admission
+		.as_deref()
+		.map(read_successful_official_admission)
+		.transpose()?
+		.map(|(receipt, _)| {
+			let plan = receipt.plan.ok_or("Official admission receipt omits its plan")?;
+
+			Ok::<_, Box<dyn std::error::Error>>((
+				PathBuf::from(plan.outputs.score_output),
+				PathBuf::from(plan.outputs.package_output),
+			))
+		})
+		.transpose()?;
+
+	benchmark_protected_paths_from(BenchmarkProtectedPathInputs {
+		public_tasks: options.public_tasks.as_deref(),
+		hidden_tasks: options.hidden_tasks.as_deref(),
+		source_root: &options.source_root,
+		workspace_root: &options.workspace_root,
+		evaluator_root: &options.evaluator_root,
+		artifact_root: &options.artifact_root,
+		codex_home: &options.codex_home,
+		codex_binary: Path::new(&options.codex_binary),
+		corpus_commitment: &options.corpus_commitment,
+		capabilities: &options.capabilities,
+		schedule: &options.schedule,
+		preflight_cache: &options.preflight_cache,
+		checkpoint: &options.checkpoint,
+		planned_output: &options.output,
+		planned_score_output: planned_postrun.as_ref().map(|(score, _)| score.as_path()),
+		planned_package_output: planned_postrun.as_ref().map(|(_, package)| package.as_path()),
+		report_output: None,
+		official_admission: options.official_admission.as_deref(),
+	})
+}
+
+fn benchmark_protected_paths_from(
+	inputs: BenchmarkProtectedPathInputs<'_>,
+) -> Result<Vec<ProtectedBenchmarkPath>, Box<dyn std::error::Error>> {
 	let mut paths = Vec::new();
 	let mut push =
 		|category: &'static str, path: &Path| -> Result<(), Box<dyn std::error::Error>> {
@@ -2288,32 +3860,92 @@ fn benchmark_protected_paths(
 			Ok(())
 		};
 
-	push("source_root", &options.source_root)?;
-	push("workspace_baselines", &options.workspace_root)?;
-	push("evaluator_root", &options.evaluator_root)?;
-	push("artifact_root", &options.artifact_root)?;
-	push("codex_home", &options.codex_home)?;
-	push("codex_binary", Path::new(&options.codex_binary))?;
+	push("source_root", inputs.source_root)?;
+	push("workspace_baselines", inputs.workspace_root)?;
+	push("evaluator_root", inputs.evaluator_root)?;
+	push("artifact_root", inputs.artifact_root)?;
+	push("codex_home", inputs.codex_home)?;
+	push("codex_binary", inputs.codex_binary)?;
 
-	if let Some(path) = &options.public_tasks {
+	if let Some(path) = inputs.public_tasks {
 		push("public_tasks", path)?;
 	}
-	if let Some(path) = &options.hidden_tasks {
+	if let Some(path) = inputs.hidden_tasks {
 		push("hidden_tasks", path)?;
 	}
 
-	push("corpus_commitment", &options.corpus_commitment)?;
-	push("capabilities", &options.capabilities)?;
-	push("schedule", &options.schedule)?;
-	push("preflight_cache", &options.preflight_cache)?;
+	push("corpus_commitment", inputs.corpus_commitment)?;
+	push("capabilities", inputs.capabilities)?;
+	push("schedule", inputs.schedule)?;
+	push("preflight_cache", inputs.preflight_cache)?;
 
-	let preflight_attempt = resume::preflight_attempt_path(&options.preflight_cache);
+	let preflight_attempt = resume::preflight_attempt_path(inputs.preflight_cache);
 
 	push("preflight_attempt", &preflight_attempt)?;
-	push("checkpoint", &options.checkpoint)?;
-	push("output", &options.output)?;
+	push("checkpoint", inputs.checkpoint)?;
+	push("output", inputs.planned_output)?;
+
+	if let Some(path) = inputs.planned_score_output {
+		push("official_score_output", path)?;
+	}
+	if let Some(path) = inputs.planned_package_output {
+		push("official_package_output", path)?;
+	}
+	if let Some(path) = inputs.report_output {
+		push("official_admission_receipt", path)?;
+	}
+	if let Some(path) = inputs.official_admission {
+		push("official_admission_receipt", path)?;
+	}
 
 	Ok(paths)
+}
+
+fn official_plan_protected_paths(
+	plan: &OfficialPlanBinding,
+	receipt_path: &Path,
+) -> Result<Vec<ProtectedBenchmarkPath>, Box<dyn std::error::Error>> {
+	let mut paths = vec![
+		("source_root", plan.source_root.as_str()),
+		("workspace_baselines", plan.workspace_root.as_str()),
+		("evaluator_root", plan.evaluator_root.as_str()),
+		("artifact_root", plan.artifact_root.as_str()),
+		("codex_home", plan.codex_home.as_str()),
+		("codex_binary", plan.codex_binary.as_str()),
+	];
+
+	if let Some(path) = &plan.public_tasks {
+		paths.push(("public_tasks", path));
+	}
+	if let Some(path) = &plan.hidden_tasks {
+		paths.push(("hidden_tasks", path));
+	}
+
+	paths.extend([
+		("corpus_commitment", plan.corpus_commitment.as_str()),
+		("capabilities", plan.capabilities.as_str()),
+		("schedule", plan.schedule.as_str()),
+		("preflight_cache", plan.outputs.preflight_cache.as_str()),
+		("preflight_attempt", plan.outputs.preflight_attempt.as_str()),
+		("checkpoint", plan.outputs.checkpoint.as_str()),
+		("output", plan.outputs.run_output.as_str()),
+		("official_score_output", plan.outputs.score_output.as_str()),
+		("official_package_output", plan.outputs.package_output.as_str()),
+	]);
+
+	let mut protected = paths
+		.into_iter()
+		.map(|(category, path)| {
+			Ok(ProtectedBenchmarkPath { category, path: canonical_policy_path(Path::new(path))? })
+		})
+		.collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+
+	protected.push(ProtectedBenchmarkPath {
+		category: "official_admission_receipt",
+		path: canonical_policy_path(receipt_path)?,
+	});
+
+	Ok(protected)
 }
 
 /// Builds the deny policy for model-free standalone capability probes.
@@ -2376,11 +4008,31 @@ fn canonical_policy_path(path: &Path) -> Result<PathBuf, Box<dyn std::error::Err
 	}
 }
 
-fn verify_codex_permission_boundary(
-	adapter: &CodexAdapter<SystemExecutor, LocalArtifactSink>,
+fn canonical_leaf_policy_path(path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+	let name = path.file_name().ok_or("protected policy path has no file name")?;
+	let parent =
+		path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(Path::new("."));
+	let path = fs::canonicalize(parent)?.join(name);
+
+	match fs::symlink_metadata(&path) {
+		Ok(metadata) if metadata.file_type().is_symlink() => {
+			Err("protected policy path must not be a symlink".into())
+		},
+		Ok(_) => Ok(path),
+		Err(error) if error.kind() == ErrorKind::NotFound => Ok(path),
+		Err(error) => Err(error.into()),
+	}
+}
+
+fn verify_codex_permission_boundary<E, S>(
+	adapter: &CodexAdapter<E, S>,
 	probe_parent: &Path,
 	protected_paths: &[ProtectedBenchmarkPath],
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> Result<String, Box<dyn std::error::Error>>
+where
+	E: Executor,
+	S: ArtifactSink,
+{
 	let probe_parent = fs::canonicalize(probe_parent)?;
 	let mut denied_canaries = PermissionProbeCanaries::prepare(protected_paths)?;
 	let mut probe_root = None;
@@ -2542,6 +4194,7 @@ fn load_run_preflight<E, S>(
 	options: &RunOptions,
 	force_refresh: bool,
 	model_toolchain_digest: &str,
+	official_admission_digest: Option<&str>,
 ) -> Result<PreflightCache, Box<dyn std::error::Error>>
 where
 	E: Executor,
@@ -2550,13 +4203,18 @@ where
 	let now_unix_ms = resume::unix_ms();
 
 	if !force_refresh && options.preflight_cache.exists() {
-		return PreflightCache::load(
+		let cache = PreflightCache::load(
 			&options.preflight_cache,
 			manifest,
 			now_unix_ms,
 			model_toolchain_digest,
-		)
-		.map_err(Into::into);
+		)?;
+
+		if cache.official_admission_digest.as_deref() != official_admission_digest {
+			return Err("cached preflight is not bound to this exact Official admission".into());
+		}
+
+		return Ok(cache);
 	}
 
 	let expires_unix_ms = now_unix_ms
@@ -2573,6 +4231,7 @@ where
 		now_unix_ms,
 		expires_unix_ms,
 		model_toolchain_digest,
+		official_admission_digest,
 	)
 }
 
@@ -2583,6 +4242,7 @@ fn persist_completed_preflight(
 	observed_unix_ms: u64,
 	expires_unix_ms: u64,
 	model_toolchain_digest: &str,
+	official_admission_digest: Option<&str>,
 ) -> Result<PreflightCache, Box<dyn std::error::Error>> {
 	let diagnostic_path = resume::preflight_attempt_path(cache_path);
 	let attempt = PreflightAttempt::new(
@@ -2603,8 +4263,12 @@ fn persist_completed_preflight(
 		.into());
 	}
 
-	let cache =
+	let mut cache =
 		PreflightCache::new(manifest, attempt.report, expires_unix_ms, model_toolchain_digest)?;
+
+	if let Some(digest) = official_admission_digest {
+		cache = cache.bind_official_admission(digest)?;
+	}
 
 	cache.persist(cache_path).map_err(|error| {
 		format!("{error}; completed preflight diagnostic written to {}", diagnostic_path.display())
@@ -2662,6 +4326,44 @@ fn select_models(selectors: &[String]) -> Result<Vec<ModelConfig>, Box<dyn std::
 	Ok(selected)
 }
 
+fn validate_official_postrun_paths(
+	run: &RunRecord,
+	run_path: &Path,
+	output: &Path,
+	official_admission: Option<&Path>,
+	kind: OfficialPostrunOutput,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if run.synthetic {
+		if official_admission.is_some() {
+			return Err("synthetic output must not consume an Official admission receipt".into());
+		}
+
+		return Ok(());
+	}
+
+	let path = official_admission
+		.ok_or("real Official score and package commands require --official-admission")?;
+	let (receipt, _) = read_successful_official_admission(path)?;
+	let plan = receipt.plan.as_ref().ok_or("Official admission receipt omits its plan")?;
+	let expected_output = match kind {
+		OfficialPostrunOutput::Score => &plan.outputs.score_output,
+		OfficialPostrunOutput::Package => &plan.outputs.package_output,
+	};
+
+	if run.run_id != plan.run_id
+		|| canonical_policy_path(run_path)?.display().to_string() != plan.outputs.run_output
+		|| canonical_policy_path(output)?.display().to_string() != *expected_output
+		|| run.execution_concurrency.is_some_and(|jobs| jobs != plan.jobs)
+	{
+		return Err(
+			"saved run or protected output does not match the exact Official admission receipt"
+				.into(),
+		);
+	}
+
+	Ok(())
+}
+
 fn run_score(
 	public_tasks: Option<PathBuf>,
 	hidden_tasks: Option<PathBuf>,
@@ -2669,7 +4371,12 @@ fn run_score(
 	bootstrap_samples: usize,
 	bootstrap_seed: u64,
 	output: PathBuf,
+	official_admission: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	if output != Path::new("-") {
+		validate_new_output_set(&[("score output", &output)])?;
+	}
+
 	let report = load_tasks(public_tasks.as_deref(), hidden_tasks.as_deref())?;
 
 	if !report.issues.is_empty() {
@@ -2686,6 +4393,14 @@ fn run_score(
 		Some(RUN_SCHEMA_VERSION) => {
 			let run: RunRecord = serde_json::from_value(value)?;
 
+			validate_official_postrun_paths(
+				&run,
+				&results,
+				&output,
+				official_admission,
+				OfficialPostrunOutput::Score,
+			)?;
+
 			aiq_runner::run_validation::validate_run_record(&run, Some(&report.tasks))?;
 
 			let scores = score_all(&report.tasks, &run, options)?;
@@ -2700,6 +4415,12 @@ fn run_score(
 			)
 		},
 		Some(CALIBRATION_RUN_SCHEMA_VERSION) => {
+			if official_admission.is_some() {
+				return Err(
+					"calibration scoring must not consume an Official admission receipt".into()
+				);
+			}
+
 			let run: CalibrationRunRecord = serde_json::from_value(value)?;
 			let selected_tasks = select_tasks(&report.tasks, &run.task_ids)?;
 
@@ -2772,8 +4493,13 @@ fn run_normalize(
 	stage_output: &Path,
 	attestation_output: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	if stage_output == attestation_output {
-		return Err("stage and attestation outputs must use different paths".into());
+	validate_new_output_set(&[
+		("normalized stage", stage_output),
+		("verifier attestation", attestation_output),
+	])?;
+
+	if replay_status == ReplayStatus::EvaluatorReplayed {
+		return Err("aiq-runner cannot produce evaluator_replayed attestations; use aiq-verifier after actual evaluator replay".into());
 	}
 
 	let report = if use_synthetic_demo_tasks {
@@ -2838,8 +4564,12 @@ fn run_package(
 	run_path: &Path,
 	artifact_root: &Path,
 	signing_key_env: &str,
+	execution_concurrency: Option<usize>,
 	output: &Path,
+	official_admission: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	validate_new_output_set(&[("signed package output", output)])?;
+
 	let secret = signing_secret_from_environment(signing_key_env)?;
 	let identity = SigningIdentity::from_secret(secret);
 	let value = read_json::<serde_json::Value>(run_path)?;
@@ -2847,6 +4577,27 @@ fn run_package(
 	let package = match schema {
 		Some(schema) if schema == RUN_SCHEMA_VERSION => {
 			let mut run: RunRecord = serde_json::from_value(value)?;
+
+			validate_official_postrun_paths(
+				&run,
+				run_path,
+				output,
+				official_admission,
+				OfficialPostrunOutput::Package,
+			)?;
+
+			aiq_runner::run_validation::validate_run_record(&run, None)?;
+
+			if !run.synthetic {
+				bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
+				validate_official_postrun_paths(
+					&run,
+					run_path,
+					output,
+					official_admission,
+					OfficialPostrunOutput::Package,
+				)?;
+			}
 
 			aiq_runner::run_validation::validate_run_record(&run, None)?;
 
@@ -2877,7 +4628,17 @@ fn run_package(
 			submission::serialize_signed_package(&envelope)?
 		},
 		Some(schema) if schema == CALIBRATION_RUN_SCHEMA_VERSION => {
-			let run: CalibrationRunRecord = serde_json::from_value(value)?;
+			if official_admission.is_some() {
+				return Err(
+					"calibration packaging must not consume an Official admission receipt".into()
+				);
+			}
+
+			let mut run: CalibrationRunRecord = serde_json::from_value(value)?;
+
+			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
+
+			bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
 
 			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
 
@@ -2903,13 +4664,8 @@ fn run_package(
 				&run,
 				TrustTier::Untrusted,
 			)?;
-			let package = protocol::canonical_json(&envelope)?;
 
-			if package.len() > MAX_SIGNED_PACKAGE_BYTES {
-				return Err("signed calibration package exceeds the package byte bound".into());
-			}
-
-			package
+			submission::serialize_signed_package(&envelope)?
 		},
 		_ => return Err("run schema is unsupported for packaging".into()),
 	};
@@ -2921,6 +4677,24 @@ fn run_package(
 	}
 
 	Ok(())
+}
+
+fn bind_execution_concurrency(
+	existing: &mut Option<usize>,
+	declared: Option<usize>,
+) -> Result<(), Box<dyn std::error::Error>> {
+	match (*existing, declared) {
+		(Some(recorded), Some(declared)) if recorded != declared => {
+			Err("declared execution concurrency differs from the saved run".into())
+		},
+		(Some(_), _) => Ok(()),
+		(None, Some(declared)) if (1..=MAX_RUN_JOBS).contains(&declared) => {
+			*existing = Some(declared);
+
+			Ok(())
+		},
+		_ => Err("real run packaging requires a bound execution concurrency".into()),
+	}
 }
 
 fn signing_secret_from_environment(name: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
@@ -2942,6 +4716,7 @@ fn run_submit(
 	endpoint: &str,
 	token_env: &str,
 	timeout_seconds: u64,
+	artifact_upload_concurrency: usize,
 	allow_loopback_http: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let token = env::var(token_env)
@@ -2950,26 +4725,57 @@ fn run_submit(
 	let package = fs::read(package)?;
 	let token = SecretToken::new(token)?;
 	let outcome = if allow_loopback_http {
-		submission::submit_signed_package_with_artifacts_allowing_loopback(
+		submission::submit_signed_package_with_artifacts_concurrently_allowing_loopback(
 			&transport,
 			endpoint,
 			package,
 			artifact_root,
 			token,
+			artifact_upload_concurrency,
 		)?
 	} else {
-		submission::submit_signed_package_with_artifacts(
+		submission::submit_signed_package_with_artifacts_concurrently(
 			&transport,
 			endpoint,
 			package,
 			artifact_root,
 			token,
+			artifact_upload_concurrency,
 		)?
 	};
 
 	write_json(Path::new("-"), &outcome)?;
 
-	Ok(())
+	require_successful_package_submission(&outcome)
+}
+
+fn require_successful_package_submission(
+	outcome: &SubmissionBundleOutcome,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if outcome.package.kind.is_success() {
+		return Ok(());
+	}
+
+	let status = outcome.package.status.map_or_else(
+		|| "without an HTTP status".to_owned(),
+		|status| format!("with HTTP {status}"),
+	);
+
+	Err(format!("package submission failed with {} {status}", outcome.package.kind.as_str()).into())
+}
+
+fn parse_artifact_upload_concurrency(value: &str) -> Result<usize, String> {
+	let concurrency = value
+		.parse::<usize>()
+		.map_err(|_| "artifact upload concurrency must be a positive integer".to_owned())?;
+
+	if (1..=MAX_ARTIFACT_UPLOAD_CONCURRENCY).contains(&concurrency) {
+		Ok(concurrency)
+	} else {
+		Err(format!(
+			"artifact upload concurrency must be between 1 and {MAX_ARTIFACT_UPLOAD_CONCURRENCY}"
+		))
+	}
 }
 
 fn run_demo(
@@ -3011,9 +4817,9 @@ fn run_demo(
 		write_json(
 			path,
 			&AttestedDeploymentMetadata {
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				benchmark_version: "aiq-core@1.0.0".to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: run.task_set_hash.clone(),
 				runner_commit: "0000000000000000000000000000000000000000".to_owned(),
 				region: "local-synthetic".to_owned(),
@@ -3174,8 +4980,363 @@ fn write_json(path: &Path, value: &impl Serialize) -> Result<(), Box<dyn std::er
 	if path == Path::new("-") {
 		io::stdout().lock().write_all(&bytes)?;
 	} else {
-		fs::write(path, bytes)?;
+		let path = canonical_leaf_policy_path(path)?;
+		let parent = path.parent().ok_or("protected JSON output has no parent")?;
+		let directory_lock = FutureProtectedDirectoryLock::acquire(parent)?;
+
+		write_new_bytes(&path, &bytes, "protected JSON")?;
+
+		directory_lock.verify()?;
 	}
+
+	Ok(())
+}
+
+fn validate_new_output_set(outputs: &[(&str, &Path)]) -> Result<(), Box<dyn std::error::Error>> {
+	let mut paths = BTreeSet::new();
+
+	for (label, path) in outputs {
+		if *path == Path::new("-") {
+			return Err(format!("{label} requires a durable create-new path").into());
+		}
+
+		let path = canonical_policy_path(path)?;
+
+		if !paths.insert(path.clone()) {
+			return Err("protected outputs must use distinct paths".into());
+		}
+
+		match fs::symlink_metadata(&path) {
+			Err(error) if error.kind() == ErrorKind::NotFound => {},
+			Err(error) => return Err(error.into()),
+			Ok(metadata) if metadata.file_type().is_symlink() => {
+				return Err(format!("{label} must not be a symlink").into());
+			},
+			Ok(_) => return Err(format!("{label} must not already exist").into()),
+		}
+	}
+
+	Ok(())
+}
+
+fn write_private_json_receipt(
+	path: &Path,
+	value: &impl Serialize,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let path = canonical_leaf_policy_path(path)?;
+	let parent = path.parent().ok_or("permission admission report has no parent")?;
+	let directory_lock = FutureProtectedDirectoryLock::acquire(parent)?;
+	let mut bytes = serde_json::to_vec_pretty(value)?;
+
+	bytes.push(b'\n');
+
+	let file = write_new_bytes(&path, &bytes, "permission admission report")?;
+
+	#[cfg(unix)]
+	{
+		let metadata = file.metadata()?;
+
+		if metadata.permissions().mode() & 0o777 != 0o600 {
+			return Err("permission admission report must have mode 0600".into());
+		}
+	}
+
+	directory_lock.verify()?;
+
+	Ok(())
+}
+
+fn official_output_reservation(run_id: &str) -> Vec<u8> {
+	format!("AIQ_OFFICIAL_OUTPUT_RESERVED_V1 {run_id}\n").into_bytes()
+}
+
+fn calibration_output_reservation(run_id: &str) -> Vec<u8> {
+	format!("AIQ_CALIBRATION_OUTPUT_RESERVED_V1 {run_id}\n").into_bytes()
+}
+
+fn has_exact_official_output_reservation(path: &Path, run_id: &str) -> bool {
+	let expected = official_output_reservation(run_id);
+
+	open_exact_reserved_file(path, &expected, "Official output reservation").is_ok()
+}
+
+fn open_exact_reserved_file(
+	path: &Path,
+	expected_bytes: &[u8],
+	label: &str,
+) -> Result<File, Box<dyn std::error::Error>> {
+	let metadata =
+		fs::symlink_metadata(path).map_err(|error| format!("cannot inspect {label}: {error}"))?;
+
+	if metadata.file_type().is_symlink() || !metadata.is_file() {
+		return Err(format!("{label} must be a non-symlink regular file").into());
+	}
+
+	let mut options = OpenOptions::new();
+
+	options.read(true).write(true);
+	#[cfg(unix)]
+	options.custom_flags(O_NOFOLLOW);
+
+	let file = options.open(path).map_err(|error| format!("cannot open {label}: {error}"))?;
+
+	require_exact_created_file(path, expected_bytes, &file, label)?;
+
+	Ok(file)
+}
+
+fn atomically_replace_exact_created_file(
+	path: &Path,
+	expected_bytes: &[u8],
+	created_file: &File,
+	bytes: &[u8],
+	label: &str,
+) -> Result<File, Box<dyn std::error::Error>> {
+	require_exact_created_file(path, expected_bytes, created_file, label)?;
+
+	let (temporary_path, temporary_file) = write_unique_sibling_bytes(path, bytes, label)?;
+	let install_result = (|| -> Result<(), Box<dyn std::error::Error>> {
+		// Fail quickly when the reservation has already changed. The exchange and
+		// post-exchange identity check enforce the actual compare-and-swap boundary.
+		require_exact_created_file(path, expected_bytes, created_file, label)?;
+		install_atomic_exchange(
+			path,
+			&temporary_path,
+			expected_bytes,
+			created_file,
+			bytes,
+			&temporary_file,
+			label,
+		)?;
+
+		Ok(())
+	})();
+
+	if let Err(error) = install_result {
+		let _ = remove_created_path_if_identity(&temporary_path, &temporary_file);
+
+		return Err(error);
+	}
+
+	Ok(temporary_file)
+}
+
+fn install_atomic_exchange(
+	path: &Path,
+	temporary_path: &Path,
+	expected_bytes: &[u8],
+	created_file: &File,
+	bytes: &[u8],
+	temporary_file: &File,
+	label: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	atomic_exchange_paths(temporary_path, path)
+		.map_err(|error| format!("cannot atomically exchange {label}: {error}"))?;
+	sync_parent_directory(path, label)?;
+
+	if let Err(error) =
+		require_exact_created_file(temporary_path, expected_bytes, created_file, label)
+	{
+		let rollback = rollback_atomic_exchange(temporary_path, path, bytes, temporary_file, label);
+
+		return Err(format!(
+			"{label} reservation changed during atomic exchange: {error}; rollback: {}",
+			rollback
+				.map_or_else(|rollback_error| rollback_error.to_string(), |()| "complete".into())
+		)
+		.into());
+	}
+
+	require_exact_created_file(path, bytes, temporary_file, label)?;
+
+	remove_exact_created_file(temporary_path, expected_bytes, created_file, "exchanged reservation")
+}
+
+fn rollback_atomic_exchange(
+	temporary_path: &Path,
+	path: &Path,
+	bytes: &[u8],
+	temporary_file: &File,
+	label: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	atomic_exchange_paths(temporary_path, path)?;
+	sync_parent_directory(path, label)?;
+	require_exact_created_file(temporary_path, bytes, temporary_file, label)?;
+
+	remove_exact_created_file(temporary_path, bytes, temporary_file, label)
+}
+
+#[cfg(unix)]
+fn atomic_exchange_paths(left: &Path, right: &Path) -> Result<(), io::Error> {
+	let left = CString::new(left.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("exchange path contains a NUL byte"))?;
+	let right = CString::new(right.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("exchange path contains a NUL byte"))?;
+	#[cfg(target_os = "linux")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe {
+		libc::renameat2(AT_FDCWD, left.as_ptr(), AT_FDCWD, right.as_ptr(), RENAME_EXCHANGE)
+	};
+	#[cfg(target_vendor = "apple")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe { libc::renamex_np(left.as_ptr(), right.as_ptr(), RENAME_SWAP) };
+
+	#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+	{
+		return Err(io::Error::new(
+			ErrorKind::Unsupported,
+			"atomic path exchange is unavailable on this Unix platform",
+		));
+	}
+
+	#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+	if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+#[cfg(not(unix))]
+fn atomic_exchange_paths(_left: &Path, _right: &Path) -> Result<(), io::Error> {
+	Err(io::Error::new(
+		ErrorKind::Unsupported,
+		"atomic path exchange is unavailable on this platform",
+	))
+}
+
+#[cfg(unix)]
+fn atomic_rename_no_replace(source: &Path, destination: &Path) -> Result<(), io::Error> {
+	let source = CString::new(source.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("rename source contains a NUL byte"))?;
+	let destination = CString::new(destination.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("rename destination contains a NUL byte"))?;
+	#[cfg(target_os = "linux")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe {
+		libc::renameat2(AT_FDCWD, source.as_ptr(), AT_FDCWD, destination.as_ptr(), RENAME_NOREPLACE)
+	};
+	#[cfg(target_vendor = "apple")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), RENAME_EXCL) };
+
+	#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+	{
+		return Err(io::Error::new(
+			ErrorKind::Unsupported,
+			"atomic no-replace rename is unavailable on this Unix platform",
+		));
+	}
+
+	#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+	if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+#[cfg(not(unix))]
+fn atomic_rename_no_replace(_source: &Path, _destination: &Path) -> Result<(), io::Error> {
+	Err(io::Error::new(
+		ErrorKind::Unsupported,
+		"atomic no-replace rename is unavailable on this platform",
+	))
+}
+
+fn sync_parent_directory(path: &Path, label: &str) -> Result<(), Box<dyn std::error::Error>> {
+	let parent = path.parent().ok_or("protected output has no parent")?;
+
+	#[cfg(unix)]
+	File::open(parent)?
+		.sync_all()
+		.map_err(|error| format!("cannot sync {label} directory: {error}"))?;
+
+	Ok(())
+}
+
+fn write_unique_sibling_bytes(
+	path: &Path,
+	bytes: &[u8],
+	label: &str,
+) -> Result<(PathBuf, File), Box<dyn std::error::Error>> {
+	let parent = path.parent().ok_or("protected output has no parent")?;
+	let name = path
+		.file_name()
+		.and_then(|name| name.to_str())
+		.ok_or("protected output file name is not valid UTF-8")?;
+
+	for nonce in 0_u8..16 {
+		let temporary_path = parent.join(format!(
+			".{name}.aiq-finalize-{}-{}-{nonce}",
+			process::id(),
+			resume::unix_ms()
+		));
+		let mut options = OpenOptions::new();
+
+		options.read(true).write(true).create_new(true);
+
+		#[cfg(unix)]
+		OpenOptionsExt::mode(&mut options, 0o600).custom_flags(O_NOFOLLOW);
+
+		let mut file = match options.open(&temporary_path) {
+			Ok(file) => file,
+			Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+			Err(error) => {
+				return Err(format!("cannot create temporary {label} output: {error}").into());
+			},
+		};
+
+		#[cfg(unix)]
+		if let Err(error) = file.set_permissions(Permissions::from_mode(0o600)) {
+			let _ = remove_created_path_if_identity(&temporary_path, &file);
+
+			return Err(format!("cannot set temporary {label} output permissions: {error}").into());
+		}
+
+		let write_result = file
+			.write_all(bytes)
+			.and_then(|()| file.sync_all())
+			.map_err(|error| format!("cannot persist temporary {label} output: {error}"));
+
+		if let Err(error) = write_result {
+			let _ = remove_created_path_if_identity(&temporary_path, &file);
+
+			return Err(error.into());
+		}
+		if let Err(error) = require_exact_created_file(&temporary_path, bytes, &file, label) {
+			let _ = remove_created_path_if_identity(&temporary_path, &file);
+
+			return Err(error);
+		}
+		if let Err(error) = sync_parent_directory(&temporary_path, label) {
+			let _ = remove_created_path_if_identity(&temporary_path, &file);
+
+			return Err(error);
+		}
+
+		return Ok((temporary_path, file));
+	}
+
+	Err(format!("cannot allocate a unique temporary {label} output").into())
+}
+
+fn remove_created_path_if_identity(path: &Path, created_file: &File) -> Result<(), std::io::Error> {
+	let held = created_file.metadata()?;
+	let current = fs::symlink_metadata(path)?;
+
+	if current.file_type().is_symlink() || !current.is_file() {
+		return Err(std::io::Error::other("created path changed"));
+	}
+	#[cfg(unix)]
+	if held.dev() != current.dev()
+		|| held.ino() != current.ino()
+		|| held.nlink() != 1
+		|| current.nlink() != 1
+	{
+		return Err(std::io::Error::other("created path identity changed"));
+	}
+	#[cfg(not(unix))]
+	if held.len() != current.len() {
+		return Err(std::io::Error::other("created path identity changed"));
+	}
+
+	fs::remove_file(path)?;
+	#[cfg(unix)]
+	File::open(path.parent().ok_or_else(|| io::Error::other("created path has no parent"))?)?
+		.sync_all()?;
 
 	Ok(())
 }
@@ -3185,19 +5346,20 @@ fn write_new_bytes(
 	bytes: &[u8],
 	label: &str,
 ) -> Result<File, Box<dyn std::error::Error>> {
-	let mut options = OpenOptions::new();
+	let (temporary_path, file) = write_unique_sibling_bytes(path, bytes, label)?;
+	let install_result = (|| -> Result<(), Box<dyn std::error::Error>> {
+		atomic_rename_no_replace(&temporary_path, path)
+			.map_err(|error| format!("cannot install create-new {label} output: {error}"))?;
+		require_exact_created_file(path, bytes, &file, label)?;
 
-	options.write(true).create_new(true);
+		sync_parent_directory(path, label)
+	})();
 
-	#[cfg(unix)]
-	OpenOptionsExt::mode(&mut options, 0o600);
+	if let Err(error) = install_result {
+		let _ = remove_created_path_if_identity(&temporary_path, &file);
 
-	let mut file =
-		options.open(path).map_err(|error| format!("cannot create {label} output: {error}"))?;
-
-	file.write_all(bytes)
-		.and_then(|()| file.sync_all())
-		.map_err(|error| format!("cannot persist {label} output: {error}"))?;
+		return Err(error);
+	}
 
 	Ok(file)
 }
@@ -3211,7 +5373,9 @@ fn remove_exact_created_file(
 	require_exact_created_file(path, expected_bytes, created_file, label)?;
 
 	fs::remove_file(path)
-		.map_err(|error| format!("cannot remove created {label} file: {error}").into())
+		.map_err(|error| format!("cannot remove created {label} file: {error}"))?;
+
+	sync_parent_directory(path, label)
 }
 
 fn require_exact_created_file(
@@ -3237,6 +5401,9 @@ fn require_exact_created_file(
 		{
 			return Err(format!("created {label} file was replaced").into());
 		}
+		if created_metadata.nlink() != 1 || current_metadata.nlink() != 1 {
+			return Err(format!("created {label} file has a hard-link alias").into());
+		}
 	}
 
 	#[cfg(not(unix))]
@@ -3254,6 +5421,9 @@ fn require_exact_created_file(
 
 #[cfg(test)]
 mod tests {
+	use std::env;
+	#[cfg(unix)]
+	use std::os::unix::fs::PermissionsExt as _;
 	use std::{
 		cell::RefCell,
 		fs,
@@ -3263,16 +5433,26 @@ mod tests {
 		time::{SystemTime, UNIX_EPOCH},
 	};
 
+	use clap::Parser as _;
+
+	use crate::capacity;
+	use crate::resume;
+	use crate::runner;
 	use crate::{
 		adapter::{
 			CodexAdapter, CodexExecutionConfig, CommandRequest, ExecutionCapture, Executor,
-			ExecutorError,
+			ExecutorError, ManagedPermissionProfileEvidence,
 		},
 		cli,
+		corpus_commitment::{self, RunClass},
 		runner::TestArtifactSink,
 	};
 
 	struct BoundaryExecutor {
+		requests: Rc<RefCell<Vec<CommandRequest>>>,
+	}
+
+	struct SuccessfulBoundaryExecutor {
 		requests: Rc<RefCell<Vec<CommandRequest>>>,
 	}
 
@@ -3281,6 +5461,39 @@ mod tests {
 			self.requests.borrow_mut().push(request.clone());
 
 			Err(ExecutorError::new("recording profile boundary reached"))
+		}
+	}
+
+	impl Executor for SuccessfulBoundaryExecutor {
+		fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			self.requests.borrow_mut().push(request.clone());
+
+			Ok(ExecutionCapture {
+				exit_code: Some(0),
+				stdout: b"AIQ_ISOLATION_OK\n".to_vec(),
+				stderr: Vec::new(),
+				timed_out: false,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
+	#[test]
+	fn official_cli_exposes_no_proxy_mode() {
+		let command = <cli::Cli as clap::CommandFactory>::command();
+
+		for subcommand_name in ["admit-permissions", "preflight", "run"] {
+			let subcommand =
+				command.find_subcommand(subcommand_name).expect("Official direct command");
+
+			assert!(
+				subcommand
+					.get_arguments()
+					.all(|argument| argument.get_id() != "codex_egress_proxy"),
+				"{subcommand_name} must not expose a proxy mode"
+			);
 		}
 	}
 
@@ -3296,6 +5509,666 @@ mod tests {
 
 	fn expected_path(path: &Path) -> PathBuf {
 		cli::canonical_policy_path(path).expect("canonical policy fixture")
+	}
+
+	#[test]
+	fn corpus_validators_are_top_level_and_legacy_lifecycle_is_absent() {
+		let common = [
+			"--hidden-tasks",
+			"/controlled/tasks",
+			"--corpus-commitment",
+			"/controlled/corpus.json",
+			"--source-root",
+			"/controlled/source",
+			"--evaluator-root",
+			"/controlled/evaluators",
+			"--evaluator-runtime",
+			"/controlled/bin/node",
+			"--codex-toolchain-root",
+			"/controlled/toolchain",
+		];
+		let core = super::Cli::try_parse_from(
+			["aiq-runner", "validate-core-corpus"].into_iter().chain(common),
+		);
+
+		assert!(matches!(
+			core,
+			Ok(super::Cli { command: super::Command::ValidateCoreCorpus { .. } })
+		));
+
+		let contrast = super::Cli::try_parse_from([
+			"aiq-runner",
+			"validate-contrast-corpus",
+			"--hidden-tasks",
+			"/controlled/contrast-tasks",
+			"--corpus-commitment",
+			"/controlled/contrast-corpus.json",
+			"--expected-corpus-sha256",
+			"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"--source-root",
+			"/controlled/source",
+			"--evaluator-root",
+			"/controlled/evaluators",
+			"--evaluator-runtime",
+			"/controlled/bin/node",
+			"--codex-toolchain-root",
+			"/controlled/toolchain",
+		]);
+
+		assert!(matches!(
+			contrast,
+			Ok(super::Cli { command: super::Command::ValidateContrastCorpus { .. } })
+		));
+		assert!(super::Cli::try_parse_from(["aiq-runner", "candidate", "plan"]).is_err());
+		assert!(super::Cli::try_parse_from(["aiq-runner", "replay-candidate"]).is_err());
+	}
+
+	fn unexpected_managed_requirements_profile() -> ManagedPermissionProfileEvidence {
+		ManagedPermissionProfileEvidence {
+			schema_version: "aiq.managed-permission-profile-evidence.v1".to_owned(),
+			codex_version: "codex-cli 0.146.0".to_owned(),
+			default_permissions: "aiq_benchmark".to_owned(),
+			allowed_permission_profile: "aiq_benchmark".to_owned(),
+			active_permission_profile: "aiq_benchmark".to_owned(),
+			official_eligible: false,
+			managed_requirements_status: "present_unexpected".to_owned(),
+			managed_requirements_digest: format!("sha256:{}", "a".repeat(64)),
+			profile_selection_digest: format!("sha256:{}", "b".repeat(64)),
+			evidence_digest: format!("sha256:{}", "c".repeat(64)),
+		}
+	}
+
+	#[test]
+	fn package_concurrency_is_explicitly_bound_and_cannot_drift() {
+		let mut missing = None;
+
+		super::bind_execution_concurrency(&mut missing, Some(17)).expect("bind frozen run");
+
+		assert_eq!(missing, Some(17));
+		assert!(super::bind_execution_concurrency(&mut missing, Some(16)).is_err());
+
+		let mut absent = None;
+
+		assert!(super::bind_execution_concurrency(&mut absent, None).is_err());
+		assert!(super::bind_execution_concurrency(&mut absent, Some(0)).is_err());
+		assert!(
+			super::bind_execution_concurrency(&mut absent, Some(crate::runner::MAX_RUN_JOBS + 1))
+				.is_err()
+		);
+	}
+
+	#[test]
+	fn submit_artifact_upload_concurrency_has_a_bounded_default_and_override() {
+		let parse = |extra: &[&str]| {
+			let mut arguments = vec![
+				"aiq-runner",
+				"submit",
+				"--package",
+				"package.json",
+				"--endpoint",
+				"https://example.vercel.app",
+			];
+
+			arguments.extend_from_slice(extra);
+
+			super::Cli::try_parse_from(arguments)
+		};
+		let default = parse(&[]).expect("default submit arguments");
+
+		assert!(matches!(
+			default.command,
+			super::Command::Submit {
+				artifact_upload_concurrency: crate::submission::DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY,
+				..
+			}
+		));
+
+		let override_value = crate::submission::MAX_ARTIFACT_UPLOAD_CONCURRENCY.to_string();
+		let overridden = parse(&["--artifact-upload-concurrency", &override_value])
+			.expect("bounded submit override");
+
+		assert!(matches!(
+			overridden.command,
+			super::Command::Submit {
+				artifact_upload_concurrency: crate::submission::MAX_ARTIFACT_UPLOAD_CONCURRENCY,
+				..
+			}
+		));
+		assert!(parse(&["--artifact-upload-concurrency", "0"]).is_err());
+		assert!(parse(&["--artifact-upload-concurrency", "33"]).is_err());
+	}
+
+	#[test]
+	fn submit_cli_succeeds_only_for_accepted_or_exact_duplicate_packages() {
+		let outcome = |kind, status| crate::submission::SubmissionBundleOutcome {
+			schema_version: "aiq.submission-outcome.v1",
+			artifacts_total: 1,
+			artifacts_stored: 1,
+			artifacts_duplicate: 0,
+			package: crate::submission::SubmissionOutcome {
+				kind,
+				status,
+				server_disposition: "untrusted response body highly-secret".to_owned(),
+			},
+		};
+
+		for kind in [
+			crate::submission::SubmissionOutcomeKind::Accepted,
+			crate::submission::SubmissionOutcomeKind::Duplicate,
+		] {
+			assert!(
+				super::require_successful_package_submission(&outcome(kind, Some(202))).is_ok()
+			);
+		}
+		for (kind, status) in [
+			(crate::submission::SubmissionOutcomeKind::Conflict, Some(409)),
+			(crate::submission::SubmissionOutcomeKind::ClientError, Some(422)),
+			(crate::submission::SubmissionOutcomeKind::ServerError, Some(503)),
+			(crate::submission::SubmissionOutcomeKind::Network, None),
+			(crate::submission::SubmissionOutcomeKind::Timeout, None),
+			(crate::submission::SubmissionOutcomeKind::Configuration, None),
+		] {
+			let error = super::require_successful_package_submission(&outcome(kind, status))
+				.expect_err("non-queue outcome must make submit fail");
+			let diagnostic = error.to_string();
+
+			assert!(diagnostic.contains(kind.as_str()));
+			assert!(!diagnostic.contains("untrusted response body"));
+			assert!(!diagnostic.contains("highly-secret"));
+		}
+	}
+
+	#[test]
+	fn invalid_official_planning_inputs_stop_with_zero_adapter_invocations() {
+		let root = fixture_root("model-free-official-rejections");
+		let source = root.join("source");
+		let existing_output = root.join("existing.json");
+		let invalid_corpus = root.join("invalid-corpus.json");
+
+		fs::create_dir_all(&source).expect("source fixture");
+		fs::write(&existing_output, b"preserve").expect("existing output fixture");
+		fs::write(&invalid_corpus, b"{}").expect("invalid corpus fixture");
+
+		let requests = Rc::new(RefCell::new(Vec::<CommandRequest>::new()));
+
+		assert!(cli::select_models(&["not-a-model".to_owned()]).is_err());
+		assert!(
+			capacity::assess_capacity(
+				&runner::synthetic_demo_tasks(),
+				&crate::model::MODEL_MATRIX,
+				&crate::model::MODEL_MATRIX,
+				&[],
+				&format!("sha256:{}", "a".repeat(64)),
+				0,
+				43_200,
+			)
+			.is_err()
+		);
+		assert!(
+			crate::schedule::ScheduleConfig::default()
+				.slot("invalid-date", crate::schedule::ScheduleOccurrence::Day)
+				.is_err()
+		);
+		assert!(cli::validate_new_output_set(&[("Official output", &existing_output)]).is_err());
+		assert!(
+			corpus_commitment::validate_corpus_commitment(
+				&invalid_corpus,
+				&runner::synthetic_demo_tasks(),
+				&source,
+			)
+			.is_err()
+		);
+		assert!(requests.borrow().is_empty(), "planning rejection must not reach an adapter");
+		assert_eq!(fs::read(&existing_output).expect("preserved output"), b"preserve");
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn official_output_reservation_resumes_only_the_same_run_without_overwrite() {
+		let root = fixture_root("official-output-reservation");
+		let preflight = root.join("preflight.json");
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("run.json");
+		let score = root.join("score.json");
+		let package = root.join("package.json");
+		let run_id = format!("run_{}", "a".repeat(64));
+		let entries = || {
+			vec![cli::FutureProtectedEntry {
+				category: "output",
+				path: output.clone(),
+				must_be_new: true,
+				recoverable_bytes: Some(cli::official_output_reservation(&run_id)),
+			}]
+		};
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		drop(cli::FutureProtectedFiles::prepare(&entries()).expect("initial reservation"));
+
+		assert_eq!(
+			fs::read(&output).expect("reserved output"),
+			cli::official_output_reservation(&run_id)
+		);
+		assert!(
+			cli::official_output_plan(&preflight, &checkpoint, &output, &score, &package, None,)
+				.is_err()
+		);
+		assert!(
+			cli::official_output_plan(
+				&preflight,
+				&checkpoint,
+				&output,
+				&score,
+				&package,
+				Some(&format!("run_{}", "b".repeat(64))),
+			)
+			.is_err()
+		);
+
+		#[cfg(unix)]
+		{
+			let alias = root.join("reservation-alias");
+
+			fs::hard_link(&output, &alias).expect("hard-link alias");
+
+			assert!(
+				cli::official_output_plan(
+					&preflight,
+					&checkpoint,
+					&output,
+					&score,
+					&package,
+					Some(&run_id),
+				)
+				.is_err()
+			);
+
+			fs::remove_file(alias).expect("remove hard-link alias");
+		}
+
+		let plan = cli::official_output_plan(
+			&preflight,
+			&checkpoint,
+			&output,
+			&score,
+			&package,
+			Some(&run_id),
+		)
+		.expect("same-run recovery plan");
+
+		assert_eq!(plan.run_output, expected_path(&output).display().to_string());
+
+		let mut recovered =
+			cli::FutureProtectedFiles::prepare(&entries()).expect("recovered reservation");
+
+		recovered
+			.write_created_pretty_json(&output, &serde_json::json!({"complete": true}), "test")
+			.expect("complete reserved output");
+		recovered.disarm(&output);
+
+		drop(recovered);
+
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(
+				&fs::read(&output).expect("completed output")
+			)
+			.expect("completed JSON"),
+			serde_json::json!({"complete": true})
+		);
+		assert!(fs::read_dir(&root).expect("output directory").all(|entry| {
+			!entry.expect("output entry").file_name().to_string_lossy().contains(".aiq-finalize-")
+		}));
+		assert!(cli::FutureProtectedFiles::prepare(&entries()).is_err());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn future_protected_parent_allows_only_one_cooperating_writer() {
+		let root = fixture_root("future-protected-directory-lock");
+		let first_path = root.join("first.json");
+		let second_path = root.join("second.json");
+		let entry = |path: PathBuf| {
+			vec![cli::FutureProtectedEntry {
+				category: "test",
+				path,
+				must_be_new: false,
+				recoverable_bytes: None,
+			}]
+		};
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		let first_entries = entry(first_path.clone());
+		let early_locks = cli::FutureProtectedDirectoryLocks::acquire(&first_entries)
+			.expect("early directory locks before preflight");
+
+		assert!(cli::FutureProtectedDirectoryLocks::acquire(&entry(second_path.clone())).is_err());
+
+		let first = cli::FutureProtectedFiles::prepare_with_locks(&first_entries, early_locks)
+			.expect("first directory writer");
+
+		drop(first);
+
+		assert!(!first_path.exists());
+
+		drop(
+			cli::FutureProtectedFiles::prepare(&entry(second_path.clone()))
+				.expect("directory lock released after drop"),
+		);
+
+		assert!(!second_path.exists());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn standalone_preflight_holds_one_lock_for_its_state_parent() {
+		let root = fixture_root("standalone-preflight-directory-lock");
+		let moved = root.with_extension("moved");
+		let output = root.join("preflight.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		let first =
+			cli::acquire_preflight_future_protected_locks(&output).expect("first preflight writer");
+
+		assert!(cli::acquire_preflight_future_protected_locks(&output).is_err());
+
+		drop(first);
+		drop(
+			cli::acquire_preflight_future_protected_locks(&output)
+				.expect("preflight lock released after drop"),
+		);
+
+		assert!(cli::acquire_preflight_future_protected_locks(Path::new("-")).is_err());
+
+		let held =
+			cli::acquire_preflight_future_protected_locks(&output).expect("held preflight parent");
+
+		fs::rename(&root, &moved).expect("move locked parent");
+		fs::create_dir_all(&root).expect("replacement parent");
+
+		let protected_output = cli::canonical_leaf_policy_path(&output).expect("protected output");
+
+		assert!(held.verify(&protected_output).is_err());
+
+		drop(held);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+		fs::remove_dir_all(moved).expect("moved fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn official_output_reservation_rejects_leaf_symlink_swaps_without_target_damage() {
+		let root = fixture_root("official-output-reservation-symlink-swap");
+		let preflight = root.join("preflight.json");
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("run.json");
+		let moved = root.join("moved-reservation.json");
+		let score = root.join("score.json");
+		let package = root.join("package.json");
+		let run_id = format!("run_{}", "c".repeat(64));
+		let entries = || {
+			vec![cli::FutureProtectedEntry {
+				category: "output",
+				path: output.clone(),
+				must_be_new: true,
+				recoverable_bytes: Some(cli::official_output_reservation(&run_id)),
+			}]
+		};
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		let mut reserved =
+			cli::FutureProtectedFiles::prepare(&entries()).expect("initial reservation");
+
+		fs::rename(&output, &moved).expect("move held reservation");
+		std::os::unix::fs::symlink(&moved, &output).expect("replacement symlink");
+
+		assert!(
+			cli::official_output_plan(
+				&preflight,
+				&checkpoint,
+				&output,
+				&score,
+				&package,
+				Some(&run_id),
+			)
+			.is_err()
+		);
+		assert!(cli::FutureProtectedFiles::prepare(&entries()).is_err());
+		assert!(
+			reserved
+				.write_created_pretty_json(
+					&output,
+					&serde_json::json!({"must_not_install": true}),
+					"test",
+				)
+				.is_err()
+		);
+		assert_eq!(
+			fs::read(&moved).expect("reservation target"),
+			cli::official_output_reservation(&run_id)
+		);
+
+		fs::remove_file(&output).expect("remove replacement symlink");
+
+		drop(reserved);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn atomic_output_exchange_restores_an_unexpected_concurrent_replacement() {
+		let root = fixture_root("official-output-exchange-rollback");
+		let output = root.join("run.json");
+		let moved_reservation = root.join("moved-reservation.json");
+		let run_id = format!("run_{}", "d".repeat(64));
+		let expected = cli::official_output_reservation(&run_id);
+		let final_bytes = b"{\"complete\":true}\n";
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		let held_reservation =
+			cli::write_new_bytes(&output, &expected, "reservation").expect("reservation file");
+
+		fs::rename(&output, &moved_reservation).expect("move reservation before exchange");
+		fs::write(&output, b"unexpected concurrent file").expect("concurrent replacement");
+
+		let (temporary_path, temporary_file) =
+			cli::write_unique_sibling_bytes(&output, final_bytes, "test")
+				.expect("temporary final output");
+
+		assert!(
+			cli::install_atomic_exchange(
+				&output,
+				&temporary_path,
+				&expected,
+				&held_reservation,
+				final_bytes,
+				&temporary_file,
+				"test",
+			)
+			.is_err()
+		);
+		assert_eq!(fs::read(&output).expect("restored replacement"), b"unexpected concurrent file");
+		assert_eq!(fs::read(&moved_reservation).expect("preserved reservation"), expected);
+		assert!(!temporary_path.exists());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn calibration_protects_only_a_durable_final_output() {
+		let entries = cli::future_protected_entries(
+			RunClass::Calibration,
+			Path::new("preflight.json"),
+			Path::new("checkpoint.json"),
+			Path::new("run.json"),
+			&format!("run_{}", "a".repeat(64)),
+		);
+
+		assert_eq!(
+			entries.iter().map(|entry| entry.category).collect::<Vec<_>>(),
+			vec!["preflight_cache", "checkpoint", "output"]
+		);
+		assert!(entries[2].must_be_new);
+		assert_eq!(
+			entries[2].recoverable_bytes,
+			Some(cli::calibration_output_reservation(&format!("run_{}", "a".repeat(64))))
+		);
+
+		let stdout_entries = cli::future_protected_entries(
+			RunClass::Calibration,
+			Path::new("preflight.json"),
+			Path::new("checkpoint.json"),
+			Path::new("-"),
+			&format!("run_{}", "b".repeat(64)),
+		);
+
+		assert_eq!(
+			stdout_entries.iter().map(|entry| entry.category).collect::<Vec<_>>(),
+			vec!["preflight_cache", "checkpoint"]
+		);
+	}
+
+	#[test]
+	fn live_run_state_paths_are_distinct_before_preflight() {
+		let root = fixture_root("live-run-state-aliases");
+		let preflight = root.join("preflight.json");
+		let preflight_attempt = resume::preflight_attempt_path(&preflight);
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("run.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+		cli::validate_run_future_protected_paths(&preflight, &checkpoint, &output)
+			.expect("distinct durable paths");
+		cli::validate_run_future_protected_paths(&preflight, &checkpoint, Path::new("-"))
+			.expect("standard output is not a durable alias");
+
+		for aliased_output in [&preflight, &preflight_attempt, &checkpoint] {
+			assert!(
+				cli::validate_run_future_protected_paths(&preflight, &checkpoint, aliased_output,)
+					.is_err()
+			);
+		}
+
+		assert!(cli::validate_run_future_protected_paths(&preflight, &preflight, &output).is_err());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn calibration_finalizes_below_an_already_locked_parent() {
+		let root = fixture_root("calibration-shared-output-parent");
+		let preflight = root.join("preflight.json");
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("run.json");
+		let entries = cli::future_protected_entries(
+			RunClass::Calibration,
+			&preflight,
+			&checkpoint,
+			&output,
+			&format!("run_{}", "c".repeat(64)),
+		);
+
+		fs::create_dir_all(&root).expect("fixture root");
+		fs::write(&output, b"existing calibration output").expect("existing output");
+
+		assert!(cli::FutureProtectedFiles::prepare(&entries).is_err());
+		assert_eq!(
+			fs::read(&output).expect("preserved existing output"),
+			b"existing calibration output"
+		);
+
+		fs::remove_file(&output).expect("remove existing output fixture");
+
+		drop(cli::FutureProtectedFiles::prepare(&entries).expect("initial reservation"));
+
+		assert_eq!(
+			fs::read(&output).expect("calibration reservation"),
+			entries[2].recoverable_bytes.as_deref().expect("reservation bytes")
+		);
+
+		let mut protected = cli::FutureProtectedFiles::prepare(&entries)
+			.expect("recovered calibration reservation");
+
+		protected
+			.write_created_pretty_json(
+				&output,
+				&serde_json::json!({"complete": true}),
+				"calibration live output",
+			)
+			.expect("finalize calibration output with the held directory lock");
+		protected.disarm(&output);
+
+		drop(protected);
+
+		assert_eq!(
+			serde_json::from_slice::<serde_json::Value>(
+				&fs::read(&output).expect("calibration output")
+			)
+			.expect("calibration JSON"),
+			serde_json::json!({"complete": true})
+		);
+		assert!(!preflight.exists());
+		assert!(!checkpoint.exists());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn protected_json_install_rejects_existing_symlink_and_hard_link_without_damage() {
+		let root = fixture_root("protected-json-install");
+		let existing = root.join("existing.json");
+		let hard_link = root.join("hard-link.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+		fs::write(&existing, b"original").expect("existing fixture");
+		fs::hard_link(&existing, &hard_link).expect("hard-link fixture");
+
+		assert!(cli::write_json(&existing, &serde_json::json!({"changed": true})).is_err());
+		assert!(cli::write_json(&hard_link, &serde_json::json!({"changed": true})).is_err());
+		assert_eq!(fs::read(&existing).expect("existing bytes"), b"original");
+
+		#[cfg(unix)]
+		{
+			let symlink = root.join("symlink.json");
+
+			std::os::unix::fs::symlink(&existing, &symlink).expect("symlink fixture");
+
+			assert!(cli::write_json(&symlink, &serde_json::json!({"changed": true})).is_err());
+			assert_eq!(fs::read(&existing).expect("symlink target bytes"), b"original");
+		}
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn protected_json_install_is_create_new_and_leaves_no_temporary_file() {
+		let root = fixture_root("protected-json-create-new");
+		let output = root.join("output.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+		cli::write_json(&output, &serde_json::json!({"complete": true}))
+			.expect("atomic create-new output");
+
+		let expected = b"{\n  \"complete\": true\n}\n";
+
+		assert_eq!(fs::read(&output).expect("protected output"), expected);
+		assert!(cli::write_json(&output, &serde_json::json!({"changed": true})).is_err());
+		assert_eq!(fs::read(&output).expect("preserved protected output"), expected);
+		assert!(fs::read_dir(&root).expect("output directory").all(|entry| {
+			!entry.expect("output entry").file_name().to_string_lossy().contains(".aiq-finalize-")
+		}));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]
@@ -3400,6 +6273,241 @@ mod tests {
 		assert!(!error.to_string().contains("requires at least one protected path"));
 		assert_eq!(requests.borrow().len(), 1);
 		assert_eq!(requests.borrow()[0].args, ["--version"]);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn unexpected_managed_requirements_deny_admission_before_the_canary() {
+		let root = fixture_root("denied-admission");
+		let workspace = root.join("workspace");
+		let codex_home = root.join("codex-home");
+		let checkpoint = root.join("checkpoint.json");
+		let planned_output = root.join("official.json");
+		let report_output = root.join("admission.json");
+
+		fs::create_dir_all(&workspace).expect("admission workspace");
+		fs::create_dir_all(&codex_home).expect("Codex home fixture");
+
+		let requests = Rc::new(RefCell::new(Vec::new()));
+		let adapter = CodexAdapter::new(
+			BoundaryExecutor { requests: Rc::clone(&requests) },
+			TestArtifactSink,
+			"codex",
+			CodexExecutionConfig::isolated(codex_home),
+		);
+		let profile = unexpected_managed_requirements_profile();
+		let assessment = cli::verify_permission_evidence_with_profile(
+			&adapter,
+			&workspace,
+			&[],
+			RunClass::Official,
+			profile.clone(),
+		);
+		let (report, denied) =
+			cli::permission_admission_report(42, Some(profile), None, assessment)
+				.expect("denied admission report");
+
+		assert!(denied);
+
+		cli::write_private_json_receipt(&report_output, &report).expect("private denied receipt");
+
+		let value: serde_json::Value =
+			serde_json::from_slice(&fs::read(&report_output).expect("read denied receipt"))
+				.expect("denied receipt JSON");
+
+		assert_eq!(value["official_permission_eligible"], false);
+		assert_eq!(value["model_invoked"], false);
+		assert_eq!(value["managed_profile"]["managed_requirements_status"], "present_unexpected");
+		assert!(
+			value["failure"]
+				.as_str()
+				.is_some_and(|failure| failure.contains("require no external managed requirements"))
+		);
+		assert!(requests.borrow().is_empty(), "denial must precede the sandbox canary");
+		assert!(!checkpoint.exists(), "denial must not create a checkpoint");
+		assert!(!planned_output.exists(), "denial must not reserve planned Official output");
+		#[cfg(unix)]
+		assert_eq!(
+			fs::symlink_metadata(&report_output).expect("receipt metadata").permissions().mode()
+				& 0o777,
+			0o600
+		);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn permission_admission_rejects_report_alias_existing_file_and_symlink() {
+		let root = fixture_root("admission-report-output");
+		let planned = root.join("official.json");
+		let report = root.join("admission.json");
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		assert!(cli::validate_permission_admission_outputs(&planned, &planned).is_err());
+
+		let options = cli::PermissionAdmissionOptions {
+			public_tasks: None,
+			hidden_tasks: Some(root.join("tasks")),
+			corpus_commitment: root.join("commitment.json"),
+			source_root: root.join("source"),
+			capabilities: root.join("capabilities.json"),
+			workspace_root: root.join("baselines"),
+			execution_root: root.join("execution"),
+			evaluator_root: root.join("evaluators"),
+			evaluator_runtime: root.join("node"),
+			codex_toolchain_root: root.join("toolchain"),
+			schedule: root.join("schedule.json"),
+			slot_date: "2030-01-01".to_owned(),
+			occurrence: "day".to_owned(),
+			observed_at: "unix-ms:1".to_owned(),
+			codex_binary: root.join("codex").display().to_string(),
+			codex_home: root.join("codex-home"),
+			artifact_root: root.join("artifacts"),
+			preflight_cache: root.join("preflight.json"),
+			checkpoint: report.clone(),
+			jobs: 1,
+			planned_output: planned.clone(),
+			planned_score_output: root.join("scores.json"),
+			planned_package_output: root.join("package.json"),
+			report_output: report.clone(),
+		};
+
+		assert!(cli::validate_permission_admission_output_aliases(&options).is_err());
+
+		fs::write(&report, b"existing").expect("existing report fixture");
+
+		assert!(cli::validate_permission_admission_outputs(&planned, &report).is_err());
+
+		fs::remove_file(&report).expect("remove existing report fixture");
+
+		let target = root.join("target.json");
+
+		fs::write(&target, b"target").expect("symlink target fixture");
+
+		#[cfg(unix)]
+		{
+			std::os::unix::fs::symlink(&target, &report).expect("report symlink fixture");
+
+			assert!(cli::validate_permission_admission_outputs(&planned, &report).is_err());
+			assert!(cli::write_private_json_receipt(&report, &serde_json::json!({})).is_err());
+		}
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn every_protected_path_category_reaches_the_permission_canary() {
+		let root = fixture_root("admission-canary-categories");
+		let execution = root.join("execution");
+		let toolchain = root.join("toolchain");
+		let codex_home = root.join("codex-home");
+		let probe_binary = env::current_exe().expect("test executable");
+
+		for directory in [&execution, &toolchain, &codex_home] {
+			fs::create_dir_all(directory).expect("fixture directory");
+		}
+
+		fs::write(codex_home.join("config.toml"), b"fixture").expect("Codex home fixture");
+
+		let node = toolchain.join(if cfg!(windows) { "node.exe" } else { "node" });
+
+		fs::write(&node, b"node").expect("toolchain fixture");
+
+		let source = root.join("source");
+		let baselines = root.join("baselines");
+		let evaluators = root.join("evaluators");
+		let artifacts = root.join("artifacts");
+		let tasks = root.join("tasks");
+		let codex_binary = root.join("codex");
+		let commitment = root.join("commitment.json");
+		let capabilities = root.join("capabilities.json");
+		let schedule = root.join("schedule.json");
+		let preflight = root.join("preflight.json");
+		let checkpoint = root.join("checkpoint.json");
+		let output = root.join("official.json");
+		let report = root.join("admission.json");
+		let protected = cli::benchmark_protected_paths_from(cli::BenchmarkProtectedPathInputs {
+			public_tasks: None,
+			hidden_tasks: Some(&tasks),
+			source_root: &source,
+			workspace_root: &baselines,
+			evaluator_root: &evaluators,
+			artifact_root: &artifacts,
+			codex_home: &codex_home,
+			codex_binary: &codex_binary,
+			corpus_commitment: &commitment,
+			capabilities: &capabilities,
+			schedule: &schedule,
+			preflight_cache: &preflight,
+			checkpoint: &checkpoint,
+			planned_output: &output,
+			planned_score_output: None,
+			planned_package_output: None,
+			report_output: Some(&report),
+			official_admission: None,
+		})
+		.expect("complete permission admission protected paths");
+		let category_names = [
+			"source_root",
+			"workspace_baselines",
+			"evaluator_root",
+			"artifact_root",
+			"codex_home",
+			"codex_binary",
+			"hidden_tasks",
+			"corpus_commitment",
+			"capabilities",
+			"schedule",
+			"preflight_cache",
+			"preflight_attempt",
+			"checkpoint",
+			"output",
+			"official_admission_receipt",
+		];
+
+		assert_eq!(
+			protected.iter().map(|entry| entry.category).collect::<std::collections::BTreeSet<_>>(),
+			category_names.into_iter().collect()
+		);
+
+		let requests = Rc::new(RefCell::new(Vec::new()));
+		let adapter = CodexAdapter::new(
+			SuccessfulBoundaryExecutor { requests: Rc::clone(&requests) },
+			TestArtifactSink,
+			"codex",
+			CodexExecutionConfig::isolated(codex_home)
+				.with_denied_roots(protected.iter().map(|entry| entry.path.clone()).collect())
+				.with_permission_probe_executable(probe_binary)
+				.with_model_toolchain(corpus_commitment::fixture_model_toolchain(toolchain)),
+		);
+		let digest = cli::verify_codex_permission_boundary(&adapter, &execution, &protected)
+			.expect("all protected categories reach a successful canary");
+
+		assert!(digest.starts_with("sha256:"));
+
+		let requests = requests.borrow();
+		let request = requests.first().expect("permission canary request");
+		let denied_values = request
+			.args
+			.windows(2)
+			.filter(|pair| pair[0] == "--denied-file")
+			.map(|pair| pair[1].clone())
+			.collect::<Vec<_>>();
+
+		assert_eq!(denied_values.len(), category_names.len());
+		assert_eq!(requests.len(), 1, "the canary must not invoke a model");
+
+		for entry in &protected {
+			assert!(
+				denied_values
+					.iter()
+					.any(|path| path.starts_with(entry.path.to_string_lossy().as_ref())),
+				"protected category {} did not reach the canary",
+				entry.category
+			);
+		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
 	}

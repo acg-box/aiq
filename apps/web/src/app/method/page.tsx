@@ -3,9 +3,86 @@ import type { Metadata } from 'next';
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { readPublicValue } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Method' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Method',
+  path: '/method',
+  description: 'Read the AIQ fixed-fixture benchmark, scoring, uncertainty, and provenance method.',
+});
 export const dynamic = 'force-dynamic';
+
+function EfficiencyMethod() {
+  return (
+    <article>
+      <span className="eyebrow">05 · Calibration efficiency estimates</span>
+      <h2>Observed Codex adapter elapsed time and estimated token cost stay distinct</h2>
+      <p>
+        Time is observed Codex adapter elapsed time. Cost is a versioned estimate from covered token
+        aggregate usage and the{' '}
+        <a href="https://developers.openai.com/api/docs/pricing">
+          official OpenAI API pricing documentation
+        </a>
+        , accessed 2026-08-02. It is not actual Codex subscription billing or necessarily an exact
+        API invoice.
+      </p>
+      <dl className="policy-list">
+        <div>
+          <dt>Source / as of / estimator version</dt>
+          <dd>
+            Official OpenAI API pricing · USD · standard processing tier · 2026-08-02 ·
+            aiq.standard-api-equivalent-usd.v1
+          </dd>
+        </div>
+        <div>
+          <dt>Formula</dt>
+          <dd>
+            Uncached input = total input − cache-read input − cache-write input. Multiply uncached
+            input, cache-read input, cache-write input, and output by their versioned standard
+            per-token rates, then sum them. Reasoning tokens are nested within output and are not
+            added twice.
+          </dd>
+        </div>
+        <div>
+          <dt>Coverage</dt>
+          <dd>
+            Raw token counters are provider-reported. The verifier recomputes aggregates and the
+            cost estimate from those counters. USD displays only when estimator status is estimated
+            and token coverage is complete. Missing, invalid, or JCS-overflowed aggregate usage
+            displays as unavailable, never zero.{' '}
+            <a href="https://developers.openai.com/api/docs/pricing">
+              Prompts above 272,000 input tokens use 2× input and 1.5× output rates
+            </a>
+            . AIQ cannot identify each request context band from aggregate usage, so a result above
+            272,000 aggregate input tokens uses the unavailable context band status and is not
+            priced.
+          </dd>
+        </div>
+        <div>
+          <dt>Observed Codex adapter elapsed time</dt>
+          <dd>
+            Sum, median, and p95 of Codex adapter elapsed time: model plus allowed tools. It
+            excludes workspace setup, artifact sealing, and evaluator replay. Failed attempted tasks
+            consume time; missing or non-invoked cells do not. Full-matrix timings are operational
+            resource-profile evidence under the recorded node, execution order, and concurrency (17
+            jobs for the current run). Model, tool, network, and local contention vary. This is not
+            pure task latency or an isolated API-frontier latency test. Cell durations can overlap
+            under concurrency. Signed matrix-stage start and finish times provide the full batch
+            wall-clock, which is counted once across the 17 configurations. TTFT and TPS are
+            unavailable and are not inferred.
+          </dd>
+        </div>
+        <div>
+          <dt>Interpretation</dt>
+          <dd>
+            AIQ, observed adapter elapsed time, and estimated API-equivalent USD remain separate.
+            Scatter and Pareto context do not create a combined ranking.
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
 
 export default async function MethodPage() {
   const repository = createAiqRepository();
@@ -100,9 +177,15 @@ export default async function MethodPage() {
                 <strong>equal-weight mean of 10 frozen-fixture domain means</strong>
               </div>
             </article>
+            <EfficiencyMethod />
           </div>
         </>
       )}
+      {result.state === 'unavailable' ? (
+        <div className="method-layout">
+          <EfficiencyMethod />
+        </div>
+      ) : null}
     </section>
   );
 }

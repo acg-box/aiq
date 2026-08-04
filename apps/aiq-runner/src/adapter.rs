@@ -4,8 +4,11 @@ pub(crate) mod process_group;
 
 #[cfg(test)]
 use std::cell::Cell;
+#[cfg(target_os = "macos")]
+use std::ffi::CStr;
 #[cfg(unix)]
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fmt::Debug;
 #[cfg(unix)]
 use std::fs::Permissions;
@@ -15,8 +18,12 @@ use std::io::{Seek, SeekFrom};
 use std::mem::MaybeUninit;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::AsRawFd;
+#[cfg(target_os = "macos")]
+use std::os::unix::ffi::OsStrExt;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
+#[cfg(unix)]
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 use std::{
 	collections::{BTreeMap, BTreeSet},
@@ -28,7 +35,6 @@ use std::{
 	net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream},
 	path::{Path, PathBuf},
 	process::{self, Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
-	str::FromStr,
 	sync::{
 		Arc,
 		mpsc::{self, RecvTimeoutError, Sender, SyncSender},
@@ -38,13 +44,13 @@ use std::{
 };
 
 #[cfg(unix)]
-use libc;
-#[cfg(unix)]
 use libc::O_NOFOLLOW;
 #[cfg(target_os = "linux")]
 use libc::ST_RDONLY;
 #[cfg(target_os = "macos")]
 use libc::UF_IMMUTABLE;
+#[cfg(target_os = "macos")]
+use libc::{F_GETPATH, PATH_MAX};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -72,9 +78,21 @@ thread_local! {
 	#[cfg(target_os = "linux")]
 	static FORCE_JSON_RPC_STOP_FAILURE: std::cell::Cell<bool> =
 		const { std::cell::Cell::new(false) };
+	static SCRATCH_REMOVE_HOOK: std::cell::RefCell<Option<ScratchRemoveHook>> =
+		const { std::cell::RefCell::new(None) };
+	static SCRATCH_QUARANTINE_HOOK: std::cell::RefCell<Option<ScratchQuarantineHook>> =
+		const { std::cell::RefCell::new(None) };
+	static FORCE_SCRATCH_IDENTITY_CAPTURE_FAILURE: std::cell::Cell<bool> =
+		const { std::cell::Cell::new(false) };
 }
 
 type CaptureThread = JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
+
+#[cfg(test)]
+type ScratchRemoveHook = Box<dyn FnMut(&Path) -> io::Result<()>>;
+
+#[cfg(test)]
+type ScratchQuarantineHook = Box<dyn FnMut(&Path, &Path)>;
 
 /// Maximum complete bytes accepted independently for stdout and stderr.
 pub const MAX_CAPTURE_BYTES: usize = 4 * 1_024 * 1_024;
@@ -120,6 +138,10 @@ const MAX_ID_TOKEN_PAYLOAD_BYTES: usize = 128 * 1_024;
 const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
 	["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"];
 
+#[cfg(unix)]
+static SCRATCH_QUARANTINE_SEQUENCE: std::sync::atomic::AtomicU64 =
+	std::sync::atomic::AtomicU64::new(0);
+
 /// An injectable process execution seam.
 pub trait Executor {
 	/// Executes one direct child process.
@@ -156,81 +178,6 @@ pub trait ChildProcessObserver: Send + Sync {
 pub trait ArtifactSink {
 	/// Stores one bounded artifact and returns a content-addressed reference.
 	fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError>;
-}
-
-/// Exact fail-closed egress proxy endpoint for the outer Codex process.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CodexEgressProxyEndpoint {
-	socket: SocketAddrV4,
-}
-impl CodexEgressProxyEndpoint {
-	/// Accepts only `http://` with one canonical private IPv4 address and a nonprivileged port.
-	pub fn parse(value: &str) -> Result<Self, ExecutorError> {
-		let authority = value.strip_prefix("http://").ok_or_else(|| {
-			ExecutorError::new("--codex-egress-proxy must use http:// with a private IPv4 address")
-		})?;
-		let (address, port) = authority.split_once(':').ok_or_else(|| {
-			ExecutorError::new(
-				"--codex-egress-proxy must contain one private IPv4 address and one port",
-			)
-		})?;
-
-		if address.is_empty() || port.is_empty() || port.contains(':') {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy must contain one private IPv4 address and one port",
-			));
-		}
-
-		let address = Ipv4Addr::from_str(address).map_err(|_| {
-			ExecutorError::new("--codex-egress-proxy address must be numeric private IPv4")
-		})?;
-		let port = u16::from_str(port).map_err(|_| {
-			ExecutorError::new(
-				"--codex-egress-proxy port must be an integer from 1024 through 65535",
-			)
-		})?;
-
-		if !address.is_private() || address.is_loopback() {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy address must be non-loopback private IPv4",
-			));
-		}
-		if port < 1_024 {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy port must be an integer from 1024 through 65535",
-			));
-		}
-
-		let endpoint = Self { socket: SocketAddrV4::new(address, port) };
-
-		if endpoint.as_str() != value {
-			return Err(ExecutorError::new(
-				"--codex-egress-proxy must use the exact canonical http://IPv4:port form",
-			));
-		}
-
-		Ok(endpoint)
-	}
-
-	/// Returns the exact environment value used for each proxy variable.
-	#[must_use]
-	pub fn as_str(&self) -> String {
-		format!("http://{}", self.socket)
-	}
-}
-
-impl Display for CodexEgressProxyEndpoint {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str(&self.as_str())
-	}
-}
-
-impl FromStr for CodexEgressProxyEndpoint {
-	type Err = ExecutorError;
-
-	fn from_str(value: &str) -> Result<Self, Self::Err> {
-		Self::parse(value)
-	}
 }
 
 /// A process request that does not use a shell.
@@ -297,7 +244,7 @@ impl Display for ExecutorError {
 }
 
 /// A structured Codex CLI failure.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AdapterFailure {
 	/// Stable failure kind.
@@ -314,12 +261,32 @@ pub struct AdapterFailure {
 	pub stderr_truncated: bool,
 	/// Content-addressed references for retained raw failure streams.
 	pub artifacts: Vec<ArtifactReference>,
+	/// Complete bounded stdout retained only in the invoking process so failed
+	/// attempts can sign the same tool and provider counters as their artifact.
+	#[serde(skip)]
+	pub(crate) stdout_full: String,
 }
 impl AdapterFailure {
 	/// Returns whether inline provider text was removed for durable preflight evidence.
 	#[must_use]
 	pub fn is_normalized_preflight(&self) -> bool {
 		self.stderr.is_empty() && self.message == normalized_preflight_failure_message(self.kind)
+	}
+}
+
+impl Debug for AdapterFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("AdapterFailure")
+			.field("kind", &self.kind)
+			.field("exit_code", &self.exit_code)
+			.field("stderr", &"[REDACTED]")
+			.field("message", &self.message)
+			.field("stdout_truncated", &self.stdout_truncated)
+			.field("stderr_truncated", &self.stderr_truncated)
+			.field("artifacts", &self.artifacts)
+			.field("stdout_full", &"[REDACTED]")
+			.finish()
 	}
 }
 
@@ -542,7 +509,7 @@ impl ArtifactSink for LocalArtifactSink {
 }
 
 /// Successful Codex CLI output.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct CodexOutput {
 	/// Small bounded standard-output preview.
 	pub stdout: String,
@@ -553,6 +520,18 @@ pub struct CodexOutput {
 	/// References for large raw streams.
 	pub artifacts: Vec<ArtifactReference>,
 	pub(crate) stdout_full: String,
+}
+impl Debug for CodexOutput {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("CodexOutput")
+			.field("stdout", &"[REDACTED]")
+			.field("stderr", &"[REDACTED]")
+			.field("exit_code", &self.exit_code)
+			.field("artifacts", &self.artifacts)
+			.field("stdout_full", &"[REDACTED]")
+			.finish()
+	}
 }
 
 /// One controlled Codex invocation.
@@ -587,8 +566,6 @@ pub struct CodexExecutionConfig {
 	pub permission_probe_executable: Option<PathBuf>,
 	/// Committed model-visible Node.js and ripgrep toolchain.
 	pub model_toolchain: Option<ValidatedModelToolchain>,
-	/// Exact proxy variables supplied only to the outer Codex process.
-	egress_proxy: Option<CodexEgressProxyEndpoint>,
 }
 impl CodexExecutionConfig {
 	/// Builds an explicit environment allowlist. Provider/API-key variables are never included.
@@ -623,16 +600,7 @@ impl CodexExecutionConfig {
 					None
 				}
 			},
-			egress_proxy: None,
 		}
-	}
-
-	/// Installs the exact fail-closed egress proxy for the outer Codex process.
-	#[must_use]
-	pub fn with_egress_proxy(mut self, endpoint: CodexEgressProxyEndpoint) -> Self {
-		self.egress_proxy = Some(endpoint);
-
-		self
 	}
 
 	/// Adds canonical sensitive roots that the benchmark workspace may be nested inside.
@@ -664,7 +632,7 @@ impl CodexExecutionConfig {
 	}
 }
 
-/// Public-safe proof that Codex selected the managed benchmark permission profile.
+/// Public-safe proof that Codex selected the explicit benchmark permission profile.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManagedPermissionProfileEvidence {
@@ -672,17 +640,17 @@ pub struct ManagedPermissionProfileEvidence {
 	pub schema_version: String,
 	/// Exact observed Codex CLI version.
 	pub codex_version: String,
-	/// Exact managed default permission profile.
+	/// Exact default permission profile supplied through strict CLI configuration.
 	pub default_permissions: String,
-	/// Sole managed allowed permission profile.
+	/// Exact selectable permission profile reported after applying strict CLI configuration.
 	pub allowed_permission_profile: String,
 	/// Exact active profile returned by model-free `thread/start`.
 	pub active_permission_profile: String,
-	/// Whether managed requirements are strict enough for a later Official run.
+	/// Whether the explicit profile is eligible for a later Official run.
 	pub official_eligible: bool,
-	/// Public-safe managed-requirements classification.
+	/// Public-safe classification of the external managed-requirements state.
 	pub managed_requirements_status: String,
-	/// Digest of the exact effective managed requirement fields returned by Codex.
+	/// Digest of the externally observed requirements result returned by Codex.
 	pub managed_requirements_digest: String,
 	/// Digest of the exact active model-free profile selection.
 	pub profile_selection_digest: String,
@@ -690,7 +658,7 @@ pub struct ManagedPermissionProfileEvidence {
 	pub evidence_digest: String,
 }
 impl ManagedPermissionProfileEvidence {
-	/// Returns the effective managed-requirements digest.
+	/// Returns the digest of the observed external managed-requirements state.
 	#[must_use]
 	pub fn managed_requirements_digest(&self) -> &str {
 		&self.managed_requirements_digest
@@ -703,14 +671,14 @@ impl ManagedPermissionProfileEvidence {
 	}
 }
 
-/// Expected digests for the exact managed profile required by an Official run.
+/// Expected digests for the explicit profile required by an Official run.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExpectedOfficialPermissionProfileDigests {
 	managed_requirements_digest: String,
 	profile_selection_digest: String,
 }
 impl ExpectedOfficialPermissionProfileDigests {
-	/// Returns the exact required managed-requirements digest.
+	/// Returns the digest of the expected absent managed-requirements state.
 	#[must_use]
 	pub fn managed_requirements_digest(&self) -> &str {
 		&self.managed_requirements_digest
@@ -835,16 +803,34 @@ where
 			invocation.max_tool_calls,
 			&scratch_environment,
 		);
-		let cleanup = scratch.cleanup();
+		let capture = match capture {
+			Ok(capture) => capture,
+			Err(failure) => match scratch.cleanup() {
+				Ok(()) => return Err(failure),
+				Err(cleanup_failure) => {
+					return Err(post_execution_integrity_failure(
+						Err(failure),
+						format!(
+							"Codex execution and post-invocation scratch cleanup failed: {}",
+							cleanup_failure.message
+						),
+					));
+				},
+			},
+		};
+		let classified = classify_capture(capture, &self.sink, true);
 
-		cleanup?;
+		if let Err(cleanup_failure) = scratch.cleanup() {
+			return Err(post_execution_integrity_failure(
+				classified,
+				format!("post-invocation scratch cleanup failed: {}", cleanup_failure.message),
+			));
+		}
 
-		let capture = capture?;
-
-		classify_capture(capture, &self.sink, true)
+		classified
 	}
 
-	/// Proves managed profile policy and active selection without starting a model turn.
+	/// Proves explicit profile policy and active selection without starting a model turn.
 	pub fn verify_managed_permission_profile(
 		&self,
 		workspace: &Path,
@@ -863,7 +849,10 @@ where
 			.map(|path| ProtectedBenchmarkPath { category: "denied_root", path })
 			.collect::<Vec<_>>();
 		let toolchain = self.config.model_toolchain.as_ref().ok_or_else(|| {
-			adapter_failure(AdapterFailureKind::Spawn, "managed profile requires a toolchain")
+			adapter_failure(
+				AdapterFailureKind::Spawn,
+				"permission profile probe requires a toolchain",
+			)
 		})?;
 
 		isolation::validate_protected_layout(
@@ -878,7 +867,7 @@ where
 		if !codex_version_at_least(&version, 0, 138, 0) {
 			return Err(adapter_failure(
 				AdapterFailureKind::Unsupported,
-				"managed permission profiles require Codex CLI 0.138.0 or later",
+				"permission profiles require Codex CLI 0.138.0 or later",
 			));
 		}
 
@@ -1069,7 +1058,7 @@ where
 		environment.insert("CODEX_HOME".to_owned(), codex_home);
 		environment.extend(extra_environment.clone());
 
-		apply_outer_proxy_environment(&mut environment, self.config.egress_proxy.as_ref());
+		clear_outer_proxy_environment(&mut environment);
 
 		let request = CommandRequest {
 			program: self.codex_binary.clone(),
@@ -1102,7 +1091,7 @@ where
 		environment.insert("CODEX_HOME".to_owned(), codex_home);
 		environment.extend(extra_environment.clone());
 
-		apply_outer_proxy_environment(&mut environment, self.config.egress_proxy.as_ref());
+		clear_outer_proxy_environment(&mut environment);
 
 		self.executor
 			.execute_json_rpc(
@@ -1396,7 +1385,7 @@ impl Executor for SystemExecutor {
 }
 
 /// Public-safe observation of one exact controlled ChatGPT credential file.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct ChatgptCredentialObservation {
 	/// Digest of locally decoded account, user, and plan claims.
 	///
@@ -1458,14 +1447,7 @@ struct ManagedPermissionProfileEvidenceBody<'a> {
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct ConfigRequirementsReadResult {
-	requirements: Option<ConfigRequirements>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ConfigRequirements {
-	allowed_permission_profiles: Option<BTreeMap<String, bool>>,
-	default_permissions: Option<String>,
+	requirements: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -1499,6 +1481,16 @@ struct JsonRpcResponse<T> {
 
 struct WorkspaceScratch {
 	path: PathBuf,
+	#[cfg(unix)]
+	identity: PinnedDirectoryIdentity,
+	#[cfg(unix)]
+	source_parent: PinnedDirectoryIdentity,
+	#[cfg(unix)]
+	quarantine_parent: PinnedDirectoryIdentity,
+	#[cfg(unix)]
+	basename: OsString,
+	#[cfg(unix)]
+	held_directory: File,
 	cleaned: bool,
 }
 impl WorkspaceScratch {
@@ -1509,23 +1501,84 @@ impl WorkspaceScratch {
 				format!("cannot resolve controlled scratch workspace: {error}"),
 			)
 		})?;
+		#[cfg(unix)]
+		let source_parent = PinnedDirectoryIdentity::capture(&workspace).map_err(|error| {
+			adapter_failure(
+				AdapterFailureKind::Spawn,
+				format!("cannot pin controlled scratch workspace: {error}"),
+			)
+		})?;
+		#[cfg(unix)]
+		let quarantine_parent_path = workspace.parent().ok_or_else(|| {
+			adapter_failure(AdapterFailureKind::Spawn, "controlled scratch workspace has no parent")
+		})?;
+		#[cfg(unix)]
+		let quarantine_parent =
+			PinnedDirectoryIdentity::capture(quarantine_parent_path).map_err(|error| {
+				adapter_failure(
+					AdapterFailureKind::Spawn,
+					format!("cannot pin controlled scratch quarantine parent: {error}"),
+				)
+			})?;
 
 		for nonce in 0_u8..16 {
 			let timestamp =
 				SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |value| value.as_nanos());
-			let path =
-				workspace.join(format!(".aiq-scratch-{}-{}-{nonce}", process::id(), timestamp));
+			let basename =
+				OsString::from(format!(".aiq-scratch-{}-{}-{nonce}", process::id(), timestamp));
+			let path = workspace.join(&basename);
 
-			match fs::create_dir(&path) {
-				Ok(()) => {
-					#[cfg(unix)]
-					fs::set_permissions(&path, Permissions::from_mode(0o700)).map_err(|error| {
+			#[cfg(unix)]
+			match source_parent.create_child_directory(&basename) {
+				Ok(held_directory) => {
+					let guard = CreatedScratchGuard {
+						source_parent: &source_parent,
+						quarantine_parent: &quarantine_parent,
+						source_name: basename.clone(),
+						held_directory: Some(held_directory),
+					};
+					#[cfg(test)]
+					let forced_failure =
+						FORCE_SCRATCH_IDENTITY_CAPTURE_FAILURE.with(|forced| forced.replace(false));
+					#[cfg(not(test))]
+					let forced_failure = false;
+					let identity = if forced_failure {
+						Err("forced controlled scratch identity capture failure".to_owned())
+					} else {
+						PinnedDirectoryIdentity::capture(&path)
+					}
+					.map_err(|error| {
 						adapter_failure(
 							AdapterFailureKind::Spawn,
-							format!("cannot restrict controlled scratch directory: {error}"),
+							format!("cannot pin controlled scratch directory: {error}"),
 						)
 					})?;
+					let held_directory = guard.disarm();
 
+					return Ok(Self {
+						path,
+						identity,
+						source_parent,
+						quarantine_parent,
+						basename,
+						held_directory,
+						cleaned: false,
+					});
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot create controlled scratch directory ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			}
+			#[cfg(not(unix))]
+			match fs::create_dir(&path) {
+				Ok(()) => {
 					return Ok(Self { path, cleaned: false });
 				},
 				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
@@ -1561,20 +1614,43 @@ impl WorkspaceScratch {
 	}
 
 	fn cleanup(mut self) -> Result<(), AdapterFailure> {
-		self.remove()?;
+		let result = self.remove();
 
 		self.cleaned = true;
 
-		Ok(())
+		result
 	}
 
 	fn remove(&self) -> Result<(), AdapterFailure> {
-		let metadata = fs::symlink_metadata(&self.path).map_err(|error| {
-			adapter_failure(
-				AdapterFailureKind::Spawn,
-				format!("cannot inspect controlled scratch directory: {error}"),
-			)
-		})?;
+		#[cfg(unix)]
+		return self.remove_unix();
+
+		#[cfg(not(unix))]
+		return self.remove_portable();
+	}
+
+	#[cfg(unix)]
+	fn remove_unix(&self) -> Result<(), AdapterFailure> {
+		let metadata = match fs::symlink_metadata(&self.path) {
+			Ok(metadata) => metadata,
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				return require_held_directory_unlinked(
+					&self.held_directory,
+					&self.source_parent,
+					&self.quarantine_parent,
+					"controlled scratch path disappeared without a proven unlink",
+				);
+			},
+			Err(error) => {
+				return Err(adapter_failure(
+					AdapterFailureKind::Spawn,
+					format!(
+						"cannot inspect controlled scratch directory ({})",
+						public_io_error_cause(&error)
+					),
+				));
+			},
+		};
 
 		if metadata.file_type().is_symlink() || !metadata.is_dir() {
 			return Err(adapter_failure(
@@ -1583,12 +1659,123 @@ impl WorkspaceScratch {
 			));
 		}
 
-		fs::remove_dir_all(&self.path).map_err(|error| {
+		self.identity.verify().map_err(|_| {
 			adapter_failure(
 				AdapterFailureKind::Spawn,
-				format!("cannot remove controlled scratch directory: {error}"),
+				"controlled scratch path identity changed before cleanup",
 			)
-		})
+		})?;
+
+		for nonce in 0_u8..16 {
+			let quarantine_name = scratch_quarantine_name(nonce);
+			let quarantine_path = self.quarantine_parent.path().join(&quarantine_name);
+
+			#[cfg(test)]
+			SCRATCH_QUARANTINE_HOOK.with(|slot| {
+				if let Some(hook) = slot.borrow_mut().as_mut() {
+					hook(&self.path, &quarantine_path);
+				}
+			});
+
+			match self.source_parent.rename_child_noreplace_to(
+				&self.basename,
+				&self.quarantine_parent,
+				&quarantine_name,
+			) {
+				Ok(()) => {
+					self.quarantine_parent
+						.verify_child_directory(&quarantine_name, &self.held_directory)
+						.map_err(|_| {
+							adapter_failure(
+								AdapterFailureKind::Spawn,
+								"controlled scratch identity changed during quarantine",
+							)
+						})?;
+
+					return remove_quarantined_scratch(
+						&self.source_parent,
+						&self.quarantine_parent,
+						&quarantine_name,
+						&quarantine_path,
+						&self.held_directory,
+					);
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+				Err(error) if error.kind() == ErrorKind::NotFound => {
+					return require_held_directory_unlinked(
+						&self.held_directory,
+						&self.source_parent,
+						&self.quarantine_parent,
+						"controlled scratch identity changed before quarantine",
+					);
+				},
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot quarantine controlled scratch directory ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			}
+		}
+
+		Err(adapter_failure(
+			AdapterFailureKind::Spawn,
+			"cannot allocate controlled scratch quarantine name",
+		))
+	}
+
+	#[cfg(not(unix))]
+	fn remove_portable(&self) -> Result<(), AdapterFailure> {
+		const MAX_ATTEMPTS: usize = 3;
+		const RETRY_DELAYS: [Duration; MAX_ATTEMPTS - 1] =
+			[Duration::from_millis(5), Duration::from_millis(15)];
+
+		for attempt in 1..=MAX_ATTEMPTS {
+			let metadata = match fs::symlink_metadata(&self.path) {
+				Ok(metadata) => metadata,
+				Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot inspect controlled scratch directory ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			};
+
+			if metadata.file_type().is_symlink() || !metadata.is_dir() {
+				return Err(adapter_failure(
+					AdapterFailureKind::Spawn,
+					"controlled scratch path changed type before cleanup",
+				));
+			}
+
+			match remove_scratch_directory(&self.path) {
+				Ok(()) => return Ok(()),
+				Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+				Err(error)
+					if attempt < MAX_ATTEMPTS && scratch_remove_error_is_transient(&error) =>
+				{
+					thread::sleep(RETRY_DELAYS[attempt - 1]);
+				},
+				Err(error) => {
+					return Err(adapter_failure(
+						AdapterFailureKind::Spawn,
+						format!(
+							"cannot remove controlled scratch directory after {attempt} attempt(s) ({})",
+							public_io_error_cause(&error)
+						),
+					));
+				},
+			}
+		}
+
+		unreachable!("bounded scratch cleanup loop must return")
 	}
 }
 
@@ -1596,6 +1783,52 @@ impl Drop for WorkspaceScratch {
 	fn drop(&mut self) {
 		if !self.cleaned {
 			let _ = self.remove();
+		}
+	}
+}
+
+#[cfg(unix)]
+struct CreatedScratchGuard<'a> {
+	source_parent: &'a PinnedDirectoryIdentity,
+	quarantine_parent: &'a PinnedDirectoryIdentity,
+	source_name: OsString,
+	held_directory: Option<File>,
+}
+#[cfg(unix)]
+impl CreatedScratchGuard<'_> {
+	fn disarm(mut self) -> File {
+		self.held_directory.take().expect("created scratch guard must hold a directory")
+	}
+}
+
+#[cfg(unix)]
+impl Drop for CreatedScratchGuard<'_> {
+	fn drop(&mut self) {
+		let Some(held_directory) = self.held_directory.as_ref() else { return };
+
+		for nonce in 0_u8..16 {
+			let quarantine_name = scratch_quarantine_name(nonce);
+
+			match self.source_parent.rename_child_noreplace_to(
+				&self.source_name,
+				self.quarantine_parent,
+				&quarantine_name,
+			) {
+				Ok(()) => {
+					if self
+						.quarantine_parent
+						.verify_child_directory(&quarantine_name, held_directory)
+						.is_ok()
+					{
+						let _ =
+							self.quarantine_parent.unlink_empty_child_directory(&quarantine_name);
+					}
+
+					return;
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+				Err(_) => return,
+			}
 		}
 	}
 }
@@ -1791,6 +2024,8 @@ pub enum AdapterFailureKind {
 	BudgetExceeded,
 	/// A captured stream exceeded the retained byte limit.
 	OutputTruncated,
+	/// A paid invocation completed, but its evidence or scratch cleanup failed.
+	WorkspaceIntegrity,
 }
 
 /// Sandbox policy accepted by safe benchmark invocations.
@@ -2158,7 +2393,7 @@ pub fn permission_policy_digest(
 	})
 }
 
-/// Computes the exact managed-profile digests an Official probe must observe.
+/// Computes the exact explicit-profile digests an Official probe must observe.
 pub fn expected_official_permission_profile_digests(
 	codex_version: &str,
 ) -> Result<ExpectedOfficialPermissionProfileDigests, AdapterFailure> {
@@ -2171,15 +2406,7 @@ pub fn expected_official_permission_profile_digests(
 		));
 	}
 
-	let requirements = ConfigRequirementsReadResult {
-		requirements: Some(ConfigRequirements {
-			allowed_permission_profiles: Some(BTreeMap::from([(
-				BENCHMARK_PERMISSION_PROFILE.to_owned(),
-				true,
-			)])),
-			default_permissions: Some(BENCHMARK_PERMISSION_PROFILE.to_owned()),
-		}),
-	};
+	let requirements = ConfigRequirementsReadResult { requirements: None };
 	let managed_requirements_digest = protocol::canonical_hash(&(
 		"aiq.managed-permission-requirements.v1",
 		codex_version,
@@ -2188,7 +2415,7 @@ pub fn expected_official_permission_profile_digests(
 	.map_err(|error| {
 		adapter_failure(
 			AdapterFailureKind::Spawn,
-			format!("cannot digest expected managed requirements: {error}"),
+			format!("cannot digest expected absent managed requirements: {error}"),
 		)
 	})?;
 	let profile_selection_digest = protocol::canonical_hash(&(
@@ -2209,24 +2436,181 @@ pub fn expected_official_permission_profile_digests(
 	})
 }
 
-fn apply_outer_proxy_environment(
-	environment: &mut BTreeMap<String, String>,
-	endpoint: Option<&CodexEgressProxyEndpoint>,
-) {
+fn remove_scratch_directory(path: &Path) -> io::Result<()> {
+	#[cfg(test)]
+	if let Some(result) = SCRATCH_REMOVE_HOOK
+		.with(|slot| slot.borrow_mut().as_mut().map(|remove_hook| remove_hook(path)))
+	{
+		return result;
+	}
+
+	fs::remove_dir_all(path)
+}
+
+#[cfg(unix)]
+fn scratch_quarantine_name(nonce: u8) -> OsString {
+	let timestamp =
+		SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |value| value.as_nanos());
+	let sequence = SCRATCH_QUARANTINE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+
+	OsString::from(format!(
+		".aiq-scratch-quarantine-{}-{timestamp}-{sequence}-{nonce}",
+		process::id()
+	))
+}
+
+#[cfg(unix)]
+fn remove_quarantined_scratch(
+	source_parent: &PinnedDirectoryIdentity,
+	quarantine_parent: &PinnedDirectoryIdentity,
+	quarantine_name: &OsStr,
+	quarantine_path: &Path,
+	held_directory: &File,
+) -> Result<(), AdapterFailure> {
+	const MAX_ATTEMPTS: usize = 3;
+	const RETRY_DELAYS: [Duration; MAX_ATTEMPTS - 1] =
+		[Duration::from_millis(5), Duration::from_millis(15)];
+
+	for attempt in 1..=MAX_ATTEMPTS {
+		quarantine_parent.verify_child_directory(quarantine_name, held_directory).map_err(
+			|_| {
+				adapter_failure(
+					AdapterFailureKind::Spawn,
+					"controlled scratch quarantine identity changed before removal",
+				)
+			},
+		)?;
+
+		match remove_scratch_directory(quarantine_path) {
+			Ok(()) => {
+				return require_held_directory_unlinked(
+					held_directory,
+					source_parent,
+					quarantine_parent,
+					"controlled scratch quarantine removal was not proven",
+				);
+			},
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				return require_held_directory_unlinked(
+					held_directory,
+					source_parent,
+					quarantine_parent,
+					"controlled scratch quarantine disappeared without a proven unlink",
+				);
+			},
+			Err(error) if attempt < MAX_ATTEMPTS && scratch_remove_error_is_transient(&error) => {
+				thread::sleep(RETRY_DELAYS[attempt - 1]);
+			},
+			Err(error) => {
+				return Err(adapter_failure(
+					AdapterFailureKind::Spawn,
+					format!(
+						"cannot remove controlled scratch quarantine after {attempt} attempt(s) ({})",
+						public_io_error_cause(&error)
+					),
+				));
+			},
+		}
+	}
+
+	unreachable!("bounded scratch quarantine cleanup loop must return")
+}
+
+#[cfg(unix)]
+fn require_held_directory_unlinked(
+	held_directory: &File,
+	source_parent: &PinnedDirectoryIdentity,
+	quarantine_parent: &PinnedDirectoryIdentity,
+	message: &'static str,
+) -> Result<(), AdapterFailure> {
+	source_parent.verify().map_err(|_| {
+		adapter_failure(AdapterFailureKind::Spawn, "controlled scratch source parent changed")
+	})?;
+	quarantine_parent.verify().map_err(|_| {
+		adapter_failure(AdapterFailureKind::Spawn, "controlled scratch quarantine parent changed")
+	})?;
+
+	let metadata = held_directory.metadata().map_err(|_| {
+		adapter_failure(
+			AdapterFailureKind::Spawn,
+			"cannot inspect held controlled scratch identity",
+		)
+	})?;
+
+	if held_directory_is_unlinked(held_directory, &metadata) {
+		Ok(())
+	} else {
+		Err(adapter_failure(AdapterFailureKind::Spawn, message))
+	}
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn held_directory_is_unlinked(_held_directory: &File, metadata: &Metadata) -> bool {
+	metadata.is_dir() && metadata.nlink() == 0
+}
+
+#[cfg(target_os = "macos")]
+fn held_directory_is_unlinked(held_directory: &File, metadata: &Metadata) -> bool {
+	if !metadata.is_dir() {
+		return false;
+	}
+
+	let mut path = [0_i8; PATH_MAX as usize];
+	let result = unsafe { libc::fcntl(held_directory.as_raw_fd(), F_GETPATH, path.as_mut_ptr()) };
+
+	if result != 0 {
+		return false;
+	}
+
+	let path = unsafe { CStr::from_ptr(path.as_ptr()) };
+	let path = Path::new(OsStr::from_bytes(path.to_bytes()));
+
+	matches!(fs::symlink_metadata(path), Err(error) if error.kind() == ErrorKind::NotFound)
+}
+
+fn scratch_remove_error_is_transient(error: &io::Error) -> bool {
+	matches!(
+		error.kind(),
+		ErrorKind::Interrupted
+			| ErrorKind::PermissionDenied
+			| ErrorKind::ResourceBusy
+			| ErrorKind::WouldBlock
+			| ErrorKind::TimedOut
+			| ErrorKind::DirectoryNotEmpty
+			| ErrorKind::Other
+	)
+}
+
+fn public_io_error_cause(error: &io::Error) -> String {
+	let kind = match error.kind() {
+		ErrorKind::NotFound => "not_found",
+		ErrorKind::PermissionDenied => "permission_denied",
+		ErrorKind::AlreadyExists => "already_exists",
+		ErrorKind::Interrupted => "interrupted",
+		ErrorKind::ResourceBusy => "resource_busy",
+		ErrorKind::WouldBlock => "would_block",
+		ErrorKind::TimedOut => "timed_out",
+		ErrorKind::DirectoryNotEmpty => "directory_not_empty",
+		ErrorKind::Other => "other",
+		_ => "io_error",
+	};
+
+	match error.raw_os_error() {
+		#[cfg(unix)]
+		Some(code) => format!("cause={kind}, errno={code}"),
+		#[cfg(not(unix))]
+		Some(code) => format!("cause={kind}, os_code={code}"),
+		None => format!("cause={kind}"),
+	}
+}
+
+fn clear_outer_proxy_environment(environment: &mut BTreeMap<String, String>) {
 	for key in CODEX_PROXY_ENVIRONMENT_KEYS {
 		environment.remove(key);
 	}
 
 	environment.remove("NO_PROXY");
 	environment.remove("no_proxy");
-
-	if let Some(endpoint) = endpoint {
-		let value = endpoint.as_str();
-
-		for key in CODEX_PROXY_ENVIRONMENT_KEYS {
-			environment.insert(key.to_owned(), value.clone());
-		}
-	}
 }
 
 fn spawn_process_thread<F, T>(name: &'static str, function: F) -> std::io::Result<JoinHandle<T>>
@@ -3694,23 +4078,10 @@ fn build_managed_profile_evidence(
 	})
 }
 
-fn classify_managed_requirements(
-	requirements: Option<&ConfigRequirements>,
-) -> (bool, &'static str) {
-	let Some(requirements) = requirements else {
-		return (false, "absent");
-	};
-	let exact_allowed = requirements.allowed_permission_profiles.as_ref().is_some_and(|allowed| {
-		allowed.len() == 1 && allowed.get(BENCHMARK_PERMISSION_PROFILE) == Some(&true)
-	});
-	let exact_default =
-		requirements.default_permissions.as_deref() == Some(BENCHMARK_PERMISSION_PROFILE);
-
-	match (exact_allowed, exact_default) {
-		(true, true) => (true, "exact"),
-		(false, true) => (false, "allowlist_not_exclusive"),
-		(true, false) => (false, "default_mismatch"),
-		(false, false) => (false, "allowlist_and_default_mismatch"),
+fn classify_managed_requirements(requirements: Option<&Value>) -> (bool, &'static str) {
+	match requirements {
+		None => (true, "absent_expected"),
+		Some(_) => (false, "present_unexpected"),
 	}
 }
 
@@ -4362,7 +4733,17 @@ where
 	let stdout_full = String::from_utf8_lossy(&capture.stdout).into_owned();
 	let stderr_full = String::from_utf8_lossy(&capture.stderr).into_owned();
 	let stderr = preview(&stderr_full);
-	let artifacts = capture_artifacts(&capture, sink, retain_stdout)?;
+	let artifacts =
+		capture_artifacts(&capture, sink, retain_stdout).map_err(|artifacts| AdapterFailure {
+			kind: AdapterFailureKind::WorkspaceIntegrity,
+			exit_code: capture.exit_code,
+			stderr: stderr.clone(),
+			message: "post-invocation output evidence retention failed".to_owned(),
+			stdout_truncated: capture.stdout_truncated,
+			stderr_truncated: capture.stderr_truncated,
+			artifacts,
+			stdout_full: stdout_full.clone(),
+		})?;
 
 	if capture.timed_out {
 		return Err(AdapterFailure {
@@ -4373,6 +4754,7 @@ where
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
+			stdout_full,
 		});
 	}
 
@@ -4389,6 +4771,7 @@ where
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
+			stdout_full,
 		});
 	}
 
@@ -4401,6 +4784,7 @@ where
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
+			stdout_full,
 		});
 	}
 	if capture.exit_code != Some(0) {
@@ -4450,6 +4834,7 @@ where
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts,
+			stdout_full,
 		});
 	}
 
@@ -4487,6 +4872,7 @@ fn normalize_optional_failure(failure: &mut Option<AdapterFailure>) {
 	let Some(failure) = failure else { return };
 
 	failure.stderr.clear();
+	failure.stdout_full.clear();
 
 	failure.message = normalized_preflight_failure_message(failure.kind).to_owned();
 }
@@ -4503,6 +4889,9 @@ fn normalized_preflight_failure_message(kind: AdapterFailureKind) -> &'static st
 		AdapterFailureKind::NonZeroExit => "Codex CLI exited unsuccessfully",
 		AdapterFailureKind::BudgetExceeded => "Codex CLI exceeded a configured live budget",
 		AdapterFailureKind::OutputTruncated => "Codex CLI output exceeded the safe capture limit",
+		AdapterFailureKind::WorkspaceIntegrity => {
+			"post-invocation output evidence or scratch cleanup failed"
+		},
 	}
 }
 
@@ -4510,7 +4899,7 @@ fn capture_artifacts<S>(
 	capture: &ExecutionCapture,
 	sink: &S,
 	retain_stdout: bool,
-) -> Result<Vec<ArtifactReference>, AdapterFailure>
+) -> Result<Vec<ArtifactReference>, Vec<ArtifactReference>>
 where
 	S: ArtifactSink,
 {
@@ -4519,17 +4908,43 @@ where
 	if !capture.stdout.is_empty()
 		&& (retain_stdout || capture.stdout.len() > MAX_INLINE_PREVIEW_BYTES)
 	{
-		artifacts.push(sink.put("stdout.jsonl", &capture.stdout).map_err(|error| {
-			adapter_failure(AdapterFailureKind::Spawn, format!("artifact sink failed: {error}"))
-		})?);
+		let stdout = sink.put("stdout.jsonl", &capture.stdout).map_err(|_| artifacts.clone())?;
+
+		artifacts.push(stdout);
 	}
 	if capture.stderr.len() > MAX_INLINE_PREVIEW_BYTES {
-		artifacts.push(sink.put("stderr.txt", &capture.stderr).map_err(|error| {
-			adapter_failure(AdapterFailureKind::Spawn, format!("artifact sink failed: {error}"))
-		})?);
+		let stderr = sink.put("stderr.txt", &capture.stderr).map_err(|_| artifacts.clone())?;
+
+		artifacts.push(stderr);
 	}
 
 	Ok(artifacts)
+}
+
+fn post_execution_integrity_failure(
+	classified: Result<CodexOutput, AdapterFailure>,
+	message: impl Into<String>,
+) -> AdapterFailure {
+	let message = message.into();
+
+	match classified {
+		Ok(output) => AdapterFailure {
+			kind: AdapterFailureKind::WorkspaceIntegrity,
+			exit_code: output.exit_code,
+			stderr: output.stderr,
+			message,
+			stdout_truncated: false,
+			stderr_truncated: false,
+			artifacts: output.artifacts,
+			stdout_full: output.stdout_full,
+		},
+		Err(mut failure) => {
+			failure.kind = AdapterFailureKind::WorkspaceIntegrity;
+			failure.message = message;
+
+			failure
+		},
+	}
 }
 
 fn preview(value: &str) -> String {
@@ -4547,6 +4962,7 @@ fn adapter_failure(kind: AdapterFailureKind, message: impl Into<String>) -> Adap
 		stdout_truncated: false,
 		stderr_truncated: false,
 		artifacts: Vec::new(),
+		stdout_full: String::new(),
 	}
 }
 
@@ -4706,6 +5122,8 @@ fn observation_time() -> String {
 
 #[cfg(test)]
 mod tests {
+	#[cfg(unix)]
+	use std::ffi::OsStr;
 	#[cfg(target_os = "macos")]
 	use std::fs::File;
 	#[cfg(unix)]
@@ -4715,12 +5133,14 @@ mod tests {
 	#[cfg(unix)]
 	use std::process::{Command, Stdio};
 	use std::{
-		cell::RefCell,
+		cell::{Cell, RefCell},
 		collections::{BTreeMap, BTreeSet},
 		env, fs,
 		io::{self, Read as _, Write as _},
 		path::PathBuf,
-		process, slice,
+		process,
+		rc::Rc,
+		slice,
 		sync::{
 			OnceLock,
 			atomic::{AtomicU32, AtomicU64, Ordering},
@@ -4732,6 +5152,7 @@ mod tests {
 
 	#[cfg(target_os = "linux")]
 	use crate::adapter::process_group;
+	use crate::pinned_path;
 	use crate::{
 		adapter::{
 			AdapterFailureKind, ArtifactReference, ArtifactSink, CODEX_ITEM_ACCOUNTING_VERSION,
@@ -4760,6 +5181,11 @@ mod tests {
 		read_only_kind: Option<CanaryFileKind>,
 	}
 
+	struct ScratchReplacingExecutor {
+		capture: RefCell<Option<ExecutionCapture>>,
+		replacement: RefCell<Option<PathBuf>>,
+	}
+
 	#[derive(Clone, Copy)]
 	enum CanaryFileKind {
 		Regular,
@@ -4770,6 +5196,8 @@ mod tests {
 	struct MemorySink {
 		values: RefCell<Vec<Vec<u8>>>,
 	}
+
+	struct FailingSink;
 
 	#[derive(Default)]
 	struct RecordingChildObserver {
@@ -4830,6 +5258,23 @@ mod tests {
 		}
 	}
 
+	impl Executor for ScratchReplacingExecutor {
+		fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			let scratch = request
+				.environment
+				.get("TMPDIR")
+				.map(PathBuf::from)
+				.expect("controlled scratch environment");
+
+			fs::remove_dir(&scratch).expect("remove controlled scratch directory");
+			fs::write(&scratch, b"hostile replacement").expect("replace scratch with file");
+
+			*self.replacement.borrow_mut() = Some(scratch);
+
+			Ok(self.capture.borrow_mut().take().expect("test must provide a capture"))
+		}
+	}
+
 	impl ArtifactSink for MemorySink {
 		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
 			self.values.borrow_mut().push(bytes.to_vec());
@@ -4840,6 +5285,12 @@ mod tests {
 				uri: format!("aiq-artifact://fixture/{kind}"),
 				bytes: bytes.len() as u64,
 			})
+		}
+	}
+
+	impl ArtifactSink for FailingSink {
+		fn put(&self, _kind: &str, _bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
+			Err(ExecutorError::new("synthetic sink failure"))
 		}
 	}
 
@@ -4881,6 +5332,21 @@ mod tests {
 			.expect("fixture request flag");
 
 		PathBuf::from(request.args.get(index + 1).expect("fixture request path"))
+	}
+
+	#[test]
+	fn adapter_failure_debug_redacts_captured_provider_streams() {
+		let mut failure =
+			super::adapter_failure(AdapterFailureKind::NonZeroExit, "controlled failure");
+
+		failure.stderr = "private stderr prompt".to_owned();
+		failure.stdout_full = "private stdout prompt".to_owned();
+
+		let debug = format!("{failure:?}");
+
+		assert!(!debug.contains("private stderr prompt"));
+		assert!(!debug.contains("private stdout prompt"));
+		assert!(debug.matches("[REDACTED]").count() >= 2);
 	}
 
 	fn base64url(bytes: &[u8]) -> String {
@@ -5038,6 +5504,351 @@ mod tests {
 	}
 
 	#[test]
+	fn model_removed_controlled_scratch_is_idempotent_cleanup() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+
+		fs::remove_dir_all(&scratch.path).expect("model removes its controlled scratch");
+
+		scratch.remove().expect("first missing cleanup");
+		scratch.remove().expect("repeated missing cleanup");
+		scratch.cleanup().expect("explicit missing cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_retries_one_transient_remove_failure() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+		let attempts = Rc::new(Cell::new(0_usize));
+		let hook_attempts = Rc::clone(&attempts);
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |path| {
+				let attempt = hook_attempts.get() + 1;
+
+				hook_attempts.set(attempt);
+
+				if attempt == 1 {
+					Err(io::Error::from(io::ErrorKind::PermissionDenied))
+				} else {
+					fs::remove_dir_all(path)
+				}
+			}));
+		});
+
+		let cleanup = scratch.cleanup();
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| *slot.borrow_mut() = None);
+
+		cleanup.expect("transient scratch removal must recover");
+
+		assert_eq!(attempts.get(), 2);
+		assert!(!path.exists());
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_reports_bounded_persistent_remove_failure_once() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+		let attempts = Rc::new(Cell::new(0_usize));
+		let hook_attempts = Rc::clone(&attempts);
+		let quarantine_path = Rc::new(RefCell::new(None::<PathBuf>));
+		let hook_quarantine_path = Rc::clone(&quarantine_path);
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |path| {
+				hook_attempts.set(hook_attempts.get() + 1);
+
+				*hook_quarantine_path.borrow_mut() = Some(path.to_owned());
+
+				Err(io::Error::from_raw_os_error(libc::EACCES))
+			}));
+		});
+
+		let error = scratch.cleanup().expect_err("persistent cleanup failure must surface");
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| *slot.borrow_mut() = None);
+
+		assert_eq!(attempts.get(), 3, "Drop must not silently retry after cleanup fails");
+		assert!(error.message.contains("after 3 attempt(s)"));
+		assert!(error.message.contains("cause=permission_denied"));
+		assert!(error.message.contains(&format!("errno={}", libc::EACCES)));
+		assert!(!error.message.contains(&path.display().to_string()));
+
+		let quarantine_path = quarantine_path.borrow_mut().take().expect("quarantine path");
+
+		assert!(!path.exists());
+
+		fs::remove_dir_all(quarantine_path).expect("remove persistent-failure fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_does_not_retry_same_type_identity_replacement() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+		let hook_calls = Rc::new(Cell::new(0_usize));
+		let hook_call_count = Rc::clone(&hook_calls);
+		let quarantine_path = Rc::new(RefCell::new(None::<PathBuf>));
+		let hook_quarantine_path = Rc::clone(&quarantine_path);
+
+		super::SCRATCH_QUARANTINE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |source, quarantine| {
+				hook_call_count.set(hook_call_count.get() + 1);
+
+				fs::remove_dir_all(source).expect("remove original controlled scratch");
+				fs::create_dir(source).expect("install hostile directory replacement");
+
+				*hook_quarantine_path.borrow_mut() = Some(quarantine.to_owned());
+			}));
+		});
+
+		let error = scratch.cleanup().expect_err("identity replacement must fail closed");
+
+		super::SCRATCH_QUARANTINE_HOOK.with(|slot| *slot.borrow_mut() = None);
+
+		assert_eq!(hook_calls.get(), 1);
+		assert!(error.message.contains("changed during quarantine"));
+		assert!(!path.exists());
+
+		let quarantine_path = quarantine_path.borrow_mut().take().expect("quarantine path");
+
+		assert!(quarantine_path.is_dir(), "cleanup must not delete the moved replacement");
+
+		fs::remove_dir(quarantine_path).expect("remove hostile directory replacement");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_pin_failure_cleans_the_new_empty_directory() {
+		let workspace = test_controlled_root().join("task").join(format!(
+			"pin-failure-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+
+		fs::create_dir(&workspace).expect("isolated pin-failure workspace");
+
+		super::FORCE_SCRATCH_IDENTITY_CAPTURE_FAILURE.with(|forced| forced.set(true));
+
+		let error = match super::WorkspaceScratch::create(&workspace) {
+			Ok(_) => panic!("forced identity capture failure must surface"),
+			Err(error) => error,
+		};
+
+		assert!(error.message.contains("cannot pin controlled scratch directory"));
+		assert_eq!(fs::read_dir(&workspace).expect("workspace entries").count(), 0);
+
+		fs::remove_dir(workspace).expect("remove pin-failure workspace");
+	}
+
+	#[test]
+	fn controlled_scratch_cleanup_rejects_hostile_type_change() {
+		let scratch = super::WorkspaceScratch::create(&test_controlled_root().join("task"))
+			.expect("controlled scratch");
+		let path = scratch.path.clone();
+
+		fs::remove_dir(&path).expect("remove original scratch directory");
+		fs::write(&path, b"hostile replacement").expect("replace scratch with regular file");
+
+		let error = scratch.remove().expect_err("type change must fail closed");
+
+		assert_eq!(error.kind, AdapterFailureKind::Spawn);
+		assert!(error.message.contains("changed type"));
+
+		drop(scratch);
+
+		assert!(path.is_file(), "Drop must not remove a hostile replacement");
+
+		fs::remove_file(path).expect("remove hostile test replacement");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn controlled_scratch_cleanup_rejects_a_model_renamed_directory() {
+		let workspace = test_controlled_root().join("task");
+		let scratch = super::WorkspaceScratch::create(&workspace).expect("controlled scratch");
+		let escaped = workspace.join(format!(
+			"escaped-scratch-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+
+		fs::rename(&scratch.path, &escaped).expect("model renames controlled scratch");
+
+		let error = scratch.cleanup().expect_err("renamed scratch must fail closed");
+
+		assert!(error.message.contains("disappeared without a proven unlink"));
+		assert!(escaped.is_dir(), "cleanup must not delete the renamed directory");
+
+		fs::remove_dir(escaped).expect("remove renamed scratch fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn pinned_child_creation_rolls_back_a_post_open_failure() {
+		let parent_path = test_controlled_root().join("task").join(format!(
+			"child-rollback-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+		let child_name = OsStr::new("new-child");
+
+		fs::create_dir(&parent_path).expect("child rollback parent");
+
+		let parent = crate::pinned_path::PinnedDirectoryIdentity::capture(&parent_path)
+			.expect("pinned child rollback parent");
+
+		pinned_path::force_create_child_post_open_failure();
+
+		let error =
+			parent.create_child_directory(child_name).expect_err("post-open failure must surface");
+
+		assert!(error.to_string().contains("forced post-open"));
+		assert!(!parent_path.join(child_name).exists());
+
+		drop(parent);
+
+		fs::remove_dir(parent_path).expect("remove child rollback parent");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn pinned_child_rollback_preserves_a_post_open_replacement() {
+		let parent_path = test_controlled_root().join("task").join(format!(
+			"child-rollback-replacement-{}",
+			PROCESS_FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+		));
+		let child_name = OsStr::new("new-child");
+		let child_path = parent_path.join(child_name);
+		let hook_child_path = child_path.clone();
+
+		fs::create_dir(&parent_path).expect("child rollback replacement parent");
+
+		let parent = crate::pinned_path::PinnedDirectoryIdentity::capture(&parent_path)
+			.expect("pinned child rollback replacement parent");
+
+		pinned_path::set_create_child_post_open_hook(move || {
+			fs::remove_dir(&hook_child_path).expect("remove original opened child");
+			fs::create_dir(&hook_child_path).expect("install empty child replacement");
+		});
+		pinned_path::force_create_child_post_open_failure();
+
+		let error = parent
+			.create_child_directory(child_name)
+			.expect_err("post-open replacement failure must surface");
+
+		assert!(error.to_string().contains("forced post-open"));
+		assert!(child_path.is_dir(), "rollback must preserve the replacement identity");
+
+		fs::remove_dir(child_path).expect("remove preserved child replacement");
+
+		drop(parent);
+
+		fs::remove_dir(parent_path).expect("remove child rollback replacement parent");
+	}
+
+	#[test]
+	fn paid_capture_survives_hostile_scratch_cleanup_failure() {
+		let stdout = br#"{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":5}}
+"#
+		.to_vec();
+		let adapter = CodexAdapter::new(
+			ScratchReplacingExecutor {
+				capture: RefCell::new(Some(capture(0, stdout.clone(), Vec::new()))),
+				replacement: RefCell::new(None),
+			},
+			MemorySink::default(),
+			"codex",
+			CodexExecutionConfig::isolated(test_controlled_root().join("codex-home"))
+				.with_denied_roots(vec![test_controlled_root().join("denied")]),
+		);
+		let failure = adapter.invoke(&invocation()).expect_err("cleanup failure must fail closed");
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert_eq!(failure.exit_code, Some(0));
+		assert!(failure.message.contains("changed type"));
+		assert_eq!(failure.stdout_full.as_bytes(), stdout);
+		assert!(failure.artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl"));
+		assert_eq!(adapter.sink.values.borrow().as_slice(), [stdout]);
+
+		let replacement =
+			adapter.executor.replacement.borrow_mut().take().expect("hostile replacement path");
+
+		fs::remove_file(replacement).expect("remove hostile replacement");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn executor_failure_and_cleanup_failure_become_workspace_integrity() {
+		let quarantine_path = Rc::new(RefCell::new(None::<PathBuf>));
+		let hook_quarantine_path = Rc::clone(&quarantine_path);
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| {
+			*slot.borrow_mut() = Some(Box::new(move |path| {
+				*hook_quarantine_path.borrow_mut() = Some(path.to_owned());
+
+				Err(io::Error::from_raw_os_error(libc::EACCES))
+			}));
+		});
+
+		let adapter = adapter(vec![Err(ExecutorError::new("synthetic executor failure"))]);
+		let failure = adapter.invoke(&invocation()).expect_err("combined failure must fail closed");
+
+		super::SCRATCH_REMOVE_HOOK.with(|slot| *slot.borrow_mut() = None);
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert!(failure.message.contains("execution and post-invocation scratch cleanup failed"));
+		assert!(failure.message.contains("cause=permission_denied"));
+		assert!(failure.stderr.is_empty());
+		assert!(failure.artifacts.is_empty());
+
+		let quarantine_path = quarantine_path.borrow_mut().take().expect("quarantine path");
+
+		fs::remove_dir_all(quarantine_path).expect("remove combined-failure fixture");
+	}
+
+	#[test]
+	fn paid_capture_survives_artifact_sink_failure_in_memory() {
+		let stdout = br#"{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":5}}
+"#
+		.to_vec();
+		let root = test_controlled_root();
+		let adapter = CodexAdapter::new(
+			FakeExecutor::from_order(vec![Ok(capture(0, stdout.clone(), Vec::new()))]),
+			FailingSink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home"))
+				.with_denied_roots(vec![root.join("denied")]),
+		);
+		let failure = adapter.invoke(&invocation()).expect_err("sink failure must fail closed");
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert_eq!(failure.exit_code, Some(0));
+		assert_eq!(failure.stdout_full.as_bytes(), stdout);
+		assert!(failure.artifacts.is_empty());
+	}
+
+	#[test]
+	fn successful_output_debug_redacts_all_inline_provider_text() {
+		let secret = "private provider stdout";
+		let output = super::CodexOutput {
+			stdout: secret.to_owned(),
+			stderr: "private provider stderr".to_owned(),
+			exit_code: Some(0),
+			artifacts: Vec::new(),
+			stdout_full: secret.to_owned(),
+		};
+		let rendered = format!("{output:?}");
+
+		assert!(!rendered.contains(secret));
+		assert!(!rendered.contains("private provider stderr"));
+		assert!(rendered.contains("[REDACTED]"));
+	}
+
+	#[test]
 	fn child_request_clears_secrets_and_disables_unapproved_surfaces() {
 		let adapter = adapter(vec![Ok(capture(0, b"ok".to_vec(), Vec::new()))]);
 
@@ -5124,95 +5935,22 @@ mod tests {
 	}
 
 	#[test]
-	fn codex_egress_proxy_parser_accepts_only_one_canonical_private_ipv4_endpoint() {
-		let accepted = super::CodexEgressProxyEndpoint::parse("http://10.23.45.67:3128")
-			.expect("canonical private proxy");
-
-		assert_eq!(accepted.as_str(), "http://10.23.45.67:3128");
-
-		for rejected in [
-			"https://10.23.45.67:3128",
-			"http://user@10.23.45.67:3128",
-			"http://proxy.internal:3128",
-			"http://127.0.0.1:3128",
-			"http://169.254.1.2:3128",
-			"http://8.8.8.8:3128",
-			"http://10.23.45.67:80",
-			"http://10.23.45.67:0",
-			"http://10.23.45.67:65536",
-			"http://10.23.45.67:03128",
-			"http://10.23.45.67:3128/",
-			"http://10.23.45.67:3128/path",
-			"http://10.23.45.67:3128?query",
-			"http://10.23.45.67:3128#fragment",
-			"http://10.23.45.67:3128:9",
-			" http://10.23.45.67:3128",
-		] {
-			assert!(
-				super::CodexEgressProxyEndpoint::parse(rejected).is_err(),
-				"{rejected} must be rejected"
-			);
-		}
-	}
-
-	#[test]
-	fn outer_codex_environment_uses_exact_proxy_variables_without_bypass_or_shell_inheritance() {
-		let root = test_controlled_root();
-		let proxy = super::CodexEgressProxyEndpoint::parse("http://192.168.50.4:8080")
-			.expect("private proxy");
-		let adapter = CodexAdapter::new(
-			FakeExecutor::from_order(vec![Ok(capture(0, b"ok".to_vec(), Vec::new()))]),
-			MemorySink::default(),
-			"codex",
-			CodexExecutionConfig::isolated(root.join("codex-home"))
-				.with_egress_proxy(proxy)
-				.with_denied_roots(vec![root.join("denied")]),
-		);
-
-		adapter.invoke(&invocation()).expect("capture must succeed");
-
-		let requests = adapter.executor.requests.borrow();
-		let request = requests.first().expect("request must be captured");
-
-		assert!(request.clear_environment);
-
-		for key in super::CODEX_PROXY_ENVIRONMENT_KEYS {
-			assert_eq!(
-				request.environment.get(key).map(String::as_str),
-				Some("http://192.168.50.4:8080")
-			);
-		}
-
-		assert!(!request.environment.contains_key("NO_PROXY"));
-		assert!(!request.environment.contains_key("no_proxy"));
-		assert!(
-			request
-				.args
-				.windows(2)
-				.any(|pair| { pair == ["--config", "shell_environment_policy.inherit=\"none\""] })
-		);
-		assert!(request.args.windows(2).any(|pair| {
-			pair == ["--config", "permissions.aiq_benchmark.network.enabled=false"]
-		}));
-		assert!(!request.args.iter().any(|argument| argument.contains("PROXY")));
-		assert!(!request.args.iter().any(|argument| argument.contains("proxy")));
-	}
-
-	#[test]
-	fn exact_proxy_environment_replaces_extra_values_and_removes_bypass() {
-		let proxy = super::CodexEgressProxyEndpoint::parse("http://172.20.0.9:8888")
-			.expect("private proxy");
+	fn direct_egress_removes_all_inherited_proxy_and_bypass_variables() {
 		let mut environment = BTreeMap::from([
 			("HTTP_PROXY".to_owned(), "http://203.0.113.1:9999".to_owned()),
-			("http_proxy".to_owned(), "http://203.0.113.2:9999".to_owned()),
+			("HTTPS_PROXY".to_owned(), "http://203.0.113.2:9999".to_owned()),
+			("ALL_PROXY".to_owned(), "socks5://203.0.113.3:9999".to_owned()),
+			("http_proxy".to_owned(), "http://203.0.113.4:9999".to_owned()),
+			("https_proxy".to_owned(), "http://203.0.113.5:9999".to_owned()),
+			("all_proxy".to_owned(), "socks5://203.0.113.6:9999".to_owned()),
 			("NO_PROXY".to_owned(), "*".to_owned()),
 			("no_proxy".to_owned(), "localhost".to_owned()),
 		]);
 
-		super::apply_outer_proxy_environment(&mut environment, Some(&proxy));
+		super::clear_outer_proxy_environment(&mut environment);
 
 		for key in super::CODEX_PROXY_ENVIRONMENT_KEYS {
-			assert_eq!(environment.get(key).map(String::as_str), Some("http://172.20.0.9:8888"));
+			assert!(!environment.contains_key(key));
 		}
 
 		assert!(!environment.contains_key("NO_PROXY"));
@@ -5222,7 +5960,7 @@ mod tests {
 	#[test]
 	fn managed_profile_exchange_uses_the_current_app_server_request_shapes() {
 		let root = test_controlled_root();
-		let (_, stdin) =
+		let (args, stdin) =
 			super::managed_profile_exchange(&root.join("task"), &[root.join("denied")])
 				.expect("managed profile exchange");
 		let requests = stdin
@@ -5234,6 +5972,14 @@ mod tests {
 			.collect::<Vec<_>>();
 
 		assert_eq!(requests.len(), 5);
+		assert!(args.contains(&"--strict-config".to_owned()));
+		assert!(
+			args.windows(2)
+				.any(|pair| { pair == ["--config", "default_permissions=\"aiq_benchmark\""] })
+		);
+		assert!(args.windows(2).any(|pair| {
+			pair == ["--config", "permissions.aiq_benchmark.network.enabled=false"]
+		}));
 		assert_eq!(requests[1], serde_json::json!({"method": "initialized"}));
 		assert_eq!(
 			requests[2],
@@ -5246,7 +5992,7 @@ mod tests {
 	}
 
 	#[test]
-	fn model_free_profile_allows_calibration_without_managed_defaults_but_marks_it_non_official() {
+	fn model_free_profile_requires_absent_external_managed_requirements_for_official() {
 		fn rpc(requirements: &str) -> Vec<u8> {
 			format!(
 				"{{\"id\":1,\"result\":{{\"requirements\":{requirements}}}}}\n{{\"id\":2,\"result\":{{\"data\":[{{\"id\":\"aiq_benchmark\",\"allowed\":true}}]}}}}\n{{\"id\":3,\"result\":{{\"activePermissionProfile\":{{\"id\":\"aiq_benchmark\"}}}}}}\n"
@@ -5255,18 +6001,18 @@ mod tests {
 		}
 
 		let workspace = test_controlled_root().join("task");
-		let calibration = adapter(vec![
+		let official = adapter(vec![
 			Ok(capture(0, b"codex-cli 0.138.0".to_vec(), Vec::new())),
 			Ok(capture(0, rpc("null"), Vec::new())),
 		]);
-		let calibration_evidence = calibration
+		let official_evidence = official
 			.verify_managed_permission_profile(&workspace)
-			.expect("active local profile is sufficient for calibration");
+			.expect("explicit profile with absent external requirements");
 
-		assert!(!calibration_evidence.official_eligible);
-		assert_eq!(calibration_evidence.managed_requirements_status, "absent");
+		assert!(official_evidence.official_eligible);
+		assert_eq!(official_evidence.managed_requirements_status, "absent_expected");
 
-		let official = adapter(vec![
+		let unexpected = adapter(vec![
 			Ok(capture(0, b"codex-cli 0.138.0".to_vec(), Vec::new())),
 			Ok(capture(
 				0,
@@ -5276,12 +6022,12 @@ mod tests {
 				Vec::new(),
 			)),
 		]);
-		let official_evidence = official
+		let unexpected_evidence = unexpected
 			.verify_managed_permission_profile(&workspace)
-			.expect("strict managed profile evidence");
+			.expect("actual profile selection is reported before Official classification");
 
-		assert!(official_evidence.official_eligible);
-		assert_eq!(official_evidence.managed_requirements_status, "exact");
+		assert!(!unexpected_evidence.official_eligible);
+		assert_eq!(unexpected_evidence.managed_requirements_status, "present_unexpected");
 
 		let planned = super::expected_official_permission_profile_digests("codex-cli 0.138.0")
 			.expect("Official profile expectation");
@@ -5295,11 +6041,11 @@ mod tests {
 			planned.profile_selection_digest()
 		);
 		assert_ne!(
-			calibration_evidence.managed_requirements_digest(),
+			unexpected_evidence.managed_requirements_digest(),
 			official_evidence.managed_requirements_digest()
 		);
 		assert_eq!(
-			calibration_evidence.profile_selection_digest(),
+			unexpected_evidence.profile_selection_digest(),
 			official_evidence.profile_selection_digest()
 		);
 	}
@@ -5656,7 +6402,7 @@ mod tests {
 
 	#[test]
 	#[ignore = "requires an installed Codex CLI with permission-profile support"]
-	fn real_codex_model_free_managed_profile_reports_local_and_official_eligibility() {
+	fn real_codex_model_free_profile_reports_expected_absent_managed_requirements() {
 		let codex_binary =
 			env::var("AIQ_REAL_CODEX_BINARY").expect("AIQ_REAL_CODEX_BINARY must name Codex");
 		let codex_home =
@@ -5687,25 +6433,15 @@ mod tests {
 		);
 		let evidence = adapter.verify_managed_permission_profile(&workspace);
 		let cleanup = fs::remove_dir_all(root);
-		let evidence = evidence.expect("model-free managed profile must select aiq_benchmark");
+		let evidence = evidence.expect("model-free explicit profile must select aiq_benchmark");
 		let planned = super::expected_official_permission_profile_digests(&evidence.codex_version)
 			.expect("planned Official profile");
 
 		assert_eq!(evidence.active_permission_profile, super::BENCHMARK_PERMISSION_PROFILE);
+		assert!(evidence.official_eligible);
+		assert_eq!(evidence.managed_requirements_status, "absent_expected");
+		assert_eq!(evidence.managed_requirements_digest(), planned.managed_requirements_digest());
 		assert_eq!(evidence.profile_selection_digest(), planned.profile_selection_digest());
-
-		if evidence.official_eligible {
-			assert_eq!(
-				evidence.managed_requirements_digest(),
-				planned.managed_requirements_digest()
-			);
-		} else {
-			assert_ne!(
-				evidence.managed_requirements_digest(),
-				planned.managed_requirements_digest()
-			);
-		}
-
 		assert!(!evidence.evidence_digest.is_empty());
 
 		cleanup.expect("fixture cleanup");

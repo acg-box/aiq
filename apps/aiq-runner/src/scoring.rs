@@ -16,10 +16,16 @@ use crate::{
 };
 
 /// Current scoring implementation version.
-pub const AIQ_SCORING_VERSION: &str = "1.0.0";
-/// Frozen full-metadata commitment for AIQ Core 1.0.0.
-pub const AIQ_CORE_V1_TASK_IDENTITY_SHA256: &str =
-	"sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3";
+pub const AIQ_SCORING_VERSION: &str = "1.0.2";
+/// Current controlled AIQ Core task-set identifier.
+pub const AIQ_TASK_SET_ID: &str = "aiq-core";
+/// Current controlled AIQ Core task-set release.
+pub const AIQ_TASK_SET_VERSION: &str = "1.0.2";
+/// Current benchmark release identifier.
+pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.2";
+/// Frozen full-metadata commitment for the current AIQ Core release.
+pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
+	"sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -330,6 +336,7 @@ struct Observation {
 struct FrozenCatalog {
 	task_set_id: String,
 	task_set_version: String,
+	#[serde(alias = "task_metadata_identity")]
 	identity_commitment: FrozenIdentityCommitment,
 	tasks: Vec<FrozenCatalogTask>,
 }
@@ -605,6 +612,19 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 	let Ok(catalog) = frozen_catalog() else {
 		return false;
 	};
+
+	task_bindings_match_catalog(tasks, catalog, AIQ_SCORING_VERSION)
+}
+
+pub(crate) fn task_bindings_match_core_catalog(tasks: &[TaskDefinition]) -> bool {
+	task_bindings_match_frozen_catalog(tasks)
+}
+
+fn task_bindings_match_catalog(
+	tasks: &[TaskDefinition],
+	catalog: FrozenCatalog,
+	expected_scorer_version: &str,
+) -> bool {
 	let expected = catalog
 		.tasks
 		.into_iter()
@@ -620,7 +640,7 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 					&& task.domain == frozen.domain
 					&& task.difficulty == frozen.difficulty
 					&& task.cluster_id.as_deref() == Some(frozen.cluster_id.as_str())
-					&& task.scorer_version == AIQ_SCORING_VERSION
+					&& task.scorer_version == expected_scorer_version
 					&& task.scorer_version == frozen.evaluator.scorer_version
 			})
 		})
@@ -780,7 +800,7 @@ fn publication_tier(
 }
 
 fn frozen_catalog() -> Result<FrozenCatalog, serde_json::Error> {
-	serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
+	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"))
 }
 
 fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
@@ -788,9 +808,9 @@ fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
 		return false;
 	};
 
-	if catalog.task_set_id != "aiq-core"
-		|| catalog.task_set_version != AIQ_SCORING_VERSION
-		|| catalog.identity_commitment.digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+	if catalog.task_set_id != AIQ_TASK_SET_ID
+		|| catalog.task_set_version != AIQ_TASK_SET_VERSION
+		|| catalog.identity_commitment.digest != AIQ_CORE_TASK_IDENTITY_SHA256
 		|| catalog.tasks.len() != 72
 		|| tasks.len() != catalog.tasks.len()
 	{

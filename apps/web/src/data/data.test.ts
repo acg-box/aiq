@@ -17,13 +17,21 @@ import {
 } from './format.ts';
 import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
 import {
+  CALIBRATION_MODEL_CONFIGURATIONS,
+  CALIBRATION_RUN_PAGE_SIZE,
   CANONICAL_MODEL_MATRIX_IDS,
-  createAiqRepository,
+  buildSeedCalibrationRunPage,
   buildSeedRunHistoryPage,
+  calibrationExplanationSummaryForOutcome,
+  calibrationFailureCodeForOutcome,
+  calibrationStatusForOutcome,
   classifyPublicDataConfiguration,
   collectPaginatedRows,
+  createAiqRepository,
+  decodeCalibrationRunCursor,
   joinModelMatrixWithLeaderboard,
   decodeRunHistoryCursor,
+  encodeCalibrationRunCursor,
   encodeRunHistoryCursor,
   mapRunRow,
   parseDistributedRadarRows,
@@ -35,6 +43,7 @@ import {
   type DistributedRadarRow,
   type LeaderboardRow,
   type ModelMatrixRow,
+  type RunResultRow,
   type RunRow,
   TREND_MAX_POINTS,
   type TrendRow,
@@ -51,7 +60,13 @@ import {
 } from './seed.ts';
 import { TREND_SERIES_STYLES } from './trend-styles.ts';
 import { classifyDataProvenance } from './provenance.ts';
-import { isScoredLeaderboardEntry, type RadarNode } from './types.ts';
+import {
+  CALIBRATION_OUTCOMES,
+  isScoredLeaderboardEntry,
+  type PublicCalibrationResult,
+  type PublicCalibrationRunSummary,
+  type RadarNode,
+} from './types.ts';
 
 function distributedRadarRowFromNode(node: RadarNode): DistributedRadarRow {
   return {
@@ -112,6 +127,22 @@ function trendRow(matrixId: string, recordedAt: string): TrendRow {
   };
 }
 
+function calibrationScoreRepository(row: unknown): SupabaseAiqRepository {
+  return new SupabaseAiqRepository(
+    'https://example.supabase.co',
+    'sb_publishable_public_example',
+    async () => Response.json([row]),
+  );
+}
+
+function modelEfficiencyRepository(rows: readonly unknown[]): SupabaseAiqRepository {
+  return new SupabaseAiqRepository(
+    'https://example.supabase.co',
+    'sb_publishable_public_example',
+    async () => Response.json(rows),
+  );
+}
+
 void describe('seed repository', () => {
   void it('provides the complete 6/6/5 model and reasoning matrix', () => {
     assert.equal(seedLeaderboard.length, 17);
@@ -146,7 +177,7 @@ void describe('seed repository', () => {
           entry.sampleSize === 72 &&
           entry.coveragePercent === 100 &&
           entry.missing === 0 &&
-          entry.scoringVersion === '1.0.0',
+          entry.scoringVersion === '1.0.2',
       ),
     );
   });
@@ -183,6 +214,10 @@ void describe('seed repository', () => {
       'public_distributed_radar',
       'public_scoring_versions',
       'public_task_coverage',
+      'public_calibration_runs',
+      'public_calibration_results',
+      'public_calibration_scores',
+      'public_model_efficiency',
     ]);
   });
 
@@ -319,7 +354,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         failures: null,
         missing: null,
-        scoring_version: '1.0.0',
+        scoring_version: '1.0.2',
         score_status: 'not_applicable',
         synthetic: false,
       },
@@ -333,7 +368,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         failures: null,
         missing: null,
-        scoring_version: '1.0.0',
+        scoring_version: '1.0.2',
         score_status: 'missing',
         synthetic: false,
       },
@@ -407,7 +442,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       failures: 0,
       missing: 0,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
       score_status: null,
       synthetic: false,
     };
@@ -488,7 +523,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       failures: 1,
       missing: 0,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
       score_status: 'official',
       synthetic: false,
     };
@@ -545,7 +580,28 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.0');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.2');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.2');
+    assert.ok(
+      seedRuns
+        .flatMap((run) => run.tasks)
+        .every(
+          (task) =>
+            task.latencyMs === null &&
+            task.latencyEvidenceLevel === null &&
+            task.inputTokens === null &&
+            task.cachedInputTokens === null &&
+            task.cacheWriteInputTokens === null &&
+            task.outputTokens === null &&
+            task.reasoningOutputTokens === null &&
+            task.totalTokens === null &&
+            task.tokenUsageSourceLevel === null &&
+            task.tokenUsageEvidenceLevel === null &&
+            task.standardApiEquivalentUsdNanos === null &&
+            task.costEvidenceLevel === null,
+        ),
+      'synthetic task fixtures must not claim retained invocation efficiency evidence',
+    );
     assert.deepEqual(
       Object.fromEntries(
         benchmarkDomainConfig.map((domain) => [
@@ -603,6 +659,41 @@ void describe('presentation aggregates', () => {
       validResults: 0,
       notApplicable: true,
     });
+  });
+
+  void it('keeps synthetic calibration invocation counts and efficiency evidence unavailable', async () => {
+    const repository = new SeedAiqRepository();
+    const page = await repository.listCalibrationRunPage();
+    const seed = page.runs[0];
+    assert.ok(seed);
+    const detail = await repository.getCalibrationRun(seed.id, {
+      modelFamily: 'sol',
+      reasoningEffort: 'low',
+    });
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.2');
+    const scores = await repository.listCalibrationScores(seed.id);
+    assert.deepEqual(
+      scores.map((score) => ({
+        attempted: score.attemptedResultCount,
+        invoked: score.invokedResultCount,
+        elapsed: score.adapterElapsedObservedResultCount,
+        elapsedMs: score.observedTotalWallMs,
+        durationEvidence: score.durationEvidenceLevel,
+        tokenCount: score.tokenObservedResultCount,
+        pricedCount: score.pricedResultCount,
+      })),
+      [
+        {
+          attempted: 0,
+          invoked: 0,
+          elapsed: 0,
+          elapsedMs: null,
+          durationEvidence: null,
+          tokenCount: 0,
+          pricedCount: 0,
+        },
+      ],
+    );
   });
 
   void it('keeps leaderboard scores consistent with equal-weight fixed-domain means', () => {
@@ -772,6 +863,406 @@ void describe('presentation aggregates', () => {
     ]);
   });
 
+  void it('reads only one stable 72-task slice from a 1,224-cell calibration run', async () => {
+    const runId = `run_${'c'.repeat(64)}`;
+    const run = {
+      run_id: runId,
+      classification: 'local_calibration_non_official',
+      scoring_version: '1.0.2',
+      selected_task_count: 72,
+      selected_model_count: 17,
+      result_count: 1_224,
+      started_at: '2026-08-02T12:00:00Z',
+      completed_at: '2026-08-02T13:00:00Z',
+      verified_at: '2026-08-02T13:01:00Z',
+      published_at: '2026-08-02T13:02:00Z',
+      replay_status: 'evaluator_replayed',
+      official: false,
+      ranking_eligible: false,
+      pricing_currency: 'USD',
+      pricing_processing_tier: 'standard',
+    };
+    const rows = CALIBRATION_MODEL_CONFIGURATIONS.flatMap((configuration, configurationIndex) =>
+      Array.from({ length: 72 }, (_, taskIndex) => {
+        const outcome = CALIBRATION_OUTCOMES[taskIndex % CALIBRATION_OUTCOMES.length] ?? 'correct';
+        const unavailableContextBand = taskIndex === 1;
+        const explanationSummary = calibrationExplanationSummaryForOutcome(outcome);
+        const failureCode =
+          outcome === 'invalid' && taskIndex === 8
+            ? 'workspace_integrity'
+            : calibrationFailureCodeForOutcome(outcome);
+        const index = configurationIndex * 72 + taskIndex;
+        return {
+          result_id: `result_${index.toString(16).padStart(64, '0')}`,
+          run_id: runId,
+          task_id: `task-${String(taskIndex).padStart(2, '0')}`,
+          task_version: '1.0.2',
+          domain: 'coding',
+          model_family: configuration.modelFamily,
+          reasoning_effort: configuration.reasoningEffort,
+          outcome,
+          status: calibrationStatusForOutcome(outcome),
+          failure_code: failureCode,
+          explanation_code: failureCode,
+          explanation_summary: explanationSummary,
+          task_score:
+            outcome === 'correct'
+              ? 1
+              : outcome === 'partial'
+                ? 0.5
+                : outcome === 'invalid' || outcome === 'missing' || outcome === 'not_applicable'
+                  ? null
+                  : 0,
+          latency_ms: null,
+          latency_evidence_level: null,
+          input_tokens: unavailableContextBand ? 272_001 : null,
+          cached_input_tokens: unavailableContextBand ? 0 : null,
+          cache_write_input_tokens: unavailableContextBand ? 0 : null,
+          output_tokens: unavailableContextBand ? 0 : null,
+          reasoning_output_tokens: unavailableContextBand ? 0 : null,
+          total_tokens: unavailableContextBand ? 272_001 : null,
+          token_usage_source_level: unavailableContextBand ? 'provider_reported' : null,
+          token_usage_evidence_level: unavailableContextBand ? 'verifier_recomputed' : null,
+          standard_api_equivalent_usd_nanos: null,
+          cost_estimator_status: unavailableContextBand
+            ? 'unavailable_context_band'
+            : 'unavailable_missing_usage',
+          cost_evidence_level: null,
+          cost_estimator_limitations: [
+            'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing',
+          ],
+          cost_method: 'standard_api_equivalent_text_token_estimate',
+          cost_version: 'aiq.standard-api-equivalent-usd.v1',
+          cost_as_of: '2026-08-02',
+          cost_source: 'https://developers.openai.com/api/docs/pricing',
+          pricing_currency: 'USD',
+          pricing_processing_tier: 'standard',
+        };
+      }),
+    );
+    const resultRequests: Request[] = [];
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname.endsWith('/public_calibration_runs')) return Response.json([run]);
+        resultRequests.push(request.clone());
+        const family = url.searchParams.get('model_family')?.replace(/^eq\./, '');
+        const effort = url.searchParams.get('reasoning_effort')?.replace(/^eq\./, '');
+        return Response.json(
+          rows.filter((row) => row.model_family === family && row.reasoning_effort === effort),
+        );
+      },
+    );
+
+    const calibration = await repository.getCalibrationRun(runId, {
+      modelFamily: 'sol',
+      reasoningEffort: 'low',
+    });
+    assert.ok(calibration);
+    assert.equal(rows.length, 1_224);
+    assert.equal(calibration.resultCount, 1_224);
+    assert.equal(calibration.results.length, 72);
+    assert.equal(new Set(calibration.results.map((result) => result.taskId)).size, 72);
+    assert.deepEqual(
+      new Set(calibration.results.map((result) => result.outcome)),
+      new Set(CALIBRATION_OUTCOMES),
+    );
+    assert.ok(
+      calibration.results.every(
+        (result) => result.status === calibrationStatusForOutcome(result.outcome),
+      ),
+    );
+    for (const outcome of ['incorrect', 'missing'] as const) {
+      const outcomeResult: PublicCalibrationResult | undefined = calibration.results.find(
+        (result) => result.outcome === outcome,
+      );
+      assert.ok(outcomeResult);
+      assert.equal(outcomeResult.failureCode, null);
+      assert.equal(outcomeResult.explanationCode, null);
+      assert.equal(
+        outcomeResult.explanationSummary,
+        calibrationExplanationSummaryForOutcome(outcome),
+      );
+    }
+    const workspaceIntegrity = calibration.results.find(
+      (result) => result.failureCode === 'workspace_integrity',
+    );
+    assert.ok(workspaceIntegrity);
+    assert.equal(workspaceIntegrity.outcome, 'invalid');
+    assert.equal(workspaceIntegrity.status, 'invalid');
+    assert.equal(workspaceIntegrity.taskScore, null);
+    assert.equal(workspaceIntegrity.explanationCode, 'workspace_integrity');
+    assert.equal(
+      workspaceIntegrity.explanationSummary,
+      'Benchmark infrastructure invalidated this result; an audited rerun is required.',
+    );
+    const contextBand = calibration.results.find(
+      (result) => result.costEstimatorStatus === 'unavailable_context_band',
+    );
+    assert.ok(contextBand);
+    assert.equal(contextBand.standardApiEquivalentUsdNanos, null);
+    assert.equal(contextBand.costEvidenceLevel, null);
+    assert.deepEqual(contextBand.costEstimatorLimitations, [
+      'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing',
+    ]);
+    assert.equal(resultRequests.length, 1);
+    const resultUrl = new URL(resultRequests[0]?.url ?? 'invalid:');
+    assert.equal(resultUrl.searchParams.get('run_id'), `eq.${runId}`);
+    assert.equal(resultUrl.searchParams.get('model_family'), 'eq.sol');
+    assert.equal(resultUrl.searchParams.get('reasoning_effort'), 'eq.low');
+    assert.equal(resultUrl.searchParams.get('limit'), '73');
+    assert.equal(resultRequests[0]?.headers.get('range'), null);
+
+    const selectedRows = rows.slice(0, 72);
+    const duplicateRows = [...selectedRows];
+    const duplicatedRow = duplicateRows[0];
+    assert.ok(duplicatedRow);
+    duplicateRows[1] = duplicatedRow;
+    const duplicateRepository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const url = new URL(request.url);
+        if (url.pathname.endsWith('/public_calibration_runs')) return Response.json([run]);
+        return Response.json(duplicateRows);
+      },
+    );
+    await assert.rejects(
+      duplicateRepository.getCalibrationRun(runId, {
+        modelFamily: 'sol',
+        reasoningEffort: 'low',
+      }),
+      /incomplete or unstable result ordering/,
+    );
+
+    await assert.rejects(
+      repository.getCalibrationRun(runId, {
+        modelFamily: 'luna',
+        reasoningEffort: 'ultra',
+      }),
+      /unsupported calibration model configuration/,
+    );
+
+    const invalidRows = [
+      selectedRows.map((row, index) => (index === 2 ? { ...row, status: 'passed' } : row)),
+      selectedRows.map((row, index) =>
+        index === 2 ? { ...row, explanation_summary: 'An internal detail leaked.' } : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 3
+          ? Object.assign({}, row, {
+              failure_code: 'unsafe code',
+              explanation_code: 'unsafe code',
+            })
+          : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 3 ? Object.assign({}, row, { failure_code: null, explanation_code: null }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1 ? Object.assign({}, row, { standard_api_equivalent_usd_nanos: 1 }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1 ? Object.assign({}, row, { cost_evidence_level: 'verifier_recomputed' }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1 ? Object.assign({}, row, { input_tokens: 272_000 }) : row,
+      ),
+      selectedRows.map((row, index) =>
+        index === 1
+          ? Object.assign({}, row, { cost_estimator_status: 'unavailable_invalid_usage' })
+          : row,
+      ),
+    ];
+    await Promise.all(
+      invalidRows.map(async (invalidResultRows) => {
+        const invalidRepository = new SupabaseAiqRepository(
+          'https://example.supabase.co',
+          'sb_publishable_public_example',
+          async (input, init) => {
+            const request = input instanceof Request ? input : new Request(input, init);
+            const url = new URL(request.url);
+            return Response.json(
+              url.pathname.endsWith('/public_calibration_runs') ? [run] : invalidResultRows,
+            );
+          },
+        );
+        await assert.rejects(
+          invalidRepository.getCalibrationRun(runId, {
+            modelFamily: 'sol',
+            reasoningEffort: 'low',
+          }),
+          /public_calibration_results: invalid response shape/,
+        );
+      }),
+    );
+  });
+
+  void it('preserves selected, attempted, adapter-invoked, and elapsed counts', async () => {
+    const runId = `run_${'e'.repeat(64)}`;
+    const scoreRow = {
+      run_id: runId,
+      model_family: 'terra',
+      reasoning_effort: 'medium',
+      descriptive_status: 'conditional_observed',
+      aiq: 57.5,
+      task_resampling_sensitivity_lower: 45,
+      task_resampling_sensitivity_upper: 68,
+      task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
+      result_count: 72,
+      sample_size: 69,
+      coverage_percent: (69 / 72) * 100,
+      observed_total_wall_ms: 700_000,
+      observed_median_wall_ms: 10_000,
+      observed_p95_wall_ms: 12_000,
+      observed_time_sample_count: 70,
+      observed_time_coverage_percent: (70 / 72) * 100,
+      duration_evidence_level: 'runner_observed',
+      input_tokens: null,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      output_tokens: null,
+      reasoning_output_tokens: null,
+      total_tokens: null,
+      token_usage_sample_count: 0,
+      token_usage_source_level: null,
+      token_usage_evidence_level: null,
+      standard_api_equivalent_usd_nanos: null,
+      estimated_cost_sample_count: 0,
+      token_usage_coverage_percent: 0,
+      cost_estimator_status: 'unavailable_missing_usage',
+      cost_evidence_level: null,
+      cost_estimator_limitations: [
+        'Standard short-context API-equivalent comparison only. This is not actual subscription spend.',
+      ],
+      pricing_source: 'https://developers.openai.com/api/docs/pricing',
+      pricing_as_of: '2026-08-02',
+      pricing_version: 'aiq.standard-api-equivalent-usd.v1',
+      pricing_currency: 'USD',
+      pricing_processing_tier: 'standard',
+      attempted_result_count: 71,
+      invoked_result_count: 70,
+      adapter_elapsed_observed_result_count: 70,
+      token_observed_result_count: 0,
+      priced_result_count: 0,
+    };
+    const scores = await calibrationScoreRepository(scoreRow).listCalibrationScores(runId);
+    assert.equal(scores.length, 1);
+    assert.equal(scores[0]?.resultCount, 72);
+    assert.equal(scores[0]?.attemptedResultCount, 71);
+    assert.equal(scores[0]?.invokedResultCount, 70);
+    assert.equal(scores[0]?.adapterElapsedObservedResultCount, 70);
+
+    await Promise.all(
+      [
+        { ...scoreRow, attempted_result_count: 73 },
+        { ...scoreRow, invoked_result_count: 72 },
+        { ...scoreRow, adapter_elapsed_observed_result_count: 71 },
+      ].map((invalid) =>
+        assert.rejects(
+          calibrationScoreRepository(invalid).listCalibrationScores(runId),
+          /public_calibration_scores: invalid response shape/,
+        ),
+      ),
+    );
+  });
+
+  void it('keeps signed matrix wall-clock separate from summed concurrent cell time', async () => {
+    const runId = `run_${'d'.repeat(64)}`;
+    const matrixBatchId = `run_${'b'.repeat(64)}`;
+    const row = {
+      run_id: runId,
+      matrix_batch_id: matrixBatchId,
+      model_family: 'sol',
+      reasoning_effort: 'low',
+      matrix_batch_elapsed_ms: 7_652_000,
+      summed_cell_adapter_elapsed_ms: 12_240_000,
+      observed_median_wall_ms: 160_000,
+      observed_p95_wall_ms: 240_000,
+      observed_time_sample_count: 72,
+      observed_time_coverage_percent: 100,
+      duration_evidence_level: 'runner_observed',
+      input_tokens: null,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      output_tokens: null,
+      reasoning_output_tokens: null,
+      total_tokens: null,
+      token_usage_sample_count: 0,
+      token_usage_coverage_percent: null,
+      input_token_coverage_count: null,
+      input_token_coverage_percent: null,
+      cached_input_token_coverage_count: null,
+      cached_input_token_coverage_percent: null,
+      cache_write_input_token_coverage_count: null,
+      cache_write_input_token_coverage_percent: null,
+      output_token_coverage_count: null,
+      output_token_coverage_percent: null,
+      reasoning_token_coverage_count: null,
+      reasoning_token_coverage_percent: null,
+      total_token_coverage_count: null,
+      total_token_coverage_percent: null,
+      token_usage_source_level: null,
+      token_usage_evidence_level: null,
+      standard_api_equivalent_usd_nanos: null,
+      cost_estimator_status: 'unavailable_missing_usage',
+      cost_evidence_level: null,
+      cost_method: null,
+      pricing_source: null,
+      pricing_as_of: null,
+      pricing_version: null,
+      pricing_currency: null,
+      pricing_processing_tier: null,
+      result_count: 72,
+      attempted_result_count: 72,
+      invoked_result_count: 72,
+      adapter_elapsed_observed_result_count: 72,
+      token_observed_result_count: 0,
+      priced_result_count: 0,
+      execution_concurrency: 17,
+      estimated_cost_sample_count: 0,
+      cost_estimator_limitations: [],
+      pricing_rates: [],
+      cost_formula: null,
+    };
+    const [efficiency] = await modelEfficiencyRepository([row]).listModelEfficiency([runId]);
+    assert.equal(efficiency?.matrixBatchId, matrixBatchId);
+    assert.equal(efficiency?.matrixBatchElapsedMs, 7_652_000);
+    assert.equal(efficiency?.summedCellAdapterElapsedMs, 12_240_000);
+
+    await Promise.all(
+      [
+        { ...row, observed_time_coverage_percent: 99 },
+        { ...row, adapter_elapsed_observed_result_count: 71 },
+        { ...row, token_usage_sample_count: 73 },
+        { ...row, priced_result_count: 73, estimated_cost_sample_count: 73 },
+      ].map((invalid) =>
+        assert.rejects(
+          modelEfficiencyRepository([invalid]).listModelEfficiency([runId]),
+          /public_model_efficiency: invalid response shape/,
+        ),
+      ),
+    );
+
+    const secondRunId = `run_${'e'.repeat(64)}`;
+    await assert.rejects(
+      modelEfficiencyRepository([
+        row,
+        {
+          ...row,
+          run_id: secondRunId,
+          model_family: 'terra',
+          matrix_batch_elapsed_ms: 7_652_001,
+        },
+      ]).listModelEfficiency([runId, secondRunId]),
+      /inconsistent matrix batch elapsed time/,
+    );
+  });
+
   void it('uses stable keyset cursors to navigate all run-history pages', async () => {
     const first = buildSeedRunHistoryPage(seedRuns);
     assert.equal(first.runs.length, RUN_HISTORY_PAGE_SIZE);
@@ -811,6 +1302,67 @@ void describe('presentation aggregates', () => {
       id: firstRun.id,
     });
     assert.throws(() => decodeRunHistoryCursor('not-json'), /Invalid run-history cursor/);
+  });
+
+  void it('retains more than 1,000 calibration runs behind 20-row keyset pages', () => {
+    const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `calibration-${String(index).padStart(4, '0')}`,
+      classification: 'local_calibration_non_official',
+      scoringVersion: '1.0.2',
+      selectedTaskCount: 72,
+      selectedModelCount: 17,
+      resultCount: 1_224,
+      startedAt: '2026-08-02T12:00:00.000Z',
+      completedAt: '2026-08-02T13:00:00.000Z',
+      verifiedAt: '2026-08-02T13:01:00.000Z',
+      publishedAt: '2026-08-02T13:02:00.000Z',
+      replayStatus: 'evaluator_replayed',
+      official: false,
+      rankingEligible: false,
+      pricingCurrency: 'USD',
+      pricingProcessingTier: 'standard',
+      synthetic: false,
+    }));
+    const expectedIds = runs.map((run) => run.id);
+    const pages = [];
+    let page = buildSeedCalibrationRunPage(runs);
+    for (;;) {
+      pages.push(page);
+      assert.ok(page.runs.length <= CALIBRATION_RUN_PAGE_SIZE);
+      if (!page.olderCursor) break;
+      page = buildSeedCalibrationRunPage(runs, {
+        direction: 'older',
+        cursor: page.olderCursor,
+      });
+    }
+    assert.equal(pages.length, Math.ceil(runs.length / CALIBRATION_RUN_PAGE_SIZE));
+    assert.deepEqual(
+      pages.flatMap((candidate) => candidate.runs.map((run) => run.id)),
+      expectedIds,
+    );
+
+    const newerIds: string[] = [];
+    page = pages.at(-1) ?? page;
+    newerIds.unshift(...page.runs.map((run) => run.id));
+    while (page.newerCursor) {
+      page = buildSeedCalibrationRunPage(runs, {
+        direction: 'newer',
+        cursor: page.newerCursor,
+      });
+      newerIds.unshift(...page.runs.map((run) => run.id));
+    }
+    assert.deepEqual(newerIds, expectedIds);
+    assert.equal(new Set(newerIds).size, 1_001);
+
+    const boundary = runs[0];
+    assert.ok(boundary);
+    assert.deepEqual(
+      decodeCalibrationRunCursor(
+        encodeCalibrationRunCursor({ startedAt: boundary.startedAt, id: boundary.id }),
+      ),
+      { startedAt: boundary.startedAt, id: boundary.id },
+    );
+    assert.throws(() => decodeCalibrationRunCursor('not-json'), /Invalid calibration-run cursor/);
   });
 
   void it('preserves every tie-heavy seed run while paging older and newer', () => {
@@ -1124,6 +1676,26 @@ void describe('presentation aggregates', () => {
     );
   });
 
+  void it('preserves a mixed calibration matrix provenance state', async () => {
+    const liveRepository = createAiqRepository({
+      NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co',
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_example',
+    });
+    const scoreProvenance = Array.from({ length: 17 }, (_, index) => ({
+      configuration: CALIBRATION_MODEL_CONFIGURATIONS[index],
+      synthetic: index === 0,
+    }));
+    const result = await readPublicData(
+      liveRepository,
+      () => Promise.resolve(scoreProvenance),
+      [],
+      (value) => value.length === 0,
+      (value) => value.map((score) => score.synthetic),
+    );
+    assert.equal(result.state, 'mixed');
+    assert.equal(result.data.length, 17);
+  });
+
   void it('formats never-seen and stale registry observations without liveness claims', () => {
     const now = new Date('2026-07-24T15:00:00.000Z');
     assert.equal(formatLastObservation(null, now), 'Never observed');
@@ -1146,8 +1718,8 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.0',
-      scoring_version: '1.0.0',
+      benchmark_version: 'aiq-core@1.0.2',
+      scoring_version: '1.0.2',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
       region: 'us-east-1',
@@ -1208,6 +1780,99 @@ void describe('presentation aggregates', () => {
         ].every((value) => value === null),
       ),
     );
+  });
+
+  void it('preserves evaluator outcomes separately from execution-failure explanations', () => {
+    const template = seedRuns[0];
+    assert.ok(template);
+    const row: RunRow = {
+      id: 'run-public-explanations',
+      matrix_id: template.entryId,
+      started_at: template.startedAt,
+      completed_at: template.completedAt,
+      benchmark_version: template.benchmarkVersion,
+      scoring_version: template.scoringVersion,
+      prompt_set_digest: template.promptSetDigest,
+      runner_commit: template.runnerCommit,
+      region: template.region,
+      synthetic: false,
+      corpus_release_id: template.corpusReleaseId,
+      corpus_commitment_sha256: template.corpusCommitmentSha256,
+      catalog_digest: template.catalogDigest,
+      task_set_digest: template.taskSetDigest,
+      preflight_digest: template.preflightDigest,
+      runtime_digest: template.runtimeDigest,
+      run_class: 'official',
+      permission_evidence_digest: template.permissionEvidenceDigest,
+      result_count: 3,
+      passed_count: 0,
+      failed_count: 3,
+      invalid_count: 0,
+      missing_count: 0,
+      not_applicable_count: 0,
+      observed_count: 3,
+      coverage_percent: 100,
+      covered_domain_count: 1,
+      provisional_domain_count: 0,
+    };
+    const evaluatorIncorrect: RunResultRow = {
+      run_id: row.id,
+      id: 'result-evaluator-incorrect',
+      task: 'Evaluator-incorrect result',
+      domain: 'coding',
+      status: 'failed',
+      score: 0,
+      explanation_code: null,
+      explanation_summary: 'The evaluator rejected the response.',
+      retryable: null,
+      tools: [],
+      latency_ms: 1_500,
+      latency_evidence_level: 'runner_observed',
+      input_tokens: null,
+      cached_input_tokens: null,
+      cache_write_input_tokens: null,
+      output_tokens: null,
+      reasoning_output_tokens: null,
+      total_tokens: null,
+      token_usage_source_level: null,
+      token_usage_evidence_level: null,
+      standard_api_equivalent_usd_nanos: null,
+      cost_estimator_status: 'unavailable_missing_usage',
+      cost_evidence_level: null,
+    };
+    const timeout: RunResultRow = {
+      ...evaluatorIncorrect,
+      id: 'result-timeout',
+      task: 'Timed-out result',
+      explanation_code: 'timeout',
+      explanation_summary: 'The task exceeded its time limit.',
+      retryable: true,
+    };
+    const budgetExceeded: RunResultRow = {
+      ...evaluatorIncorrect,
+      id: 'result-budget-exceeded',
+      task: 'Budget-exhausted result',
+      explanation_code: 'budget_exceeded',
+      explanation_summary: 'The task exceeded a resource budget.',
+      retryable: false,
+    };
+
+    const tasks = mapRunRow(row, [evaluatorIncorrect, timeout, budgetExceeded]).tasks;
+    assert.deepEqual(tasks[0]?.explanation, {
+      code: null,
+      summary: 'The evaluator rejected the response.',
+      retryable: null,
+    });
+    assert.deepEqual(tasks[1]?.explanation, {
+      code: 'timeout',
+      summary: 'The task exceeded its time limit.',
+      retryable: true,
+    });
+    assert.deepEqual(tasks[2]?.explanation, {
+      code: 'budget_exceeded',
+      summary: 'The task exceeded a resource budget.',
+      retryable: false,
+    });
   });
 
   void it('provides distinct color and line-pattern encodings for all 17 trend series', () => {

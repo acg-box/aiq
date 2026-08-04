@@ -21,6 +21,18 @@ cargo run -p aiq-runner -- validate \
   --public-tasks benchmarks/examples/tasks
 ```
 
+Validate the complete controlled AIQ Core corpus and the separate six-unit
+contrast corpus without invoking Codex:
+
+```sh
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
+```
+
+The first command requires the 72 controlled tasks and their commitment. The
+second also requires the exact expected contrast-corpus commitment digest. Both
+commands validate fixtures, evaluators, the committed runtime, and toolchain.
+
 Create deterministic synthetic output without invoking Codex:
 
 ```sh
@@ -31,6 +43,7 @@ Show the exact arguments for live commands:
 
 ```sh
 cargo run -p aiq-runner -- preflight --help
+cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- run --help
 cargo run -p aiq-runner -- score --help
 cargo run -p aiq-runner -- package --help
@@ -47,24 +60,39 @@ A live preflight requires:
 - an absolute committed Node.js runtime;
 - the controlled Node.js and ripgrep toolchain root;
 - the exact Codex executable and Codex home;
-- the operator-selected private HTTP proxy;
 - a durable output path.
+
+The only first-release Official runtime runs directly on the operator's Apple
+Silicon Mac with the Mac's direct network connection.
 
 A live run also requires controlled task, workspace, evaluator, schedule,
 execution, artifact, preflight-cache, and checkpoint paths. The CLI checks path
 separation and commitments before it starts task processes.
 
-The credential source must stay unchanged during controlled work. On Linux,
-put `auth.json` on a read-only file-system mount. For local macOS validation,
-use a separate private Codex home and make its copied `auth.json` owner
+Run `admit-permissions` before any paid Official preflight. It validates the
+exact 72-by-17 controlled inputs, selected schedule occurrence, conservative
+all-17-model capacity, worker count, and the create-new run, score, and package
+output plan. It then verifies the explicit `aiq_benchmark` profile selected by
+strict CLI configuration and all Codex sandbox canaries. External managed
+requirements are not required and must be absent. The command writes one
+private create-once `aiq.official-permission-admission.v2` receipt without
+invoking a model or creating a checkpoint. Pass that receipt as
+`--official-admission` to
+`preflight`, `run`, `score`, and `package`. Only the exact configuration probes
+in `preflight` and runnable task cells in `run` invoke models. `score` and
+`package` are model-free. A refreshed preflight is bound to the same receipt and
+cannot be reused for another Official plan.
+
+The credential source must stay unchanged during controlled work. Use a
+separate private Codex home on the Mac and make its copied `auth.json` owner
 immutable with `uchg`. Do not change the active Codex profile to meet this
-requirement. Other operating systems fail closed.
+requirement. First-release Official execution uses this native Mac runtime.
 
 The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
 
 ## Execution and evidence
@@ -78,16 +106,39 @@ the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,
 network policy, environment, source manifest, executables, and permission
 evidence in `aiq.run-provenance.v2`.
 
+Each adapter-invoked result can record runner-observed wall time. When Codex
+reports token counters, the verifier parses the retained evidence again and
+records the provider-reported input, cache, output, and reasoning counters. The
+versioned cost field is a Standard short-context API-equivalent estimate. It is
+not the actual cost of a ChatGPT or Codex subscription.
+
 Task workspaces are fresh copies. The runner stores content-addressed workspace
 and evaluator artifacts under the controlled artifact root. It writes a durable
 checkpoint so an interrupted run can continue without replacing completed
-evidence.
+evidence. An Official run holds its create-new output with an exact run-bound
+reservation. The same run can reopen that unchanged reservation after an
+interruption. Another run, modified reservation, symbolic link, or hard-link
+alias fails closed. Every parent of a future protected file must be owned by
+the current user and must not be writable by group or other. The runner holds
+a nonblocking kernel advisory lock on each parent before it reads or writes
+preflight state or invokes a paid capability probe. It holds the locks through
+execution and finalization. All writers in this trusted boundary must use the
+runner lock. Do not give an untrusted process the same user identity or write
+access to these directories. Protected writes use macOS atomic rename
+primitives and fail closed when those primitives are unavailable.
 
 ## Scoring, packaging, and submission
 
 `score` applies the checked-in AIQ v1 scoring rules to a saved run. `package`
 binds the run and its artifacts into one signed `aiq.result-package.v3` envelope.
 The runner key must match the run's preflight node identity.
+
+File outputs are create-new protected outputs. Existing regular files,
+hard-link aliases, and symbolic links are rejected without changing their
+bytes when the required single-writer directory boundary is intact. The runner
+`normalize` audit path can record commitments-only or failed
+verification, but it cannot claim `evaluator_replayed`; only `aiq-verifier` can
+produce that production disposition after actual replay.
 
 `submit` uploads the required private artifacts, stores the exact package bytes,
 and calls `/api/submissions`. A successful queue response means unverified
@@ -107,7 +158,9 @@ example. The second uses operator-supplied controlled inputs. Their summaries
 are diagnostic evidence only. For the controlled smoke,
 `AIQ_CONTROLLED_SUBSCRIPTION_SMOKE_EXECUTION_ROOT` must name a new private
 absolute path outside the repository, Codex home, controlled inputs, artifact
-root, and model toolchain.
+root, and model toolchain. `AIQ_REAL_PERMISSION_PROBE_BINARY` must name the
+exact `aiq-runner` executable. Direct network access is the only supported
+first-release path.
 
 ## Safety
 

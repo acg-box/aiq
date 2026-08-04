@@ -3,6 +3,7 @@
 extern crate self as aiq_runner;
 
 pub mod adapter;
+pub mod calibration_verification;
 pub mod capacity;
 pub mod cli;
 pub mod corpus_commitment;
@@ -19,12 +20,14 @@ pub mod scoring;
 pub mod submission;
 pub mod task;
 
+mod official_admission;
 mod pinned_path;
 
 pub use self::{
 	model::{MODEL_MATRIX, ModelConfig},
 	scoring::{
-		AIQ_SCORING_VERSION, ScoreContext, ScoreReport, score_model, score_model_with_context,
+		AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
+		ScoreContext, ScoreReport, score_model, score_model_with_context,
 	},
 };
 
