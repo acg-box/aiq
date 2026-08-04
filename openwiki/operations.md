@@ -9,22 +9,38 @@ tags: ['operations', 'validation', 'runbook']
 
 ## Release status
 
-Release acceptance is not complete. The intended personal resources are
-Supabase organization `ACG Box`, Supabase project `aiq`, Vercel scope `acgbox`,
-Vercel project `aiq`, and apex domain `https://aiq.wiki`. Do not infer their
-current external state from repository text. Record it only after live checks.
+AIQ production is live at `https://aiq.wiki` from the approved source. Vercel
+scope `acgbox` hosts project `aiq`; Supabase organization `ACG Box` hosts project
+`aiq` on PostgreSQL 17.6 with reference `xxnszykaeapolqdnhalx` and private
+`aiq-submission-packages` and `aiq-runner-artifacts` buckets. Production merge
+and deployment commit is `725b88954359ab8f0950f896674b3e8684d3ae85`. The
+apex is canonical, and `www.aiq.wiki` returns a path-preserving permanent `308`
+redirect. Generated, automatic `*.vercel.app` URLs cannot be permanently
+deleted. The current generated URLs emit `noindex`.
 
-Repository head defines one greenfield AIQ Core `1.0.2` contract, scoring
-`1.0.2`, and one 12-view database desired state. The native Apple Silicon macOS
-runner completed one real Official benchmark batch. It covered 17 configurations
-and 72 tasks, for 1,224 task-level observations. This is one batch, not 1,224
-separate benchmark runs. Of these observations, 1,218 completed and 6 had
-genuine failures. The wall-clock time was `1:37:24.411`. Verified public token
-and API-equivalent cost aggregates remain unavailable until verifier replay. The
-retained provider evidence contains supported counters for 1,218 observations,
-but it contains no provider-reported total-token counter. Actual subscription
-spend is unknown. Do not report missing values as zero. Native verifier replay
-and production publication remain pending.
+The native Apple Silicon macOS runner completed one real, non-synthetic Official
+AIQ Core `1.0.2` matrix with 17 configurations and 72 tasks each, or 1,224
+task-level results. The native verifier replayed it, and the distinct publisher
+published it as `trusted_verified`. Of the results, 1,218 completed and 6
+failed. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
+and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
+(`1:37:24.411`). Cost coverage is 1,208
+`estimated`, 10 `unavailable_context_band`, and 6
+`unavailable_missing_usage`. The $125.403257240 subtotal is a Standard
+API-equivalent estimate for priced results, not actual ChatGPT subscription
+spend or a complete matrix total. Missing values are not zero. See
+[Benchmark Method](benchmark-method.md) for evidence semantics and
+[Deployment Handoff](deployment-handoff.md) for production acceptance checks.
+
+Public views contain 17 runs, 1,224 results, 17 leaderboard rows, 17
+model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
+artifact bindings, including 19 capability artifacts.
+
+No cloud runner or verifier worker and no recurring benchmark or Storage
+schedule exist. The repository validates supplied schedule occurrences but does
+not create a scheduler. The twice-daily benchmark schedule and its next run are
+pending operator work; do not authorize recurring automation through this
+runbook.
 
 ## Toolchain
 
@@ -200,7 +216,8 @@ exact configuration probes and runnable task cells in `run` invoke models.
 Pass the same private admission receipt through preflight, run, score, and
 package. Keep the checkpoint, run reservation, artifacts, and preflight cache
 after an interruption; resume the unchanged run instead of creating another
-paid run. The first release executes one complete 17-by-72 Official matrix.
+paid run. The current production publication used one complete 17-by-72
+Official matrix.
 
 ## Verifier worker
 
@@ -346,6 +363,22 @@ cargo make smoke-live-web
 Local PostgREST must expose only `public` and use `anon` as its anonymous role.
 The test harness supplies a fixed non-secret publishable-key-shaped value. Its
 loopback proxy supplies the `/rest/v1` prefix that Supabase adds in production.
+
+After publishing an Official matrix or changing the production deployment, run
+the bounded, secret-free production browser acceptance gate:
+
+```sh
+AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production
+```
+
+The gate issues only read requests while checking the exact 17-run and
+1,224-result public inventory, efficiency semantics, readiness response,
+unauthenticated write rejection, mobile layout, and selected accessibility
+rules. It deliberately fails when later runs appear until the release contract
+is revised. Use `npm run test:browser:production-contract --workspace @aiq/web`
+for the local published-data mock. These commands validate the public surface
+accepted in [Deployment Handoff](deployment-handoff.md); they do not start a
+server, deploy resources, or create recurring automation.
 
 ## Storage lifecycle
 

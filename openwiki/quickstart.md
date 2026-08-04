@@ -23,28 +23,46 @@ The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
 Repository source makes AIQ Core `1.0.2` and scorer `1.0.2` the current
-Official contract. This is one greenfield launch. No Official benchmark history
-has been published.
+Official contract. Production publishes one complete Official matrix; there is
+no earlier Official benchmark history.
 
 ## Deployment status
 
-Production release acceptance is not complete. The target external resources
-are the personal Supabase organization `ACG Box`, Supabase project `aiq`,
-personal Vercel scope `acgbox`, Vercel project `aiq`, and apex domain
-`https://aiq.wiki`. Repository documentation does not claim that these external
-resources exist or are configured until live acceptance records that evidence.
+AIQ production is live at `https://aiq.wiki`. The personal Vercel scope
+`acgbox` hosts project `aiq`, and the personal Supabase organization `ACG Box`
+hosts project `aiq` on PostgreSQL 17.6 with reference
+`xxnszykaeapolqdnhalx`. The two production Storage buckets,
+`aiq-submission-packages` and `aiq-runner-artifacts`, are private. Production
+merge and deployment commit is
+`725b88954359ab8f0950f896674b3e8684d3ae85`. The apex is canonical;
+`www.aiq.wiki` preserves paths through a permanent `308` redirect. Generated,
+automatic `*.vercel.app` URLs cannot be permanently deleted. The current
+generated URLs emit `noindex`.
 
-The only Official path uses native Rust runner and verifier release binaries on
-this Apple Silicon macOS host with direct network access. The runner completed
-one real `72 × 17` Official benchmark batch, or 1,224 task-level observations.
-This is one batch, not 1,224 separate benchmark runs. Of these observations,
-1,218 completed and 6 had genuine failures. The wall-clock time was
-`1:37:24.411`. Verified public token and API-equivalent cost aggregates remain
-unavailable until verifier replay. The retained provider evidence contains
-supported counters for 1,218 observations, but it contains no provider-reported
-total-token counter. Actual subscription spend is unknown. Do not report missing
-values as zero. The result remains unpublished until verifier replay and
-publisher publication complete.
+The native Apple Silicon macOS runner completed one real `72 × 17` Official
+benchmark batch, or 1,224 task-level results. This is one matrix, not 1,224
+separate benchmark runs. The native verifier replayed the deterministic
+evaluators, and the distinct publisher published the matrix as
+`trusted_verified` through the flow described in
+[Architecture and Runtime](architecture-and-runtime.md). Of the results, 1,218
+completed and 6 failed: 329 `correct`, 259 `partial`, 630 `incorrect`, 5
+`timeout`, and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
+(`1:37:24.411`).
+
+Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
+`unavailable_missing_usage` results. The $125.403257240 priced subtotal is a
+Standard API-equivalent estimate for the 1,208 priced results, not actual ChatGPT
+subscription spend or a complete batch total. Missing values are not zero; the
+measurement rules live in [Benchmark Method](benchmark-method.md). Public views
+contain 17 runs, 1,224 results, and 17 rows each for the leaderboard, model
+efficiency, and model matrix. Publication created 4,395 artifact bindings,
+including 19 capability artifacts.
+
+Production still has no cloud runner or verifier worker and no recurring
+benchmark or Storage schedule. The twice-daily benchmark schedule and its next
+run remain pending operations work; documentation must not authorize recurring
+automation. See [Deployment Handoff](deployment-handoff.md) for the remaining
+operational boundary.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
