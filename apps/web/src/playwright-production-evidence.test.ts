@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   type ProductionEfficiencyEvidence,
+  productionPageEvidenceExpectation,
   validateProductionEfficiencyEvidence,
+  validateProductionPageEvidence,
   validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
 
@@ -37,6 +39,9 @@ function evidence(
     ...overrides,
   };
 }
+
+const publishedPageEvidence = (label: string) => ({ label, state: 'Published evidence' });
+const emptyPageEvidence = (label: string) => ({ label, state: 'No published evidence' });
 
 void describe('production efficiency evidence', () => {
   void it('accepts complete, partial, and unavailable evidence', () => {
@@ -191,5 +196,108 @@ void describe('production efficiency evidence', () => {
         /Invalid production efficiency evidence/,
       );
     }
+  });
+});
+
+void describe('production page evidence', () => {
+  void it('allows only the named separate Calibration empty states on the overview', () => {
+    const expectation = productionPageEvidenceExpectation('/');
+    assert.doesNotThrow(() =>
+      validateProductionPageEvidence(
+        [
+          publishedPageEvidence('Data provenance'),
+          emptyPageEvidence('Latest calibration status'),
+          emptyPageEvidence('Calibration score matrix status'),
+          publishedPageEvidence('Official efficiency provenance'),
+        ],
+        expectation,
+      ),
+    );
+    assert.throws(
+      () =>
+        validateProductionPageEvidence(
+          [
+            publishedPageEvidence('Data provenance'),
+            emptyPageEvidence('Latest calibration status'),
+            emptyPageEvidence('Official efficiency status'),
+          ],
+          expectation,
+        ),
+      /Official efficiency status must not be empty/,
+    );
+  });
+
+  void it('rejects unavailable, synthetic, or mixed secondary evidence', () => {
+    const expectation = productionPageEvidenceExpectation('/');
+    for (const note of [
+      { label: 'Latest calibration status', state: 'Published evidence unavailable' },
+      { label: 'Latest calibration provenance', state: 'Synthetic / seed data' },
+      { label: 'Latest calibration provenance', state: 'Mixed evidence' },
+    ]) {
+      assert.throws(
+        () =>
+          validateProductionPageEvidence(
+            [
+              publishedPageEvidence('Data provenance'),
+              publishedPageEvidence('Official efficiency provenance'),
+              note,
+            ],
+            expectation,
+          ),
+        /Invalid production page evidence/,
+      );
+    }
+  });
+
+  void it('requires run-detail Official efficiency to be published', () => {
+    const expectation = productionPageEvidenceExpectation(`/runs/run_${'1'.repeat(64)}`);
+    assert.doesNotThrow(() =>
+      validateProductionPageEvidence(
+        [
+          publishedPageEvidence('Data provenance'),
+          publishedPageEvidence('Official run efficiency provenance'),
+        ],
+        expectation,
+      ),
+    );
+    for (const state of ['No published evidence', 'Published evidence unavailable']) {
+      assert.throws(
+        () =>
+          validateProductionPageEvidence(
+            [
+              publishedPageEvidence('Data provenance'),
+              { label: 'Official run efficiency status', state },
+            ],
+            expectation,
+          ),
+        /Invalid production page evidence/,
+      );
+    }
+  });
+
+  void it('requires every Official Trends evidence subject to be published', () => {
+    const expectation = productionPageEvidenceExpectation('/trends?range=all');
+    assert.doesNotThrow(() =>
+      validateProductionPageEvidence(
+        [
+          publishedPageEvidence('Matrix entries provenance'),
+          publishedPageEvidence('Trend points provenance'),
+          publishedPageEvidence('Historical efficiency provenance'),
+        ],
+        expectation,
+      ),
+    );
+    assert.throws(
+      () =>
+        validateProductionPageEvidence(
+          [
+            publishedPageEvidence('Matrix entries provenance'),
+            { label: 'Trend points status', state: 'Published evidence unavailable' },
+            emptyPageEvidence('Historical efficiency status'),
+          ],
+          expectation,
+        ),
+      /Invalid production page evidence/,
+    );
   });
 });

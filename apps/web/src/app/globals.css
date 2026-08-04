@@ -1120,6 +1120,10 @@ summary:focus-visible,
 	color: var(--muted);
 }
 
+.run-heading > code {
+	overflow-wrap: anywhere;
+}
+
 .back-link {
 	display: block;
 	margin-bottom: 30px;

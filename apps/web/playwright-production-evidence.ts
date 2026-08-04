@@ -24,12 +24,82 @@ export interface ProductionTaskCostEvidence {
   readonly costEvidenceLevel: string | null;
 }
 
+export interface ProductionEvidenceNote {
+  readonly label: string;
+  readonly state: string;
+}
+
+export interface ProductionPageEvidenceExpectation {
+  readonly requiredPublishedLabels: readonly string[];
+  readonly allowedEmptyLabels: readonly string[];
+}
+
 function require(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid production efficiency evidence: ${message}`);
 }
 
 function isBoundedCount(value: number, maximum: number): boolean {
   return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
+
+function requirePageEvidence(condition: boolean, message: string): asserts condition {
+  if (!condition) throw new Error(`Invalid production page evidence: ${message}`);
+}
+
+export function productionPageEvidenceExpectation(path: string): ProductionPageEvidenceExpectation {
+  const pathname = new URL(path, 'https://aiq.invalid').pathname;
+  if (pathname === '/') {
+    return {
+      requiredPublishedLabels: ['Data provenance', 'Official efficiency provenance'],
+      allowedEmptyLabels: ['Latest calibration status', 'Calibration score matrix status'],
+    };
+  }
+  if (pathname === '/trends') {
+    return {
+      requiredPublishedLabels: [
+        'Matrix entries provenance',
+        'Trend points provenance',
+        'Historical efficiency provenance',
+      ],
+      allowedEmptyLabels: [],
+    };
+  }
+  if (/^\/runs\/[^/]+$/.test(pathname)) {
+    return {
+      requiredPublishedLabels: ['Data provenance', 'Official run efficiency provenance'],
+      allowedEmptyLabels: [],
+    };
+  }
+  return { requiredPublishedLabels: ['Data provenance'], allowedEmptyLabels: [] };
+}
+
+export function validateProductionPageEvidence(
+  notes: readonly ProductionEvidenceNote[],
+  expectation: ProductionPageEvidenceExpectation,
+): void {
+  const allowedEmptyLabels = new Set(expectation.allowedEmptyLabels);
+  const statesByLabel = new Map<string, string[]>();
+
+  for (const note of notes) {
+    requirePageEvidence(note.label.length > 0, 'evidence note without an accessible label');
+    const states = statesByLabel.get(note.label) ?? [];
+    states.push(note.state);
+    statesByLabel.set(note.label, states);
+
+    if (note.state === 'No published evidence') {
+      requirePageEvidence(allowedEmptyLabels.has(note.label), `${note.label} must not be empty`);
+      continue;
+    }
+    requirePageEvidence(note.state === 'Published evidence', `${note.label} is ${note.state}`);
+  }
+
+  for (const label of expectation.requiredPublishedLabels) {
+    const states = statesByLabel.get(label) ?? [];
+    requirePageEvidence(
+      states.length === 1 && states[0] === 'Published evidence',
+      `${label} must contain exactly one Published evidence note`,
+    );
+  }
 }
 
 export function validateProductionEfficiencyEvidence(evidence: ProductionEfficiencyEvidence): void {

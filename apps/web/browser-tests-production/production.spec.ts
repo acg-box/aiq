@@ -5,6 +5,7 @@ import {
   validateProductionEfficiencyEvidence,
   validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
+import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production reads stay serial to bound load on the public origin. */
 
@@ -58,11 +59,7 @@ async function expectPublishedPage(
   const mainHeading = page.locator('main h1');
   await expect(mainHeading).toBeVisible();
   if (heading) await expect(mainHeading).toContainText(heading);
-  await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('No published evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Published evidence unavailable', { exact: true })).toHaveCount(0);
+  await expectProductionPageEvidence(page, path);
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
   );
@@ -208,6 +205,13 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   const expectedOrigin = new URL(baseURL ?? '').origin;
   await expectPublishedPage(page, expectedOrigin, '/', 'A score is only useful');
   await expectNoDocumentOverflow(page, testInfo);
+  if (testInfo.config.metadata.productionEvidenceVariants === true) {
+    await expect(
+      page
+        .getByLabel('Latest calibration status', { exact: true })
+        .getByText('No published evidence', { exact: true }),
+    ).toBeVisible();
+  }
 
   const leaderboard = page.getByRole('region', {
     name: 'Descriptively ordered public index table',

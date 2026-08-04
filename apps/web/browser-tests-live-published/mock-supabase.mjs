@@ -6,6 +6,8 @@ const port = Number.parseInt(process.argv[2] ?? '', 10);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
   throw new Error('Supply one valid mock Supabase port.');
 }
+const emptyCalibrationEvidence = process.env.AIQ_MOCK_EMPTY_CALIBRATION_EVIDENCE === '1';
+const longOfficialRunIds = process.env.AIQ_MOCK_LONG_OFFICIAL_RUN_IDS === '1';
 
 /** @type {ReadonlyArray<readonly [string, number]>} */
 const domainCounts = [
@@ -45,6 +47,16 @@ const matrix = [
     reasoning_tier: tier,
   })),
 );
+
+/**
+ * @param {{id: string}} entry
+ * @param {number} index
+ */
+function officialRunId(entry, index) {
+  return longOfficialRunIds
+    ? `run_${index.toString(16).padStart(64, '0')}`
+    : `run-live-${entry.id}`;
+}
 
 const canonicalPublicExecutionFailures = {
   timeout: {
@@ -113,7 +125,7 @@ const leaderboard = matrix.map((entry, index) => {
   const score = Number(((100 * outcomes.passed) / 72).toFixed(1));
   return {
     matrix_id: entry.id,
-    run_id: `run-live-${entry.id}`,
+    run_id: officialRunId(entry, index),
     score,
     ci_low: Number((score - 1.8).toFixed(1)),
     ci_high: Number((score + 1.8).toFixed(1)),
@@ -132,7 +144,7 @@ const runRows = matrix.map((entry, index) => {
   const outcomes = officialOutcomeCounts[index];
   if (!outcomes) throw new Error('Missing Official outcome counts.');
   return {
-    id: `run-live-${entry.id}`,
+    id: officialRunId(entry, index),
     matrix_id: entry.id,
     started_at: '2026-08-03T12:00:00.000Z',
     completed_at: '2026-08-03T13:37:24.411Z',
@@ -370,7 +382,8 @@ const modelEfficiency = calibrationScores.map((score, index) => {
   const tokensAvailable = tokenCount > 0;
   const durationAvailable = index !== 3;
   return {
-    run_id: leaderboard[index]?.run_id ?? `run-live-${matrix[index]?.id ?? index}`,
+    run_id:
+      leaderboard[index]?.run_id ?? officialRunId(matrix[index] ?? { id: String(index) }, index),
     matrix_batch_id: `run_${'b'.repeat(64)}`,
     model_family: score.model_family,
     reasoning_effort: score.reasoning_effort,
@@ -568,7 +581,7 @@ const trends = matrix.flatMap((entry, entryIndex) =>
     const score = Number((84.2 - entryIndex * 0.7 - dateIndex * 0.4).toFixed(1));
     return {
       matrix_id: entry.id,
-      run_id: `run-live-${entry.id}`,
+      run_id: officialRunId(entry, entryIndex),
       recorded_at: recordedAt,
       bucket_started_at: recordedAt,
       bucket_ended_at: new Date(Date.parse(recordedAt) + 3_600_000).toISOString(),
@@ -739,7 +752,7 @@ const server = createServer((request, response) => {
   if (url.pathname === '/rest/v1/public_calibration_runs') {
     const exactId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
     const exactStartedAt = url.searchParams.get('started_at')?.replace(/^eq\./, '');
-    const rows = [subsetCalibrationRun, calibrationRun].filter(
+    const rows = (emptyCalibrationEvidence ? [] : [subsetCalibrationRun, calibrationRun]).filter(
       (run) =>
         (!exactId || run.run_id === exactId) &&
         (!exactStartedAt || run.started_at === exactStartedAt),

@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
+import { expectProductionPageEvidence } from './production-page-evidence.ts';
+
 /* oxlint-disable no-await-in-loop -- Production requests stay serial to bound load and preserve before/after evidence order. */
 
 const readinessScope = [
@@ -30,11 +32,7 @@ async function expectPublishedNonSyntheticPage(page: Page, path: string) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
   await expect(page.locator('main h1')).toBeVisible();
-  await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('No published evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Published evidence unavailable', { exact: true })).toHaveCount(0);
+  await expectProductionPageEvidence(page, path);
 }
 
 async function expectNoHorizontalOverflow(page: Page, path: string) {
@@ -136,9 +134,12 @@ test('unauthenticated production writes return uncached 401 responses without pu
   expect(await compareEvidenceSnapshot(page)).toEqual(before);
 });
 
-test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }) => {
+test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const runPath = await getActualRunPath(page);
+  if (testInfo.config.metadata.productionEvidenceVariants === true) {
+    expect(runPath).toMatch(/^\/runs\/run_[0-9a-f]{64}$/);
+  }
   const paths = ['/', '/compare', '/runs', runPath, '/trends?range=all', '/method', '/radar'];
 
   for (const path of paths) {
