@@ -12,11 +12,15 @@ tags: ['operations', 'validation', 'runbook']
 AIQ production is live at `https://aiq.wiki` from the approved source. Vercel
 scope `acgbox` hosts project `aiq`; Supabase organization `ACG Box` hosts project
 `aiq` on PostgreSQL 17.6 with reference `xxnszykaeapolqdnhalx` and private
-`aiq-submission-packages` and `aiq-runner-artifacts` buckets. Production merge
-and deployment commit is `725b88954359ab8f0950f896674b3e8684d3ae85`. The
-apex is canonical, and `www.aiq.wiki` returns a path-preserving permanent `308`
-redirect. Generated, automatic `*.vercel.app` URLs cannot be permanently
-deleted. The current generated URLs emit `noindex`.
+`aiq-submission-packages` and `aiq-runner-artifacts` buckets. The first Official
+launch publication was deployed from merge commit
+`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
+evidence, not the identity of every later production deployment. The apex is
+canonical, and `www.aiq.wiki` returns a path-preserving permanent `308`
+redirect. Automatic Vercel project and branch aliases can be removed only
+transiently because a later deployment can recreate or reassign them. A
+deployment-specific URL is intrinsic to its retained deployment. The current
+generated Vercel surfaces emit `noindex`.
 
 The native Apple Silicon macOS runner completed one real, non-synthetic Official
 AIQ Core `1.0.2` matrix with 17 configurations and 72 tasks each, or 1,224

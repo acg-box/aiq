@@ -8,14 +8,17 @@ AIQ production is live at [aiq.wiki](https://aiq.wiki). The personal Vercel
 scope `acgbox` hosts project `aiq`. The personal Supabase organization `ACG Box`
 hosts project `aiq` on PostgreSQL 17.6 with reference
 `xxnszykaeapolqdnhalx`. Production uses the private Storage buckets
-`aiq-submission-packages` and `aiq-runner-artifacts`. Merge and deployment commit
-`725b88954359ab8f0950f896674b3e8684d3ae85` is the production source.
+`aiq-submission-packages` and `aiq-runner-artifacts`. The first Official launch
+publication was deployed from merge commit
+`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
+evidence, not the identity of every later production deployment.
 
 The native Apple Silicon macOS runner completed one real, non-synthetic Official
 `aiq-core@1.0.2` batch. It contains 17 configuration runs and 72 tasks per run,
 or 1,224 task-level results. This is one Official matrix, not 1,224 benchmark
-runs. The verifier accepted and published the matrix as `trusted_verified`.
-Of the 1,224 results, 1,218 completed and 6 failed. The outcomes are 329
+runs. The verifier replayed and accepted the evidence. A distinct publisher
+published the matrix as `trusted_verified`. Of the 1,224 results, 1,218
+completed and 6 failed. The outcomes are 329
 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
 `budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
 
@@ -230,5 +233,7 @@ See [OpenWiki quickstart](openwiki/quickstart.md),
 [deployment handoff](openwiki/deployment-handoff.md) for the maintained details.
 
 `aiq.wiki` is canonical, and `www.aiq.wiki` returns a permanent `308` redirect
-that preserves the request path. Generated, automatic `*.vercel.app` URLs cannot
-be permanently deleted. The current generated URLs emit `noindex`.
+that preserves the request path. Automatic Vercel project and branch aliases can
+be removed only transiently because a later deployment can recreate or reassign
+them. A deployment-specific URL is intrinsic to its retained deployment. The
+current generated Vercel surfaces emit `noindex`.
