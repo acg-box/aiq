@@ -212,7 +212,15 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         </div>
         <div className="task-list">
           {run.tasks.map((task) => (
-            <article key={task.id}>
+            <article
+              key={task.id}
+              data-token-evidence-level={task.tokenUsageEvidenceLevel ?? 'unavailable'}
+              data-cost-estimator-status={task.costEstimatorStatus}
+              data-cost-evidence-level={task.costEvidenceLevel ?? 'unavailable'}
+              data-standard-api-equivalent-usd-nanos={
+                task.standardApiEquivalentUsdNanos ?? 'unavailable'
+              }
+            >
               <header>
                 <span className={`result result-${task.status}`}>
                   {task.status.replace('_', ' ')}

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   type ProductionEfficiencyEvidence,
   validateProductionEfficiencyEvidence,
+  validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
 
 const covered = (count: number) => ({
@@ -28,7 +29,7 @@ function evidence(
     durationEvidenceLevel: 'runner-observed',
     tokenObservedCount: 72,
     tokenEvidenceLevel: 'verifier-recomputed',
-    tokenCategories: Array.from({ length: 6 }, () => covered(72)),
+    tokenCategories: [...Array.from({ length: 5 }, () => covered(72)), unavailable],
     pricedCount: 72,
     costStatus: 'estimated',
     costUsd: 12.3456,
@@ -47,6 +48,26 @@ void describe('production efficiency evidence', () => {
           tokenCategories: Array.from({ length: 6 }, () => covered(36)),
           pricedCount: 0,
           costStatus: 'unavailable-missing-usage',
+          costUsd: null,
+          costEvidenceLevel: null,
+        }),
+      ),
+    );
+    assert.doesNotThrow(() =>
+      validateProductionEfficiencyEvidence(
+        evidence({
+          tokenCategories: [
+            ...Array.from({ length: 4 }, () => covered(72)),
+            unavailable,
+            unavailable,
+          ],
+        }),
+      ),
+    );
+    assert.doesNotThrow(() =>
+      validateProductionEfficiencyEvidence(
+        evidence({
+          costStatus: 'unavailable-context-band',
           costUsd: null,
           costEvidenceLevel: null,
         }),
@@ -82,11 +103,91 @@ void describe('production efficiency evidence', () => {
       }),
       evidence({ costUsd: -0.01 }),
       evidence({ pricedCount: 71 }),
+      evidence({
+        tokenCategories: [
+          covered(71),
+          ...Array.from({ length: 3 }, () => covered(72)),
+          unavailable,
+          unavailable,
+        ],
+      }),
       evidence({ costStatus: 'unavailable-missing-usage', costUsd: null }),
       evidence({ tokenEvidenceLevel: null }),
     ]) {
       assert.throws(
         () => validateProductionEfficiencyEvidence(invalid),
+        /Invalid production efficiency evidence/,
+      );
+    }
+  });
+
+  void it('requires all four pricing inputs for an estimated aggregate', () => {
+    for (let pricingInputIndex = 0; pricingInputIndex < 4; pricingInputIndex += 1) {
+      const tokenCategories = [
+        ...Array.from({ length: 4 }, () => covered(72)),
+        unavailable,
+        unavailable,
+      ];
+      tokenCategories[pricingInputIndex] = unavailable;
+      assert.throws(
+        () => validateProductionEfficiencyEvidence(evidence({ tokenCategories })),
+        /Invalid production efficiency evidence/,
+      );
+    }
+  });
+
+  void it('enforces per-task cost and evidence relationships', () => {
+    for (const valid of [
+      {
+        costStatus: 'estimated',
+        costUsdNanos: 650_000,
+        tokenEvidenceLevel: 'verifier-recomputed',
+        costEvidenceLevel: 'verifier-recomputed',
+      },
+      {
+        costStatus: 'unavailable-context-band',
+        costUsdNanos: null,
+        tokenEvidenceLevel: 'verifier-recomputed',
+        costEvidenceLevel: null,
+      },
+      {
+        costStatus: 'unavailable-missing-usage',
+        costUsdNanos: null,
+        tokenEvidenceLevel: null,
+        costEvidenceLevel: null,
+      },
+    ]) {
+      assert.doesNotThrow(() => validateProductionTaskCostEvidence(valid));
+    }
+
+    for (const invalid of [
+      {
+        costStatus: 'estimated',
+        costUsdNanos: 650_000,
+        tokenEvidenceLevel: null,
+        costEvidenceLevel: null,
+      },
+      {
+        costStatus: 'unavailable-context-band',
+        costUsdNanos: null,
+        tokenEvidenceLevel: 'verifier-recomputed',
+        costEvidenceLevel: 'verifier-recomputed',
+      },
+      {
+        costStatus: 'unavailable-missing-usage',
+        costUsdNanos: 0,
+        tokenEvidenceLevel: null,
+        costEvidenceLevel: null,
+      },
+      {
+        costStatus: 'unavailable-missing-usage',
+        costUsdNanos: null,
+        tokenEvidenceLevel: 'verifier-recomputed',
+        costEvidenceLevel: null,
+      },
+    ]) {
+      assert.throws(
+        () => validateProductionTaskCostEvidence(invalid),
         /Invalid production efficiency evidence/,
       );
     }

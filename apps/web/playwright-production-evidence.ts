@@ -17,6 +17,13 @@ export interface ProductionEfficiencyEvidence {
   readonly costEvidenceLevel: string | null;
 }
 
+export interface ProductionTaskCostEvidence {
+  readonly costStatus: string;
+  readonly costUsdNanos: number | null;
+  readonly tokenEvidenceLevel: string | null;
+  readonly costEvidenceLevel: string | null;
+}
+
 function require(condition: boolean, message: string): asserts condition {
   if (!condition) throw new Error(`Invalid production efficiency evidence: ${message}`);
 }
@@ -63,14 +70,36 @@ export function validateProductionEfficiencyEvidence(evidence: ProductionEfficie
     require(evidence.costEvidenceLevel === 'verifier-recomputed', 'cost evidence');
     require(evidence.pricedCount === evidence.resultCount, 'estimated cost coverage');
     require(evidence.tokenObservedCount === evidence.resultCount, 'estimated token coverage');
-    require(evidence.tokenCategories.every(
-      (category) =>
-        category.coverageCount === evidence.resultCount && category.coveragePercent === 100,
-    ), 'estimated category coverage');
+    require(evidence.tokenCategories
+      .slice(0, 4)
+      .every(
+        (category) =>
+          category.coverageCount === evidence.resultCount && category.coveragePercent === 100,
+      ), 'estimated pricing-input coverage');
   } else {
     require(evidence.costStatus.startsWith('unavailable-'), 'unavailable cost status');
     require(evidence.costUsd === null, 'unavailable cost value');
     require(evidence.costEvidenceLevel === null, 'unavailable cost evidence');
-    require(evidence.pricedCount < evidence.resultCount, 'unavailable priced count');
+  }
+}
+
+export function validateProductionTaskCostEvidence(evidence: ProductionTaskCostEvidence): void {
+  if (evidence.costStatus === 'estimated') {
+    require(evidence.costUsdNanos !== null &&
+      Number.isSafeInteger(evidence.costUsdNanos) &&
+      evidence.costUsdNanos >= 0, 'task estimated cost');
+    require(evidence.tokenEvidenceLevel === 'verifier-recomputed', 'task token evidence');
+    require(evidence.costEvidenceLevel === 'verifier-recomputed', 'task cost evidence');
+    return;
+  }
+
+  require(evidence.costStatus.startsWith('unavailable-'), 'task unavailable cost status');
+  require(evidence.costUsdNanos === null, 'task unavailable cost value');
+  require(evidence.costEvidenceLevel === null, 'task unavailable cost evidence');
+  if (evidence.costStatus === 'unavailable-context-band') {
+    require(evidence.tokenEvidenceLevel === 'verifier-recomputed', 'task context-band evidence');
+  }
+  if (evidence.costStatus === 'unavailable-missing-usage') {
+    require(evidence.tokenEvidenceLevel === null, 'task missing-usage evidence');
   }
 }

@@ -3,6 +3,7 @@ import { expect, test as base, type Locator, type Page, type TestInfo } from '@p
 import {
   type ProductionEfficiencyEvidence,
   validateProductionEfficiencyEvidence,
+  validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production reads stay serial to bound load on the public origin. */
@@ -192,7 +193,9 @@ async function expectTransparentEfficiency(rows: Locator, expectVariants = false
   if (expectVariants) {
     expect(tokenCounts).toEqual(new Set([0, 36, 72]));
     expect(durationCounts).toEqual(new Set([0, 72]));
-    expect(costStatuses).toEqual(new Set(['estimated', 'unavailable-missing-usage']));
+    expect(costStatuses).toEqual(
+      new Set(['estimated', 'unavailable-context-band', 'unavailable-missing-usage']),
+    );
   }
   return { batchId: [...batchIds][0] ?? '', runIds };
 }
@@ -315,6 +318,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   await expect(page.getByRole('link', { name: 'Newer runs' })).toHaveCount(0);
 
   let resultCount = 0;
+  const taskCostStatuses = new Map<string, number>();
   const provenance = {
     benchmark: new Set<string>(),
     scoring: new Set<string>(),
@@ -334,13 +338,43 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     await expect(results).toHaveCount(72);
     resultCount += await results.count();
 
-    for (const text of await results.allTextContents()) {
+    const resultEvidence = await results.evaluateAll((articles) =>
+      articles.map((article) => ({
+        text: article.textContent ?? '',
+        tokenEvidenceLevel: article.getAttribute('data-token-evidence-level'),
+        costStatus: article.getAttribute('data-cost-estimator-status'),
+        costEvidenceLevel: article.getAttribute('data-cost-evidence-level'),
+        costUsdNanos: article.getAttribute('data-standard-api-equivalent-usd-nanos'),
+      })),
+    );
+    for (const result of resultEvidence) {
+      const text = result.text;
+      expect(result.tokenEvidenceLevel).not.toBeNull();
+      expect(result.costStatus).not.toBeNull();
+      expect(result.costEvidenceLevel).not.toBeNull();
+      expect(result.costUsdNanos).not.toBeNull();
       expect(text).toMatch(/Codex adapter elapsed: (?:unavailable|[\d,]+ ms · [a-z-]+)/);
       expect(text).toMatch(
-        /Tokens: input (?:[\d,]+|unavailable) · cached input (?:[\d,]+|unavailable) · cache-write input (?:[\d,]+|unavailable) · output (?:[\d,]+|unavailable) · reasoning (?:[\d,]+|unavailable) · total (?:[\d,]+|unavailable)/,
+        /Tokens: input (?:[\d,]+|unavailable) · cached input (?:[\d,]+|unavailable) · cache-write input (?:[\d,]+|unavailable) · output (?:[\d,]+|unavailable) · reasoning (?:[\d,]+|unavailable) · total unavailable/,
       );
-      expect(text).toMatch(
-        /API-equivalent cost: (?:\$\d+\.\d{6}|unavailable [a-z ]+) · token evidence (?:[a-z-]+|unavailable) · cost evidence (?:[a-z-]+|unavailable)/,
+      const costStatus = result.costStatus?.replaceAll('_', '-') ?? '';
+      const costUsdNanos =
+        result.costUsdNanos === 'unavailable' ? null : Number(result.costUsdNanos);
+      const tokenEvidenceLevel = nullableEvidence(result.tokenEvidenceLevel);
+      const costEvidenceLevel = nullableEvidence(result.costEvidenceLevel);
+      validateProductionTaskCostEvidence({
+        costStatus,
+        costUsdNanos,
+        tokenEvidenceLevel,
+        costEvidenceLevel,
+      });
+      taskCostStatuses.set(costStatus, (taskCostStatuses.get(costStatus) ?? 0) + 1);
+      const visibleCost =
+        costUsdNanos === null
+          ? costStatus.replaceAll('-', ' ')
+          : `$${(costUsdNanos / 1_000_000_000).toFixed(6)}`;
+      expect(text).toContain(
+        `API-equivalent cost: ${visibleCost} · token evidence ${tokenEvidenceLevel ?? 'unavailable'} · cost evidence ${costEvidenceLevel ?? 'unavailable'}`,
       );
     }
 
@@ -362,6 +396,13 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     provenance.promptSet.add(await readProvenance('Prompt set'));
   }
   expect(resultCount).toBe(1_224);
+  expect(taskCostStatuses).toEqual(
+    new Map([
+      ['estimated', 1_203],
+      ['unavailable-context-band', 15],
+      ['unavailable-missing-usage', 6],
+    ]),
+  );
   expect(provenance.benchmark).toEqual(new Set([expectedBenchmarkVersion]));
   expect(provenance.scoring).toEqual(new Set([expectedScoringVersion]));
   expect(provenance.corpusRelease).toEqual(new Set([expectedCorpusRelease]));

@@ -300,8 +300,11 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(efficiency).not.toContainText('$0');
   const taskResults = page.locator('.task-list > article');
   await expect(taskResults.first()).toContainText('Codex adapter elapsed:');
-  await expect(taskResults.first()).toContainText('Tokens: input unavailable');
-  await expect(taskResults.first()).toContainText('API-equivalent cost: unavailable missing usage');
+  await expect(taskResults.first()).toContainText('Tokens: input 1,361');
+  await expect(taskResults.first()).toContainText('total unavailable');
+  await expect(taskResults.first()).toContainText(
+    'API-equivalent cost: $0.001011 · token evidence verifier-recomputed · cost evidence verifier-recomputed',
+  );
   const evaluatorOutcomes = taskResults.filter({
     hasText: 'The evaluator rejected the response.',
   });
