@@ -1124,6 +1124,48 @@ select pg_temp.aiq_assert(
   'rejected synthetic publication must not advance the inbox'
 );
 
+-- A single Official batch has one shared recorded time. The half-open trend
+-- range must remain nonempty after PostgREST timestamps enter JavaScript Dates,
+-- which retain only millisecond precision.
+savepoint single_batch_trend_precision;
+set local session_replication_role = replica;
+update aiq_private.aiq_runs
+set
+  scheduled_for = '2026-08-03T16:00:00Z'::timestamptz,
+  synthetic = false,
+  trust_tier = 'trusted_verified',
+  published = true;
+update aiq_private.aiq_score_snapshots
+set score_status = 'official', published = true;
+set local session_replication_role = origin;
+
+create temp table aiq_single_batch_trend on commit drop as
+select * from public.public_trend_points('all') with no data;
+grant insert, select on aiq_single_batch_trend to anon;
+set local role anon;
+insert into aiq_single_batch_trend
+select * from public.public_trend_points('all');
+reset role;
+
+select pg_temp.aiq_assert(
+  (select count(*) = 17 from aiq_single_batch_trend),
+  'the single-batch trend RPC must return every matrix series'
+);
+select pg_temp.aiq_assert(
+  (
+    select bool_and(
+      pg_catalog.date_trunc('milliseconds', bucket_ended_at)
+        > pg_catalog.date_trunc('milliseconds', recorded_at)
+      and bucket_ended_at = recorded_at + interval '1 millisecond'
+      and resolution_seconds = 1
+    )
+    from aiq_single_batch_trend
+  ),
+  'the single-batch trend bucket must end strictly after its point at millisecond precision'
+);
+rollback to savepoint single_batch_trend_precision;
+release savepoint single_batch_trend_precision;
+
 -- Storage registry identity is idempotent, active references block deletion,
 -- and the production reference gate remains closed for synthetic fixtures.
 set local role service_role;
