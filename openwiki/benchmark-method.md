@@ -43,21 +43,30 @@ The scorer-manifest identity is
 and the evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 
-The independently audited source-only candidate commitment is
-`sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`,
-and native validation passes all 72 tasks. Its runtime `task_set_hash` is
+Model-free candidate validation passes all 72 tasks. The runtime
+`task_set_hash` is
 `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
 The distinct controlled generated-task tree identity is
 `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
-The separate six-task AIQ Core Contrast calibration commitment is
-`sha256:df3028d576c91f9b57e6aa23a94f0b1ffb61fd04b53a141fe9f0160c08a7c5d9`;
-its ordered metadata catalog identity is
+The separate six-task AIQ Core Contrast calibration ordered metadata catalog
+identity is
 `sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
-The production commitment is created only after clean-commit native release
-binding. It binds every
-private task to the catalog and also binds the baseline workspace, fixture
-bundle, evaluator, runtime, runner source, harness, tool policy, network policy,
-and environment.
+Earlier Core promotion and Contrast authoring candidates are not final corpus
+identities. Create-new regeneration from the final clean source will establish
+their canonical commitment digests. Each final corpus keeps
+`runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
+null. The shared Rust validator now fails closed on this runner subtree. The
+checked Core schema enforces the same rule. Contrast has equivalent shared typed
+enforcement even though it has no separate checked-in JSON schema. Each corpus
+binds every private task to its catalog and also binds the baseline workspace,
+fixture bundle, evaluator, runtime, runner source, harness, tool policy, network
+policy, environment, Node.js identity, and ripgrep identity.
+The source-only corpus rule and signed per-run runner and Codex executable
+provenance are the executable product contracts. After the final clean build,
+the operator retains a private, unsigned audit receipt with the exact source
+commit and tree identity and SHA-256 values for the native runner, verifier,
+Node.js, and ripgrep executables. The repository does not validate or publish
+this reproducibility evidence.
 
 ## Published Official evidence
 
@@ -115,9 +124,10 @@ trust boundary in
 ## Execution
 
 Each task starts from a controlled baseline in a fresh workspace. The runner
-uses the committed Node.js and ripgrep tools and the exact Codex executable.
-Task budgets, allowed tools, evaluator identity, and artifact requirements come
-from the committed task contract.
+uses the Node.js and ripgrep identities from the corpus. Per-run provenance
+binds the exact Codex and runner executables. Task budgets, allowed tools,
+evaluator identity, and artifact requirements come from the committed task
+contract.
 
 The runner records exact timings, outcomes, tool use, result commitments,
 workspace snapshots, evaluator output, and provenance. A durable checkpoint

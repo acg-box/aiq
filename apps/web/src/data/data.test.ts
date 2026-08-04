@@ -4,12 +4,13 @@ import { describe, it } from 'node:test';
 import {
   classifyRunCompleteness,
   classifyRunSummaryCompleteness,
+  classifyObservationRecency,
   filterTrendPoints,
   formatConfidenceInterval,
   formatLastObservation,
   formatTrustLevel,
+  latestCompletedRun,
   leaderboardRunHref,
-  radarOrbitPosition,
   sortLeaderboardByPointEstimate,
   summarizeRun,
   summarizeRunDomains,
@@ -721,6 +722,20 @@ void describe('presentation aggregates', () => {
           score: null,
           explanation: null,
         },
+        {
+          ...template,
+          outcome: 'invalid' as const,
+          executionStatus: 'invalid' as const,
+          score: null,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'not_applicable' as const,
+          executionStatus: 'not_applicable' as const,
+          score: null,
+          explanation: null,
+        },
       ],
     };
     assert.deepEqual(summarizeRunOutcomes(run), {
@@ -728,11 +743,13 @@ void describe('presentation aggregates', () => {
       partial: 1,
       incorrect: 1,
       runtimeIssues: 1,
-      unscored: 1,
-      credited: 2,
-      completed: 3,
-      total: 5,
-      successRate: (2 / 3) * 100,
+      invalid: 1,
+      missing: 1,
+      notApplicable: 1,
+      anyCredit: 2,
+      completedOutcomes: 3,
+      total: 7,
+      anyCreditRate: (2 / 3) * 100,
     });
   });
 
@@ -1790,15 +1807,76 @@ void describe('presentation aggregates', () => {
     assert.equal(formatLastObservation(null, now), 'Never observed');
     assert.match(formatLastObservation('2026-07-24T14:00:00.000Z', now), /stale$/);
     assert.doesNotMatch(formatLastObservation(null, now), /online/i);
+    assert.equal(classifyObservationRecency('2026-07-24T14:50:00.000Z', now), 'recent');
+    assert.equal(classifyObservationRecency('not-a-date', now), 'unavailable');
   });
 
-  void it('positions every current radar node and additional nodes inside the orbit', () => {
-    const positions = Array.from({ length: 12 }, (_, index) => radarOrbitPosition(index));
-    assert.equal(new Set(positions.map(({ left, top }) => `${left}:${top}`)).size, 12);
-    for (const position of positions) {
-      assert.ok(Number.parseFloat(position.left) > 0 && Number.parseFloat(position.left) < 100);
-      assert.ok(Number.parseFloat(position.top) > 0 && Number.parseFloat(position.top) < 100);
-    }
+  void it('selects the newest completed run rather than a score-ordered run', () => {
+    assert.deepEqual(
+      latestCompletedRun([
+        { id: 'highest-score', completedAt: '2026-07-24T14:00:00.000Z' },
+        { id: 'newest-evidence', completedAt: '2026-07-25T14:00:00.000Z' },
+        { id: 'invalid-time', completedAt: 'not-a-date' },
+      ]),
+      { id: 'newest-evidence', completedAt: '2026-07-25T14:00:00.000Z' },
+    );
+  });
+
+  void it('queries the newest completed run across the complete retained relation', async () => {
+    const template = seedRuns[0];
+    assert.ok(template);
+    const newestRow: RunRow = {
+      id: 'run-newest-completed',
+      matrix_id: template.entryId,
+      started_at: '2026-07-01T12:00:00.000Z',
+      completed_at: '2026-08-04T12:00:00.000Z',
+      benchmark_version: template.benchmarkVersion,
+      scoring_version: template.scoringVersion,
+      prompt_set_digest: template.promptSetDigest,
+      runner_commit: template.runnerCommit,
+      region: template.region,
+      synthetic: false,
+      corpus_release_id: null,
+      corpus_commitment_sha256: null,
+      catalog_digest: null,
+      task_set_digest: null,
+      preflight_digest: null,
+      runtime_digest: null,
+      run_class: null,
+      permission_evidence_digest: null,
+      result_count: 72,
+      correct_count: 72,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
+      invalid_count: 0,
+      missing_count: 0,
+      not_applicable_count: 0,
+      completed_count: 72,
+      observed_count: 72,
+      coverage_percent: 100,
+      covered_domain_count: 10,
+      provisional_domain_count: 10,
+    };
+    const requests: URL[] = [];
+    const testFetch: typeof fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      requests.push(url);
+      return Response.json([newestRow]);
+    };
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      testFetch,
+    );
+
+    const newest = await repository.getNewestCompletedRun();
+
+    assert.equal(newest?.id, newestRow.id);
+    assert.equal(newest?.completedAt, newestRow.completed_at);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.searchParams.get('order'), 'completed_at.desc,id.asc');
+    assert.equal(requests[0]?.searchParams.get('limit'), '1');
   });
 
   void it('maps all public run provenance fields and preserves nulls', () => {

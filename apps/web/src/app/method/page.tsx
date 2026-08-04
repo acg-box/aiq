@@ -131,20 +131,48 @@ export default async function MethodPage() {
             <article>
               <span className="eyebrow">02 · Domain coverage</span>
               <h2>72 tasks · 10 equally weighted domains</h2>
-              <div className="domain-bars">
-                {result.data.domainWeights.map((domain) => (
-                  <div key={domain.domain}>
-                    <span>
-                      <strong>{domain.domain}</strong>
-                      <small>
-                        {domain.taskCount} tasks · {(domain.weight * 100).toFixed(0)}%
-                      </small>
-                    </span>
-                    <div aria-hidden="true">
-                      <i style={{ width: `${domain.weight * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
+              <div className="table-scroll domain-weight-table" tabIndex={0}>
+                <table>
+                  <caption>
+                    Exact fixed-fixture domain task counts and macro-average weights.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Domain</th>
+                      <th scope="col">Tasks</th>
+                      <th scope="col">Weight</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.data.domainWeights.map((domain) => (
+                      <tr key={domain.domain}>
+                        <th scope="row">{domain.domain}</th>
+                        <td>{domain.taskCount}</td>
+                        <td>{(domain.weight * 100).toFixed(0)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th scope="row">Total</th>
+                      <td>
+                        {result.data.domainWeights.reduce(
+                          (total, domain) => total + domain.taskCount,
+                          0,
+                        )}
+                      </td>
+                      <td>
+                        {(
+                          result.data.domainWeights.reduce(
+                            (total, domain) => total + domain.weight,
+                            0,
+                          ) * 100
+                        ).toFixed(0)}
+                        %
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </article>
             <article>

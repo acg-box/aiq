@@ -1,7 +1,14 @@
+'use client';
+
+import type { EChartsCoreOption } from 'echarts/core';
+
 import type { PublicCalibrationScore } from '../data/types.ts';
 import { formatHumanDuration, formatTaskDuration } from '../data/format-duration.ts';
+import { EChartsChart } from './echarts-chart.tsx';
+import { paretoEfficientKeys } from './efficiency-analysis.ts';
 
 type Metric = 'cost' | 'time';
+type CalibrationPoint = Readonly<{ score: PublicCalibrationScore; x: number; y: number }>;
 
 function valueFor(score: PublicCalibrationScore, metric: Metric): number | null {
   if (metric === 'cost') {
@@ -14,119 +21,236 @@ function valueFor(score: PublicCalibrationScore, metric: Metric): number | null 
   return score.observedTimeCoveragePercent === 100 ? score.observedMedianWallMs : null;
 }
 
-function isPareto(
-  point: PublicCalibrationScore,
-  points: readonly PublicCalibrationScore[],
-  metric: Metric,
-): boolean {
-  const pointX = valueFor(point, metric);
-  const pointAiq = point.aiq;
-  if (pointAiq === null || pointX === null) return false;
-  return !points.some((candidate) => {
-    const candidateX = valueFor(candidate, metric);
-    return (
-      candidate.runId === point.runId &&
-      (metric === 'time' ||
-        (candidate.pricingVersion === point.pricingVersion &&
-          candidate.pricingAsOf === point.pricingAsOf &&
-          candidate.pricingSource === point.pricingSource &&
-          candidate.pricingCurrency === point.pricingCurrency &&
-          candidate.pricingProcessingTier === point.pricingProcessingTier)) &&
-      candidate.aiq !== null &&
-      candidateX !== null &&
-      candidateX <= pointX &&
-      candidate.aiq >= pointAiq &&
-      (candidateX < pointX || candidate.aiq > pointAiq)
-    );
-  });
+function pointKey(score: PublicCalibrationScore): string {
+  return `${score.runId}-${score.modelFamily}-${score.reasoningEffort}`;
+}
+
+function comparisonGroup(score: PublicCalibrationScore, metric: Metric): string {
+  if (metric === 'time') {
+    return `${score.runId}|time|${score.durationEvidenceLevel ?? 'duration-evidence-unavailable'}`;
+  }
+  return [
+    score.runId,
+    'cost',
+    score.costEvidenceLevel ?? 'cost-evidence-unavailable',
+    score.tokenUsageSourceLevel ?? 'token-source-unavailable',
+    score.tokenUsageEvidenceLevel ?? 'token-evidence-unavailable',
+    score.pricingVersion ?? 'pricing-version-unavailable',
+    score.pricingAsOf ?? 'pricing-date-unavailable',
+    score.pricingSource ?? 'pricing-source-unavailable',
+    score.pricingCurrency,
+    score.pricingProcessingTier,
+  ].join('|');
+}
+
+function calibrationFamilyColor(family: PublicCalibrationScore['modelFamily']): string {
+  if (family === 'sol') return 'var(--data-lime)';
+  if (family === 'terra') return 'var(--data-cyan)';
+  return 'var(--data-violet)';
+}
+
+function readCalibrationDatum(value: unknown): readonly (number | string)[] | null {
+  if (typeof value !== 'object' || value === null || !('data' in value)) return null;
+  const data = value.data;
+  return Array.isArray(data) &&
+    data.every((item) => typeof item === 'number' || typeof item === 'string')
+    ? data
+    : null;
+}
+
+function calibrationDatum(point: CalibrationPoint): readonly (number | string)[] {
+  return [
+    point.x,
+    point.y,
+    `${point.score.modelFamily} · ${point.score.reasoningEffort}`,
+    point.score.sampleSize,
+    `${point.score.coveragePercent.toFixed(1)}%`,
+    point.score.taskResamplingSensitivityLower ?? point.y,
+    point.score.taskResamplingSensitivityUpper ?? point.y,
+    point.score.synthetic ? 'synthetic' : 'published',
+  ];
 }
 
 function Scatter({
   scores,
   metric,
+  scoringVersion,
 }: {
   scores: readonly PublicCalibrationScore[];
   metric: Metric;
+  scoringVersion: string | null;
 }) {
-  const points = scores.filter((score) => score.aiq !== null && valueFor(score, metric) !== null);
+  const points = scores.flatMap((score) => {
+    const x = valueFor(score, metric);
+    return score.aiq === null || x === null ? [] : [{ score, x, y: score.aiq }];
+  });
   const label =
     metric === 'cost'
       ? 'estimated Standard API equivalent token cost (USD)'
       : 'observed Codex adapter elapsed time (median)';
-  if (points.length < 2)
+  if (points.length === 0)
     return (
       <p className="empty-note">
-        At least two comparable model configurations with AIQ and {label} are required for this
-        plot.
+        No model configuration has both descriptive AIQ and {label}. Missing values are not plotted
+        as zero.
       </p>
     );
-  const xs = points.map((point) => valueFor(point, metric) ?? 0);
-  const ys = points.flatMap((point) => [
-    point.aiq ?? 0,
-    point.taskResamplingSensitivityLower ?? point.aiq ?? 0,
-    point.taskResamplingSensitivityUpper ?? point.aiq ?? 0,
-  ]);
-  const xMax = Math.max(...xs, 1);
-  const yMin = Math.min(...ys);
-  const yMax = Math.max(...ys, yMin + 1);
+  const groups = new Map<string, number>();
+  for (const point of points) {
+    const group = comparisonGroup(point.score, metric);
+    groups.set(group, (groups.get(group) ?? 0) + 1);
+  }
+  const frontier = paretoEfficientKeys(
+    points.map((point) => ({
+      key: pointKey(point.score),
+      comparisonGroup: comparisonGroup(point.score, metric),
+      x: point.x,
+      y: point.y,
+    })),
+  );
+  const frontierPoints = points.filter(
+    (point) =>
+      frontier.has(pointKey(point.score)) &&
+      (groups.get(comparisonGroup(point.score, metric)) ?? 0) > 1,
+  );
+  const option: EChartsCoreOption = {
+    aria: { enabled: true, decal: { show: true } },
+    grid: { left: 62, right: 28, top: 28, bottom: 64 },
+    legend: {
+      top: 0,
+      right: 12,
+      data: ['sol', 'terra', 'luna'],
+      textStyle: { color: 'var(--muted)' },
+    },
+    tooltip: {
+      trigger: 'item',
+      formatter: (value: unknown) => {
+        const data = readCalibrationDatum(value);
+        if (!data) return 'Calibration efficiency evidence unavailable';
+        const x = Number(data[0]);
+        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 0)}<br/>n=${data[3]} · coverage ${data[4]} · ${data[7]}<br/>scoring ${scoringVersion ?? 'unavailable'}`;
+      },
+    },
+    xAxis: {
+      type: 'value',
+      min: 0,
+      name: label,
+      nameLocation: 'middle',
+      nameGap: 42,
+      axisLabel: { color: 'var(--muted)' },
+      nameTextStyle: { color: 'var(--muted)' },
+      axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+      splitLine: { lineStyle: { color: 'var(--line)' } },
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      name: 'AIQ index (0–100)',
+      nameLocation: 'middle',
+      nameGap: 42,
+      axisLabel: { color: 'var(--muted)' },
+      nameTextStyle: { color: 'var(--muted)' },
+      axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+      splitLine: { lineStyle: { color: 'var(--line)' } },
+    },
+    series: [
+      {
+        type: 'custom',
+        name: 'Task-sensitivity interval',
+        silent: true,
+        z: 4,
+        data: points.map((point) => [
+          point.x,
+          point.score.taskResamplingSensitivityLower ?? point.y,
+          point.score.taskResamplingSensitivityUpper ?? point.y,
+        ]),
+        renderItem: (
+          _params: unknown,
+          api: {
+            value: (dimension: number) => number;
+            coord: (value: readonly number[]) => readonly [number, number];
+            style: (style: Record<string, unknown>) => Record<string, unknown>;
+          },
+        ) => {
+          const x = api.value(0);
+          const low = api.coord([x, api.value(1)]);
+          const high = api.coord([x, api.value(2)]);
+          return {
+            type: 'group',
+            children: [
+              {
+                type: 'line',
+                shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
+                style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+              },
+              {
+                type: 'line',
+                shape: { x1: low[0] - 4, y1: low[1], x2: low[0] + 4, y2: low[1] },
+                style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+              },
+              {
+                type: 'line',
+                shape: { x1: high[0] - 4, y1: high[1], x2: high[0] + 4, y2: high[1] },
+                style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+              },
+            ],
+          };
+        },
+      },
+      ...(['sol', 'terra', 'luna'] as const).map((family, index) => ({
+        type: 'scatter',
+        name: family,
+        symbol: ['circle', 'diamond', 'triangle'][index],
+        symbolSize: 12,
+        itemStyle: {
+          color: calibrationFamilyColor(family),
+          borderColor: 'var(--panel)',
+          borderWidth: 1.5,
+        },
+        data: points.filter((point) => point.score.modelFamily === family).map(calibrationDatum),
+      })),
+      {
+        type: 'scatter',
+        name: 'Descriptive Pareto frontier',
+        silent: true,
+        z: 5,
+        symbolSize: 20,
+        itemStyle: {
+          color: 'transparent',
+          borderColor: 'var(--frontier)',
+          borderWidth: 3,
+        },
+        data: frontierPoints.map(calibrationDatum),
+      },
+    ],
+  };
   return (
     <figure className="calibration-plot">
-      <svg
-        viewBox="0 0 640 300"
-        role="img"
-        aria-label={`AIQ versus ${label} scatter plot. Pareto-efficient points have rings.`}
-      >
-        <line x1="54" y1="20" x2="54" y2="252" />
-        <line x1="54" y1="252" x2="620" y2="252" />
-        {points.map((point) => {
-          const xValue = valueFor(point, metric) ?? 0;
-          const x = 54 + (xValue / xMax) * 550;
-          const y = 238 - (((point.aiq ?? 0) - yMin) / (yMax - yMin)) * 204;
-          const lowerY =
-            238 -
-            (((point.taskResamplingSensitivityLower ?? point.aiq ?? 0) - yMin) / (yMax - yMin)) *
-              204;
-          const upperY =
-            238 -
-            (((point.taskResamplingSensitivityUpper ?? point.aiq ?? 0) - yMin) / (yMax - yMin)) *
-              204;
-          const pareto = isPareto(point, points, metric);
-          return (
-            <g key={`${point.runId}-${point.modelFamily}-${point.reasoningEffort}`}>
-              {point.taskResamplingSensitivityLower !== null &&
-              point.taskResamplingSensitivityUpper !== null ? (
-                <line className="sensitivity-bar" x1={x} x2={x} y1={upperY} y2={lowerY} />
-              ) : null}
-              <circle
-                cx={x}
-                cy={y}
-                r={pareto ? 8 : 5}
-                className={pareto ? 'pareto-point' : 'scatter-point'}
-              >
-                <title>{`${point.modelFamily} ${point.reasoningEffort}: descriptive AIQ ${point.aiq?.toFixed(2)}${point.taskResamplingSensitivityLower === null || point.taskResamplingSensitivityUpper === null ? '' : `, fixed-fixture task-resampling sensitivity ${point.taskResamplingSensitivityLower.toFixed(2)}–${point.taskResamplingSensitivityUpper.toFixed(2)}`}, ${label} ${xValue.toFixed(metric === 'cost' ? 4 : 0)}`}</title>
-              </circle>
-            </g>
-          );
-        })}
-        <text x="10" y="18">
-          AIQ
-        </text>
-        <text x="340" y="288" textAnchor="middle">
-          {label}
-        </text>
-      </svg>
+      <EChartsChart
+        className="calibration-chart"
+        option={option}
+        label={`Calibration scatter of descriptive AIQ against ${label} for ${points.length} configurations, with visible fixed-fixture task-sensitivity intervals; scoring ${scoringVersion ?? 'unavailable'}.`}
+      />
       <figcaption>
         Higher descriptive AIQ and a smaller horizontal value are preferable. Vertical bars show
         fixed-fixture task-resampling sensitivity intervals. They are not universal model-capability
-        intervals. Rings mark a descriptive frontier only within the same fixture, scoring version,
-        runtime, concurrency, and run; cost also requires the same pricing version. Incomplete usage
-        is excluded. This is not a combined ranking or an API-frontier claim.
+        intervals. Rings mark a descriptive frontier only inside one calibration run, which fixes
+        the fixture, scoring, runtime, and concurrency. Cost also requires identical pricing and
+        evidence bindings. Incomplete usage is excluded. This is not a combined ranking or an
+        API-frontier claim.
       </figcaption>
     </figure>
   );
 }
 
-export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalibrationScore[] }) {
+export function CalibrationEfficiency({
+  scores,
+  scoringVersion,
+}: {
+  scores: readonly PublicCalibrationScore[];
+  scoringVersion: string | null;
+}) {
   const pricingBindings = [
     ...new Set(
       scores.flatMap((score) =>
@@ -139,10 +263,10 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
     ),
   ];
   return (
-    <section className="calibration-efficiency" aria-labelledby="efficiency-heading">
+    <section className="calibration-efficiency" aria-labelledby="calibration-efficiency-heading">
       <div className="section-heading">
         <span className="eyebrow">Transparent efficiency context</span>
-        <h2 id="efficiency-heading">
+        <h2 id="calibration-efficiency-heading">
           Observed Codex adapter elapsed time vs estimated Standard API equivalent token cost
         </h2>
       </div>
@@ -155,11 +279,12 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
       </p>
       <p>
         Pricing binding: {pricingBindings.length === 0 ? 'Unavailable' : pricingBindings.join('; ')}{' '}
-        · <a href="https://developers.openai.com/api/docs/pricing">official source</a>
+        · <a href="https://developers.openai.com/api/docs/pricing">official source</a> · scoring{' '}
+        {scoringVersion ?? 'Unavailable'}
       </p>
       <div className="plot-grid">
-        <Scatter scores={scores} metric="cost" />
-        <Scatter scores={scores} metric="time" />
+        <Scatter scores={scores} metric="cost" scoringVersion={scoringVersion} />
+        <Scatter scores={scores} metric="time" scoringVersion={scoringVersion} />
       </div>
       <div
         className="table-scroll"
@@ -168,15 +293,19 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
         tabIndex={0}
       >
         <table>
+          <caption>
+            Descriptive calibration scores, intervals, coverage, efficiency, scoring, and evidence.
+          </caption>
           <thead>
             <tr>
-              <th>Run</th>
-              <th>Model / effort</th>
-              <th>AIQ</th>
-              <th>Sample / coverage</th>
-              <th>Observed Codex adapter elapsed time</th>
-              <th>Estimated Standard API equivalent token cost</th>
-              <th>Token usage coverage</th>
+              <th scope="col">Run</th>
+              <th scope="col">Model / effort</th>
+              <th scope="col">AIQ</th>
+              <th scope="col">Sample / coverage</th>
+              <th scope="col">Observed Codex adapter elapsed time</th>
+              <th scope="col">Estimated Standard API equivalent token cost</th>
+              <th scope="col">Token usage coverage</th>
+              <th scope="col">Scoring / evidence</th>
             </tr>
           </thead>
           <tbody>
@@ -247,6 +376,11 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
                     aggregation evidence{' '}
                     {score.tokenUsageEvidenceLevel?.replaceAll('_', '-') ?? 'unavailable'}
                   </small>
+                </td>
+                <td>
+                  {scoringVersion ?? 'Scoring unavailable'}
+                  <small>{score.synthetic ? 'Synthetic seed' : 'Published calibration'}</small>
+                  <small>Untrusted · not Official · not ranking eligible</small>
                 </td>
               </tr>
             ))}
