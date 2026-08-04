@@ -4814,7 +4814,18 @@ begin
           or (
             not is_synthetic
             and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
-            and ('sha256:' || task_set.catalog_sha256) = stage ->> 'task_set_hash'
+            and stage ->> 'task_set_hash' = (
+              select aiq_private.jcs_sha256(
+                jsonb_agg(task_hash order by task_hash collate "C")
+              )
+              from (
+                select 'sha256:' || catalog.fixture_commitment as task_hash
+                from aiq_private.aiq_task_catalog catalog
+                where catalog.task_set_id = task_set.task_set_id
+                  and catalog.task_set_version = task_set.task_set_version
+                  and catalog.fixture_commitment is not null
+              ) catalog_hashes
+            )
           )
         )
     )
