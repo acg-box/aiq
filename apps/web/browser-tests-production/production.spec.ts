@@ -15,9 +15,14 @@ const allowedMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
 const expectedBenchmarkVersion = 'aiq-core@1.0.2';
 const expectedScoringVersion = '1.0.2';
 const expectedCorpusRelease = 'corpus_2026.07.29';
+const expectedCorpusCommitment =
+  'sha256:5b8cfddaacefcd58274b880815fd3f955bd319396755d041f2f30d000555624f';
 const expectedCatalogDigest =
   'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
-const digestPattern = /^sha256:[0-9a-f]{64}$/;
+const expectedTaskSetDigest =
+  'sha256:d5463bf713a83d07fdb43c2bf16093779096bcdeb17682ca68952060d71b7e10';
+const expectedPromptSetDigest =
+  'sha256:a6aead1a94c0e6dc6e9f80fe2057ab46c60fa9ce287e8db1c6000f8000541105';
 const matrixBatchPattern = /^run_[0-9a-f]{64}$/;
 
 const test = base.extend<ProductionFixtures>({
@@ -360,12 +365,10 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   expect(provenance.benchmark).toEqual(new Set([expectedBenchmarkVersion]));
   expect(provenance.scoring).toEqual(new Set([expectedScoringVersion]));
   expect(provenance.corpusRelease).toEqual(new Set([expectedCorpusRelease]));
+  expect(provenance.corpusCommitment).toEqual(new Set([expectedCorpusCommitment]));
   expect(provenance.catalog).toEqual(new Set([expectedCatalogDigest]));
-  expect(provenance.corpusCommitment.size).toBe(1);
-  expect([...provenance.corpusCommitment][0]).toMatch(digestPattern);
-  expect(provenance.taskSet.size).toBe(1);
-  expect([...provenance.taskSet][0]).toMatch(digestPattern);
-  expect(provenance.promptSet).toEqual(provenance.taskSet);
+  expect(provenance.taskSet).toEqual(new Set([expectedTaskSetDigest]));
+  expect(provenance.promptSet).toEqual(new Set([expectedPromptSetDigest]));
 });
 
 test('production method, trends, and radar preserve transparent evidence semantics', async ({
