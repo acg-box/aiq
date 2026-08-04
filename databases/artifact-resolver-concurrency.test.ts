@@ -135,7 +135,7 @@ function fixtureSql(): string {
   const objectValues = ingressArtifacts
     .map(
       ([kind, digest, bytes, bucket]) =>
-        `('${kind}','${digest}','${bucket}',` + `'sha256/${digest}/${kind}',${bytes}::bigint)`,
+        `('${kind}','${digest}','${bucket}','sha256/${digest}/${kind}',${bytes}::bigint)`,
     )
     .join(',\n');
   const claimValues = ingressArtifacts

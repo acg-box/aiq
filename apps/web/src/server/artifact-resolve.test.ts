@@ -9,6 +9,7 @@ import {
   ArtifactResolveUpstreamUnavailableError,
   handleArtifactResolve,
   type ArtifactResolveDependencies,
+  type ResolvedArtifact,
 } from './artifact-resolve-handler.ts';
 
 const token = 'verifier-token';
@@ -90,7 +91,7 @@ void describe('verifier artifact resolution', () => {
   void it('signs exact claim-bound capability stdout and stderr RPC responses', async () => {
     for (const capabilityKind of ['stdout.jsonl', 'stderr.txt']) {
       let observedResolve: readonly string[] = [];
-      let observedArtifact: Readonly<Record<string, unknown>> = {};
+      let observedArtifact: ResolvedArtifact | undefined;
       let observedExpiry = 0;
       // oxlint-disable-next-line eslint/no-await-in-loop -- Each capability artifact has independent RPC and signing observations.
       const response = await handleArtifactResolve(
