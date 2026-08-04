@@ -6044,9 +6044,9 @@ begin
           score.interval_parameters
         )
         and score.task_resampling_low =
-          (score.interval_parameters ->> 'lower')::numeric
+          round((score.interval_parameters ->> 'lower')::numeric, 3)
         and score.task_resampling_high =
-          (score.interval_parameters ->> 'upper')::numeric
+          round((score.interval_parameters ->> 'upper')::numeric, 3)
     ) <> 17
   then
     return false;
@@ -8260,7 +8260,7 @@ $_$;
 create function public.aiq_stage_verifier_result(stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer) returns text
     language plpgsql security DEFINER
     SET search_path to ''
-    SET statement_timeout to '50s'
+    SET statement_timeout to '110s'
     as $$
 begin
   perform aiq_private.require_request_role('aiq_verifier');

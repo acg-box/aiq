@@ -146,8 +146,19 @@ void test('bounds only the Official staging RPC with its full database budget', 
       /create function public\.aiq_stage_verifier_result\(stage jsonb,[\s\S]*?\n\$\$;/,
     )?.[0] ?? '';
 
-  assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '50s'/);
-  assert.equal(schema.match(/SET statement_timeout to '50s'/g)?.length, 1);
+  assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
+  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 1);
+});
+
+void test('compares stored task-resampling bounds at their declared precision', () => {
+  assert.match(
+    schema,
+    /score\.task_resampling_low =\s*round\(\(score\.interval_parameters ->> 'lower'\)::numeric, 3\)/,
+  );
+  assert.match(
+    schema,
+    /score\.task_resampling_high =\s*round\(\(score\.interval_parameters ->> 'upper'\)::numeric, 3\)/,
+  );
 });
 
 void test('binds the Official stage task-set hash to all catalog fixture commitments', () => {
