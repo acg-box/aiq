@@ -263,23 +263,33 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       publisher published it as `trusted_verified`.
 - [x] `aiq.wiki` resolves with valid TLS; `www.aiq.wiki` redirects permanently
       while preserving paths.
-- [ ] Run the read-only production acceptance gate after each production
-      publication or deployment change. It covers public pages, exact matrix
-      counts, evidence semantics, readiness, write rejection, mobile layout,
-      and selected accessibility rules.
+- [x] The read-only production acceptance gate passed for the historical
+      acceptance deployment recorded below. Rerun it after each future
+      publication or deployment change.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
       next run without changing the accepted execution contract.
 
-Run the bounded, secret-free production acceptance gate after publication or a
-production deployment change:
+## Production acceptance evidence
+
+On 2026-08-04, the bounded, secret-free production acceptance gate passed all
+7 tests against Vercel deployment `dpl_CeNkm4rGR8UaRkqQBdPZAyBmWgg2`. That
+deployment used source commit
+`29f5fc8d8576d95b6fa00fc8f7c943cfc2e4290d`. The exact command was:
 
 ```sh
-AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production
+AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production --workspace @aiq/web
 ```
 
-The browser blocks non-read requests. The gate expects exactly one 17-by-72
-Official matrix and fails if later runs exist until the release contract is
-deliberately revised. For a local contract check without a production read, run
+The result was 7 of 7 tests passed. This is historical acceptance evidence. It
+does not identify every later deployment and does not create a benchmark,
+Storage, or OpenWiki schedule. Rerun the command after each future publication
+or production deployment change.
+
+The browser blocks non-read requests. The gate covers public pages, exact matrix
+counts, evidence semantics, readiness, write rejection, mobile layout, and
+selected accessibility rules. It expects exactly one 17-by-72 Official matrix
+and fails if later runs exist until the release contract is deliberately
+revised. For a local contract check without a production read, run
 `npm run test:browser:production-contract --workspace @aiq/web`. These checks
 validate the accepted public surface described in
 [Operations and Validation](operations.md); they do not schedule future work.
