@@ -13,8 +13,9 @@ publication was deployed from merge commit
 `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
 evidence, not the identity of every later production deployment.
 
-The native Apple Silicon macOS runner completed one real, non-synthetic Official
-`aiq-core@1.0.2` batch. It contains 17 configuration runs and 72 tasks per run,
+The live production data is the historical AIQ Core `1.0.2` matrix. The native
+Apple Silicon macOS runner completed this one real, non-synthetic Official
+batch. It contains 17 configuration runs and 72 tasks per run,
 or 1,224 task-level results. This is one Official matrix, not 1,224 benchmark
 runs. The verifier replayed and accepted the evidence. A distinct publisher
 published the matrix as `trusted_verified`. Of the 1,224 results, 1,218
@@ -34,9 +35,11 @@ artifact bindings, including 19 capability artifacts.
 
 ## Product contract
 
-- Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`, with 72
+- Repository source targets AIQ Core `1.0.3` and scoring `1.0.3`, with 72
   private controlled tasks in ten domains.
-- AIQ Core `1.0.2` is the only accepted launch contract.
+- AIQ Core `1.0.3` is the current code contract. Model-free native corpus
+  validation passes; clean-commit release binding, real execution, and
+  publication are pending. Production remains on the historical `1.0.2` matrix.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
@@ -52,15 +55,38 @@ artifact bindings, including 19 capability artifacts.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
+sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1
 ```
 
 Its catalog release identity is
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-Production accepts only `1.0.2`. The published Official `72 × 17` matrix is
-one batch of 17 configuration runs and 1,224 task-level executions.
+`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
+The release identity is `aiq-core/1.0.3`. The scorer-manifest identity is
+`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
+and the evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+The model-free source candidate commitment is
+`sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`.
+Its runtime `task_set_hash` is
+`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
+the distinct controlled generated-task tree identity is
+`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+The separate six-task AIQ Core Contrast calibration commitment is
+`sha256:df3028d576c91f9b57e6aa23a94f0b1ffb61fd04b53a141fe9f0160c08a7c5d9`;
+its ordered metadata catalog identity is
+`sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
+The production commitment remains create-new until a clean commit and native
+release binaries replace the candidate's null binary bindings. Do not infer a
+runtime hash from a generated-task tree digest. The
+published historical `1.0.2` Official `72 × 17` matrix is one batch of 17
+configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
+
+The Web application is a professional analysis workbench. It keeps semantic
+task outcomes separate from runtime, invalid, and missing cells; shows the
+fixed-fixture task-sensitivity interval; and uses ECharts with SVG rendering and
+ARIA descriptions. Users can select system, light, or dark color themes. The
+production views use the real historical matrix, not synthetic data.
 
 ## Repository map
 
@@ -132,8 +158,12 @@ inputs. Neither smoke creates a benchmark result.
 `databases/init.ts` is the only production initialization entry point. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
 data in one transaction. It rejects a database that already contains AIQ schema
-or roles. This is the one greenfield desired state. Create another empty project
-after a failed initialization.
+or roles. This is the one greenfield desired state. For the current pre-launch
+project, verify the accepted backups and reset only the historical AIQ namespace
+before initialization. That one-time operator reset includes `aiq_private`, the
+two AIQ gateway roles, and the exact AIQ-owned public views and RPC overloads;
+it must preserve every Supabase-managed schema, role, extension, and non-AIQ
+object. Do not run a migration chain or keep a compatibility state.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -141,12 +171,13 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-The production reference must contain the real controlled, non-synthetic AIQ
-Core `1.0.2` corpus commitment, its real canonical `published_at` timestamp, and
+For an empty AIQ namespace, the production reference must contain the real
+controlled, non-synthetic AIQ Core `1.0.3` corpus commitment, its real canonical
+`published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
 only after the controlled corpus and final native binaries pass model-free
 validation; the repository contains no substitute production reference.
-A successful receipt reports scoring `1.0.2`, both source-head catalog
+A successful receipt reports scoring `1.0.3`, both source-head catalog
 identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and

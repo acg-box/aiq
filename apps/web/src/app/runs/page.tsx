@@ -54,7 +54,7 @@ export default async function RunsPage({
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Run history</span>
-        <h1>Every public run stays inspectable.</h1>
+        <h1>Public run history</h1>
         <p>
           Each row is one configuration run. A complete Official matrix is one batch of 17
           configuration runs. In that complete batch, each run has 72 task-level executions, for
@@ -78,7 +78,7 @@ export default async function RunsPage({
                 <th scope="col">Configuration</th>
                 <th scope="col">Completeness</th>
                 <th scope="col">Coverage</th>
-                <th scope="col">Failed</th>
+                <th scope="col">Runtime issues</th>
                 <th scope="col">Missing</th>
                 <th scope="col">Evidence</th>
               </tr>
@@ -107,8 +107,8 @@ export default async function RunsPage({
                         ? 'Not reported'
                         : `${summary.coveragePercent.toFixed(1)}%`}
                     </td>
-                    <td>{summary.failed}</td>
-                    <td>{summary.missing}</td>
+                    <td>{summary.runtimeIssueCount}</td>
+                    <td>{summary.missingCount}</td>
                     <td>
                       <Link href={`/runs/${run.id}`}>Inspect run</Link>
                       <small>{run.synthetic ? 'Synthetic seed' : 'Published'}</small>

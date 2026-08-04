@@ -41,27 +41,26 @@ begin
       where coalesce(relation.reloptions, array[]::text[])
         @> array['security_invoker=true']
     ),
-    count(*) filter (
-      where relation.relname in (
-        'public_distributed_radar','public_leaderboard','public_model_matrix',
-        'public_nodes','public_run_results','public_runs',
-        'public_scoring_versions','public_task_coverage',
-        'public_calibration_runs','public_calibration_results',
-        'public_calibration_scores','public_model_efficiency'
-      )
-    )
+    count(*)
   into public_view_count, security_invoker_view_count, canonical_public_view_count
   from pg_catalog.pg_class relation
   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
   where namespace.nspname = 'public'
-    and relation.relkind = 'v';
+    and relation.relkind = 'v'
+    and relation.relname in (
+      'public_distributed_radar','public_leaderboard','public_model_matrix',
+      'public_nodes','public_run_results','public_runs',
+      'public_scoring_versions','public_task_coverage',
+      'public_calibration_runs','public_calibration_results',
+      'public_calibration_scores','public_model_efficiency'
+    );
 
   if public_view_count <> 12
     or security_invoker_view_count <> 12
     or canonical_public_view_count <> 12
   then
     raise exception
-      'expected 12 security-invoker public views, found % views and % invoker views',
+      'expected 12 canonical security-invoker AIQ public views, found % views and % invoker views',
       public_view_count, security_invoker_view_count;
   end if;
 
@@ -120,26 +119,26 @@ begin
   select count(*) into current_task_set_count
   from aiq_private.aiq_task_sets task_set
   where task_set.task_set_id = 'aiq-core'
-    and task_set.task_set_version = '1.0.2';
+    and task_set.task_set_version = '1.0.3';
 
   select count(*) into current_task_count
   from aiq_private.aiq_task_catalog task
   where task.task_set_id = 'aiq-core'
-    and task.task_set_version = '1.0.2'
-    and task.task_version = '1.0.2'
-    and task.scorer_version = '1.0.2';
+    and task.task_set_version = '1.0.3'
+    and task.task_version = '1.0.3'
+    and task.scorer_version = '1.0.3';
 
   select count(*) into current_scoring_count
   from aiq_private.aiq_scoring_versions scoring
-  where scoring.scoring_version = '1.0.2'
-    and scoring.benchmark_version = 'aiq-core@1.0.2';
+  where scoring.scoring_version = '1.0.3'
+    and scoring.benchmark_version = 'aiq-core@1.0.3';
 
   if current_task_set_count <> 1
     or current_task_count <> 72
     or current_scoring_count <> 1
   then
     raise exception
-      'expected AIQ Core 1.0.2 with 72 task 1.0.2 rows and scorer 1.0.2';
+      'expected AIQ Core 1.0.3 with 72 task 1.0.3 rows and scorer 1.0.3';
   end if;
 
   if not pg_catalog.has_function_privilege(
@@ -216,6 +215,7 @@ set local role anon;
 select
   (select count(*) from public.public_distributed_radar) as distributed_radar_count,
   (select count(*) from public.public_leaderboard) as leaderboard_count,
+  (select sum(runtime_issues) from public.public_leaderboard) as leaderboard_runtime_issue_count,
   (select count(*) from public.public_model_matrix) as model_matrix_count,
   (select count(*) from public.public_nodes) as node_count,
   (select count(*) from public.public_run_results) as run_result_count,
@@ -224,7 +224,7 @@ select
   (select count(*) from public.public_task_coverage) as task_coverage_count,
   (select count(*) from public.public_calibration_runs) as calibration_run_count,
   (select count(*) from public.public_calibration_results) as calibration_result_count,
-  (select concat_ws(':',status,failure_code,explanation_code,explanation_summary)
+  (select concat_ws(':',outcome,execution_status,failure_code,explanation_code,explanation_summary)
    from public.public_calibration_results limit 1) as calibration_result_failure_shape,
   (select count(*) from public.public_calibration_scores) as calibration_score_count,
   (select count(*) from public.public_model_efficiency) as model_efficiency_count,
@@ -235,6 +235,7 @@ set local role authenticated;
 select
   (select count(*) from public.public_distributed_radar) as distributed_radar_count,
   (select count(*) from public.public_leaderboard) as leaderboard_count,
+  (select sum(runtime_issues) from public.public_leaderboard) as leaderboard_runtime_issue_count,
   (select count(*) from public.public_model_matrix) as model_matrix_count,
   (select count(*) from public.public_nodes) as node_count,
   (select count(*) from public.public_run_results) as run_result_count,
@@ -243,7 +244,7 @@ select
   (select count(*) from public.public_task_coverage) as task_coverage_count,
   (select count(*) from public.public_calibration_runs) as calibration_run_count,
   (select count(*) from public.public_calibration_results) as calibration_result_count,
-  (select concat_ws(':',status,failure_code,explanation_code,explanation_summary)
+  (select concat_ws(':',outcome,execution_status,failure_code,explanation_code,explanation_summary)
    from public.public_calibration_results limit 1) as calibration_result_failure_shape,
   (select count(*) from public.public_calibration_scores) as calibration_score_count,
   (select count(*) from public.public_model_efficiency) as model_efficiency_count,

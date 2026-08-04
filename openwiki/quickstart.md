@@ -14,17 +14,19 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- a source-head AIQ Core `aiq-core@1.0.2` target, with 72 private tasks, a
-  public catalog, and scoring `1.0.2`;
+- a source-head AIQ Core `aiq-core@1.0.3` target, with 72 private tasks, a
+  public catalog, and scoring `1.0.3`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-Repository source makes AIQ Core `1.0.2` and scorer `1.0.2` the current
-Official contract. Production publishes one complete Official matrix; there is
-no earlier Official benchmark history.
+Repository source makes AIQ Core `1.0.3` and scorer `1.0.3` the current code
+contract. Model-free native corpus validation passes; clean-commit release
+binding, real execution, and publication are pending. Production still
+publishes the one historical AIQ Core `1.0.2` Official matrix; no `1.0.3` run or
+deployment has been accepted.
 
 ## Deployment status
 
@@ -43,8 +45,8 @@ URL is intrinsic to its retained deployment. The current generated Vercel
 surfaces emit `noindex`.
 
 The native Apple Silicon macOS runner completed one real `72 × 17` Official
-benchmark batch, or 1,224 task-level results. This is one matrix, not 1,224
-separate benchmark runs. The native verifier replayed the deterministic
+AIQ Core `1.0.2` benchmark batch, or 1,224 task-level results. This is one
+matrix, not 1,224 separate benchmark runs. The native verifier replayed the deterministic
 evaluators, and the distinct publisher published the matrix as
 `trusted_verified` through the flow described in
 [Architecture and Runtime](architecture-and-runtime.md). Of the results, 1,218
@@ -60,6 +62,12 @@ measurement rules live in [Benchmark Method](benchmark-method.md). Public views
 contain 17 runs, 1,224 results, and 17 rows each for the leaderboard, model
 efficiency, and model matrix. Publication created 4,395 artifact bindings,
 including 19 capability artifacts.
+
+The public site is a professional analysis workbench over this real historical
+evidence. It separates semantic task outcomes from runtime states, shows the
+fixed-fixture task-sensitivity interval, renders ECharts as SVG with ARIA
+descriptions, and supports system, light, and dark themes. Synthetic data is
+limited to explicit development and test paths.
 
 Production still has no cloud runner or verifier worker and no recurring
 benchmark or Storage schedule. The twice-daily benchmark schedule and its next
@@ -112,11 +120,15 @@ They are diagnostics, not benchmark results.
 ## Database authority
 
 `databases/schema.sql` is the sole desired database state.
-`databases/init.ts` connects directly to one new Supabase PostgreSQL database and
+`databases/init.ts` connects directly to the Supabase PostgreSQL database and
 applies the schema plus public reference data in one transaction. It rejects an
-existing AIQ database. The repository has one greenfield desired state. Current
-production initialization is complete; use this command only for a replacement
-empty project, never against the current production project.
+existing AIQ namespace. The repository has one greenfield desired state. For
+the current pre-launch project, verify the accepted backups, remove only the
+historical AIQ schema and AIQ-owned roles, and then initialize the empty AIQ
+namespace. The exact reset also removes the AIQ-owned public views and RPC
+overloads after a live dependency-closure review. It preserves Supabase-managed
+schemas, roles, extensions, and all non-AIQ objects. Do not run a migration chain
+or retain dual-version logic.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -124,18 +136,30 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-After the controlled corpus and final native binaries pass model-free
-validation, the separately controlled reference must contain a
-non-synthetic AIQ Core `1.0.2` corpus commitment, a canonical millisecond UTC
-`published_at`, and the three production identities. Initialization validates
-those fields and bindings. The expected receipt contains scoring `1.0.2`, 72
+For an empty AIQ namespace, after the controlled corpus and final native
+binaries pass model-free validation, the separately controlled reference must
+contain a non-synthetic AIQ Core `1.0.3` corpus commitment, a canonical
+millisecond UTC `published_at`, and the three production identities. Initialization validates
+those fields and bindings. The expected receipt contains scoring `1.0.3`, 72
 tasks, 17 model configurations, three nodes, 40 private forced-RLS tables, 12
-security-invoker public views, and two hardened gateway roles. The ordered
+canonical AIQ-owned security-invoker public views, and two hardened gateway
+roles. Unrelated `public` views stay outside the AIQ readiness inventory. The ordered
 task-metadata catalog digest is
-`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
-the release-policy identity is `aiq-core/1.0.2`, and its catalog
+`sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`;
+the release-policy identity is `aiq-core/1.0.3`, and its catalog
 release-identity digest is
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
+The scorer-manifest identity is
+`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`;
+the evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+The model-free source candidate commitment is
+`sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`.
+Native validation passes all 72 tasks. The runtime `task_set_hash` is
+`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
+the distinct controlled generated-task tree identity is
+`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+The production commitment remains pending clean-commit native release binding.
 
 ## Next reading
 

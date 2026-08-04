@@ -14,6 +14,18 @@
 	--content: min(1180px, calc(100vw - 40px));
 }
 
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+
 * {
 	box-sizing: border-box;
 }
@@ -93,16 +105,6 @@ table,
 .brand em {
 	color: var(--acid);
 	font-style: normal;
-}
-
-.brand-mark {
-	display: grid;
-	width: 32px;
-	height: 32px;
-	color: var(--acid-ink);
-	background: var(--acid);
-	place-items: center;
-	clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%);
 }
 
 .site-header nav {
@@ -1610,7 +1612,7 @@ summary:focus-visible,
 	border: 1px solid currentcolor;
 }
 
-.result-failed {
+.result-runtime_issue {
 	color: var(--coral);
 }
 

@@ -203,7 +203,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 }, testInfo) => {
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'What can a model actually do');
+  await expectPublishedPage(page, expectedOrigin, '/', 'Benchmark overview');
   await expectNoDocumentOverflow(page, testInfo);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     await expect(
@@ -272,12 +272,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   for (let pageNumber = 0; historyPath !== null && pageNumber < 3; pageNumber += 1) {
     expect(visitedHistoryPaths.has(historyPath), 'run-history cursor cycle').toBe(false);
     visitedHistoryPaths.add(historyPath);
-    await expectPublishedPage(
-      page,
-      expectedOrigin,
-      historyPath,
-      'Every public run stays inspectable',
-    );
+    await expectPublishedPage(page, expectedOrigin, historyPath, 'Public run history');
     const historyRows = page
       .getByRole('region', { name: 'Public run history' })
       .locator('tbody tr');
@@ -310,12 +305,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     const newer = page.getByRole('link', { name: 'Newer runs' });
     await expect(newer).toBeVisible();
     const newerPath = await newer.getAttribute('href');
-    await expectPublishedPage(
-      page,
-      expectedOrigin,
-      newerPath ?? '',
-      'Every public run stays inspectable',
-    );
+    await expectPublishedPage(page, expectedOrigin, newerPath ?? '', 'Public run history');
     const newerHrefs = await page
       .getByRole('region', { name: 'Public run history' })
       .getByRole('link', { name: 'Inspect run' })
@@ -425,12 +415,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
 }, testInfo) => {
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(
-    page,
-    expectedOrigin,
-    '/method',
-    'Transparent scoring, version by version',
-  );
+  await expectPublishedPage(page, expectedOrigin, '/method', 'Scoring method');
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();
@@ -444,16 +429,12 @@ test('production method, trends, and radar preserve transparent evidence semanti
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
-  await expectPublishedPage(
-    page,
-    expectedOrigin,
-    '/trends?range=all',
-    'The past remains part of the record',
-  );
+  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'Benchmark history');
   await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Trend series' }).getByRole('listitem')).toHaveCount(
-    17,
-  );
+  await expect(
+    page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
+  ).toHaveCount(5);
+  await expect(page.getByRole('note')).toContainText('highest latest point estimates');
   await expect(
     page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
   ).toBeVisible();
@@ -461,7 +442,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
     page.getByRole('region', { name: 'Official model efficiency' }).locator('tbody tr'),
   );
 
-  await expectPublishedPage(page, expectedOrigin, '/radar', 'Know the runner behind the result');
+  await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner provenance');
   await expect(page.locator('.node-card')).not.toHaveCount(0);
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
   await expect(

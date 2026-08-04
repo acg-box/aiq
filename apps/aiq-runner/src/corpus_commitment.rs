@@ -25,12 +25,12 @@ use crate::{
 	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
 };
 
-/// Ordered catalog identity for the six controlled contrast variants.
+/// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:984d37e6db5a9d00b21fe0bb1a940d5712c0974c90a56f232a81347425410c24";
+	"sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578";
 
 const CORE_CATALOG_JSON: &str =
-	include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json");
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -52,7 +52,7 @@ const CONTRAST_CATALOG: CatalogContract = CatalogContract {
 	task_set_id: "aiq-core-contrast",
 	task_set_version: AIQ_TASK_SET_VERSION,
 	identity_sha256: CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
-	identity_scope: "ordered_six_contrast_variants",
+	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::FixedOrderedIds(&CONTRAST_TASK_IDS),
 };
 
@@ -669,7 +669,7 @@ pub fn validate_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads and validates the immutable 72-task AIQ Core 1.0.2 corpus.
+/// Loads and validates the immutable 72-task AIQ Core 1.0.3 corpus.
 pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -678,7 +678,7 @@ pub fn validate_core_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads the six controlled AIQ Core 1.0.2 contrast variants.
+/// Loads the six controlled AIQ Core 1.0.3 contrast variants.
 ///
 /// The caller supplies the expected canonical commitment digest. Contrast tasks
 /// are calibration-only and are not part of the 72-task core catalog.
@@ -1580,7 +1580,7 @@ mod tests {
 			"model_toolchain": policy,
 		});
 		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json"
 		))
 		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
@@ -1759,7 +1759,7 @@ mod tests {
 
 		let mut predecessor = commitment();
 
-		predecessor.catalog.task_set_version = "1.0.1".to_owned();
+		predecessor.catalog.task_set_version = "1.0.2".to_owned();
 		predecessor.catalog.identity_sha256 =
 			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
 
@@ -1776,7 +1776,7 @@ mod tests {
 
 		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
 		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
-		assert_eq!(contrast.catalog.identity_scope, "ordered_six_contrast_variants");
+		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
 			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256

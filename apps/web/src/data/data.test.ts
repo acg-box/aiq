@@ -25,7 +25,7 @@ import {
   buildSeedRunHistoryPage,
   calibrationExplanationSummaryForOutcome,
   calibrationFailureCodeForOutcome,
-  calibrationStatusForOutcome,
+  executionStatusForOutcome,
   classifyPublicDataConfiguration,
   collectPaginatedRows,
   createAiqRepository,
@@ -115,6 +115,7 @@ function trendRow(matrixId: string, recordedAt: string): TrendRow {
   return {
     matrix_id: matrixId,
     run_id: `run-${matrixId}-${recordedAt}`,
+    scoring_version: '1.0.3',
     recorded_at: recordedAt,
     bucket_started_at: recordedAt,
     bucket_ended_at: new Date(Date.parse(recordedAt) + 1).toISOString(),
@@ -178,7 +179,7 @@ void describe('seed repository', () => {
           entry.sampleSize === 72 &&
           entry.coveragePercent === 100 &&
           entry.missing === 0 &&
-          entry.scoringVersion === '1.0.2',
+          entry.scoringVersion === '1.0.3',
       ),
     );
   });
@@ -339,7 +340,7 @@ void describe('seed repository', () => {
         ci_high: official.ciHigh,
         sample_size: official.sampleSize,
         coverage_percent: official.coveragePercent,
-        failures: official.failures,
+        runtime_issues: official.runtimeIssues,
         missing: official.missing,
         scoring_version: official.scoringVersion,
         score_status: 'official',
@@ -353,9 +354,9 @@ void describe('seed repository', () => {
         ci_high: null,
         sample_size: null,
         coverage_percent: null,
-        failures: null,
+        runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.2',
+        scoring_version: '1.0.3',
         score_status: 'not_applicable',
         synthetic: false,
       },
@@ -367,9 +368,9 @@ void describe('seed repository', () => {
         ci_high: null,
         sample_size: null,
         coverage_percent: null,
-        failures: null,
+        runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.2',
+        scoring_version: '1.0.3',
         score_status: 'missing',
         synthetic: false,
       },
@@ -441,9 +442,9 @@ void describe('seed repository', () => {
       ci_high: 100,
       sample_size: 72,
       coverage_percent: 100,
-      failures: 0,
+      runtime_issues: 0,
       missing: 0,
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.3',
       score_status: null,
       synthetic: false,
     };
@@ -465,7 +466,7 @@ void describe('seed repository', () => {
       ci_high: null,
       sample_size: null,
       coverage_percent: null,
-      failures: null,
+      runtimeIssues: null,
       missing: null,
     };
     for (const syntheticRow of [
@@ -522,9 +523,9 @@ void describe('seed repository', () => {
       ci_high: 72,
       sample_size: 72,
       coverage_percent: 100,
-      failures: 1,
+      runtime_issues: 1,
       missing: 0,
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.3',
       score_status: 'official',
       synthetic: false,
     };
@@ -566,10 +567,7 @@ void describe('presentation aggregates', () => {
       synthetic: false as const,
     };
     assert.equal(isScoredLeaderboardEntry(officialEntry), true);
-    assert.deepEqual(presentLeaderboardEntry(officialEntry).taskCredit, {
-      credited: 72 - officialEntry.failures,
-      scored: 72,
-    });
+    assert.equal(presentLeaderboardEntry(officialEntry).runtimeIssues, officialEntry.runtimeIssues);
     assert.deepEqual(
       {
         status: presentLeaderboardEntry(officialEntry).status,
@@ -585,8 +583,8 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.2');
-    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.2');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.3');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.3');
     assert.ok(
       seedRuns
         .flatMap((run) => run.tasks)
@@ -618,17 +616,27 @@ void describe('presentation aggregates', () => {
     );
     assert.deepEqual(
       {
-        passed: summarizeRun(coverageOnlyRun).passed,
-        failed: summarizeRun(coverageOnlyRun).failed,
+        correct: summarizeRun(coverageOnlyRun).correct,
+        partial: summarizeRun(coverageOnlyRun).partial,
+        incorrect: summarizeRun(coverageOnlyRun).incorrect,
+        runtimeIssues: summarizeRun(coverageOnlyRun).runtimeIssues,
         invalid: summarizeRun(coverageOnlyRun).invalid,
         missing: summarizeRun(coverageOnlyRun).missing,
         notApplicable: summarizeRun(coverageOnlyRun).notApplicable,
       },
-      { passed: 56, failed: 2, invalid: 0, missing: 14, notApplicable: 0 },
+      {
+        correct: 0,
+        partial: 56,
+        incorrect: 0,
+        runtimeIssues: 2,
+        invalid: 0,
+        missing: 14,
+        notApplicable: 0,
+      },
     );
     assert.ok(
       coverageOnlyRun.tasks
-        .filter((task) => task.status !== 'passed')
+        .filter((task) => task.executionStatus !== 'completed')
         .every((task) => task.explanation !== null),
     );
     assert.deepEqual(classifyRunCompleteness(firstRun), {
@@ -656,7 +664,11 @@ void describe('presentation aggregates', () => {
     const notApplicableRun = {
       ...firstRun,
       tasks: firstRun.tasks.map((task) =>
-        Object.assign({}, task, { status: 'not_applicable' as const, score: null }),
+        Object.assign({}, task, {
+          outcome: 'not_applicable' as const,
+          executionStatus: 'not_applicable' as const,
+          score: null,
+        }),
       ),
     };
     assert.deepEqual(classifyRunCompleteness(notApplicableRun), {
@@ -674,27 +686,53 @@ void describe('presentation aggregates', () => {
     const run = {
       ...source,
       tasks: [
-        { ...template, status: 'passed' as const, score: 1, explanation: null },
-        { ...template, status: 'passed' as const, score: 0.5, explanation: null },
-        { ...template, status: 'failed' as const, score: 0, explanation: null },
         {
           ...template,
-          status: 'failed' as const,
+          outcome: 'correct' as const,
+          executionStatus: 'completed' as const,
+          score: 1,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'partial' as const,
+          executionStatus: 'completed' as const,
+          score: 0.5,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'incorrect' as const,
+          executionStatus: 'completed' as const,
+          score: 0,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'timeout' as const,
+          executionStatus: 'runtime_issue' as const,
           score: 0,
           explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
         },
-        { ...template, status: 'missing' as const, score: null, explanation: null },
+        {
+          ...template,
+          outcome: 'missing' as const,
+          executionStatus: 'missing' as const,
+          score: null,
+          explanation: null,
+        },
       ],
     };
     assert.deepEqual(summarizeRunOutcomes(run), {
       correct: 1,
       partial: 1,
       incorrect: 1,
-      executionFailures: 1,
+      runtimeIssues: 1,
       unscored: 1,
-      passed: 2,
+      credited: 2,
+      completed: 3,
       total: 5,
-      successRate: 40,
+      successRate: (2 / 3) * 100,
     });
   });
 
@@ -707,7 +745,7 @@ void describe('presentation aggregates', () => {
       modelFamily: 'sol',
       reasoningEffort: 'low',
     });
-    assert.equal(detail?.results[0]?.taskVersion, '1.0.2');
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.3');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -747,7 +785,10 @@ void describe('presentation aggregates', () => {
       });
       const score = (domainMeans.reduce((sum, mean) => sum + mean, 0) / 10) * 100;
       assert.ok(Math.abs(score - entry.score) < 0.02);
-      assert.equal(run.tasks.filter((task) => task.status === 'failed').length, entry.failures);
+      assert.equal(
+        run.tasks.filter((task) => task.executionStatus === 'runtime_issue').length,
+        entry.runtimeIssues,
+      );
     }
   });
 
@@ -792,6 +833,7 @@ void describe('presentation aggregates', () => {
     const row: TrendRow = {
       matrix_id: 'sol-ultra',
       run_id: 'run-latest-in-bucket',
+      scoring_version: '0.9.7',
       recorded_at: '2026-07-24T00:00:00.000Z',
       bucket_started_at: '2026-07-23T12:00:00.000Z',
       bucket_ended_at: '2026-07-24T00:00:00.001Z',
@@ -816,6 +858,7 @@ void describe('presentation aggregates', () => {
       {
         entryId: row.matrix_id,
         runId: row.run_id,
+        scoringVersion: row.scoring_version,
         recordedAt: row.recorded_at,
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
@@ -905,7 +948,7 @@ void describe('presentation aggregates', () => {
     const run = {
       run_id: runId,
       classification: 'local_calibration_non_official',
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.3',
       selected_task_count: 72,
       selected_model_count: 17,
       result_count: 1_224,
@@ -933,12 +976,12 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.2',
+          task_version: '1.0.3',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
           outcome,
-          status: calibrationStatusForOutcome(outcome),
+          execution_status: executionStatusForOutcome(outcome),
           failure_code: failureCode,
           explanation_code: failureCode,
           explanation_summary: explanationSummary,
@@ -1009,7 +1052,7 @@ void describe('presentation aggregates', () => {
     );
     assert.ok(
       calibration.results.every(
-        (result) => result.status === calibrationStatusForOutcome(result.outcome),
+        (result) => result.executionStatus === executionStatusForOutcome(result.outcome),
       ),
     );
     for (const outcome of ['incorrect', 'missing'] as const) {
@@ -1029,7 +1072,7 @@ void describe('presentation aggregates', () => {
     );
     assert.ok(workspaceIntegrity);
     assert.equal(workspaceIntegrity.outcome, 'invalid');
-    assert.equal(workspaceIntegrity.status, 'invalid');
+    assert.equal(workspaceIntegrity.executionStatus, 'invalid');
     assert.equal(workspaceIntegrity.taskScore, null);
     assert.equal(workspaceIntegrity.explanationCode, 'workspace_integrity');
     assert.equal(
@@ -1085,7 +1128,9 @@ void describe('presentation aggregates', () => {
     );
 
     const invalidRows = [
-      selectedRows.map((row, index) => (index === 2 ? { ...row, status: 'passed' } : row)),
+      selectedRows.map((row, index) =>
+        index === 2 ? { ...row, execution_status: 'runtime_issue' } : row,
+      ),
       selectedRows.map((row, index) =>
         index === 2 ? { ...row, explanation_summary: 'An internal detail leaked.' } : row,
       ),
@@ -1345,7 +1390,7 @@ void describe('presentation aggregates', () => {
     const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
       id: `calibration-${String(index).padStart(4, '0')}`,
       classification: 'local_calibration_non_official',
-      scoringVersion: '1.0.2',
+      scoringVersion: '1.0.3',
       selectedTaskCount: 72,
       selectedModelCount: 17,
       resultCount: 1_224,
@@ -1465,7 +1510,11 @@ void describe('presentation aggregates', () => {
         if (task.domain !== sparseDomain || task.id === retainedTaskId) {
           return task;
         }
-        return Object.assign({}, task, { status: 'missing' as const, score: null });
+        return Object.assign({}, task, {
+          outcome: 'missing' as const,
+          executionStatus: 'missing' as const,
+          score: null,
+        });
       }),
     };
     const summary = buildSeedRunHistoryPage([counterexample]).runs[0];
@@ -1576,11 +1625,14 @@ void describe('presentation aggregates', () => {
       run_class: null,
       permission_evidence_digest: null,
       result_count: 72,
-      passed_count: 72,
-      failed_count: 0,
+      correct_count: 72,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
+      completed_count: 72,
       observed_count: 72,
       coverage_percent: 100,
       covered_domain_count: 10,
@@ -1755,8 +1807,8 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.2',
-      scoring_version: '1.0.2',
+      benchmark_version: 'aiq-core@1.0.3',
+      scoring_version: '1.0.3',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
       region: 'us-east-1',
@@ -1770,11 +1822,14 @@ void describe('presentation aggregates', () => {
       run_class: 'official',
       permission_evidence_digest: 'sha256:permission',
       result_count: 0,
-      passed_count: 0,
-      failed_count: 0,
+      correct_count: 0,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
+      completed_count: 0,
       observed_count: 0,
       coverage_percent: null,
       covered_domain_count: 0,
@@ -1842,11 +1897,14 @@ void describe('presentation aggregates', () => {
       run_class: 'official',
       permission_evidence_digest: template.permissionEvidenceDigest,
       result_count: 3,
-      passed_count: 0,
-      failed_count: 3,
+      correct_count: 0,
+      partial_count: 0,
+      incorrect_count: 1,
+      runtime_issue_count: 2,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
+      completed_count: 1,
       observed_count: 3,
       coverage_percent: 100,
       covered_domain_count: 1,
@@ -1857,7 +1915,8 @@ void describe('presentation aggregates', () => {
       id: 'result-evaluator-incorrect',
       task: 'Evaluator-incorrect result',
       domain: 'coding',
-      status: 'failed',
+      outcome: 'incorrect',
+      execution_status: 'completed',
       score: 0,
       explanation_code: null,
       explanation_summary: 'The evaluator rejected the response.',
@@ -1881,6 +1940,8 @@ void describe('presentation aggregates', () => {
       ...evaluatorIncorrect,
       id: 'result-timeout',
       task: 'Timed-out result',
+      outcome: 'timeout',
+      execution_status: 'runtime_issue',
       explanation_code: 'timeout',
       explanation_summary: 'The task exceeded its time limit.',
       retryable: true,
@@ -1889,6 +1950,8 @@ void describe('presentation aggregates', () => {
       ...evaluatorIncorrect,
       id: 'result-budget-exceeded',
       task: 'Budget-exhausted result',
+      outcome: 'budget_exhausted',
+      execution_status: 'runtime_issue',
       explanation_code: 'budget_exceeded',
       explanation_summary: 'The task exceeded a resource budget.',
       retryable: false,

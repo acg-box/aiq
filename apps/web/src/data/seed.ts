@@ -8,6 +8,7 @@ import type {
   TaskResult,
   TrendPoint,
 } from './types.ts';
+import { AIQ_CORE_BENCHMARK_VERSION, AIQ_CORE_SCORING_VERSION } from '../aiq-core-contract.ts';
 
 export const benchmarkDomainConfig = [
   { domain: 'coding', taskCount: 8 },
@@ -52,7 +53,7 @@ const seedLeaderboardBase = modelConfig
   .flatMap((model, familyIndex) =>
     model.tiers.map((reasoningTier, tierIndex) => {
       const score = model.base + tierIndex * 3.45 - familyIndex * 0.06;
-      const failures = 1 + ((tierIndex + familyIndex) % 3);
+      const runtimeIssues = 1 + ((tierIndex + familyIndex) % 3);
       return {
         id: `${model.family.toLowerCase()}-${reasoningTier}`,
         modelFamily: model.family,
@@ -63,9 +64,9 @@ const seedLeaderboardBase = modelConfig
         ciHigh: Number((score + 2.1 + familyIndex * 0.1).toFixed(1)),
         sampleSize: 72,
         coveragePercent: 100,
-        failures,
+        runtimeIssues,
         missing: 0,
-        scoringVersion: '1.0.2',
+        scoringVersion: AIQ_CORE_SCORING_VERSION,
         scoreStatus: 'synthetic_complete' as const,
         synthetic: true as const,
       };
@@ -95,6 +96,7 @@ export const seedTrendPoints: readonly TrendPoint[] = trendEntryIds.flatMap(
       return {
         entryId,
         runId: null,
+        scoringVersion: AIQ_CORE_SCORING_VERSION,
         recordedAt: recordedAt.toISOString(),
         bucketStartedAt: recordedAt.toISOString(),
         bucketEndedAt: new Date(recordedAt.getTime() + 1).toISOString(),
@@ -139,7 +141,7 @@ function buildSyntheticCompleteTasks(
   entryIndex: number,
 ): readonly TaskResult[] {
   let globalIndex = 0;
-  let failuresRemaining = entry.failures;
+  let failuresRemaining = entry.runtimeIssues;
   return benchmarkDomainConfig.flatMap((domain, domainIndex) => {
     const domainHasFailure = failuresRemaining > 0;
     if (domainHasFailure) {
@@ -160,7 +162,8 @@ function buildSyntheticCompleteTasks(
         id: `aiq-v1-${domain.domain}-${String(taskIndex + 1).padStart(2, '0')}-${entry.id}`,
         task: `${domain.domain.replaceAll('_', ' ')} fixture ${taskIndex + 1}`,
         domain: domain.domain,
-        status: isFailure ? 'failed' : 'passed',
+        outcome: isFailure ? 'timeout' : passedScore >= 1 ? 'correct' : 'partial',
+        executionStatus: isFailure ? 'runtime_issue' : 'completed',
         score: isFailure ? 0 : Number(passedScore.toFixed(4)),
         explanation: isFailure
           ? {
@@ -189,7 +192,8 @@ function buildCoverageOnlyTasks(): readonly TaskResult[] {
         id: `aiq-v1-${domain.domain}-${String(taskIndex + 1).padStart(2, '0')}-coverage-only`,
         task: `${domain.domain.replaceAll('_', ' ')} fixture ${taskIndex + 1}`,
         domain: domain.domain,
-        status: isMissing ? 'missing' : isFailed ? 'failed' : 'passed',
+        outcome: isMissing ? 'missing' : isFailed ? 'timeout' : 'partial',
+        executionStatus: isMissing ? 'missing' : isFailed ? 'runtime_issue' : 'completed',
         score: isMissing ? null : isFailed ? 0 : 0.72,
         explanation: isMissing
           ? {
@@ -217,8 +221,8 @@ const syntheticCompleteRuns: readonly BenchmarkRun[] = seedLeaderboard.map((entr
   entryId: entry.id,
   startedAt: `2026-07-${String(22 - (index % 17)).padStart(2, '0')}T13:00:00.000Z`,
   completedAt: `2026-07-${String(22 - (index % 17)).padStart(2, '0')}T13:24:42.000Z`,
-  benchmarkVersion: 'aiq-core@1.0.2',
-  scoringVersion: '1.0.2',
+  benchmarkVersion: AIQ_CORE_BENCHMARK_VERSION,
+  scoringVersion: AIQ_CORE_SCORING_VERSION,
   promptSetDigest: 'sha256:8469b5a3f084…c21a',
   runnerCommit: 'a7d91f4',
   region: 'us-east-1',
@@ -241,8 +245,8 @@ export const seedRuns: readonly BenchmarkRun[] = [
     entryId: 'sol-ultra',
     startedAt: '2026-07-05T13:00:00.000Z',
     completedAt: '2026-07-05T13:29:10.000Z',
-    benchmarkVersion: 'aiq-core@1.0.2',
-    scoringVersion: '1.0.2',
+    benchmarkVersion: AIQ_CORE_BENCHMARK_VERSION,
+    scoringVersion: AIQ_CORE_SCORING_VERSION,
     promptSetDigest: 'sha256:8469b5a3f084…c21a',
     runnerCommit: 'a7d91f4',
     region: 'us-east-1',
@@ -260,8 +264,8 @@ export const seedRuns: readonly BenchmarkRun[] = [
 ];
 
 export const seedMethodology: Methodology = {
-  benchmarkVersion: 'aiq-core@1.0.2',
-  scoringVersion: '1.0.2',
+  benchmarkVersion: AIQ_CORE_BENCHMARK_VERSION,
+  scoringVersion: AIQ_CORE_SCORING_VERSION,
   publishedAt: '2026-07-22T16:00:00.000Z',
   domainWeights: benchmarkDomainConfig.map((domain) => ({
     domain: domain.domain,

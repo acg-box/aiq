@@ -20,18 +20,31 @@ tags: ['architecture', 'runtime', 'security']
 The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
-Repository source has one active full-catalog Official contract: AIQ Core
-`1.0.2` with scoring `1.0.2`, task-metadata digest
-`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
-release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-This is the only launch contract. The first real Official benchmark batch
+Repository source has one current accepted full-catalog code contract: AIQ Core
+`1.0.3` with scoring `1.0.3`, task-metadata digest
+`sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`,
+release-policy identity `aiq-core/1.0.3`, and catalog release-identity digest
+`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
+Its scorer-manifest identity is
+`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
+and its evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+Model-free native validation passes 72 of 72 tasks. The source-only candidate
+commitment is `sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`,
+and the runtime `task_set_hash` is
+`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+The distinct controlled generated-task tree identity is
+`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+Clean-commit native release binding, real execution, and publication of `1.0.3`
+are pending. The first
+real Official benchmark batch
 completed on the native macOS runner. The batch is non-synthetic. Its 1,224
 task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
 The native verifier replayed the committed evaluators, and the distinct
 publisher completed the database transition. Production exposes the matrix as
-`trusted_verified`. The first Official launch publication was deployed from
-merge commit `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
+`trusted_verified` under the historical AIQ Core `1.0.2` contract. The first
+Official launch publication was deployed from merge commit
+`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
 historical launch evidence, not the identity of every later production
 deployment. The published outcome and efficiency semantics are detailed in
 [Benchmark Method](benchmark-method.md).
@@ -186,7 +199,8 @@ signatures, raw provider events, artifacts, and private failure details.
 Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
-AIQ database. It accepts only the AIQ Core `1.0.2` catalog and scoring `1.0.2`.
+AIQ database. It accepts only the source-head AIQ Core `1.0.3` catalog and
+scoring `1.0.3`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,
@@ -211,8 +225,10 @@ production path requires both browser-safe Supabase values and serves only live
 public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
-The overview now leads with a chart of the scored 17-configuration matrix and
-supports bar and line presentations. It fetches the complete run behind the
+The public site is a professional analysis workbench backed by real historical
+production evidence. The overview leads with a chart of the scored
+17-configuration matrix and supports bar and line presentations. It fetches the
+complete run behind the
 highest point estimate and uses that run for a task-outcome card, a ten-domain
 breakdown, and a link to every task result. The full leaderboard, Official
 efficiency table, and latest verified calibration remain available through
@@ -220,15 +236,22 @@ progressive disclosures rather than competing with the first-read matrix. These
 views preserve the scoring and evidence distinctions defined by
 [Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
 coverage is not correctness, and API-equivalent cost is not subscription spend.
+Semantic outcomes remain separate from runtime, invalid, and missing states.
+Charts use ECharts with SVG rendering. The chart wrapper exposes the generated
+ECharts description to assistive technology and each chart has a complete data
+table. Charts expose the fixed-fixture task-sensitivity interval and support
+explicit System, Light, and Dark themes. Synthetic fixtures remain confined to
+explicit development and test paths.
 Source anchors are `apps/web/src/app/page.tsx`,
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.
 
-Primary navigation keeps Overview, Compare, Trends, and Runs visible.
-Calibrations, Method, and Radar remain routable under the `More` disclosure in
-`apps/web/src/components/site-header.tsx`. Browser tests exercise both the
-collapsed evidence sections and secondary-route discovery across synthetic,
-live-empty, live-published, and production fixtures.
+Primary navigation keeps Overview and Runs visible. Compare, Trends,
+Calibrations, Method, and Radar remain routable under the `Analyze` disclosure
+in `apps/web/src/components/site-header.tsx`. This keeps the header compact while
+preserving every analysis route. Browser tests exercise both the collapsed
+evidence sections and secondary-route discovery across synthetic, live-empty,
+live-published, and production fixtures.
 
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads

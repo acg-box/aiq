@@ -3,6 +3,14 @@
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization command.
 
+For the authorized pre-launch reset of the existing project, the operator must
+remove the exact historical AIQ-owned public views and RPC overloads in addition
+to `aiq_private`, `aiq_verifier`, and `aiq_publisher`. Preserve the Supabase
+built-in roles, all managed schemas, `extensions.pgcrypto`, and every non-AIQ
+object. Review the live dependency closure against the schema inventory before
+the reset. This is a one-time operator action, not a migration or repository
+reset script.
+
 The initializer opens one direct PostgreSQL connection, starts one transaction,
 applies the schema, inserts public reference data, checks readiness, and commits.
 It rejects a database that already contains the AIQ schema or AIQ roles. Only a
@@ -17,7 +25,7 @@ cargo make init-database
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
 controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.2`, its real `published_at` timestamp, and exactly three public identities:
+`1.0.3`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
 final native binaries pass model-free validation. The repository does not
 contain a substitute production commitment or benchmark results. Supply the
@@ -25,20 +33,44 @@ controlled production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.2` with benchmark identifier `aiq-core@1.0.2`;
-- scoring version `1.0.2`;
+- AIQ Core task release `1.0.3` with benchmark identifier `aiq-core@1.0.3`;
+- scoring version `1.0.3`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
 - 40 private tables with enabled and forced RLS;
-- 12 security-invoker public views;
+- 12 canonical AIQ-owned security-invoker public views. Unrelated `public`
+  views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
+  `sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`;
 - catalog release identity
-  `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+  `sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`;
+- reviewed controlled generated-task tree identity
+  `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`;
+- native runtime task-set identity
+  `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
+- signed Official evaluator identity
+  `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 
-AIQ Core `1.0.2` is the only supported task-set and benchmark version in this
+The controlled tree identity is not a runtime task-set hash. The database does
+not write it to `task_set_hash` or `task_set_digest`. Those fields use the
+canonical runtime hash of the 72 task definitions. The initializer derives
+that hash with the same sorted-address RFC 8785 algorithm as the Rust
+protocol. The database binds the exact
+evaluator identity in signed `evaluator_digest` provenance and in the frozen
+task-set metadata that production readiness checks. It does not copy the
+scorer-manifest identity into an unrelated field.
+The native corpus commitment owns scorer-manifest identity
+`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`;
+the database binds its output through scoring version `1.0.3` and recomputes
+the score from normalized result evidence.
+
+`databases/aiq-core-1.0.3-task-commitments.json` is the reviewed public-safe
+72-task binding manifest. Its canonical JCS identity is
+`sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e`.
+
+AIQ Core `1.0.3` is the only supported task-set and benchmark version in this
 desired state. There is no migration, compatibility, dual-version, or data
 preservation path.
 
@@ -88,8 +120,9 @@ Browser roles can read published rows from `public_calibration_runs`,
 `public_calibration_results`, and `public_calibration_scores`. These
 security-invoker views do not expose package identities, digests, node
 identities, envelopes, raw responses, private artifacts, or raw failure
-messages. Calibration results keep the normalized outcome and expose a bounded
-failure code, the five-state public status, and a fixed explanation summary.
+messages. Calibration results keep the exact normalized outcome and expose a
+bounded failure code, a separate five-state execution status, and a fixed
+explanation summary.
 Efficiency values distinguish observed Codex adapter invocation elapsed time,
 provider-reported token usage, and verifier-recomputed API-equivalent
 estimates. Unknown values are `NULL`. Standard short-context rates come from

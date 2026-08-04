@@ -56,7 +56,7 @@ export default async function CalibrationsPage({
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Calibration register</span>
-        <h1>Verified provenance · untrusted calibration · not Official · not ranking eligible</h1>
+        <h1>Calibration register</h1>
         <p>
           Chronological, replay-verified diagnostic evidence stays separate from the Official
           leaderboard, compare, and trends surfaces. Each page contains at most 20 retained runs.

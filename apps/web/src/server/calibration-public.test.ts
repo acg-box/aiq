@@ -58,7 +58,7 @@ void describe('public calibration evidence boundary', () => {
     });
     const serialized = JSON.stringify(detail);
     assert.equal(detail?.results[0]?.outcome, 'correct');
-    assert.equal(detail?.results[0]?.status, 'passed');
+    assert.equal(detail?.results[0]?.executionStatus, 'completed');
     for (const forbidden of [
       'signature',
       'package_sha256',

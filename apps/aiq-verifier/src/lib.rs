@@ -45,7 +45,11 @@ use aiq_runner::{
 	runner::{
 		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
 	},
-	scoring::{self, AIQ_CORE_TASK_IDENTITY_SHA256, ScoreContext, ScoreOptions, ScoreReport},
+	scoring::{
+		self, AIQ_CORE_TASK_IDENTITY_SHA256, OfficialCalibrationDiagnostic,
+		OfficialCalibrationPolicy, OfficialCalibrationSummary, ScoreContext, ScoreOptions,
+		ScoreReport,
+	},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
 	task::{DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskSource, Visibility},
 };
@@ -59,7 +63,7 @@ const DEFAULT_GATEWAY_TIMEOUT_SECONDS: u64 = 120;
 const DEFAULT_REPLAY_JOBS: usize = 4;
 const MAX_REPLAY_JOBS: usize = 32;
 const VERIFIER_REJECTION_SCHEMA: &str = "aiq.verifier-rejection.v2";
-const RECORD_SCHEMA: &str = "aiq.verifier-record.v1";
+const RECORD_SCHEMA: &str = "aiq.verifier-record.v2";
 const MAX_OPERATOR_ERROR_DETAIL_BYTES: usize = 256;
 const REDACTED_ERROR_CODE: &str = "details_redacted";
 const REDACTED_ERROR_DETAIL: &str = "Additional error detail was redacted.";
@@ -251,22 +255,39 @@ impl Debug for Secret {
 }
 
 /// Stable worker failure.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WorkerError {
 	kind: ErrorKind,
 	message: String,
+	official_calibration: Option<Box<OfficialCalibrationDiagnostic>>,
 }
 impl WorkerError {
 	pub(crate) fn configuration(message: impl Into<String>) -> Self {
-		Self { kind: ErrorKind::Configuration, message: message.into() }
+		Self { kind: ErrorKind::Configuration, message: message.into(), official_calibration: None }
 	}
 
 	pub(crate) fn transient(message: impl Into<String>) -> Self {
-		Self { kind: ErrorKind::Transient, message: message.into() }
+		Self { kind: ErrorKind::Transient, message: message.into(), official_calibration: None }
 	}
 
 	pub(crate) fn terminal(code: ReasonCode, message: impl Into<String>) -> Self {
-		Self { kind: ErrorKind::Terminal(code), message: message.into() }
+		Self {
+			kind: ErrorKind::Terminal(code),
+			message: message.into(),
+			official_calibration: None,
+		}
+	}
+
+	fn terminal_calibration(
+		code: ReasonCode,
+		message: impl Into<String>,
+		official_calibration: OfficialCalibrationDiagnostic,
+	) -> Self {
+		Self {
+			kind: ErrorKind::Terminal(code),
+			message: message.into(),
+			official_calibration: Some(Box::new(official_calibration)),
+		}
 	}
 
 	fn is_transient(&self) -> bool {
@@ -310,6 +331,9 @@ pub struct VerificationRecord {
 	worker_version: &'static str,
 	worker_binary_sha256: String,
 	environment_sha256: String,
+	official_calibration_policy: OfficialCalibrationPolicy,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	official_calibration_observed: Option<OfficialCalibrationSummary>,
 	replay_scope: &'static str,
 	attempt: u64,
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -1001,9 +1025,11 @@ where
 
 	fn process_claim(&self, claim: &Claim) -> VerificationRecord {
 		let result = self.verify_claim(claim);
-		let (disposition, reason_code, replay_scope, diagnostic) = match result {
-			Ok(PackageDisposition::Verified(scope)) => ("verified", None, scope, None),
-			Ok(PackageDisposition::Rejected(reason)) => (
+		let (disposition, reason_code, replay_scope, diagnostic, calibration) = match result {
+			Ok(PackageDisposition::Verified(scope, calibration)) => {
+				("verified", None, scope, None, calibration)
+			},
+			Ok(PackageDisposition::Rejected(reason, calibration)) => (
 				"rejected",
 				Some(reason),
 				"verification_rejected",
@@ -1012,6 +1038,7 @@ where
 					reason.as_str(),
 					reason.operator_detail(),
 				)),
+				calibration,
 			),
 			Ok(PackageDisposition::LeaseLost(scope)) => (
 				"lease_lost",
@@ -1022,15 +1049,16 @@ where
 					"claim_lease_lost",
 					"The claim lease was lost before terminal acknowledgement.",
 				)),
+				None,
 			),
 			Err(error) => {
 				let diagnostic = error.operator_diagnostic();
 				let _release_result = self.retry(|| self.acknowledge(claim, "retry"));
 
 				if error.is_transient() {
-					("retry", None, "verification_incomplete", Some(diagnostic))
+					("retry", None, "verification_incomplete", Some(diagnostic), None)
 				} else {
-					("worker_error", None, "verification_incomplete", Some(diagnostic))
+					("worker_error", None, "verification_incomplete", Some(diagnostic), None)
 				}
 			},
 		};
@@ -1049,6 +1077,8 @@ where
 			worker_version: env!("CARGO_PKG_VERSION"),
 			worker_binary_sha256: self.worker_binary_sha256.clone(),
 			environment_sha256: self.environment_sha256.clone(),
+			official_calibration_policy: OfficialCalibrationPolicy::default(),
+			official_calibration_observed: calibration.map(|value| value.observed),
 			replay_scope,
 			attempt: claim.attempt,
 			error_class,
@@ -1117,7 +1147,7 @@ where
 
 		let _acknowledgement = self.retry(|| self.acknowledge(claim, "completed"));
 
-		Ok(PackageDisposition::Verified(prepared.replay_scope))
+		Ok(PackageDisposition::Verified(prepared.replay_scope, prepared.official_calibration))
 	}
 
 	fn download_package(&self, claim: &Claim) -> Result<Vec<u8>, WorkerError> {
@@ -1197,6 +1227,7 @@ where
 		let ErrorKind::Terminal(reason) = error.kind else {
 			return Err(error);
 		};
+		let official_calibration = error.official_calibration.as_deref().cloned();
 		let matrix_batch_id = claim.idempotency_key.clone();
 		let rejection = RejectionRequest {
 			claim: claim.into(),
@@ -1239,7 +1270,7 @@ where
 
 		let _acknowledgement = self.retry(|| self.acknowledge(claim, "completed"));
 
-		Ok(PackageDisposition::Rejected(reason))
+		Ok(PackageDisposition::Rejected(reason, official_calibration))
 	}
 
 	fn post_verification(
@@ -1418,11 +1449,11 @@ where
 				.map_err(|_| WorkerError::transient("claim lease heartbeat failed"))?;
 
 			match (result, heartbeat_result) {
-				(Ok(PackageDisposition::Verified(scope)), _) => {
-					Ok(PackageDisposition::Verified(scope))
+				(Ok(PackageDisposition::Verified(scope, calibration)), _) => {
+					Ok(PackageDisposition::Verified(scope, calibration))
 				},
-				(Ok(PackageDisposition::Rejected(reason)), _) => {
-					Ok(PackageDisposition::Rejected(reason))
+				(Ok(PackageDisposition::Rejected(reason, calibration)), _) => {
+					Ok(PackageDisposition::Rejected(reason, calibration))
 				},
 				(Ok(PackageDisposition::LeaseLost(scope)), _) => {
 					Ok(PackageDisposition::LeaseLost(scope))
@@ -1551,6 +1582,7 @@ struct ClaimLeaseState {
 struct PreparedVerification {
 	evidence: PreparedEvidence,
 	replay_scope: &'static str,
+	official_calibration: Option<OfficialCalibrationDiagnostic>,
 }
 impl PreparedVerification {
 	fn run_id(&self) -> &str {
@@ -1763,8 +1795,8 @@ enum ClaimResult {
 
 #[derive(Debug)]
 enum PackageDisposition {
-	Verified(&'static str),
-	Rejected(ReasonCode),
+	Verified(&'static str, Option<OfficialCalibrationDiagnostic>),
+	Rejected(ReasonCode, Option<OfficialCalibrationDiagnostic>),
 	LeaseLost(&'static str),
 }
 
@@ -1896,6 +1928,7 @@ fn prepare_official_verification(
 	}
 
 	let (replay_status, replay_scope, provider_usage) = official_replay_evidence(&run, &request)?;
+	let official_calibration = validated_official_calibration(request.tasks, &run)?;
 	let scores = recompute_scores(request.tasks, &run)?;
 	let metadata = metadata_for(&run, request.environment)?;
 	let package = VerifiedPackageIdentity {
@@ -1956,7 +1989,39 @@ fn prepare_official_verification(
 	Ok(PreparedVerification {
 		evidence: PreparedEvidence::Official { stage, attestation },
 		replay_scope,
+		official_calibration,
 	})
+}
+
+fn validated_official_calibration(
+	tasks: &[TaskDefinition],
+	run: &RunRecord,
+) -> Result<Option<OfficialCalibrationDiagnostic>, WorkerError> {
+	if run.synthetic {
+		return Ok(None);
+	}
+
+	let diagnostic =
+		scoring::diagnose_official_calibration(tasks, &run.results).map_err(|error| {
+			WorkerError::terminal(
+				ReasonCode::NormalizationMismatch,
+				format!("Official publication calibration failed: {error}"),
+			)
+		})?;
+
+	if !diagnostic.passed() {
+		return Err(WorkerError::terminal_calibration(
+			ReasonCode::NormalizationMismatch,
+			format!(
+				"Official publication calibration failed under {}: {}",
+				diagnostic.policy.version,
+				diagnostic.violations.join("; ")
+			),
+			diagnostic,
+		));
+	}
+
+	Ok(Some(diagnostic))
 }
 
 fn official_replay_evidence(
@@ -2091,6 +2156,7 @@ fn prepare_calibration_verification(
 	Ok(PreparedVerification {
 		evidence: PreparedEvidence::Calibration { stage, attestation },
 		replay_scope: PRODUCTION_REPLAY_SCOPE,
+		official_calibration: None,
 	})
 }
 
@@ -3286,6 +3352,7 @@ mod tests {
 		resume, run_validation,
 		runner::{self, CalibrationRunRecord, WorkspaceManifest, WorkspaceSnapshot},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
+		scoring::{self, OfficialCalibrationPolicy},
 		submission,
 		task::EvaluatorRuntime,
 	};
@@ -4843,7 +4910,7 @@ mod tests {
 	#[test]
 	fn incomplete_claim_dispositions_require_a_nonzero_worker_exit() {
 		let record = |disposition| VerificationRecord {
-			schema_version: "aiq.verifier-record.v1",
+			schema_version: RECORD_SCHEMA,
 			inbox_id: "223e4567-e89b-42d3-a456-426614174000".to_owned(),
 			package_sha256: "a".repeat(64),
 			disposition,
@@ -4852,6 +4919,8 @@ mod tests {
 			worker_version: "0.1.0",
 			worker_binary_sha256: format!("sha256:{}", "b".repeat(64)),
 			environment_sha256: format!("sha256:{}", "c".repeat(64)),
+			official_calibration_policy: OfficialCalibrationPolicy::default(),
+			official_calibration_observed: None,
 			replay_scope: "verification_incomplete",
 			attempt: 1,
 			error_class: None,
@@ -4924,7 +4993,7 @@ mod tests {
 
 		assert!(matches!(
 			worker.verify_claim(&claim).expect("terminal rejection"),
-			PackageDisposition::Rejected(ReasonCode::InvalidPackageSignature)
+			PackageDisposition::Rejected(ReasonCode::InvalidPackageSignature, None)
 		));
 		assert_eq!(
 			worker.transport.posts.lock().expect("posts").iter().collect::<Vec<_>>(),
@@ -5294,7 +5363,7 @@ mod tests {
 
 		assert!(matches!(
 			worker.verify_claim(&claim).expect("verification retry must recover"),
-			PackageDisposition::Verified("commitments_verified")
+			PackageDisposition::Verified("commitments_verified", _)
 		));
 		assert_eq!(*worker.transport.object_calls.lock().expect("object calls"), 1);
 		assert_eq!(worker.preparation_calls.load(Ordering::Relaxed), 1);
@@ -5374,7 +5443,7 @@ mod tests {
 
 		assert!(matches!(
 			worker.verify_claim(&claim).expect("verify"),
-			PackageDisposition::Verified("commitments_verified")
+			PackageDisposition::Verified("commitments_verified", _)
 		));
 		assert_eq!(
 			worker.transport.posts.lock().expect("posts").iter().collect::<Vec<_>>(),
@@ -5431,7 +5500,7 @@ mod tests {
 
 		assert!(matches!(
 			worker.verify_claim(&claim).expect("confirmed verification"),
-			PackageDisposition::Verified("commitments_verified")
+			PackageDisposition::Verified("commitments_verified", _)
 		));
 		assert_eq!(
 			worker.transport.inner.posts.lock().expect("posts").iter().collect::<Vec<_>>(),
@@ -5850,6 +5919,8 @@ mod tests {
 			worker_version: "0.1.0",
 			worker_binary_sha256: format!("sha256:{}", "b".repeat(64)),
 			environment_sha256: format!("sha256:{}", "c".repeat(64)),
+			official_calibration_policy: OfficialCalibrationPolicy::default(),
+			official_calibration_observed: None,
 			replay_scope: "commitments_verified",
 			attempt: 1,
 			error_class: None,
@@ -5859,6 +5930,11 @@ mod tests {
 		let compatible = serde_json::to_value(&record).expect("serialize compatible record");
 
 		assert_eq!(compatible["schema_version"], RECORD_SCHEMA);
+		assert_eq!(
+			compatible["official_calibration_policy"]["version"],
+			scoring::OFFICIAL_CALIBRATION_POLICY_VERSION
+		);
+		assert!(compatible.get("official_calibration_observed").is_none());
 		assert!(compatible.get("error_class").is_none());
 		assert!(compatible.get("error_code").is_none());
 		assert!(compatible.get("error_detail").is_none());

@@ -87,7 +87,7 @@ export default async function CalibrationDetailPage({
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Calibration detail</span>
-        <h1>Verified provenance · untrusted calibration · not Official · not ranking eligible</h1>
+        <h1>Calibration evidence</h1>
         <p>
           This bounded public view omits packages, signatures, private artifacts, raw responses,
           envelopes, and private failure details. It publishes fixed safe explanations and
@@ -151,7 +151,7 @@ export default async function CalibrationDetailPage({
                 <tr>
                   <th>Task</th>
                   <th>Domain</th>
-                  <th>Outcome / status</th>
+                  <th>Outcome / execution</th>
                   <th>Public explanation</th>
                   <th>Task score</th>
                   <th>Observed adapter elapsed</th>
@@ -169,7 +169,7 @@ export default async function CalibrationDetailPage({
                     <td>{item.domain}</td>
                     <td>
                       {item.outcome.replaceAll('_', ' ')}
-                      <small>Status: {item.status.replaceAll('_', ' ')}</small>
+                      <small>Execution: {item.executionStatus.replaceAll('_', ' ')}</small>
                     </td>
                     <td>
                       {item.explanationSummary ?? 'No failure explanation'}

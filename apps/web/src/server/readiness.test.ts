@@ -10,6 +10,7 @@ import {
   PUBLIC_VIEW_SELECTS,
   type ProductionDependencyProbe,
 } from './readiness.ts';
+import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const privateJwk = {
   ...generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({
@@ -169,8 +170,7 @@ async function withDependencyFetch(
           instruction_following: 6,
           reliability_recovery: 7,
         },
-        catalog_identity_sha256:
-          'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+        catalog_identity_sha256: FROZEN_CATALOG_DIGEST,
         frozen_catalog_valid: true,
         production_node_count: 3,
         distinct_production_node_count: 3,
@@ -537,7 +537,7 @@ void describe('bounded readiness probe', () => {
         view === 'public_task_coverage'
           ? Response.json([
               {
-                scoring_version: '1.0.2',
+                scoring_version: '1.0.3',
                 domain: 'coding',
                 weight: 'not-a-number',
                 task_count: 8,
@@ -553,9 +553,9 @@ void describe('bounded readiness probe', () => {
     assert.deepEqual(REQUIRED_RPC_CONTRACT.public_trend_points, {
       arguments: 'supplied_range text',
       result:
-        'TABLE(matrix_id text, run_id text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
+        'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
       defaultCount: 0,
-      modes: ['i', ...Array<string>(12).fill('t')],
+      modes: ['i', ...Array<string>(13).fill('t')],
       grants: {
         anon: true,
         authenticated: true,

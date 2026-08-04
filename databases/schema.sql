@@ -1989,7 +1989,11 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937'
+      'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1'
+    or candidate ->> 'task_set_digest' <>
+      'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
+    or candidate ->> 'evaluator_digest' <>
+      'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
     or candidate ->> 'preflight_digest' is distinct from preflight_digest
   then return false;
@@ -2415,9 +2419,9 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
     where task_set.task_set_id = target_task_set_id
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.2'
-      and scoring.scoring_version = '1.0.2'
-      and scoring.benchmark_version = 'aiq-core@1.0.2'
+      and task_set.task_set_version = '1.0.3'
+      and scoring.scoring_version = '1.0.3'
+      and scoring.benchmark_version = 'aiq-core@1.0.3'
       and scoring.is_published
       and not scoring.synthetic
       and task_set.task_count = 72
@@ -2427,14 +2431,28 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        '2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937'
+        '0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
       and task_set.metadata ->> 'catalog_release_identity_sha256' =
-        'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6'
+        'sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d'
+      and task_set.metadata ->> 'evaluator_identity_sha256' =
+        'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
+      and (
+        select aiq_private.jcs_sha256(
+          jsonb_agg(
+            'sha256:' || catalog.fixture_commitment
+            order by ('sha256:' || catalog.fixture_commitment) collate "C"
+          )
+        )
+        from aiq_private.aiq_task_catalog catalog
+        where catalog.task_set_id = task_set.task_set_id
+          and catalog.task_set_version = task_set.task_set_version
+          and catalog.fixture_commitment is not null
+      ) = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -4075,7 +4093,7 @@ begin
     or jsonb_typeof(payload -> 'schema_version') is distinct from 'string'
     or payload ->> 'schema_version' is distinct from 'aiq.run.v3'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.2'
+    or payload ->> 'scoring_version' <> '1.0.3'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or jsonb_typeof(payload -> 'synthetic') <> 'boolean'
@@ -4340,7 +4358,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
+    'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1';
 end;
 $_$;
 
@@ -4370,6 +4388,10 @@ begin
     or jsonb_typeof(stage -> 'signer') is distinct from 'object'
     or jsonb_typeof(stage -> 'signer' -> 'node_id') is distinct from 'string'
     or candidate ->> 'run_class' is distinct from stage ->> 'run_class'
+    or candidate ->> 'task_set_digest' is distinct from
+      'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
+    or candidate ->> 'evaluator_digest' is distinct from
+      'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from stage ->> 'task_set_hash'
     or candidate ->> 'preflight_digest' is distinct from
       stage ->> 'capability_validation_digest'
@@ -4524,7 +4546,7 @@ begin
       ]::text[]
     )
     or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
-    or stage ->> 'scoring_version' is distinct from '1.0.2'
+    or stage ->> 'scoring_version' is distinct from '1.0.3'
     or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
@@ -4643,7 +4665,7 @@ begin
         and existing_batch.source_node_id = source_node
         and existing_batch.task_set_id = stage ->> 'task_set_id'
         and existing_batch.task_set_version = stage ->> 'task_set_version'
-        and existing_batch.scoring_version = '1.0.2'
+        and existing_batch.scoring_version = '1.0.3'
         and existing_batch.synthetic = is_synthetic
         and existing_batch.task_set_hash = stage ->> 'task_set_hash'
         and existing_batch.capability_validation_digest
@@ -5071,7 +5093,7 @@ begin
   ) values (
     batch_id, package_id, stage ->> 'content_hash', normalization,
     source_node, stage ->> 'task_set_id', stage ->> 'task_set_version',
-    '1.0.2', is_synthetic, stage ->> 'task_set_hash',
+    '1.0.3', is_synthetic, stage ->> 'task_set_hash',
     nullif(stage ->> 'capability_validation_digest', ''),
     stage ->> 'benchmark_version', stage ->> 'prompt_set_digest',
     stage ->> 'scoring_version', stage ->> 'runner_commit', stage ->> 'region',
@@ -5382,7 +5404,7 @@ begin
       child_id, batch_id, child_id, 'manual',
       to_timestamp((stage ->> 'scheduled_unix_ms')::double precision / 1000),
       'UTC', stage ->> 'task_set_id', stage ->> 'task_set_version',
-      stage ->> 'benchmark_version', '1.0.2', model.model_config_id,
+      stage ->> 'benchmark_version', '1.0.3', model.model_config_id,
       source_node,
       (case when valid_count = 72 then 'completed' else 'partial' end)
         ::aiq_private.run_status,
@@ -5489,7 +5511,7 @@ begin
       value ->> 'source_result_id', child_id, value ->> 'task_id',
       value ->> 'task_version', value ->> 'domain', 1,
       (value ->> 'outcome')::aiq_private.result_outcome,
-      (value ->> 'task_score')::numeric, '1.0.2',
+      (value ->> 'task_score')::numeric, '1.0.3',
       value -> 'failure' ->> 'kind', value ->> 'failure_responsibility',
       value -> 'failure' ->> 'message',
       (value -> 'failure' ->> 'retryable')::boolean,
@@ -5530,7 +5552,7 @@ begin
       not_applicable_count, domain_scores, interval_parameters, published,
       normalization_digest
     ) values (
-      child_id, '1.0.2', (score ->> 'tier')::aiq_private.score_status,
+      child_id, '1.0.3', (score ->> 'tier')::aiq_private.score_status,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round(fixed_score, 3) end,
       (score -> 'task_resampling_sensitivity_interval' ->> 'lower')::numeric,
@@ -5775,7 +5797,7 @@ create function aiq_private.task_catalog_is_exact(target_task_set_id text, targe
         and task.task_set_version = target_task_set_version
     )
     else aiq_private.frozen_catalog_identity_is_valid(
-      target_task_set_id, target_task_set_version, '1.0.2'
+      target_task_set_id, target_task_set_version, '1.0.3'
     )
   end
   from aiq_private.aiq_task_sets task_set
@@ -6298,7 +6320,7 @@ create table aiq_private.aiq_matrix_batches (
     run_provenance jsonb,
     normalized_stage jsonb,
     constraint aiq_batch_capability_evidence_policy check (((synthetic and (capability_validation_digest IS null)) or ((not synthetic) and (capability_validation_digest IS not null) and (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)))),
-    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.2'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
+    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.3'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
     constraint aiq_matrix_batches_check check (((published_at IS null) or (verified_at IS not null))),
     constraint aiq_matrix_batches_child_count_check check ((child_count = 17)),
     constraint aiq_matrix_batches_content_hash_check check ((content_hash ~ '^sha256:[0-9a-f]{64}$'::text)),
@@ -7412,7 +7434,7 @@ begin
     select
       count(*)::integer as scoring_count,
       count(*) filter (
-        where scoring.benchmark_version = 'aiq-core@1.0.2'
+        where scoring.benchmark_version = 'aiq-core@1.0.3'
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
@@ -7446,7 +7468,7 @@ begin
           }'::jsonb
       )::integer as valid_scoring_count
     from aiq_private.aiq_scoring_versions scoring
-    where scoring.scoring_version = '1.0.2'
+    where scoring.scoring_version = '1.0.3'
   ),
   task_facts as (
     select
@@ -7468,20 +7490,33 @@ begin
       count(*) filter (where task.domain = 'instruction_following')::integer
         as instruction_following_count,
       count(*) filter (where task.domain = 'reliability_recovery')::integer
-        as reliability_recovery_count
+        as reliability_recovery_count,
+      case when count(*) = 72 and count(task.fixture_commitment) = 72
+        then aiq_private.jcs_sha256(
+          jsonb_agg(
+            'sha256:' || task.fixture_commitment
+            order by ('sha256:' || task.fixture_commitment) collate "C"
+          )
+        )
+        else null
+      end as task_set_identity_sha256
     from aiq_private.aiq_task_catalog task
     where task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.2'
+      and task.task_set_version = '1.0.3'
   ),
   catalog_facts as (
     select
       case when count(*) = 1
         then 'sha256:' || min(task_set.catalog_sha256)
         else null
-      end as catalog_identity_sha256
+      end as catalog_identity_sha256,
+      case when count(*) = 1
+        then min(task_set.metadata ->> 'evaluator_identity_sha256')
+        else null
+      end as evaluator_identity_sha256
     from aiq_private.aiq_task_sets task_set
     where task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.2'
+      and task_set.task_set_version = '1.0.3'
   ),
   eligible_nodes as (
     select node.node_id, 'runner'::text as approved_role
@@ -7556,17 +7591,18 @@ begin
     select count(*)::integer as public_view_count,
       count(*) filter(where coalesce(relation.reloptions,array[]::text[])
         @>array['security_invoker=true'])::integer as security_invoker_view_count,
-      count(*) filter(where relation.relname in (
+      count(*)::integer as canonical_public_view_count
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid=relation.relnamespace
+    where namespace.nspname='public' and relation.relkind='v'
+      and relation.relname in (
         'public_distributed_radar','public_leaderboard','public_model_matrix',
         'public_nodes','public_run_results','public_runs',
         'public_scoring_versions','public_task_coverage',
         'public_calibration_runs','public_calibration_results',
         'public_calibration_scores','public_model_efficiency'
-      ))::integer as canonical_public_view_count
-    from pg_catalog.pg_class relation
-    join pg_catalog.pg_namespace namespace
-      on namespace.oid=relation.relnamespace
-    where namespace.nspname='public' and relation.relkind='v'
+      )
   ),
   role_facts as (
     select count(*)::integer as hardened_gateway_role_count
@@ -7589,7 +7625,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.2', '1.0.2'
+        'aiq-core', '1.0.3', '1.0.3'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
@@ -7611,7 +7647,11 @@ begin
       and documentation_communication_count = 7
       and planning_execution_count = 7 and tool_use_count = 7
       and instruction_following_count = 6 and reliability_recovery_count = 7
+      and task_set_identity_sha256 =
+        'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
       and frozen_catalog_valid
+      and evaluator_identity_sha256 =
+        'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
       and node_count = 3 and distinct_node_count = 3
       and runner_count = 1
       and verifier_count = 1 and publisher_count = 1
@@ -7638,6 +7678,12 @@ begin
       'reliability_recovery', reliability_recovery_count
     ),
     'catalog_identity_sha256', catalog_identity_sha256,
+    'task_set_identity_sha256', task_set_identity_sha256,
+    'task_set_identity_valid', task_set_identity_sha256 =
+      'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e',
+    'evaluator_identity_sha256', evaluator_identity_sha256,
+    'evaluator_identity_valid', evaluator_identity_sha256 =
+      'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
     'frozen_catalog_valid', frozen_catalog_valid,
     'production_node_count', node_count,
     'distinct_production_node_count', distinct_node_count,
@@ -8383,7 +8429,7 @@ $$;
 -- Name: public_trend_points(text); Type: function; Schema: public; Owner: -
 --
 
-create function public.public_trend_points(supplied_range text) returns table(matrix_id text, run_id text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)
+create function public.public_trend_points(supplied_range text) returns table(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)
     language plpgsql stable
     SET search_path to ''
     as $$
@@ -8454,6 +8500,7 @@ begin
   select
     buckets.model_config_id,
     observation.run_id,
+    observation.scoring_version,
     observation.recorded_at,
     buckets.bucket_start,
     buckets.bucket_end,
@@ -8468,6 +8515,7 @@ begin
   cross join lateral (
     select
       run.run_id,
+      score.scoring_version,
       run.scheduled_for as recorded_at,
       score.fixed_fixture_aiq as score,
       score.task_resampling_low as ci_low,
@@ -9575,7 +9623,7 @@ create view public.public_leaderboard with (security_invoker = true) as
             score.missing_count,
             ( select (count(*))::integer as count
                    from aiq_private.aiq_task_results result
-                  where ((result.run_id = run.run_id) and (result.task_score = (0)::numeric) and (result.outcome = ANY (ARRAY['incorrect'::aiq_private.result_outcome, 'timeout'::aiq_private.result_outcome, 'budget_exhausted'::aiq_private.result_outcome, 'tool_failure'::aiq_private.result_outcome, 'policy_failure'::aiq_private.result_outcome, 'wrong_artifact'::aiq_private.result_outcome])))) as failure_count
+                  where ((result.run_id = run.run_id) and (result.outcome = ANY (ARRAY['timeout'::aiq_private.result_outcome, 'budget_exhausted'::aiq_private.result_outcome, 'tool_failure'::aiq_private.result_outcome, 'policy_failure'::aiq_private.result_outcome, 'wrong_artifact'::aiq_private.result_outcome])))) as runtime_issue_count
            from (aiq_private.aiq_runs run
              join aiq_private.aiq_score_snapshots score on ((score.run_id = run.run_id)))
           where (run.published and score.published)
@@ -9604,9 +9652,9 @@ create view public.public_leaderboard with (security_invoker = true) as
             else null::numeric
         end as coverage_percent,
         case
-            when (score_status = 'official'::aiq_private.score_status) then failure_count
+            when (score_status = 'official'::aiq_private.score_status) then runtime_issue_count
             else null::integer
-        end as failures,
+        end as runtime_issues,
         case
             when (score_status = 'official'::aiq_private.score_status) then missing_count
             else null::integer
@@ -9672,13 +9720,14 @@ create view public.public_run_results with (security_invoker = true) as
     result.result_id as id,
     COALESCE(catalog.title, result.task_id) as task,
     result.domain,
+    (result.outcome)::text as outcome,
         case
-            when (result.outcome = ANY (ARRAY['correct'::aiq_private.result_outcome, 'partial'::aiq_private.result_outcome])) then 'passed'::text
+            when (result.outcome = ANY (ARRAY['correct'::aiq_private.result_outcome, 'partial'::aiq_private.result_outcome, 'incorrect'::aiq_private.result_outcome])) then 'completed'::text
+            when (result.outcome = ANY (ARRAY['timeout'::aiq_private.result_outcome, 'budget_exhausted'::aiq_private.result_outcome, 'tool_failure'::aiq_private.result_outcome, 'policy_failure'::aiq_private.result_outcome, 'wrong_artifact'::aiq_private.result_outcome])) then 'runtime_issue'::text
             when (result.outcome = 'invalid'::aiq_private.result_outcome) then 'invalid'::text
             when (result.outcome = 'missing'::aiq_private.result_outcome) then 'missing'::text
             when (result.outcome = 'not_applicable'::aiq_private.result_outcome) then 'not_applicable'::text
-            else 'failed'::text
-        end as status,
+        end as execution_status,
     result.task_score as score,
     result.failure_code as explanation_code,
         case
@@ -9747,11 +9796,14 @@ create view public.public_runs with (security_invoker = true) as
     (run.run_provenance ->> 'run_class'::text) as run_class,
     (run.run_provenance ->> 'permission_evidence_digest'::text) as permission_evidence_digest,
     result_summary.result_count,
-    result_summary.passed_count,
-    result_summary.failed_count,
+    result_summary.correct_count,
+    result_summary.partial_count,
+    result_summary.incorrect_count,
+    result_summary.runtime_issue_count,
     result_summary.invalid_count,
     result_summary.missing_count,
     result_summary.not_applicable_count,
+    result_summary.completed_count,
     result_summary.observed_count,
     result_summary.covered_domain_count,
     result_summary.provisional_domain_count,
@@ -9761,21 +9813,27 @@ create view public.public_runs with (security_invoker = true) as
         end as coverage_percent
    from (aiq_private.aiq_runs run
      CROSS join LATERAL ( select (COALESCE(sum(domain_summary.result_count), (0)::bigint))::integer as result_count,
-            (COALESCE(sum(domain_summary.passed_count), (0)::bigint))::integer as passed_count,
-            (COALESCE(sum(domain_summary.failed_count), (0)::bigint))::integer as failed_count,
+            (COALESCE(sum(domain_summary.correct_count), (0)::bigint))::integer as correct_count,
+            (COALESCE(sum(domain_summary.partial_count), (0)::bigint))::integer as partial_count,
+            (COALESCE(sum(domain_summary.incorrect_count), (0)::bigint))::integer as incorrect_count,
+            (COALESCE(sum(domain_summary.runtime_issue_count), (0)::bigint))::integer as runtime_issue_count,
             (COALESCE(sum(domain_summary.invalid_count), (0)::bigint))::integer as invalid_count,
             (COALESCE(sum(domain_summary.missing_count), (0)::bigint))::integer as missing_count,
             (COALESCE(sum(domain_summary.not_applicable_count), (0)::bigint))::integer as not_applicable_count,
+            (COALESCE(sum(domain_summary.completed_count), (0)::bigint))::integer as completed_count,
             (COALESCE(sum(domain_summary.observed_count), (0)::bigint))::integer as observed_count,
             (count(*) FILTER (where (domain_summary.observed_count >= 1)))::integer as covered_domain_count,
             (count(*) FILTER (where (domain_summary.observed_count >= 4)))::integer as provisional_domain_count
            from ( select result.domain,
                     (count(*))::integer as result_count,
-                    (count(*) FILTER (where (result.outcome = ANY (ARRAY['correct'::aiq_private.result_outcome, 'partial'::aiq_private.result_outcome]))))::integer as passed_count,
-                    (count(*) FILTER (where (result.outcome <> all (ARRAY['correct'::aiq_private.result_outcome, 'partial'::aiq_private.result_outcome, 'invalid'::aiq_private.result_outcome, 'missing'::aiq_private.result_outcome, 'not_applicable'::aiq_private.result_outcome]))))::integer as failed_count,
+                    (count(*) FILTER (where (result.outcome = 'correct'::aiq_private.result_outcome)))::integer as correct_count,
+                    (count(*) FILTER (where (result.outcome = 'partial'::aiq_private.result_outcome)))::integer as partial_count,
+                    (count(*) FILTER (where (result.outcome = 'incorrect'::aiq_private.result_outcome)))::integer as incorrect_count,
+                    (count(*) FILTER (where (result.outcome = ANY (ARRAY['timeout'::aiq_private.result_outcome, 'budget_exhausted'::aiq_private.result_outcome, 'tool_failure'::aiq_private.result_outcome, 'policy_failure'::aiq_private.result_outcome, 'wrong_artifact'::aiq_private.result_outcome]))))::integer as runtime_issue_count,
                     (count(*) FILTER (where (result.outcome = 'invalid'::aiq_private.result_outcome)))::integer as invalid_count,
                     (count(*) FILTER (where (result.outcome = 'missing'::aiq_private.result_outcome)))::integer as missing_count,
                     (count(*) FILTER (where (result.outcome = 'not_applicable'::aiq_private.result_outcome)))::integer as not_applicable_count,
+                    (count(*) FILTER (where (result.outcome = ANY (ARRAY['correct'::aiq_private.result_outcome, 'partial'::aiq_private.result_outcome, 'incorrect'::aiq_private.result_outcome]))))::integer as completed_count,
                     (count(*) FILTER (where (result.outcome <> all (ARRAY['invalid'::aiq_private.result_outcome, 'missing'::aiq_private.result_outcome, 'not_applicable'::aiq_private.result_outcome]))))::integer as observed_count
                    from aiq_private.aiq_task_results result
                   where (result.run_id = run.run_id)
@@ -13569,7 +13627,7 @@ begin
     or payload -> 'official_eligible' <> 'false'::jsonb
     or payload ->> 'classification' <> 'local_calibration_non_official'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.2'
+    or payload ->> 'scoring_version' <> '1.0.3'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or not aiq_private.dto_schedule_is_valid(payload -> 'schedule_slot')
@@ -15392,12 +15450,14 @@ select result.result_id,
   result.reasoning_effort,
   result.outcome::text as outcome,
   case
-    when result.outcome in ('correct','partial') then 'passed'
+    when result.outcome in ('correct','partial','incorrect') then 'completed'
+    when result.outcome in (
+      'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'
+    ) then 'runtime_issue'
     when result.outcome='invalid' then 'invalid'
     when result.outcome='missing' then 'missing'
     when result.outcome='not_applicable' then 'not_applicable'
-    else 'failed'
-  end as status,
+  end as execution_status,
   result.task_score,
   result.failure_code,
   result.failure_code as explanation_code,
