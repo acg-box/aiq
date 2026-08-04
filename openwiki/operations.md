@@ -22,8 +22,9 @@ transiently because a later deployment can recreate or reassign them. A
 deployment-specific URL is intrinsic to its retained deployment. The current
 generated Vercel surfaces emit `noindex`.
 
-The native Apple Silicon macOS runner completed one real, non-synthetic Official
-AIQ Core `1.0.2` matrix with 17 configurations and 72 tasks each, or 1,224
+The live production data remains one real, non-synthetic historical Official
+AIQ Core `1.0.2` matrix. The native Apple Silicon macOS runner completed its 17
+configurations and 72 tasks each, or 1,224
 task-level results. The native verifier replayed it, and the distinct publisher
 published it as `trusted_verified`. Of the results, 1,218 completed and 6
 failed. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
@@ -39,6 +40,10 @@ spend or a complete matrix total. Missing values are not zero. See
 Public views contain 17 runs, 1,224 results, 17 leaderboard rows, 17
 model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
+
+Repository source now accepts AIQ Core and scoring `1.0.3`. Native acceptance,
+the first `1.0.3` run, and publication are pending; this source-head change does
+not claim that `1.0.3` is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -106,10 +111,20 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
-   the release-policy identity is `aiq-core/1.0.2`, and the catalog
+   `sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`,
+   the release-policy identity is `aiq-core/1.0.3`, and the catalog
    release-identity digest is
-   `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+   `sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
+   Verify scorer-manifest identity
+   `sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`
+   and evaluator identity
+   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+   Verify runtime `task_set_hash`
+   `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+   Do not substitute controlled generated-task tree identity
+   `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+   Create the production corpus commitment only after clean-commit native
+   release binding.
 3. Create distinct runner, verifier, and publisher Ed25519 identities.
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
@@ -252,7 +267,7 @@ can retry it.
 
 After a real package has been submitted and an operator authorizes a claim, run
 the native verifier for one bounded lease. The worker emits one compact
-`aiq.verifier-record.v1` JSON object to standard output after each claimed
+`aiq.verifier-record.v2` JSON object to standard output after each claimed
 package. If the operator retains these objects in a create-once private JSONL
 file, the operator shell owns that redirection and file creation. Offline
 `verify-local` stage and attestation files are separate create-new outputs and
@@ -267,9 +282,14 @@ of rows is valid until a verified calibration has completed this transition.
 
 ## Fresh database initialization
 
-Production initialization is complete. Use this flow only for a replacement
-empty Supabase project, never for the current production project. Do not apply
-any AIQ objects before initialization. Use a direct PostgreSQL URL, not the
+AIQ Core `1.0.3` uses one greenfield desired state. For the current pre-launch
+Supabase project, first verify the accepted private and public backups, remove
+the historical AIQ schema and AIQ-owned roles in one operator-controlled reset,
+remove the exact AIQ-owned public views and RPC overloads after reviewing the
+live dependency closure, and then use this flow against that empty AIQ namespace.
+Preserve Supabase-managed schemas, roles, extensions, and every non-AIQ object.
+Do not run a migration chain or preserve a second compatibility state. Do not
+apply any AIQ objects before initialization. Use a direct PostgreSQL URL, not the
 public Data API URL.
 
 ```sh
@@ -281,10 +301,10 @@ cargo make init-database
 The command uses one connection and one transaction. It rejects existing AIQ
 schema or roles. After the controlled corpus and final native binaries pass the
 model-free checks in [Deployment Handoff](deployment-handoff.md), prepare a
-separately controlled production reference containing a non-synthetic AIQ Core `1.0.2` corpus
+separately controlled production reference containing a non-synthetic AIQ Core `1.0.3` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Initialization validates those fields and bindings. The repository
-defines one greenfield desired state. The receipt must report scoring `1.0.2`,
+defines one greenfield desired state. The receipt must report scoring `1.0.3`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the
@@ -427,11 +447,12 @@ references and legal holds block deletion.
 
 ## Failure handling
 
-- If fresh database initialization fails after work starts, do not reuse the
-  target. Inspect protected PostgreSQL logs, correct the input, and create a new
-  empty project.
+- If fresh database initialization fails, inspect protected PostgreSQL logs and
+  confirm that the transaction rolled back. Retry only after the AIQ namespace
+  is empty.
 - If initialization rejects existing AIQ objects, the rejected attempt made no
-  changes. Use a new project for the greenfield launch.
+  changes. Verify the backups, remove only the exact historical AIQ objects, and
+  retry the one greenfield initialization. Do not add a migration chain.
 - If submission fails after Storage upload, preserve the object and run
   reconciliation.
 - If a verifier lease expires, let the bounded claim protocol retry it.

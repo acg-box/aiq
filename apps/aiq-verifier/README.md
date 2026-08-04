@@ -33,7 +33,7 @@ cargo run -p aiq-verifier -- validate-environment --help
 cargo run -p aiq-verifier -- verify-local --help
 ```
 
-The production worker emits one compact `aiq.verifier-record.v1` JSON object to
+The production worker emits one compact `aiq.verifier-record.v2` JSON object to
 standard output after each claimed package. If the operator retains those
 objects in a create-once private JSONL file, the operator shell owns that
 redirection. The offline `verify-local` mode instead writes its explicit,
@@ -55,6 +55,40 @@ budget is exhausted, the worker acknowledges the claim for queue retry.
 Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
 `32` to match controlled host capacity. Replay output stays in signed result
 order, independent of this setting.
+
+Before the verifier creates Official publication evidence, it applies
+`aiq.official-calibration-policy.v1` to the complete fixed `17 × 72` matrix.
+This empirical diagnostic does not change the public AIQ formula or task
+weights. It does not fit an item-response model. The 17 configurations are
+correlated and are not sufficient for that claim.
+
+For each task, facility is the mean task credit across the 17 configurations.
+The inclusive facility band is `0.10` through `0.90`. A task is informative
+only when it is in this band and its maximum credit minus minimum credit across
+the configurations is at least `0.10`. At least 36 of 72 tasks (`0.50`) must be
+informative, and at least 36 must meet the non-uniformity limit. Each domain
+must contain an informative and a non-uniform task. Its mean facility must also
+be from `0.10` through `0.90`.
+
+The range between the lowest and highest 0–100 macro-domain model scores must
+be at least 3 points. This is an auxiliary flat-output check, not a target
+effect size. It detects near-identical aggregate output without requiring a
+wide ranking among correlated configurations. The task-level non-uniformity
+and facility checks provide the primary evidence that the fixture can
+distinguish ordinary work models.
+
+No more than 10% of tasks can have universal semantic zero credit, and no more
+than 10% can have universal full credit. For 72 tasks, this permits at most
+seven tasks in each class. This conservative allowance keeps a small number of
+very hard or very easy tasks without permitting floor or ceiling saturation.
+Universal zeros caused by runtime failure, or by a mix of runtime failure and
+semantic rejection, always stop publication. There is no operator override.
+
+The compact `aiq.verifier-record.v2` record includes the exact policy. For a
+successful non-synthetic Official verification, or a rejection by this gate,
+it also includes the observed task, domain, and model-spread summary. This is
+audit evidence only. The check does not change or supersede an existing
+published score.
 
 ## Verification flow
 

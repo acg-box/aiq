@@ -35,7 +35,7 @@ export function CompareExplorer({ entries }: { entries: readonly LeaderboardEntr
     ['Samples', String(left.sampleSize), String(right.sampleSize)],
     ['Coverage', `${left.coveragePercent.toFixed(1)}%`, `${right.coveragePercent.toFixed(1)}%`],
     ['Scoring version', left.scoringVersion, right.scoringVersion],
-    ['Failures', String(left.failures), String(right.failures)],
+    ['Runtime issues', String(left.runtimeIssues), String(right.runtimeIssues)],
     ['Missing', String(left.missing), String(right.missing)],
     [
       'Evidence',

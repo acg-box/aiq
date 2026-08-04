@@ -117,10 +117,10 @@ function Scatter({
       </svg>
       <figcaption>
         Higher descriptive AIQ and a smaller horizontal value are preferable. Vertical bars show
-        fixed-fixture task-resampling sensitivity, not universal capability confidence. Rings mark a
-        descriptive frontier only within the same fixture, scoring version, runtime, concurrency,
-        and run; cost also requires the same pricing version. Incomplete usage is excluded. This is
-        not a combined ranking or an API-frontier claim.
+        fixed-fixture task-resampling sensitivity intervals. They are not universal model-capability
+        intervals. Rings mark a descriptive frontier only within the same fixture, scoring version,
+        runtime, concurrency, and run; cost also requires the same pricing version. Incomplete usage
+        is excluded. This is not a combined ranking or an API-frontier claim.
       </figcaption>
     </figure>
   );
@@ -256,7 +256,7 @@ export function CalibrationEfficiency({ scores }: { scores: readonly PublicCalib
       <p className="formula-note">
         No score/$ or score/hour aggregate is used. If derived externally: score/$ = descriptive AIQ
         ÷ estimated API-equivalent USD; score/hour = descriptive AIQ ÷ observed hours. The
-        denominator and token coverage must accompany the value. Failed attempted tasks remain in
+        denominator and token coverage must accompany the value. Runtime-issue attempts remain in
         observed usage totals; missing or non-invoked cells do not. Adapter elapsed time measures
         model and allowed-tool invocation only. It excludes workspace setup, artifact sealing, and
         evaluator replay. Concurrent model order and local contention affect the observed resource

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
+import { AIQ_CORE_SCORING_VERSION, AIQ_CORE_TASK_SET_VERSION } from '../aiq-core-contract.ts';
 import { createBoundedSupabaseFetch, createSupabaseApiKeyFetch } from '../server/supabase-http.ts';
 import { filterTrendPoints } from './format.ts';
 import {
@@ -27,6 +28,7 @@ import type {
   LeaderboardStatus,
   Methodology,
   ModelFamily,
+  ExecutionStatus,
   ObservationRecordStatus,
   ObservationState,
   PublicCalibrationResult,
@@ -36,7 +38,6 @@ import type {
   PublicModelEfficiency,
   RadarNode,
   ReasoningTier,
-  RunStatus,
   SignatureStatus,
   RunHistoryCursor,
   RunHistoryPage,
@@ -150,7 +151,7 @@ export interface LeaderboardRow {
   ci_high: number | null;
   sample_size: number | null;
   coverage_percent: number | null;
-  failures: number | null;
+  runtime_issues: number | null;
   missing: number | null;
   scoring_version: string | null;
   score_status: string | null;
@@ -160,6 +161,7 @@ export interface LeaderboardRow {
 export interface TrendRow {
   matrix_id: string;
   run_id: string;
+  scoring_version: string;
   recorded_at: string;
   bucket_started_at: string;
   bucket_ended_at: string;
@@ -190,6 +192,7 @@ function isTrendRow(value: unknown): value is TrendRow {
   return (
     isBoundedIdentifier(value.matrix_id) &&
     isBoundedIdentifier(value.run_id) &&
+    isBoundedIdentifier(value.scoring_version) &&
     isTimestamp(recordedAt) &&
     isTimestamp(bucketStartedAt) &&
     isTimestamp(bucketEndedAt) &&
@@ -229,11 +232,14 @@ export interface RunRow {
   run_class: string | null;
   permission_evidence_digest: string | null;
   result_count: number;
-  passed_count: number;
-  failed_count: number;
+  correct_count: number;
+  partial_count: number;
+  incorrect_count: number;
+  runtime_issue_count: number;
   invalid_count: number;
   missing_count: number;
   not_applicable_count: number;
+  completed_count: number;
   observed_count: number;
   coverage_percent: number | null;
   covered_domain_count: number;
@@ -245,7 +251,8 @@ export interface RunResultRow {
   id: string;
   task: string;
   domain: string;
-  status: RunStatus;
+  outcome: CalibrationOutcome;
+  execution_status: ExecutionStatus;
   score: number | null;
   explanation_code: string | null;
   explanation_summary: string | null;
@@ -293,7 +300,7 @@ export interface CalibrationResultRow {
   model_family: 'sol' | 'terra' | 'luna';
   reasoning_effort: ReasoningTier;
   outcome: CalibrationOutcome;
-  status: RunStatus;
+  execution_status: ExecutionStatus;
   failure_code: string | null;
   explanation_code: string | null;
   explanation_summary: string | null;
@@ -320,12 +327,12 @@ export interface CalibrationResultRow {
   pricing_processing_tier: 'standard';
 }
 
-export function calibrationStatusForOutcome(outcome: CalibrationOutcome): RunStatus {
-  if (outcome === 'correct' || outcome === 'partial') return 'passed';
+export function executionStatusForOutcome(outcome: CalibrationOutcome): ExecutionStatus {
+  if (outcome === 'correct' || outcome === 'partial' || outcome === 'incorrect') return 'completed';
   if (outcome === 'invalid' || outcome === 'missing' || outcome === 'not_applicable') {
     return outcome;
   }
-  return 'failed';
+  return 'runtime_issue';
 }
 
 export const CALIBRATION_EXPLANATION_SUMMARIES = {
@@ -447,10 +454,10 @@ function isCalibrationOutcome(value: unknown): value is CalibrationOutcome {
   return CALIBRATION_OUTCOMES.some((outcome) => outcome === value);
 }
 
-function isRunStatus(value: unknown): value is RunStatus {
+function isExecutionStatus(value: unknown): value is ExecutionStatus {
   return (
-    value === 'passed' ||
-    value === 'failed' ||
+    value === 'completed' ||
+    value === 'runtime_issue' ||
     value === 'invalid' ||
     value === 'missing' ||
     value === 'not_applicable'
@@ -585,7 +592,8 @@ export function mapRunRow(row: RunRow, resultRows: readonly RunResultRow[]): Ben
           id: result.id,
           task: result.task,
           domain: result.domain,
-          status: result.status,
+          outcome: result.outcome,
+          executionStatus: result.execution_status,
           score: result.score,
           explanation: result.explanation_summary
             ? {
@@ -623,11 +631,14 @@ export function mapRunSummaryRow(row: RunRow): BenchmarkRunSummary {
       coveragePercent: row.coverage_percent,
       coveredDomainCount: row.covered_domain_count,
       provisionalDomainCount: row.provisional_domain_count,
-      passed: row.passed_count,
-      failed: row.failed_count,
-      invalid: row.invalid_count,
-      missing: row.missing_count,
-      notApplicable: row.not_applicable_count,
+      correctCount: row.correct_count,
+      partialCount: row.partial_count,
+      incorrectCount: row.incorrect_count,
+      runtimeIssueCount: row.runtime_issue_count,
+      invalidCount: row.invalid_count,
+      missingCount: row.missing_count,
+      notApplicableCount: row.not_applicable_count,
+      completedCount: row.completed_count,
     },
   };
 }
@@ -673,8 +684,8 @@ function isCalibrationResultRow(value: unknown): value is CalibrationResultRow {
     typeof value.reasoning_effort === 'string' &&
     ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value.reasoning_effort) &&
     isCalibrationOutcome(value.outcome) &&
-    isRunStatus(value.status) &&
-    value.status === calibrationStatusForOutcome(value.outcome) &&
+    isExecutionStatus(value.execution_status) &&
+    value.execution_status === executionStatusForOutcome(value.outcome) &&
     hasValidCalibrationExplanation(
       value.outcome,
       value.failure_code,
@@ -1116,7 +1127,7 @@ function mapCalibrationRun(
         modelFamily: result.model_family,
         reasoningEffort: result.reasoning_effort,
         outcome: result.outcome,
-        status: result.status,
+        executionStatus: result.execution_status,
         failureCode: result.failure_code,
         explanationCode: result.explanation_code,
         explanationSummary: result.explanation_summary,
@@ -1263,7 +1274,7 @@ function mapModelEfficiencyRow(row: ModelEfficiencyRow): PublicModelEfficiency {
 const seedCalibrationRun: PublicCalibrationRun = {
   id: `run_${'c'.repeat(64)}`,
   classification: 'local_calibration_non_official',
-  scoringVersion: '1.0.2',
+  scoringVersion: AIQ_CORE_SCORING_VERSION,
   selectedTaskCount: 1,
   selectedModelCount: 1,
   resultCount: 1,
@@ -1283,12 +1294,12 @@ const seedCalibrationRun: PublicCalibrationRun = {
       id: `result_${'d'.repeat(64)}`,
       runId: `run_${'c'.repeat(64)}`,
       taskId: 'synthetic-calibration-task',
-      taskVersion: '1.0.2',
+      taskVersion: AIQ_CORE_TASK_SET_VERSION,
       domain: 'coding',
       modelFamily: 'sol',
       reasoningEffort: 'low',
       outcome: 'correct',
-      status: 'passed',
+      executionStatus: 'completed',
       failureCode: null,
       explanationCode: null,
       explanationSummary: null,
@@ -1807,7 +1818,7 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
       isFiniteNumber(value.coverage_percent) &&
       value.coverage_percent >= 0 &&
       value.coverage_percent <= 100 &&
-      isCount(value.failures) &&
+      isCount(value.runtime_issues) &&
       isCount(value.missing)
     );
   }
@@ -1818,7 +1829,7 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
     value.ci_high === null &&
     value.sample_size === null &&
     value.coverage_percent === null &&
-    value.failures === null &&
+    value.runtime_issues === null &&
     value.missing === null
   );
 }
@@ -1853,7 +1864,7 @@ export function joinModelMatrixWithLeaderboard(
       ciHigh: officialRow?.ci_high ?? null,
       sampleSize: officialRow?.sample_size ?? null,
       coveragePercent: officialRow?.coverage_percent ?? null,
-      failures: officialRow?.failures ?? null,
+      runtimeIssues: officialRow?.runtime_issues ?? null,
       missing: officialRow?.missing ?? null,
       scoringVersion: officialRow?.scoring_version ?? null,
       scoreStatus,
@@ -1871,7 +1882,7 @@ const MAX_PUBLIC_READ_PAGES = 100;
 const RUN_ID_BATCH_SIZE = 50;
 
 function isObservedTask(task: TaskResult): boolean {
-  return task.status === 'passed' || task.status === 'failed';
+  return task.executionStatus === 'completed' || task.executionStatus === 'runtime_issue';
 }
 
 function runSummaryFromRun(run: BenchmarkRun): BenchmarkRunSummary {
@@ -1890,11 +1901,14 @@ function runSummaryFromRun(run: BenchmarkRun): BenchmarkRunSummary {
       coveredDomainCount: [...observedCountsByDomain.values()].filter((count) => count >= 1).length,
       provisionalDomainCount: [...observedCountsByDomain.values()].filter((count) => count >= 4)
         .length,
-      passed: tasks.filter((task) => task.status === 'passed').length,
-      failed: tasks.filter((task) => task.status === 'failed').length,
-      invalid: tasks.filter((task) => task.status === 'invalid').length,
-      missing: tasks.filter((task) => task.status === 'missing').length,
-      notApplicable: tasks.filter((task) => task.status === 'not_applicable').length,
+      correctCount: tasks.filter((task) => task.outcome === 'correct').length,
+      partialCount: tasks.filter((task) => task.outcome === 'partial').length,
+      incorrectCount: tasks.filter((task) => task.outcome === 'incorrect').length,
+      runtimeIssueCount: tasks.filter((task) => task.executionStatus === 'runtime_issue').length,
+      invalidCount: tasks.filter((task) => task.executionStatus === 'invalid').length,
+      missingCount: tasks.filter((task) => task.executionStatus === 'missing').length,
+      notApplicableCount: tasks.filter((task) => task.executionStatus === 'not_applicable').length,
+      completedCount: tasks.filter((task) => task.executionStatus === 'completed').length,
     },
   };
 }
@@ -2094,7 +2108,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       this.#client
         .from(PUBLIC_VIEW_NAMES.leaderboard)
         .select(
-          'matrix_id,run_id,score,ci_low,ci_high,sample_size,coverage_percent,failures,missing,scoring_version,score_status,synthetic',
+          'matrix_id,run_id,score,ci_low,ci_high,sample_size,coverage_percent,runtime_issues,missing,scoring_version,score_status,synthetic',
         )
         .overrideTypes<LeaderboardRow[], { merge: false }>(),
     ]);
@@ -2156,6 +2170,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       .map((row) => ({
         entryId: row.matrix_id,
         runId: row.run_id,
+        scoringVersion: row.scoring_version,
         recordedAt: row.recorded_at,
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
@@ -2174,7 +2189,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       let query = this.#client
         .from(PUBLIC_VIEW_NAMES.runs)
         .select(
-          'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,passed_count,failed_count,invalid_count,missing_count,not_applicable_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
+          'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,correct_count,partial_count,incorrect_count,runtime_issue_count,invalid_count,missing_count,not_applicable_count,completed_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
         )
         .order('started_at', { ascending: false })
         .order('id', { ascending: true });
@@ -2199,7 +2214,7 @@ export class SupabaseAiqRepository implements AiqRepository {
           this.#client
             .from(PUBLIC_VIEW_NAMES.runResults)
             .select(
-              'run_id,id,task,domain,status,score,explanation_code,explanation_summary,retryable,tools,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level',
+              'run_id,id,task,domain,outcome,execution_status,score,explanation_code,explanation_summary,retryable,tools,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level',
             )
             .in('run_id', batch)
             .order('run_id', { ascending: true })
@@ -2238,7 +2253,7 @@ export class SupabaseAiqRepository implements AiqRepository {
     let query = this.#client
       .from(PUBLIC_VIEW_NAMES.runs)
       .select(
-        'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,passed_count,failed_count,invalid_count,missing_count,not_applicable_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
+        'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,correct_count,partial_count,incorrect_count,runtime_issue_count,invalid_count,missing_count,not_applicable_count,completed_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
       );
     if (cursor) {
       const timestampOperator = direction === 'older' ? 'lt' : 'gt';
@@ -2410,7 +2425,7 @@ export class SupabaseAiqRepository implements AiqRepository {
     const result = await this.#client
       .from(PUBLIC_VIEW_NAMES.calibrationResults)
       .select(
-        'result_id,run_id,task_id,task_version,domain,model_family,reasoning_effort,outcome,status,failure_code,explanation_code,explanation_summary,task_score,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,output_tokens,cache_write_input_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,cost_estimator_limitations,cost_method,cost_version,cost_as_of,cost_source,pricing_currency,pricing_processing_tier',
+        'result_id,run_id,task_id,task_version,domain,model_family,reasoning_effort,outcome,execution_status,failure_code,explanation_code,explanation_summary,task_score,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,output_tokens,cache_write_input_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,cost_estimator_limitations,cost_method,cost_version,cost_as_of,cost_source,pricing_currency,pricing_processing_tier',
       )
       .eq('run_id', id)
       .eq('model_family', selection.modelFamily)

@@ -6,11 +6,10 @@ import type { BenchmarkRun } from '../data/types.ts';
 export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
   const outcomes = summarizeRunOutcomes(run);
   const domains = summarizeRunDomains(run);
-  const width = outcomes.total === 0 ? 0 : (outcomes.passed / outcomes.total) * 100;
+  const width = outcomes.total === 0 ? 0 : (outcomes.credited / outcomes.total) * 100;
   const partialWidth = outcomes.total === 0 ? 0 : (outcomes.partial / outcomes.total) * 100;
   const incorrectWidth = outcomes.total === 0 ? 0 : (outcomes.incorrect / outcomes.total) * 100;
-  const executionWidth =
-    outcomes.total === 0 ? 0 : (outcomes.executionFailures / outcomes.total) * 100;
+  const executionWidth = outcomes.total === 0 ? 0 : (outcomes.runtimeIssues / outcomes.total) * 100;
 
   return (
     <section className="outcome-card" aria-labelledby="outcome-card-heading">
@@ -21,18 +20,18 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
         </div>
         <strong className="outcome-rate">
           {outcomes.successRate === null ? '—' : `${outcomes.successRate.toFixed(0)}%`}
-          <small>full or partial credit</small>
+          <small>credit among completed outcomes</small>
         </strong>
       </div>
       <p className="outcome-card-copy">
-        AIQ is the equal-weight average of ten task domains. A failed task is a zero for that
-        fixture; it does not describe a model&apos;s general intelligence. Partial credit stays
-        separate below.
+        AIQ is the equal-weight average of ten task domains. The rate above uses completed semantic
+        outcomes only; runtime, invalid, missing, and not-applicable cells stay separate. Partial
+        credit remains visible below.
       </p>
       <div
         className="outcome-stack"
         role="img"
-        aria-label={`Task outcomes: ${outcomes.correct} correct, ${outcomes.partial} partial, ${outcomes.incorrect} incorrect, ${outcomes.executionFailures} execution failures`}
+        aria-label={`Task outcomes: ${outcomes.correct} correct, ${outcomes.partial} partial, ${outcomes.incorrect} incorrect, ${outcomes.runtimeIssues} runtime issues`}
       >
         <span className="outcome-segment correct" style={{ width: `${width - partialWidth}%` }} />
         <span className="outcome-segment partial" style={{ width: `${partialWidth}%` }} />
@@ -64,13 +63,16 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
         <div>
           <dt>
             <span className="legend-dot execution" />
-            Timeout / budget
+            Runtime issues
           </dt>
-          <dd>{outcomes.executionFailures}</dd>
+          <dd>{outcomes.runtimeIssues}</dd>
         </div>
       </dl>
-      <details className="outcome-domain-disclosure">
-        <summary>Open the 10-domain breakdown</summary>
+      <section className="outcome-domain-disclosure" aria-labelledby="domain-matrix-heading">
+        <div className="domain-matrix-heading">
+          <span className="eyebrow">Domain matrix</span>
+          <h3 id="domain-matrix-heading">Where the leader gains and loses ground</h3>
+        </div>
         <div className="domain-score-bars" role="list" aria-label="Domain AIQ index scores">
           {domains.map((domain) => {
             const score = domain.score ?? 0;
@@ -84,7 +86,7 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
                   <span style={{ width: `${score}%` }} />
                 </div>
                 <small>
-                  {domain.succeeded + domain.failed}/{domain.total} scored ·{' '}
+                  {domain.completed + domain.runtimeIssues}/{domain.total} observed ·{' '}
                   {domain.coveragePercent.toFixed(0)}% coverage
                 </small>
               </div>
@@ -92,10 +94,10 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
           })}
         </div>
         <p className="fine-print domain-score-note">
-          A zero here is a valid scored outcome for this fixed fixture, not missing data. Missing
-          and execution-failure cells are counted separately above.
+          A zero here is a valid scored outcome for this fixed fixture, not missing data. Missing,
+          invalid, not-applicable, and runtime-issue cells are reported separately above.
         </p>
-      </details>
+      </section>
       <p className="fine-print">
         {outcomes.total} task cells in this configuration ·{' '}
         {run.synthetic ? 'synthetic seed data' : 'published evidence'} ·{' '}

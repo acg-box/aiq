@@ -48,7 +48,7 @@ const PUBLIC_TASK_BYTES_SHA256: &str =
 const PUBLIC_TASK_ID: &str = "public-example-instruction-following-01";
 const PUBLIC_RUN_ID: &str = "subscription_smoke_fixed_public_example";
 const CONTROLLED_TASK_ID: &str = "documentation-communication-01";
-const CONTROLLED_TASK_VERSION: &str = "1.0.2";
+const CONTROLLED_TASK_VERSION: &str = "1.0.3";
 const CONTROLLED_RUN_ID: &str = "controlled_subscription_smoke_fixed_hidden_task";
 
 static SMOKE_TEMP_SEQUENCE: AtomicUsize = AtomicUsize::new(0);

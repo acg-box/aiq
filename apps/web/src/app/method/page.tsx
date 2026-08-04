@@ -62,7 +62,7 @@ function EfficiencyMethod() {
           <dt>Observed Codex adapter elapsed time</dt>
           <dd>
             Sum, median, and p95 of Codex adapter elapsed time: model plus allowed tools. It
-            excludes workspace setup, artifact sealing, and evaluator replay. Failed attempted tasks
+            excludes workspace setup, artifact sealing, and evaluator replay. Runtime-issue tasks
             consume time; missing or non-invoked cells do not. Full-matrix timings are operational
             resource-profile evidence under the recorded node, execution order, and concurrency (17
             jobs for the current run). Model, tool, network, and local contention vary. This is not
@@ -95,7 +95,7 @@ export default async function MethodPage() {
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Methodology</span>
-        <h1>Transparent scoring, version by version.</h1>
+        <h1>Scoring method</h1>
         <p>
           AIQ v1 estimates outcomes on one committed 72-task fixture set. It does not estimate
           general intelligence or universal model capability.

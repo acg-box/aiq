@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -34,6 +35,33 @@ const evidencePublicViews = [
   'public_calibration_scores',
 ] as const;
 const publicViews = [...corePublicViews, ...evidencePublicViews] as const;
+
+type JsonObject = Record<string, unknown>;
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function jsonObject(value: unknown): JsonObject {
+  if (!isJsonObject(value)) {
+    throw new Error('Expected a JSON object.');
+  }
+  return value;
+}
+
+function unknownArray(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw new Error('Expected a JSON array.');
+  return Array.from(value, (item: unknown) => item);
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
+  return `{${Object.entries(value)
+    .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+    .join(',')}}`;
+}
 
 function checkSecurityDefinerSearchPaths(schema: string): void {
   const starts = [...schema.matchAll(/^create function /gm)].map(({ index }) => index);
@@ -124,8 +152,11 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
-  const catalogReleaseDigest = '54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6';
+  const catalogDigest = '0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1';
+  const catalogReleaseDigest = '0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d';
+  const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+  const controlledTaskTreeDigest =
+    'cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145';
   const predecessorCatalogDigest =
     'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
   const staleCatalogDigest = 'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
@@ -135,19 +166,25 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
   assert.doesNotMatch(databaseSources, new RegExp(staleCatalogDigest));
   assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.0/);
   assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.1/);
+  assert.doesNotMatch(
+    databaseSources,
+    new RegExp(controlledTaskTreeDigest),
+    'The controlled generated-task tree digest is not a runtime database task-set identity.',
+  );
   assert.match(schema, new RegExp(`sha256:${catalogDigest}`));
   assert.match(schema, new RegExp(`catalog_sha256 =\\s*'${catalogDigest}'`));
   assert.match(
     schema,
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
-  assert.match(schema, /task_set\.task_set_version = '1\.0\.2'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.2'/);
-  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.2'/);
-  assert.match(syntheticDemo, /'aiq-core@1\.0\.2'/);
+  assert.match(schema, /task_set\.task_set_version = '1\.0\.3'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.3'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.3'/);
+  assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
+  assert.match(syntheticDemo, /'aiq-core@1\.0\.3'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.2', '1\.0\.2'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.3', '1\.0\.3'/,
   );
 
   const pricingValidator =
@@ -186,6 +223,264 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     resultEfficiencyValidator,
     /\(candidate->'standard_api_equivalent_usd_nanos'='null'::jsonb\)[\s\S]{0,160}\(candidate->'cost_evidence_level'='null'::jsonb\)/,
     'Unavailable costs must not retain cost authority.',
+  );
+}
+
+function checkReviewedEvaluatorIdentity(schema: string): void {
+  const evaluatorIdentity =
+    'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+  const officialValidator =
+    schema.match(
+      /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
+    )?.[0] ?? '';
+  const stageMatcher =
+    schema.match(
+      /create function aiq_private\.run_provenance_v2_matches_stage[\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+  const catalogValidator =
+    schema.match(
+      /create function aiq_private\.frozen_catalog_identity_is_valid[\s\S]*?\n\$_\$;/i,
+    )?.[0] ?? '';
+  const readiness =
+    schema.match(/create function public\.aiq_production_reference_status[\s\S]*?\n\$\$;/i)?.[0] ??
+    '';
+  const initializedExpression =
+    readiness.match(/'initialized',[\s\S]*?'model_config_count'/)?.[0] ?? '';
+
+  assert.match(
+    officialValidator,
+    new RegExp(`candidate ->> 'evaluator_digest' <>\\s*'${evaluatorIdentity}'`),
+    'Official provenance must compare the evaluator digest with the reviewed identity.',
+  );
+  assert.match(
+    stageMatcher,
+    new RegExp(`candidate ->> 'evaluator_digest' is distinct from\\s*'${evaluatorIdentity}'`),
+    'Official stage admission must compare the evaluator digest with the reviewed identity.',
+  );
+  assert.match(
+    catalogValidator,
+    new RegExp(`task_set\\.metadata ->> 'evaluator_identity_sha256' =\\s*'${evaluatorIdentity}'`),
+    'The frozen task-set record must retain the reviewed evaluator identity.',
+  );
+  assert.match(
+    initializedExpression,
+    new RegExp(`evaluator_identity_sha256 =\\s*'${evaluatorIdentity}'`),
+    'Production readiness must compare stored metadata with the reviewed evaluator identity.',
+  );
+  assert.match(
+    readiness,
+    /'evaluator_identity_sha256', evaluator_identity_sha256/,
+    'Production readiness must attest the stored evaluator identity.',
+  );
+}
+
+function checkReviewedTaskSetIdentity(schema: string): void {
+  const taskSetIdentity = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e';
+  const officialValidator =
+    schema.match(
+      /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
+    )?.[0] ?? '';
+  const stageMatcher =
+    schema.match(
+      /create function aiq_private\.run_provenance_v2_matches_stage[\s\S]*?\n\$\$;/i,
+    )?.[0] ?? '';
+  const catalogValidator =
+    schema.match(
+      /create function aiq_private\.frozen_catalog_identity_is_valid[\s\S]*?\n\$_\$;/i,
+    )?.[0] ?? '';
+  const readiness =
+    schema.match(/create function public\.aiq_production_reference_status[\s\S]*?\n\$\$;/i)?.[0] ??
+    '';
+  const initializedExpression =
+    readiness.match(/'initialized',[\s\S]*?'model_config_count'/)?.[0] ?? '';
+
+  assert.match(
+    officialValidator,
+    new RegExp(`candidate ->> 'task_set_digest' <>\\s*'${taskSetIdentity}'`),
+    'Official provenance must compare the task-set digest with the native identity.',
+  );
+  assert.match(
+    stageMatcher,
+    new RegExp(`candidate ->> 'task_set_digest' is distinct from\\s*'${taskSetIdentity}'`),
+    'Official stage admission must compare the task-set digest with the native identity.',
+  );
+  assert.match(
+    catalogValidator,
+    new RegExp(
+      `jcs_sha256\\([\\s\\S]{0,260}jsonb_agg\\([\\s\\S]{0,260}fixture_commitment[\\s\\S]{0,260}collate "C"[\\s\\S]{0,500}= '${taskSetIdentity}'`,
+    ),
+    'The frozen catalog must derive and compare the sorted task-definition identities.',
+  );
+  assert.match(
+    readiness,
+    /case when count\(\*\) = 72 and count\(task\.fixture_commitment\) = 72[\s\S]{0,320}jcs_sha256\([\s\S]{0,320}jsonb_agg\([\s\S]{0,240}order by \('sha256:' \|\| task\.fixture_commitment\) collate "C"/,
+    'Production readiness must derive the native identity from all 72 stored task commitments.',
+  );
+  assert.match(
+    initializedExpression,
+    new RegExp(`task_set_identity_sha256 =\\s*'${taskSetIdentity}'`),
+    'Production readiness must compare the derived task-set identity.',
+  );
+  assert.match(
+    readiness,
+    /'task_set_identity_sha256', task_set_identity_sha256/,
+    'Production readiness must attest the derived task-set identity.',
+  );
+}
+
+export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
+  const taskSetIdentity = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e';
+  const reviewedCommitmentsIdentity =
+    'sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e';
+  const fixture = jsonObject(value);
+  assert.deepEqual(Object.keys(fixture).toSorted(), [
+    'schema_version',
+    'task_set_id',
+    'task_set_identity_sha256',
+    'task_set_version',
+    'tasks',
+  ]);
+  assert.equal(fixture.schema_version, 'aiq.production-task-commitments.v1');
+  assert.equal(fixture.task_set_id, 'aiq-core');
+  assert.equal(fixture.task_set_version, '1.0.3');
+  assert.equal(fixture.task_set_identity_sha256, taskSetIdentity);
+  const tasks = unknownArray(fixture.tasks);
+  assert.equal(tasks.length, 72);
+  const taskIds = new Set<string>();
+  const definitionIdentities = tasks.map((taskValue, index) => {
+    const task = jsonObject(taskValue);
+    assert.deepEqual(Object.keys(task).toSorted(), [
+      'fixture_bundle_sha256',
+      'task_definition_sha256',
+      'task_id',
+    ]);
+    assert.match(String(task.task_id), /^[a-z][a-z0-9-]{1,63}$/);
+    assert.match(String(task.task_definition_sha256), /^sha256:[0-9a-f]{64}$/);
+    assert.match(String(task.fixture_bundle_sha256), /^sha256:[0-9a-f]{64}$/);
+    assert.ok(!taskIds.has(String(task.task_id)), `duplicate task_id at index ${String(index)}`);
+    taskIds.add(String(task.task_id));
+    return String(task.task_definition_sha256);
+  });
+  assert.equal(new Set(definitionIdentities).size, 72);
+  const derivedIdentity = `sha256:${createHash('sha256')
+    .update(canonicalJson(definitionIdentities.toSorted()))
+    .digest('hex')}`;
+  assert.equal(derivedIdentity, taskSetIdentity);
+  const derivedCommitmentsIdentity = `sha256:${createHash('sha256')
+    .update(canonicalJson(fixture))
+    .digest('hex')}`;
+  assert.equal(derivedCommitmentsIdentity, reviewedCommitmentsIdentity);
+}
+
+export function checkDatabaseInitializerSource(initializer: string): void {
+  const evaluatorIdentity =
+    'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+  assert.match(
+    initializer,
+    new RegExp(`const EVALUATOR_IDENTITY =\\s*'${evaluatorIdentity}'`),
+    'The initializer must declare the reviewed evaluator identity.',
+  );
+  const runtimeValidator =
+    initializer.match(/function validateRuntimeProvenance[\s\S]*?\nfunction validateNodes/)?.[0] ??
+    '';
+  const taskSetValidator =
+    initializer.match(
+      /function validateReviewedTaskCommitments[\s\S]*?\nfunction validateRuntimeProvenance/,
+    )?.[0] ?? '';
+  const referenceRowBuilder =
+    initializer.match(/function referenceRows[\s\S]*?\nfunction insertSql/)?.[0] ?? '';
+  const preparation =
+    initializer.match(
+      /export function prepareInitialization[\s\S]*?\nasync function runPsql/,
+    )?.[0] ?? '';
+  const readinessParser =
+    initializer.match(
+      /function readinessPassed[\s\S]*?\nexport async function initializeDatabase/,
+    )?.[0] ?? '';
+  assert.match(
+    initializer,
+    /const TASK_SET_IDENTITY =\s*'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'/,
+    'The initializer must declare the native task-set identity.',
+  );
+  assert.match(
+    initializer,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e'/,
+    'The initializer must declare the reviewed task commitment manifest identity.',
+  );
+  assert.match(
+    taskSetValidator,
+    /documentDigest\(manifest\) !== REVIEWED_TASK_COMMITMENTS_IDENTITY/,
+    'The initializer must compare the complete reviewed task commitment manifest.',
+  );
+  assert.match(
+    taskSetValidator,
+    /binding\.task_definition_sha256 !== reviewed\.task_definition_sha256/,
+    'Every task definition must match the reviewed commitment.',
+  );
+  assert.match(
+    taskSetValidator,
+    /binding\.fixture_bundle_sha256 !== reviewed\.fixture_bundle_sha256/,
+    'Every fixture bundle must match the reviewed commitment.',
+  );
+  assert.match(
+    taskSetValidator,
+    /documentDigest\(taskDefinitionIdentities\.toSorted\(\)\)/,
+    'The initializer must use the Rust sorted-address canonical task-set hash algorithm.',
+  );
+  assert.match(
+    taskSetValidator,
+    /derivedIdentity !== TASK_SET_IDENTITY/,
+    'The initializer must compare the derived task-set identity with the native value.',
+  );
+  assert.match(
+    runtimeValidator,
+    /evaluatorDigest !== EVALUATOR_IDENTITY/,
+    'The initializer must compare runtime evaluator provenance with the reviewed identity.',
+  );
+  assert.match(
+    runtimeValidator,
+    /binding\.evaluator_executable_sha256 !== EVALUATOR_IDENTITY/,
+    'Every task binding must compare its evaluator executable with the reviewed identity.',
+  );
+  assert.match(
+    runtimeValidator,
+    /return evaluatorDigest;/,
+    'The initializer must return the validated evaluator identity.',
+  );
+  assert.match(
+    referenceRowBuilder,
+    /evaluator_identity_sha256: reference\.evaluatorIdentitySha256/,
+    'The initializer must persist the validated evaluator identity in task-set metadata.',
+  );
+  assert.match(
+    preparation,
+    /task_set_identity_sha256: reference\.taskSetIdentitySha256[\s\S]{0,160}evaluator_identity_sha256:/,
+    'The initialization receipt must attest the validated task-set identity.',
+  );
+  assert.match(
+    preparation,
+    /evaluator_identity_sha256: reference\.evaluatorIdentitySha256[\s\S]{0,160}task_count: 72/,
+    'The initialization receipt must attest the validated evaluator identity.',
+  );
+  assert.match(
+    readinessParser,
+    /value\.task_set_identity_sha256 === expected\.task_set_identity_sha256/,
+    'The initializer must compare readiness output with the receipt task-set identity.',
+  );
+  assert.match(
+    readinessParser,
+    /value\.task_set_identity_valid === true/,
+    'The initializer must require the readiness task-set validity result.',
+  );
+  assert.match(
+    readinessParser,
+    /value\.evaluator_identity_sha256 === expected\.evaluator_identity_sha256/,
+    'The initializer must compare readiness output with the receipt evaluator identity.',
+  );
+  assert.match(
+    readinessParser,
+    /value\.evaluator_identity_valid === true/,
+    'The initializer must require the readiness evaluator validity result.',
   );
 }
 
@@ -357,6 +652,8 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   checkSecurityDefinerSearchPaths(schema);
   checkWorkspaceIntegrityFailureClassification(schema);
   checkCurrentReleaseAndPricing(schema, syntheticDemo);
+  checkReviewedTaskSetIdentity(schema);
+  checkReviewedEvaluatorIdentity(schema);
 
   for (const requiredName of [
     'aiq_enqueue_submission',
@@ -583,8 +880,14 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(publicCalibrationResults, /result\.outcome::text as outcome/);
   assert.match(
     publicCalibrationResults,
-    /when result\.outcome in \('correct','partial'\) then 'passed'[\s\S]{0,420}else 'failed'/,
-    'The public calibration result must derive its bounded compatibility status from outcome.',
+    /when result\.outcome in \('correct','partial','incorrect'\) then 'completed'[\s\S]{0,240}when result\.outcome in \([\s\S]{0,180}'wrong_artifact'[\s\S]{0,80}then 'runtime_issue'/,
+    'The public calibration result must separate semantic outcomes from execution status.',
+  );
+  assert.match(publicCalibrationResults, /end as execution_status/);
+  assert.doesNotMatch(
+    publicCalibrationResults,
+    /end as status|then 'passed'|then 'failed'/,
+    'Public calibration results must not collapse semantic outcomes into pass/fail status.',
   );
   assert.match(publicCalibrationResults, /result\.failure_code as explanation_code/);
   assert.match(publicCalibrationResults, /end as explanation_summary/);
@@ -612,6 +915,13 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     schema,
     /private_table_count=40 and forced_rls_table_count=40\s+and public_view_count=12 and security_invoker_view_count=12\s+and canonical_public_view_count=12\s+and hardened_gateway_role_count=2/,
     'Production readiness must bind the complete schema, RLS, view, and gateway-role inventory.',
+  );
+  const readinessViewFacts =
+    schema.match(/view_facts as \([\s\S]*?\n  \),\n  role_facts as \(/i)?.[0] ?? '';
+  assert.match(
+    readinessViewFacts,
+    /where namespace\.nspname='public' and relation\.relkind='v'\s+and relation\.relname in \([\s\S]*?'public_model_efficiency'[\s\S]*?\)/,
+    'Production readiness must count only the canonical AIQ public views.',
   );
 
   for (const indexName of [
@@ -710,11 +1020,17 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
 export async function checkDatabaseSchema(
   repositoryRoot = resolve(import.meta.dirname, '..'),
 ): Promise<void> {
-  const [schema, syntheticDemo] = await Promise.all([
+  const [schema, syntheticDemo, initializer, taskCommitments] = await Promise.all([
     readFile(join(repositoryRoot, 'databases/schema.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/synthetic-demo.sql'), 'utf8'),
+    readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8'),
+    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.3-task-commitments.json'), 'utf8').then(
+      (bytes) => JSON.parse(bytes) as unknown,
+    ),
   ]);
   checkDatabaseSchemaSources(schema, syntheticDemo);
+  checkDatabaseInitializerSource(initializer);
+  checkDatabaseTaskCommitmentFixture(taskCommitments);
 }
 
 const invokedPath = process.argv[1];
