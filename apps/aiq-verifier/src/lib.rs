@@ -638,7 +638,7 @@ where
 			))),
 			// Supabase can return 403 when a short-lived signed object URL expires or is
 			// temporarily invalid. Re-resolving obtains a fresh claim-bound URL.
-			403 | 408 | 429 | 500..=599 => Err(ArtifactResolveAttemptError::Retry(
+			403 | 408 | 409 | 429 | 500..=599 => Err(ArtifactResolveAttemptError::Retry(
 				WorkerError::transient("resolved artifact object is unavailable"),
 			)),
 			_ => Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
@@ -4849,7 +4849,7 @@ mod tests {
 
 	#[test]
 	fn artifact_resolver_refreshes_signed_urls_after_transient_object_statuses() {
-		for status in [403, 408, 429, 500, 599] {
+		for status in [403, 408, 409, 429, 500, 599] {
 			let bytes = b"workspace snapshot".to_vec();
 			let transport = RetryArtifactTransport {
 				bytes: bytes.clone(),
