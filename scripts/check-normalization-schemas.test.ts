@@ -918,6 +918,42 @@ await test('the current corpus commitment has one direct state', async () => {
   }
 });
 
+await test('corpus runtime components keep stable fields and bounded diagnostics', async () => {
+  const schema = await parseSchema('benchmarks/schema/corpus-commitment-v2.schema.json');
+  const definitions = requireObjectProperty(schema, '$defs');
+  const runtime = requireObjectProperty(definitions, 'runtimeProvenance');
+  const runtimeProperties = requireObjectProperty(runtime, 'properties');
+  const nodeRuntime = requireObjectProperty(runtimeProperties, 'node_runtime');
+  const nodeProperties = requireObjectProperty(nodeRuntime, 'properties');
+  const components = requireObjectProperty(nodeProperties, 'components');
+  const componentProperties = requireObjectProperty(components, 'properties');
+
+  deepStrictEqual(components.required, [
+    'icu',
+    'tz',
+    'unicode',
+    'v8',
+    'modules',
+    'openssl',
+    'zlib',
+  ]);
+  deepStrictEqual(Object.keys(componentProperties), components.required);
+  strictEqual(components.minProperties, 7);
+  strictEqual(components.maxProperties, 64);
+  strictEqual(
+    requireObjectProperty(components, 'propertyNames').pattern,
+    '^[a-z][a-z0-9_]{0,31}(?![\\s\\S])',
+  );
+  strictEqual(
+    requireObjectProperty(components, 'additionalProperties').$ref,
+    '#/$defs/additionalComponentVersion',
+  );
+  const additionalVersion = requireObjectProperty(definitions, 'additionalComponentVersion');
+  strictEqual(additionalVersion.type, 'string');
+  strictEqual(additionalVersion.maxLength, 80);
+  strictEqual(additionalVersion.pattern, '^[A-Za-z0-9.+_-]{0,80}(?![\\s\\S])');
+});
+
 await test('public wire schemas bind only the active AIQ Core 1.0.3 release', async () => {
   const schemas = await Promise.all(
     [
