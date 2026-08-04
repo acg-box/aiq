@@ -30,9 +30,10 @@ completed on the native macOS runner. The batch is non-synthetic. Its 1,224
 task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
 The native verifier replayed the committed evaluators, and the distinct
 publisher completed the database transition. Production exposes the matrix as
-`trusted_verified`. Production merge and deployment commit is
-`725b88954359ab8f0950f896674b3e8684d3ae85`. The published outcome and
-efficiency semantics are detailed in
+`trusted_verified`. The first Official launch publication was deployed from
+merge commit `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
+historical launch evidence, not the identity of every later production
+deployment. The published outcome and efficiency semantics are detailed in
 [Benchmark Method](benchmark-method.md).
 
 ## Identity boundary

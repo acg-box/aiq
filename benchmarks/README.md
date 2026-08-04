@@ -8,11 +8,11 @@ content stay outside Git.
 
 AIQ Core `1.0.2` is the current production contract. The native macOS runner
 completed the first real, non-synthetic Official benchmark matrix: 17
-configurations by 72 tasks, or 1,224 task-level results. The verifier accepted
-and published it as `trusted_verified`. Of the 1,224 results, 1,218 completed
-and 6 failed. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5
-`timeout`, and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
-(`1:37:24.411`).
+configurations by 72 tasks, or 1,224 task-level results. The verifier replayed
+and accepted its evidence. The distinct publisher published the matrix as
+`trusted_verified`. Of the 1,224 results, 1,218 completed and 6 failed. Outcomes
+are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
+`budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
 
 Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
 `unavailable_missing_usage` results. The $125.403257240 priced subtotal is a

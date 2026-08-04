@@ -47,8 +47,17 @@ model-efficiency, and model-matrix projections. Publication created 4,395
 artifact bindings, including 19 capability artifacts. The interpretation of
 these public-safe measures belongs to [Benchmark Method](benchmark-method.md).
 
-Production merge and deployment commit is
-`725b88954359ab8f0950f896674b3e8684d3ae85`.
+The first Official launch publication was deployed from merge commit
+`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
+evidence, not the identity of every later production deployment. To read the
+current source commit, open Vercel project `acgbox/aiq`, select the deployment
+currently assigned to `aiq.wiki`, and read **Git Source > Commit**. This command
+returns the current deployment ID and deployment-specific URL for the same
+readback:
+
+```sh
+vercel inspect aiq.wiki --scope acgbox --format=json
+```
 
 ## Immutable release evidence
 
@@ -223,10 +232,10 @@ published result.
 
 `aiq.wiki` is attached to the personal Vercel project `aiq` with valid TLS and
 is the canonical production origin. `www.aiq.wiki` preserves the request path
-and returns a permanent `308` redirect to the apex. Generated, automatic
-`*.vercel.app` URLs cannot be permanently deleted. The current generated URLs
-emit `noindex`. Remove any other obsolete Vercel projects, aliases, or domains
-only after exact read-only inspection confirms their targets.
+and returns a permanent `308` redirect to the apex. Automatic Vercel project and
+branch aliases can be removed only transiently because a later deployment can
+recreate or reassign them. A deployment-specific URL is intrinsic to its
+retained deployment. The current generated Vercel surfaces emit `noindex`.
 
 ## Storage operations
 
@@ -260,7 +269,6 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       and selected accessibility rules.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
       next run without changing the accepted execution contract.
-- [ ] Remove obsolete Vercel aliases or projects after exact target review.
 
 Run the bounded, secret-free production acceptance gate after publication or a
 production deployment change:
