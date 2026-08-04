@@ -58,8 +58,12 @@ cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
 ```
 
-No real Official model run has started. The method must preserve unsupported or
-unavailable capability states instead of replacing them with fabricated output.
+The native macOS runner completed the first real Official benchmark batch. Its
+17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
+observations: 1,218 completed and 6 had genuine failures. The result remains
+unpublished until verifier replay and publisher publication complete. The
+method must preserve unsupported or unavailable capability states instead of
+replacing them with fabricated output.
 
 ## Model matrix
 

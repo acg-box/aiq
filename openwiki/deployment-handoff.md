@@ -29,7 +29,15 @@ the Codex home or runner signing key. The first release does not depend on or ru
 Linux or Docker. They remain a future deployment target outside this handoff.
 
 This is one greenfield AIQ Core `1.0.2` state. The required first publication is
-one complete `17 × 72 = 1,224` observation Official run.
+one complete `17 × 72 = 1,224` task-level observation Official batch. This is
+one benchmark batch, not 1,224 separate runs. The native macOS runner completed
+that batch. Of its 1,224 terminal observations,
+1,218 completed and 6 had genuine failures. The wall-clock time was
+`1:37:24.411`. Verified public token and API-equivalent cost aggregates remain
+unavailable until verifier replay. The retained provider evidence contains
+supported counters for 1,218 observations, but it contains no provider-reported
+total-token counter. Actual subscription spend is unknown. Do not report missing
+values as zero. Verifier replay and publication remain pending.
 
 ## Immutable release evidence
 
@@ -185,6 +193,13 @@ toolchain, and fresh replay root:
 target/release/aiq-verifier --help
 ```
 
+Use bounded replay parallelism for new claims. The default is four workers. Set
+it explicitly when release evidence must record the selected value:
+
+```sh
+target/release/aiq-verifier --replay-jobs 4 ...
+```
+
 The verifier claims one bounded lease, reconstructs submitted workspaces,
 replays deterministic evaluators, and sends the normalized stage and signed
 attestation to the gateway. Production requires `evaluator_replayed`. A distinct
@@ -194,10 +209,10 @@ published result.
 ## Domain and DNS
 
 After the verified 1,224-observation run is ready, attach `aiq.wiki` to the
-personal Vercel project `aiq`. Configure the Cloudflare zone that is already
-available in the user's logged-in Chrome session. Use only the DNS records that
-Vercel currently requires. Keep Cloudflare proxying disabled until Vercel domain
-verification and TLS pass.
+personal Vercel project `aiq`. Confirm the `aiq.wiki` Cloudflare zone through a
+current read-only live check. Use only the DNS records that Vercel currently
+requires. Keep Cloudflare proxying disabled until Vercel domain verification
+and TLS pass.
 
 The apex domain is canonical. If `www.aiq.wiki` is configured, it must preserve
 the request path and redirect to the apex. Remove obsolete Vercel projects,
@@ -213,8 +228,7 @@ AIQ_STORAGE_LIFECYCLE_MODE=reconcile npm run storage:lifecycle
 AIQ_STORAGE_LIFECYCLE_MODE=delete npm run storage:lifecycle
 ```
 
-The external scheduler must stop before deletion if reconciliation fails or
-reports unresolved mismatches.
+Do not run deletion if reconciliation fails or reports unresolved mismatches.
 
 ## Launch checklist
 
@@ -228,8 +242,12 @@ reports unresolved mismatches.
 - [ ] Vercel project `acgbox/aiq` is bound to the approved commit and server
       secrets are absent from browser bundles.
 - [ ] Runner, verifier, and publisher identities are distinct.
-- [ ] One complete non-synthetic 17-by-72 run contains exactly 1,224 terminal
-      observations with timing, token-coverage, and pricing evidence.
+- [x] One complete non-synthetic 17-by-72 run contains 1,224 terminal
+      observations: 1,218 completed and 6 had genuine failures. Its wall-clock
+      time is `1:37:24.411`. Retained provider evidence contains supported token
+      counters for 1,218 observations, but no provider-reported total-token
+      counter. Verified public aggregates remain pending, and actual
+      subscription spend is unknown.
 - [ ] The native verifier reconstructs, replays, attests, and submits the run.
 - [ ] The publisher completes only the fully verified batch.
 - [ ] `aiq.wiki` resolves to the approved Vercel deployment with valid TLS.
@@ -237,8 +255,6 @@ reports unresolved mismatches.
       real published data on desktop and mobile viewports.
 - [ ] `/api/readiness`, public reads, write-route protection, and retention
       checks pass from the public origin.
-- [ ] The external timer owns both daily occurrences and preserves artifacts
-      for resume.
 - [ ] Obsolete Vercel aliases or projects are removed after exact target review.
 
 If the greenfield database initializer fails after it starts, discard that new

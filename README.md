@@ -8,8 +8,16 @@ Release acceptance is not complete. The target personal resources are Supabase
 organization `ACG Box`, Supabase project `aiq`, Vercel scope `acgbox`, Vercel
 project `aiq`, and `https://aiq.wiki`. This repository does not claim that an
 external resource is configured until live acceptance records that evidence.
-No real Official model run has started. The first release is one greenfield AIQ
-Core `1.0.2` deployment.
+The native Apple Silicon macOS runner completed one real Official
+`aiq-core@1.0.2` benchmark batch. It covered 17 configurations and 72 tasks,
+for 1,224 task-level observations. This is one batch, not 1,224 separate
+benchmark runs. Of these observations, 1,218 completed and 6 had genuine failures.
+The wall-clock time was `1:37:24.411`. Verified public token and API-equivalent
+cost aggregates remain unavailable until verifier replay. The retained provider
+evidence contains supported counters for 1,218 observations, but it contains no
+provider-reported total-token counter. Actual subscription spend is unknown.
+Do not report missing values as zero. Verifier acceptance and publication remain
+pending.
 
 ## Product contract
 

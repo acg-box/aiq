@@ -35,10 +35,16 @@ personal Vercel scope `acgbox`, Vercel project `aiq`, and apex domain
 resources exist or are configured until live acceptance records that evidence.
 
 The only Official path uses native Rust runner and verifier release binaries on
-this Apple Silicon macOS host with direct network access. A real Official run
-has not started. The required first publication is one complete `72 × 17`
-matrix, or 1,224 observations. Official pages report coverage-qualified elapsed
-time, provider-token use, and Standard API-equivalent cost separately from AIQ.
+this Apple Silicon macOS host with direct network access. The runner completed
+one real `72 × 17` Official benchmark batch, or 1,224 task-level observations.
+This is one batch, not 1,224 separate benchmark runs. Of these observations,
+1,218 completed and 6 had genuine failures. The wall-clock time was
+`1:37:24.411`. Verified public token and API-equivalent cost aggregates remain
+unavailable until verifier replay. The retained provider evidence contains
+supported counters for 1,218 observations, but it contains no provider-reported
+total-token counter. Actual subscription spend is unknown. Do not report missing
+values as zero. The result remains unpublished until verifier replay and
+publisher publication complete.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
