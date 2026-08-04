@@ -36,7 +36,20 @@ export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEf
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={`${row.runId}-${row.modelFamily}-${row.reasoningEffort}`}>
+              <tr
+                key={`${row.runId}-${row.modelFamily}-${row.reasoningEffort}`}
+                data-run-id={row.runId}
+                data-matrix-batch-id={row.matrixBatchId}
+                data-duration-evidence-level={row.durationEvidenceLevel ?? 'unavailable'}
+                data-token-usage-evidence-level={row.tokenUsageEvidenceLevel ?? 'unavailable'}
+                data-cost-estimator-status={row.costEstimatorStatus}
+                data-cost-evidence-level={row.costEvidenceLevel ?? 'unavailable'}
+                data-attempted-result-count={row.attemptedResultCount}
+                data-invoked-result-count={row.invokedResultCount}
+                data-elapsed-observed-result-count={row.adapterElapsedObservedResultCount}
+                data-token-observed-result-count={row.tokenObservedResultCount}
+                data-priced-result-count={row.pricedResultCount}
+              >
                 <th scope="row" title={row.runId}>
                   {row.modelFamily} · {row.reasoningEffort}
                   <small>{row.runId.slice(0, 18)}…</small>
