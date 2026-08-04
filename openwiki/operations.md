@@ -276,6 +276,23 @@ bounded trend RPC, including the bounded calibration evidence surfaces. This
 exercises the public-read path described in [Architecture and Runtime](architecture-and-runtime.md).
 Do not run the synthetic fixture in production.
 
+When changing claim-bound artifact resolution, run the PostgreSQL 17 concurrency
+regression against the freshly initialized disposable database:
+
+```sh
+AIQ_DATABASE_CONCURRENCY_TEST_PSQL=psql \
+AIQ_DATABASE_CONCURRENCY_TEST_URL="$AIQ_DATABASE_URL" \
+cargo make test-database-concurrency
+```
+
+The resolver locks the submission claim row before artifact binding can enter the
+shared Storage deletion gate. This lock order serializes all artifact resolutions
+for one lease and prevents parallel replay workers from deadlocking while retaining
+one immutable binding, activation event, and active Storage reference per artifact.
+The test blocks all six supported artifact kinds at the gate, releases them
+concurrently, rejects SQLSTATE `40P01`, and repeats three parallel waves to prove
+idempotence. CI runs this check against PostgreSQL 17.
+
 ## Web configuration
 
 Configure the production environment-name set below for Vercel project

@@ -609,7 +609,8 @@ begin
 
   select * into claimed
   from aiq_private.aiq_submission_inbox inbox
-  where inbox.inbox_id = target_inbox_id;
+  where inbox.inbox_id = target_inbox_id
+  for update;
   if claimed.inbox_id is null
     or claimed.claim_token is distinct from supplied_lease_token
     or claimed.claim_expires_at is null
