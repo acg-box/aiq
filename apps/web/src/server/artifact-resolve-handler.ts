@@ -32,6 +32,27 @@ export interface ArtifactResolveDependencies {
   now?(): number;
 }
 
+export class ArtifactResolveNotAvailableError extends Error {
+  constructor() {
+    super('Artifact is not available for this claim.');
+    this.name = 'ArtifactResolveNotAvailableError';
+  }
+}
+
+export class ArtifactResolveUpstreamUnavailableError extends Error {
+  constructor() {
+    super('Artifact resolution upstream is unavailable.');
+    this.name = 'ArtifactResolveUpstreamUnavailableError';
+  }
+}
+
+export function artifactResolveRpcError(error: unknown): Error {
+  if (isRecord(error) && (error.code === '42501' || error.code === '22023')) {
+    return new ArtifactResolveNotAvailableError();
+  }
+  return new ArtifactResolveUpstreamUnavailableError();
+}
+
 function json(status: number, body: Readonly<Record<string, unknown>>): Response {
   return Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 }
@@ -123,7 +144,10 @@ export async function handleArtifactResolve(
       body.kind,
       body.digest,
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof ArtifactResolveUpstreamUnavailableError) {
+      return json(503, { error: 'ARTIFACT_RESOLVE_UPSTREAM_UNAVAILABLE' });
+    }
     return json(404, { error: 'ARTIFACT_NOT_AVAILABLE_FOR_CLAIM' });
   }
   const now = dependencies.now?.() ?? Date.now();

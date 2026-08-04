@@ -4,6 +4,9 @@ import { describe, it } from 'node:test';
 /* oxlint-disable typescript/no-unsafe-type-assertion -- Tests preserve raw adversarial header values that Fetch normalizes or rejects. */
 
 import {
+  artifactResolveRpcError,
+  ArtifactResolveNotAvailableError,
+  ArtifactResolveUpstreamUnavailableError,
   handleArtifactResolve,
   type ArtifactResolveDependencies,
 } from './artifact-resolve-handler.ts';
@@ -195,6 +198,41 @@ void describe('verifier artifact resolution', () => {
       );
       assert.equal(response.status, 404);
     }
+  });
+
+  void it('keeps missing evidence terminal and makes upstream RPC failures retryable', async () => {
+    const missing = artifactResolveRpcError({
+      code: '42501',
+      message: 'private detail must not escape',
+    });
+    const invalid = artifactResolveRpcError({ code: '22023' });
+    const unavailable = artifactResolveRpcError({
+      code: 'PGRST000',
+      message: 'private endpoint and token must not escape',
+    });
+
+    assert.ok(missing instanceof ArtifactResolveNotAvailableError);
+    assert.ok(invalid instanceof ArtifactResolveNotAvailableError);
+    assert.ok(unavailable instanceof ArtifactResolveUpstreamUnavailableError);
+    assert.doesNotMatch(String(unavailable), /private|endpoint|token/i);
+
+    const missingResponse = await handleArtifactResolve(
+      request(),
+      dependencies({ resolve: async () => Promise.reject(missing) }),
+    );
+    const unavailableResponse = await handleArtifactResolve(
+      request(),
+      dependencies({ resolve: async () => Promise.reject(unavailable) }),
+    );
+
+    assert.equal(missingResponse.status, 404);
+    assert.deepEqual(await missingResponse.json(), {
+      error: 'ARTIFACT_NOT_AVAILABLE_FOR_CLAIM',
+    });
+    assert.equal(unavailableResponse.status, 503);
+    assert.deepEqual(await unavailableResponse.json(), {
+      error: 'ARTIFACT_RESOLVE_UPSTREAM_UNAVAILABLE',
+    });
   });
 
   void it('rejects line terminators after exact claim-bound artifact identifiers', async () => {

@@ -4,6 +4,9 @@ import 'server-only';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import {
+  artifactResolveRpcError,
+  ArtifactResolveNotAvailableError,
+  ArtifactResolveUpstreamUnavailableError,
   handleArtifactResolve,
   type ResolvedArtifact,
 } from '../../../../server/artifact-resolve-handler.ts';
@@ -46,14 +49,24 @@ export async function POST(request: Request): Promise<Response> {
     configured: configuration !== undefined,
     expectedToken: configuration?.verifierToken ?? '',
     async resolve(inboxId, leaseToken, kind, digest): Promise<unknown> {
-      const result = await verifierClient().rpc('aiq_resolve_claim_artifact', {
-        target_inbox_id: inboxId,
-        supplied_lease_token: leaseToken,
-        requested_kind: kind,
-        requested_sha256: digest,
-      });
-      if (result.error) throw new Error('Artifact resolution failed.');
-      return result.data;
+      try {
+        const result = await verifierClient().rpc('aiq_resolve_claim_artifact', {
+          target_inbox_id: inboxId,
+          supplied_lease_token: leaseToken,
+          requested_kind: kind,
+          requested_sha256: digest,
+        });
+        if (result.error) throw artifactResolveRpcError(result.error);
+        return result.data;
+      } catch (error) {
+        if (
+          error instanceof ArtifactResolveNotAvailableError ||
+          error instanceof ArtifactResolveUpstreamUnavailableError
+        ) {
+          throw error;
+        }
+        throw new ArtifactResolveUpstreamUnavailableError();
+      }
     },
     async createSignedUrl(artifact: ResolvedArtifact, expiresInSeconds: number): Promise<string> {
       if (!configuration) throw new Error('Artifact storage is not configured.');
