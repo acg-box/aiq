@@ -1970,6 +1970,14 @@ fn official_replay_evidence(
 			vec![runner::ProviderTokenUsage::default(); run.results.len()],
 		));
 	}
+	let capability_validation = run.capability_validation.as_ref().ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"production run lacks capability validation evidence",
+		)
+	})?;
+
+	replay::verify_capability_artifacts(capability_validation, request.resolver)?;
 
 	let provider_usage = replay::verify_production_run(
 		run,
@@ -3334,6 +3342,7 @@ mod tests {
 		package_sha256: String,
 		evaluator_results_path: PathBuf,
 		manifest_path: PathBuf,
+		capability_artifact_path: PathBuf,
 	}
 
 	impl ArtifactSink for TestArtifactSink {
@@ -3718,7 +3727,16 @@ mod tests {
 			let runner_identity = SigningIdentity::from_secret([7; 32]);
 			let runner_node_id = runner_identity.node().node_id.clone();
 			let codex_version = "codex fixture".to_owned();
-			let preflight = local_fixture_preflight(runner_node_id.clone(), &codex_version);
+			let (capability_artifact, capability_artifact_path) = Self::write_artifact(
+				&artifact_root,
+				"stdout.jsonl",
+				b"{\"type\":\"capability.probe\"}\n",
+			);
+			let preflight = local_fixture_preflight(
+				runner_node_id.clone(),
+				&codex_version,
+				vec![capability_artifact],
+			);
 			let preflight_digest = protocol::canonical_hash(&preflight).expect("preflight digest");
 			let provenance = local_fixture_provenance(run.task_set_hash.clone(), preflight_digest);
 			let run_id = resume::classified_run_id(
@@ -3801,6 +3819,7 @@ mod tests {
 				package_sha256,
 				evaluator_results_path,
 				manifest_path,
+				capability_artifact_path,
 			}
 		}
 
@@ -4318,6 +4337,40 @@ mod tests {
 	}
 
 	#[test]
+	fn local_replay_claims_every_capability_probe_artifact() {
+		for missing in [false, true] {
+			let fixture = LocalReplayFixture::new();
+			let stage = fixture.root.join("stage.json");
+			let attestation = fixture.root.join("attestation.json");
+
+			if missing {
+				fs::remove_file(&fixture.capability_artifact_path)
+					.expect("remove capability artifact");
+			} else {
+				let mut bytes =
+					fs::read(&fixture.capability_artifact_path).expect("capability artifact bytes");
+
+				bytes[0] = b'[';
+
+				fs::write(&fixture.capability_artifact_path, bytes)
+					.expect("tampered capability artifact");
+			}
+
+			let error = fixture.prepare(&stage, &attestation).expect_err("replay must reject");
+
+			assert!(matches!(
+				error.kind,
+				ErrorKind::Terminal(
+					ReasonCode::ArtifactEvidenceUnavailable | ReasonCode::ArtifactEvidenceMismatch
+				)
+			));
+			assert!(!stage.exists());
+			assert!(!attestation.exists());
+			assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+		}
+	}
+
+	#[test]
 	fn local_replay_rejects_package_signature_tampering_without_outputs() {
 		let fixture = LocalReplayFixture::new();
 		let mut envelope: serde_json::Value =
@@ -4503,14 +4556,23 @@ mod tests {
 		(worker, claim)
 	}
 
-	fn local_fixture_preflight(node_id: String, codex_version: &str) -> CapabilityValidationReport {
+	fn local_fixture_preflight(
+		node_id: String,
+		codex_version: &str,
+		capability_artifacts: Vec<ArtifactReference>,
+	) -> CapabilityValidationReport {
 		let codex_version = codex_version.to_owned();
 		let models = MODEL_MATRIX
 			.into_iter()
-			.map(|model| {
+			.enumerate()
+			.map(|(index, model)| {
 				let preview = "AIQ_PREFLIGHT_OK".to_owned();
+				let artifacts = if index == 0 { capability_artifacts.clone() } else { Vec::new() };
 				let result_digest =
-					format!("sha256:{}", hex::encode(Sha256::digest(preview.as_bytes())));
+					artifacts.iter().find(|artifact| artifact.kind == "stdout.jsonl").map_or_else(
+						|| format!("sha256:{}", hex::encode(Sha256::digest(preview.as_bytes()))),
+						|artifact| artifact.content_hash.clone(),
+					);
 				let observed_at = "unix-ms:1".to_owned();
 				let evidence_digest = adapter::configuration_evidence_digest(
 					model,
@@ -4519,7 +4581,7 @@ mod tests {
 					ConfigurationProbeStatus::Available,
 					Some(&result_digest),
 					Some(&preview),
-					&[],
+					&artifacts,
 					None,
 				)
 				.expect("configuration evidence");
@@ -4534,7 +4596,7 @@ mod tests {
 						observed_at,
 						result_digest: Some(result_digest),
 						result_preview: Some(preview),
-						artifacts: Vec::new(),
+						artifacts,
 						evidence_digest,
 						failure: None,
 					},
