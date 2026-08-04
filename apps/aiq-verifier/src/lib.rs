@@ -4,6 +4,8 @@ mod replay;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Builder};
 use std::{
 	collections::BTreeSet,
@@ -53,6 +55,7 @@ const MAX_OBJECT_RESPONSE_BYTES: usize = MAX_SUBMISSION_BYTES + 1;
 const MAX_ARTIFACT_RESPONSE_BYTES: usize = MAX_ARTIFACT_BYTES + 1;
 const RENEWED_LEASE_SECONDS: u64 = 900;
 const LEASE_RENEWAL_INTERVAL: Duration = Duration::from_secs(300);
+const DEFAULT_GATEWAY_TIMEOUT_SECONDS: u64 = 120;
 const DEFAULT_REPLAY_JOBS: usize = 4;
 const MAX_REPLAY_JOBS: usize = 32;
 const VERIFIER_REJECTION_SCHEMA: &str = "aiq.verifier-rejection.v2";
@@ -173,7 +176,11 @@ pub struct Cli {
 	#[arg(long, default_value_t = 250, value_parser = clap::value_parser!(u64).range(1..=60_000))]
 	backoff_ms: u64,
 	/// Global timeout for each HTTP request.
-	#[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=300))]
+	#[arg(
+		long,
+		default_value_t = DEFAULT_GATEWAY_TIMEOUT_SECONDS,
+		value_parser = clap::value_parser!(u64).range(1..=300)
+	)]
 	timeout_seconds: u64,
 	/// Maximum candidate replays that may run at the same time.
 	#[arg(
@@ -872,6 +879,8 @@ struct Worker<T> {
 	evaluator_runtime: Option<EvaluatorRuntime>,
 	replay_root: PathBuf,
 	replay_jobs: usize,
+	#[cfg(test)]
+	preparation_calls: AtomicUsize,
 }
 impl<T> Worker<T>
 where
@@ -1145,6 +1154,9 @@ where
 		package_bytes: &[u8],
 		lease: &dyn LeaseMaintenance,
 	) -> Result<PreparedVerification, WorkerError> {
+		#[cfg(test)]
+		self.preparation_calls.fetch_add(1, Ordering::Relaxed);
+
 		let endpoint =
 			self.environment.artifact_resolver_endpoint.as_deref().unwrap_or(&self.endpoint);
 		let resolver = HttpArtifactResolver {
@@ -1303,10 +1315,6 @@ where
 
 		Err(WorkerError::transient("retry budget exhausted"))
 	}
-}
-
-fn retryable_verification_status(status: u16) -> bool {
-	matches!(status, 408 | 409 | 429 | 500..=599)
 }
 
 struct ClaimLease<'a, T> {
@@ -1784,6 +1792,10 @@ pub fn run_cli() -> Result<(), WorkerError> {
 	}
 
 	run_worker(Cli::parse_from(arguments))
+}
+
+fn retryable_verification_status(status: u16) -> bool {
+	matches!(status, 408 | 409 | 429 | 500..=599)
 }
 
 fn prepare_package_verification(
@@ -2563,6 +2575,8 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		evaluator_runtime,
 		replay_root,
 		replay_jobs: cli.replay_jobs,
+		#[cfg(test)]
+		preparation_calls: AtomicUsize::new(0),
 	};
 
 	worker.run(cli.max_claims, cli.max_idle_polls)
@@ -3224,7 +3238,7 @@ mod tests {
 		process,
 		sync::{
 			Arc, Barrier, Mutex,
-			atomic::{AtomicBool, Ordering},
+			atomic::{AtomicBool, AtomicUsize, Ordering},
 		},
 		thread,
 		time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -3242,7 +3256,7 @@ mod tests {
 		REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode,
 		RejectionGatewayResponse, Secret, Transport, UreqTransport, ValidateEnvironmentCli,
 		VerificationGatewayResponse, VerificationRecord, VerifierEnvironment, VerifyLocalCli,
-		Worker, WorkerError, replay, retryable_verification_status,
+		Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
@@ -3625,7 +3639,6 @@ mod tests {
 					.expect("renewal response"),
 				});
 			}
-
 			if request.get("action").and_then(serde_json::Value::as_str) == Some("ack") {
 				let disposition = request["disposition"].as_str().expect("ack disposition");
 
@@ -4063,6 +4076,7 @@ mod tests {
 		];
 		let parsed = Cli::try_parse_from(base).expect("default replay jobs");
 
+		assert_eq!(parsed.timeout_seconds, crate::DEFAULT_GATEWAY_TIMEOUT_SECONDS);
 		assert_eq!(parsed.replay_jobs, DEFAULT_REPLAY_JOBS);
 
 		for accepted in ["1", "32"] {
@@ -4430,6 +4444,7 @@ mod tests {
 			evaluator_runtime: None,
 			replay_root: PathBuf::from("/unused-replay"),
 			replay_jobs: DEFAULT_REPLAY_JOBS,
+			preparation_calls: AtomicUsize::new(0),
 		}
 	}
 
@@ -4479,7 +4494,9 @@ mod tests {
 
 		worker.max_retries = max_retries;
 		worker.backoff = Duration::ZERO;
+
 		claim.package_sha256.clone_from(&package_sha256);
+
 		claim.body_bytes = package.len();
 		claim.object_content_sha256 = package_sha256;
 
@@ -5198,11 +5215,10 @@ mod tests {
 	#[test]
 	fn verification_http_status_contract_separates_retryable_and_terminal_responses() {
 		for status in [408, 409, 429, 500, 502, 599] {
-			assert!(retryable_verification_status(status), "HTTP {status}");
+			assert!(crate::retryable_verification_status(status), "HTTP {status}");
 		}
-
 		for status in [200, 400, 401, 403, 404, 422] {
-			assert!(!retryable_verification_status(status), "HTTP {status}");
+			assert!(!crate::retryable_verification_status(status), "HTTP {status}");
 		}
 	}
 
@@ -5215,6 +5231,7 @@ mod tests {
 			PackageDisposition::Verified("commitments_verified")
 		));
 		assert_eq!(*worker.transport.object_calls.lock().expect("object calls"), 1);
+		assert_eq!(worker.preparation_calls.load(Ordering::Relaxed), 1);
 		assert_eq!(
 			worker.transport.requests.lock().expect("requests").as_slice(),
 			[
@@ -5243,6 +5260,7 @@ mod tests {
 		assert_eq!(record.error_code, Some("verification_gateway_unavailable"));
 		assert_eq!(record.error_detail.as_deref(), Some("verification gateway is unavailable"));
 		assert_eq!(*worker.transport.object_calls.lock().expect("object calls"), 1);
+		assert_eq!(worker.preparation_calls.load(Ordering::Relaxed), 1);
 		assert_eq!(
 			worker.transport.requests.lock().expect("requests").as_slice(),
 			["renewed", "verification_500", "verification_502", "verification_503", "ack_retry",]
