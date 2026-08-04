@@ -15,17 +15,17 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
     >
       <table>
         <caption>
-          Descriptive order by fixed-fixture point estimate, high to low. This order does not
-          identify a statistical winner.
+          Descriptive order by fixed-fixture AIQ index, high to low. This is a task index, not an IQ
+          estimate, and the order does not identify a statistical winner.
         </caption>
         <thead>
           <tr>
             <th scope="col">Model / reasoning</th>
-            <th scope="col">Score</th>
+            <th scope="col">AIQ index</th>
             <th scope="col">Task sensitivity</th>
             <th scope="col">Samples</th>
             <th scope="col">Coverage</th>
-            <th scope="col">Failed / missing</th>
+            <th scope="col">Tasks with credit</th>
             <th scope="col">Scoring</th>
             <th scope="col">Completeness</th>
             <th scope="col">Evidence</th>
@@ -48,14 +48,12 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
                 <td>{presentation.samples}</td>
                 <td>{presentation.coverage}</td>
                 <td>
-                  {presentation.failuresAndMissing === null ? (
+                  {presentation.taskCredit === null ? (
                     '—'
                   ) : (
                     <>
-                      <span className={presentation.failuresAndMissing.failuresAreBad ? 'bad' : ''}>
-                        {presentation.failuresAndMissing.failures}
-                      </span>{' '}
-                      / {presentation.failuresAndMissing.missing}
+                      <strong>{presentation.taskCredit.credited}</strong> /{' '}
+                      {presentation.taskCredit.scored}
                     </>
                   )}
                 </td>
