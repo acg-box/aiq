@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { AIQ_CORE_SCORING_VERSION, AIQ_CORE_TASK_SET_VERSION } from '../aiq-core-contract.ts';
 import { createBoundedSupabaseFetch, createSupabaseApiKeyFetch } from '../server/supabase-http.ts';
-import { filterTrendPoints } from './format.ts';
+import { filterTrendPoints, latestCompletedRun } from './format.ts';
 import {
   inspectPublicSupabaseConfiguration,
   type PublicDataConfiguration,
@@ -62,6 +62,9 @@ export const PUBLIC_VIEW_NAMES = {
   calibrationScores: 'public_calibration_scores',
   modelEfficiency: 'public_model_efficiency',
 } as const;
+
+const RUN_SUMMARY_SELECT =
+  'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,correct_count,partial_count,incorrect_count,runtime_issue_count,invalid_count,missing_count,not_applicable_count,completed_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count';
 
 export interface ModelMatrixRow {
   id: string;
@@ -1701,6 +1704,11 @@ export class SeedAiqRepository implements AiqRepository {
     return buildSeedRunHistoryPage(seedRuns, request);
   }
 
+  async getNewestCompletedRun(): Promise<BenchmarkRunSummary | null> {
+    const run = latestCompletedRun(seedRuns);
+    return run ? runSummaryFromRun(run) : null;
+  }
+
   async getRun(id: string): Promise<BenchmarkRun | null> {
     return seedRuns.find((run) => run.id === id) ?? null;
   }
@@ -2188,9 +2196,7 @@ export class SupabaseAiqRepository implements AiqRepository {
     return collectPaginatedRows(PUBLIC_VIEW_NAMES.runs, async (firstRow, lastRow) => {
       let query = this.#client
         .from(PUBLIC_VIEW_NAMES.runs)
-        .select(
-          'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,correct_count,partial_count,incorrect_count,runtime_issue_count,invalid_count,missing_count,not_applicable_count,completed_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
-        )
+        .select(RUN_SUMMARY_SELECT)
         .order('started_at', { ascending: false })
         .order('id', { ascending: true });
       if (id) {
@@ -2250,11 +2256,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       }
       if (boundary.data.length !== 1) throw new Error('Invalid run-history cursor.');
     }
-    let query = this.#client
-      .from(PUBLIC_VIEW_NAMES.runs)
-      .select(
-        'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,correct_count,partial_count,incorrect_count,runtime_issue_count,invalid_count,missing_count,not_applicable_count,completed_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
-      );
+    let query = this.#client.from(PUBLIC_VIEW_NAMES.runs).select(RUN_SUMMARY_SELECT);
     if (cursor) {
       const timestampOperator = direction === 'older' ? 'lt' : 'gt';
       const idOperator = direction === 'older' ? 'gt' : 'lt';
@@ -2285,6 +2287,19 @@ export class SupabaseAiqRepository implements AiqRepository {
           ? cursorFor({ startedAt: last.started_at, id: last.id })
           : null,
     };
+  }
+
+  async getNewestCompletedRun(): Promise<BenchmarkRunSummary | null> {
+    const { data, error } = await this.#client
+      .from(PUBLIC_VIEW_NAMES.runs)
+      .select(RUN_SUMMARY_SELECT)
+      .order('completed_at', { ascending: false })
+      .order('id', { ascending: true })
+      .limit(1)
+      .overrideTypes<RunRow[], { merge: false }>();
+    if (error) throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: ${error.message}`);
+    const row = data[0];
+    return row ? mapRunSummaryRow(row) : null;
   }
 
   async getRun(id: string): Promise<BenchmarkRun | null> {
@@ -2680,6 +2695,9 @@ class InvalidLiveAiqRepository implements AiqRepository {
     throw this.#error;
   }
   async listRunPage(): Promise<RunHistoryPage> {
+    throw this.#error;
+  }
+  async getNewestCompletedRun(): Promise<BenchmarkRunSummary | null> {
     throw this.#error;
   }
   async getRun(): Promise<BenchmarkRun | null> {

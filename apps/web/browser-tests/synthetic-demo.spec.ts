@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
 
 const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
 
@@ -51,6 +51,29 @@ async function expectNoDocumentOverflow(page: Page, testInfo: TestInfo) {
 async function expectAccessible(page: Page) {
   const scan = await new AxeBuilder({ page }).analyze();
   expect(scan.violations).toEqual([]);
+}
+
+async function expectTextContrast(locator: Locator) {
+  const contrast = await locator.evaluate((element) => {
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- Playwright serializes this browser-context helper with the callback.
+    const channels = (value: string) => {
+      const match = value.match(/[\d.]+/g);
+      if (!match || match.length < 3) throw new Error(`Cannot parse color: ${value}`);
+      return match.slice(0, 3).map(Number);
+    };
+    const luminance = (color: string) => {
+      const [red = 0, green = 0, blue = 0] = channels(color).map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    };
+    const style = getComputedStyle(element);
+    const foreground = luminance(style.color);
+    const background = luminance(style.backgroundColor);
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+  expect(contrast).toBeGreaterThanOrEqual(4.5);
 }
 
 for (const route of routes) {
@@ -171,42 +194,51 @@ test('the overview workspace exposes evidence and switches chart modes and famil
 }, testInfo) => {
   await page.goto('/');
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
-  const bars = chart.getByRole('button', { name: 'Bars', exact: true });
+  const bars = chart.getByRole('button', { name: 'Bars + interval', exact: true });
   const dots = chart.getByRole('button', { name: 'Dot + interval', exact: true });
-  const rank = chart.getByRole('button', { name: 'Rank', exact: true });
-  await expect(bars).toHaveAttribute('aria-pressed', 'true');
-  await expect(dots).toHaveAttribute('aria-pressed', 'false');
-  await dots.click();
+  const ordered = chart.getByRole('button', { name: 'Ordered + interval', exact: true });
   await expect(dots).toHaveAttribute('aria-pressed', 'true');
   await expect(bars).toHaveAttribute('aria-pressed', 'false');
-  await rank.click();
-  await expect(rank).toHaveAttribute('aria-pressed', 'true');
   await expect(
-    chart.getByRole('list', { name: 'Configurations ordered by AIQ point estimate' }),
+    chart.getByRole('img', { name: /Dots with task-sensitivity intervals/ }),
+  ).toBeVisible();
+  await expect(chart.locator('.matrix-chart-svg svg')).toBeVisible();
+  await bars.click();
+  await expect(bars).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    chart.getByRole('img', { name: /Zero-baseline bars with task-sensitivity intervals/ }),
+  ).toBeVisible();
+  await ordered.click();
+  await expect(ordered).toHaveAttribute('aria-pressed', 'true');
+  await expect(bars).toHaveAttribute('aria-pressed', 'false');
+  await expect(
+    chart.getByRole('img', { name: /Ordered horizontal bars with task-sensitivity intervals/ }),
   ).toBeVisible();
   await chart.getByRole('button', { name: 'Sol', exact: true }).click();
-  await expect(chart.getByText('Showing 6 Sol configurations as rank.')).toBeAttached();
+  await expect(chart.getByText('Showing 6 Sol configurations as ordered.')).toBeAttached();
   const snapshot = page.getByLabel('Latest matrix snapshot');
   await expect(snapshot).toContainText('Task-sensitivity interval');
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(snapshot).toContainText('Coverage');
-  await expect(snapshot).toContainText('Latest verified');
+  await expect(snapshot).toContainText('Newest retained run');
+  await expect(snapshot).toContainText('Jul 22, 2026');
   await expect(snapshot).toContainText('Duration');
   await expect(snapshot).toContainText('API-equivalent cost');
-  await expect(
-    page.getByRole('img', {
-      name: /Task outcomes: .* correct, .* partial, .* incorrect, .* runtime issues/,
-    }),
-  ).toBeVisible();
+  await expect(snapshot.getByRole('meter')).toHaveAttribute('aria-valuemax', '100');
   await expect(page.getByRole('heading', { name: 'Task outcomes, not model IQ' })).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Where the leader gains and loses ground' }),
+    page.getByRole('heading', { name: 'Domain profile for this configuration' }),
   ).toBeVisible();
   await expect(
     page.getByText('A zero here is a valid scored outcome', { exact: false }),
   ).toBeVisible();
   const outcomeCard = page.getByRole('region', { name: 'Task outcomes, not model IQ' });
+  const outcomeGrid = outcomeCard.locator('.outcome-grid');
+  await expect(outcomeGrid).toBeVisible();
   await expect(outcomeCard.getByText('Runtime issues', { exact: true })).toBeVisible();
+  await expect(outcomeCard.getByText('Invalid', { exact: true })).toBeVisible();
+  await expect(outcomeCard.getByText('Missing', { exact: true })).toBeVisible();
+  await expect(outcomeCard.getByText('N/A', { exact: true })).toBeVisible();
   await expect(outcomeCard.getByText('Timeout / budget', { exact: true })).toHaveCount(0);
   await expectNoDocumentOverflow(page, testInfo);
 });
@@ -216,7 +248,7 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
   await page.getByText('Open 1 × 1 calibration evidence', { exact: true }).click();
   await expect(
-    page.getByText(/not Official.*not ranking eligible/, { exact: false }),
+    page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
   ).toBeVisible();
 
   await page.goto('/calibrations');
@@ -243,7 +275,9 @@ test('radar separates synthetic registry, observation, and aggregation evidence'
 }, testInfo) => {
   const runtimeFailures = monitorErrors(page);
   await page.goto('/radar');
-  await expect(page.getByText('Synthetic and unverified', { exact: true })).toHaveCount(3);
+  await expect(
+    page.locator('.node-card').getByText('Synthetic and unverified', { exact: true }),
+  ).toHaveCount(3);
   await expect(page.getByText('Registry trust: unverified', { exact: true })).toHaveCount(3);
   await expect(page.getByRole('heading', { name: 'Latest signed observation record' })).toHaveCount(
     3,
@@ -265,10 +299,17 @@ test('methodology describes equal weighting while preserving domain task counts'
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();
-  const coverage = page.locator('.domain-bars');
-  await expect(coverage).toContainText('coding');
-  await expect(coverage).toContainText('8 tasks · 10%');
-  await expect(coverage).toContainText('6 tasks · 10%');
+  const coverage = page.getByRole('table', {
+    name: 'Exact fixed-fixture domain task counts and macro-average weights.',
+  });
+  await expect(coverage.getByRole('row')).toHaveCount(12);
+  await expect(coverage.getByRole('row').filter({ hasText: 'coding' })).toContainText('8');
+  await expect(coverage.getByRole('row').filter({ hasText: 'coding' })).toContainText('10%');
+  await expect(
+    coverage.getByRole('row').filter({ hasText: 'instruction_following' }),
+  ).toContainText('6');
+  await expect(coverage.getByRole('row').filter({ hasText: 'Total' })).toContainText('72');
+  await expect(coverage.getByRole('row').filter({ hasText: 'Total' })).toContainText('100%');
 });
 
 test('a user can discover and inspect a missing-result run from history', async ({
@@ -350,15 +391,17 @@ test('time range and comparison filters update the visible result', async ({ pag
   const allHistoryCount = await trendRows.count();
   expect(allHistoryCount).toBeGreaterThan(5);
   const legend = page.getByRole('list', { name: 'Visible trend series' });
-  await expect(legend.getByRole('listitem')).toHaveCount(5);
-  await expect(page.getByRole('note')).toContainText('highest latest point estimates');
+  await expect(legend.getByRole('listitem')).toHaveCount(6);
+  await expect(page.getByRole('note')).toContainText(
+    'The family is an explicit filter, not a point-estimate cutoff.',
+  );
 
   const day = page.getByRole('link', { name: 'Day' });
   await day.click();
   await expect(page).toHaveURL('/trends?range=day');
   await expect(day).toHaveAttribute('aria-current', 'page');
   expect(await trendRows.count()).toBeLessThan(allHistoryCount);
-  expect(allHistoryCount).toBeLessThanOrEqual(100);
+  expect(allHistoryCount).toBeLessThanOrEqual(120);
   await expect(page.getByRole('note')).toContainText('latest exact Official run');
   await expect(page.getByRole('columnheader', { name: 'Run / bucket' })).toBeVisible();
   await expect(page.getByText('Synthetic fixture · no run detail', { exact: true })).toHaveCount(
@@ -373,7 +416,7 @@ test('time range and comparison filters update the visible result', async ({ pag
     // oxlint-disable-next-line no-await-in-loop -- the assertion belongs to the selected range.
     await expect(page).toHaveURL(`/trends?range=${range}`);
     // oxlint-disable-next-line no-await-in-loop -- the same bounded legend must survive each range.
-    await expect(legend.getByRole('listitem')).toHaveCount(5);
+    await expect(legend.getByRole('listitem')).toHaveCount(6);
   }
 
   expect(runtimeFailures).toEqual([]);
@@ -465,7 +508,14 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
         };
       });
     },
-    ['#d9ff5b', '#ff8b69', '#79a9ff', '#d697ff', '#63e6be'],
+    [
+      'var(--series-1)',
+      'var(--series-2)',
+      'var(--series-3)',
+      'var(--series-4)',
+      'var(--series-5)',
+      'var(--series-6)',
+    ],
   );
   const activeIntervalAlignment = intervalAlignment.filter(({ barCount }) => barCount > 0);
   expect(activeIntervalAlignment.length, JSON.stringify(intervalAlignment)).toBeGreaterThanOrEqual(
@@ -583,18 +633,23 @@ test('light and dark themes persist and remain accessible across public pages', 
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await expect
-    .poll(() =>
-      page
-        .locator('.score-ring')
-        .first()
-        .evaluate((element) => getComputedStyle(element).backgroundImage),
-    )
-    .not.toBe('none');
+  await expect(page.locator('.score-readout').first()).toHaveCSS('background-image', 'none');
+  await expect(page.locator('.score-readout').first()).toHaveCSS('border-left-width', '4px');
   await testInfo.attach('overview-light', {
     body: await page.screenshot(),
     contentType: 'image/png',
   });
+
+  for (const route of routes) {
+    // oxlint-disable-next-line no-await-in-loop -- each public page needs light-theme acceptance.
+    await page.goto(route.path);
+    // oxlint-disable-next-line no-await-in-loop -- verify the explicit theme on each navigation.
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    // oxlint-disable-next-line no-await-in-loop -- axe must inspect each rendered page.
+    await expectAccessible(page);
+  }
+
+  await page.goto('/');
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await page.reload();
@@ -616,4 +671,24 @@ test('light and dark themes persist and remain accessible across public pages', 
   await page.getByRole('button', { name: 'System', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme-setting', 'system');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+});
+
+test('light not-found actions and the focused skip link retain accessible contrast', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  const response = await page.goto('/not-found-light-theme');
+  expect(response?.status()).toBe(404);
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+  const primaryAction = page.getByRole('link', { name: 'Return to the index' });
+  await expect(primaryAction).toBeVisible();
+  await expectTextContrast(primaryAction);
+
+  const skipLink = page.getByRole('link', { name: 'Skip to content' });
+  await skipLink.focus();
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toBeVisible();
+  await expectTextContrast(skipLink);
+  await expectAccessible(page);
 });

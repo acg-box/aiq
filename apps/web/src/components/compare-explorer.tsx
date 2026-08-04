@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 
 import { formatConfidenceInterval } from '../data/format.ts';
 import { isScoredLeaderboardEntry, type LeaderboardEntry } from '../data/types.ts';
-import { ScoreRing } from './score-ring.tsx';
+import { ScoreReadout } from './score-readout.tsx';
 
 export function CompareExplorer({ entries }: { entries: readonly LeaderboardEntry[] }) {
   const comparableEntries = useMemo(() => entries.filter(isScoredLeaderboardEntry), [entries]);
@@ -72,7 +72,10 @@ export function CompareExplorer({ entries }: { entries: readonly LeaderboardEntr
       <div className="compare-stage">
         {[left, right].map((entry) => (
           <article className="compare-model" key={entry.id}>
-            <ScoreRing score={entry.score} label={`${entry.modelFamily} ${entry.reasoningTier}`} />
+            <ScoreReadout
+              score={entry.score}
+              label={`${entry.modelFamily} ${entry.reasoningTier}`}
+            />
             <div>
               <span className="eyebrow">{entry.modelFamily}</span>
               <h2>{entry.reasoningTier} reasoning</h2>

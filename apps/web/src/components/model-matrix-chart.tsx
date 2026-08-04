@@ -11,7 +11,7 @@ import {
 } from '../data/types.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 
-type ChartKind = 'bars' | 'dots' | 'rank';
+type ChartKind = 'bars' | 'dots' | 'ordered';
 type FamilyFilter = 'All' | ModelFamily;
 
 const families: readonly FamilyFilter[] = ['All', 'Sol', 'Terra', 'Luna'];
@@ -37,7 +37,7 @@ function readTooltipDataIndex(value: unknown): number | null {
 }
 
 export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEntry[] }) {
-  const [kind, setKind] = useState<ChartKind>('bars');
+  const [kind, setKind] = useState<ChartKind>('dots');
   const [family, setFamily] = useState<FamilyFilter>('All');
   const [isPending, startTransition] = useTransition();
   const scored = useMemo(
@@ -64,8 +64,118 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
         return `${entry.modelFamily} · ${entry.reasoningTier}<br/>AIQ ${entry.score?.toFixed(1)} · interval ${entry.ciLow?.toFixed(1)}–${entry.ciHigh?.toFixed(1)}<br/>n=${entry.sampleSize ?? '—'} · coverage ${entry.coveragePercent?.toFixed(1) ?? '—'}%<br/>runtime ${entry.runtimeIssues ?? '—'} · missing ${entry.missing ?? '—'}<br/>scoring ${entry.scoringVersion ?? '—'} · ${entry.synthetic ? 'synthetic' : 'published'}`;
       },
     };
+    const aria = { enabled: true, decal: { show: true } };
+    const verticalIntervalSeries = {
+      type: 'custom',
+      name: 'Task-sensitivity interval',
+      silent: true,
+      z: 4,
+      data: scored.map((entry, index) => [index, entry.ciLow, entry.ciHigh]),
+      renderItem: (
+        _params: unknown,
+        api: {
+          value: (dimension: number) => number;
+          coord: (value: readonly number[]) => readonly [number, number];
+          style: (style: Record<string, unknown>) => Record<string, unknown>;
+        },
+      ) => {
+        const index = api.value(0);
+        const low = api.coord([index, api.value(1)]);
+        const high = api.coord([index, api.value(2)]);
+        return {
+          type: 'group',
+          children: [
+            {
+              type: 'line',
+              shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
+              style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+            },
+            {
+              type: 'line',
+              shape: { x1: low[0] - 4, y1: low[1], x2: low[0] + 4, y2: low[1] },
+              style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+            },
+            {
+              type: 'line',
+              shape: { x1: high[0] - 4, y1: high[1], x2: high[0] + 4, y2: high[1] },
+              style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+            },
+          ],
+        };
+      },
+    };
+    if (kind === 'ordered') {
+      return {
+        aria,
+        grid: { left: 96, right: 30, top: 20, bottom: 50 },
+        tooltip,
+        xAxis: {
+          type: 'value',
+          min: 0,
+          max: 100,
+          name: 'AIQ index (0–100)',
+          nameLocation: 'middle',
+          nameGap: 34,
+          axisLabel: { color: 'var(--muted)' },
+          nameTextStyle: { color: 'var(--muted)' },
+          axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+          splitLine: { lineStyle: { color: 'var(--line)' } },
+        },
+        yAxis: {
+          type: 'category',
+          inverse: true,
+          data: labels,
+          name: 'Configuration',
+          axisLabel: { color: 'var(--muted)', fontSize: 10 },
+          nameTextStyle: { color: 'var(--muted)' },
+          axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+        },
+        series: [
+          { type: 'bar', name: 'Point estimate', data: values, barMaxWidth: 18 },
+          {
+            type: 'custom',
+            name: 'Task-sensitivity interval',
+            silent: true,
+            z: 4,
+            data: scored.map((entry, index) => [entry.ciLow, index, entry.ciHigh]),
+            renderItem: (
+              _params: unknown,
+              api: {
+                value: (dimension: number) => number;
+                coord: (value: readonly number[]) => readonly [number, number];
+                style: (style: Record<string, unknown>) => Record<string, unknown>;
+              },
+            ) => {
+              const index = api.value(1);
+              const low = api.coord([api.value(0), index]);
+              const high = api.coord([api.value(2), index]);
+              return {
+                type: 'group',
+                children: [
+                  {
+                    type: 'line',
+                    shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
+                    style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                  },
+                  {
+                    type: 'line',
+                    shape: { x1: low[0], y1: low[1] - 4, x2: low[0], y2: low[1] + 4 },
+                    style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                  },
+                  {
+                    type: 'line',
+                    shape: { x1: high[0], y1: high[1] - 4, x2: high[0], y2: high[1] + 4 },
+                    style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                  },
+                ],
+              };
+            },
+          },
+        ],
+      };
+    }
     const base = {
-      aria: { enabled: true, decal: { show: true } },
+      aria,
       grid: { left: 48, right: 18, top: 20, bottom: 70 },
       tooltip,
       xAxis: {
@@ -90,52 +200,19 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
         splitLine: { lineStyle: { color: 'var(--line)' } },
       },
     };
-    if (kind === 'dots') {
-      return {
-        ...base,
-        series: [
-          {
-            type: 'custom',
-            silent: true,
-            data: scored.map((entry, index) => [index, entry.ciLow, entry.ciHigh]),
-            renderItem: (
-              _params: unknown,
-              api: {
-                value: (dimension: number) => number;
-                coord: (value: readonly number[]) => readonly [number, number];
-                style: (style: Record<string, unknown>) => Record<string, unknown>;
-              },
-            ) => {
-              const index = api.value(0);
-              const low = api.coord([index, api.value(1)]);
-              const high = api.coord([index, api.value(2)]);
-              return {
-                type: 'group',
-                children: [
-                  {
-                    type: 'line',
-                    shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
-                    style: api.style({ stroke: '#83909c', lineWidth: 1.5 }),
-                  },
-                  {
-                    type: 'line',
-                    shape: { x1: low[0] - 4, y1: low[1], x2: low[0] + 4, y2: low[1] },
-                    style: api.style({ stroke: '#83909c', lineWidth: 1.5 }),
-                  },
-                  {
-                    type: 'line',
-                    shape: { x1: high[0] - 4, y1: high[1], x2: high[0] + 4, y2: high[1] },
-                    style: api.style({ stroke: '#83909c', lineWidth: 1.5 }),
-                  },
-                ],
-              };
-            },
-          },
-          { type: 'scatter', symbolSize: 11, data: values },
-        ],
-      };
-    }
-    return { ...base, series: [{ type: 'bar', data: values, barMaxWidth: 34 }] };
+    return {
+      ...base,
+      series:
+        kind === 'dots'
+          ? [
+              verticalIntervalSeries,
+              { type: 'scatter', name: 'Point estimate', symbolSize: 11, data: values },
+            ]
+          : [
+              { type: 'bar', name: 'Point estimate', data: values, barMaxWidth: 34 },
+              verticalIntervalSeries,
+            ],
+    };
   }, [kind, scored]);
 
   return (
@@ -147,7 +224,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
         <div>
           <span className="eyebrow">Current matrix</span>
           <h3 id="matrix-chart-heading">AIQ index by configuration</h3>
-          <p>Point estimate with task sensitivity and exact evidence one interaction away.</p>
+          <p>Point estimates and fixed-fixture task-sensitivity intervals stay visible together.</p>
         </div>
         <div className="chart-controls">
           <div className="chart-switch" role="group" aria-label="Model family">
@@ -163,14 +240,18 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
             ))}
           </div>
           <div className="chart-switch" role="group" aria-label="Chart type">
-            {(['bars', 'dots', 'rank'] as const).map((candidate) => (
+            {(['dots', 'bars', 'ordered'] as const).map((candidate) => (
               <button
                 key={candidate}
                 type="button"
                 aria-pressed={kind === candidate}
                 onClick={() => startTransition(() => setKind(candidate))}
               >
-                {candidate === 'bars' ? 'Bars' : candidate === 'dots' ? 'Dot + interval' : 'Rank'}
+                {candidate === 'bars'
+                  ? 'Bars + interval'
+                  : candidate === 'dots'
+                    ? 'Dot + interval'
+                    : 'Ordered + interval'}
               </button>
             ))}
           </div>
@@ -181,36 +262,12 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
       </p>
       {scored.length === 0 ? (
         <p className="empty-note">No scored configurations are available for this filter.</p>
-      ) : kind === 'rank' ? (
-        <ol className="rank-chart" aria-label="Configurations ordered by AIQ point estimate">
-          {scored.map((entry, index) => (
-            <li key={entry.id}>
-              <span className="rank-number">{String(index + 1).padStart(2, '0')}</span>
-              <span className="rank-identity">
-                <strong>{entry.modelFamily}</strong>
-                <small>{entry.reasoningTier}</small>
-              </span>
-              <span className="rank-track" aria-hidden="true">
-                <i
-                  style={{
-                    width: `${entry.score ?? 0}%`,
-                    background: familyColor(entry),
-                  }}
-                />
-              </span>
-              <strong className="rank-score">{entry.score?.toFixed(1)}</strong>
-              <small className="rank-ci">
-                {entry.ciLow?.toFixed(1)}–{entry.ciHigh?.toFixed(1)}
-              </small>
-            </li>
-          ))}
-        </ol>
       ) : (
         <div className="matrix-chart-frame">
           <EChartsChart
             className="matrix-chart-svg"
             option={option}
-            label={`${kind === 'bars' ? 'Zero-baseline bars' : 'Dots with task-sensitivity intervals'} compare AIQ for ${scored.length} configurations; scoring ${scored[0]?.scoringVersion ?? 'unavailable'}.`}
+            label={`${kind === 'dots' ? 'Dots' : kind === 'bars' ? 'Zero-baseline bars' : 'Ordered horizontal bars'} with task-sensitivity intervals compare AIQ for ${scored.length} configurations; scoring versions ${[...new Set(scored.map((entry) => entry.scoringVersion))].join(', ') || 'unavailable'}.`}
           />
         </div>
       )}

@@ -29,15 +29,26 @@ Its scorer-manifest identity is
 `sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
 and its evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-Model-free native validation passes 72 of 72 tasks. The source-only candidate
-commitment is `sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`,
-and the runtime `task_set_hash` is
+Model-free candidate validation passes 72 of 72 tasks. The runtime
+`task_set_hash` is
 `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
 The distinct controlled generated-task tree identity is
 `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
-Clean-commit native release binding, real execution, and publication of `1.0.3`
-are pending. The first
-real Official benchmark batch
+Earlier Core promotion and Contrast authoring candidates are not final corpus
+identities. Create-new regeneration from the final clean source will establish
+their canonical commitment digests. The shared Rust validator now fails closed
+unless the runner subtree remains `identity_kind: source_only` with a null
+`built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
+has equivalent shared typed enforcement even though it has no separate
+checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
+identities. The source-only corpus rule and signed per-run runner and Codex
+executable provenance are the executable product contracts. After the final
+clean build, the operator retains a private, unsigned audit receipt with the
+exact source commit and tree identity and SHA-256 values for the native runner,
+verifier, Node.js, and ripgrep executables. The repository does not validate or
+publish this reproducibility evidence. The final clean source commit,
+regeneration, native build verification, real execution, and publication of
+`1.0.3` are pending. The first real Official benchmark batch
 completed on the native macOS runner. The batch is non-synthetic. Its 1,224
 task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
 The native verifier replayed the committed evaluators, and the distinct
@@ -205,9 +216,11 @@ The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,
 [Deployment Handoff](deployment-handoff.md) requires model-free validation of
-the controlled corpus and final native binaries before preparing that
-reference. The initializer validates its shape and bindings. It inserts the
-reference with the model matrix as the one greenfield desired state.
+the controlled corpus and a verified final native build before preparing that
+reference. The operator retains the private final-build audit receipt separately;
+the initializer does not consume or validate it. The initializer validates the
+reference shape and bindings. It inserts the reference with the model matrix as
+the one greenfield desired state.
 
 ## Storage boundary
 
@@ -227,8 +240,8 @@ values are absent. Partial or malformed configuration fails closed.
 
 The public site is a professional analysis workbench backed by real historical
 production evidence. The overview leads with a chart of the scored
-17-configuration matrix and supports bar and line presentations. It fetches the
-complete run behind the
+17-configuration matrix and supports dot, bar, and ordered-horizontal
+presentations with task-sensitivity intervals. It fetches the complete run behind the
 highest point estimate and uses that run for a task-outcome card, a ten-domain
 breakdown, and a link to every task result. The full leaderboard, Official
 efficiency table, and latest verified calibration remain available through
