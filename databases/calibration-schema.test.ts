@@ -284,7 +284,11 @@ void test('binds Official efficiency evidence to the exact payload matrix', () =
     bound,
     /payload -> 'execution_concurrency' is distinct from stage -> 'execution_concurrency'/,
   );
-  assert.match(bound, /source->>'result_id'=evidence->>'source_result_id'/);
+  assert.match(bound, /jsonb_object_agg\(result ->> 'result_id', result\)/);
+  assert.match(bound, /jsonb_object_agg\(evidence ->> 'source_result_id', evidence\)/);
+  assert.match(bound, /signed_results_by_id #>> array\[/);
+  assert.match(bound, /result_efficiency_by_id -> \(value->>'source_result_id'\)/);
+  assert.doesNotMatch(bound, /join jsonb_array_elements\(payload->'results'\) source/);
   assert.match(bound, /evidence->'provider_tokens'<>'\{\}'::jsonb/);
   assert.match(bound, /insert into aiq_private\.efficiency_official_models/);
   for (const category of [
