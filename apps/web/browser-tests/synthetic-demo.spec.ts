@@ -220,11 +220,32 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expect(snapshot).toContainText('Task-sensitivity interval');
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(snapshot).toContainText('Coverage');
+  await expect(snapshot).toContainText('runtime 3 · missing 0');
+  await expect(snapshot).toContainText('scoring 1.0.3 · synthetic');
   await expect(snapshot).toContainText('Newest retained run');
   await expect(snapshot).toContainText('Jul 22, 2026');
   await expect(snapshot).toContainText('Duration');
   await expect(snapshot).toContainText('API-equivalent cost');
+  await expect(snapshot).toContainText('not billed subscription cost');
   await expect(snapshot.getByRole('meter')).toHaveAttribute('aria-valuemax', '100');
+  const valuesDisclosure = chart.getByText('Read 6 configuration values', { exact: true });
+  await valuesDisclosure.click();
+  const valuesTable = chart.getByRole('region', { name: 'AIQ configuration values' });
+  await expect(valuesTable).toBeVisible();
+  for (const heading of [
+    'Task sensitivity',
+    'n',
+    'Coverage',
+    'Runtime',
+    'Missing',
+    'Scoring',
+    'Evidence',
+  ]) {
+    // oxlint-disable-next-line no-await-in-loop -- each scientific context field is an independent public contract.
+    await expect(
+      valuesTable.getByRole('columnheader', { name: heading, exact: true }),
+    ).toBeVisible();
+  }
   await expect(page.getByRole('heading', { name: 'Task outcomes, not model IQ' })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Domain profile for this configuration' }),
@@ -260,7 +281,9 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(page.getByLabel('Model and reasoning configuration').locator('option')).toHaveCount(
     1,
   );
-  await expect(page.getByRole('status')).toContainText('Showing 1 of 1 result cells');
+  await expect(page.getByRole('status', { name: 'Calibration result count' })).toContainText(
+    'Showing 1 of 1 result cells',
+  );
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(2);
@@ -633,6 +656,8 @@ test('light and dark themes persist and remain accessible across public pages', 
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const resolvedTheme = page.getByRole('status', { name: 'Resolved color theme' });
+  await expect(resolvedTheme).toContainText('Theme preference system; currently light.');
   await expect(page.locator('.score-readout').first()).toHaveCSS('background-image', 'none');
   await expect(page.locator('.score-readout').first()).toHaveCSS('border-left-width', '4px');
   await testInfo.attach('overview-light', {
@@ -652,6 +677,7 @@ test('light and dark themes persist and remain accessible across public pages', 
   await page.goto('/');
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(resolvedTheme).toContainText('Theme preference dark; currently dark.');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await testInfo.attach('overview-dark', {
@@ -671,6 +697,10 @@ test('light and dark themes persist and remain accessible across public pages', 
   await page.getByRole('button', { name: 'System', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme-setting', 'system');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(resolvedTheme).toContainText('Theme preference system; currently light.');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(resolvedTheme).toContainText('Theme preference system; currently dark.');
 });
 
 test('light not-found actions and the focused skip link retain accessible contrast', async ({

@@ -22,6 +22,10 @@ export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEf
           </p>
         ))}
         <p>TTFT and TPS are unavailable and are not inferred.</p>
+        <p>
+          Dollar values are estimates from provider-reported tokens and the published Standard API
+          pricing binding shown below. They are not billed Codex or ChatGPT subscription cost.
+        </p>
       </div>
       <div className="table-scroll" tabIndex={0}>
         <table>
@@ -29,7 +33,7 @@ export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEf
             <tr>
               <th>Run / configuration</th>
               <th>Summed cell adapter elapsed</th>
-              <th>API-equivalent cost</th>
+              <th>Estimated Standard API-equivalent cost</th>
               <th>Provider token totals and coverage</th>
               <th>Trust metadata</th>
             </tr>

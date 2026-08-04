@@ -167,7 +167,11 @@ export default async function OverviewPage() {
                   ? `${highestPointEstimate.modelFamily} / ${highestPointEstimate.reasoningTier}`
                   : 'No published score yet'}
               </strong>
-              <small>{highestPointEstimate?.modelName ?? 'Awaiting a complete matrix'}</small>
+              <small>
+                {highestPointEstimate
+                  ? `${highestPointEstimate.modelName} · scoring ${highestPointEstimate.scoringVersion} · ${highestPointEstimate.synthetic ? 'synthetic' : 'published'}`
+                  : 'Awaiting a complete matrix'}
+              </small>
             </div>
           </div>
           <dl className="snapshot-metrics" tabIndex={0} aria-label="Benchmark evidence metrics">
@@ -188,7 +192,7 @@ export default async function OverviewPage() {
               <dd className="snapshot-note">
                 {highestPointEstimate?.sampleSize == null
                   ? 'Sample size unavailable'
-                  : `${highestPointEstimate.sampleSize} fixed task cells`}
+                  : `${highestPointEstimate.sampleSize} fixed task cells · runtime ${highestPointEstimate.runtimeIssues} · missing ${highestPointEstimate.missing}`}
               </dd>
             </div>
             <div>
@@ -220,7 +224,9 @@ export default async function OverviewPage() {
                   ? 'Unavailable'
                   : `$${(latestEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(2)}`}
               </dd>
-              <dd className="snapshot-note">Standard pricing estimate</dd>
+              <dd className="snapshot-note">
+                Standard API estimate · not billed subscription cost
+              </dd>
             </div>
           </dl>
         </div>

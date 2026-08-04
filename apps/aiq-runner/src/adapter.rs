@@ -34,7 +34,9 @@ use std::{
 	iter,
 	net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream},
 	path::{Path, PathBuf},
-	process::{self, Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
+	process::{
+		self, Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio,
+	},
 	sync::{
 		Arc,
 		mpsc::{self, RecvTimeoutError, Sender, SyncSender},
@@ -922,8 +924,8 @@ where
 				"permission probe requires a model toolchain",
 			)
 		})?;
-		let read_only_file = toolchain.root().join(&toolchain.policy().commands[0].executable_ref);
-		let read_only_write_file = toolchain.root().join(".aiq-read-only-canary");
+		let (node_executable, rg_executable, read_only_file, read_only_write_file) =
+			permission_probe_toolchain_paths(toolchain);
 
 		require_permission_canaries_absent(&writable_file, &read_only_write_file)?;
 
@@ -993,6 +995,8 @@ where
 					.unwrap_or_default(),
 				&read_only_file,
 				&read_only_write_file,
+				&node_executable,
+				&rg_executable,
 			)?,
 			Vec::new(),
 			Duration::from_secs(20),
@@ -2238,12 +2242,14 @@ pub fn run_permission_probe(
 	writable_file: &Path,
 	read_only_file: &Path,
 	read_only_write_file: &Path,
+	toolchain_executables: (&Path, &Path),
 	network_sentinel_port: u16,
 ) -> Result<(), ExecutorError> {
+	let (node_executable, rg_executable) = toolchain_executables;
 	let allowed = fs::read_to_string(allowed_file)
 		.map_err(|error| ExecutorError::new(format!("cannot read allowed canary: {error}")))?;
 
-	if allowed.trim() != "AIQ_ALLOWED" {
+	if allowed != "AIQ_ALLOWED\nAIQ_RG_OK\n" {
 		return Err(ExecutorError::new("allowed canary content mismatch"));
 	}
 	if denied_files.is_empty() {
@@ -2318,6 +2324,8 @@ pub fn run_permission_probe(
 			)));
 		},
 	}
+
+	run_toolchain_executable_canaries(node_executable, rg_executable, allowed_file)?;
 
 	io::stdout()
 		.write_all(b"AIQ_ISOLATION_OK")
@@ -2434,6 +2442,57 @@ pub fn expected_official_permission_profile_digests(
 		managed_requirements_digest,
 		profile_selection_digest,
 	})
+}
+
+fn run_toolchain_executable_canaries(
+	node_executable: &Path,
+	rg_executable: &Path,
+	allowed_file: &Path,
+) -> Result<(), ExecutorError> {
+	for (label, path) in [("Node.js", node_executable), ("ripgrep", rg_executable)] {
+		if !path.is_absolute() {
+			return Err(ExecutorError::new(format!(
+				"committed {label} canary executable path is not absolute"
+			)));
+		}
+	}
+
+	let node = Command::new(node_executable)
+		.args(["-e", "process.stdout.write(\"AIQ_NODE_OK\")"])
+		.output()
+		.map_err(|error| {
+			ExecutorError::new(format!("cannot execute committed Node.js canary: {error}"))
+		})?;
+
+	validate_toolchain_canary_output("Node.js", &node, b"AIQ_NODE_OK")?;
+
+	let rg = Command::new(rg_executable)
+		.args(["--no-config", "--fixed-strings", "--quiet", "AIQ_RG_OK"])
+		.arg(allowed_file)
+		.output()
+		.map_err(|error| {
+			ExecutorError::new(format!("cannot execute committed ripgrep canary: {error}"))
+		})?;
+
+	validate_toolchain_canary_output("ripgrep", &rg, b"")
+}
+
+fn validate_toolchain_canary_output(
+	label: &str,
+	output: &Output,
+	expected_stdout: &[u8],
+) -> Result<(), ExecutorError> {
+	if !output.status.success() {
+		return Err(ExecutorError::new(format!("committed {label} canary exited unsuccessfully")));
+	}
+	if output.stdout != expected_stdout {
+		return Err(ExecutorError::new(format!("committed {label} canary stdout mismatch")));
+	}
+	if !output.stderr.is_empty() {
+		return Err(ExecutorError::new(format!("committed {label} canary produced stderr")));
+	}
+
+	Ok(())
 }
 
 fn remove_scratch_directory(path: &Path) -> io::Result<()> {
@@ -4558,6 +4617,20 @@ fn permission_filesystem_config(
 	Ok(format!("permissions.{BENCHMARK_PERMISSION_PROFILE}.filesystem={{{}}}", rules.join(",")))
 }
 
+fn permission_probe_toolchain_paths(
+	toolchain: &ValidatedModelToolchain,
+) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+	let commands = &toolchain.policy().commands;
+	let node = toolchain.root().join(&commands[0].executable_ref);
+
+	(
+		node.clone(),
+		toolchain.root().join(&commands[1].executable_ref),
+		node,
+		toolchain.root().join(".aiq-read-only-canary"),
+	)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn permission_probe_args(
 	workspace: &Path,
@@ -4570,6 +4643,8 @@ fn permission_probe_args(
 	additional_read_paths: &[PathBuf],
 	read_only_file: &Path,
 	read_only_write_file: &Path,
+	node_executable: &Path,
+	rg_executable: &Path,
 ) -> Result<Vec<String>, AdapterFailure> {
 	let workspace = utf8_path(workspace, "isolation-probe workspace")?;
 	let allowed_file = utf8_path(allowed_file, "isolation-probe allowed file")?;
@@ -4578,6 +4653,8 @@ fn permission_probe_args(
 	let read_only_file = utf8_path(read_only_file, "isolation-probe read-only file")?;
 	let read_only_write_file =
 		utf8_path(read_only_write_file, "isolation-probe read-only write file")?;
+	let node_executable = utf8_path(node_executable, "isolation-probe Node.js executable")?;
+	let rg_executable = utf8_path(rg_executable, "isolation-probe ripgrep executable")?;
 	let mut args = vec![
 		"sandbox".to_owned(),
 		"--permission-profile".to_owned(),
@@ -4608,6 +4685,10 @@ fn permission_probe_args(
 		read_only_write_file.to_owned(),
 		"--network-sentinel-port".to_owned(),
 		network_sentinel_port.to_string(),
+		"--node-executable".to_owned(),
+		node_executable.to_owned(),
+		"--rg-executable".to_owned(),
+		rg_executable.to_owned(),
 	];
 
 	for denied_file in denied_files {
@@ -5137,7 +5218,7 @@ mod tests {
 		collections::{BTreeMap, BTreeSet},
 		env, fs,
 		io::{self, Read as _, Write as _},
-		path::PathBuf,
+		path::{Path, PathBuf},
 		process,
 		rc::Rc,
 		slice,
@@ -6194,7 +6275,7 @@ mod tests {
 
 		fs::create_dir_all(&workspace).expect("fixture workspace");
 		fs::create_dir_all(&protected).expect("fixture protected root");
-		fs::write(&allowed, b"AIQ_ALLOWED\n").expect("allowed fixture");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
 		fs::write(&denied, b"AIQ_DENIED\n").expect("denied fixture");
 
 		let adapter = CodexAdapter::new(
@@ -6205,9 +6286,13 @@ mod tests {
 			))]),
 			MemorySink::default(),
 			"codex",
-			CodexExecutionConfig::isolated("/controlled/codex-home").with_denied_roots(vec![
-				fs::canonicalize(&protected).expect("canonical protected root"),
-			]),
+			CodexExecutionConfig::isolated("/controlled/codex-home")
+				.with_denied_roots(vec![
+					fs::canonicalize(&protected).expect("canonical protected root"),
+				])
+				.with_model_toolchain(corpus_commitment::fixture_model_toolchain(PathBuf::from(
+					"/toolchain",
+				))),
 		);
 
 		adapter
@@ -6238,9 +6323,147 @@ mod tests {
 		assert!(request.args.windows(2).any(|pair| {
 			pair == ["--config", "permissions.aiq_benchmark.network.enabled=false"]
 		}));
+
+		let expected_node = PathBuf::from("/toolchain")
+			.join(if cfg!(windows) { "node.exe" } else { "node" })
+			.to_string_lossy()
+			.into_owned();
+		let expected_rg = PathBuf::from("/toolchain")
+			.join(if cfg!(windows) { "rg.exe" } else { "rg" })
+			.to_string_lossy()
+			.into_owned();
+
+		assert!(
+			request
+				.args
+				.windows(2)
+				.any(|pair| { pair[0] == "--node-executable" && pair[1] == expected_node })
+		);
+		assert!(
+			request
+				.args
+				.windows(2)
+				.any(|pair| pair[0] == "--rg-executable" && pair[1] == expected_rg)
+		);
 		assert!(!writable.exists());
 
 		fs::remove_dir_all(&root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	fn write_executable_fixture(path: &Path, body: &str) {
+		fs::write(path, body).expect("write executable fixture");
+		fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+			.expect("make executable fixture");
+	}
+
+	#[cfg(unix)]
+	fn executable_canary_fixture(name: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+		let suffix = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.expect("fixture clock")
+			.as_nanos();
+		let root = env::temp_dir()
+			.join(format!("aiq-executable-canary-{name}-{}-{suffix}", process::id()));
+		let toolchain = root.join("committed-toolchain");
+		let allowed = root.join("allowed.txt");
+
+		fs::create_dir_all(&toolchain).expect("toolchain fixture directory");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
+
+		(root, toolchain.join("node"), toolchain.join("rg"), allowed)
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canaries_accept_exact_success_outputs() {
+		let (root, node, rg, allowed) = executable_canary_fixture("success");
+
+		write_executable_fixture(
+			&node,
+			"#!/bin/sh\n[ \"$#\" -eq 2 ] && [ \"$1\" = '-e' ] && [ \"$2\" = 'process.stdout.write(\"AIQ_NODE_OK\")' ] || exit 71\nprintf '%s' 'AIQ_NODE_OK'\n",
+		);
+		write_executable_fixture(
+			&rg,
+			"#!/bin/sh\n[ \"$#\" -eq 5 ] && [ \"$1\" = '--no-config' ] && [ \"$2\" = '--fixed-strings' ] && [ \"$3\" = '--quiet' ] && [ \"$4\" = 'AIQ_RG_OK' ] || exit 72\nexit 0\n",
+		);
+
+		super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect("exact executable canaries");
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canaries_fail_on_bad_process_evidence() {
+		let (root, node, rg, allowed) = executable_canary_fixture("failure");
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'WRONG'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 0\n");
+
+		let failure = super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect_err("wrong Node.js stdout must fail");
+
+		assert!(failure.to_string().contains("Node.js canary stdout mismatch"));
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'AIQ_NODE_OK'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nprintf '%s' 'unexpected'\n");
+
+		let failure = super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect_err("ripgrep stdout must be empty");
+
+		assert!(failure.to_string().contains("ripgrep canary stdout mismatch"));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canary_detects_post_validation_tampering() {
+		let (root, node, rg, allowed) = executable_canary_fixture("tamper");
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'AIQ_NODE_OK'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 0\n");
+
+		super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect("initial exact executable canaries");
+
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 9\n");
+
+		let failure = super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect_err("tampered executable must fail");
+
+		assert!(failure.to_string().contains("ripgrep canary exited unsuccessfully"));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canaries_ignore_same_named_path_collisions() {
+		let (root, node, rg, allowed) = executable_canary_fixture("path-collision");
+		let collision_root = root.join("ambient-path");
+		let collision_marker = root.join("collision-used");
+
+		fs::create_dir_all(&collision_root).expect("collision fixture directory");
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'AIQ_NODE_OK'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 0\n");
+		write_executable_fixture(
+			&collision_root.join("node"),
+			&format!("#!/bin/sh\nprintf used > '{}'\nexit 80\n", collision_marker.display()),
+		);
+		write_executable_fixture(
+			&collision_root.join("rg"),
+			&format!("#!/bin/sh\nprintf used > '{}'\nexit 81\n", collision_marker.display()),
+		);
+
+		super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect("exact paths must bypass same-named collisions");
+
+		assert!(!collision_marker.exists());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]
@@ -6263,7 +6486,7 @@ mod tests {
 			fs::create_dir_all(directory).expect("fixture directory");
 		}
 
-		fs::write(&allowed, b"AIQ_ALLOWED\n").expect("allowed fixture");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
 		fs::write(&denied, b"AIQ_DENIED\n").expect("denied fixture");
 
 		let adapter = CodexAdapter::new(
@@ -6481,7 +6704,7 @@ mod tests {
 
 		fs::create_dir_all(&workspace).expect("fixture workspace");
 		fs::create_dir_all(&protected).expect("fixture protected root");
-		fs::write(&allowed, b"AIQ_ALLOWED\n").expect("allowed fixture");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
 		fs::write(&denied, b"AIQ_DENIED\n").expect("denied fixture");
 
 		let denied_root = fs::canonicalize(&protected).expect("canonical protected fixture root");
