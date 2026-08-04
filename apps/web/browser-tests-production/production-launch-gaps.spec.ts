@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
+import { expectProductionPageEvidence } from './production-page-evidence.ts';
+
 /* oxlint-disable no-await-in-loop -- Production requests stay serial to bound load and preserve before/after evidence order. */
 
 const readinessScope = [
@@ -30,18 +32,7 @@ async function expectPublishedNonSyntheticPage(page: Page, path: string) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
   await expect(page.locator('main h1')).toBeVisible();
-  const evidenceLabel = path.startsWith('/trends')
-    ? 'Matrix entries provenance'
-    : 'Data provenance';
-  const primaryEvidence = page.getByLabel(evidenceLabel, { exact: true });
-  await expect(primaryEvidence).toBeVisible();
-  await expect(primaryEvidence.getByText('Published evidence', { exact: true })).toBeVisible();
-  await expect(primaryEvidence.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-  await expect(primaryEvidence.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
-  await expect(primaryEvidence.getByText('No published evidence', { exact: true })).toHaveCount(0);
-  await expect(
-    primaryEvidence.getByText('Published evidence unavailable', { exact: true }),
-  ).toHaveCount(0);
+  await expectProductionPageEvidence(page, path);
 }
 
 async function expectNoHorizontalOverflow(page: Page, path: string) {
