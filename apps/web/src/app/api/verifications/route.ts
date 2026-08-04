@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   handleVerification,
   verificationRpcFailureDiagnostic,
-  verificationRoleClientOptions,
+  verificationRpcRoleClientOptions,
 } from '../../../server/verification-handler.ts';
 import { inspectVerificationConfiguration } from '../../../server/production-configuration.ts';
 import { createSupabaseRoleTokenIssuer } from '../../../server/supabase-role-token.ts';
@@ -19,6 +19,7 @@ import type {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 interface RpcClient {
   rpc(
@@ -67,7 +68,10 @@ export async function POST(request: Request): Promise<Response> {
     verifier ??= createClient(
       configuration.serviceUrl,
       configuration.publishableKey,
-      verificationRoleClientOptions(() => issueRoleToken({ role: 'aiq_verifier' }), request.signal),
+      verificationRpcRoleClientOptions(
+        () => issueRoleToken({ role: 'aiq_verifier' }),
+        request.signal,
+      ),
     );
     return verifier;
   }
@@ -78,7 +82,7 @@ export async function POST(request: Request): Promise<Response> {
     publisher ??= createClient(
       configuration.serviceUrl,
       configuration.publishableKey,
-      verificationRoleClientOptions(
+      verificationRpcRoleClientOptions(
         () =>
           issueRoleToken({
             role: 'aiq_publisher',

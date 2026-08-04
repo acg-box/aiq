@@ -8,7 +8,7 @@ import {
   type VerificationClaim,
   type VerifierRejection,
 } from './verification-contract.ts';
-import { createBoundedSupabaseFetch } from './supabase-http.ts';
+import { createBoundedSupabaseFetch, createVerificationSupabaseFetch } from './supabase-http.ts';
 
 export const MAX_VERIFICATION_AUTHORIZATION_BYTES = 4_096;
 
@@ -63,6 +63,21 @@ export function verificationRoleClientOptions(
       detectSessionInUrl: false,
     },
     global: { fetch: createBoundedSupabaseFetch(parentSignal) },
+  };
+}
+
+export function verificationRpcRoleClientOptions(
+  issueRoleToken: () => string,
+  parentSignal?: AbortSignal,
+) {
+  return {
+    accessToken: async () => issueRoleToken(),
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: { fetch: createVerificationSupabaseFetch(parentSignal) },
   };
 }
 
