@@ -72,7 +72,7 @@ use aiq_runner::{
 	},
 	submission::{
 		self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY,
-		MAX_SUBMISSION_BYTES, SecretToken,
+		MAX_SUBMISSION_BYTES, SecretToken, SubmissionBundleOutcome,
 	},
 	task::{
 		self, DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskLoadIssue, TaskLoadReport,
@@ -4746,7 +4746,22 @@ fn run_submit(
 
 	write_json(Path::new("-"), &outcome)?;
 
-	Ok(())
+	require_successful_package_submission(&outcome)
+}
+
+fn require_successful_package_submission(
+	outcome: &SubmissionBundleOutcome,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if outcome.package.kind.is_success() {
+		return Ok(());
+	}
+
+	let status = outcome.package.status.map_or_else(
+		|| "without an HTTP status".to_owned(),
+		|status| format!("with HTTP {status}"),
+	);
+
+	Err(format!("package submission failed with {} {status}", outcome.package.kind.as_str()).into())
 }
 
 fn parse_artifact_upload_concurrency(value: &str) -> Result<usize, String> {
@@ -5621,6 +5636,46 @@ mod tests {
 		));
 		assert!(parse(&["--artifact-upload-concurrency", "0"]).is_err());
 		assert!(parse(&["--artifact-upload-concurrency", "33"]).is_err());
+	}
+
+	#[test]
+	fn submit_cli_succeeds_only_for_accepted_or_exact_duplicate_packages() {
+		let outcome = |kind, status| crate::submission::SubmissionBundleOutcome {
+			schema_version: "aiq.submission-outcome.v1",
+			artifacts_total: 1,
+			artifacts_stored: 1,
+			artifacts_duplicate: 0,
+			package: crate::submission::SubmissionOutcome {
+				kind,
+				status,
+				server_disposition: "untrusted response body highly-secret".to_owned(),
+			},
+		};
+
+		for kind in [
+			crate::submission::SubmissionOutcomeKind::Accepted,
+			crate::submission::SubmissionOutcomeKind::Duplicate,
+		] {
+			assert!(
+				super::require_successful_package_submission(&outcome(kind, Some(202))).is_ok()
+			);
+		}
+		for (kind, status) in [
+			(crate::submission::SubmissionOutcomeKind::Conflict, Some(409)),
+			(crate::submission::SubmissionOutcomeKind::ClientError, Some(422)),
+			(crate::submission::SubmissionOutcomeKind::ServerError, Some(503)),
+			(crate::submission::SubmissionOutcomeKind::Network, None),
+			(crate::submission::SubmissionOutcomeKind::Timeout, None),
+			(crate::submission::SubmissionOutcomeKind::Configuration, None),
+		] {
+			let error = super::require_successful_package_submission(&outcome(kind, status))
+				.expect_err("non-queue outcome must make submit fail");
+			let diagnostic = error.to_string();
+
+			assert!(diagnostic.contains(kind.as_str()));
+			assert!(!diagnostic.contains("untrusted response body"));
+			assert!(!diagnostic.contains("highly-secret"));
+		}
 	}
 
 	#[test]

@@ -126,6 +126,28 @@ pub enum SubmissionOutcomeKind {
 	/// Local configuration or package validation failure.
 	Configuration,
 }
+impl SubmissionOutcomeKind {
+	/// Returns whether the package entered the queue or was already queued exactly.
+	#[must_use]
+	pub const fn is_success(self) -> bool {
+		matches!(self, Self::Accepted | Self::Duplicate)
+	}
+
+	/// Returns the stable wire name used in operator diagnostics.
+	#[must_use]
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Accepted => "accepted",
+			Self::Duplicate => "duplicate",
+			Self::Conflict => "conflict",
+			Self::ClientError => "client_error",
+			Self::ServerError => "server_error",
+			Self::Network => "network",
+			Self::Timeout => "timeout",
+			Self::Configuration => "configuration",
+		}
+	}
+}
 
 /// A bearer token that does not implement serialization and redacts debug output.
 pub struct SecretToken(String);
@@ -2624,6 +2646,23 @@ mod tests {
 			.expect("status must classify");
 
 			assert_eq!(outcome.kind, expected);
+		}
+	}
+
+	#[test]
+	fn only_accepted_and_exact_duplicate_are_successful_package_outcomes() {
+		for kind in [SubmissionOutcomeKind::Accepted, SubmissionOutcomeKind::Duplicate] {
+			assert!(kind.is_success());
+		}
+		for kind in [
+			SubmissionOutcomeKind::Conflict,
+			SubmissionOutcomeKind::ClientError,
+			SubmissionOutcomeKind::ServerError,
+			SubmissionOutcomeKind::Network,
+			SubmissionOutcomeKind::Timeout,
+			SubmissionOutcomeKind::Configuration,
+		] {
+			assert!(!kind.is_success());
 		}
 	}
 
