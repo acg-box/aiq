@@ -34,7 +34,20 @@ select pg_temp.aiq_assert(
       and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
         'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
   ),
-  'Official staging must have exactly the bounded 50-second function timeout'
+  'Official staging must have exactly the bounded 110-second function timeout'
+);
+select pg_temp.aiq_assert(
+  (
+    select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
+      and cardinality(routine.proconfig) = 2
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'public'
+      and routine.proname = 'aiq_verify_and_publish'
+      and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+        'target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+  ),
+  'Official publication must have exactly the bounded 110-second function timeout'
 );
 select pg_temp.aiq_assert(
   not exists (
@@ -43,13 +56,20 @@ select pg_temp.aiq_assert(
     join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
     where routine.proconfig @> array['statement_timeout=110s']::text[]
       and not (
-        namespace.nspname = 'public'
-        and routine.proname = 'aiq_stage_verifier_result'
-        and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
-          'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+        namespace.nspname = 'public' and (
+          (
+            routine.proname = 'aiq_stage_verifier_result'
+            and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+              'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+          ) or (
+            routine.proname = 'aiq_verify_and_publish'
+            and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+              'target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+          )
+        )
       )
   ),
-  'the staging timeout override must not widen to another database function'
+  'Official timeout overrides must not widen to another database function'
 );
 
 select pg_temp.aiq_assert(

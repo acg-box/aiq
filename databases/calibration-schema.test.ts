@@ -140,14 +140,17 @@ void test('separates verifier and publisher RPC authority', () => {
   assert.match(schema, /production_publisher_identity_is_authorized\(/);
 });
 
-void test('bounds only the Official staging RPC with its full database budget', () => {
+void test('bounds the full Official staging and publication RPCs', () => {
   const stageFunction =
     schema.match(
       /create function public\.aiq_stage_verifier_result\(stage jsonb,[\s\S]*?\n\$\$;/,
     )?.[0] ?? '';
+  const publishFunction =
+    schema.match(/create function public\.aiq_verify_and_publish\([\s\S]*?\n\$\$;/)?.[0] ?? '';
 
   assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
-  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 1);
+  assert.match(publishFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
+  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 2);
 });
 
 void test('compares stored task-resampling bounds at their declared precision', () => {
