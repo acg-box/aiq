@@ -4,7 +4,7 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
 
 const routes = [
-  { path: '/', heading: 'A score is only useful', navigation: 'Overview' },
+  { path: '/', heading: 'What can a model actually do?', navigation: 'Overview' },
   { path: '/runs', heading: 'Every public run stays inspectable.', navigation: 'Runs' },
   {
     path: '/calibrations',
@@ -25,6 +25,8 @@ const routes = [
     navigation: 'Method',
   },
 ] as const;
+
+const secondaryNavigation = new Set(['Calibrations', 'Method', 'Radar']);
 
 function monitorErrors(page: Page) {
   const failures: string[] = [];
@@ -73,6 +75,9 @@ for (const route of routes) {
       page.getByText('Demo values are synthetic seed data', { exact: false }),
     ).toBeVisible();
     const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+    if (secondaryNavigation.has(route.navigation)) {
+      await navigation.locator('.site-more > summary').click();
+    }
     await expect(
       navigation.getByRole('link', {
         name: route.navigation,
@@ -113,16 +118,16 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   const runtimeFailures = monitorErrors(page);
   const response = await page.goto('/');
   expect(response?.headers()['cache-control']).toContain('no-store');
-  await expect(
-    page.getByText('Highest synthetic seed point estimate', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Who leads, and why?' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toBeVisible();
+  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
 
   const leaderboard = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
   await expect(leaderboard.getByRole('row')).toHaveCount(18);
   await expect(
-    leaderboard.getByText('This order does not identify a statistical winner.', { exact: false }),
+    leaderboard.getByText('order does not identify a statistical winner', { exact: false }),
   ).toBeVisible();
   await expect(leaderboard.getByRole('columnheader', { name: 'Rank' })).toHaveCount(0);
   const inspectLinks = leaderboard.getByRole('link', { name: 'Inspect' });
@@ -161,11 +166,37 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   expect(runtimeFailures).toEqual([]);
 });
 
+test('the overview chart switches between bars and line and explains outcomes', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/');
+  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const bars = chart.getByRole('button', { name: 'Bars', exact: true });
+  const line = chart.getByRole('button', { name: 'Line', exact: true });
+  await expect(bars).toHaveAttribute('aria-pressed', 'true');
+  await expect(line).toHaveAttribute('aria-pressed', 'false');
+  await line.click();
+  await expect(line).toHaveAttribute('aria-pressed', 'true');
+  await expect(bars).toHaveAttribute('aria-pressed', 'false');
+  await expect(
+    page.getByRole('img', {
+      name: /Task outcomes: .* correct, .* partial, .* incorrect, .* execution failures/,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Task outcomes, not model IQ' })).toBeVisible();
+  await page.getByText('Open the 10-domain breakdown', { exact: true }).click();
+  await expect(
+    page.getByText('A zero here is a valid scored outcome', { exact: false }),
+  ).toBeVisible();
+  await expectNoDocumentOverflow(page, testInfo);
+});
+
 test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
+  await page.getByText('Open 1 × 1 calibration evidence', { exact: true }).click();
   await expect(
-    page.getByText('not Official / not ranking eligible', { exact: false }),
+    page.getByText(/not Official.*not ranking eligible/, { exact: false }),
   ).toBeVisible();
 
   await page.goto('/calibrations');
@@ -415,9 +446,7 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/');
 
-  await expect(
-    page.getByRole('heading', { level: 1, name: /A score is only useful/ }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /What can a model/ })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
   await expectNoDocumentOverflow(page, testInfo);
   expect(runtimeFailures).toEqual([]);

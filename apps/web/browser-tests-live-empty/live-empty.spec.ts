@@ -88,22 +88,20 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   const response = await page.goto('/');
   expectPrivateNoStore(response);
   await expect(page.getByText('No published evidence', { exact: true }).first()).toBeVisible();
+  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
   const table = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
   await expect(table.getByRole('row')).toHaveCount(18);
   await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
-  const meanCoverage = page
-    .getByRole('region', { name: 'Index summary' })
-    .locator('div')
-    .filter({ hasText: 'Mean coverage' });
-  await expect(meanCoverage.getByText('Unknown', { exact: true })).toBeVisible();
-  await expect(meanCoverage.getByText('not measured', { exact: true })).toBeVisible();
-  await expect(meanCoverage.getByText('0.0%', { exact: true })).toHaveCount(0);
+  const resultCoverage = page.getByText('Result coverage', { exact: true }).locator('..');
+  await expect(resultCoverage.getByText('Unknown', { exact: true })).toBeVisible();
+  await expect(resultCoverage).toContainText('coverage is not correctness');
+  await expect(resultCoverage.getByText('0.0%', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
-  await expect(
-    page.getByText('No verified calibration matrix is available.', { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByRole('status', { name: 'Latest calibration status' })).toContainText(
+    'The live public read is available, but it has no evidence to display.',
+  );
 });
 
 test('the live empty calibration register does not substitute seed evidence', async ({ page }) => {
