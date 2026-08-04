@@ -80,6 +80,19 @@ await test('checker rejects an extra public submission overload', async () => {
   );
 });
 
+await test('checker rejects a sub-millisecond public trend sentinel', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "latest_recorded_at + interval '1 millisecond'",
+    "latest_recorded_at + interval '1 microsecond'",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /JavaScript millisecond precision/,
+  );
+});
+
 await test('checker rejects conditional reuse of an existing AIQ role', async () => {
   const [schema, syntheticDemo] = await sources();
   const changed = schema.replace(

@@ -401,6 +401,14 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     );
   }
 
+  const publicTrendPoints =
+    schema.match(/create function public\.public_trend_points[\s\S]*?\n\$\$;/i)?.[0] ?? '';
+  assert.match(
+    publicTrendPoints,
+    /range_ended_at := latest_recorded_at \+ interval '1 millisecond';/,
+    'The public trend range must remain half-open at JavaScript millisecond precision.',
+  );
+
   for (const tableName of evidencePrivateTables) {
     assert.match(
       schema,
