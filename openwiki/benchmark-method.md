@@ -43,10 +43,10 @@ One current `aiq.corpus-commitment.v2` document binds every private task to that
 catalog. It also binds the baseline workspace, fixture bundle, evaluator,
 runtime, runner source, harness, tool policy, network policy, and environment.
 
-## Greenfield Official evidence
+## Published Official evidence
 
-The first release publishes one complete Official `72 × 17` matrix, or 1,224
-observations. Before the paid run, model-free validation checks all 72 core task
+Production publishes one complete, non-synthetic Official `72 × 17` matrix, or
+1,224 results. Before the paid run, model-free validation checks all 72 core task
 definitions, six contrast variants, 648 fixed evaluator bindings, toolchain
 identities, source bindings, and deterministic evaluator outputs on the native
 macOS host. Contrast tests are validation evidence; they do not add rows to the
@@ -60,10 +60,23 @@ cargo run -p aiq-runner -- validate-contrast-corpus --help
 
 The native macOS runner completed the first real Official benchmark batch. Its
 17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
-observations: 1,218 completed and 6 had genuine failures. The result remains
-unpublished until verifier replay and publisher publication complete. The
-method must preserve unsupported or unavailable capability states instead of
-replacing them with fabricated output.
+results: 1,218 completed and 6 failed. The native verifier replayed the
+committed evaluators, and the distinct publisher published the matrix as
+`trusted_verified` through the [Architecture and Runtime](architecture-and-runtime.md)
+verification flow. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`,
+5 `timeout`, and 1 `budget_exhausted`.
+
+Signed batch wall time is 5,844,411 ms (`1:37:24.411`). Public views contain 17
+runs, 1,224 results, 17 leaderboard rows, 17 model-efficiency rows, and 17
+model-matrix rows.
+
+Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
+`unavailable_missing_usage` results. The $125.403257240 priced subtotal is a
+Standard API-equivalent estimate for only the 1,208 priced results; it is neither
+actual ChatGPT subscription spend nor a complete matrix total. Publication
+created 4,395 artifact bindings, including 19 capability artifacts. The method
+preserves unsupported or unavailable capability and cost states instead of
+replacing them with fabricated output or zero.
 
 ## Model matrix
 
