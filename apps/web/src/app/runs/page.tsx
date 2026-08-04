@@ -11,7 +11,7 @@ export const metadata: Metadata = createPageMetadata({
   title: 'Run history',
   path: '/runs',
   description:
-    'Inspect the public history of complete, coverage-only, and missing-result AIQ runs.',
+    'Inspect the public history of complete, coverage-only, and missing-result AIQ configuration runs.',
 });
 export const dynamic = 'force-dynamic';
 
@@ -56,8 +56,11 @@ export default async function RunsPage({
         <span className="eyebrow">Run history</span>
         <h1>Every public run stays inspectable.</h1>
         <p>
-          Complete, coverage-only, and missing-result runs share one timeline. Missing evidence
-          stays visible and never becomes an invented score.
+          Each row is one configuration run. A complete Official matrix is one batch of 17
+          configuration runs. In that complete batch, each run has 72 task-level executions, for
+          1,224 executions in total—not 1,224 benchmark runs. Complete, coverage-only, and
+          missing-result runs share one timeline. Missing evidence stays visible and never becomes
+          an invented score.
         </p>
       </div>
       <ReadStateNote result={runsResult} />

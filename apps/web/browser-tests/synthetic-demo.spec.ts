@@ -227,6 +227,11 @@ test('a user can discover and inspect a missing-result run from history', async 
   await page.goto('/');
   await page.getByRole('link', { name: 'Runs', exact: true }).click();
   await expect(page).toHaveURL('/runs');
+  await expect(
+    page.getByText('one batch of 17 configuration runs', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText('1,224 executions', { exact: false })).toBeVisible();
+  await expect(page.getByText('not 1,224 benchmark runs', { exact: false })).toBeVisible();
 
   const history = page.getByRole('region', { name: 'Public run history' });
   await expect(history.getByRole('row')).toHaveCount(11);
@@ -239,6 +244,10 @@ test('a user can discover and inspect a missing-result run from history', async 
   await missingRun.getByRole('link', { name: 'Inspect run' }).click();
 
   await expect(page).toHaveURL('/runs/run-2026-07-05-coverage-only-sol-ultra');
+  await expect(
+    page.getByText('one batch of 17 configuration runs', { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText('1,224 task-level executions', { exact: false })).toBeVisible();
   await expect(page.getByText('Coverage-only · not ranked', { exact: true })).toBeVisible();
   const missingTasks = page.locator('.task-list > article').filter({
     has: page.locator('.result-missing'),
