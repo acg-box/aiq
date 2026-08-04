@@ -1,40 +1,53 @@
-# AIQ Wiki
+# AIQ
 
-AIQ Wiki records fixed-fixture AI and agent benchmark results. The repository
+AIQ records fixed-fixture AI and agent benchmark results. The repository
 contains a Rust runner, a Rust verifier, a Next.js application, the public AIQ
 Core catalog, and one declarative PostgreSQL schema.
 
-The production Web and database foundations are provisioned, but release
-acceptance is not complete. The personal Vercel scope `acgbox` hosts project
-`aiq` at `https://aiq.wiki`, with the production environment-name contract
-configured. `https://www.aiq.wiki` preserves the request path and redirects to
-the apex domain. The personal Supabase organization `ACG Box` hosts project
-`aiq` (`xxnszykaeapolqdnhalx`), initialized once with the production schema and
-reference. The live database has 17 model configurations, three production
-nodes, no published runs, and private `private-packages` and
-`private-artifacts` buckets. Bounded runtime readiness and the empty real-data
-read path pass. No benchmark or Storage schedule and no cloud runner or
-verifier worker exist. A full real run has not been published, so deployment
-readiness still requires the remaining gates in the deployment handoff.
+Release acceptance is not complete. The target personal resources are Supabase
+organization `ACG Box`, Supabase project `aiq`, Vercel scope `acgbox`, Vercel
+project `aiq`, and `https://aiq.wiki`. This repository does not claim that an
+external resource is configured until live acceptance records that evidence.
+The native Apple Silicon macOS runner completed one real Official
+`aiq-core@1.0.2` benchmark batch. It covered 17 configurations and 72 tasks,
+for 1,224 task-level observations. This is one batch, not 1,224 separate
+benchmark runs. Of these observations, 1,218 completed and 6 had genuine failures.
+The wall-clock time was `1:37:24.411`. Verified public token and API-equivalent
+cost aggregates remain unavailable until verifier replay. The retained provider
+evidence contains supported counters for 1,218 observations, but it contains no
+provider-reported total-token counter. Actual subscription spend is unknown.
+Do not report missing values as zero. Verifier acceptance and publication remain
+pending.
 
 ## Product contract
 
-- AIQ Core `1.0.0` has 72 private controlled tasks in ten domains.
+- Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`, with 72
+  private controlled tasks in ten domains.
+- AIQ Core `1.0.2` is the only accepted launch contract.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v3` envelopes.
-- The verifier reconstructs candidate workspaces and replays deterministic
+- Every result keeps runner-observed elapsed time and, when Codex reports it,
+  token usage and a versioned Standard API-equivalent cost estimate.
+- The verifier reconstructs submitted workspaces and replays deterministic
   evaluators before it signs `aiq.verifier-attestation.v3` evidence.
 - Production uses three distinct identities: runner, verifier, and publisher.
 - The Web application reads public database views and sends controlled writes
   through server routes.
 
-The frozen public catalog digest is:
+The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 ```
+
+Its catalog release identity is
+`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+This greenfield launch accepts only `1.0.2`. The first Official `72 × 17` run
+has 1,224 observations.
+Elapsed time, provider-token usage, and Standard API-equivalent cost are
+reported separately from AIQ.
 
 ## Repository map
 
@@ -52,7 +65,7 @@ authentication, and production data must stay outside Git.
 
 ## Local synthetic demonstration
 
-Use Node.js `24.18.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
 locked dependencies.
 
 ```sh
@@ -70,6 +83,8 @@ Useful runner commands:
 ```sh
 cargo run -p aiq-runner -- matrix
 cargo run -p aiq-runner -- validate --public-tasks benchmarks/examples/tasks
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo run -p aiq-runner -- --help
 cargo run -p aiq-verifier -- --help
 ```
@@ -104,7 +119,8 @@ inputs. Neither smoke creates a benchmark result.
 `databases/init.ts` is the only production initialization entry point. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
 data in one transaction. It rejects a database that already contains AIQ schema
-or roles. Create another empty project after a failed initialization.
+or roles. This is the one greenfield desired state. Create another empty project
+after a failed initialization.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -112,60 +128,44 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-The production reference contains one current controlled corpus commitment and
-exactly three public identities: runner, verifier, and publisher. A successful
-receipt reports 72 tasks, 17 model configurations, and three nodes.
+The production reference must contain the real controlled, non-synthetic AIQ
+Core `1.0.2` corpus commitment, its real canonical `published_at` timestamp, and
+exactly three public identities: runner, verifier, and publisher. Prepare it
+only after the controlled corpus and final native binaries pass model-free
+validation; the repository contains no substitute production reference.
+A successful receipt reports scoring `1.0.2`, both source-head catalog
+identities, 72 tasks, 17 model configurations, and three nodes.
 
-The SQL files in `databases/` support disposable validation:
+Use one initialized disposable database for production-shape smoke and
+calibration publication checks:
 
 ```sh
 cargo make smoke-database
+AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-calibration-database
+```
+
+Use a separate fresh PostgreSQL 17 database for the deterministic synthetic
+flow:
+
+```sh
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/schema.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   --file databases/synthetic-demo.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   --file databases/integration.sql
 ```
 
-Do not load `synthetic-demo.sql` into production.
-
-## Disposable AIQ Wiki free preview
-
-The first hosted review can use one new Supabase Free project in the personal
-`ACG Box` organization and one Vercel Hobby project in the personal `acgbox`
-scope/account. It does not need a runner, verifier, Storage bucket, write-route
-secret, schedule, domain, or DNS change.
-
-Initialize the new disposable database once:
-
-```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
-cargo make init-preview-database
-```
-
-Configure only these Vercel values:
-
-```text
-AIQ_DEPLOYMENT_PROFILE=preview
-NEXT_PUBLIC_SUPABASE_URL=<project API origin>
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable key>
-```
-
-The preview requires the live Supabase schema and RLS read path to work. One
-bounded status view returns a row only when the required preview matrix,
-cardinalities, scoring definition, synthetic boundary, and empty publication
-surface are valid. The Web application then shows the full checked-in synthetic
-demonstration. Every page has a persistent AIQ Wiki preview banner, synthetic
-complete runs say `not Official`, and search indexing is disabled.
-`/api/readiness` returns `503` until the later production write and verifier
-gateways are configured; this is expected for this read-only preview. Discard
-this database before production initialization.
+Do not apply the synthetic flow to the initialized production-shape database
+or to production.
 
 ## Production data flow
 
 1. The runner validates the controlled corpus, toolchain, and capability
    manifest.
 2. It executes the selected tasks and writes content-addressed artifacts.
-3. It scores the run and signs one v3 result package.
+3. It scores the run, records efficiency evidence, and signs one v3 result
+   package.
 4. `POST /api/submissions` stores the exact package bytes and queues the package
    as unverified.
 5. The verifier claims the package, reconstructs the workspaces, and replays the
@@ -178,7 +178,26 @@ this database before production initialization.
 Official means a complete, non-synthetic 17-by-72 run with valid current
 bindings. A complete synthetic fixture uses the `synthetic_complete`
 classification, has no Official AIQ value, and is never ranking eligible. There
-is no additional provider ceremony.
+is one submission, native verification, and publication path.
+
+## Official paid-work boundary
+
+The only Official execution and publication path runs `aiq-runner` and
+`aiq-verifier` natively on the controlled Apple Silicon macOS host with direct
+network access. Use the release binaries in this order:
+`admit-permissions`, `preflight`, `run`, `score`, `package`, `submit`, and then
+verifier replay. `admit-permissions` is model-free; `preflight` is the first paid
+step. Only its exact configuration probes and runnable task cells in `run`
+invoke models. Scoring, packaging, submission, verifier replay, and publication
+do not invoke models. The same private admission receipt binds preflight through
+package.
+Provide the runner signing key only to `package`, the submission token only to
+`submit`, and verifier credentials only to the verifier command.
+The first release does not depend on or run Linux or Docker. They remain a
+future deployment target outside first-release acceptance.
+See [Operations and Validation](openwiki/operations.md) for the native command
+contract. Repository support does not prove that private inputs, credentials,
+or live model capabilities are configured.
 
 ## Security boundaries
 

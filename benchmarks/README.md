@@ -1,14 +1,22 @@
 # AIQ Core benchmark contract
 
-AIQ Core `1.0.0` is a fixed 72-task benchmark across ten domains. The public
-catalog defines task identity, domain, difficulty, tool policy, budget, evaluator
-identity, and public-safe descriptions. Private task prompts, fixtures, expected
-outputs, and evaluator content stay outside Git.
+Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`. It is a fixed
+72-task benchmark across ten domains. The public catalog defines task identity,
+domain, difficulty, tool policy, budget, evaluator identity, and public-safe
+descriptions. Private task prompts, fixtures, expected outputs, and evaluator
+content stay outside Git.
+
+AIQ Core `1.0.2` is the only first-release contract. The native runner completed
+the first real Official benchmark batch: 17 configurations by 72 tasks, or
+1,224 task-level observations. The result remains unpublished until verifier
+replay and publisher publication complete.
 
 ## Public authority
 
-- `catalog/aiq-core-v1.json` is the generated public catalog.
-- `schema/catalog.schema.json` validates the catalog.
+- `candidates/aiq-core-1.0.2/catalog.json` is the active generated public
+  catalog for repository source.
+- `candidates/aiq-core-1.0.2/catalog.schema.json` validates the active source
+  catalog.
 - `schema/corpus-commitment-v2.schema.json` validates the current controlled
   corpus commitment.
 - `schema/result-package-v3.schema.json` validates signed runner packages.
@@ -20,7 +28,48 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
+```
+
+Its release identity is:
+
+```text
+sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6
+```
+
+## AIQ Core 1.0.2 authority
+
+These files own the active catalog authority:
+
+- `candidates/aiq-core-1.0.2/catalog.json`;
+- `candidates/aiq-core-1.0.2/catalog.schema.json`;
+- `candidates/aiq-core-1.0.2/task.schema.json`; and
+- `schema/corpus-commitment-v2.schema.json`.
+
+The task-metadata identity is:
+
+```text
+sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
+```
+
+The release identity is:
+
+```text
+sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6
+```
+
+The first digest binds the ordered task metadata. The second binds the catalog
+release identity. Model-free validation replays every controlled fixture twice,
+checks the six contrast units, and requires byte-identical expected results.
+The first paid publication is one complete Official `72 × 17` matrix with 1,224
+observations.
+
+Regenerate and test the active source catalog with:
+
+```sh
+node scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts
+node --test --experimental-strip-types \
+  scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.test.ts
 ```
 
 ## Private corpus boundary
@@ -40,6 +89,14 @@ Validate the public examples:
 ```sh
 cargo run -p aiq-runner -- validate \
   --public-tasks benchmarks/examples/tasks
+```
+
+Validate the controlled AIQ Core and six-unit contrast corpora without invoking
+Codex. Use CLI help for the exact controlled input contract:
+
+```sh
+cargo run -p aiq-runner -- validate-core-corpus --help
+cargo run -p aiq-runner -- validate-contrast-corpus --help
 ```
 
 Run the repository checks:

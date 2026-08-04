@@ -8,6 +8,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
+use crate::runner::MAX_RUN_JOBS;
 use crate::{
 	adapter::{
 		self, AdapterFailure, ArtifactReference, CapabilityValidationReport,
@@ -70,6 +71,7 @@ pub fn validate_calibration_run_record(
 		|| run.classification != "local_calibration_non_official"
 		|| run.scoring_version != AIQ_SCORING_VERSION
 		|| run.models.is_empty()
+		|| run.execution_concurrency.is_some_and(|jobs| !(1..=MAX_RUN_JOBS).contains(&jobs))
 		|| run.task_ids.is_empty()
 		|| run.finished_unix_ms < run.started_unix_ms
 		|| run.started_unix_ms > MAX_JCS_SAFE_INTEGER
@@ -90,9 +92,12 @@ pub fn validate_calibration_run_record(
 
 	let model_set = run.models.iter().copied().collect::<BTreeSet<_>>();
 	let task_set = run.task_ids.iter().collect::<BTreeSet<_>>();
+	let canonical_models =
+		MODEL_MATRIX.into_iter().filter(|model| model_set.contains(model)).collect::<Vec<_>>();
 
 	if model_set.len() != run.models.len()
 		|| !model_set.iter().all(|model| MODEL_MATRIX.contains(model))
+		|| run.models != canonical_models
 		|| task_set.len() != run.task_ids.len()
 		|| run.results.len()
 			!= run.models.len().checked_mul(run.task_ids.len()).ok_or_else(|| {
@@ -165,6 +170,7 @@ pub fn validate_calibration_run_record(
 
 	validate_calibration_results(run, &model_set, &task_set)
 }
+
 /// Validates a calibration against the exact supplied task definitions and frozen catalog bindings.
 pub fn validate_calibration_run_record_with_tasks(
 	run: &CalibrationRunRecord,
@@ -172,30 +178,7 @@ pub fn validate_calibration_run_record_with_tasks(
 ) -> Result<(), RunValidationError> {
 	validate_calibration_run_record(run)?;
 
-	let task_ids = tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
-	let selected_ids = run.task_ids.iter().map(String::as_str).collect::<Vec<_>>();
-
-	if task_ids != selected_ids {
-		return Err(RunValidationError::new(
-			"supplied tasks do not equal the ordered calibration task selection",
-		));
-	}
-	if !scoring::task_bindings_match_frozen_catalog(tasks) {
-		return Err(RunValidationError::new(
-			"supplied calibration tasks do not match the frozen catalog identity",
-		));
-	}
-
-	let task_metadata = collect_task_metadata(&run.results)?;
-	let task_set_hash = validate_tasks(tasks, &task_metadata)?;
-
-	if task_set_hash != run.task_set_hash {
-		return Err(RunValidationError::new(
-			"supplied calibration task definitions do not match the selected task-set hash",
-		));
-	}
-
-	Ok(())
+	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
 }
 
 /// Validates a complete run. Supplied tasks add source-authoritative hash checks.
@@ -213,6 +196,9 @@ pub fn validate_run_record(
 
 	if run.scoring_version != AIQ_SCORING_VERSION {
 		return Err(RunValidationError::new("run scoring version is not current"));
+	}
+	if run.execution_concurrency.is_some_and(|jobs| !(1..=MAX_RUN_JOBS).contains(&jobs)) {
+		return Err(RunValidationError::new("run execution concurrency is invalid"));
 	}
 	if run.models != MODEL_MATRIX {
 		return Err(RunValidationError::new("run models must equal the ordered 17-entry matrix"));
@@ -355,6 +341,44 @@ pub(crate) fn valid_normalized_artifact_reference(artifact: &ArtifactReference) 
 		)
 }
 
+fn validate_calibration_task_bindings(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	bindings_match: fn(&[TaskDefinition]) -> bool,
+) -> Result<(), RunValidationError> {
+	let task_ids = tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
+	let selected_ids = run.task_ids.iter().map(String::as_str).collect::<Vec<_>>();
+
+	if task_ids != selected_ids {
+		return Err(RunValidationError::new(
+			"supplied tasks do not equal the ordered calibration task selection",
+		));
+	}
+	if !bindings_match(tasks) {
+		return Err(RunValidationError::new(
+			"supplied calibration tasks do not match the selected catalog identity",
+		));
+	}
+
+	validate_calibration_task_content(run, tasks)
+}
+
+fn validate_calibration_task_content(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<(), RunValidationError> {
+	let task_metadata = collect_task_metadata(&run.results)?;
+	let task_set_hash = validate_tasks(tasks, &task_metadata)?;
+
+	if task_set_hash != run.task_set_hash {
+		return Err(RunValidationError::new(
+			"supplied calibration task definitions do not match the selected task-set hash",
+		));
+	}
+
+	Ok(())
+}
+
 fn calibration_preflight_covers_models(
 	preflight_models: &BTreeSet<ModelConfig>,
 	selected_models: &BTreeSet<ModelConfig>,
@@ -370,7 +394,9 @@ fn validate_calibration_results<'a>(
 ) -> Result<(), RunValidationError> {
 	let mut pairs = BTreeSet::new();
 
-	for result in &run.results {
+	for (index, result) in run.results.iter().enumerate() {
+		let expected_model = run.models[index / run.task_ids.len()];
+		let expected_task_id = &run.task_ids[index % run.task_ids.len()];
 		let execution_attempted = !matches!(
 			result.failure.as_ref().map(|failure| failure.kind),
 			Some(
@@ -395,6 +421,8 @@ fn validate_calibration_results<'a>(
 		validate_evaluator_and_workspace_evidence(result, execution_attempted, false)?;
 
 		if result.run_id != run.run_id
+			|| result.model != expected_model
+			|| &result.task_id != expected_task_id
 			|| !model_set.contains(&result.model)
 			|| !task_set.contains(&result.task_id)
 			|| result.provenance.synthetic
@@ -854,6 +882,14 @@ fn validate_evaluator_and_workspace_evidence(
 		{
 			Ok(())
 		},
+		(None, true)
+			if result
+				.failure
+				.as_ref()
+				.is_some_and(|failure| failure.kind == FailureKind::WorkspaceIntegrity) =>
+		{
+			Ok(())
+		},
 		(None, false) => Ok(()),
 		_ => Err(RunValidationError::new(
 			"workspace manifest evidence is inconsistent with execution status",
@@ -909,8 +945,24 @@ fn validate_result_budgets(
 	result: &TaskResult,
 	tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), RunValidationError> {
+	let provider_tokens = &result.tool_usage.provider_tokens;
+	let provider_counters = [
+		provider_tokens.input,
+		provider_tokens.cached_input,
+		provider_tokens.cache_write_input,
+		provider_tokens.output,
+		provider_tokens.reasoning,
+		provider_tokens.total,
+	];
+
 	if result.tool_usage.by_tool.len() > MAX_TOOL_USAGE_KINDS
 		|| result.latency.wall_ms > MAX_JCS_SAFE_INTEGER
+		|| provider_counters.into_iter().flatten().any(|value| value > MAX_JCS_SAFE_INTEGER)
+		|| matches!((provider_tokens.input, provider_tokens.cached_input), (Some(input), Some(cached)) if cached > input)
+		|| matches!(
+			(provider_tokens.input, provider_tokens.cached_input, provider_tokens.cache_write_input),
+			(Some(input), Some(cached), Some(cache_write)) if cached.saturating_add(cache_write) > input
+		) || matches!((provider_tokens.output, provider_tokens.reasoning), (Some(output), Some(reasoning)) if reasoning > output)
 		|| result
 			.tool_usage
 			.by_tool
@@ -936,13 +988,17 @@ fn validate_result_budgets(
 		tasks.and_then(|tasks| tasks.iter().find(|task| task.task_id == result.task_id))
 	{
 		let maximum_wall_ms = task.budgets.wall_seconds.saturating_mul(1_000).saturating_add(1_000);
+		let budget_failure = result
+			.failure
+			.as_ref()
+			.is_some_and(|failure| failure.kind == FailureKind::BudgetExceeded);
 
 		if result.latency.wall_ms > maximum_wall_ms
-			|| result.tool_usage.steps > task.budgets.max_steps
-			|| result.tool_usage.total_calls > task.budgets.max_tool_calls
+			|| (!budget_failure && result.tool_usage.steps > task.budgets.max_steps)
+			|| (!budget_failure && result.tool_usage.total_calls > task.budgets.max_tool_calls)
 		{
 			return Err(RunValidationError::new(
-				"result latency or live tool counters exceed the task budgets",
+				"Codex adapter elapsed time or live tool counters exceed the task budgets",
 			));
 		}
 	}
@@ -1048,7 +1104,8 @@ fn validate_result_status(
 				| FailureKind::SubscriptionLimit
 				| FailureKind::CapabilityValidationFailed
 				| FailureKind::EvaluatorFailure
-				| FailureKind::WorkspaceUnavailable => None,
+				| FailureKind::WorkspaceUnavailable
+				| FailureKind::WorkspaceIntegrity => None,
 				FailureKind::CapabilityUnavailable | FailureKind::MissingEvaluator => {
 					return Err(RunValidationError::new(
 						"failure taxonomy is incompatible with failed status",
@@ -1140,10 +1197,24 @@ fn validate_response_artifacts(
 		.iter()
 		.filter(|artifact| artifact.kind == "workspace-snapshot.json")
 		.count();
+	let workspace_integrity = result
+		.failure
+		.as_ref()
+		.is_some_and(|failure| failure.kind == FailureKind::WorkspaceIntegrity);
 
-	if execution_attempted && workspace_snapshots != 1 {
+	if execution_attempted && !workspace_integrity && workspace_snapshots != 1 {
 		return Err(RunValidationError::new(
 			"attempted result requires exactly one workspace snapshot",
+		));
+	}
+	if workspace_integrity && workspace_snapshots > 1 {
+		return Err(RunValidationError::new(
+			"workspace-integrity result contains duplicate workspace snapshots",
+		));
+	}
+	if workspace_integrity && (result.workspace_manifest.is_some() != (workspace_snapshots == 1)) {
+		return Err(RunValidationError::new(
+			"workspace-integrity result must retain both workspace commitments or neither",
 		));
 	}
 	if !execution_attempted
@@ -1253,13 +1324,41 @@ mod tests {
 		protocol::{self, ResultProvenance, TrustTier},
 		resume, run_validation,
 		runner::{
-			self, EvaluationOutcome, Latency, RESULT_SCHEMA_VERSION, ResultStatus, RunRecord,
-			TaskResult, ToolUsage,
+			self, EvaluationOutcome, FailureKind, Latency, RESULT_SCHEMA_VERSION, ResultFailure,
+			ResultStatus, RunRecord, TaskResult, ToolUsage,
 		},
 		schedule::{self, ScheduleConfig, ScheduleOccurrence},
 		scoring::AIQ_SCORING_VERSION,
 		task::{self, EvaluatorCheck, EvaluatorCheckFailureClass},
 	};
+
+	#[test]
+	fn stable_workspace_integrity_message_satisfies_the_signed_wire_bound() {
+		let slot = ScheduleConfig::default()
+			.slot("2026-08-02", ScheduleOccurrence::Day)
+			.expect("fixture slot");
+		let mut run =
+			runner::synthetic_demo(slot, &runner::TestArtifactSink).expect("synthetic fixture");
+		let result = &mut run.results[0];
+
+		result.failure = Some(ResultFailure {
+			kind: FailureKind::WorkspaceIntegrity,
+			message: "post-evaluation workspace integrity or cleanup failed".to_owned(),
+			exit_code: Some(17),
+			retryable: true,
+		});
+
+		super::validate_result_budgets(result, None)
+			.expect("stable workspace-integrity message must fit the wire");
+
+		result.failure.as_mut().expect("failure").message = r#"hostile "quoted" path"#.to_owned();
+
+		assert!(super::validate_result_budgets(result, None).is_err());
+
+		result.failure.as_mut().expect("failure").message = "x".repeat(129);
+
+		assert!(super::validate_result_budgets(result, None).is_err());
+	}
 
 	#[test]
 	fn calibration_preflight_may_retain_the_full_matrix_but_must_cover_the_selection() {
@@ -1364,6 +1463,7 @@ mod tests {
 				schedule_slot: slot,
 				task_set_hash: set_hash,
 				scoring_version: AIQ_SCORING_VERSION.to_owned(),
+				execution_concurrency: Some(1),
 				models: MODEL_MATRIX.to_vec(),
 				started_unix_ms: 0,
 				finished_unix_ms: 0,

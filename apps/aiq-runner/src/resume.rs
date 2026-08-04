@@ -55,7 +55,7 @@ use crate::{
 	protocol,
 	runner::{RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus, TaskResult},
 	schedule::ScheduleSlot,
-	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
+	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
 	task::{EvaluationResult, TASK_SCHEMA_VERSION},
 };
 
@@ -261,6 +261,9 @@ pub struct PreflightCache {
 	pub models: Vec<ModelConfig>,
 	/// Complete structured active report, including unsupported entries.
 	pub report: CapabilityValidationReport,
+	/// Exact successful Official admission receipt, when this cache was paid for an Official plan.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub official_admission_digest: Option<String>,
 }
 impl PreflightCache {
 	/// Builds a reusable cache from one authenticated active report.
@@ -285,7 +288,24 @@ impl PreflightCache {
 			codex_version: manifest.codex_version.trim().to_owned(),
 			models: MODEL_MATRIX.to_vec(),
 			report,
+			official_admission_digest: None,
 		})
+	}
+
+	/// Binds this paid cache to one exact successful Official admission receipt.
+	pub fn bind_official_admission(mut self, digest: &str) -> Result<Self, ResumeError> {
+		if !valid_digest(digest) {
+			return Err(ResumeError::new("Official admission receipt digest is invalid"));
+		}
+		if self.official_admission_digest.as_deref().is_some_and(|existing| existing != digest) {
+			return Err(ResumeError::new(
+				"preflight cache is already bound to another Official admission receipt",
+			));
+		}
+
+		self.official_admission_digest = Some(digest.to_owned());
+
+		Ok(self)
 	}
 
 	/// Loads a cache only when every exact commitment and expiry check succeeds.
@@ -565,7 +585,7 @@ pub fn classified_run_id(
 /// Returns the fixed full-catalog commitment.
 #[must_use]
 pub fn catalog_digest() -> String {
-	AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned()
+	AIQ_CORE_TASK_IDENTITY_SHA256.to_owned()
 }
 
 /// Atomically writes JSON with file and parent-directory durability.
@@ -1133,6 +1153,7 @@ mod tests {
 				stdout_truncated: false,
 				stderr_truncated: false,
 				artifacts: Vec::new(),
+				stdout_full: String::new(),
 			};
 
 			entry.status = CapabilityValidationStatus::Unavailable;
@@ -1477,6 +1498,30 @@ mod tests {
 	}
 
 	#[test]
+	fn paid_preflight_cache_preserves_the_exact_official_admission_binding() {
+		let root = temporary_root("official-preflight");
+		let path = root.join("preflight.json");
+		let manifest = manifest();
+		let toolchain_digest = format!("sha256:{}", "a".repeat(64));
+		let admission_digest = format!("sha256:{}", "b".repeat(64));
+		let cache = PreflightCache::new(&manifest, report(), 2_000, &toolchain_digest)
+			.expect("valid cache")
+			.bind_official_admission(&admission_digest)
+			.expect("Official admission binding");
+
+		cache.persist(&path).expect("cache persist");
+
+		let loaded = PreflightCache::load(&path, &manifest, 1_999, &toolchain_digest)
+			.expect("bound cache load");
+
+		assert_eq!(loaded.official_admission_digest.as_deref(), Some(admission_digest.as_str()));
+		assert!(cache.clone().bind_official_admission("not-a-digest").is_err());
+		assert!(cache.bind_official_admission(&format!("sha256:{}", "c".repeat(64))).is_err());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
 	fn preflight_and_runtime_require_canonical_sha256_content_addresses() {
 		let manifest = manifest();
 		let raw_digest = "a".repeat(64);
@@ -1613,6 +1658,7 @@ mod tests {
 			stdout_truncated: false,
 			stderr_truncated: false,
 			artifacts: Vec::new(),
+			stdout_full: String::new(),
 		};
 		let evidence_digest = adapter::configuration_evidence_digest(
 			model,

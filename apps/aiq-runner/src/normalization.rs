@@ -11,6 +11,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::calibration_verification;
+use crate::calibration_verification::ApiEquivalentPricingModel;
+use crate::calibration_verification::CalibrationEfficiencyAggregate;
+use crate::calibration_verification::CalibrationResultEfficiency;
+use crate::runner::MAX_RUN_JOBS;
 use crate::{
 	adapter::ArtifactReference,
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
@@ -21,7 +26,10 @@ use crate::{
 		EvaluationOutcome, FailureKind, Latency, ResultFailure, ResultStatus, RunRecord,
 		TaskResult, ToolUsage,
 	},
-	scoring::{self, AIQ_SCORING_VERSION, ScoreContext, ScoreOptions, ScoreReport, ScoreTier},
+	scoring::{
+		self, AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, ScoreContext,
+		ScoreOptions, ScoreReport, ScoreTier,
+	},
 	submission,
 	task::{Domain, TaskDefinition},
 };
@@ -153,7 +161,7 @@ pub struct NormalizedTaskResult {
 	pub evaluator_stdout_sha256: Option<String>,
 	/// Source artifact references.
 	pub artifacts: Vec<ArtifactReference>,
-	/// Measured latency.
+	/// Measured Codex adapter elapsed time.
 	pub latency: Latency,
 	/// Measured tool usage.
 	pub tool_usage: ToolUsage,
@@ -227,6 +235,14 @@ pub struct NormalizedBatchStage {
 	pub synthetic: bool,
 	/// Exactly 17 deterministic child runs.
 	pub runs: Vec<NormalizedModelRun>,
+	/// Exact bounded concurrency used by the source run.
+	pub execution_concurrency: usize,
+	/// Verifier-recomputed per-task time, token, and API-equivalent cost evidence.
+	pub result_efficiency: Vec<CalibrationResultEfficiency>,
+	/// Per-model efficiency aggregates, separate from scores.
+	pub efficiency: Vec<CalibrationEfficiencyAggregate>,
+	/// Explicit fixed-point comparison-rate method.
+	pub pricing: ApiEquivalentPricingModel,
 	/// RFC 8785 SHA-256 commitment to this record with this field excluded.
 	pub normalization_digest: String,
 }
@@ -241,6 +257,9 @@ impl NormalizedBatchStage {
 	pub fn verify(&self) -> Result<(), NormalizationError> {
 		if self.schema_version != NORMALIZATION_SCHEMA_VERSION
 			|| self.runs.len() != NORMALIZED_MODEL_COUNT
+			|| !(1..=MAX_RUN_JOBS).contains(&self.execution_concurrency)
+			|| self.result_efficiency.len() != NORMALIZED_MODEL_COUNT * NORMALIZED_TASK_COUNT
+			|| self.efficiency.len() != NORMALIZED_MODEL_COUNT
 		{
 			return Err(NormalizationError::new("invalid normalized batch schema or cardinality"));
 		}
@@ -283,6 +302,28 @@ impl NormalizedBatchStage {
 		validate_node(&self.signer)?;
 		validate_safe_times(self.scheduled_unix_ms, self.started_unix_ms, self.finished_unix_ms)?;
 
+		self.verify_children_and_efficiency()?;
+
+		if self.compute_normalization_digest()? != self.normalization_digest {
+			return Err(NormalizationError::new("normalization digest does not match"));
+		}
+
+		let bytes = protocol::canonical_json(self)
+			.map_err(|error| NormalizationError::new(error.to_string()))?;
+
+		if bytes.len() > MAX_NORMALIZED_STAGE_BYTES {
+			return Err(NormalizationError::new("normalized stage exceeds the byte bound"));
+		}
+
+		Ok(())
+	}
+
+	fn verify_children_and_efficiency(&self) -> Result<(), NormalizationError> {
+		let expected_task_keys = self.runs[0]
+			.results
+			.iter()
+			.map(|result| (&result.task_id, &result.task_version))
+			.collect::<BTreeSet<_>>();
 		let mut ids = BTreeSet::new();
 
 		for (expected_model, child) in MODEL_MATRIX.iter().zip(&self.runs) {
@@ -300,7 +341,11 @@ impl NormalizedBatchStage {
 				|| child.run_id != child_run_id(&self.matrix_batch_id, &config_id)
 				|| child.results.len() != NORMALIZED_TASK_COUNT
 				|| task_keys.len() != NORMALIZED_TASK_COUNT
+				|| task_keys != expected_task_keys
 				|| child.score.model != *expected_model
+				|| child.score.schema_version != "aiq.score-report.v1"
+				|| child.score.scoring_version != self.scoring_version
+				|| child.score.coverage.expected_tasks != NORMALIZED_TASK_COUNT
 				|| !ids.insert(child.run_id.clone())
 			{
 				return Err(NormalizationError::new("invalid normalized child identity"));
@@ -323,15 +368,62 @@ impl NormalizedBatchStage {
 			}
 		}
 
-		if self.compute_normalization_digest()? != self.normalization_digest {
-			return Err(NormalizationError::new("normalization digest does not match"));
+		let task_ids =
+			self.runs[0].results.iter().map(|result| result.task_id.clone()).collect::<Vec<_>>();
+
+		calibration_verification::validate_efficiency_evidence_contract(
+			&MODEL_MATRIX,
+			&task_ids,
+			&self.result_efficiency,
+			&self.efficiency,
+			&self.pricing,
+		)
+		.map_err(|error| NormalizationError::new(error.to_string()))?;
+
+		let normalized_sources = self
+			.runs
+			.iter()
+			.flat_map(|run| &run.results)
+			.map(|result| (result.source_result_id.as_str(), result.task_id.as_str(), result.model))
+			.collect::<BTreeSet<_>>();
+		let efficiency_sources = self
+			.result_efficiency
+			.iter()
+			.map(|result| (result.source_result_id.as_str(), result.task_id.as_str(), result.model))
+			.collect::<BTreeSet<_>>();
+
+		if normalized_sources.len() != NORMALIZED_MODEL_COUNT * NORMALIZED_TASK_COUNT
+			|| normalized_sources != efficiency_sources
+		{
+			return Err(NormalizationError::new(
+				"normalized efficiency evidence does not bind the exact source result matrix",
+			));
 		}
 
-		let bytes = protocol::canonical_json(self)
-			.map_err(|error| NormalizationError::new(error.to_string()))?;
+		for source in self.runs.iter().flat_map(|run| &run.results) {
+			let evidence = self
+				.result_efficiency
+				.iter()
+				.find(|evidence| evidence.source_result_id == source.source_result_id)
+				.ok_or_else(|| {
+					NormalizationError::new("source result lacks efficiency evidence")
+				})?;
+			let adapter_invoked = !self.synthetic
+				&& !matches!(
+					source.failure.as_ref().map(|failure| failure.kind),
+					Some(
+						FailureKind::CapabilityUnavailable
+							| FailureKind::CapabilityValidationFailed
+							| FailureKind::WorkspaceUnavailable
+					)
+				);
+			let expected_wall_ms = adapter_invoked.then_some(source.latency.wall_ms);
 
-		if bytes.len() > MAX_NORMALIZED_STAGE_BYTES {
-			return Err(NormalizationError::new("normalized stage exceeds the byte bound"));
+			if evidence.observed_wall_ms != expected_wall_ms {
+				return Err(NormalizationError::new(
+					"normalized wall-time evidence does not match the source result",
+				));
+			}
 		}
 
 		Ok(())
@@ -468,6 +560,10 @@ impl VerifierSigningIdentity {
 		&self.node
 	}
 
+	pub(crate) fn sign_calibration_bytes(&self, bytes: &[u8]) -> String {
+		hex::encode(self.signing_key.sign(bytes).to_bytes())
+	}
+
 	/// Signs all immutable normalization bindings.
 	pub fn attest(
 		&self,
@@ -552,6 +648,10 @@ struct UnsignedNormalizedStage<'a> {
 	finished_unix_ms: u64,
 	synthetic: bool,
 	runs: &'a [NormalizedModelRun],
+	execution_concurrency: usize,
+	result_efficiency: &'a [CalibrationResultEfficiency],
+	efficiency: &'a [CalibrationEfficiencyAggregate],
+	pricing: &'a ApiEquivalentPricingModel,
 }
 impl<'a> From<&'a NormalizedBatchStage> for UnsignedNormalizedStage<'a> {
 	fn from(value: &'a NormalizedBatchStage) -> Self {
@@ -577,6 +677,10 @@ impl<'a> From<&'a NormalizedBatchStage> for UnsignedNormalizedStage<'a> {
 			finished_unix_ms: value.finished_unix_ms,
 			synthetic: value.synthetic,
 			runs: &value.runs,
+			execution_concurrency: value.execution_concurrency,
+			result_efficiency: &value.result_efficiency,
+			efficiency: &value.efficiency,
+			pricing: &value.pricing,
 		}
 	}
 }
@@ -733,6 +837,11 @@ pub fn normalize_verified_batch(
 ) -> Result<NormalizedBatchStage, NormalizationError> {
 	run_validation::validate_run_record(run, Some(tasks))
 		.map_err(|error| NormalizationError::new(format!("source run is invalid: {error}")))?;
+
+	let execution_concurrency = run.execution_concurrency.ok_or_else(|| {
+		NormalizationError::new("normalization requires a bound execution concurrency")
+	})?;
+
 	submission::validate_run_signer_binding(run, &package.signer.node_id).map_err(|error| {
 		NormalizationError::new(format!("source run signer binding is invalid: {error}"))
 	})?;
@@ -743,6 +852,64 @@ pub fn normalize_verified_batch(
 
 	validate_inputs(run, tasks, score_reports, package, metadata)?;
 
+	let children = normalized_model_runs(run, tasks, score_reports)?;
+	let empty_provider_usage =
+		vec![crate::runner::ProviderTokenUsage::default(); run.results.len()];
+	let (result_efficiency, efficiency, pricing) =
+		calibration_verification::build_efficiency_evidence(
+			&run.results,
+			&empty_provider_usage,
+			run.synthetic,
+		)
+		.map_err(|error| NormalizationError::new(error.to_string()))?;
+	let mut stage = NormalizedBatchStage {
+		schema_version: NORMALIZATION_SCHEMA_VERSION.to_owned(),
+		matrix_batch_id: run.run_id.clone(),
+		package_sha256: package.package_sha256.clone(),
+		content_hash: package.content_hash.clone(),
+		signer: package.signer.clone(),
+		task_set_id: metadata.task_set_id.clone(),
+		task_set_version: metadata.task_set_version.clone(),
+		task_set_hash: run.task_set_hash.clone(),
+		capability_validation_digest: run
+			.capability_validation
+			.as_ref()
+			.map(crate::protocol::canonical_hash)
+			.transpose()
+			.map_err(|error| {
+				NormalizationError::new(format!("capability commitment failed: {error}"))
+			})?,
+		provenance: run.provenance.clone(),
+		run_class: run.provenance.as_ref().map(|provenance| provenance.run_class),
+		benchmark_version: metadata.benchmark_version.clone(),
+		prompt_set_digest: metadata.prompt_set_digest.clone(),
+		scoring_version: run.scoring_version.clone(),
+		runner_commit: metadata.runner_commit.clone(),
+		region: metadata.region.clone(),
+		scheduled_unix_ms: metadata.scheduled_unix_ms,
+		started_unix_ms: metadata.started_unix_ms,
+		finished_unix_ms: metadata.finished_unix_ms,
+		synthetic: run.synthetic,
+		runs: children,
+		execution_concurrency,
+		result_efficiency,
+		efficiency,
+		pricing,
+		normalization_digest: String::new(),
+	};
+
+	stage.normalization_digest = stage.compute_normalization_digest()?;
+
+	stage.verify()?;
+
+	Ok(stage)
+}
+
+fn normalized_model_runs(
+	run: &RunRecord,
+	tasks: &[TaskDefinition],
+	score_reports: &[ScoreReport],
+) -> Result<Vec<NormalizedModelRun>, NormalizationError> {
 	let task_map =
 		tasks.iter().map(|task| (task.task_id.as_str(), task)).collect::<BTreeMap<_, _>>();
 	let score_map =
@@ -810,43 +977,7 @@ pub fn normalize_verified_batch(
 		});
 	}
 
-	let mut stage = NormalizedBatchStage {
-		schema_version: NORMALIZATION_SCHEMA_VERSION.to_owned(),
-		matrix_batch_id: run.run_id.clone(),
-		package_sha256: package.package_sha256.clone(),
-		content_hash: package.content_hash.clone(),
-		signer: package.signer.clone(),
-		task_set_id: metadata.task_set_id.clone(),
-		task_set_version: metadata.task_set_version.clone(),
-		task_set_hash: run.task_set_hash.clone(),
-		capability_validation_digest: run
-			.capability_validation
-			.as_ref()
-			.map(crate::protocol::canonical_hash)
-			.transpose()
-			.map_err(|error| {
-				NormalizationError::new(format!("capability commitment failed: {error}"))
-			})?,
-		provenance: run.provenance.clone(),
-		run_class: run.provenance.as_ref().map(|provenance| provenance.run_class),
-		benchmark_version: metadata.benchmark_version.clone(),
-		prompt_set_digest: metadata.prompt_set_digest.clone(),
-		scoring_version: run.scoring_version.clone(),
-		runner_commit: metadata.runner_commit.clone(),
-		region: metadata.region.clone(),
-		scheduled_unix_ms: metadata.scheduled_unix_ms,
-		started_unix_ms: metadata.started_unix_ms,
-		finished_unix_ms: metadata.finished_unix_ms,
-		synthetic: run.synthetic,
-		runs: children,
-		normalization_digest: String::new(),
-	};
-
-	stage.normalization_digest = stage.compute_normalization_digest()?;
-
-	stage.verify()?;
-
-	Ok(stage)
+	Ok(children)
 }
 
 fn verifier_is_distinct_from_stage(verifier: &NodeIdentity, stage: &NormalizedBatchStage) -> bool {
@@ -932,9 +1063,9 @@ fn validate_inputs(
 	}
 
 	if let Some(provenance) = &run.provenance
-		&& (metadata.task_set_id != "aiq-core"
-			|| metadata.task_set_version != AIQ_SCORING_VERSION
-			|| metadata.benchmark_version != "aiq-core@1.0.0"
+		&& (metadata.task_set_id != AIQ_TASK_SET_ID
+			|| metadata.task_set_version != AIQ_TASK_SET_VERSION
+			|| metadata.benchmark_version != AIQ_BENCHMARK_VERSION
 			|| metadata.prompt_set_digest != provenance.prompt_digest)
 	{
 		return Err(NormalizationError::new(
@@ -1084,6 +1215,7 @@ fn map_outcome(
 			Some(
 				FailureKind::EvaluatorFailure
 				| FailureKind::WorkspaceUnavailable
+				| FailureKind::WorkspaceIntegrity
 				| FailureKind::MissingEvaluator,
 			),
 		)
@@ -1180,6 +1312,7 @@ mod tests {
 
 	use ed25519_dalek::Signer as _;
 
+	use crate::calibration_verification;
 	use crate::{
 		adapter::ArtifactReference,
 		corpus_commitment::{self, RunClass},
@@ -1191,7 +1324,10 @@ mod tests {
 		protocol::{self, SigningIdentity, TrustTier},
 		runner::{self},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
-		scoring::{self, ScoreContext, ScoreOptions, ScoreTier},
+		scoring::{
+			self, AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, ScoreContext,
+			ScoreOptions, ScoreTier,
+		},
 		submission,
 	};
 
@@ -1231,9 +1367,9 @@ mod tests {
 			signer,
 		};
 		let metadata = AttestedDeploymentMetadata {
-			task_set_id: "aiq-core".to_owned(),
-			task_set_version: "1.0.0".to_owned(),
-			benchmark_version: "aiq-core@1.0.0".to_owned(),
+			task_set_id: AIQ_TASK_SET_ID.to_owned(),
+			task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+			benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 			prompt_set_digest: "sha256:".to_owned() + &"c".repeat(64),
 			runner_commit: "d".repeat(40),
 			region: "local-test".to_owned(),
@@ -1253,8 +1389,29 @@ mod tests {
 			.expect("normalize")
 	}
 
+	fn bind_runner_observed_efficiency(
+		stage: &mut normalization::NormalizedBatchStage,
+		run: &crate::runner::RunRecord,
+	) {
+		let provider_usage = vec![crate::runner::ProviderTokenUsage::default(); run.results.len()];
+		let (result_efficiency, efficiency, pricing) =
+			calibration_verification::build_efficiency_evidence(
+				&run.results,
+				&provider_usage,
+				false,
+			)
+			.expect("production efficiency evidence");
+
+		stage.result_efficiency = result_efficiency;
+		stage.efficiency = efficiency;
+		stage.pricing = pricing;
+	}
+
 	fn production_stage() -> normalization::NormalizedBatchStage {
-		let mut stage = synthetic_stage();
+		let (run, tasks, scores, package, metadata) = fixture();
+		let mut stage =
+			normalization::normalize_verified_batch(&run, &tasks, &scores, &package, &metadata)
+				.expect("normalize production fixture source");
 		let preflight_digest = format!("sha256:{}", "8".repeat(64));
 		let provenance = corpus_commitment::fixture_run_provenance(
 			stage.task_set_hash.clone(),
@@ -1270,6 +1427,9 @@ mod tests {
 		stage.prompt_set_digest.clone_from(&provenance.prompt_digest);
 
 		stage.provenance = Some(provenance);
+
+		bind_runner_observed_efficiency(&mut stage, &run);
+
 		stage.normalization_digest = stage.compute_normalization_digest().expect("digest");
 
 		stage
@@ -1491,6 +1651,44 @@ mod tests {
 	}
 
 	#[test]
+	fn verifier_refuses_self_consistent_but_unpublishable_stage_evidence() {
+		let verifier = VerifierSigningIdentity::from_secret([21; 32]);
+		let stage = synthetic_stage();
+		let mut changed = stage.clone();
+
+		changed.pricing.currency = "EUR".to_owned();
+		changed.normalization_digest = changed.compute_normalization_digest().expect("digest");
+
+		assert!(changed.verify().is_err());
+		assert!(verifier.attest(&changed, 1_000, ReplayStatus::CommitmentsVerified).is_err());
+
+		let mut changed = stage.clone();
+
+		changed.efficiency[0].selected_tasks -= 1;
+		changed.normalization_digest = changed.compute_normalization_digest().expect("digest");
+
+		assert!(changed.verify().is_err());
+		assert!(verifier.attest(&changed, 1_000, ReplayStatus::CommitmentsVerified).is_err());
+
+		let mut changed = stage.clone();
+
+		changed.result_efficiency[1].source_result_id =
+			changed.result_efficiency[0].source_result_id.clone();
+		changed.normalization_digest = changed.compute_normalization_digest().expect("digest");
+
+		assert!(changed.verify().is_err());
+		assert!(verifier.attest(&changed, 1_000, ReplayStatus::CommitmentsVerified).is_err());
+
+		let mut changed = stage;
+
+		changed.runs[0].score.schema_version = "aiq.score-report.future".to_owned();
+		changed.normalization_digest = changed.compute_normalization_digest().expect("digest");
+
+		assert!(changed.verify().is_err());
+		assert!(verifier.attest(&changed, 1_000, ReplayStatus::CommitmentsVerified).is_err());
+	}
+
+	#[test]
 	fn normalization_api_rejects_valid_package_signer_substitution() {
 		let (run, tasks, scores, mut package, metadata) = fixture();
 
@@ -1500,6 +1698,41 @@ mod tests {
 			normalization::normalize_verified_batch(&run, &tasks, &scores, &package, &metadata)
 				.is_err()
 		);
+	}
+
+	#[test]
+	fn normalized_v3_requires_one_bounded_execution_concurrency() {
+		let (mut run, tasks, scores, package, metadata) = fixture();
+
+		run.execution_concurrency = None;
+
+		assert!(
+			normalization::normalize_verified_batch(&run, &tasks, &scores, &package, &metadata)
+				.is_err()
+		);
+
+		let stage = synthetic_stage();
+		let mut missing = serde_json::to_value(&stage).expect("serialize normalized stage");
+
+		missing.as_object_mut().expect("normalized stage object").remove("execution_concurrency");
+
+		assert!(serde_json::from_value::<normalization::NormalizedBatchStage>(missing).is_err());
+
+		let mut null = serde_json::to_value(&stage).expect("serialize normalized stage");
+
+		null["execution_concurrency"] = serde_json::Value::Null;
+
+		assert!(serde_json::from_value::<normalization::NormalizedBatchStage>(null).is_err());
+
+		for invalid in [0, crate::runner::MAX_RUN_JOBS + 1] {
+			let mut changed = stage.clone();
+
+			changed.execution_concurrency = invalid;
+			changed.normalization_digest =
+				changed.compute_normalization_digest().expect("digest invalid stage");
+
+			assert!(changed.verify().is_err());
+		}
 	}
 
 	#[test]
@@ -1605,24 +1838,7 @@ mod tests {
 
 		assert!(altered.verify(&stage, verifier.node()).is_err());
 
-		let preflight_digest = format!("sha256:{}", "8".repeat(64));
-		let mut production_stage = stage.clone();
-		let provenance = corpus_commitment::fixture_run_provenance(
-			production_stage.task_set_hash.clone(),
-			format!("sha256:{}", "9".repeat(64)),
-			format!("sha256:{}", "a".repeat(64)),
-			preflight_digest.clone(),
-		);
-
-		production_stage.synthetic = false;
-		production_stage.capability_validation_digest = Some(preflight_digest);
-		production_stage.run_class = Some(RunClass::Official);
-
-		production_stage.prompt_set_digest.clone_from(&provenance.prompt_digest);
-
-		production_stage.provenance = Some(provenance);
-		production_stage.normalization_digest =
-			production_stage.compute_normalization_digest().expect("digest");
+		let production_stage = production_stage();
 
 		production_stage.verify().expect("production provenance");
 

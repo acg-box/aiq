@@ -15,6 +15,7 @@ import {
   MAX_SIGNED_PACKAGE_BYTES,
   RESULT_PACKAGE_SCHEMA,
   RUN_PAYLOAD_TYPE,
+  CALIBRATION_RUN_PAYLOAD_TYPE,
   canonicalJson,
   sha256Hex,
   validateSubmission,
@@ -67,7 +68,7 @@ const fixtureRunId = `run_${sha256Hex(
     slot: scheduleSlot,
     task_set_hash: taskSetHash,
     models: [...models],
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
   }),
 )}`;
 
@@ -79,7 +80,7 @@ function syntheticResults(): Record<string, unknown>[] {
         result_id: '',
         run_id: fixtureRunId,
         task_id: `task-${taskIndex}`,
-        task_version: '1',
+        task_version: '1.0.2',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'failed',
@@ -184,7 +185,7 @@ function productionProvenance(
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
-    catalog_digest: 'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3',
+    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
     task_set_digest: digest('3'),
     evaluator_digest: digest('4'),
     runtime_digest: digest('5'),
@@ -216,7 +217,7 @@ function officialPackage(): Record<string, unknown> {
       task_set_hash: taskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models,
-      scoring_version: '1.0.0',
+      scoring_version: '1.0.2',
     }),
   )}`;
   const results = Array.from({ length: 72 }, (_, taskIndex) =>
@@ -227,7 +228,7 @@ function officialPackage(): Record<string, unknown> {
         result_id: '',
         run_id: runId,
         task_id: `task-${taskIndex}`,
-        task_version: '1',
+        task_version: '1.0.2',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'completed',
@@ -271,6 +272,128 @@ function officialPackage(): Record<string, unknown> {
   });
 }
 
+function calibrationPackage(): Record<string, unknown> {
+  const official = officialPackage();
+  const officialPayload = official.payload as Record<string, unknown>;
+  const selectedModel = models[0];
+  assert.ok(selectedModel);
+  const selectedTaskHash = taskHashes[0];
+  assert.ok(selectedTaskHash);
+  const selectedTaskSetHash = `sha256:${sha256Hex(canonicalJson([selectedTaskHash]))}`;
+  const capability = officialPayload.capability_validation as Record<string, unknown>;
+  const provenance = productionProvenance({
+    run_class: 'calibration',
+    task_set_digest: selectedTaskSetHash,
+    preflight_digest: `sha256:${sha256Hex(canonicalJson(capability))}`,
+  });
+  const runId = `run_${sha256Hex(
+    canonicalJson({
+      schema_version: 'aiq.run-identity.v3',
+      run_class: 'calibration',
+      slot: scheduleSlot,
+      task_set_hash: selectedTaskSetHash,
+      corpus_commitment_sha256: provenance.corpus_commitment_sha256,
+      models: [selectedModel],
+      scoring_version: '1.0.2',
+    }),
+  )}`;
+  const result = structuredClone((officialPayload.results as Record<string, unknown>[])[0]);
+  assert.ok(result);
+  result.run_id = runId;
+  result.task_hash = selectedTaskHash;
+  rehashResult(result);
+  const payload = {
+    schema_version: CALIBRATION_RUN_PAYLOAD_TYPE,
+    official_eligible: false,
+    classification: 'local_calibration_non_official',
+    run_id: runId,
+    schedule_slot: scheduleSlot,
+    task_set_hash: selectedTaskSetHash,
+    scoring_version: '1.0.2',
+    execution_concurrency: 17,
+    models: [selectedModel],
+    task_ids: ['task-0'],
+    started_unix_ms: 1,
+    finished_unix_ms: 2,
+    capability_validation: capability,
+    provenance,
+    evaluator_results_artifact: officialPayload.evaluator_results_artifact,
+    results: [result],
+  };
+  return resignPackage({
+    schema_version: RESULT_PACKAGE_SCHEMA,
+    idempotency_key: runId,
+    payload_type: CALIBRATION_RUN_PAYLOAD_TYPE,
+    content_hash: '',
+    signer: { node_id: runnerNodeId, public_key: publicKey },
+    claimed_trust: 'untrusted',
+    payload,
+    signature: '',
+  });
+}
+
+function maximumSelectedCalibrationPackage(): Record<string, unknown> {
+  const official = officialPackage();
+  const officialPayload = official.payload as Record<string, unknown>;
+  const capability = officialPayload.capability_validation as Record<string, unknown>;
+  const provenance = productionProvenance({
+    run_class: 'calibration',
+    task_set_digest: taskSetHash,
+    preflight_digest: `sha256:${sha256Hex(canonicalJson(capability))}`,
+  });
+  const runId = `run_${sha256Hex(
+    canonicalJson({
+      schema_version: 'aiq.run-identity.v3',
+      run_class: 'calibration',
+      slot: scheduleSlot,
+      task_set_hash: taskSetHash,
+      corpus_commitment_sha256: provenance.corpus_commitment_sha256,
+      models,
+      scoring_version: '1.0.2',
+    }),
+  )}`;
+  const taskMajorResults = structuredClone(officialPayload.results as Record<string, unknown>[]);
+  const results = models.flatMap((selectedModel, modelIndex) =>
+    Array.from({ length: 72 }, (_, taskIndex) => {
+      const result = taskMajorResults[taskIndex * models.length + modelIndex];
+      assert.ok(result);
+      assert.deepEqual(result.model, selectedModel);
+      return result;
+    }),
+  );
+  for (const result of results) {
+    result.run_id = runId;
+    rehashResult(result);
+  }
+  return resignPackage({
+    schema_version: RESULT_PACKAGE_SCHEMA,
+    idempotency_key: runId,
+    payload_type: CALIBRATION_RUN_PAYLOAD_TYPE,
+    content_hash: '',
+    signer: { node_id: runnerNodeId, public_key: publicKey },
+    claimed_trust: 'untrusted',
+    payload: {
+      schema_version: CALIBRATION_RUN_PAYLOAD_TYPE,
+      official_eligible: false,
+      classification: 'local_calibration_non_official',
+      run_id: runId,
+      schedule_slot: scheduleSlot,
+      task_set_hash: taskSetHash,
+      scoring_version: '1.0.2',
+      execution_concurrency: 17,
+      models,
+      task_ids: Array.from({ length: 72 }, (_, index) => `task-${index}`),
+      started_unix_ms: 1,
+      finished_unix_ms: 2,
+      capability_validation: capability,
+      provenance,
+      evaluator_results_artifact: officialPayload.evaluator_results_artifact,
+      results,
+    },
+    signature: '',
+  });
+}
+
 function signedPackage(
   options: Readonly<{
     schemaVersion?: string;
@@ -290,7 +413,8 @@ function signedPackage(
       ...scheduleSlot,
     },
     task_set_hash: taskSetHash,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
+    execution_concurrency: synthetic ? 1 : 17,
     started_unix_ms: 1,
     finished_unix_ms: 2,
     synthetic,
@@ -461,6 +585,101 @@ void describe('shared result-package contract', () => {
     assert.equal(validation.submission.envelope.payload.provenance?.run_class, 'official');
   });
 
+  void it('admits only exact signed untrusted selected calibration packages', () => {
+    const calibration = calibrationPackage();
+    const validation = validateSubmission(calibration);
+    assert.equal(validation.ok, true);
+    if (!validation.ok) return;
+    assert.equal(validation.submission.envelope.payload_type, CALIBRATION_RUN_PAYLOAD_TYPE);
+    assert.equal(validation.submission.envelope.claimed_trust, 'untrusted');
+
+    const mutations: ReadonlyArray<(candidate: Record<string, unknown>) => void> = [
+      (candidate) => void (candidate.claimed_trust = 'trusted'),
+      (candidate) => void ((candidate.payload as Record<string, unknown>).official_eligible = true),
+      (candidate) =>
+        void ((candidate.payload as Record<string, unknown>).classification = 'official'),
+      (candidate) =>
+        void ((
+          (candidate.payload as Record<string, unknown>).provenance as Record<string, unknown>
+        ).run_class = 'official'),
+      (candidate) => void ((candidate.payload as Record<string, unknown>).task_ids = ['task-1']),
+      (candidate) => void ((candidate.payload as Record<string, unknown>).models = []),
+      (candidate) => void ((candidate.payload as Record<string, unknown>).results = []),
+      (candidate) =>
+        void ((candidate.payload as Record<string, unknown>).execution_concurrency = 0),
+      (candidate) =>
+        void delete (candidate.payload as Record<string, unknown>).execution_concurrency,
+      (candidate) =>
+        void ((
+          (candidate.payload as Record<string, unknown>).capability_validation as Record<
+            string,
+            unknown
+          >
+        ).node_id = `node_${'0'.repeat(64)}`),
+    ];
+    for (const mutate of mutations) {
+      const candidate = calibrationPackage();
+      mutate(candidate);
+      assert.equal(validateSubmission(resignPackage(candidate)).ok, false);
+    }
+  });
+
+  void it('accepts workspace integrity as an exact adapter failure kind', () => {
+    const accepted = calibrationPackage();
+    const payload = accepted.payload as Record<string, unknown>;
+    const capability = payload.capability_validation as Record<string, unknown>;
+    const cliProbe = capability.cli_probe as Record<string, unknown>;
+    cliProbe.failure = {
+      kind: 'workspace_integrity',
+      exit_code: null,
+      stderr: '',
+      message: 'workspace integrity validation failed',
+      stdout_truncated: false,
+      stderr_truncated: false,
+      artifacts: [],
+    };
+    const provenance = payload.provenance as Record<string, unknown>;
+    provenance.preflight_digest = `sha256:${sha256Hex(canonicalJson(capability))}`;
+    assert.equal(validateSubmission(resignPackage(accepted)).ok, true);
+
+    const unknown = structuredClone(accepted);
+    const unknownPayload = unknown.payload as Record<string, unknown>;
+    const unknownCapability = unknownPayload.capability_validation as Record<string, unknown>;
+    const unknownCliProbe = unknownCapability.cli_probe as Record<string, unknown>;
+    (unknownCliProbe.failure as Record<string, unknown>).kind = 'workspace_corruption';
+    (unknownPayload.provenance as Record<string, unknown>).preflight_digest =
+      `sha256:${sha256Hex(canonicalJson(unknownCapability))}`;
+    assert.equal(validateSubmission(resignPackage(unknown)).ok, false);
+  });
+
+  void it('rejects noncanonical calibration model and result ordering', () => {
+    const noncanonicalModels = maximumSelectedCalibrationPackage();
+    const modelsPayload = noncanonicalModels.payload as Record<string, unknown>;
+    modelsPayload.models = (modelsPayload.models as unknown[]).toReversed();
+    assert.equal(validateSubmission(resignPackage(noncanonicalModels)).ok, false);
+
+    const noncanonicalResults = maximumSelectedCalibrationPackage();
+    const resultsPayload = noncanonicalResults.payload as Record<string, unknown>;
+    const resultRows = resultsPayload.results as unknown[];
+    const first = resultRows[0];
+    const second = resultRows[1];
+    assert.ok(first);
+    assert.ok(second);
+    resultRows[0] = second;
+    resultRows[1] = first;
+    assert.equal(validateSubmission(resignPackage(noncanonicalResults)).ok, false);
+  });
+
+  void it('keeps the maximum 72-by-17 calibration package below the fixed ingress ceiling', () => {
+    const rustMeasuredMaximumCalibrationPackageBytes = 3_925_055;
+    const calibration = maximumSelectedCalibrationPackage();
+    const canonicalBytes = Buffer.byteLength(canonicalJson(calibration), 'utf8');
+    assert.equal(validateSubmission(calibration).ok, true);
+    assert.equal(canonicalBytes <= MAX_SIGNED_PACKAGE_BYTES, true);
+    assert.equal(rustMeasuredMaximumCalibrationPackageBytes <= MAX_SIGNED_PACKAGE_BYTES, true);
+    assert.equal(MAX_SIGNED_PACKAGE_BYTES, 3_948_544);
+  });
+
   void it('rejects one-field mutations of each signed contract layer', () => {
     const mutations: ReadonlyArray<
       readonly [string, (candidate: Record<string, unknown>) => void]
@@ -566,6 +785,61 @@ void describe('shared result-package contract', () => {
     assert.ok(firstEntry);
     (firstEntry.probe as Record<string, unknown>).evidence_digest = digest('a');
     assert.equal(validateSubmission(resignPackage(brokenEvidence)).ok, false);
+  });
+
+  void it('accepts attempted workspace-integrity failures with exact safe semantics', () => {
+    const workspaceIntegrityPackage = (retainCommitments: boolean) => {
+      const candidate = calibrationPackage();
+      const result = firstResult(candidate);
+      Object.assign(result, {
+        status: 'failed',
+        evaluation: 'not_evaluated',
+        task_score: null,
+        response: null,
+        response_sha256: null,
+        evaluator_result_sha256: null,
+        evaluator_stdout_sha256: null,
+        latency: { wall_ms: 250 },
+        tool_usage: { steps: 1, total_calls: 1, by_tool: { command_execution: 1 } },
+        failure: {
+          kind: 'workspace_integrity',
+          message: 'post-invocation workspace integrity failed',
+          exit_code: 0,
+          retryable: true,
+        },
+      });
+      if (!retainCommitments) {
+        result.artifacts = [artifact('stdout.jsonl', 'workspace-integrity-stdout')];
+        result.workspace_manifest = null;
+      }
+      rehashResult(result);
+      return resignPackage(candidate);
+    };
+
+    assert.equal(validateSubmission(workspaceIntegrityPackage(true)).ok, true);
+    assert.equal(validateSubmission(workspaceIntegrityPackage(false)).ok, true);
+
+    const manifestOnly = workspaceIntegrityPackage(true);
+    firstResult(manifestOnly).artifacts = [];
+    rehashResult(firstResult(manifestOnly));
+    assert.equal(validateSubmission(resignPackage(manifestOnly)).ok, false);
+
+    const snapshotOnly = workspaceIntegrityPackage(true);
+    firstResult(snapshotOnly).workspace_manifest = null;
+    rehashResult(firstResult(snapshotOnly));
+    assert.equal(validateSubmission(resignPackage(snapshotOnly)).ok, false);
+
+    for (const mutate of [
+      (result: Record<string, unknown>) => void (result.status = 'completed'),
+      (result: Record<string, unknown>) => void (result.evaluation = 'correct'),
+      (result: Record<string, unknown>) => void (result.task_score = 0),
+      (result: Record<string, unknown>) => void (result.response = 'private response'),
+    ]) {
+      const invalid = workspaceIntegrityPackage(false);
+      mutate(firstResult(invalid));
+      rehashResult(firstResult(invalid));
+      assert.equal(validateSubmission(resignPackage(invalid)).ok, false);
+    }
   });
 
   void it('accepts exact completed, unevaluated, failed, and unsupported status semantics', () => {
@@ -862,7 +1136,7 @@ void describe('shared result-package contract', () => {
       payloadType: 'aiq.run.unsupported',
       payloadSchema: 'aiq.run.unsupported',
     });
-    const calibrationPackage = signedPackage({
+    const malformedCalibrationPackage = signedPackage({
       payloadType: 'aiq.calibration-run.v3',
       payloadSchema: 'aiq.calibration-run.v3',
       synthetic: false,
@@ -898,7 +1172,7 @@ void describe('shared result-package contract', () => {
     });
 
     assert.equal(validateSubmission(unsupported).ok, false);
-    assert.equal(validateSubmission(calibrationPackage).ok, false);
+    assert.equal(validateSubmission(malformedCalibrationPackage).ok, false);
     assert.equal(validateSubmission(missingSyntheticProvenance).ok, false);
     for (const candidate of [
       zeroDigest,
@@ -1079,7 +1353,7 @@ void describe('shared result-package contract', () => {
       {
         envelope: fixture,
         request_context: {
-          source: 'aiq-wiki-web',
+          source: 'aiq-web',
           received_at: receipt.receivedAt,
           idempotency_key: fixtureRunId,
           package_sha256: receipt.packageSha256,

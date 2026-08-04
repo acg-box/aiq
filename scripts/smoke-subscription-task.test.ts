@@ -8,7 +8,7 @@ const smokeSourceUrl = new URL(
   import.meta.url,
 );
 
-void test('subscription smokes reject unsupported Windows before Cargo', async () => {
+void test('subscription smokes reject non-macOS platforms before Cargo', async () => {
   const makefile = await readFile(makefileUrl, 'utf8');
   const gate = makefile.match(
     /\[tasks\.require-subscription-smoke-platform\][\s\S]*?\[tasks\.smoke-subscription\]/,
@@ -22,7 +22,7 @@ void test('subscription smokes reject unsupported Windows before Cargo', async (
 
   assert.ok(gate, 'subscription smoke platform gate is missing');
   assert.match(gate, /\[tasks\.require-subscription-smoke-platform\.windows\]/);
-  assert.match(gate, /supported only on macOS and Linux/);
+  assert.match(gate, /supported only on macOS/);
   assert.doesNotMatch(gate, /command\s*=\s*"cargo"/);
 
   assert.ok(smoke, 'subscription smoke task is missing');

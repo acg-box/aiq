@@ -4,6 +4,7 @@ import {
   MAX_VERIFICATION_BYTES,
   validateVerification,
   type ValidatedVerification,
+  type ValidatedCalibrationVerification,
   type VerificationClaim,
   type VerifierRejection,
 } from './verification-contract.ts';
@@ -17,6 +18,9 @@ export interface VerificationDependencies {
   stage(verification: ValidatedVerification): Promise<unknown>;
   recordAttestation(verification: ValidatedVerification): Promise<void>;
   publish(verification: ValidatedVerification): Promise<void>;
+  stageCalibration?(verification: ValidatedCalibrationVerification): Promise<unknown>;
+  recordCalibrationAttestation?(verification: ValidatedCalibrationVerification): Promise<unknown>;
+  publishCalibration?(verification: ValidatedCalibrationVerification): Promise<unknown>;
   reject(claim: VerificationClaim, rejection: VerifierRejection): Promise<void>;
 }
 
@@ -186,6 +190,35 @@ export async function handleVerification(
       published: false,
       matrix_batch_id: validation.operation.rejection.matrix_batch_id,
       package_sha256: validation.operation.rejection.package_sha256,
+    });
+  }
+  if (validation.operation.kind === 'calibration_verification') {
+    const verification = validation.operation.verification;
+    try {
+      if (
+        !dependencies.stageCalibration ||
+        !dependencies.recordCalibrationAttestation ||
+        !dependencies.publishCalibration
+      )
+        throw new Error('Calibration verification is not configured.');
+      const stageResult = await dependencies.stageCalibration(verification);
+      if (stageResult !== 'recorded' && stageResult !== 'duplicate')
+        throw new Error('Invalid calibration stage disposition.');
+      const attestationResult = await dependencies.recordCalibrationAttestation(verification);
+      if (attestationResult !== 'recorded' && attestationResult !== 'duplicate')
+        throw new Error('Invalid calibration attestation disposition.');
+      const publishResult = await dependencies.publishCalibration(verification);
+      if (publishResult !== 'published' && publishResult !== 'duplicate')
+        throw new Error('Invalid calibration publish disposition.');
+    } catch {
+      return json(502, { error: 'VERIFICATION_UPSTREAM_ERROR' });
+    }
+    return json(200, {
+      status: 'calibration_verified_published',
+      official_eligible: false,
+      ranking_eligible: false,
+      run_id: verification.stage.run_id,
+      package_sha256: verification.stage.package_sha256,
     });
   }
   const verification = validation.operation.verification;

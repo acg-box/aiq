@@ -4,18 +4,22 @@
 skip_core_tasks = true
 
 # Check
-# | task              | type      | cwd |
-# | ----------------- | --------- | --- |
-# | check             | composite |     |
-# | check-database    | command   |     |
-# | check-rust        | command   |     |
-# | check-typescript  | command   |     |
-# | storage-lifecycle | command   |     |
+# | task                   | type      | cwd |
+# | ---------------------- | --------- | --- |
+# | check                   | composite |     |
+# | check-database          | command   |     |
+# | check-rust              | command   |     |
+# | check-typescript        | command   |     |
+# | storage-lifecycle       | command   |     |
 
 [tasks.check]
 clear = true
 workspace = false
-dependencies = ["check-database", "check-rust", "check-typescript"]
+dependencies = [
+	"check-database",
+	"check-rust",
+	"check-typescript",
+]
 
 [tasks.check-database]
 workspace = false
@@ -38,11 +42,11 @@ command = "npm"
 args = ["run", "storage:lifecycle"]
 
 # Build
-# | task       | type      | cwd |
-# | ---------- | --------- | --- |
-# | build      | composite |     |
-# | build-rust | command   |     |
-# | build-web  | command   |     |
+# | task                        | type      | cwd |
+# | --------------------------- | --------- | --- |
+# | build                       | composite |     |
+# | build-rust                  | command   |     |
+# | build-web                   | command   |     |
 
 [tasks.build]
 clear = true
@@ -218,25 +222,19 @@ args = ["scripts/list-template-markers.ts"]
 # Initialize
 # | task                  | type    | cwd |
 # | --------------------- | ------- | --- |
-# | init-database         | command |     |
-# | init-preview-database | command |     |
+# | init-database | command |     |
 
 [tasks.init-database]
 workspace = false
 command = "node"
 args = ["databases/init.ts"]
 
-[tasks.init-preview-database]
-workspace = false
-command = "node"
-args = ["databases/preview-init.ts"]
-
 # Smoke
 # | task                      | type    | cwd |
 # | ------------------------- | ------- | --- |
 # | smoke-database            | command |     |
+# | smoke-calibration-database | command |     |
 # | smoke-live-web            | command |     |
-# | smoke-preview-web         | command |     |
 # | smoke-subscription        | command |     |
 # | smoke-controlled-subscription | command |     |
 
@@ -250,24 +248,29 @@ fi
 exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/smoke.sql
 '''
 
+[tasks.smoke-calibration-database]
+workspace = false
+script = '''
+if [ -z "${AIQ_DATABASE_URL:-}" ]; then
+	echo "AIQ_DATABASE_URL is required for smoke-calibration-database." >&2
+	exit 2
+fi
+exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/calibration-integration.sql
+'''
+
 [tasks.smoke-live-web]
 workspace = false
 command = "npm"
-args = ["run", "test:browser:live-stack", "--workspace", "@aiq/wiki-web"]
-
-[tasks.smoke-preview-web]
-workspace = false
-command = "npm"
-args = ["run", "test:browser:preview-stack", "--workspace", "@aiq/wiki-web"]
+args = ["run", "test:browser:live-stack", "--workspace", "@aiq/web"]
 
 [tasks.require-subscription-smoke-platform]
 private = true
 workspace = false
 script = '''
 case "$(uname -s)" in
-  Darwin|Linux) ;;
+  Darwin) ;;
   *)
-    echo "subscription smoke tasks are supported only on macOS and Linux." >&2
+    echo "subscription smoke tasks are supported only on macOS." >&2
     exit 2
     ;;
 esac
@@ -276,7 +279,7 @@ esac
 [tasks.require-subscription-smoke-platform.windows]
 script_runner = "@powershell"
 script = '''
-Write-Error "subscription smoke tasks are supported only on macOS and Linux."
+Write-Error "subscription smoke tasks are supported only on macOS."
 exit 2
 '''
 
@@ -358,10 +361,10 @@ args = [
 	"--test-threads=1",
 ]
 
-[tasks.require-node-24-18]
+[tasks.require-node-24-15]
 workspace = false
 command = "node"
 args = [
 	"-e",
-	"const [major, minor] = process.versions.node.split('.').map(Number); if (major < 24 || (major === 24 && minor < 18)) { console.error('Node.js 24.18.0 or newer is required'); process.exit(1); }",
+	"const [major, minor] = process.versions.node.split('.').map(Number); if (major < 24 || (major === 24 && minor < 15)) { console.error('Node.js 24.15.0 or newer is required'); process.exit(1); }",
 ]

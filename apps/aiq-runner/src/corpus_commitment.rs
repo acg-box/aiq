@@ -21,8 +21,39 @@ use sha2::{Digest as _, Sha256};
 
 use crate::{
 	protocol,
-	scoring::{AIQ_CORE_V1_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
+	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
+};
+
+/// Ordered catalog identity for the six controlled contrast variants.
+pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
+	"sha256:984d37e6db5a9d00b21fe0bb1a940d5712c0974c90a56f232a81347425410c24";
+
+const CORE_CATALOG_JSON: &str =
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json");
+const CORE_CATALOG: CatalogContract = CatalogContract {
+	catalog_schema_version: "aiq.catalog.v1",
+	task_set_id: AIQ_TASK_SET_ID,
+	task_set_version: AIQ_TASK_SET_VERSION,
+	identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256,
+	identity_scope: "ordered_full_task_metadata",
+	tasks: CatalogTaskAuthority::Embedded(CORE_CATALOG_JSON),
+};
+const CONTRAST_TASK_IDS: [&str; 6] = [
+	"contrast-coupled-challenge-01",
+	"contrast-coupled-reference-01",
+	"contrast-evidence-challenge-01",
+	"contrast-evidence-reference-01",
+	"contrast-recovery-challenge-01",
+	"contrast-recovery-reference-01",
+];
+const CONTRAST_CATALOG: CatalogContract = CatalogContract {
+	catalog_schema_version: "aiq.contrast-corpus.v1",
+	task_set_id: "aiq-core-contrast",
+	task_set_version: AIQ_TASK_SET_VERSION,
+	identity_sha256: CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
+	identity_scope: "ordered_six_contrast_variants",
+	tasks: CatalogTaskAuthority::FixedOrderedIds(&CONTRAST_TASK_IDS),
 };
 
 /// Explicit execution class selected before any benchmark work starts.
@@ -33,6 +64,12 @@ pub enum RunClass {
 	Calibration,
 	/// Complete non-synthetic 72-task by 17-model execution.
 	Official,
+}
+
+#[derive(Clone, Copy)]
+enum CatalogTaskAuthority {
+	Embedded(&'static str),
+	FixedOrderedIds(&'static [&'static str]),
 }
 
 /// Signed public-safe benchmark identities required to replay a real run.
@@ -82,6 +119,7 @@ pub struct RunProvenanceCommitment {
 pub struct ValidatedCorpusCommitment {
 	release_id: String,
 	canonical_sha256: String,
+	catalog_digest: String,
 	harness_digest: String,
 	prompt_digest: String,
 	tool_policy_digest: String,
@@ -104,6 +142,12 @@ impl ValidatedCorpusCommitment {
 	#[must_use]
 	pub fn canonical_sha256(&self) -> &str {
 		&self.canonical_sha256
+	}
+
+	/// Returns the exact catalog identity committed by this corpus.
+	#[must_use]
+	pub fn catalog_digest(&self) -> &str {
+		&self.catalog_digest
 	}
 
 	/// Returns the canonical source-manifest digest.
@@ -171,7 +215,7 @@ impl ValidatedCorpusCommitment {
 			run_class,
 			corpus_release_id: self.release_id.clone(),
 			corpus_commitment_sha256: self.canonical_sha256.clone(),
-			catalog_digest: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+			catalog_digest: self.catalog_digest.clone(),
 			task_set_digest,
 			evaluator_digest,
 			runtime_digest,
@@ -278,6 +322,16 @@ impl ValidatedModelToolchain {
 
 		entries.join(separator)
 	}
+}
+
+#[derive(Clone, Copy)]
+struct CatalogContract {
+	catalog_schema_version: &'static str,
+	task_set_id: &'static str,
+	task_set_version: &'static str,
+	identity_sha256: &'static str,
+	identity_scope: &'static str,
+	tasks: CatalogTaskAuthority,
 }
 
 #[derive(Deserialize)]
@@ -466,7 +520,7 @@ pub(crate) fn fixture_run_provenance_for_class(
 		run_class,
 		corpus_release_id: "corpus_fixture".to_owned(),
 		corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
-		catalog_digest: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+		catalog_digest: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
 		task_set_digest,
 		evaluator_digest,
 		runtime_digest,
@@ -535,13 +589,20 @@ pub fn validate_evaluator_runtime_commitment(
 	.map_err(|_| CorpusCommitmentError::new("corpus model toolchain policy is invalid"))?;
 	let commitment: CorpusCommitment = serde_json::from_value(value.clone())
 		.map_err(|_| CorpusCommitmentError::new("corpus commitment v2 shape is invalid"))?;
+	let catalog_contract = catalog_contract(&commitment.catalog)?;
 	let source_manifest = commitment
 		.execution
 		.runtime_provenance
 		.pointer("/runner/source_manifest")
 		.ok_or_else(|| CorpusCommitmentError::new("corpus commitment omits source manifest"))?;
 
-	validate_deterministic_execution_digests(&commitment.execution, source_manifest, &policy)?;
+	validate_deterministic_execution_digests(
+		&commitment.execution,
+		source_manifest,
+		&policy,
+		catalog_contract,
+		None,
+	)?;
 	validate_model_toolchain(toolchain_root, &policy, runtime)?;
 
 	Ok(())
@@ -605,7 +666,41 @@ pub fn validate_corpus_commitment(
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
-	validate_corpus_commitment_inner(path, tasks, source_root)
+	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
+}
+
+/// Loads and validates the immutable 72-task AIQ Core 1.0.2 corpus.
+pub fn validate_core_corpus_commitment(
+	path: &Path,
+	tasks: &[TaskDefinition],
+	source_root: &Path,
+) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
+	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
+}
+
+/// Loads the six controlled AIQ Core 1.0.2 contrast variants.
+///
+/// The caller supplies the expected canonical commitment digest. Contrast tasks
+/// are calibration-only and are not part of the 72-task core catalog.
+pub fn validate_contrast_corpus_commitment(
+	path: &Path,
+	tasks: &[TaskDefinition],
+	source_root: &Path,
+	expected_canonical_sha256: &str,
+) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
+	if !valid_digest(expected_canonical_sha256) {
+		return Err(CorpusCommitmentError::new("contrast corpus digest is invalid"));
+	}
+
+	let validated = validate_corpus_commitment_inner(path, tasks, source_root, CONTRAST_CATALOG)?;
+
+	if validated.canonical_sha256() != expected_canonical_sha256 {
+		return Err(CorpusCommitmentError::new(
+			"contrast corpus does not match the expected canonical commitment",
+		));
+	}
+
+	Ok(validated)
 }
 
 /// Computes the ordered selected evaluator identity commitment.
@@ -627,8 +722,16 @@ pub fn validate_run_provenance(
 	task_set_hash: &str,
 	preflight_digest: &str,
 ) -> Result<(), CorpusCommitmentError> {
+	let catalog_allowed = match provenance.run_class {
+		RunClass::Official => provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256,
+		RunClass::Calibration => {
+			provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256
+				|| provenance.catalog_digest == CONTRAST_CATALOG.identity_sha256
+		},
+	};
+
 	if provenance.schema_version != "aiq.run-provenance.v2"
-		|| provenance.catalog_digest != AIQ_CORE_V1_TASK_IDENTITY_SHA256
+		|| !catalog_allowed
 		|| provenance.task_set_digest != task_set_hash
 		|| provenance.preflight_digest != preflight_digest
 		|| !valid_release_id(&provenance.corpus_release_id)
@@ -665,10 +768,15 @@ pub fn validate_run_provenance(
 
 /// Hashes the actual runner executable without recording its path.
 pub fn runner_executable_digest() -> Result<String, CorpusCommitmentError> {
-	let path = env::current_exe()
-		.map_err(|_| CorpusCommitmentError::new("runner executable cannot be resolved"))?;
+	current_executable_digest("runner executable")
+}
 
-	hash_executable(&path, "runner executable")
+/// Hashes the executable for the current process without recording its path.
+pub fn current_executable_digest(label: &str) -> Result<String, CorpusCommitmentError> {
+	let path = env::current_exe()
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be resolved")))?;
+
+	hash_executable(&path, label)
 }
 
 /// Resolves and hashes the exact Codex selector without recording its path.
@@ -811,6 +919,7 @@ fn validate_corpus_commitment_inner(
 	path: &Path,
 	tasks: &[TaskDefinition],
 	source_root: &Path,
+	catalog_contract: CatalogContract,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
@@ -836,8 +945,8 @@ fn validate_corpus_commitment_inner(
 		CorpusCommitmentError::new(format!("invalid corpus commitment: {error}"))
 	})?;
 
-	validate_header(&commitment)?;
-	validate_catalog_tasks(&commitment.tasks)?;
+	validate_header(&commitment, catalog_contract)?;
+	validate_catalog_tasks(&commitment.tasks, catalog_contract)?;
 
 	let baseline_workspace_digests = validate_selected_tasks(&commitment.tasks, tasks)?;
 	let source_manifest =
@@ -890,6 +999,8 @@ fn validate_corpus_commitment_inner(
 		&commitment.execution,
 		source_manifest,
 		&model_toolchain_policy,
+		catalog_contract,
+		Some(tasks),
 	)?;
 
 	let source_manifest: SourceManifest = serde_json::from_value(source_manifest.clone())
@@ -903,6 +1014,7 @@ fn validate_corpus_commitment_inner(
 	Ok(ValidatedCorpusCommitment {
 		release_id: commitment.release_id,
 		canonical_sha256,
+		catalog_digest: catalog_contract.identity_sha256.to_owned(),
 		harness_digest: commitment.execution.harness_sha256,
 		prompt_digest: commitment.execution.runner_prompt_source_sha256,
 		tool_policy_digest: commitment.execution.declared_tool_policy_sha256,
@@ -952,16 +1064,61 @@ fn platform_minimal_path_entries() -> &'static [&'static str] {
 	entries
 }
 
+fn catalog_tool_policy_tasks(
+	catalog_contract: CatalogContract,
+	selected_tasks: Option<&[TaskDefinition]>,
+) -> Result<Vec<Value>, CorpusCommitmentError> {
+	match catalog_contract.tasks {
+		CatalogTaskAuthority::Embedded(catalog_json) => {
+			let catalog: FrozenCatalog = serde_json::from_str(catalog_json).map_err(|error| {
+				CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
+			})?;
+
+			Ok(catalog
+				.tasks
+				.into_iter()
+				.map(|task| {
+					serde_json::json!({
+						"task_id": task.task_id,
+						"allowed_tools": task.allowed_tools,
+					})
+				})
+				.collect())
+		},
+		CatalogTaskAuthority::FixedOrderedIds(expected_ids) => {
+			let tasks = selected_tasks.ok_or_else(|| {
+				CorpusCommitmentError::new("contrast tool policy requires the exact selected tasks")
+			})?;
+
+			if tasks.len() != expected_ids.len()
+				|| tasks.iter().zip(expected_ids).any(|(task, expected)| task.task_id != *expected)
+			{
+				return Err(CorpusCommitmentError::new(
+					"contrast tasks are missing, duplicated, or reordered",
+				));
+			}
+
+			Ok(tasks
+				.iter()
+				.map(|task| {
+					serde_json::json!({
+						"task_id": task.task_id,
+						"allowed_tools": task.allowed_tools,
+					})
+				})
+				.collect())
+		},
+	}
+}
+
 fn validate_deterministic_execution_digests(
 	execution: &CorpusExecution,
 	source_manifest: &Value,
 	model_toolchain_policy: &ExecutionToolPolicy,
+	catalog_contract: CatalogContract,
+	selected_tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), CorpusCommitmentError> {
-	let catalog: FrozenCatalog =
-		serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
-			.map_err(|error| {
-				CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
-			})?;
+	let tool_policy_tasks = catalog_tool_policy_tasks(catalog_contract, selected_tasks)?;
 	let observed_environment = protocol::canonical_hash(&execution.runtime_provenance)
 		.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
 	let runner_prompt = source_manifest
@@ -978,10 +1135,7 @@ fn validate_deterministic_execution_digests(
 	let observed_tool_policy = protocol::canonical_hash(&serde_json::json!({
 		"protocol": "aiq.tool-policy.v1",
 		"evidence_class": "declared_policy_commitment",
-		"catalog": catalog.tasks.iter().map(|task| serde_json::json!({
-			"task_id": task.task_id,
-			"allowed_tools": task.allowed_tools,
-		})).collect::<Vec<_>>(),
+		"catalog": tool_policy_tasks,
 		"model_toolchain": model_toolchain_policy,
 	}))
 	.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
@@ -1007,18 +1161,21 @@ fn validate_deterministic_execution_digests(
 	Ok(())
 }
 
-fn validate_header(commitment: &CorpusCommitment) -> Result<(), CorpusCommitmentError> {
+fn validate_header(
+	commitment: &CorpusCommitment,
+	catalog_contract: CatalogContract,
+) -> Result<(), CorpusCommitmentError> {
 	let catalog = &commitment.catalog;
 
 	if commitment.schema_version != "aiq.corpus-commitment.v2"
 		|| !valid_release_id(&commitment.release_id)
 		|| !commitment.controlled
 		|| commitment.synthetic
-		|| catalog.schema_version != "aiq.catalog.v1"
-		|| catalog.task_set_id != "aiq-core"
-		|| catalog.task_set_version != AIQ_SCORING_VERSION
-		|| catalog.identity_sha256 != AIQ_CORE_V1_TASK_IDENTITY_SHA256
-		|| catalog.identity_scope != "ordered_full_task_metadata"
+		|| catalog.schema_version != catalog_contract.catalog_schema_version
+		|| catalog.task_set_id != catalog_contract.task_set_id
+		|| catalog.task_set_version != catalog_contract.task_set_version
+		|| catalog.identity_sha256 != catalog_contract.identity_sha256
+		|| catalog.identity_scope != catalog_contract.identity_scope
 	{
 		return Err(CorpusCommitmentError::new("corpus commitment header is invalid"));
 	}
@@ -1038,6 +1195,17 @@ fn validate_header(commitment: &CorpusCommitment) -> Result<(), CorpusCommitment
 	}
 
 	Ok(())
+}
+
+fn catalog_contract(catalog: &CorpusCatalog) -> Result<CatalogContract, CorpusCommitmentError> {
+	[CORE_CATALOG]
+		.into_iter()
+		.find(|contract| {
+			catalog.task_set_id == AIQ_TASK_SET_ID
+				&& catalog.task_set_version == contract.task_set_version
+				&& catalog.identity_sha256 == contract.identity_sha256
+		})
+		.ok_or_else(|| CorpusCommitmentError::new("corpus catalog identity is unsupported"))
 }
 
 fn validate_source_manifest(
@@ -1180,26 +1348,46 @@ fn valid_source_path(value: &str) -> bool {
 		})
 }
 
-fn validate_catalog_tasks(tasks: &[CorpusTask]) -> Result<(), CorpusCommitmentError> {
-	let catalog: FrozenCatalog =
-		serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
-			.map_err(|error| {
+fn validate_catalog_tasks(
+	tasks: &[CorpusTask],
+	catalog_contract: CatalogContract,
+) -> Result<(), CorpusCommitmentError> {
+	match catalog_contract.tasks {
+		CatalogTaskAuthority::Embedded(catalog_json) => {
+			let catalog: FrozenCatalog = serde_json::from_str(catalog_json).map_err(|error| {
 				CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
 			})?;
-	let expected = catalog
-		.tasks
-		.into_iter()
-		.map(|task| (task.task_id, task.task_version))
-		.collect::<BTreeMap<_, _>>();
-	let observed = tasks
-		.iter()
-		.map(|task| (task.task_id.clone(), task.task_version.clone()))
-		.collect::<BTreeMap<_, _>>();
+			let expected = catalog
+				.tasks
+				.into_iter()
+				.map(|task| (task.task_id, task.task_version))
+				.collect::<BTreeMap<_, _>>();
+			let observed = tasks
+				.iter()
+				.map(|task| (task.task_id.clone(), task.task_version.clone()))
+				.collect::<BTreeMap<_, _>>();
 
-	if tasks.len() != 72 || expected.len() != 72 || observed.len() != 72 || observed != expected {
-		return Err(CorpusCommitmentError::new(
-			"corpus commitment does not cover the exact frozen catalog",
-		));
+			if tasks.len() != 72
+				|| expected.len() != 72
+				|| observed.len() != 72
+				|| observed != expected
+			{
+				return Err(CorpusCommitmentError::new(
+					"corpus commitment does not cover the exact frozen catalog",
+				));
+			}
+		},
+		CatalogTaskAuthority::FixedOrderedIds(expected_ids) => {
+			if tasks.len() != expected_ids.len()
+				|| tasks.iter().zip(expected_ids).any(|(task, expected_id)| {
+					task.task_id != *expected_id
+						|| task.task_version != catalog_contract.task_set_version
+				}) {
+				return Err(CorpusCommitmentError::new(
+					"contrast commitment does not cover the exact six ordered variants",
+				));
+			}
+		},
 	}
 
 	for task in tasks {
@@ -1354,7 +1542,7 @@ mod tests {
 			SourceManifestEntry,
 		},
 		protocol, runner,
-		scoring::AIQ_CORE_V1_TASK_IDENTITY_SHA256,
+		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
 
 	#[test]
@@ -1391,9 +1579,10 @@ mod tests {
 			"runner": {"source_manifest": source_manifest},
 			"model_toolchain": policy,
 		});
-		let catalog: super::FrozenCatalog =
-			serde_json::from_str(include_str!("../../../benchmarks/catalog/aiq-core-v1.json"))
-				.expect("embedded catalog");
+		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
+			"../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"
+		))
+		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
 			"protocol": "aiq.tool-policy.v1",
 			"evidence_class": "declared_policy_commitment",
@@ -1439,8 +1628,14 @@ mod tests {
 			.pointer("/runner/source_manifest")
 			.expect("source manifest");
 
-		super::validate_deterministic_execution_digests(&execution, source, &policy)
-			.expect("valid deterministic digests");
+		super::validate_deterministic_execution_digests(
+			&execution,
+			source,
+			&policy,
+			super::CORE_CATALOG,
+			None,
+		)
+		.expect("valid deterministic digests");
 
 		for field in ["prompt", "tool", "network", "environment"] {
 			let digest = format!("sha256:{}", "f".repeat(64));
@@ -1455,8 +1650,14 @@ mod tests {
 			}
 
 			assert!(
-				super::validate_deterministic_execution_digests(&mutated, source, &policy,)
-					.is_err()
+				super::validate_deterministic_execution_digests(
+					&mutated,
+					source,
+					&policy,
+					super::CORE_CATALOG,
+					None,
+				)
+				.is_err()
 			);
 		}
 	}
@@ -1535,9 +1736,9 @@ mod tests {
 			synthetic: false,
 			catalog: CorpusCatalog {
 				schema_version: "aiq.catalog.v1".to_owned(),
-				task_set_id: "aiq-core".to_owned(),
-				task_set_version: "1.0.0".to_owned(),
-				identity_sha256: AIQ_CORE_V1_TASK_IDENTITY_SHA256.to_owned(),
+				task_set_id: AIQ_TASK_SET_ID.to_owned(),
+				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
 				identity_scope: "ordered_full_task_metadata".to_owned(),
 			},
 			execution: CorpusExecution {
@@ -1554,19 +1755,111 @@ mod tests {
 
 	#[test]
 	fn current_corpus_header_is_strict() {
-		assert!(corpus_commitment::validate_header(&commitment()).is_ok());
+		assert!(corpus_commitment::validate_header(&commitment(), super::CORE_CATALOG).is_ok());
+
+		let mut predecessor = commitment();
+
+		predecessor.catalog.task_set_version = "1.0.1".to_owned();
+		predecessor.catalog.identity_sha256 =
+			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
+
+		assert!(corpus_commitment::validate_header(&predecessor, super::CORE_CATALOG).is_err());
+		assert!(super::catalog_contract(&predecessor.catalog).is_err());
+
+		let mut contrast = commitment();
+
+		contrast.catalog.schema_version = super::CONTRAST_CATALOG.catalog_schema_version.to_owned();
+		contrast.catalog.task_set_id = super::CONTRAST_CATALOG.task_set_id.to_owned();
+		contrast.catalog.task_set_version = super::CONTRAST_CATALOG.task_set_version.to_owned();
+		contrast.catalog.identity_sha256 = super::CONTRAST_CATALOG.identity_sha256.to_owned();
+		contrast.catalog.identity_scope = super::CONTRAST_CATALOG.identity_scope.to_owned();
+
+		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
+		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
+		assert_eq!(contrast.catalog.identity_scope, "ordered_six_contrast_variants");
+		assert_eq!(
+			contrast.catalog.identity_sha256,
+			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256
+		);
+		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG,).is_ok());
+		assert!(corpus_commitment::validate_header(&contrast, super::CORE_CATALOG).is_err());
 
 		let mut synthetic = commitment();
 
 		synthetic.synthetic = true;
 
-		assert!(corpus_commitment::validate_header(&synthetic).is_err());
+		assert!(corpus_commitment::validate_header(&synthetic, super::CORE_CATALOG).is_err());
 
 		let mut uncontrolled = commitment();
 
 		uncontrolled.controlled = false;
 
-		assert!(corpus_commitment::validate_header(&uncontrolled).is_err());
+		assert!(corpus_commitment::validate_header(&uncontrolled, super::CORE_CATALOG).is_err());
+	}
+
+	#[test]
+	fn contrast_tool_policy_requires_all_six_tasks_in_order() {
+		let mut tasks = runner::synthetic_demo_tasks()[..6].to_vec();
+
+		for (task, task_id) in tasks.iter_mut().zip(super::CONTRAST_TASK_IDS) {
+			task.task_id = task_id.to_owned();
+			task.task_version = super::AIQ_TASK_SET_VERSION.to_owned();
+		}
+
+		let policy = super::catalog_tool_policy_tasks(super::CONTRAST_CATALOG, Some(&tasks))
+			.expect("contrast tool policy");
+
+		assert_eq!(policy.len(), 6);
+		assert_eq!(
+			policy[0].pointer("/task_id").and_then(serde_json::Value::as_str),
+			Some("contrast-coupled-challenge-01")
+		);
+		assert!(super::catalog_tool_policy_tasks(super::CONTRAST_CATALOG, None).is_err());
+
+		tasks.swap(0, 1);
+
+		assert!(super::catalog_tool_policy_tasks(super::CONTRAST_CATALOG, Some(&tasks),).is_err());
+	}
+
+	#[test]
+	fn current_and_contrast_provenance_enforce_run_class() {
+		let task_set = format!("sha256:{}", "b".repeat(64));
+		let preflight = format!("sha256:{}", "c".repeat(64));
+		let mut provenance = corpus_commitment::fixture_run_provenance_for_class(
+			super::RunClass::Calibration,
+			task_set.clone(),
+			format!("sha256:{}", "d".repeat(64)),
+			format!("sha256:{}", "e".repeat(64)),
+			preflight.clone(),
+		);
+
+		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()
+		);
+
+		provenance.run_class = super::RunClass::Official;
+
+		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()
+		);
+
+		provenance.catalog_digest = super::CONTRAST_CATALOG.identity_sha256.to_owned();
+
+		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()
+		);
+
+		provenance.run_class = super::RunClass::Calibration;
+
+		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_ok()
+		);
+
+		provenance.run_class = super::RunClass::Official;
+
+		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()
+		);
 	}
 	#[test]
 	fn source_manifest_is_checked_against_current_bytes_and_executables_are_hashed() {

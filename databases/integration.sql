@@ -23,6 +23,136 @@ begin
 end;
 $$;
 
+select pg_temp.aiq_assert(
+  aiq_private.has_exact_jsonb_keys('{"a":1,"b":2}'::jsonb,array['b','a']::text[]),
+  'exact JSON object keys must not depend on caller order or database collation'
+);
+select pg_temp.aiq_assert(
+  not aiq_private.has_exact_jsonb_keys('{"a":1,"b":2}'::jsonb,array['a','a','b']::text[]),
+  'exact JSON object keys must reject duplicate expected keys'
+);
+
+create or replace function pg_temp.aiq_efficiency_pricing()
+returns jsonb
+language sql
+immutable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'method', 'standard_api_equivalent_text_token_estimate',
+    'version', 'aiq.standard-api-equivalent-usd.v1',
+    'as_of', '2026-08-02',
+    'source', 'https://developers.openai.com/api/docs/pricing',
+    'currency', 'USD',
+    'processing_tier', 'standard',
+    'rates', jsonb_build_array(
+      jsonb_build_object(
+        'model', 'gpt-5.6-sol',
+        'input_usd_nanos_per_token', 5000,
+        'cached_input_usd_nanos_per_token', 500,
+        'cache_write_input_usd_nanos_per_token', 6250,
+        'output_usd_nanos_per_token', 30000
+      ),
+      jsonb_build_object(
+        'model', 'gpt-5.6-terra',
+        'input_usd_nanos_per_token', 2000,
+        'cached_input_usd_nanos_per_token', 200,
+        'cache_write_input_usd_nanos_per_token', 2500,
+        'output_usd_nanos_per_token', 12000
+      ),
+      jsonb_build_object(
+        'model', 'gpt-5.6-luna',
+        'input_usd_nanos_per_token', 200,
+        'cached_input_usd_nanos_per_token', 20,
+        'cache_write_input_usd_nanos_per_token', 250,
+        'output_usd_nanos_per_token', 1200
+      )
+    ),
+    'formula', '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again',
+    'hosted_tool_fees_included', false,
+    'limitation', 'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing'
+  );
+$$;
+
+select pg_temp.aiq_assert(
+  aiq_private.dto_adapter_failure_is_valid(jsonb_build_object(
+    'artifacts', '[]'::jsonb,
+    'exit_code', 0,
+    'kind', 'workspace_integrity',
+    'message', 'post-invocation output evidence retention failed',
+    'stderr', '',
+    'stderr_truncated', false,
+    'stdout_truncated', false
+  )),
+  'adapter failure must accept the paid workspace-integrity classification'
+);
+
+select pg_temp.aiq_assert(
+  aiq_private.result_efficiency_v1_is_valid(jsonb_build_object(
+    'cost_evidence_level', null,
+    'cost_status', 'unavailable_context_band',
+    'model', jsonb_build_object('family', 'luna', 'reasoning_effort', 'low'),
+    'observed_wall_ms', 1,
+    'provider_tokens', jsonb_build_object(
+      'input', 272001,
+      'cached_input', 0,
+      'cache_write_input', 0,
+      'output', 0
+    ),
+    'provider_tokens_evidence_level', 'verifier_recomputed',
+    'provider_tokens_source', 'provider_reported',
+    'source_result_id', 'result_' || repeat('a', 64),
+    'standard_api_equivalent_usd_nanos', null,
+    'task_id', 'coding-01',
+    'wall_time_evidence_level', 'runner_observed'
+  )),
+  'aggregate input above 272000 must use the unavailable context-band shape'
+);
+
+select pg_temp.aiq_assert(
+  aiq_private.result_efficiency_v1_is_valid(jsonb_build_object(
+    'cost_evidence_level', 'verifier_recomputed',
+    'cost_status', 'estimated',
+    'model', jsonb_build_object('family', 'luna', 'reasoning_effort', 'low'),
+    'observed_wall_ms', 1,
+    'provider_tokens', jsonb_build_object(
+      'input', 272000,
+      'cached_input', 0,
+      'cache_write_input', 0,
+      'output', 0
+    ),
+    'provider_tokens_evidence_level', 'verifier_recomputed',
+    'provider_tokens_source', 'provider_reported',
+    'source_result_id', 'result_' || repeat('b', 64),
+    'standard_api_equivalent_usd_nanos', 54400000,
+    'task_id', 'coding-01',
+    'wall_time_evidence_level', 'runner_observed'
+  )),
+  'the exact 272000 short-context boundary must remain priced'
+);
+
+select pg_temp.aiq_assert(
+  not aiq_private.result_efficiency_v1_is_valid(jsonb_build_object(
+    'cost_evidence_level', 'verifier_recomputed',
+    'cost_status', 'unavailable_context_band',
+    'model', jsonb_build_object('family', 'luna', 'reasoning_effort', 'low'),
+    'observed_wall_ms', 1,
+    'provider_tokens', jsonb_build_object(
+      'input', 272001,
+      'cached_input', 0,
+      'cache_write_input', 0,
+      'output', 0
+    ),
+    'provider_tokens_evidence_level', 'verifier_recomputed',
+    'provider_tokens_source', 'provider_reported',
+    'source_result_id', 'result_' || repeat('c', 64),
+    'standard_api_equivalent_usd_nanos', 1,
+    'task_id', 'coding-01',
+    'wall_time_evidence_level', 'runner_observed'
+  )),
+  'unavailable context-band evidence must not retain a cost or cost authority'
+);
+
 -- Build one valid signed-package shape for the ingress and lease checks. The
 -- signature is structural test data; this check does not claim cryptographic
 -- verification.
@@ -95,7 +225,7 @@ begin
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.0'
+    'scoring_version', '1.0.2'
   )), 8);
 
   for task_number in 1..72 loop
@@ -111,7 +241,7 @@ begin
         'schema_version', 'aiq.result.v2',
         'run_id', run_id,
         'task_id', 'task-' || lpad(task_number::text, 2, '0'),
-        'task_version', '1.0.0',
+        'task_version', '1.0.2',
         'task_hash', task_hash,
         'model', model,
         'status', 'completed',
@@ -153,8 +283,9 @@ begin
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.0',
+    'scoring_version', '1.0.2',
     'models', models,
+    'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
     'finished_unix_ms', 1785164400001,
     'synthetic', true,
@@ -372,20 +503,69 @@ select
     'content_hash', input.envelope ->> 'content_hash',
     'signer', input.envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.0',
+    'task_set_version', '1.0.2',
     'task_set_hash', input.envelope #>> '{payload,task_set_hash}',
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.0',
+    'benchmark_version', 'aiq-core@1.0.2',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.0',
+    'scoring_version', '1.0.2',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', 1785164400000,
     'started_unix_ms', 1785164400000,
     'finished_unix_ms', 1785164400001,
+    'execution_concurrency', 1,
     'synthetic', true,
+    'result_efficiency', (
+      select jsonb_agg(
+        jsonb_build_object(
+          'cost_evidence_level', null,
+          'cost_status', 'unavailable_missing_usage',
+          'model', result -> 'model',
+          'observed_wall_ms', null,
+          'provider_tokens', '{}'::jsonb,
+          'provider_tokens_evidence_level', null,
+          'provider_tokens_source', null,
+          'source_result_id', result ->> 'result_id',
+          'standard_api_equivalent_usd_nanos', null,
+          'task_id', result ->> 'task_id',
+          'wall_time_evidence_level', null
+        )
+        order by result -> 'model', result ->> 'task_id'
+      )
+      from jsonb_array_elements(input.envelope #> '{payload,results}') result
+    ),
+    'efficiency', (
+      select jsonb_agg(
+        jsonb_build_object(
+          'schema_version', 'aiq.calibration-efficiency.v1',
+          'model', model.value,
+          'selected_tasks', 72,
+          'observed_wall_tasks', 0,
+          'total_observed_wall_ms', null,
+          'median_observed_wall_ms', null,
+          'p95_observed_wall_ms', null,
+          'provider_token_totals', '{}'::jsonb,
+          'provider_token_coverage', jsonb_build_object(
+            'selected_tasks', 72,
+            'input_tasks', 0,
+            'cached_input_tasks', 0,
+            'cache_write_input_tasks', 0,
+            'output_tasks', 0,
+            'reasoning_tasks', 0,
+            'total_tasks', 0
+          ),
+          'estimated_cost_tasks', 0,
+          'standard_api_equivalent_usd_nanos', null
+        )
+        order by model.ordinality
+      )
+      from jsonb_array_elements(input.envelope #> '{payload,models}')
+        with ordinality model(value, ordinality)
+    ),
+    'pricing', pg_temp.aiq_efficiency_pricing(),
     'runs', (
       select jsonb_agg('{}'::jsonb order by number)
       from generate_series(1, 17) number
@@ -396,6 +576,57 @@ from aiq_integration_input input
 cross join aiq_enqueue_accepted accepted
 cross join aiq_claim_two claim;
 grant select on aiq_stage_resume_input to aiq_verifier;
+
+select pg_temp.aiq_assert(
+  (select octet_length(stage::text) <= 4 * 1024 * 1024 from aiq_stage_resume_input),
+  'the synthetic normalized stage must fit the database envelope bound'
+);
+select pg_temp.aiq_assert(
+  (select aiq_private.efficiency_pricing_v1_is_valid(stage->'pricing')
+   from aiq_stage_resume_input),
+  'the synthetic normalized stage must retain the exact pricing contract'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from aiq_stage_resume_input input
+    cross join lateral jsonb_array_elements(input.stage->'result_efficiency') evidence
+    where aiq_private.result_efficiency_v1_is_valid(evidence) is not true
+  ),
+  'every synthetic per-result efficiency record must validate'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from aiq_stage_resume_input input
+    cross join lateral jsonb_array_elements(input.stage->'efficiency') aggregate
+    where aiq_private.efficiency_aggregate_v1_is_valid(aggregate) is not true
+  ),
+  'every synthetic model efficiency aggregate must validate'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from aiq_stage_resume_input input
+    cross join lateral jsonb_array_elements(input.stage->'efficiency') aggregate
+    where aiq_private.efficiency_aggregate_matches_results(
+      aggregate,input.stage->'result_efficiency'
+    ) is not true
+  ),
+  'every synthetic model efficiency aggregate must match its result cells'
+);
+select pg_temp.aiq_assert(
+  (select count(distinct evidence->>'source_result_id')=1224
+   from aiq_stage_resume_input input
+   cross join lateral jsonb_array_elements(input.stage->'result_efficiency') evidence),
+  'synthetic efficiency evidence must bind 1224 unique result identities'
+);
+select pg_temp.aiq_assert(
+  (select aiq_private.official_model_matrix_is_exact(
+     (select jsonb_agg(aggregate.value->'model' order by aggregate.ordinality)
+      from jsonb_array_elements(input.stage->'efficiency')
+        with ordinality aggregate(value,ordinality))
+   )
+   from aiq_stage_resume_input input),
+  'synthetic efficiency aggregates must retain the exact 17-model order'
+);
 
 set local session_replication_role = replica;
 insert into aiq_private.aiq_nodes (
@@ -414,14 +645,15 @@ insert into aiq_private.aiq_matrix_batches (
   source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
   task_set_hash, capability_validation_digest, benchmark_version,
   prompt_set_digest, source_scoring_version, runner_commit, region,
-  scheduled_unix_ms, started_unix_ms, finished_unix_ms, normalized_stage
+  scheduled_unix_ms, started_unix_ms, finished_unix_ms,
+  execution_concurrency, normalized_stage
 )
 select
   run_id, package_sha256, envelope ->> 'content_hash',
-  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.0', '1.0.0',
-  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.0',
-  stage ->> 'prompt_set_digest', '1.0.0', 'a7d91f4', 'integration',
-  1785164400000, 1785164400000, 1785164400001, stage
+  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.2', '1.0.2',
+  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.2',
+  stage ->> 'prompt_set_digest', '1.0.2', 'a7d91f4', 'integration',
+  1785164400000, 1785164400000, 1785164400001, 1, stage
 from aiq_stage_resume_input;
 insert into aiq_private.aiq_result_packages (
   package_sha256, schema_version, idempotency_key, run_id, node_id,
@@ -680,6 +912,37 @@ select public.aiq_attach_storage_reference(
   object_id, 'artifact_ingress_claim', 'integration/run/artifact'
 )
 from aiq_storage_fixture;
+do $$
+begin
+  begin
+    perform public.aiq_claim_storage_deletions(10,60);
+    raise exception 'deletion leasing bypassed the inventory epoch gate';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
+do $$
+declare
+  status jsonb:=public.aiq_storage_lifecycle_status();
+begin
+  begin
+    perform public.aiq_record_storage_inventory_epoch(
+      (status ->> 'active_objects')::bigint+(status ->> 'pending_objects')::bigint,
+      'sha256:'||repeat('0',64)
+    );
+    raise exception 'inventory epoch accepted a conflicting object digest';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
+with inventory as (
+  select public.aiq_storage_lifecycle_status() as status
+)
+select public.aiq_record_storage_inventory_epoch(
+  (status ->> 'active_objects')::bigint+(status ->> 'pending_objects')::bigint,
+  status ->> 'registry_inventory_digest'
+)
+from inventory;
 select pg_temp.aiq_assert(
   (select count(*) = 0
    from public.aiq_claim_storage_deletions(10, 60)),
@@ -712,5 +975,108 @@ select pg_temp.aiq_assert(
   'synthetic fixtures must not initialize production reference state'
 );
 reset role;
+
+-- Calibration uses a separate forced-RLS, published-only surface. The
+-- existing Official integration flow must not create calibration evidence.
+select pg_temp.aiq_assert(
+  (select count(*) = 6
+   from pg_catalog.pg_class relation
+   join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+   where namespace.nspname = 'aiq_private'
+     and relation.relname like 'calibration\_%' escape '\'
+     and relation.relkind = 'r'
+     and relation.relrowsecurity
+     and relation.relforcerowsecurity),
+  'every calibration evidence table must enable and force RLS'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 0 from public.public_calibration_runs)
+  and (select count(*) = 0 from public.public_calibration_results)
+  and (select count(*) = 0 from public.public_calibration_scores),
+  'Official verification must never enter public calibration views'
+);
+select pg_temp.aiq_assert(
+  not pg_catalog.has_function_privilege(
+    'anon','public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)','EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'authenticated','public.aiq_record_calibration_attestation(jsonb,uuid,uuid,integer)','EXECUTE'
+  )
+  and not pg_catalog.has_function_privilege(
+    'service_role','public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)','EXECUTE'
+  ),
+  'browser and service roles must not cross calibration verifier or publisher boundaries'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name in (
+        'public_calibration_runs','public_calibration_results','public_calibration_scores'
+      )
+      and column_name in (
+        'package_sha256','content_hash','stage_digest','runner_node_id','verifier_node_id',
+        'publisher_node_id','verification_record','verifier_attestation','failure_detail'
+      )
+  ),
+  'public calibration views must not expose private evidence fields'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 4
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_calibration_results'
+     and column_name in (
+       'status','failure_code','explanation_code','explanation_summary'
+     )),
+  'public calibration results must expose bounded failure classification'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 6
+   from information_schema.columns
+   where table_schema = 'aiq_private'
+     and table_name = 'efficiency_official_models'
+     and column_name in (
+       'input_token_observed_result_count','cached_input_token_observed_result_count',
+       'cache_write_input_token_observed_result_count','output_token_observed_result_count',
+       'reasoning_token_observed_result_count','total_token_observed_result_count'
+     )),
+  'Official storage must preserve all six provider token category coverage counts'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 12
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_model_efficiency'
+     and column_name in (
+       'input_token_coverage_count','input_token_coverage_percent',
+       'cached_input_token_coverage_count','cached_input_token_coverage_percent',
+       'cache_write_input_token_coverage_count','cache_write_input_token_coverage_percent',
+       'output_token_coverage_count','output_token_coverage_percent',
+       'reasoning_token_coverage_count','reasoning_token_coverage_percent',
+       'total_token_coverage_count','total_token_coverage_percent'
+     )),
+  'public Official efficiency must expose category-specific coverage'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 3
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_model_efficiency'
+     and column_name in (
+       'matrix_batch_id','matrix_batch_elapsed_ms','summed_cell_adapter_elapsed_ms'
+     )),
+  'public Official efficiency must distinguish shared batch wall-clock from summed cell time'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'public_run_results'
+      and column_name in (
+        'usage','provenance','failure_detail','result_package_sha256','pricing_digest'
+      )
+  ),
+  'public Official result efficiency must omit private provider payloads and digests'
+);
 
 rollback;

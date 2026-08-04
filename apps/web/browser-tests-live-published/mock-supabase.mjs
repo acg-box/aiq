@@ -46,8 +46,71 @@ const matrix = [
   })),
 );
 
+const canonicalPublicExecutionFailures = {
+  timeout: {
+    code: 'timeout',
+    summary: 'The task exceeded its time limit.',
+    retryable: true,
+  },
+  budgetExceeded: {
+    code: 'budget_exceeded',
+    summary: 'The task exceeded a resource budget.',
+    retryable: false,
+  },
+};
+
+const officialOutcomeCounts = matrix.map((_, index) => {
+  const passed = index < 10 ? 35 : 34;
+  const executionFailure =
+    index < 5
+      ? canonicalPublicExecutionFailures.timeout
+      : index === 5
+        ? canonicalPublicExecutionFailures.budgetExceeded
+        : null;
+  const executionFailures = executionFailure ? 1 : 0;
+  return {
+    passed,
+    failed: 72 - passed,
+    executionFailure,
+    executionFailures,
+    evaluatorIncorrect: 72 - passed - executionFailures,
+  };
+});
+const officialOutcomeTotals = officialOutcomeCounts.reduce(
+  (totals, outcomes) => ({
+    passed: totals.passed + outcomes.passed,
+    failed: totals.failed + outcomes.failed,
+    evaluatorIncorrect: totals.evaluatorIncorrect + outcomes.evaluatorIncorrect,
+    executionFailures: totals.executionFailures + outcomes.executionFailures,
+    timeouts: totals.timeouts + (outcomes.executionFailure?.code === 'timeout' ? 1 : 0),
+    budgetExceeded:
+      totals.budgetExceeded + (outcomes.executionFailure?.code === 'budget_exceeded' ? 1 : 0),
+  }),
+  {
+    passed: 0,
+    failed: 0,
+    evaluatorIncorrect: 0,
+    executionFailures: 0,
+    timeouts: 0,
+    budgetExceeded: 0,
+  },
+);
+if (
+  officialOutcomeTotals.passed !== 588 ||
+  officialOutcomeTotals.failed !== 636 ||
+  officialOutcomeTotals.evaluatorIncorrect !== 630 ||
+  officialOutcomeTotals.executionFailures !== 6 ||
+  officialOutcomeTotals.timeouts !== 5 ||
+  officialOutcomeTotals.budgetExceeded !== 1 ||
+  officialOutcomeTotals.passed + officialOutcomeTotals.evaluatorIncorrect !== 1_218
+) {
+  throw new Error('The live-published fixture does not match the pending Official outcome shape.');
+}
+
 const leaderboard = matrix.map((entry, index) => {
-  const score = Number((84.2 - index * 0.7).toFixed(1));
+  const outcomes = officialOutcomeCounts[index];
+  if (!outcomes) throw new Error('Missing Official outcome counts.');
+  const score = Number(((100 * outcomes.passed) / 72).toFixed(1));
   return {
     matrix_id: entry.id,
     run_id: `run-live-${entry.id}`,
@@ -56,74 +119,356 @@ const leaderboard = matrix.map((entry, index) => {
     ci_high: Number((score + 1.8).toFixed(1)),
     sample_size: 72,
     coverage_percent: 100,
-    failures: 0,
+    failures: outcomes.failed,
     missing: 0,
-    scoring_version: '1.0.0',
+    scoring_version: '1.0.2',
     score_status: 'official',
     synthetic: false,
   };
 });
 
 const provenanceHash = `sha256:${'1'.repeat(64)}`;
-const runRows = matrix.map((entry, index) => ({
-  id: `run-live-${entry.id}`,
-  matrix_id: entry.id,
-  started_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:00:00.000Z`,
-  completed_at: `2026-07-${String(29 - index).padStart(2, '0')}T13:27:00.000Z`,
-  benchmark_version: 'aiq-core@1.0.0',
-  scoring_version: '1.0.0',
-  prompt_set_digest: `sha256:${'2'.repeat(64)}`,
-  runner_commit: '7a0c4d1',
-  region: 'us-east-1',
-  synthetic: false,
-  corpus_release_id: 'corpus_2026.07.29',
-  corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
-  catalog_digest: `sha256:${'4'.repeat(64)}`,
-  task_set_digest: `sha256:${'5'.repeat(64)}`,
-  preflight_digest: `sha256:${'6'.repeat(64)}`,
-  runtime_digest: `sha256:${'7'.repeat(64)}`,
-  run_class: 'official',
-  permission_evidence_digest: `sha256:${'9'.repeat(64)}`,
-  result_count: 72,
-  passed_count: 72,
-  failed_count: 0,
-  invalid_count: 0,
-  missing_count: 0,
-  not_applicable_count: 0,
-  observed_count: 72,
+const runRows = matrix.map((entry, index) => {
+  const outcomes = officialOutcomeCounts[index];
+  if (!outcomes) throw new Error('Missing Official outcome counts.');
+  return {
+    id: `run-live-${entry.id}`,
+    matrix_id: entry.id,
+    started_at: '2026-08-03T12:00:00.000Z',
+    completed_at: '2026-08-03T13:37:24.411Z',
+    benchmark_version: 'aiq-core@1.0.2',
+    scoring_version: '1.0.2',
+    prompt_set_digest: `sha256:${'2'.repeat(64)}`,
+    runner_commit: '7a0c4d1',
+    region: 'us-east-1',
+    synthetic: false,
+    corpus_release_id: 'corpus_2026.07.29',
+    corpus_commitment_sha256: `sha256:${'3'.repeat(64)}`,
+    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+    task_set_digest: `sha256:${'5'.repeat(64)}`,
+    preflight_digest: `sha256:${'6'.repeat(64)}`,
+    runtime_digest: `sha256:${'7'.repeat(64)}`,
+    run_class: 'official',
+    permission_evidence_digest: `sha256:${'9'.repeat(64)}`,
+    result_count: 72,
+    passed_count: outcomes.passed,
+    failed_count: outcomes.failed,
+    invalid_count: 0,
+    missing_count: 0,
+    not_applicable_count: 0,
+    observed_count: 72,
+    coverage_percent: 100,
+    covered_domain_count: 10,
+    provisional_domain_count: 10,
+  };
+});
+
+const calibrationRunId = `run_${'8'.repeat(64)}`;
+const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
+const pricingSource = 'https://developers.openai.com/api/docs/pricing';
+const pricingLimitation =
+  'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing';
+const costFormula =
+  '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again';
+const pricingRates = [
+  {
+    model: 'gpt-5.6-sol',
+    input_usd_nanos_per_token: 5000,
+    cached_input_usd_nanos_per_token: 500,
+    cache_write_input_usd_nanos_per_token: 6250,
+    output_usd_nanos_per_token: 30000,
+  },
+  {
+    model: 'gpt-5.6-terra',
+    input_usd_nanos_per_token: 2000,
+    cached_input_usd_nanos_per_token: 200,
+    cache_write_input_usd_nanos_per_token: 2500,
+    output_usd_nanos_per_token: 12000,
+  },
+  {
+    model: 'gpt-5.6-luna',
+    input_usd_nanos_per_token: 200,
+    cached_input_usd_nanos_per_token: 20,
+    cache_write_input_usd_nanos_per_token: 250,
+    output_usd_nanos_per_token: 1200,
+  },
+];
+const calibrationRun = {
+  run_id: calibrationRunId,
+  classification: 'local_calibration_non_official',
+  scoring_version: '1.0.2',
+  selected_task_count: 72,
+  selected_model_count: 17,
+  result_count: 1_224,
+  started_at: '2026-07-30T12:00:00.000Z',
+  completed_at: '2026-07-30T14:00:00.000Z',
+  verified_at: '2026-07-30T14:05:00.000Z',
+  published_at: '2026-07-30T14:10:00.000Z',
+  replay_status: 'evaluator_replayed',
+  official: false,
+  ranking_eligible: false,
+  pricing_currency: 'USD',
+  pricing_processing_tier: 'standard',
+};
+
+const subsetCalibrationRun = {
+  ...calibrationRun,
+  run_id: subsetCalibrationRunId,
+  selected_task_count: 5,
+  selected_model_count: 1,
+  result_count: 5,
+  started_at: '2026-07-31T12:00:00.000Z',
+  completed_at: '2026-07-31T12:10:00.000Z',
+  verified_at: '2026-07-31T12:15:00.000Z',
+  published_at: '2026-07-31T12:20:00.000Z',
+};
+
+const calibrationScores = matrix.map((entry, index) => {
+  const aiq = Number((82.5 - index * 0.6).toFixed(2));
+  const unavailableContextBand = index === 1;
+  const inputTokens = unavailableContextBand ? 344_001 : 72_000 + index * 1_000;
+  const outputTokens = 36_000 + index * 800;
+  return {
+    run_id: calibrationRunId,
+    model_family: entry.model_family.toLowerCase(),
+    reasoning_effort: entry.reasoning_tier,
+    descriptive_status: index === 0 ? 'conditional_observed' : 'complete_fixture',
+    aiq,
+    task_resampling_sensitivity_lower: Number((aiq - 1.5).toFixed(2)),
+    task_resampling_sensitivity_upper: Number((aiq + 1.5).toFixed(2)),
+    task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
+    result_count: 72,
+    sample_size: index === 0 ? 71 : 72,
+    coverage_percent: index === 0 ? (71 / 72) * 100 : 100,
+    observed_total_wall_ms: 720_000 + index * 36_000,
+    observed_median_wall_ms: 10_000 + index * 500,
+    observed_p95_wall_ms: 12_000 + index * 550,
+    observed_time_sample_count: 72,
+    observed_time_coverage_percent: 100,
+    duration_evidence_level: 'runner_observed',
+    input_tokens: inputTokens,
+    cached_input_tokens: 12_000,
+    cache_write_input_tokens: 2_000,
+    output_tokens: outputTokens,
+    reasoning_output_tokens: 18_000 + index * 400,
+    total_tokens: inputTokens + outputTokens,
+    token_usage_sample_count: 72,
+    token_usage_source_level: 'provider_reported',
+    token_usage_evidence_level: 'verifier_recomputed',
+    standard_api_equivalent_usd_nanos: unavailableContextBand
+      ? null
+      : 48_000_000 + index * 2_000_000,
+    estimated_cost_sample_count: unavailableContextBand ? 71 : 72,
+    cost_estimator_status: unavailableContextBand ? 'unavailable_context_band' : 'estimated',
+    cost_evidence_level: unavailableContextBand ? null : 'verifier_recomputed',
+    cost_estimator_limitations: [pricingLimitation],
+    token_usage_coverage_percent: 100,
+    pricing_source: pricingSource,
+    pricing_as_of: '2026-08-02',
+    pricing_version: 'aiq.standard-api-equivalent-usd.v1',
+    pricing_currency: 'USD',
+    pricing_processing_tier: 'standard',
+    attempted_result_count: 72,
+    invoked_result_count: 72,
+    adapter_elapsed_observed_result_count: 72,
+    token_observed_result_count: 72,
+    priced_result_count: unavailableContextBand ? 71 : 72,
+  };
+});
+
+const subsetCalibrationScore = {
+  ...calibrationScores[7],
+  run_id: subsetCalibrationRunId,
+  result_count: 5,
+  sample_size: 5,
   coverage_percent: 100,
-  covered_domain_count: 10,
-  provisional_domain_count: 10,
+  observed_time_sample_count: 5,
+  token_usage_sample_count: 5,
+  estimated_cost_sample_count: 5,
+  attempted_result_count: 5,
+  invoked_result_count: 5,
+  adapter_elapsed_observed_result_count: 5,
+  token_observed_result_count: 5,
+  priced_result_count: 5,
+};
+
+const historicalCalibrationScores = [
+  subsetCalibrationScore,
+  ...calibrationScores,
+  { ...calibrationScores[0], run_id: 'run-stale-calibration-history' },
+];
+
+const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
+  Array.from({ length: 72 }, (_, taskIndex) => {
+    const unavailableContextBand = configurationIndex === 0 && taskIndex === 1;
+    const inputTokens = unavailableContextBand
+      ? 272_001
+      : 1_000 + configurationIndex * 10 + taskIndex;
+    const outputTokens = 500 + taskIndex;
+    const workspaceIntegrity = configurationIndex === 0 && taskIndex === 0;
+    return {
+      result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
+      run_id: calibrationRunId,
+      task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
+      task_version: '1.0.2',
+      domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
+      model_family: entry.model_family.toLowerCase(),
+      reasoning_effort: entry.reasoning_tier,
+      outcome: workspaceIntegrity ? 'invalid' : 'correct',
+      status: workspaceIntegrity ? 'invalid' : 'passed',
+      failure_code: workspaceIntegrity ? 'workspace_integrity' : null,
+      explanation_code: workspaceIntegrity ? 'workspace_integrity' : null,
+      explanation_summary: workspaceIntegrity
+        ? 'Benchmark infrastructure invalidated this result; an audited rerun is required.'
+        : null,
+      task_score: workspaceIntegrity ? null : 1,
+      latency_ms: 8_000 + taskIndex * 50,
+      latency_evidence_level: 'runner_observed',
+      input_tokens: inputTokens,
+      cached_input_tokens: 200,
+      cache_write_input_tokens: 50,
+      output_tokens: outputTokens,
+      reasoning_output_tokens: 250,
+      total_tokens: inputTokens + outputTokens,
+      token_usage_source_level: 'provider_reported',
+      token_usage_evidence_level: 'verifier_recomputed',
+      standard_api_equivalent_usd_nanos: unavailableContextBand
+        ? null
+        : 650_000 + taskIndex * 1_000,
+      cost_estimator_status: unavailableContextBand ? 'unavailable_context_band' : 'estimated',
+      cost_evidence_level: unavailableContextBand ? null : 'verifier_recomputed',
+      cost_estimator_limitations: [pricingLimitation],
+      cost_method: 'standard_api_equivalent_text_token_estimate',
+      cost_version: 'aiq.standard-api-equivalent-usd.v1',
+      cost_as_of: '2026-08-02',
+      cost_source: pricingSource,
+      pricing_currency: 'USD',
+      pricing_processing_tier: 'standard',
+    };
+  }),
+);
+
+calibrationResults.push(
+  ...calibrationResults
+    .filter((result) => result.model_family === 'terra' && result.reasoning_effort === 'medium')
+    .slice(0, 5)
+    .map((result, index) =>
+      Object.assign({}, result, {
+        result_id: `subset_result_${String(index).padStart(2, '0')}`,
+        run_id: subsetCalibrationRunId,
+      }),
+    ),
+);
+
+const modelEfficiency = calibrationScores.map((score, index) => ({
+  run_id: leaderboard[index]?.run_id ?? `run-live-${matrix[index]?.id ?? index}`,
+  matrix_batch_id: `run_${'b'.repeat(64)}`,
+  model_family: score.model_family,
+  reasoning_effort: score.reasoning_effort,
+  matrix_batch_elapsed_ms: 5_844_411,
+  summed_cell_adapter_elapsed_ms: score.observed_total_wall_ms,
+  observed_median_wall_ms: score.observed_median_wall_ms,
+  observed_p95_wall_ms: score.observed_p95_wall_ms,
+  observed_time_sample_count: score.observed_time_sample_count,
+  observed_time_coverage_percent: score.observed_time_coverage_percent,
+  duration_evidence_level: score.duration_evidence_level,
+  input_tokens: null,
+  cached_input_tokens: null,
+  cache_write_input_tokens: null,
+  output_tokens: null,
+  reasoning_output_tokens: null,
+  total_tokens: null,
+  token_usage_sample_count: 0,
+  token_usage_coverage_percent: null,
+  input_token_coverage_count: null,
+  input_token_coverage_percent: null,
+  cached_input_token_coverage_count: null,
+  cached_input_token_coverage_percent: null,
+  cache_write_input_token_coverage_count: null,
+  cache_write_input_token_coverage_percent: null,
+  output_token_coverage_count: null,
+  output_token_coverage_percent: null,
+  reasoning_token_coverage_count: null,
+  reasoning_token_coverage_percent: null,
+  total_token_coverage_count: null,
+  total_token_coverage_percent: null,
+  token_usage_source_level: null,
+  token_usage_evidence_level: null,
+  standard_api_equivalent_usd_nanos: null,
+  cost_estimator_status: 'unavailable_missing_usage',
+  cost_evidence_level: null,
+  cost_method: 'standard_api_equivalent_text_token_estimate',
+  pricing_source: score.pricing_source,
+  pricing_as_of: score.pricing_as_of,
+  pricing_version: score.pricing_version,
+  pricing_currency: score.pricing_currency,
+  pricing_processing_tier: score.pricing_processing_tier,
+  result_count: 72,
+  attempted_result_count: 72,
+  invoked_result_count: 72,
+  adapter_elapsed_observed_result_count: 72,
+  token_observed_result_count: 0,
+  priced_result_count: 0,
+  execution_concurrency: 17,
+  estimated_cost_sample_count: 0,
+  cost_estimator_limitations: score.cost_estimator_limitations,
+  pricing_rates: pricingRates,
+  cost_formula: costFormula,
 }));
+
+const historicalModelEfficiency = [
+  ...modelEfficiency,
+  { ...modelEfficiency[0], run_id: 'run-stale-official-history' },
+];
 
 /** @type {Array<{ run_id: string; [key: string]: unknown }>} */
 const runResults = [];
-for (const run of runRows) {
-  const publishedScore = leaderboard.find((entry) => entry.matrix_id === run.matrix_id)?.score ?? 0;
+for (const [runIndex, run] of runRows.entries()) {
+  const outcomes = officialOutcomeCounts[runIndex];
+  if (!outcomes) throw new Error('Missing Official outcome counts.');
   let globalIndex = 0;
   for (const [domain, taskCount] of domainCounts) {
     for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
       globalIndex += 1;
+      const passed = globalIndex <= outcomes.passed;
+      const executionFailure =
+        !passed && globalIndex > 72 - outcomes.executionFailures ? outcomes.executionFailure : null;
       runResults.push({
         run_id: run.id,
         id: `aiq-v1-${domain}-${String(taskIndex + 1).padStart(2, '0')}`,
         task: `${domain.replaceAll('_', ' ')} published fixture ${taskIndex + 1}`,
         domain,
-        status: 'passed',
-        score: publishedScore / 100,
-        explanation_code: null,
-        explanation_summary: null,
-        retryable: null,
+        status: passed ? 'passed' : 'failed',
+        score: passed ? 1 : 0,
+        explanation_code: executionFailure?.code ?? null,
+        explanation_summary: passed
+          ? null
+          : executionFailure
+            ? executionFailure.summary
+            : 'The evaluator rejected the response.',
+        retryable: executionFailure?.retryable ?? null,
         tools: ['repository search', 'test runner'],
         latency_ms: 7_500 + globalIndex * 137,
+        latency_evidence_level: 'runner_observed',
+        input_tokens: null,
+        cached_input_tokens: null,
+        cache_write_input_tokens: null,
+        output_tokens: null,
+        reasoning_output_tokens: null,
+        total_tokens: null,
+        token_usage_source_level: null,
+        token_usage_evidence_level: null,
+        standard_api_equivalent_usd_nanos: null,
+        cost_estimator_status: 'unavailable_missing_usage',
+        cost_evidence_level: null,
       });
     }
   }
 }
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.0',
-  scoring_version: '1.0.0',
+  benchmark_version: 'aiq-core@1.0.2',
+  scoring_version: '1.0.2',
   published_at: '2026-07-29T16:00:00.000Z',
   principles: [
     'Estimate performance on the committed AIQ v1 fixed-fixture set.',
@@ -139,7 +484,7 @@ const scoringVersion = {
 };
 
 const taskCoverage = domainCounts.map(([domain, task_count]) => ({
-  scoring_version: '1.0.0',
+  scoring_version: '1.0.2',
   domain,
   weight: 0.1,
   task_count,
@@ -354,6 +699,54 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === '/rest/v1/public_task_coverage') {
     json(response, limited(url, taskCoverage));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_calibration_runs') {
+    const exactId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
+    const exactStartedAt = url.searchParams.get('started_at')?.replace(/^eq\./, '');
+    const rows = [subsetCalibrationRun, calibrationRun].filter(
+      (run) =>
+        (!exactId || run.run_id === exactId) &&
+        (!exactStartedAt || run.started_at === exactStartedAt),
+    );
+    json(response, limited(url, rows));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_calibration_results') {
+    const exactRunId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
+    const family = url.searchParams.get('model_family')?.replace(/^eq\./, '');
+    const effort = url.searchParams.get('reasoning_effort')?.replace(/^eq\./, '');
+    const rows = calibrationResults.filter(
+      (result) =>
+        (!exactRunId || result.run_id === exactRunId) &&
+        (!family || result.model_family === family) &&
+        (!effort || result.reasoning_effort === effort),
+    );
+    json(response, limited(url, rows));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_calibration_scores') {
+    const exactRunId = url.searchParams.get('run_id')?.replace(/^eq\./, '');
+    const rows = exactRunId
+      ? historicalCalibrationScores.filter((score) => score.run_id === exactRunId)
+      : historicalCalibrationScores;
+    json(response, limited(url, rows));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_model_efficiency') {
+    const runIdFilter = url.searchParams.get('run_id') ?? '';
+    const selectedIds = new Set(
+      runIdFilter
+        .replace(/^in\.\(/, '')
+        .replace(/\)$/, '')
+        .split(',')
+        .filter(Boolean),
+    );
+    const rows =
+      selectedIds.size === 0
+        ? historicalModelEfficiency
+        : historicalModelEfficiency.filter((entry) => selectedIds.has(entry.run_id));
+    json(response, limited(url, rows));
     return;
   }
   if (url.pathname === '/rest/v1/public_distributed_radar') {

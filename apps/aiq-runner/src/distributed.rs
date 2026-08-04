@@ -1305,7 +1305,7 @@ fn validate_wire_task(task: &TaskDefinition) -> Result<(), DistributedError> {
 		));
 	}
 
-	validate_safe_integer(task.budgets.wall_seconds, "task wall budget")?;
+	validate_safe_integer(task.budgets.wall_seconds, "Codex adapter elapsed-time budget")?;
 	validate_safe_integer(task.budgets.max_steps.into(), "task step budget")?;
 	validate_safe_integer(task.budgets.max_tool_calls.into(), "task tool-call budget")?;
 
@@ -1707,6 +1707,7 @@ mod tests {
 		},
 		model::{ModelFamily, ReasoningEffort},
 		protocol,
+		scoring::AIQ_SCORING_VERSION,
 		task::{Domain, Evaluator, TASK_SCHEMA_VERSION, TaskBudgets, Visibility},
 	};
 
@@ -1809,7 +1810,7 @@ mod tests {
 			schedule_slot_hash: hash('b'),
 			task_package_hash: package_hash.to_owned(),
 			models,
-			scoring_version: "1.0.0".to_owned(),
+			scoring_version: AIQ_SCORING_VERSION.to_owned(),
 		};
 		let mut payload = TaskAssignment {
 			schema_version: ASSIGNMENT_TYPE.to_owned(),

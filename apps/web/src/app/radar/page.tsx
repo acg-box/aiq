@@ -10,8 +10,13 @@ import {
 } from '../../data/format.ts';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
+import { createPageMetadata } from '../site-metadata.ts';
 
-export const metadata: Metadata = { title: 'Radar' };
+export const metadata: Metadata = createPageMetadata({
+  title: 'Radar',
+  path: '/radar',
+  description: 'Inspect AIQ runner identity, signed observations, assignments, and trust evidence.',
+});
 export const dynamic = 'force-dynamic';
 
 export default async function RadarPage() {

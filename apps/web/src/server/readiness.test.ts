@@ -170,14 +170,20 @@ async function withDependencyFetch(
           reliability_recovery: 7,
         },
         catalog_identity_sha256:
-          'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3',
+          'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
         frozen_catalog_valid: true,
         production_node_count: 3,
         distinct_production_node_count: 3,
         runner_count: 1,
         verifier_count: 1,
         publisher_count: 1,
+        private_table_count: 40,
+        forced_rls_table_count: 40,
+        public_view_count: 12,
+        security_invoker_view_count: 12,
+        hardened_gateway_role_count: 2,
       };
+      assert.equal(Object.keys(reference).length, 20);
       mutateReference?.(reference);
       return replaceRpcResponse?.('reference', reference) ?? Response.json(reference);
     }
@@ -218,6 +224,10 @@ async function withDependencyFetch(
         'public_distributed_radar',
         'public_scoring_versions',
         'public_task_coverage',
+        'public_calibration_runs',
+        'public_calibration_results',
+        'public_calibration_scores',
+        'public_model_efficiency',
       ]),
     );
     assert.equal(trendProbeCount, 1);
@@ -246,7 +256,7 @@ void describe('bounded readiness probe', () => {
       scope: [
         'runtime_mode',
         'configuration_contract',
-        'eight_public_views',
+        'public_read_views',
         'public_trend_points_rpc',
         'private_storage_buckets',
         'role_scoped_rpc_contract',
@@ -297,7 +307,7 @@ void describe('bounded readiness probe', () => {
       scope: [
         'runtime_mode',
         'configuration_contract',
-        'eight_public_views',
+        'public_read_views',
         'public_trend_points_rpc',
         'private_storage_buckets',
         'role_scoped_rpc_contract',
@@ -484,7 +494,7 @@ void describe('bounded readiness probe', () => {
       scope: [
         'runtime_mode',
         'configuration_contract',
-        'eight_public_views',
+        'public_read_views',
         'public_trend_points_rpc',
         'private_storage_buckets',
         'role_scoped_rpc_contract',
@@ -499,7 +509,7 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('keeps empty public views ready and uses exact required-column selects', async () => {
-    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 8);
+    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 12);
     assert.ok(Object.values(PUBLIC_VIEW_SELECTS).every((select) => select !== '*'));
     await withDependencyFetch();
   });
@@ -527,7 +537,7 @@ void describe('bounded readiness probe', () => {
         view === 'public_task_coverage'
           ? Response.json([
               {
-                scoring_version: '1.0.0',
+                scoring_version: '1.0.2',
                 domain: 'coding',
                 weight: 'not-a-number',
                 task_count: 8,
@@ -599,8 +609,68 @@ void describe('bounded readiness probe', () => {
       withDependencyFetch((contracts) => {
         contracts.pop();
       }),
-      /service_rpc probe failed/,
+      /role_scoped_rpc_contract probe failed/,
     );
+  });
+
+  void it('requires the exact calibration verification and publication RPC contracts', async () => {
+    assert.equal(Object.keys(REQUIRED_RPC_CONTRACT).length, 17);
+    assert.deepEqual(REQUIRED_RPC_CONTRACT.aiq_stage_calibration_verification, {
+      arguments:
+        'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
+      result: 'text',
+      defaultCount: 0,
+      modes: [],
+      grants: {
+        anon: false,
+        authenticated: false,
+        service_role: false,
+        aiq_verifier: true,
+        aiq_publisher: false,
+      },
+    });
+    assert.deepEqual(REQUIRED_RPC_CONTRACT.aiq_record_calibration_attestation, {
+      arguments:
+        'attestation jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
+      result: 'text',
+      defaultCount: 0,
+      modes: [],
+      grants: {
+        anon: false,
+        authenticated: false,
+        service_role: false,
+        aiq_verifier: true,
+        aiq_publisher: false,
+      },
+    });
+    assert.deepEqual(REQUIRED_RPC_CONTRACT.aiq_publish_calibration_evidence, {
+      arguments:
+        'target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
+      result: 'text',
+      defaultCount: 0,
+      modes: [],
+      grants: {
+        anon: false,
+        authenticated: false,
+        service_role: false,
+        aiq_verifier: false,
+        aiq_publisher: true,
+      },
+    });
+
+    const assertMissingCalibrationRpc = async (name: string): Promise<void> => {
+      await assert.rejects(
+        withDependencyFetch((contracts) => {
+          const index = contracts.findIndex((contract) => contract.name === name);
+          assert.ok(index >= 0);
+          contracts.splice(index, 1);
+        }),
+        /role_scoped_rpc_contract probe failed/,
+      );
+    };
+    await assertMissingCalibrationRpc('aiq_stage_calibration_verification');
+    await assertMissingCalibrationRpc('aiq_record_calibration_attestation');
+    await assertMissingCalibrationRpc('aiq_publish_calibration_evidence');
   });
 
   void it('rejects readiness when the Storage lifecycle registration RPC is missing', async () => {
@@ -612,7 +682,7 @@ void describe('bounded readiness probe', () => {
         assert.ok(index >= 0);
         contracts.splice(index, 1);
       }),
-      /service_rpc probe failed/,
+      /role_scoped_rpc_contract probe failed/,
     );
   });
 
@@ -640,7 +710,7 @@ void describe('bounded readiness probe', () => {
         assert.ok(isRecord(registration.executable_roles));
         registration.executable_roles.service_role = false;
       }),
-      /service_rpc probe failed/,
+      /role_scoped_rpc_contract probe failed/,
     );
   });
 
@@ -704,6 +774,20 @@ void describe('bounded readiness probe', () => {
     ['four nodes', (status: Record<string, unknown>) => (status.production_node_count = 4)],
     ['synthetic node', (status: Record<string, unknown>) => (status.initialized = false)],
     ['unapproved node', (status: Record<string, unknown>) => (status.publisher_count = 0)],
+    ['39 private tables', (status: Record<string, unknown>) => (status.private_table_count = 39)],
+    [
+      '39 forced-RLS tables',
+      (status: Record<string, unknown>) => (status.forced_rls_table_count = 39),
+    ],
+    ['11 public views', (status: Record<string, unknown>) => (status.public_view_count = 11)],
+    [
+      '11 security-invoker views',
+      (status: Record<string, unknown>) => (status.security_invoker_view_count = 11),
+    ],
+    [
+      'one hardened gateway role',
+      (status: Record<string, unknown>) => (status.hardened_gateway_role_count = 1),
+    ],
     [
       'wrong catalog digest',
       (status: Record<string, unknown>) =>
@@ -732,7 +816,7 @@ void describe('bounded readiness probe', () => {
             })
           : undefined,
       ),
-      /service_rpc probe failed/,
+      /role_scoped_rpc_contract probe failed/,
     );
   });
 
@@ -769,7 +853,7 @@ void describe('bounded readiness probe', () => {
           assert.ok(claim);
           claim[field] = replacement;
         }),
-        /service_rpc probe failed/,
+        /role_scoped_rpc_contract probe failed/,
       );
     });
   }
@@ -782,7 +866,7 @@ void describe('bounded readiness probe', () => {
         assert.ok(isRecord(claim.executable_roles));
         claim.executable_roles.service_role = true;
       }),
-      /service_rpc probe failed/,
+      /role_scoped_rpc_contract probe failed/,
     );
   });
 

@@ -5,7 +5,10 @@ import test from 'node:test';
 
 import { checkDatabaseSchema, checkDatabaseSchemaSources } from './check-database-schema.ts';
 
-const repositoryRoot = resolve(import.meta.dirname, '..');
+const repositoryRoot =
+  process.env.AIQ_DATABASE_SCHEMA_ROOT === undefined
+    ? resolve(import.meta.dirname, '..')
+    : resolve(process.env.AIQ_DATABASE_SCHEMA_ROOT);
 
 async function sources(): Promise<[string, string]> {
   return Promise.all([
@@ -27,32 +30,6 @@ await test('schema and synthetic demo data have separate final-state owners', as
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
 });
 
-await test('preview status is a bounded browser-readable invoker view', async () => {
-  const [schema, syntheticDemo] = await sources();
-  assert.throws(
-    () =>
-      checkDatabaseSchemaSources(
-        schema.replace(
-          'grant select on table public.aiq_preview_status_v1 to anon;',
-          'revoke select on table public.aiq_preview_status_v1 from anon;',
-        ),
-        syntheticDemo,
-      ),
-    /aiq_preview_status_v1 to anon/,
-  );
-  assert.throws(
-    () =>
-      checkDatabaseSchemaSources(
-        schema.replace(
-          'create view public.aiq_preview_status_v1 with (security_invoker = true)',
-          'create view public.aiq_preview_status_v1',
-        ),
-        syntheticDemo,
-      ),
-    /security_invoker|invoker security/,
-  );
-});
-
 await test('checker rejects an exposed base table or missing forced RLS', async () => {
   const [schema, syntheticDemo] = await sources();
   assert.throws(
@@ -61,7 +38,7 @@ await test('checker rejects an exposed base table or missing forced RLS', async 
         schema.replace('create table aiq_private.aiq_runs', 'create table public.aiq_runs'),
         syntheticDemo,
       ),
-    /31 AIQ base tables|public\.aiq_/,
+    /private table inventory|public\.aiq_/,
   );
   assert.throws(
     () =>
@@ -127,7 +104,7 @@ await test('checker rejects an extra public view or transaction-start claim leas
         ),
         syntheticDemo,
       ),
-    /nine read views/,
+    /inventoried read views/,
   );
   const changed = schema.replace(
     'claim_expires_at = database_now + make_interval(secs => requested_lease_seconds)',
@@ -140,6 +117,86 @@ await test('checker rejects an extra public view or transaction-start claim leas
   );
 });
 
+await test('checker rejects an obsolete public security-invoker view and browser grant', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const extraView = `
+create view public.aiq_obsolete_preview_status with (security_invoker = true) as select true as ready;
+grant select on table public.aiq_obsolete_preview_status to anon, authenticated;
+`;
+  const changed = schema.replace('\ncommit;', `${extraView}\ncommit;`);
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /Only the inventoried read views can be public/,
+  );
+});
+
+await test('checker rejects a stale or uncommitted Storage inventory identity', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const staleSignature = schema.replace(
+    'supplied_inventory_object_count bigint,supplied_inventory_digest text',
+    'supplied_inventory_object_count bigint',
+  );
+  assert.notEqual(staleSignature, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(staleSignature, syntheticDemo),
+    /count-and-digest signature|inventory RPC/,
+  );
+
+  const noncanonicalDigest = schema.replace("'bytes',object.byte_size", "'size',object.byte_size");
+  assert.notEqual(noncanonicalDigest, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(noncanonicalDigest, syntheticDemo),
+    /bounded JCS object inventory/,
+  );
+});
+
+await test('checker rejects weakened catalog and outcome bindings', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const unboundHash = schema.replace(
+    "task_hash text generated always as ('sha256:'::text || fixture_commitment) stored",
+    'task_hash text',
+  );
+  assert.notEqual(unboundHash, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(unboundHash, syntheticDemo),
+    /Catalog task hashes/,
+  );
+
+  const weakenedFailure = schema.replace(
+    "(outcome='timeout' and failure_code is not null and failure_code='timeout')",
+    "(outcome='timeout' and failure_code is not null)",
+  );
+  assert.notEqual(weakenedFailure, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(weakenedFailure, syntheticDemo),
+    /failure-code bindings/,
+  );
+});
+
+await test('checker rejects unsafe result exposure and stale evidence indexes', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const exposedHash = schema.replace(
+    '  result.task_version,\n  result.domain,',
+    '  result.task_version,\n  result.task_hash,\n  result.domain,',
+  );
+  assert.notEqual(exposedHash, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(exposedHash, syntheticDemo),
+    /must not expose committed hashes/,
+  );
+
+  const staleIndex = schema.replace(
+    '  on aiq_private.calibration_task_results(\n    task_set_id,task_set_version,task_id,task_version,task_hash\n  );',
+    '  on aiq_private.calibration_task_results(task_id);',
+  );
+  assert.notEqual(staleIndex, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(staleIndex, syntheticDemo),
+    /exact catalog lookup index/,
+  );
+});
+
 await test('checker rejects nonterminal or unlabeled demonstration data', async () => {
   const [schema, syntheticDemo] = await sources();
   const queued = syntheticDemo.replace(/('unverified',\s*)'processed'/, "$1'queued'");
@@ -149,4 +206,62 @@ await test('checker rejects nonterminal or unlabeled demonstration data', async 
     () => checkDatabaseSchemaSources(schema, syntheticDemo.replace('explicitly synthetic', '')),
     /explicitly synthetic/,
   );
+});
+
+await test('checker rejects a missing workspace-integrity acceptance path', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "'workspace_unavailable','workspace_integrity'\n    )",
+    "'workspace_unavailable'\n    )",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /accept workspace_integrity as a failure kind/,
+  );
+});
+
+await test('checker rejects workspace integrity in an unattempted filter', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "'capability_unavailable','capability_validation_failed','workspace_unavailable'\n  );",
+    "'capability_unavailable','capability_validation_failed','workspace_unavailable',\n" +
+      "    'workspace_integrity'\n  );",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /workspace_integrity is attempted/,
+  );
+});
+
+await test('checker rejects stale release, pricing, and adapter-failure contracts', async () => {
+  const [schema, syntheticDemo] = await sources();
+  for (const [changed, expected] of [
+    [
+      schema.replace(
+        "'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'",
+        "'non_zero_exit','budget_exceeded','output_truncated'",
+      ),
+      /adapter-failure validator must accept workspace_integrity/,
+    ],
+    [schema.replace('aiq-core@1.0.2', 'aiq-core@1.0.1'), /expected to not match/],
+    [
+      schema.replace(
+        'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6',
+        'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
+      ),
+      /expected to not match/,
+    ],
+    [
+      schema.replace(
+        'https://developers.openai.com/api/docs/pricing',
+        'https://developers.openai.com/api/docs/models/compare',
+      ),
+      /pricing (record drifted|inventory must retain)/,
+    ],
+  ] as const) {
+    assert.notEqual(changed, schema);
+    assert.throws(() => checkDatabaseSchemaSources(changed, syntheticDemo), expected);
+  }
 });

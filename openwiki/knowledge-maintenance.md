@@ -21,7 +21,8 @@ Use this order when claims differ:
 
 For database work, `databases/schema.sql` is the sole desired state and
 `databases/init.ts` is the fresh initialization command. Runtime inspection is
-evidence about one environment, not editing authority.
+evidence about one environment, not editing authority. The current database
+contract is one greenfield desired state.
 
 ## Update procedure
 
@@ -45,6 +46,8 @@ Before completion, search the maintained pages for:
 
 - removed components and commands;
 - old schema or package versions;
+- runtime claims that conflict with the native Apple Silicon macOS and direct
+  network topology;
 - wrong task, model, or identity counts;
 - stale catalog digests;
 - links to missing files or headings;

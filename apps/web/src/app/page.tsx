@@ -1,7 +1,9 @@
 import Link from 'next/link';
 
+import { CalibrationEfficiency } from '../components/calibration-efficiency.tsx';
 import { ReadStateNote } from '../components/read-state-note.tsx';
 import { LeaderboardTable } from '../components/leaderboard-table.tsx';
+import { OfficialEfficiencyTable } from '../components/official-efficiency-table.tsx';
 import { ScoreRing } from '../components/score-ring.tsx';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
@@ -11,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function OverviewPage() {
   const repository = createAiqRepository();
-  const [leaderboardResult, nodesResult] = await Promise.all([
+  const [leaderboardResult, nodesResult, calibrationRunsResult] = await Promise.all([
     readPublicData(
       repository,
       () => repository.listLeaderboard(),
@@ -26,8 +28,36 @@ export default async function OverviewPage() {
       (value) => value.length === 0,
       (value) => value.map((node) => node.synthetic),
     ),
+    readPublicData(
+      repository,
+      () => repository.listCalibrationRunPage(),
+      { runs: [], newerCursor: null, olderCursor: null },
+      (value) => value.runs.length === 0,
+      (value) => value.runs.map((run) => run.synthetic),
+    ),
   ]);
+  const latestCalibration = calibrationRunsResult.data.runs[0];
+  const calibrationScoresResult = await readPublicData(
+    repository,
+    () =>
+      latestCalibration
+        ? repository.listCalibrationScores(latestCalibration.id)
+        : Promise.resolve([]),
+    [],
+    (value) => value.length === 0,
+    (value) => value.map((score) => score.synthetic),
+  );
   const leaderboard = leaderboardResult.data;
+  const officialRunIds = leaderboard.flatMap((entry) =>
+    entry.scoreStatus === 'official' && entry.runId ? [entry.runId] : [],
+  );
+  const officialEfficiencyResult = await readPublicData(
+    repository,
+    () => repository.listModelEfficiency(officialRunIds),
+    [],
+    (value) => value.length === 0,
+    (value) => value.map(() => false),
+  );
   const nodes = nodesResult.data;
   const scoredEntries = leaderboard.filter(isScoredLeaderboardEntry);
   const highestPointEstimate = scoredEntries.toSorted((left, right) => right.score - left.score)[0];
@@ -50,8 +80,8 @@ export default async function OverviewPage() {
             when you can <em>inspect it.</em>
           </h1>
           <p>
-            AIQ Wiki pairs each fixed-fixture result with task sensitivity, coverage, failures,
-            history, and a route to all 72 task outcomes.
+            AIQ pairs each fixed-fixture result with task sensitivity, coverage, failures, history,
+            and a route to all 72 task outcomes.
           </p>
           <div className="hero-actions">
             <Link className="button primary" href="#leaderboard">
@@ -105,6 +135,9 @@ export default async function OverviewPage() {
                 ? `${highestPointEstimate.modelName} · descriptive, not a winner claim`
                 : 'The 17 configurations remain visible until a complete run is verified.'}
             </small>
+            <Link className="text-link" href="/calibrations">
+              Inspect separate Calibration evidence <span aria-hidden="true">→</span>
+            </Link>
           </div>
         </div>
       </section>
@@ -130,6 +163,82 @@ export default async function OverviewPage() {
           <strong>{nodes.length}</strong>
           <small>identity + provenance</small>
         </div>
+      </section>
+
+      <section className="page-shell section-block latest-calibration" id="latest-calibration">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Separate diagnostic evidence</span>
+            <h2>Latest verified calibration</h2>
+          </div>
+          <p>
+            This replay-verified local calibration is not Official / not ranking eligible. Its
+            descriptive AIQ matrix, observed adapter elapsed time, and estimated Standard API
+            equivalent token cost remain separate dimensions and do not affect the index order.
+          </p>
+        </div>
+        <ReadStateNote result={calibrationRunsResult} subject="Latest calibration" />
+        {latestCalibration ? (
+          <>
+            <dl className="calibration-facts">
+              <div>
+                <dt>Verified run</dt>
+                <dd>{latestCalibration.id}</dd>
+              </div>
+              <div>
+                <dt>Matrix</dt>
+                <dd>
+                  {latestCalibration.selectedModelCount} configurations ×{' '}
+                  {latestCalibration.selectedTaskCount} tasks
+                </dd>
+              </div>
+              <div>
+                <dt>Published</dt>
+                <dd>
+                  <time dateTime={latestCalibration.publishedAt}>
+                    {new Date(latestCalibration.publishedAt).toLocaleString()}
+                  </time>
+                </dd>
+              </div>
+              <div>
+                <dt>Classification</dt>
+                <dd>Untrusted · not Official · not ranking eligible</dd>
+              </div>
+            </dl>
+            <ReadStateNote result={calibrationScoresResult} subject="Calibration score matrix" />
+            {calibrationScoresResult.state === 'unavailable' ||
+            calibrationScoresResult.state === 'empty' ? null : (
+              <CalibrationEfficiency scores={calibrationScoresResult.data} />
+            )}
+            <Link className="text-link" href={`/calibrations/${latestCalibration.id}`}>
+              Inspect the bounded {latestCalibration.selectedTaskCount}-task subsets{' '}
+              <span aria-hidden="true">→</span>
+            </Link>
+          </>
+        ) : (
+          <p className="empty-note">
+            No verified calibration matrix is available. Official leaderboard data remains
+            independent.
+          </p>
+        )}
+      </section>
+
+      <section className="page-shell section-block" aria-labelledby="official-efficiency-heading">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Published efficiency</span>
+            <h2 id="official-efficiency-heading">Official time, tokens, and cost</h2>
+          </div>
+          <p>
+            Codex adapter elapsed, provider token counters, and Standard API-equivalent cost stay
+            separate from AIQ. Summed cell elapsed and signed matrix batch wall-clock are distinct;
+            the batch value is counted once across concurrent configurations.
+          </p>
+        </div>
+        <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
+        {officialEfficiencyResult.state === 'published' ? (
+          <OfficialEfficiencyTable rows={officialEfficiencyResult.data} />
+        ) : null}
       </section>
 
       <section className="page-shell section-block" id="leaderboard">

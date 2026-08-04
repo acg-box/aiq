@@ -13,7 +13,7 @@ mod tests {
 		path::{Path, PathBuf},
 		process,
 		process::{Command, Stdio},
-		sync::OnceLock,
+		sync::{Arc, Barrier, Mutex, OnceLock, mpsc},
 		thread,
 		time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 	};
@@ -27,11 +27,16 @@ mod tests {
 	use crate::{
 		model::MODEL_MATRIX,
 		task::evaluator::{
-			BoundedEvaluatorCommand, EVALUATOR_PROTOCOL_VERSION, EVALUATOR_RESULT_SCHEMA_VERSION,
-			EvaluationErrorKind, EvaluationResult, EvaluatorCheck, EvaluatorCheckFailureClass,
-			EvaluatorContext, EvaluatorExecutionObserver, EvaluatorOutcome, EvaluatorRuntime,
-			EvaluatorRuntimeKind, ExternalEvaluatorBinding, MAX_EVALUATOR_CHECKS_PER_RESULT,
-			NormalizedToolEvidence, execute_bounded, force_evaluator_thread_spawn_failure_for_test,
+			BoundedEvaluatorCommand, EVALUATOR_CONFIG_SCHEMA_VERSION, EVALUATOR_PROTOCOL_VERSION,
+			EVALUATOR_RESULT_SCHEMA_VERSION, EXTERNAL_EVALUATOR_REPLAY_PASSES, EvaluationErrorKind,
+			EvaluationResult, EvaluatorCheck, EvaluatorCheckFailureClass, EvaluatorContext,
+			EvaluatorExecutionObserver, EvaluatorOutcome, EvaluatorRuntime, EvaluatorRuntimeKind,
+			ExternalEvaluatorBinding, ExternalEvaluatorGate, MAX_EVALUATOR_CHECKS_PER_RESULT,
+			MAX_EVALUATOR_TIMEOUT_MS, NODE_SCENARIO_CLEANUP_RESERVE_MS,
+			NODE_SCENARIO_COPY_RESERVE_MS, NODE_SCENARIO_PASS_OVERHEAD_MS,
+			NODE_SCENARIO_SPAWN_RESERVE_MS, NormalizedToolEvidence, execute_bounded,
+			force_evaluator_thread_spawn_failure_for_test,
+			minimum_node_scenario_evaluator_timeout_ms,
 		},
 	};
 
@@ -74,40 +79,44 @@ mod tests {
 		)
 	}
 
+	fn resolve_node_runtime(root: &Path) -> EvaluatorRuntime {
+		let actual = env::split_paths(&env::var_os("PATH").expect("test PATH"))
+			.map(|directory| directory.join(format!("node{}", env::consts::EXE_SUFFIX)))
+			.find(|candidate| candidate.is_file())
+			.expect("Node.js must be available for evaluator tests");
+		let actual = fs::canonicalize(actual).expect("canonical Node.js runtime");
+		let actual = actual.to_str().expect("UTF-8 Node.js runtime");
+
+		assert!(!actual.contains('\''), "test Node.js path must be shell-quotable");
+
+		fs::create_dir_all(root).expect("test Node.js wrapper root");
+
+		let wrapper = root.join("node");
+
+		fs::write(
+			&wrapper,
+			format!(
+				"#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'v1.0.0\\n'; exit 0; fi\nexec '{actual}' \"$@\"\n"
+			),
+		)
+		.expect("test Node.js wrapper");
+		fs::set_permissions(&wrapper, Permissions::from_mode(0o700))
+			.expect("test Node.js wrapper permissions");
+
+		EvaluatorRuntime::resolve(&wrapper).expect("Node.js wrapper runtime must resolve")
+	}
+
 	fn node_runtime() -> EvaluatorRuntime {
 		static RUNTIME: OnceLock<EvaluatorRuntime> = OnceLock::new();
 
-		RUNTIME
-			.get_or_init(|| {
-				let actual = env::split_paths(&env::var_os("PATH").expect("test PATH"))
-					.map(|directory| directory.join(format!("node{}", env::consts::EXE_SUFFIX)))
-					.find(|candidate| candidate.is_file())
-					.expect("Node.js must be available for evaluator tests");
-				let actual = fs::canonicalize(actual).expect("canonical Node.js runtime");
-				let actual = actual.to_str().expect("UTF-8 Node.js runtime");
+		let configured = RUNTIME.get_or_init(|| {
+			resolve_node_runtime(
+				&env::temp_dir().join(format!("aiq-node-wrapper-runtime-{}", process::id())),
+			)
+		});
 
-				assert!(!actual.contains('\''), "test Node.js path must be shell-quotable");
-
-				let root =
-					env::temp_dir().join(format!("aiq-node-wrapper-runtime-{}", process::id()));
-
-				fs::create_dir_all(&root).expect("test Node.js wrapper root");
-
-				let wrapper = root.join("node");
-
-				fs::write(
-					&wrapper,
-					format!(
-						"#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then printf 'v1.0.0\\n'; exit 0; fi\nexec '{actual}' \"$@\"\n"
-					),
-				)
-				.expect("test Node.js wrapper");
-				fs::set_permissions(&wrapper, Permissions::from_mode(0o700))
-					.expect("test Node.js wrapper permissions");
-
-				EvaluatorRuntime::resolve(&wrapper).expect("Node.js wrapper runtime must resolve")
-			})
-			.clone()
+		EvaluatorRuntime::resolve_committed(configured.executable(), configured.version())
+			.expect("test Node.js runtime must remain pinned")
 	}
 
 	#[test]
@@ -201,11 +210,49 @@ mod tests {
 		.to_string()
 	}
 
-	fn evaluate_fixture(
+	fn gate_test_binding(
+		evaluator_root: &Path,
+		runtime: &EvaluatorRuntime,
+		delay_ms: u64,
+		timeout_ms: u64,
+	) -> ExternalEvaluatorBinding {
+		let executable = evaluator_root.join("gate-evaluator.mjs");
+
+		fs::write(
+			&executable,
+			format!(
+				r#"process.stdin.resume();
+process.stdin.on('end', () => {{
+  setTimeout(() => process.stdout.write(process.argv.at(-1)), {delay_ms});
+}});
+"#
+			),
+		)
+		.expect("gate evaluator fixture");
+
+		ExternalEvaluatorBinding {
+			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
+			scorer_version: "1.0.0".to_owned(),
+			runtime_kind: EvaluatorRuntimeKind::Node,
+			runtime_executable_digest: runtime.executable_digest().to_owned(),
+			executable_ref: Path::new("gate-evaluator.mjs").to_owned(),
+			executable_digest: executable_digest(&executable),
+			configuration_digest: protocol::canonical_hash(&BTreeMap::<String, Value>::new())
+				.expect("empty configuration must hash"),
+			arguments: vec![result_json(true)],
+			timeout_ms,
+			max_input_bytes: 8_192,
+			max_output_bytes: 8_192,
+			configuration: BTreeMap::new(),
+		}
+	}
+
+	fn evaluate_fixture_with_runtime(
 		binding: &ExternalEvaluatorBinding,
 		response: &str,
 		evaluator_root: &Path,
 		workspace: &Path,
+		runtime: &EvaluatorRuntime,
 	) -> Result<crate::task::EvaluationResult, crate::task::EvaluationError> {
 		let tool_evidence =
 			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
@@ -219,9 +266,19 @@ mod tests {
 			workspace_manifest_sha256: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			tool_evidence: &tool_evidence,
 		};
+
+		binding.evaluate_at_root("repository_test_suite", &context, evaluator_root, runtime)
+	}
+
+	fn evaluate_fixture(
+		binding: &ExternalEvaluatorBinding,
+		response: &str,
+		evaluator_root: &Path,
+		workspace: &Path,
+	) -> Result<crate::task::EvaluationResult, crate::task::EvaluationError> {
 		let runtime = node_runtime();
 
-		binding.evaluate_at_root("repository_test_suite", &context, evaluator_root, &runtime)
+		evaluate_fixture_with_runtime(binding, response, evaluator_root, workspace, &runtime)
 	}
 
 	fn evaluate_observation_fixture(
@@ -289,6 +346,359 @@ mod tests {
 	}
 
 	#[test]
+	fn production_evaluator_gate_enforces_the_seventeen_permit_bound() {
+		let gate = Arc::new(ExternalEvaluatorGate::new(super::MAX_PARALLEL_EXTERNAL_EVALUATORS));
+		let mut permits = (0..super::MAX_PARALLEL_EXTERNAL_EVALUATORS)
+			.map(|_| gate.enter().expect("configured permit"))
+			.collect::<Vec<_>>();
+		let started = Arc::new(Barrier::new(2));
+		let (acquired_tx, acquired_rx) = mpsc::channel();
+		let (release_tx, release_rx) = mpsc::channel();
+		let worker_gate = Arc::clone(&gate);
+		let worker_started = Arc::clone(&started);
+		let worker = thread::spawn(move || {
+			worker_started.wait();
+
+			let _permit = worker_gate.enter().expect("queued permit");
+
+			acquired_tx.send(()).expect("acquisition signal");
+			release_rx.recv().expect("release signal");
+		});
+
+		started.wait();
+
+		assert!(acquired_rx.recv_timeout(Duration::from_millis(50)).is_err());
+
+		drop(permits.pop());
+
+		acquired_rx
+			.recv_timeout(Duration::from_secs(1))
+			.expect("eighteenth evaluator must acquire after one release");
+		release_tx.send(()).expect("release worker");
+		worker.join().expect("permit worker must not panic");
+	}
+
+	#[test]
+	fn shared_runtime_gate_serializes_each_complete_two_pass_evaluation() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir().join(format!("aiq-evaluator-gate-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let runtime_root = root.join("runtime");
+		let workspaces = [root.join("candidate-0"), root.join("candidate-1")];
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+
+		for workspace in &workspaces {
+			fs::create_dir_all(workspace).expect("candidate workspace");
+		}
+
+		let mut runtime = resolve_node_runtime(&runtime_root);
+
+		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
+
+		let binding = gate_test_binding(&evaluator_root, &runtime, 75, 1_000);
+		let start = Arc::new(Barrier::new(workspaces.len() + 1));
+		let pass_starts = Arc::new(Mutex::new(Vec::new()));
+		let elapsed = Instant::now();
+		let results = thread::scope(|scope| {
+			let mut handles = Vec::new();
+
+			for (worker, workspace) in workspaces.iter().enumerate() {
+				let start = Arc::clone(&start);
+				let pass_starts = Arc::clone(&pass_starts);
+				let binding = &binding;
+				let evaluator_root = &evaluator_root;
+				let runtime = &runtime;
+
+				handles.push(scope.spawn(move || {
+					let tool_evidence = NormalizedToolEvidence {
+						steps: 1,
+						total_calls: 0,
+						by_tool: BTreeMap::new(),
+					};
+					let task_id = format!("coding-{worker:02}");
+					let context = EvaluatorContext {
+						task_id: &task_id,
+						task_version: "1.0.0",
+						run_id: "run_gate",
+						model: MODEL_MATRIX[0],
+						final_response: "candidate response",
+						candidate_workspace: workspace,
+						workspace_manifest_sha256:
+							"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+						tool_evidence: &tool_evidence,
+					};
+
+					start.wait();
+
+					binding.evaluate_at_root_observed(
+						"repository_test_suite",
+						&context,
+						evaluator_root,
+						runtime,
+						&mut |pass, started| {
+							if started {
+								pass_starts.lock().expect("pass order lock").push((worker, pass));
+							}
+						},
+					)
+				}));
+			}
+
+			start.wait();
+
+			handles
+				.into_iter()
+				.map(|handle| handle.join().expect("evaluator worker must not panic"))
+				.collect::<Vec<_>>()
+		});
+
+		for result in results {
+			result.expect("serialized evaluator must complete");
+		}
+
+		assert!(elapsed.elapsed() >= Duration::from_millis(250));
+
+		let pass_starts = pass_starts.lock().expect("pass order lock");
+
+		assert_eq!(pass_starts.len(), workspaces.len() * 2);
+
+		for worker in 0..workspaces.len() {
+			assert_eq!(
+				pass_starts
+					.iter()
+					.filter_map(
+						|(observed_worker, pass)| (*observed_worker == worker).then_some(*pass)
+					)
+					.collect::<Vec<_>>(),
+				vec![1, 2]
+			);
+		}
+
+		drop(pass_starts);
+
+		fs::remove_dir_all(root).expect("gate fixture cleanup");
+	}
+
+	#[test]
+	fn public_observer_runs_after_the_gate_and_can_reenter_the_runtime() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root =
+			env::temp_dir().join(format!("aiq-evaluator-reentry-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let runtime = resolve_node_runtime(&root.join("runtime"));
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 1_000);
+		let tool_evidence =
+			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let context = EvaluatorContext {
+			task_id: "coding-01",
+			task_version: "1.0.0",
+			run_id: "run_reentry",
+			model: MODEL_MATRIX[0],
+			final_response: "candidate response",
+			candidate_workspace: &workspace,
+			workspace_manifest_sha256: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			tool_evidence: &tool_evidence,
+		};
+		let mut reentered = false;
+
+		binding
+			.evaluate_at_root_observed(
+				"repository_test_suite",
+				&context,
+				&evaluator_root,
+				&runtime,
+				&mut |pass, started| {
+					if pass == 1 && started && !reentered {
+						assert!(runtime.external_evaluator_gate.active.try_lock().is_ok());
+
+						evaluate_fixture_with_runtime(
+							&binding,
+							"candidate response",
+							&evaluator_root,
+							&workspace,
+							&runtime,
+						)
+						.expect("observer re-entry must acquire the released gate");
+
+						reentered = true;
+					}
+				},
+			)
+			.expect("outer observed evaluation");
+
+		assert!(reentered);
+
+		fs::remove_dir_all(root).expect("reentry fixture cleanup");
+	}
+
+	#[test]
+	fn evaluator_gate_queue_wait_is_outside_the_aggregate_timeout() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir().join(format!("aiq-evaluator-queue-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let mut runtime = resolve_node_runtime(&root.join("runtime"));
+
+		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
+
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 500);
+		let gate = runtime.enter_external_evaluator().expect("test must acquire evaluator gate");
+		let start = Arc::new(Barrier::new(2));
+		let (result, elapsed) = thread::scope(|scope| {
+			let start_for_worker = Arc::clone(&start);
+			let binding = &binding;
+			let evaluator_root = &evaluator_root;
+			let workspace = &workspace;
+			let runtime = &runtime;
+			let handle = scope.spawn(move || {
+				start_for_worker.wait();
+
+				let started = Instant::now();
+				let result = evaluate_fixture_with_runtime(
+					binding,
+					"candidate response",
+					evaluator_root,
+					workspace,
+					runtime,
+				);
+
+				(result, started.elapsed())
+			});
+
+			start.wait();
+
+			thread::sleep(Duration::from_millis(600));
+
+			drop(gate);
+
+			handle.join().expect("queued evaluator must not panic")
+		});
+
+		result.expect("queue wait must not consume the evaluator timeout");
+
+		assert!(elapsed >= Duration::from_millis(600));
+
+		fs::remove_dir_all(root).expect("queue fixture cleanup");
+	}
+
+	#[test]
+	fn evaluator_failure_releases_the_gate_for_the_next_checked_evaluation() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir().join(format!("aiq-evaluator-error-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let mut runtime = resolve_node_runtime(&root.join("runtime"));
+
+		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
+
+		// This test verifies permit release, not timeout behavior. Force the existing
+		// execution-error path so host scheduling cannot change the failure class.
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 5_000);
+
+		force_evaluator_thread_spawn_failure_for_test(0);
+
+		let error = evaluate_fixture_with_runtime(
+			&binding,
+			"candidate response",
+			&evaluator_root,
+			&workspace,
+			&runtime,
+		)
+		.expect_err("evaluator process failure must remain visible");
+
+		assert_eq!(error.kind(), EvaluationErrorKind::Execution);
+		assert_eq!(*runtime.external_evaluator_gate.active.lock().expect("gate state"), 0);
+
+		evaluate_fixture_with_runtime(
+			&binding,
+			"candidate response",
+			&evaluator_root,
+			&workspace,
+			&runtime,
+		)
+		.expect("a returned evaluator error must release the gate");
+
+		fs::remove_dir_all(root).expect("error fixture cleanup");
+	}
+
+	#[test]
+	fn poisoned_evaluator_gate_fails_closed_without_starting_a_pass() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir().join(format!("aiq-evaluator-poison-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let runtime = resolve_node_runtime(&root.join("runtime"));
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 1_000);
+		let gate = Arc::clone(&runtime.external_evaluator_gate);
+
+		assert!(
+			thread::spawn(move || {
+				let _guard = gate.active.lock().expect("fresh evaluator gate");
+
+				panic!("poison evaluator gate fixture");
+			})
+			.join()
+			.is_err()
+		);
+
+		let tool_evidence =
+			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let context = EvaluatorContext {
+			task_id: "coding-01",
+			task_version: "1.0.0",
+			run_id: "run_poison",
+			model: MODEL_MATRIX[0],
+			final_response: "candidate response",
+			candidate_workspace: &workspace,
+			workspace_manifest_sha256: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			tool_evidence: &tool_evidence,
+		};
+		let mut started_passes = 0;
+		let error = binding
+			.evaluate_at_root_observed(
+				"repository_test_suite",
+				&context,
+				&evaluator_root,
+				&runtime,
+				&mut |_, started| {
+					if started {
+						started_passes += 1;
+					}
+				},
+			)
+			.expect_err("a poisoned evaluator gate must fail closed");
+
+		assert_eq!(error.kind(), EvaluationErrorKind::Execution);
+		assert_eq!(error.to_string(), "external evaluator execution gate is poisoned");
+		assert_eq!(started_passes, 0);
+
+		fs::remove_dir_all(root).expect("poison fixture cleanup");
+	}
+
+	#[test]
 	fn external_protocol_accepts_correct_partial_and_incorrect_results() {
 		let workspace = env::temp_dir();
 		let partial = serde_json::json!({
@@ -337,8 +747,14 @@ mod tests {
 	#[test]
 	fn checked_observation_returns_the_independent_raw_stdout_digest() {
 		let stdout = result_json(true);
+		let mut binding = echo_binding(&stdout);
+
+		// This test verifies the independent digest, not the timeout path. Give the
+		// two deterministic Node.js replay passes enough headroom on loaded CI hosts.
+		binding.timeout_ms = 5_000;
+
 		let observation = evaluate_observation_fixture(
-			&echo_binding(&stdout),
+			&binding,
 			"candidate output",
 			&fixture_registry(),
 			&env::temp_dir(),
@@ -746,6 +1162,131 @@ mod tests {
 				"evaluator result must contain at most {MAX_EVALUATOR_CHECKS_PER_RESULT} checks"
 			)
 		);
+	}
+
+	#[test]
+	fn known_node_scenario_configuration_requires_a_checked_two_pass_timeout_envelope() {
+		let timeouts_ms = [5_000; 6];
+		let required_ms = minimum_node_scenario_evaluator_timeout_ms(&timeouts_ms)
+			.expect("bounded scenario envelope");
+		let lifecycle_reserve_ms = NODE_SCENARIO_COPY_RESERVE_MS
+			+ NODE_SCENARIO_SPAWN_RESERVE_MS
+			+ NODE_SCENARIO_CLEANUP_RESERVE_MS;
+
+		assert_eq!(
+			required_ms,
+			EXTERNAL_EVALUATOR_REPLAY_PASSES
+				* (NODE_SCENARIO_PASS_OVERHEAD_MS + 6 * (5_000 + lifecycle_reserve_ms))
+		);
+		assert_eq!(required_ms, 176_000);
+		assert!(required_ms <= MAX_EVALUATOR_TIMEOUT_MS);
+
+		let checks = timeouts_ms
+			.into_iter()
+			.enumerate()
+			.map(|(index, timeout_ms)| {
+				serde_json::json!({
+					"check_id": format!("scenario_{index}"),
+					"type": "node_scenario",
+					"timeout_ms": timeout_ms,
+					"weight": 1
+				})
+			})
+			.collect::<Vec<_>>();
+		let mut binding = with_configuration(
+			echo_binding("{}"),
+			serde_json::json!({
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"checks": checks
+			}),
+		);
+
+		binding.timeout_ms = required_ms;
+
+		assert!(binding.validation_issues("1.0.0").iter().all(|issue| {
+			!issue.contains("node_scenario") && !issue.contains("configured node_scenario envelope")
+		}));
+	}
+
+	#[test]
+	fn known_node_scenario_configuration_rejects_missing_or_nonpositive_inner_timeout() {
+		for check in [
+			serde_json::json!({"check_id": "missing", "type": "node_scenario", "weight": 1}),
+			serde_json::json!({
+				"check_id": "zero",
+				"type": "node_scenario",
+				"timeout_ms": 0,
+				"weight": 1
+			}),
+			serde_json::json!({
+				"check_id": "fractional",
+				"type": "node_scenario",
+				"timeout_ms": 1.5,
+				"weight": 1
+			}),
+		] {
+			let binding = with_configuration(
+				echo_binding("{}"),
+				serde_json::json!({
+					"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+					"checks": [check]
+				}),
+			);
+
+			assert!(binding.validation_issues("1.0.0").iter().any(|issue| {
+				issue
+					== "configuration checks[0] node_scenario timeout_ms must be a positive integer"
+			}));
+		}
+	}
+
+	#[test]
+	fn node_scenario_timeout_envelope_rejects_overflow_and_the_previous_bad_budget() {
+		assert_eq!(minimum_node_scenario_evaluator_timeout_ms(&[u64::MAX]), None);
+
+		let checks = (0..6)
+			.map(|index| {
+				serde_json::json!({
+					"check_id": format!("scenario_{index}"),
+					"type": "node_scenario",
+					"timeout_ms": 30_000,
+					"weight": 1
+				})
+			})
+			.collect::<Vec<_>>();
+		let mut previous = with_configuration(
+			echo_binding("{}"),
+			serde_json::json!({
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"checks": checks
+			}),
+		);
+
+		previous.timeout_ms = 60_000;
+
+		assert_eq!(minimum_node_scenario_evaluator_timeout_ms(&[30_000; 6]), Some(476_000));
+		assert!(previous.validation_issues("1.0.0").iter().any(|issue| {
+			issue
+				== &format!(
+					"node_scenario evaluator timeout envelope requires 476000 ms, above maximum {MAX_EVALUATOR_TIMEOUT_MS} ms"
+				)
+		}));
+	}
+
+	#[test]
+	fn unknown_evaluator_configuration_does_not_infer_node_scenario_semantics() {
+		let binding = with_configuration(
+			echo_binding("{}"),
+			serde_json::json!({
+				"schema_version": "vendor.evaluator-config.v1",
+				"checks": [{"check_id": "opaque", "type": "node_scenario", "weight": 1}]
+			}),
+		);
+
+		assert!(binding.validation_issues("1.0.0").iter().all(|issue| {
+			!issue.contains("node_scenario timeout_ms")
+				&& !issue.contains("node_scenario evaluator timeout envelope")
+		}));
 	}
 
 	#[test]
@@ -1169,6 +1710,7 @@ use std::os::unix::{
 use std::os::windows::fs::FileExt as _;
 #[cfg(target_os = "linux")]
 use std::process;
+use std::sync::PoisonError;
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::{self, Debug, Display, Formatter},
@@ -1177,7 +1719,7 @@ use std::{
 	iter,
 	path::{Component, Path, PathBuf},
 	process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
-	sync::Arc,
+	sync::{Arc, Condvar, Mutex},
 	thread::{self, Builder, JoinHandle},
 	time::{Duration, Instant},
 };
@@ -1207,10 +1749,27 @@ type ReaderThread = JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
 pub const EVALUATOR_PROTOCOL_VERSION: &str = "aiq.evaluator-input.v2";
 /// Result schema returned by controlled external evaluators.
 pub const EVALUATOR_RESULT_SCHEMA_VERSION: &str = "aiq.evaluator-result.v3";
+/// Configuration schema whose Node.js scenario deadlines have a checked outer envelope.
+pub const EVALUATOR_CONFIG_SCHEMA_VERSION: &str = "aiq.evaluator-config.v1";
 /// Maximum committed checks in one evaluator result.
 pub const MAX_EVALUATOR_CHECKS_PER_RESULT: usize = 16;
+/// Number of identical external evaluator passes in one checked evaluation.
+pub const EXTERNAL_EVALUATOR_REPLAY_PASSES: u64 = 2;
+/// Per-scenario reserve for copying the controlled scenario workspace.
+pub const NODE_SCENARIO_COPY_RESERVE_MS: u64 = 2_000;
+/// Per-scenario reserve for starting the committed Node.js scenario process.
+pub const NODE_SCENARIO_SPAWN_RESERVE_MS: u64 = 1_000;
+/// Per-scenario reserve for terminating, reaping, and cleaning up the scenario process.
+pub const NODE_SCENARIO_CLEANUP_RESERVE_MS: u64 = 5_000;
+/// Fixed evaluator work reserved once around all Node.js scenarios in each pass.
+pub const NODE_SCENARIO_PASS_OVERHEAD_MS: u64 = 10_000;
+/// Maximum aggregate external evaluator timeout accepted by the protocol.
+pub const MAX_EVALUATOR_TIMEOUT_MS: u64 = 300_000;
+/// Maximum checked two-pass evaluators that can execute through one runtime.
+///
+/// The bound matches the complete 17-configuration AIQ model matrix.
+pub const MAX_PARALLEL_EXTERNAL_EVALUATORS: usize = 17;
 
-const MAX_EVALUATOR_TIMEOUT_MS: u64 = 300_000;
 const MAX_EVALUATOR_IO_BYTES: usize = 1_024 * 1_024;
 const MAX_EVALUATOR_CONFIG_BYTES: usize = 64 * 1_024;
 const MAX_EVALUATOR_ARGUMENTS: usize = 64;
@@ -1288,6 +1847,7 @@ pub struct EvaluatorRuntime {
 	executable_digest: String,
 	version: String,
 	pinned: Arc<PinnedEvaluatorFile>,
+	external_evaluator_gate: Arc<ExternalEvaluatorGate>,
 }
 impl EvaluatorRuntime {
 	/// Resolves one explicit absolute runtime path.
@@ -1319,6 +1879,9 @@ impl EvaluatorRuntime {
 			executable_digest: pinned.digest.clone(),
 			version: version.to_owned(),
 			pinned,
+			external_evaluator_gate: Arc::new(ExternalEvaluatorGate::new(
+				MAX_PARALLEL_EXTERNAL_EVALUATORS,
+			)),
 		})
 	}
 
@@ -1353,6 +1916,9 @@ impl EvaluatorRuntime {
 			executable_digest: pinned.digest.clone(),
 			version: version.to_owned(),
 			pinned,
+			external_evaluator_gate: Arc::new(ExternalEvaluatorGate::new(
+				MAX_PARALLEL_EXTERNAL_EVALUATORS,
+			)),
 		})
 	}
 
@@ -1372,6 +1938,10 @@ impl EvaluatorRuntime {
 	#[must_use]
 	pub fn version(&self) -> &str {
 		&self.version
+	}
+
+	fn enter_external_evaluator(&self) -> Result<ExternalEvaluatorPermit<'_>, EvaluationError> {
+		self.external_evaluator_gate.enter()
 	}
 }
 
@@ -1500,11 +2070,60 @@ impl ExternalEvaluatorBinding {
 			));
 		}
 
+		issues.extend(self.node_scenario_envelope_issues());
+
 		match protocol::canonical_hash(&self.configuration) {
 			Ok(observed) if observed != self.configuration_digest => issues
 				.push("evaluator configuration digest does not match its commitment".to_owned()),
 			Err(error) => issues.push(format!("cannot hash evaluator configuration: {error}")),
 			Ok(_) => {},
+		}
+
+		issues
+	}
+
+	fn node_scenario_envelope_issues(&self) -> Vec<String> {
+		if self.configuration.get("schema_version").and_then(Value::as_str)
+			!= Some(EVALUATOR_CONFIG_SCHEMA_VERSION)
+		{
+			return Vec::new();
+		}
+
+		let Some(checks_value) = self.configuration.get("checks") else {
+			return Vec::new();
+		};
+		let Some(checks) = checks_value.as_array() else {
+			return vec![format!("{EVALUATOR_CONFIG_SCHEMA_VERSION} checks must be an array")];
+		};
+		let mut timeouts_ms = Vec::new();
+		let mut issues = Vec::new();
+
+		for (index, check) in checks.iter().enumerate() {
+			if check.get("type").and_then(Value::as_str) != Some("node_scenario") {
+				continue;
+			}
+
+			match check.get("timeout_ms").and_then(Value::as_u64).filter(|timeout| *timeout != 0) {
+				Some(timeout_ms) => timeouts_ms.push(timeout_ms),
+				None => issues.push(format!(
+					"configuration checks[{index}] node_scenario timeout_ms must be a positive integer"
+				)),
+			}
+		}
+
+		if !issues.is_empty() || timeouts_ms.is_empty() {
+			return issues;
+		}
+
+		match minimum_node_scenario_evaluator_timeout_ms(&timeouts_ms) {
+			None => issues.push("node_scenario evaluator timeout envelope overflows u64".to_owned()),
+			Some(required_ms) if required_ms > MAX_EVALUATOR_TIMEOUT_MS => issues.push(format!(
+				"node_scenario evaluator timeout envelope requires {required_ms} ms, above maximum {MAX_EVALUATOR_TIMEOUT_MS} ms"
+			)),
+			Some(required_ms) if self.timeout_ms < required_ms => issues.push(format!(
+				"timeout_ms must be at least {required_ms} for the configured node_scenario envelope"
+			)),
+			Some(_) => {},
 		}
 
 		issues
@@ -1673,15 +2292,18 @@ impl ExternalEvaluatorBinding {
 		runtime: &EvaluatorRuntime,
 		observer: &mut dyn FnMut(usize, bool),
 	) -> Result<EvaluationResult, EvaluationError> {
-		struct PassObserver<'a>(&'a mut dyn FnMut(usize, bool));
+		#[derive(Default)]
+		struct CapturedPassObserver {
+			edges: Vec<(usize, bool)>,
+		}
 
-		impl EvaluatorExecutionObserver for PassObserver<'_> {
+		impl EvaluatorExecutionObserver for CapturedPassObserver {
 			fn pass_started(&mut self, pass: usize) {
-				(self.0)(pass, true);
+				self.edges.push((pass, true));
 			}
 
 			fn pass_finished(&mut self, pass: usize) {
-				(self.0)(pass, false);
+				self.edges.push((pass, false));
 			}
 
 			fn child_spawned(&mut self, _pass: usize, _pid: u32) {}
@@ -1697,13 +2319,23 @@ impl ExternalEvaluatorBinding {
 			}
 		}
 
-		self.evaluate_at_root_observed_inner(
+		let mut captured = CapturedPassObserver::default();
+		let result = self.evaluate_at_root_observed_inner(
 			evaluator_kind,
 			context,
 			root,
 			runtime,
-			&mut PassObserver(observer),
-		)
+			&mut captured,
+		);
+
+		// Public callbacks can execute arbitrary caller code. Replay the captured
+		// pass edges only after the shared evaluator gate has been released, so a
+		// callback can safely invoke another evaluation with this runtime.
+		for (pass, started) in captured.edges {
+			observer(pass, started);
+		}
+
+		result
 	}
 
 	fn evaluate_at_root_observed_inner(
@@ -1714,6 +2346,10 @@ impl ExternalEvaluatorBinding {
 		runtime: &EvaluatorRuntime,
 		observer: &mut dyn EvaluatorExecutionObserver,
 	) -> Result<EvaluationResult, EvaluationError> {
+		// Every clone of one configured runtime shares this gate. Waiting for the
+		// gate is intentionally outside the aggregate evaluator timeout, and the
+		// guard remains held across both deterministic replay passes.
+		let _gate = runtime.enter_external_evaluator()?;
 		let pinned = self.pin_at_root(root, runtime)?;
 		let input = self.build_input(evaluator_kind, context, &pinned.controlled_cwd)?;
 		let aggregate_timeout = Duration::from_millis(self.timeout_ms);
@@ -1911,6 +2547,8 @@ impl ExternalEvaluatorBinding {
 				"configuration checks must contain at most {MAX_EVALUATOR_CHECKS_PER_RESULT} items"
 			));
 		}
+
+		issues.extend(self.node_scenario_envelope_issues());
 
 		match protocol::canonical_hash(&self.configuration) {
 			Ok(observed) if observed != self.configuration_digest => issues
@@ -2280,6 +2918,49 @@ impl Display for EvaluationError {
 	}
 }
 
+/// Bounded permit gate shared by every clone of one configured runtime.
+struct ExternalEvaluatorGate {
+	active: Mutex<usize>,
+	available: Condvar,
+	limit: usize,
+}
+impl ExternalEvaluatorGate {
+	fn new(limit: usize) -> Self {
+		assert!(limit > 0, "external evaluator gate limit must be positive");
+
+		Self { active: Mutex::new(0), available: Condvar::new(), limit }
+	}
+
+	fn enter(&self) -> Result<ExternalEvaluatorPermit<'_>, EvaluationError> {
+		let mut active = self.active.lock().map_err(|_| {
+			EvaluationError::execution("external evaluator execution gate is poisoned")
+		})?;
+
+		while *active >= self.limit {
+			active = self.available.wait(active).map_err(|_| {
+				EvaluationError::execution("external evaluator execution gate is poisoned")
+			})?;
+		}
+
+		*active += 1;
+
+		Ok(ExternalEvaluatorPermit { gate: self })
+	}
+}
+
+struct ExternalEvaluatorPermit<'a> {
+	gate: &'a ExternalEvaluatorGate,
+}
+impl Drop for ExternalEvaluatorPermit<'_> {
+	fn drop(&mut self) {
+		let mut active = self.gate.active.lock().unwrap_or_else(PoisonError::into_inner);
+
+		*active = active.saturating_sub(1);
+
+		self.gate.available.notify_one();
+	}
+}
+
 /// One held runtime/script pair for a checked two-pass evaluation.
 struct PinnedExternalEvaluator {
 	controlled_cwd: PathBuf,
@@ -2478,6 +3159,27 @@ impl EvaluatorFileGuards<'_> {
 
 		Ok(())
 	}
+}
+
+/// Returns the minimum checked outer timeout for all Node.js scenarios.
+///
+/// The conservative envelope is two replay passes. Each pass contains one fixed
+/// overhead reserve plus, for every scenario, its committed inner timeout and
+/// workspace-copy, process-spawn, and cleanup reserves. `None` means that the
+/// calculation overflowed `u64`.
+#[must_use]
+pub fn minimum_node_scenario_evaluator_timeout_ms(timeouts_ms: &[u64]) -> Option<u64> {
+	let lifecycle_reserve_ms = NODE_SCENARIO_COPY_RESERVE_MS
+		.checked_add(NODE_SCENARIO_SPAWN_RESERVE_MS)?
+		.checked_add(NODE_SCENARIO_CLEANUP_RESERVE_MS)?;
+	let pass_timeout_ms = timeouts_ms.iter().try_fold(
+		NODE_SCENARIO_PASS_OVERHEAD_MS,
+		|pass_timeout_ms, timeout_ms| {
+			pass_timeout_ms.checked_add(*timeout_ms)?.checked_add(lifecycle_reserve_ms)
+		},
+	)?;
+
+	pass_timeout_ms.checked_mul(EXTERNAL_EVALUATOR_REPLAY_PASSES)
 }
 
 /// Pins one executable, then runs a bounded empty-environment version probe.

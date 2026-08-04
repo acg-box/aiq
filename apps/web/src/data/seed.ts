@@ -65,7 +65,7 @@ const seedLeaderboardBase = modelConfig
         coveragePercent: 100,
         failures,
         missing: 0,
-        scoringVersion: '1.0.0',
+        scoringVersion: '1.0.2',
         scoreStatus: 'synthetic_complete' as const,
         synthetic: true as const,
       };
@@ -118,6 +118,21 @@ const toolSets = [
   ['retrieval tool'],
 ] as const;
 const failureCodes = ['AGENT_TIMEOUT', 'MODEL_TIMEOUT', 'TOOL_TIMEOUT'] as const;
+const syntheticUnavailableEfficiency = {
+  latencyMs: null,
+  latencyEvidenceLevel: null,
+  inputTokens: null,
+  cachedInputTokens: null,
+  cacheWriteInputTokens: null,
+  outputTokens: null,
+  reasoningOutputTokens: null,
+  totalTokens: null,
+  tokenUsageSourceLevel: null,
+  tokenUsageEvidenceLevel: null,
+  standardApiEquivalentUsdNanos: null,
+  costEstimatorStatus: 'unavailable_missing_usage',
+  costEvidenceLevel: null,
+} as const;
 
 function buildSyntheticCompleteTasks(
   entry: ScoredLeaderboardEntry,
@@ -155,7 +170,7 @@ function buildSyntheticCompleteTasks(
             }
           : null,
         tools: [...tools],
-        latencyMs: 8_000 + ((currentIndex * 1_173 + entryIndex * 487) % 29_000),
+        ...syntheticUnavailableEfficiency,
       };
     });
   });
@@ -191,7 +206,7 @@ function buildCoverageOnlyTasks(): readonly TaskResult[] {
               }
             : null,
         tools: [...tools],
-        latencyMs: isMissing ? null : 9_000 + ((currentIndex * 977) % 27_000),
+        ...syntheticUnavailableEfficiency,
       };
     }),
   );
@@ -202,8 +217,8 @@ const syntheticCompleteRuns: readonly BenchmarkRun[] = seedLeaderboard.map((entr
   entryId: entry.id,
   startedAt: `2026-07-${String(22 - (index % 17)).padStart(2, '0')}T13:00:00.000Z`,
   completedAt: `2026-07-${String(22 - (index % 17)).padStart(2, '0')}T13:24:42.000Z`,
-  benchmarkVersion: 'aiq-core@1.0.0',
-  scoringVersion: '1.0.0',
+  benchmarkVersion: 'aiq-core@1.0.2',
+  scoringVersion: '1.0.2',
   promptSetDigest: 'sha256:8469b5a3f084…c21a',
   runnerCommit: 'a7d91f4',
   region: 'us-east-1',
@@ -226,8 +241,8 @@ export const seedRuns: readonly BenchmarkRun[] = [
     entryId: 'sol-ultra',
     startedAt: '2026-07-05T13:00:00.000Z',
     completedAt: '2026-07-05T13:29:10.000Z',
-    benchmarkVersion: 'aiq-core@1.0.0',
-    scoringVersion: '1.0.0',
+    benchmarkVersion: 'aiq-core@1.0.2',
+    scoringVersion: '1.0.2',
     promptSetDigest: 'sha256:8469b5a3f084…c21a',
     runnerCommit: 'a7d91f4',
     region: 'us-east-1',
@@ -245,8 +260,8 @@ export const seedRuns: readonly BenchmarkRun[] = [
 ];
 
 export const seedMethodology: Methodology = {
-  benchmarkVersion: 'aiq-core@1.0.0',
-  scoringVersion: '1.0.0',
+  benchmarkVersion: 'aiq-core@1.0.2',
+  scoringVersion: '1.0.2',
   publishedAt: '2026-07-22T16:00:00.000Z',
   domainWeights: benchmarkDomainConfig.map((domain) => ({
     domain: domain.domain,

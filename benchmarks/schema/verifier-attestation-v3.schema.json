@@ -72,15 +72,13 @@
       ]
     },
     "benchmark_version": {
-      "type": "string",
-      "minLength": 1
+      "const": "aiq-core@1.0.2"
     },
     "prompt_set_digest": {
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "type": "string",
-      "minLength": 1
+      "const": "1.0.2"
     },
     "verifier": {
       "$ref": "#/$defs/nodeIdentity"
@@ -187,7 +185,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3"
+          "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"

@@ -55,6 +55,7 @@
         "schedule_slot",
         "task_set_hash",
         "scoring_version",
+        "execution_concurrency",
         "models",
         "started_unix_ms",
         "finished_unix_ms",
@@ -78,7 +79,12 @@
           "$ref": "#/$defs/sha256"
         },
         "scoring_version": {
-          "const": "1.0.0"
+          "const": "1.0.2"
+        },
+        "execution_concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32
         },
         "models": {
           "type": "array",
@@ -532,7 +538,8 @@
             "evaluator_failure",
             "budget_exceeded",
             "output_truncated",
-            "workspace_unavailable"
+            "workspace_unavailable",
+            "workspace_integrity"
           ]
         },
         "message": {
@@ -668,7 +675,8 @@
             "usage_limit",
             "non_zero_exit",
             "budget_exceeded",
-            "output_truncated"
+            "output_truncated",
+            "workspace_integrity"
           ]
         },
         "exit_code": {
@@ -1338,7 +1346,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "$ref": "#/$defs/sha256"
+          "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
@@ -1421,7 +1429,7 @@
           "$ref": "#/$defs/taskId"
         },
         "task_version": {
-          "$ref": "#/$defs/taskVersion"
+          "const": "1.0.2"
         },
         "task_hash": {
           "$ref": "#/$defs/sha256"
@@ -1788,7 +1796,8 @@
                           "evaluator_failure",
                           "budget_exceeded",
                           "output_truncated",
-                          "workspace_unavailable"
+                          "workspace_unavailable",
+                          "workspace_integrity"
                         ]
                       }
                     }

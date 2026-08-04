@@ -1,8 +1,8 @@
 {
-  "name": "@aiq/wiki-web",
+  "name": "@aiq/web",
   "version": "0.1.0",
   "private": true,
-  "description": "AIQ Wiki public benchmark history and distributed radar interface",
+  "description": "AIQ public benchmark history and distributed radar interface",
   "homepage": "https://aiq.wiki",
   "license": "GPL-3.0-only",
   "repository": {
@@ -24,12 +24,11 @@
     "test:browser:live-stack": "playwright test --config playwright.live-stack.ts",
     "test:browser:live-published": "playwright test --config playwright.live-published.ts",
     "test:browser:malformed-config": "playwright test --config playwright.malformed-config.ts",
-    "test:browser:missing-config": "playwright test --config playwright.missing-config.ts",
-    "test:browser:preview-stack": "playwright test --config playwright.preview-stack.ts"
+    "test:browser:missing-config": "playwright test --config playwright.missing-config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.110.8",
-    "next": "16.2.11",
+    "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
