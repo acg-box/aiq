@@ -75,7 +75,6 @@ function readTrendTooltipItem(value: unknown): {
 interface TrendRenderItemApi {
   value: (dimension: number) => number | string;
   coord: (value: readonly (number | string)[]) => readonly [number, number];
-  style: (style: Record<string, unknown>) => Record<string, unknown>;
   barLayout: (options: {
     count: number;
     barMaxWidth: number;
@@ -181,7 +180,7 @@ export function TrendExplorer({
             children: trendIntervalLineShapes(low, high, xOffset).map((shape) => ({
               type: 'line',
               shape,
-              style: api.style({ stroke: color, lineWidth: 1.2, opacity: 0.9 }),
+              style: { stroke: color, lineWidth: 1.2, opacity: 0.9 },
             })),
           };
         },
@@ -337,7 +336,7 @@ export function TrendExplorer({
       </div>
       <details className="data-disclosure">
         <summary>Read visible trend values as a table</summary>
-        <div className="table-scroll" tabIndex={0}>
+        <div className="table-scroll" role="region" aria-label="Visible trend values" tabIndex={0}>
           <table>
             <thead>
               <tr>

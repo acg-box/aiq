@@ -85,6 +85,10 @@ cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
 ```
 
+Contrast is an operator-enforced release gate before Official permission
+admission. Its commitment is not an input to the 17-by-72 admission plan, and
+its six tasks do not add cells to the 1,224-cell Official matrix.
+
 The native macOS runner completed the first real Official benchmark batch. Its
 17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
 results: 1,218 completed and 6 failed. The native verifier replayed the
@@ -194,6 +198,12 @@ unknown. Distributed contributions remain non-Official until an independent
 verifier reproduces the deterministic evaluator result and a separate publisher
 accepts the signed package.
 
+Scientific reporting exposes the observation count, fixed-fixture
+task-sensitivity interval, coverage, missing cells, runtime state, scoring
+method, and provenance needed to interpret a score. These fields must remain
+explicit when evidence is partial. Estimated Standard API-equivalent cost is a
+comparison method, not an actual ChatGPT or Codex subscription bill.
+
 ## Outcomes and scoring
 
 Correct and partial outcomes contribute their evaluator score. Attributable
@@ -241,6 +251,13 @@ selection digests, capability and provenance evidence, evaluator-results
 artifact, execution concurrency, scoring version, benchmark release, telemetry,
 and pricing method. Replay-verified provenance does not change its `untrusted`
 trust tier or make it Official or ranking eligible.
+
+`aiq-verifier diagnose-rescore` is a separate offline audit path. It first
+validates the signed source package and completes the source evaluator replay.
+It then replays the same retained cells against a candidate source, controlled
+tasks, evaluators, runtime, and toolchain. Its create-new report is permanently
+non-Official and non-ranking. It does not create a stage or attestation and has
+no publication path.
 
 The runner and verifier identities must differ. A third publisher identity
 completes either publication transition. The separate calibration register

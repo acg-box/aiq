@@ -50,6 +50,11 @@ artifact bindings, including 19 capability artifacts.
   token usage and a versioned Standard API-equivalent cost estimate.
 - The verifier reconstructs submitted workspaces and replays deterministic
   evaluators before it signs `aiq.verifier-attestation.v3` evidence.
+- The verifier also provides an offline `diagnose-rescore` audit. It first
+  verifies and replays one source package, then scores the preserved cells with
+  a candidate source, task, evaluator, runtime, and toolchain set. Its
+  create-new report is permanently non-Official and non-ranking. It cannot
+  publish or create an attestation.
 - Production uses three distinct identities: runner, verifier, and publisher.
 - The Web application reads public database views and sends controlled writes
   through server routes.
@@ -92,11 +97,14 @@ batch of 17 configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
 
-The Web application is a professional analysis workbench. It keeps semantic
-task outcomes separate from runtime, invalid, and missing cells; shows the
-fixed-fixture task-sensitivity interval; and uses ECharts with SVG rendering and
-ARIA descriptions. Users can select system, light, or dark color themes. The
-production views use the real historical matrix, not synthetic data.
+The Web application is a professional analysis workbench. Scientific score
+context reports the sample count, fixed-fixture task-sensitivity interval, coverage,
+missing cells, runtime state, scoring method, and provenance. It keeps semantic
+task outcomes separate from runtime, invalid, and missing cells. Cost remains an
+estimated Standard API-equivalent comparison, not an actual ChatGPT or Codex
+subscription bill. Charts use ECharts with SVG rendering and ARIA descriptions.
+Users can select system, light, or dark color themes. The production views use
+the real historical matrix, not synthetic data.
 
 ## Repository map
 
@@ -136,6 +144,7 @@ cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo run -p aiq-runner -- --help
 cargo run -p aiq-verifier -- --help
+cargo run -p aiq-verifier -- diagnose-rescore --help
 ```
 
 ## Validation

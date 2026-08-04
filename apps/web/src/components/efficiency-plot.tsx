@@ -3,9 +3,14 @@
 import { useMemo, useState } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
-import type { LeaderboardEntry, PublicModelEfficiency } from '../data/types.ts';
+import {
+  isScoredLeaderboardEntry,
+  type LeaderboardEntry,
+  type PublicModelEfficiency,
+} from '../data/types.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { paretoEfficientKeys } from './efficiency-analysis.ts';
+import { formatScientificScoreContextHtml } from './scientific-score-context.ts';
 
 type Metric = 'cost' | 'duration';
 type EfficiencyDatum = readonly [
@@ -17,6 +22,10 @@ type EfficiencyDatum = readonly [
   number,
   number,
   string,
+  string,
+  number,
+  number,
+  number,
   string,
 ];
 
@@ -33,11 +42,29 @@ function readEfficiencyDatum(value: unknown): EfficiencyDatum | null {
     typeof data[5] !== 'number' ||
     typeof data[6] !== 'number' ||
     typeof data[7] !== 'string' ||
-    typeof data[8] !== 'string'
+    typeof data[8] !== 'string' ||
+    typeof data[9] !== 'number' ||
+    typeof data[10] !== 'number' ||
+    typeof data[11] !== 'number' ||
+    typeof data[12] !== 'string'
   ) {
     return null;
   }
-  return [data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7], data[8]];
+  return [
+    data[0],
+    data[1],
+    data[2],
+    data[3],
+    data[4],
+    data[5],
+    data[6],
+    data[7],
+    data[8],
+    data[9],
+    data[10],
+    data[11],
+    data[12],
+  ];
 }
 
 function efficiencyComparisonGroup(
@@ -90,7 +117,9 @@ export function EfficiencyPlot({
           : row.observedTimeCoveragePercent === 100
             ? row.summedCellAdapterElapsedMs
             : null;
-      return entry?.score == null || x === null ? [] : [{ row, entry, x, y: entry.score }];
+      return !entry || !isScoredLeaderboardEntry(entry) || x === null
+        ? []
+        : [{ row, entry, x, y: entry.score }];
     });
   }, [entries, metric, rows]);
   const unavailable = rows.length - points.length;
@@ -134,7 +163,16 @@ export function EfficiencyPlot({
           const datum = readEfficiencyDatum(value);
           if (!datum) return 'Efficiency evidence unavailable';
           const x = duration ? `${(datum[0] / 60_000).toFixed(2)} min` : `$${datum[0].toFixed(4)}`;
-          return `${datum[2]}<br/>AIQ: ${datum[1].toFixed(1)} (interval ${datum[5].toFixed(1)}–${datum[6].toFixed(1)})<br/>${duration ? 'Summed cell adapter time' : 'Standard API-equivalent estimate'}: ${x}<br/>n=${datum[3]} · coverage ${datum[4]}<br/>scoring ${datum[7]} · ${datum[8]}`;
+          const scientificContext = formatScientificScoreContextHtml({
+            sampleSize: datum[9],
+            coverage: datum[4],
+            runtime: `${datum[10]} issues`,
+            missing: String(datum[11]),
+            status: datum[12],
+            scoringVersion: datum[7],
+            provenance: datum[8],
+          });
+          return `${datum[2]}<br/>AIQ: ${datum[1].toFixed(1)} (interval ${datum[5].toFixed(1)}–${datum[6].toFixed(1)})<br/>${duration ? 'Summed cell adapter time' : 'Standard API-equivalent estimate'}: ${x} · metric evidence n=${datum[3]}<br/>${scientificContext}`;
         },
       },
       xAxis: {
@@ -172,7 +210,6 @@ export function EfficiencyPlot({
             api: {
               value: (dimension: number) => number;
               coord: (value: readonly number[]) => readonly [number, number];
-              style: (style: Record<string, unknown>) => Record<string, unknown>;
             },
           ) => {
             const x = api.value(0);
@@ -184,17 +221,17 @@ export function EfficiencyPlot({
                 {
                   type: 'line',
                   shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
-                  style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                  style: { stroke: 'var(--interval)', lineWidth: 1.5 },
                 },
                 {
                   type: 'line',
                   shape: { x1: low[0] - 4, y1: low[1], x2: low[0] + 4, y2: low[1] },
-                  style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                  style: { stroke: 'var(--interval)', lineWidth: 1.5 },
                 },
                 {
                   type: 'line',
                   shape: { x1: high[0] - 4, y1: high[1], x2: high[0] + 4, y2: high[1] },
-                  style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                  style: { stroke: 'var(--interval)', lineWidth: 1.5 },
                 },
               ],
             };
@@ -229,6 +266,10 @@ export function EfficiencyPlot({
               entry.ciHigh ?? y,
               entry.scoringVersion ?? 'unavailable',
               entry.synthetic ? 'synthetic' : 'published',
+              entry.sampleSize,
+              entry.runtimeIssues,
+              entry.missing,
+              entry.scoreStatus.replaceAll('_', ' '),
             ]),
         })),
         {
@@ -292,11 +333,17 @@ export function EfficiencyPlot({
       </p>
       <details className="chart-data-disclosure">
         <summary>Read efficiency values</summary>
-        <div className="table-scroll" tabIndex={0}>
+        <div
+          className="table-scroll"
+          role="region"
+          aria-label="Efficiency evidence values"
+          tabIndex={0}
+        >
           <table>
             <caption>
               AIQ is unchanged by the selected efficiency metric. Cost is a Standard API-equivalent
-              estimate; duration is summed cell adapter time, not wall-clock time.
+              estimate, not billed subscription cost; duration is summed cell adapter time, not
+              wall-clock time.
             </caption>
             <thead>
               <tr>

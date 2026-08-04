@@ -145,7 +145,11 @@ export default async function CalibrationDetailPage({
             </select>
             <button type="submit">Show {run.selectedTaskCount}-task subset</button>
           </form>
-          <p className="calibration-slice-count" role="status">
+          <p
+            className="calibration-slice-count"
+            role="status"
+            aria-label="Calibration result count"
+          >
             Showing {run.results.length.toLocaleString()} of {run.resultCount.toLocaleString()}{' '}
             result cells for {selection.modelFamily} · {selection.reasoningEffort}.
           </p>

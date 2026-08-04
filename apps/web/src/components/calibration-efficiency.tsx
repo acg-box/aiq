@@ -6,6 +6,7 @@ import type { PublicCalibrationScore } from '../data/types.ts';
 import { formatHumanDuration, formatTaskDuration } from '../data/format-duration.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { paretoEfficientKeys } from './efficiency-analysis.ts';
+import { formatScientificScoreContextHtml } from './scientific-score-context.ts';
 
 type Metric = 'cost' | 'time';
 type CalibrationPoint = Readonly<{ score: PublicCalibrationScore; x: number; y: number }>;
@@ -68,6 +69,9 @@ function calibrationDatum(point: CalibrationPoint): readonly (number | string)[]
     point.score.taskResamplingSensitivityLower ?? point.y,
     point.score.taskResamplingSensitivityUpper ?? point.y,
     point.score.synthetic ? 'synthetic' : 'published',
+    point.score.descriptiveStatus,
+    point.score.attemptedResultCount,
+    point.score.invokedResultCount,
   ];
 }
 
@@ -128,7 +132,16 @@ function Scatter({
         const data = readCalibrationDatum(value);
         if (!data) return 'Calibration efficiency evidence unavailable';
         const x = Number(data[0]);
-        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 0)}<br/>n=${data[3]} · coverage ${data[4]} · ${data[7]}<br/>scoring ${scoringVersion ?? 'unavailable'}`;
+        const scientificContext = formatScientificScoreContextHtml({
+          sampleSize: Number(data[3]),
+          coverage: String(data[4]),
+          runtime: `adapter invoked ${data[10]}/${data[9]} attempted`,
+          missing: 'unavailable in aggregate',
+          status: String(data[8]).replaceAll('_', ' '),
+          scoringVersion: scoringVersion ?? 'unavailable',
+          provenance: String(data[7]),
+        });
+        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 0)}<br/>${scientificContext}`;
       },
     },
     xAxis: {
@@ -170,7 +183,6 @@ function Scatter({
           api: {
             value: (dimension: number) => number;
             coord: (value: readonly number[]) => readonly [number, number];
-            style: (style: Record<string, unknown>) => Record<string, unknown>;
           },
         ) => {
           const x = api.value(0);
@@ -182,17 +194,17 @@ function Scatter({
               {
                 type: 'line',
                 shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
-                style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                style: { stroke: 'var(--interval)', lineWidth: 1.5 },
               },
               {
                 type: 'line',
                 shape: { x1: low[0] - 4, y1: low[1], x2: low[0] + 4, y2: low[1] },
-                style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                style: { stroke: 'var(--interval)', lineWidth: 1.5 },
               },
               {
                 type: 'line',
                 shape: { x1: high[0] - 4, y1: high[1], x2: high[0] + 4, y2: high[1] },
-                style: api.style({ stroke: 'var(--interval)', lineWidth: 1.5 }),
+                style: { stroke: 'var(--interval)', lineWidth: 1.5 },
               },
             ],
           };
@@ -379,6 +391,7 @@ export function CalibrationEfficiency({
                 </td>
                 <td>
                   {scoringVersion ?? 'Scoring unavailable'}
+                  <small>{score.descriptiveStatus.replaceAll('_', ' ')}</small>
                   <small>{score.synthetic ? 'Synthetic seed' : 'Published calibration'}</small>
                   <small>Untrusted · not Official · not ranking eligible</small>
                 </td>
