@@ -30,11 +30,18 @@ async function expectPublishedNonSyntheticPage(page: Page, path: string) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
   await expect(page.locator('main h1')).toBeVisible();
-  await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('No published evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Published evidence unavailable', { exact: true })).toHaveCount(0);
+  const evidenceLabel = path.startsWith('/trends')
+    ? 'Matrix entries provenance'
+    : 'Data provenance';
+  const primaryEvidence = page.getByLabel(evidenceLabel, { exact: true });
+  await expect(primaryEvidence).toBeVisible();
+  await expect(primaryEvidence.getByText('Published evidence', { exact: true })).toBeVisible();
+  await expect(primaryEvidence.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
+  await expect(primaryEvidence.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
+  await expect(primaryEvidence.getByText('No published evidence', { exact: true })).toHaveCount(0);
+  await expect(
+    primaryEvidence.getByText('Published evidence unavailable', { exact: true }),
+  ).toHaveCount(0);
 }
 
 async function expectNoHorizontalOverflow(page: Page, path: string) {

@@ -51,6 +51,7 @@ async function expectPublishedPage(
   expectedOrigin: string,
   path: string,
   heading?: string,
+  evidenceLabel = 'Data provenance',
 ) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
@@ -58,11 +59,15 @@ async function expectPublishedPage(
   const mainHeading = page.locator('main h1');
   await expect(mainHeading).toBeVisible();
   if (heading) await expect(mainHeading).toContainText(heading);
-  await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('No published evidence', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Published evidence unavailable', { exact: true })).toHaveCount(0);
+  const primaryEvidence = page.getByLabel(evidenceLabel, { exact: true });
+  await expect(primaryEvidence).toBeVisible();
+  await expect(primaryEvidence.getByText('Published evidence', { exact: true })).toBeVisible();
+  await expect(primaryEvidence.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
+  await expect(primaryEvidence.getByText('Mixed evidence', { exact: true })).toHaveCount(0);
+  await expect(primaryEvidence.getByText('No published evidence', { exact: true })).toHaveCount(0);
+  await expect(
+    primaryEvidence.getByText('Published evidence unavailable', { exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
   );
@@ -208,6 +213,13 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   const expectedOrigin = new URL(baseURL ?? '').origin;
   await expectPublishedPage(page, expectedOrigin, '/', 'A score is only useful');
   await expectNoDocumentOverflow(page, testInfo);
+  if (testInfo.config.metadata.productionEvidenceVariants === true) {
+    await expect(
+      page
+        .getByLabel('Latest calibration status', { exact: true })
+        .getByText('No published evidence', { exact: true }),
+    ).toBeVisible();
+  }
 
   const leaderboard = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
@@ -442,6 +454,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
     expectedOrigin,
     '/trends?range=all',
     'The past remains part of the record',
+    'Matrix entries provenance',
   );
   await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
   await expect(page.getByRole('list', { name: 'Trend series' }).getByRole('listitem')).toHaveCount(
