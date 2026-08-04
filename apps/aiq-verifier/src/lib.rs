@@ -4,6 +4,8 @@ mod replay;
 
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Builder};
 use std::{
 	collections::BTreeSet,
@@ -53,6 +55,7 @@ const MAX_OBJECT_RESPONSE_BYTES: usize = MAX_SUBMISSION_BYTES + 1;
 const MAX_ARTIFACT_RESPONSE_BYTES: usize = MAX_ARTIFACT_BYTES + 1;
 const RENEWED_LEASE_SECONDS: u64 = 900;
 const LEASE_RENEWAL_INTERVAL: Duration = Duration::from_secs(300);
+const DEFAULT_GATEWAY_TIMEOUT_SECONDS: u64 = 120;
 const DEFAULT_REPLAY_JOBS: usize = 4;
 const MAX_REPLAY_JOBS: usize = 32;
 const VERIFIER_REJECTION_SCHEMA: &str = "aiq.verifier-rejection.v2";
@@ -173,7 +176,11 @@ pub struct Cli {
 	#[arg(long, default_value_t = 250, value_parser = clap::value_parser!(u64).range(1..=60_000))]
 	backoff_ms: u64,
 	/// Global timeout for each HTTP request.
-	#[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(1..=300))]
+	#[arg(
+		long,
+		default_value_t = DEFAULT_GATEWAY_TIMEOUT_SECONDS,
+		value_parser = clap::value_parser!(u64).range(1..=300)
+	)]
 	timeout_seconds: u64,
 	/// Maximum candidate replays that may run at the same time.
 	#[arg(
@@ -872,6 +879,8 @@ struct Worker<T> {
 	evaluator_runtime: Option<EvaluatorRuntime>,
 	replay_root: PathBuf,
 	replay_jobs: usize,
+	#[cfg(test)]
+	preparation_calls: AtomicUsize,
 }
 impl<T> Worker<T>
 where
@@ -1080,7 +1089,7 @@ where
 		};
 		let response = self.retry(|| {
 			lease.with_terminal_lease(
-				|| self.post_verification(&body),
+				|| self.post_verification(&body, "verification gateway is unavailable"),
 				|response| {
 					response.status == 200
 						&& verification_response_matches(&response.body, &prepared)
@@ -1145,6 +1154,9 @@ where
 		package_bytes: &[u8],
 		lease: &dyn LeaseMaintenance,
 	) -> Result<PreparedVerification, WorkerError> {
+		#[cfg(test)]
+		self.preparation_calls.fetch_add(1, Ordering::Relaxed);
+
 		let endpoint =
 			self.environment.artifact_resolver_endpoint.as_deref().unwrap_or(&self.endpoint);
 		let resolver = HttpArtifactResolver {
@@ -1204,7 +1216,7 @@ where
 			.map_err(|serialize_error| WorkerError::configuration(serialize_error.to_string()))?;
 		let response = self.retry(|| {
 			lease.with_terminal_lease(
-				|| self.post_verification(&body),
+				|| self.post_verification(&body, "rejection gateway is unavailable"),
 				|response| {
 					response.status == 200 && rejection_response_matches(&response.body, claim)
 				},
@@ -1230,8 +1242,22 @@ where
 		Ok(PackageDisposition::Rejected(reason))
 	}
 
-	fn post_verification(&self, body: &[u8]) -> Result<HttpResponse, WorkerError> {
-		self.transport.post_json(&format!("{}/api/verifications", self.endpoint), &self.token, body)
+	fn post_verification(
+		&self,
+		body: &[u8],
+		unavailable_message: &'static str,
+	) -> Result<HttpResponse, WorkerError> {
+		let response = self.transport.post_json(
+			&format!("{}/api/verifications", self.endpoint),
+			&self.token,
+			body,
+		)?;
+
+		if retryable_verification_status(response.status) {
+			return Err(WorkerError::transient(unavailable_message));
+		}
+
+		Ok(response)
 	}
 
 	fn acknowledge(&self, claim: &Claim, disposition: &str) -> Result<(), WorkerError> {
@@ -1766,6 +1792,10 @@ pub fn run_cli() -> Result<(), WorkerError> {
 	}
 
 	run_worker(Cli::parse_from(arguments))
+}
+
+fn retryable_verification_status(status: u16) -> bool {
+	matches!(status, 408 | 409 | 429 | 500..=599)
 }
 
 fn prepare_package_verification(
@@ -2545,6 +2575,8 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		evaluator_runtime,
 		replay_root,
 		replay_jobs: cli.replay_jobs,
+		#[cfg(test)]
+		preparation_calls: AtomicUsize::new(0),
 	};
 
 	worker.run(cli.max_claims, cli.max_idle_polls)
@@ -3206,7 +3238,7 @@ mod tests {
 		process,
 		sync::{
 			Arc, Barrier, Mutex,
-			atomic::{AtomicBool, Ordering},
+			atomic::{AtomicBool, AtomicUsize, Ordering},
 		},
 		thread,
 		time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -3271,6 +3303,14 @@ mod tests {
 
 	struct AckConflictTransport {
 		inner: FakeTransport,
+	}
+
+	struct RetryVerificationTransport {
+		package: Vec<u8>,
+		verification_statuses: Mutex<VecDeque<u16>>,
+		verification_bodies: Mutex<Vec<Vec<u8>>>,
+		object_calls: Mutex<usize>,
+		requests: Mutex<Vec<String>>,
 	}
 
 	struct TestArtifactSink;
@@ -3571,6 +3611,83 @@ mod tests {
 
 		fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
 			self.inner.get_artifact_object(url)
+		}
+	}
+
+	impl Transport for RetryVerificationTransport {
+		fn post_json(
+			&self,
+			url: &str,
+			_token: &Secret,
+			body: &[u8],
+		) -> Result<HttpResponse, WorkerError> {
+			let request: serde_json::Value = serde_json::from_slice(body)
+				.map_err(|error| WorkerError::transient(error.to_string()))?;
+
+			if request.get("action").and_then(serde_json::Value::as_str) == Some("renew") {
+				self.requests.lock().expect("requests").push("renewed".to_owned());
+
+				return Ok(HttpResponse {
+					status: 200,
+					body: serde_json::to_vec(&serde_json::json!({
+						"status": "renewed",
+						"inbox_id": request["inbox_id"],
+						"lease_token": request["lease_token"],
+						"lease_expires_at": "2026-07-25T12:20:00Z",
+						"attempt": 1
+					}))
+					.expect("renewal response"),
+				});
+			}
+			if request.get("action").and_then(serde_json::Value::as_str) == Some("ack") {
+				let disposition = request["disposition"].as_str().expect("ack disposition");
+
+				self.requests.lock().expect("requests").push(format!("ack_{disposition}"));
+
+				return Ok(HttpResponse {
+					status: 200,
+					body: serde_json::to_vec(&serde_json::json!({ "status": "acknowledged" }))
+						.expect("ack response"),
+				});
+			}
+
+			assert_eq!(url, "https://gateway.invalid/api/verifications");
+
+			self.verification_bodies.lock().expect("verification bodies").push(body.to_vec());
+
+			let status = self
+				.verification_statuses
+				.lock()
+				.expect("verification statuses")
+				.pop_front()
+				.unwrap_or(200);
+
+			self.requests.lock().expect("requests").push(format!("verification_{status}"));
+
+			let response_body = if status == 200 {
+				serde_json::to_vec(&serde_json::json!({
+					"status": "verified_published",
+					"matrix_batch_id": request["stage"]["matrix_batch_id"],
+					"package_sha256": request["stage"]["package_sha256"]
+				}))
+				.expect("verification response")
+			} else {
+				Vec::new()
+			};
+
+			Ok(HttpResponse { status, body: response_body })
+		}
+
+		fn get_object(&self, _url: &str) -> Result<HttpResponse, WorkerError> {
+			*self.object_calls.lock().expect("object calls") += 1;
+
+			Ok(HttpResponse { status: 200, body: self.package.clone() })
+		}
+
+		fn get_artifact_object(&self, _url: &str) -> Result<HttpResponse, WorkerError> {
+			Err(WorkerError::transient(
+				"synthetic verification must not resolve production artifacts",
+			))
 		}
 	}
 
@@ -3959,6 +4076,7 @@ mod tests {
 		];
 		let parsed = Cli::try_parse_from(base).expect("default replay jobs");
 
+		assert_eq!(parsed.timeout_seconds, crate::DEFAULT_GATEWAY_TIMEOUT_SECONDS);
 		assert_eq!(parsed.replay_jobs, DEFAULT_REPLAY_JOBS);
 
 		for accepted in ["1", "32"] {
@@ -4326,6 +4444,7 @@ mod tests {
 			evaluator_runtime: None,
 			replay_root: PathBuf::from("/unused-replay"),
 			replay_jobs: DEFAULT_REPLAY_JOBS,
+			preparation_calls: AtomicUsize::new(0),
 		}
 	}
 
@@ -4342,6 +4461,46 @@ mod tests {
 			object_url: "https://storage.invalid/signed".to_owned(),
 			object_url_expires_in_seconds: 300,
 		}
+	}
+
+	fn retry_verification_fixture(
+		statuses: impl IntoIterator<Item = u16>,
+		max_retries: u32,
+	) -> (Worker<RetryVerificationTransport>, Claim) {
+		let runner_identity = SigningIdentity::from_secret([7; 32]);
+		let mut run = runner::synthetic_demo(
+			ScheduleConfig::default().slot("2000-01-01", ScheduleOccurrence::Day).expect("slot"),
+			&TestArtifactSink,
+		)
+		.expect("run");
+
+		submission::bind_synthetic_run_to_signer(&mut run, &runner_identity.node().node_id)
+			.expect("bind");
+
+		let envelope = runner_identity
+			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
+			.expect("sign");
+		let package = submission::serialize_signed_package(&envelope).expect("serialize");
+		let package_sha256 = hex::encode(Sha256::digest(&package));
+		let transport = RetryVerificationTransport {
+			package: package.clone(),
+			verification_statuses: Mutex::new(statuses.into_iter().collect()),
+			verification_bodies: Mutex::new(Vec::new()),
+			object_calls: Mutex::new(0),
+			requests: Mutex::new(Vec::new()),
+		};
+		let mut worker = test_worker(transport);
+		let mut claim = test_claim(run.run_id);
+
+		worker.max_retries = max_retries;
+		worker.backoff = Duration::ZERO;
+
+		claim.package_sha256.clone_from(&package_sha256);
+
+		claim.body_bytes = package.len();
+		claim.object_content_sha256 = package_sha256;
+
+		(worker, claim)
 	}
 
 	fn local_fixture_preflight(node_id: String, codex_version: &str) -> CapabilityValidationReport {
@@ -5051,6 +5210,66 @@ mod tests {
 			ArtifactResolveAttemptError::from_transport(WorkerError::configuration("URL")),
 			ArtifactResolveAttemptError::Final(_)
 		));
+	}
+
+	#[test]
+	fn verification_http_status_contract_separates_retryable_and_terminal_responses() {
+		for status in [408, 409, 429, 500, 502, 599] {
+			assert!(crate::retryable_verification_status(status), "HTTP {status}");
+		}
+		for status in [200, 400, 401, 403, 404, 422] {
+			assert!(!crate::retryable_verification_status(status), "HTTP {status}");
+		}
+	}
+
+	#[test]
+	fn verification_retries_reuse_prepared_replay_until_success() {
+		let (worker, claim) = retry_verification_fixture([500, 502, 200], 3);
+
+		assert!(matches!(
+			worker.verify_claim(&claim).expect("verification retry must recover"),
+			PackageDisposition::Verified("commitments_verified")
+		));
+		assert_eq!(*worker.transport.object_calls.lock().expect("object calls"), 1);
+		assert_eq!(worker.preparation_calls.load(Ordering::Relaxed), 1);
+		assert_eq!(
+			worker.transport.requests.lock().expect("requests").as_slice(),
+			[
+				"renewed",
+				"verification_500",
+				"verification_502",
+				"verification_200",
+				"ack_completed",
+			]
+		);
+
+		let bodies = worker.transport.verification_bodies.lock().expect("verification bodies");
+
+		assert_eq!(bodies.len(), 3);
+		assert!(bodies.windows(2).all(|pair| pair[0] == pair[1]));
+	}
+
+	#[test]
+	fn exhausted_verification_retries_acknowledge_queue_retry_without_replay() {
+		let (worker, claim) = retry_verification_fixture([500, 502, 503], 3);
+		let record = worker.process_claim(&claim);
+
+		assert_eq!(record.disposition, "retry");
+		assert_eq!(record.replay_scope, "verification_incomplete");
+		assert_eq!(record.error_class, Some(OperatorErrorClass::Transient));
+		assert_eq!(record.error_code, Some("verification_gateway_unavailable"));
+		assert_eq!(record.error_detail.as_deref(), Some("verification gateway is unavailable"));
+		assert_eq!(*worker.transport.object_calls.lock().expect("object calls"), 1);
+		assert_eq!(worker.preparation_calls.load(Ordering::Relaxed), 1);
+		assert_eq!(
+			worker.transport.requests.lock().expect("requests").as_slice(),
+			["renewed", "verification_500", "verification_502", "verification_503", "ack_retry",]
+		);
+
+		let bodies = worker.transport.verification_bodies.lock().expect("verification bodies");
+
+		assert_eq!(bodies.len(), 3);
+		assert!(bodies.windows(2).all(|pair| pair[0] == pair[1]));
 	}
 
 	#[test]

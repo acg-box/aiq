@@ -24,6 +24,35 @@ end;
 $$;
 
 select pg_temp.aiq_assert(
+  (
+    select routine.proconfig @> array['search_path=""', 'statement_timeout=50s']::text[]
+      and cardinality(routine.proconfig) = 2
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'public'
+      and routine.proname = 'aiq_stage_verifier_result'
+      and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+        'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+  ),
+  'Official staging must have exactly the bounded 50-second function timeout'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    where routine.proconfig @> array['statement_timeout=50s']::text[]
+      and not (
+        namespace.nspname = 'public'
+        and routine.proname = 'aiq_stage_verifier_result'
+        and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+          'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+      )
+  ),
+  'the staging timeout override must not widen to another database function'
+);
+
+select pg_temp.aiq_assert(
   aiq_private.has_exact_jsonb_keys('{"a":1,"b":2}'::jsonb,array['b','a']::text[]),
   'exact JSON object keys must not depend on caller order or database collation'
 );
@@ -832,7 +861,12 @@ select pg_temp.aiq_assert(
   (select exact_retry_ms < 10000 from aiq_stage_timings),
   'an exact completed retry must finish within 10 seconds'
 );
-select first_stage_ms, exact_retry_ms from aiq_stage_timings;
+select
+  octet_length(fixture.stage::text) as normalized_stage_bytes,
+  timing.first_stage_ms,
+  timing.exact_retry_ms
+from aiq_stage_timings timing
+cross join aiq_stage_resume_input fixture;
 select pg_temp.aiq_assert(
   (select count(*) = 17 from aiq_private.aiq_package_runs link
    join aiq_stage_resume_input fixture on fixture.package_sha256 = link.package_sha256),

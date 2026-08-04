@@ -43,6 +43,15 @@ The worker has bounded claim, lease, retry, polling, and HTTP timeout settings.
 It renews an active lease while it processes a package and records a controlled
 rejection when validation cannot continue.
 
+The default gateway request timeout is 120 seconds. It leaves room for the
+bounded Official staging transaction and the following attestation and
+publication calls to finish in one gateway request.
+
+After replay completes, HTTP 408, 409, 429, and 5xx responses from the
+verification gateway retry the same prepared request under the maintained
+claim lease. Other HTTP 4xx responses remain terminal. If the bounded retry
+budget is exhausted, the worker acknowledges the claim for queue retry.
+
 Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
 `32` to match controlled host capacity. Replay output stays in signed result
 order, independent of this setting.
