@@ -364,7 +364,8 @@ calibrationResults.push(
 const modelEfficiency = calibrationScores.map((score, index) => {
   const completeTokens = index === 0;
   const partialTokens = index === 2;
-  const tokenCount = completeTokens ? 72 : partialTokens ? 36 : 0;
+  const contextBandTokens = index === 4;
+  const tokenCount = completeTokens || contextBandTokens ? 72 : partialTokens ? 36 : 0;
   const tokenCoveragePercent = tokenCount === 0 ? null : (tokenCount / 72) * 100;
   const tokensAvailable = tokenCount > 0;
   const durationAvailable = index !== 3;
@@ -385,7 +386,7 @@ const modelEfficiency = calibrationScores.map((score, index) => {
     cache_write_input_tokens: tokensAvailable ? 6_000 : null,
     output_tokens: tokensAvailable ? 36_000 : null,
     reasoning_output_tokens: tokensAvailable ? 12_000 : null,
-    total_tokens: tokensAvailable ? 108_000 : null,
+    total_tokens: null,
     token_usage_sample_count: tokenCount,
     token_usage_coverage_percent: tokenCoveragePercent,
     input_token_coverage_count: tokensAvailable ? tokenCount : null,
@@ -398,12 +399,16 @@ const modelEfficiency = calibrationScores.map((score, index) => {
     output_token_coverage_percent: tokenCoveragePercent,
     reasoning_token_coverage_count: tokensAvailable ? tokenCount : null,
     reasoning_token_coverage_percent: tokenCoveragePercent,
-    total_token_coverage_count: tokensAvailable ? tokenCount : null,
-    total_token_coverage_percent: tokenCoveragePercent,
+    total_token_coverage_count: null,
+    total_token_coverage_percent: null,
     token_usage_source_level: tokensAvailable ? 'provider_reported' : null,
     token_usage_evidence_level: tokensAvailable ? 'verifier_recomputed' : null,
     standard_api_equivalent_usd_nanos: completeTokens ? 12_345_600_000 : null,
-    cost_estimator_status: completeTokens ? 'estimated' : 'unavailable_missing_usage',
+    cost_estimator_status: completeTokens
+      ? 'estimated'
+      : contextBandTokens
+        ? 'unavailable_context_band'
+        : 'unavailable_missing_usage',
     cost_evidence_level: completeTokens ? 'verifier_recomputed' : null,
     cost_method: 'standard_api_equivalent_text_token_estimate',
     pricing_source: score.pricing_source,
@@ -416,9 +421,9 @@ const modelEfficiency = calibrationScores.map((score, index) => {
     invoked_result_count: 72,
     adapter_elapsed_observed_result_count: durationAvailable ? 72 : 0,
     token_observed_result_count: tokenCount,
-    priced_result_count: completeTokens ? 72 : 0,
+    priced_result_count: completeTokens || contextBandTokens ? 72 : 0,
     execution_concurrency: 17,
-    estimated_cost_sample_count: completeTokens ? 72 : 0,
+    estimated_cost_sample_count: completeTokens || contextBandTokens ? 72 : 0,
     cost_estimator_limitations: score.cost_estimator_limitations,
     pricing_rates: pricingRates,
     cost_formula: costFormula,
@@ -432,6 +437,7 @@ const historicalModelEfficiency = [
 
 /** @type {Array<{ run_id: string; [key: string]: unknown }>} */
 const runResults = [];
+let publishedResultIndex = 0;
 for (const [runIndex, run] of runRows.entries()) {
   const outcomes = officialOutcomeCounts[runIndex];
   if (!outcomes) throw new Error('Missing Official outcome counts.');
@@ -439,6 +445,10 @@ for (const [runIndex, run] of runRows.entries()) {
   for (const [domain, taskCount] of domainCounts) {
     for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
       globalIndex += 1;
+      publishedResultIndex += 1;
+      const estimatedCost = publishedResultIndex <= 1_203;
+      const unavailableContextBand = publishedResultIndex > 1_203 && publishedResultIndex <= 1_218;
+      const tokensAvailable = estimatedCost || unavailableContextBand;
       const passed = globalIndex <= outcomes.passed;
       const executionFailure =
         !passed && globalIndex > 72 - outcomes.executionFailures ? outcomes.executionFailure : null;
@@ -459,17 +469,23 @@ for (const [runIndex, run] of runRows.entries()) {
         tools: ['repository search', 'test runner'],
         latency_ms: 7_500 + globalIndex * 137,
         latency_evidence_level: 'runner_observed',
-        input_tokens: null,
-        cached_input_tokens: null,
-        cache_write_input_tokens: null,
-        output_tokens: null,
-        reasoning_output_tokens: null,
+        input_tokens: tokensAvailable ? 1_000 + publishedResultIndex : null,
+        cached_input_tokens: tokensAvailable ? 200 : null,
+        cache_write_input_tokens: tokensAvailable ? 50 : null,
+        output_tokens: tokensAvailable ? 500 : null,
+        reasoning_output_tokens: tokensAvailable ? 250 : null,
         total_tokens: null,
-        token_usage_source_level: null,
-        token_usage_evidence_level: null,
-        standard_api_equivalent_usd_nanos: null,
-        cost_estimator_status: 'unavailable_missing_usage',
-        cost_evidence_level: null,
+        token_usage_source_level: tokensAvailable ? 'provider_reported' : null,
+        token_usage_evidence_level: tokensAvailable ? 'verifier_recomputed' : null,
+        standard_api_equivalent_usd_nanos: estimatedCost
+          ? 650_000 + publishedResultIndex * 1_000
+          : null,
+        cost_estimator_status: estimatedCost
+          ? 'estimated'
+          : unavailableContextBand
+            ? 'unavailable_context_band'
+            : 'unavailable_missing_usage',
+        cost_evidence_level: estimatedCost ? 'verifier_recomputed' : null,
       });
     }
   }
