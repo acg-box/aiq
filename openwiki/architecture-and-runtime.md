@@ -26,9 +26,14 @@ Repository source has one active full-catalog Official contract: AIQ Core
 release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
 `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
 This is the only launch contract. The first real Official benchmark batch
-completed on the native macOS runner. Its 1,224 task-level observations are one
-17-by-72 batch, not 1,224 separate benchmark runs. It remains unpublished until
-verifier replay and publisher acceptance.
+completed on the native macOS runner. The batch is non-synthetic. Its 1,224
+task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
+The native verifier replayed the committed evaluators, and the distinct
+publisher completed the database transition. Production exposes the matrix as
+`trusted_verified`. Production merge and deployment commit is
+`725b88954359ab8f0950f896674b3e8684d3ae85`. The published outcome and
+efficiency semantics are detailed in
+[Benchmark Method](benchmark-method.md).
 
 ## Identity boundary
 
@@ -45,20 +50,21 @@ The browser never receives those credentials.
 
 ## Native macOS runtime
 
-The first release runs the release builds of `aiq-runner` and `aiq-verifier`
-directly on one controlled Apple Silicon macOS host. The runner receives the
-private corpus, fresh workspaces, a separate immutable Codex authentication
-copy, and only the runner credential needed by the active command. The verifier
-receives the committed corpus, evaluator assets, submitted artifacts, and only
-its verifier credential. It never receives the Codex authentication copy.
+The current production runtime runs the release builds of `aiq-runner` and
+`aiq-verifier` directly on one controlled Apple Silicon macOS host. The runner
+receives the private corpus, fresh workspaces, a separate immutable Codex
+authentication copy, and only the runner credential needed by the active
+command. The verifier receives the committed corpus, evaluator assets,
+submitted artifacts, and only its verifier credential. It never receives the
+Codex authentication copy.
 
 The native runtime uses canonical non-overlapping paths, a clean source worktree
 at the declared commit, exact executable digests, mode-private writable roots,
 create-new outputs, and macOS atomic file operations. Before paid preflight and
 paid run dispatch, the operator reruns the model-free binding checks. Codex uses
-the host's direct network connection. The first release does not depend on or
-run Linux or Docker; they remain a future deployment target outside
-first-release acceptance.
+the host's direct network connection. Production does not depend on or run Linux
+or Docker. They remain future deployment targets. No cloud runner or verifier
+worker and no recurring schedule currently exist.
 
 After model-free validation, the only Official path runs one complete
 `72 × 17` matrix of 1,224 observations, replays it with the native verifier,
@@ -188,7 +194,8 @@ reference with the model matrix as the one greenfield desired state.
 
 ## Storage boundary
 
-Submitted packages and runner artifacts use separate private buckets. Database
+Submitted packages use the private `aiq-submission-packages` bucket. Runner
+artifacts use the private `aiq-runner-artifacts` bucket. Database
 rows bind object type, digest, byte count, retention state, and active
 references. Reconciliation records database-only and Storage-only mismatches.
 Deletion is a separate bounded worker action and cannot remove referenced or
