@@ -546,18 +546,6 @@ struct HttpArtifactResolver<'a, T> {
 	max_retries: u32,
 	backoff: Duration,
 }
-
-enum ArtifactResolveAttemptError {
-	Retry(WorkerError),
-	Final(WorkerError),
-}
-
-impl ArtifactResolveAttemptError {
-	fn from_transport(error: WorkerError) -> Self {
-		if error.is_transient() { Self::Retry(error) } else { Self::Final(error) }
-	}
-}
-
 impl<T> HttpArtifactResolver<'_, T>
 where
 	T: Transport,
@@ -670,6 +658,7 @@ where
 				Ok(bytes) => return Ok(bytes),
 				Err(ArtifactResolveAttemptError::Retry(_)) if attempt < self.max_retries.max(1) => {
 					thread::sleep(delay);
+
 					delay = delay.saturating_mul(2);
 				},
 				Err(ArtifactResolveAttemptError::Retry(error)) => return Err(error),
@@ -1531,6 +1520,7 @@ struct ClaimLeaseState {
 	stopped: bool,
 	terminal: bool,
 }
+
 #[derive(Debug)]
 struct PreparedVerification {
 	evidence: PreparedEvidence,
@@ -1706,6 +1696,16 @@ impl ReasonCode {
 			Self::InvalidReplayEvidence => "Replay evidence is invalid.",
 			Self::EvaluatorReplayMismatch => "Evaluator replay did not match the signed result.",
 		}
+	}
+}
+
+enum ArtifactResolveAttemptError {
+	Retry(WorkerError),
+	Final(WorkerError),
+}
+impl ArtifactResolveAttemptError {
+	fn from_transport(error: WorkerError) -> Self {
+		if error.is_transient() { Self::Retry(error) } else { Self::Final(error) }
 	}
 }
 
@@ -3332,6 +3332,7 @@ mod tests {
 				.lock()
 				.map_err(|_| WorkerError::transient("renewal request lock failed"))?
 				.push(request.clone());
+
 			let is_ack = request["action"] == "ack";
 			let response_body = if is_ack {
 				serde_json::json!({ "status": "acknowledged" })
@@ -3412,7 +3413,9 @@ mod tests {
 			_body: &[u8],
 		) -> Result<HttpResponse, WorkerError> {
 			assert_eq!(url, "https://gateway.invalid/api/artifacts/resolve");
+
 			*self.resolver_calls.lock().expect("resolver calls") += 1;
+
 			let status = self
 				.resolver_statuses
 				.lock()
@@ -3444,7 +3447,9 @@ mod tests {
 
 		fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
 			assert_eq!(url, "https://storage.invalid/signed");
+
 			*self.object_calls.lock().expect("object calls") += 1;
+
 			let status =
 				self.object_statuses.lock().expect("object statuses").pop_front().unwrap_or(200);
 
@@ -4991,10 +4996,10 @@ mod tests {
 				max_retries: 3,
 				backoff: Duration::ZERO,
 			};
-
 			let error = resolver
 				.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
 				.expect_err("terminal resolver response must fail");
+
 			if matches!(status, 401 | 403) {
 				assert_eq!(error.kind, ErrorKind::Configuration, "HTTP {status}");
 			} else {
@@ -5004,10 +5009,10 @@ mod tests {
 					"HTTP {status}"
 				);
 			}
+
 			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 1);
 			assert_eq!(*transport.object_calls.lock().expect("object calls"), 0);
 		}
-
 		for status in [400, 401, 404] {
 			let transport = RetryArtifactTransport {
 				bytes: bytes.clone(),
@@ -5026,10 +5031,10 @@ mod tests {
 				max_retries: 3,
 				backoff: Duration::ZERO,
 			};
-
 			let error = resolver
 				.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
 				.expect_err("terminal signed-object response must fail");
+
 			assert!(matches!(error.kind, ErrorKind::Terminal(_)), "HTTP {status}");
 			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 1);
 			assert_eq!(*transport.object_calls.lock().expect("object calls"), 1);
