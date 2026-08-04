@@ -9,9 +9,10 @@ organization `ACG Box`, Supabase project `aiq`, Vercel scope `acgbox`, Vercel
 project `aiq`, and `https://aiq.wiki`. This repository does not claim that an
 external resource is configured until live acceptance records that evidence.
 The native Apple Silicon macOS runner completed one real Official
-`aiq-core@1.0.2` benchmark batch. It covered 17 configurations and 72 tasks,
-for 1,224 task-level observations. This is one batch, not 1,224 separate
-benchmark runs. Of these observations, 1,218 completed and 6 had genuine failures.
+`aiq-core@1.0.2` benchmark batch. The batch contains 17 configuration runs.
+Each run attempted all 72 tasks, for 1,224 task-level executions in total. This
+is one Official batch, not 1,224 benchmark runs. Of these executions, 1,218
+completed and 6 had genuine failures.
 The wall-clock time was `1:37:24.411`. Verified public token and API-equivalent
 cost aggregates remain unavailable until verifier replay. The retained provider
 evidence contains supported counters for 1,218 observations, but it contains no
@@ -44,8 +45,8 @@ sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
 
 Its catalog release identity is
 `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-This greenfield launch accepts only `1.0.2`. The first Official `72 × 17` run
-has 1,224 observations.
+This greenfield launch accepts only `1.0.2`. The first Official `72 × 17`
+matrix is one batch of 17 configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
 
