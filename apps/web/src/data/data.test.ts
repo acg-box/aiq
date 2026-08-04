@@ -13,6 +13,7 @@ import {
   sortLeaderboardByPointEstimate,
   summarizeRun,
   summarizeRunDomains,
+  summarizeRunOutcomes,
   TRUST_LEVELS,
 } from './format.ts';
 import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
@@ -565,6 +566,10 @@ void describe('presentation aggregates', () => {
       synthetic: false as const,
     };
     assert.equal(isScoredLeaderboardEntry(officialEntry), true);
+    assert.deepEqual(presentLeaderboardEntry(officialEntry).taskCredit, {
+      credited: 72 - officialEntry.failures,
+      scored: 72,
+    });
     assert.deepEqual(
       {
         status: presentLeaderboardEntry(officialEntry).status,
@@ -658,6 +663,38 @@ void describe('presentation aggregates', () => {
       label: 'N/A · unsupported in a valid preflight',
       validResults: 0,
       notApplicable: true,
+    });
+  });
+
+  void it('keeps partial credit, incorrect work, execution failures, and unscored cells distinct', () => {
+    const source = seedRuns[0];
+    assert.ok(source);
+    const template = source.tasks[0];
+    assert.ok(template);
+    const run = {
+      ...source,
+      tasks: [
+        { ...template, status: 'passed' as const, score: 1, explanation: null },
+        { ...template, status: 'passed' as const, score: 0.5, explanation: null },
+        { ...template, status: 'failed' as const, score: 0, explanation: null },
+        {
+          ...template,
+          status: 'failed' as const,
+          score: 0,
+          explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
+        },
+        { ...template, status: 'missing' as const, score: null, explanation: null },
+      ],
+    };
+    assert.deepEqual(summarizeRunOutcomes(run), {
+      correct: 1,
+      partial: 1,
+      incorrect: 1,
+      executionFailures: 1,
+      unscored: 1,
+      passed: 2,
+      total: 5,
+      successRate: 40,
     });
   });
 

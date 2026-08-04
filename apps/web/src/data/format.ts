@@ -121,6 +121,69 @@ export function summarizeRun(run: BenchmarkRun): {
   };
 }
 
+export interface RunOutcomeSummary {
+  correct: number;
+  partial: number;
+  incorrect: number;
+  executionFailures: number;
+  unscored: number;
+  passed: number;
+  total: number;
+  successRate: number | null;
+}
+
+const executionFailureCodes = new Set([
+  'timeout',
+  'budget_exceeded',
+  'unsupported_model',
+  'output_truncated',
+  'missing_response',
+]);
+
+/**
+ * Keep the user-facing outcome mix aligned with the immutable task score.
+ * Status `passed` includes partial credit, so the task score is the source of
+ * truth for the correct/partial split. Execution failures remain separate from
+ * evaluator-rejected work.
+ */
+export function summarizeRunOutcomes(run: BenchmarkRun): RunOutcomeSummary {
+  let correct = 0;
+  let partial = 0;
+  let incorrect = 0;
+  let executionFailures = 0;
+  let unscored = 0;
+  for (const task of run.tasks) {
+    if (
+      task.score === null ||
+      task.status === 'invalid' ||
+      task.status === 'missing' ||
+      task.status === 'not_applicable'
+    ) {
+      unscored += 1;
+    } else if (task.score >= 1) {
+      correct += 1;
+    } else if (task.score > 0) {
+      partial += 1;
+    } else if (task.explanation?.code && executionFailureCodes.has(task.explanation.code)) {
+      executionFailures += 1;
+    } else {
+      incorrect += 1;
+    }
+  }
+  const total = run.tasks.length;
+  const passed = correct + partial;
+  return {
+    correct,
+    partial,
+    incorrect,
+    executionFailures,
+    unscored,
+    passed,
+    total,
+    successRate: total === 0 ? null : (passed / total) * 100,
+  };
+}
+
 export interface RunDomainSummary {
   domain: string;
   score: number | null;
