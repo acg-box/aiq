@@ -187,7 +187,6 @@ declare
     "local_time":"15:00",
     "timezone":"Etc/UTC"
   }'::jsonb;
-  task_hashes jsonb;
   task_set_hash text;
   run_id text;
   results jsonb := '[]'::jsonb;
@@ -204,22 +203,17 @@ declare
   node_id text := 'node_' || encode(
     extensions.digest(decode(public_key, 'hex'), 'sha256'), 'hex'
   );
-  task_number integer;
   model jsonb;
-  task_hash text;
+  task aiq_private.aiq_task_catalog%rowtype;
 begin
-  select jsonb_agg(hash order by hash) into task_hashes
+  select aiq_private.jcs_sha256(jsonb_agg(task_hash order by task_hash collate "C"))
+  into strict task_set_hash
   from (
-    select 'sha256:' || encode(
-      extensions.digest(
-        convert_to('task-' || lpad(number::text, 2, '0'), 'utf8'),
-        'sha256'
-      ),
-      'hex'
-    ) as hash
-    from generate_series(1, 72) number
+    select 'sha256:' || catalog_task.fixture_commitment as task_hash
+    from aiq_private.aiq_task_catalog catalog_task
+    where catalog_task.task_set_id = 'aiq-core'
+      and catalog_task.task_set_version = '1.0.2'
   ) hashes;
-  task_set_hash := aiq_private.jcs_sha256(task_hashes);
   run_id := 'run_' || substr(aiq_private.jcs_sha256(jsonb_build_object(
     'schema_version', 'aiq.run-identity.v1',
     'slot', slot,
@@ -228,21 +222,18 @@ begin
     'scoring_version', '1.0.2'
   )), 8);
 
-  for task_number in 1..72 loop
-    task_hash := 'sha256:' || encode(
-      extensions.digest(
-        convert_to('task-' || lpad(task_number::text, 2, '0'), 'utf8'),
-        'sha256'
-      ),
-      'hex'
-    );
+  for task in
+    select * from aiq_private.aiq_task_catalog
+    where task_set_id = 'aiq-core' and task_set_version = '1.0.2'
+    order by task_id
+  loop
     for model in select value from jsonb_array_elements(models) loop
       result_base := jsonb_build_object(
         'schema_version', 'aiq.result.v2',
         'run_id', run_id,
-        'task_id', 'task-' || lpad(task_number::text, 2, '0'),
-        'task_version', '1.0.2',
-        'task_hash', task_hash,
+        'task_id', task.task_id,
+        'task_version', task.task_version,
+        'task_hash', 'sha256:' || task.fixture_commitment,
         'model', model,
         'status', 'completed',
         'evaluation', 'correct',
@@ -311,6 +302,229 @@ begin
     'claimed_trust', 'untrusted',
     'payload', payload,
     'signature', repeat('ab', 64)
+  );
+end;
+$$;
+
+create or replace function pg_temp.aiq_normalized_stage(
+  envelope jsonb,
+  package_sha256 text
+) returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  payload jsonb := envelope -> 'payload';
+  batch_id text := payload ->> 'run_id';
+  child_id text;
+  model aiq_private.aiq_model_configs%rowtype;
+  model_identity jsonb;
+  normalized_results jsonb;
+  domain_scores jsonb;
+  runs jsonb := '[]'::jsonb;
+  result_efficiency jsonb;
+  efficiency jsonb;
+  binary_wilson_lower numeric;
+  binary_wilson_upper numeric;
+  z numeric := 1.959963984540054;
+  sample_count numeric := 72;
+begin
+  binary_wilson_lower := (
+    1 + (z * z) / (2 * sample_count)
+      - z * sqrt((z * z) / (4 * sample_count * sample_count))
+  ) / (1 + (z * z) / sample_count);
+  binary_wilson_upper := 1;
+
+  select jsonb_agg(
+    jsonb_build_object(
+      'cost_evidence_level', null,
+      'cost_status', 'unavailable_missing_usage',
+      'model', source.value -> 'model',
+      'observed_wall_ms', null,
+      'provider_tokens', '{}'::jsonb,
+      'provider_tokens_evidence_level', null,
+      'provider_tokens_source', null,
+      'source_result_id', source.value ->> 'result_id',
+      'standard_api_equivalent_usd_nanos', null,
+      'task_id', source.value ->> 'task_id',
+      'wall_time_evidence_level', null
+    )
+    order by source.value -> 'model', source.value ->> 'task_id'
+  ) into result_efficiency
+  from jsonb_array_elements(payload -> 'results') source(value);
+
+  select jsonb_agg(
+    jsonb_build_object(
+      'schema_version', 'aiq.calibration-efficiency.v1',
+      'model', jsonb_build_object(
+        'family', expected.model_family,
+        'reasoning_effort', expected.reasoning_effort
+      ),
+      'selected_tasks', 72,
+      'observed_wall_tasks', 0,
+      'total_observed_wall_ms', null,
+      'median_observed_wall_ms', null,
+      'p95_observed_wall_ms', null,
+      'provider_token_totals', '{}'::jsonb,
+      'provider_token_coverage', jsonb_build_object(
+        'selected_tasks', 72,
+        'input_tasks', 0,
+        'cached_input_tasks', 0,
+        'cache_write_input_tasks', 0,
+        'output_tasks', 0,
+        'reasoning_tasks', 0,
+        'total_tasks', 0
+      ),
+      'estimated_cost_tasks', 0,
+      'standard_api_equivalent_usd_nanos', null
+    ) order by expected.matrix_order
+  ) into efficiency
+  from aiq_private.aiq_model_configs expected
+  where expected.expected_in_matrix;
+
+  select jsonb_agg(
+    jsonb_build_object('domain', catalog.domain, 'score', 1)
+    order by catalog.domain
+  ) into domain_scores
+  from (
+    select distinct task.domain
+    from aiq_private.aiq_task_catalog task
+    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.2'
+  ) catalog;
+
+  for model in
+    select * from aiq_private.aiq_model_configs
+    where expected_in_matrix order by matrix_order
+  loop
+    model_identity := jsonb_build_object(
+      'family', model.model_family,
+      'reasoning_effort', model.reasoning_effort
+    );
+    child_id := 'run_' || encode(
+      extensions.digest(
+        convert_to(
+          'aiq.model-run-identity.v1' || chr(10)
+          || batch_id || chr(10) || model.model_config_id,
+          'utf8'
+        ),
+        'sha256'
+      ),
+      'hex'
+    );
+    select jsonb_agg(
+      jsonb_build_object(
+        'schema_version', 'aiq.normalized-result.v1',
+        'matrix_batch_id', batch_id,
+        'run_id', child_id,
+        'source_result_id', source.value ->> 'result_id',
+        'task_id', source.value ->> 'task_id',
+        'task_version', source.value ->> 'task_version',
+        'task_hash', source.value ->> 'task_hash',
+        'model', source.value -> 'model',
+        'domain', task.domain,
+        'scorer_version', task.scorer_version,
+        'source_status', source.value ->> 'status',
+        'source_evaluation', source.value ->> 'evaluation',
+        'outcome', 'correct',
+        'task_score', source.value -> 'task_score',
+        'failure', source.value -> 'failure',
+        'failure_responsibility', null,
+        'response', source.value -> 'response',
+        'response_sha256', source.value -> 'response_sha256',
+        'evaluator_stdout_sha256', source.value -> 'evaluator_stdout_sha256',
+        'artifacts', source.value -> 'artifacts',
+        'latency', source.value -> 'latency',
+        'tool_usage', source.value -> 'tool_usage',
+        'provenance', source.value -> 'provenance'
+      ) order by source.value ->> 'task_id'
+    ) into normalized_results
+    from jsonb_array_elements(payload -> 'results') source(value)
+    join aiq_private.aiq_task_catalog task
+      on task.task_set_id = 'aiq-core'
+      and task.task_set_version = '1.0.2'
+      and task.task_id = source.value ->> 'task_id'
+      and task.task_version = source.value ->> 'task_version'
+    where source.value -> 'model' = model_identity;
+
+    runs := runs || jsonb_build_array(jsonb_build_object(
+      'schema_version', 'aiq.normalized-model-run.v1',
+      'matrix_batch_id', batch_id,
+      'run_id', child_id,
+      'model_config_id', model.model_config_id,
+      'model', model_identity,
+      'results', normalized_results,
+      'score', jsonb_build_object(
+        'schema_version', 'aiq.score-report.v1',
+        'scoring_version', '1.0.2',
+        'model', model_identity,
+        'tier', 'synthetic_complete',
+        'rule', 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+        'official_aiq', null,
+        'conditional_observed_aiq', 100,
+        'ranking_eligible', false,
+        'duplicate_results', 0,
+        'coverage', jsonb_build_object(
+          'expected_tasks', 72,
+          'valid_tasks', 72,
+          'invalid_tasks', 0,
+          'missing_tasks', 0,
+          'not_applicable_tasks', 0,
+          'expected_domains', 10,
+          'covered_domains', 10
+        ),
+        'difficulty_coverage', jsonb_build_object(
+          'easy', jsonb_build_object('valid_tasks', 0),
+          'medium', jsonb_build_object('valid_tasks', 0),
+          'hard', jsonb_build_object('valid_tasks', 0)
+        ),
+        'domains', domain_scores,
+        'completion_bounds', jsonb_build_object('lower', 100, 'upper', 100),
+        'task_resampling_sensitivity_interval', jsonb_build_object(
+          'method', 'finite_cluster_calibrated_percentile_sensitivity_v1',
+          'lower', 100,
+          'upper', 100,
+          'central_mass', 0.95,
+          'samples', 10000,
+          'seed', 71783153620529
+        ),
+        'binary_micro_diagnostic', jsonb_build_object(
+          'sample_size', 72,
+          'successes', 72,
+          'proportion', 1,
+          'wilson_lower', binary_wilson_lower,
+          'wilson_upper', binary_wilson_upper
+        )
+      )
+    ));
+  end loop;
+
+  return jsonb_build_object(
+    'schema_version', 'aiq.normalized-batch.v3',
+    'matrix_batch_id', batch_id,
+    'package_sha256', package_sha256,
+    'content_hash', envelope ->> 'content_hash',
+    'signer', envelope -> 'signer',
+    'task_set_id', 'aiq-core',
+    'task_set_version', '1.0.2',
+    'task_set_hash', payload ->> 'task_set_hash',
+    'capability_validation_digest', null,
+    'provenance', null,
+    'run_class', null,
+    'benchmark_version', 'aiq-core@1.0.2',
+    'prompt_set_digest', 'sha256:' || repeat('f', 64),
+    'scoring_version', '1.0.2',
+    'runner_commit', 'a7d91f4',
+    'region', 'integration',
+    'scheduled_unix_ms', payload -> 'started_unix_ms',
+    'started_unix_ms', payload -> 'started_unix_ms',
+    'finished_unix_ms', payload -> 'finished_unix_ms',
+    'execution_concurrency', payload -> 'execution_concurrency',
+    'synthetic', true,
+    'result_efficiency', result_efficiency,
+    'efficiency', efficiency,
+    'pricing', pg_temp.aiq_efficiency_pricing(),
+    'runs', runs,
+    'normalization_digest', 'sha256:' || repeat('e', 64)
   );
 end;
 $$;
@@ -482,10 +696,9 @@ end;
 $$;
 reset role;
 
--- An incomplete pre-staged transaction must not masquerade as an idempotent
--- recovery. A complete retry is accepted only when all canonical child and
--- audit evidence is present.
-savepoint stage_resume;
+-- Exercise the complete 17 x 72 first-stage path and its exact retry with a
+-- deterministic non-production package. The timing bound protects the HTTP
+-- gateway's 50-second database budget without using private benchmark data.
 create temp table aiq_stage_resume_input on commit drop as
 select
   input.run_id,
@@ -496,82 +709,7 @@ select
   input.envelope,
   input.envelope #>> '{signer,node_id}' as node_id,
   input.envelope #>> '{signer,public_key}' as public_key,
-  jsonb_build_object(
-    'schema_version', 'aiq.normalized-batch.v3',
-    'matrix_batch_id', input.run_id,
-    'package_sha256', input.package_sha256,
-    'content_hash', input.envelope ->> 'content_hash',
-    'signer', input.envelope -> 'signer',
-    'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.2',
-    'task_set_hash', input.envelope #>> '{payload,task_set_hash}',
-    'capability_validation_digest', null,
-    'provenance', null,
-    'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.2',
-    'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.2',
-    'runner_commit', 'a7d91f4',
-    'region', 'integration',
-    'scheduled_unix_ms', 1785164400000,
-    'started_unix_ms', 1785164400000,
-    'finished_unix_ms', 1785164400001,
-    'execution_concurrency', 1,
-    'synthetic', true,
-    'result_efficiency', (
-      select jsonb_agg(
-        jsonb_build_object(
-          'cost_evidence_level', null,
-          'cost_status', 'unavailable_missing_usage',
-          'model', result -> 'model',
-          'observed_wall_ms', null,
-          'provider_tokens', '{}'::jsonb,
-          'provider_tokens_evidence_level', null,
-          'provider_tokens_source', null,
-          'source_result_id', result ->> 'result_id',
-          'standard_api_equivalent_usd_nanos', null,
-          'task_id', result ->> 'task_id',
-          'wall_time_evidence_level', null
-        )
-        order by result -> 'model', result ->> 'task_id'
-      )
-      from jsonb_array_elements(input.envelope #> '{payload,results}') result
-    ),
-    'efficiency', (
-      select jsonb_agg(
-        jsonb_build_object(
-          'schema_version', 'aiq.calibration-efficiency.v1',
-          'model', model.value,
-          'selected_tasks', 72,
-          'observed_wall_tasks', 0,
-          'total_observed_wall_ms', null,
-          'median_observed_wall_ms', null,
-          'p95_observed_wall_ms', null,
-          'provider_token_totals', '{}'::jsonb,
-          'provider_token_coverage', jsonb_build_object(
-            'selected_tasks', 72,
-            'input_tasks', 0,
-            'cached_input_tasks', 0,
-            'cache_write_input_tasks', 0,
-            'output_tasks', 0,
-            'reasoning_tasks', 0,
-            'total_tasks', 0
-          ),
-          'estimated_cost_tasks', 0,
-          'standard_api_equivalent_usd_nanos', null
-        )
-        order by model.ordinality
-      )
-      from jsonb_array_elements(input.envelope #> '{payload,models}')
-        with ordinality model(value, ordinality)
-    ),
-    'pricing', pg_temp.aiq_efficiency_pricing(),
-    'runs', (
-      select jsonb_agg('{}'::jsonb order by number)
-      from generate_series(1, 17) number
-    ),
-    'normalization_digest', 'sha256:' || repeat('e', 64)
-  ) as stage
+  pg_temp.aiq_normalized_stage(input.envelope, input.package_sha256) as stage
 from aiq_integration_input input
 cross join aiq_enqueue_accepted accepted
 cross join aiq_claim_two claim;
@@ -628,7 +766,7 @@ select pg_temp.aiq_assert(
   'synthetic efficiency aggregates must retain the exact 17-model order'
 );
 
-set local session_replication_role = replica;
+savepoint stage_performance;
 insert into aiq_private.aiq_nodes (
   node_id, display_name, key_fingerprint, signature_algorithm, public_key,
   status, trust_tier, operator_class, capabilities, source, signature_status,
@@ -640,39 +778,90 @@ select
   array['runner'], 'integration', 'unverified', 'integration', true, false,
   '{"synthetic":true}'::jsonb
 from aiq_stage_resume_input;
-insert into aiq_private.aiq_matrix_batches (
-  matrix_batch_id, package_sha256, content_hash, normalization_digest,
-  source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
-  task_set_hash, capability_validation_digest, benchmark_version,
-  prompt_set_digest, source_scoring_version, runner_commit, region,
-  scheduled_unix_ms, started_unix_ms, finished_unix_ms,
-  execution_concurrency, normalized_stage
-)
-select
-  run_id, package_sha256, envelope ->> 'content_hash',
-  stage ->> 'normalization_digest', node_id, 'aiq-core', '1.0.2', '1.0.2',
-  true, stage ->> 'task_set_hash', null, 'aiq-core@1.0.2',
-  stage ->> 'prompt_set_digest', '1.0.2', 'a7d91f4', 'integration',
-  1785164400000, 1785164400000, 1785164400001, 1, stage
-from aiq_stage_resume_input;
-insert into aiq_private.aiq_result_packages (
-  package_sha256, schema_version, idempotency_key, run_id, node_id,
-  content_hash, envelope, signature, signature_verified, trust_tier,
-  received_at, provenance, matrix_batch_id, normalization_digest
-)
-select
-  package_sha256, 'aiq.result-package.v3', run_id, run_id, node_id,
-  envelope ->> 'content_hash', envelope, envelope ->> 'signature', false,
-  'unverified', '2026-07-30T12:00:00Z',
-  '{"schema_version":"aiq.package-binding.v3"}'::jsonb,
-  run_id, stage ->> 'normalization_digest'
-from aiq_stage_resume_input;
-update aiq_private.aiq_submission_inbox inbox
-set state = 'processed'
-from aiq_stage_resume_input fixture
-where inbox.inbox_id = fixture.inbox_id;
-set local session_replication_role = origin;
 
+set local role aiq_verifier;
+select set_config('request.jwt.claims', '{"role":"aiq_verifier"}', true);
+create temp table aiq_stage_timings(
+  first_stage_ms numeric not null,
+  exact_retry_ms numeric not null
+) on commit drop;
+do $$
+declare
+  fixture aiq_stage_resume_input%rowtype;
+  started_at timestamptz;
+  first_elapsed numeric;
+  retry_elapsed numeric;
+  staged_batch_id text;
+begin
+  select * into strict fixture from aiq_stage_resume_input;
+  started_at := clock_timestamp();
+  staged_batch_id := public.aiq_stage_verifier_result(
+    fixture.stage, fixture.inbox_id, fixture.lease_token, fixture.attempt
+  );
+  first_elapsed := 1000 * extract(epoch from clock_timestamp() - started_at);
+  if staged_batch_id is distinct from fixture.run_id then
+    raise exception 'first stage returned an unexpected batch identity';
+  end if;
+  started_at := clock_timestamp();
+  staged_batch_id := public.aiq_stage_verifier_result(
+    fixture.stage, fixture.inbox_id, fixture.lease_token, fixture.attempt
+  );
+  retry_elapsed := 1000 * extract(epoch from clock_timestamp() - started_at);
+  if staged_batch_id is distinct from fixture.run_id then
+    raise exception 'exact stage retry returned an unexpected batch identity';
+  end if;
+  begin
+    perform public.aiq_stage_verifier_result(
+      jsonb_set(fixture.stage, '{region}', '"changed"'::jsonb),
+      fixture.inbox_id,
+      fixture.lease_token,
+      fixture.attempt
+    );
+    raise exception 'a changed completed stage was accepted as an exact retry';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+  insert into aiq_stage_timings values(first_elapsed, retry_elapsed);
+end;
+$$;
+reset role;
+select pg_temp.aiq_assert(
+  (select first_stage_ms < 50000 from aiq_stage_timings),
+  'the complete 17 x 72 first stage must finish within 50 seconds'
+);
+select pg_temp.aiq_assert(
+  (select exact_retry_ms < 10000 from aiq_stage_timings),
+  'an exact completed retry must finish within 10 seconds'
+);
+select first_stage_ms, exact_retry_ms from aiq_stage_timings;
+select pg_temp.aiq_assert(
+  (select count(*) = 17 from aiq_private.aiq_package_runs link
+   join aiq_stage_resume_input fixture on fixture.package_sha256 = link.package_sha256),
+  'first staging must persist exactly 17 package runs'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 1224 from aiq_private.aiq_task_results result
+   join aiq_private.aiq_package_runs link using(run_id)
+   join aiq_stage_resume_input fixture on fixture.package_sha256 = link.package_sha256),
+  'first staging must persist exactly 1,224 task results'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 1 from aiq_private.aiq_verification_audit audit
+   join aiq_stage_resume_input fixture on fixture.inbox_id = audit.inbox_id
+   where audit.event_type = 'staged'),
+  'first staging and its exact retry must retain one staged audit record'
+);
+savepoint incomplete_stage_retry;
+set local session_replication_role = replica;
+delete from aiq_private.aiq_task_results result
+where result.result_id = (
+  select candidate.result_id
+  from aiq_private.aiq_task_results candidate
+  join aiq_private.aiq_package_runs link using(run_id)
+  join aiq_stage_resume_input fixture on fixture.package_sha256 = link.package_sha256
+  order by candidate.result_id
+  limit 1
+);
+set local session_replication_role = origin;
 set local role aiq_verifier;
 select set_config('request.jwt.claims', '{"role":"aiq_verifier"}', true);
 do $$
@@ -680,16 +869,17 @@ begin
   begin
     perform public.aiq_stage_verifier_result(
       stage, inbox_id, lease_token, attempt
-    )
-    from aiq_stage_resume_input;
-    raise exception 'incomplete staged evidence resumed as complete';
+    ) from aiq_stage_resume_input;
+    raise exception 'an incomplete stored stage was accepted as an exact retry';
   exception when object_not_in_prerequisite_state then null;
   end;
 end;
 $$;
 reset role;
-rollback to savepoint stage_resume;
-release savepoint stage_resume;
+rollback to savepoint incomplete_stage_retry;
+release savepoint incomplete_stage_retry;
+rollback to savepoint stage_performance;
+release savepoint stage_performance;
 
 -- The deterministic demo is a pre-staged complete synthetic fixture. Exercise
 -- the stage role boundary and prove that attestation cannot make it publishable.
