@@ -15,7 +15,7 @@ interface ProductionFixtures {
 const allowedMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
 const expectedBenchmarkVersion = 'aiq-core@1.0.2';
 const expectedScoringVersion = '1.0.2';
-const expectedCorpusRelease = 'corpus_2026.07.29';
+const expectedCorpusRelease = 'corpus_2026.08.02-aiq-core-1.0.2-controlled.1';
 const expectedCorpusCommitment =
   'sha256:5b8cfddaacefcd58274b880815fd3f955bd319396755d041f2f30d000555624f';
 const expectedCatalogDigest =
