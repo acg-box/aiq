@@ -12,7 +12,11 @@ const mockServer = productionContractServers[0];
 if (mockServer) {
   productionContractServers[0] = {
     ...mockServer,
-    env: { ...mockServer.env, AIQ_MOCK_EMPTY_CALIBRATION_EVIDENCE: '1' },
+    env: {
+      ...mockServer.env,
+      AIQ_MOCK_EMPTY_CALIBRATION_EVIDENCE: '1',
+      AIQ_MOCK_LONG_OFFICIAL_RUN_IDS: '1',
+    },
   };
 }
 
