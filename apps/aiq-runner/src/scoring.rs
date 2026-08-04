@@ -864,7 +864,17 @@ fn completion_bounds(
 		upper += (score_sum + planned - observed) / planned;
 	}
 
-	Ok(CompletionBounds { lower: 10.0 * lower, upper: 10.0 * upper })
+	let lower = 10.0 * lower;
+	let mut upper = 10.0 * upper;
+
+	// Complete fixtures make both bounds mathematically equal, but the upper-bound
+	// construction can round below the lower bound after adding and removing the
+	// unobserved-task term. Preserve the construction invariant at that boundary.
+	if upper < lower {
+		upper = lower;
+	}
+
+	Ok(CompletionBounds { lower, upper })
 }
 
 fn difficulty_coverage(
@@ -1682,6 +1692,28 @@ mod tests {
 
 		assert!((bounds.lower - 41.964_285_714_285_715).abs() < 1e-10);
 		assert!((bounds.upper - 58.035_714_285_714_285).abs() < 1e-10);
+	}
+
+	#[test]
+	fn complete_fixture_completion_bounds_preserve_aiq_and_order() {
+		let tasks = official_tasks();
+		let results = tasks.iter().map(|task| result(task, 0.001)).collect::<Vec<_>>();
+		let report = scoring::score_model_with_options(
+			&tasks,
+			&results,
+			MODEL_MATRIX[0],
+			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+		)
+		.expect("complete fixture must score");
+		let aiq = report.conditional_observed_aiq.expect("complete fixture AIQ");
+		let bounds = report.completion_bounds.expect("complete fixture completion bounds");
+
+		assert_eq!(report.tier, ScoreTier::SyntheticComplete);
+		assert_eq!(report.scoring_version, AIQ_SCORING_VERSION);
+		assert_eq!(aiq, 0.100_000_000_000_000_02);
+		assert_eq!(bounds.lower, aiq);
+		assert_eq!(bounds.upper, aiq);
+		assert!(bounds.lower <= bounds.upper);
 	}
 
 	#[test]
