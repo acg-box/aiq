@@ -543,7 +543,100 @@ struct HttpArtifactResolver<'a, T> {
 	inbox_id: &'a str,
 	lease_token: &'a str,
 	lease: Option<&'a dyn LeaseMaintenance>,
+	max_retries: u32,
+	backoff: Duration,
 }
+impl<T> HttpArtifactResolver<'_, T>
+where
+	T: Transport,
+{
+	fn resolve_once(
+		&self,
+		digest: &str,
+		kind: &str,
+		expected_bytes: u64,
+	) -> Result<Vec<u8>, ArtifactResolveAttemptError> {
+		self.maintain_lease().map_err(ArtifactResolveAttemptError::from_transport)?;
+
+		let body = serde_json::to_vec(&serde_json::json!({
+			"digest": digest,
+			"inbox_id": self.inbox_id,
+			"kind": kind,
+			"lease_token": self.lease_token,
+		}))
+		.map_err(|error| {
+			ArtifactResolveAttemptError::Final(WorkerError::configuration(error.to_string()))
+		})?;
+		let response = self
+			.transport
+			.post_json(&format!("{}/api/artifacts/resolve", self.endpoint), self.token, &body)
+			.map_err(ArtifactResolveAttemptError::from_transport)?;
+
+		match response.status {
+			200 => {},
+			404 => {
+				return Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+					ReasonCode::ArtifactEvidenceUnavailable,
+					"required claim artifact is absent",
+				)));
+			},
+			408 | 409 | 429 | 500..=599 => {
+				return Err(ArtifactResolveAttemptError::Retry(WorkerError::transient(
+					"artifact resolver is unavailable",
+				)));
+			},
+			401 | 403 => {
+				return Err(ArtifactResolveAttemptError::Final(WorkerError::configuration(
+					"artifact resolver authorization failed",
+				)));
+			},
+			_ => {
+				return Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+					ReasonCode::ArtifactEvidenceUnavailable,
+					"artifact resolver denied required workspace evidence",
+				)));
+			},
+		}
+
+		let resolved: ArtifactResolveResponse =
+			parse_json(&response.body, "artifact resolver response")
+				.map_err(ArtifactResolveAttemptError::Final)?;
+
+		if resolved.artifact.kind != kind
+			|| resolved.artifact.content_sha256 != digest
+			|| resolved.artifact.bytes != expected_bytes
+			|| resolved.artifact.url_expires_in_seconds == 0
+		{
+			return Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+				ReasonCode::ArtifactEvidenceMismatch,
+				"artifact resolver returned a mismatched object identity",
+			)));
+		}
+
+		let object = self
+			.transport
+			.get_artifact_object(&resolved.artifact.url)
+			.map_err(ArtifactResolveAttemptError::from_transport)?;
+
+		match object.status {
+			200 => Ok(object.body),
+			404 => Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+				ReasonCode::ArtifactEvidenceUnavailable,
+				"resolved artifact object is absent",
+			))),
+			// Supabase can return 403 when a short-lived signed object URL expires or is
+			// temporarily invalid. Re-resolving obtains a fresh claim-bound URL.
+			403 | 408 | 409 | 429 | 500..=599 => Err(ArtifactResolveAttemptError::Retry(
+				WorkerError::transient("resolved artifact object is unavailable"),
+			)),
+			_ => Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+				ReasonCode::ArtifactEvidenceUnavailable,
+				"resolved artifact object could not be read",
+			))),
+		}
+	}
+}
+
 impl<T> ArtifactResolverClient for HttpArtifactResolver<'_, T>
 where
 	T: Transport,
@@ -558,66 +651,22 @@ where
 		kind: &str,
 		expected_bytes: u64,
 	) -> Result<Vec<u8>, WorkerError> {
-		self.maintain_lease()?;
+		let mut delay = self.backoff;
 
-		let body = serde_json::to_vec(&serde_json::json!({
-			"digest": digest,
-			"inbox_id": self.inbox_id,
-			"kind": kind,
-			"lease_token": self.lease_token,
-		}))
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-		let response = self.transport.post_json(
-			&format!("{}/api/artifacts/resolve", self.endpoint),
-			self.token,
-			&body,
-		)?;
+		for attempt in 1..=self.max_retries.max(1) {
+			match self.resolve_once(digest, kind, expected_bytes) {
+				Ok(bytes) => return Ok(bytes),
+				Err(ArtifactResolveAttemptError::Retry(_)) if attempt < self.max_retries.max(1) => {
+					thread::sleep(delay);
 
-		match response.status {
-			200 => {},
-			404 => {
-				return Err(WorkerError::terminal(
-					ReasonCode::ArtifactEvidenceUnavailable,
-					"required claim artifact is absent",
-				));
-			},
-			409 | 500..=599 => {
-				return Err(WorkerError::transient("artifact resolver is unavailable"));
-			},
-			_ => {
-				return Err(WorkerError::terminal(
-					ReasonCode::ArtifactEvidenceUnavailable,
-					"artifact resolver denied required workspace evidence",
-				));
-			},
+					delay = delay.saturating_mul(2);
+				},
+				Err(ArtifactResolveAttemptError::Retry(error)) => return Err(error),
+				Err(ArtifactResolveAttemptError::Final(error)) => return Err(error),
+			}
 		}
 
-		let resolved: ArtifactResolveResponse =
-			parse_json(&response.body, "artifact resolver response")?;
-
-		if resolved.artifact.kind != kind
-			|| resolved.artifact.content_sha256 != digest
-			|| resolved.artifact.bytes != expected_bytes
-			|| resolved.artifact.url_expires_in_seconds == 0
-		{
-			return Err(WorkerError::terminal(
-				ReasonCode::ArtifactEvidenceMismatch,
-				"artifact resolver returned a mismatched object identity",
-			));
-		}
-
-		let object = self.transport.get_artifact_object(&resolved.artifact.url)?;
-
-		match object.status {
-			200 => Ok(object.body),
-			404 | 500..=599 => {
-				Err(WorkerError::transient("resolved artifact object is unavailable"))
-			},
-			_ => Err(WorkerError::terminal(
-				ReasonCode::ArtifactEvidenceUnavailable,
-				"resolved artifact object could not be read",
-			)),
-		}
+		Err(WorkerError::transient("artifact retry budget exhausted"))
 	}
 }
 
@@ -1105,6 +1154,8 @@ where
 			inbox_id: &claim.inbox_id,
 			lease_token: &claim.lease_token,
 			lease: Some(lease),
+			max_retries: self.max_retries,
+			backoff: self.backoff,
 		};
 
 		prepare_package_verification(PreparationRequest {
@@ -1469,6 +1520,7 @@ struct ClaimLeaseState {
 	stopped: bool,
 	terminal: bool,
 }
+
 #[derive(Debug)]
 struct PreparedVerification {
 	evidence: PreparedEvidence,
@@ -1644,6 +1696,16 @@ impl ReasonCode {
 			Self::InvalidReplayEvidence => "Replay evidence is invalid.",
 			Self::EvaluatorReplayMismatch => "Evaluator replay did not match the signed result.",
 		}
+	}
+}
+
+enum ArtifactResolveAttemptError {
+	Retry(WorkerError),
+	Final(WorkerError),
+}
+impl ArtifactResolveAttemptError {
+	fn from_transport(error: WorkerError) -> Self {
+		if error.is_transient() { Self::Retry(error) } else { Self::Final(error) }
 	}
 }
 
@@ -2608,6 +2670,10 @@ fn operator_diagnostic_for_message(class: OperatorErrorClass, message: &str) -> 
 		"HTTP response exceeds its byte limit" => Some(("http_response_too_large", message)),
 		"HTTP transport failed" => Some(("http_transport_failed", message)),
 		"artifact resolver is unavailable" => Some(("artifact_resolver_unavailable", message)),
+		"artifact resolver authorization failed" => {
+			Some(("artifact_resolver_authorization_failed", message))
+		},
+		"artifact retry budget exhausted" => Some(("artifact_retry_budget_exhausted", message)),
 		"cannot clean claim replay directory" => Some(("claim_replay_cleanup_failed", message)),
 		"cannot create claim replay directory" => Some(("claim_replay_create_failed", message)),
 		"cannot restrict claim replay directory" => {
@@ -3150,14 +3216,15 @@ mod tests {
 	use sha2::{Digest, Sha256};
 
 	use crate::{
-		ArtifactResolverClient, Claim, ClaimLease, Cli, DEFAULT_REPLAY_JOBS, ErrorKind,
-		HttpArtifactResolver, HttpResponse, LEASE_RENEWAL_INTERVAL, LeaseMaintenance,
-		LocalArtifactResolver, MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES,
-		OperatorDiagnostic, OperatorErrorClass, PackageDisposition, PreparationRequest,
-		PreparedEvidence, PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE,
-		REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, Secret,
-		Transport, UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse,
-		VerificationRecord, VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
+		ArtifactResolveAttemptError, ArtifactResolverClient, Claim, ClaimLease, Cli,
+		DEFAULT_REPLAY_JOBS, ErrorKind, HttpArtifactResolver, HttpResponse, LEASE_RENEWAL_INTERVAL,
+		LeaseMaintenance, LocalArtifactResolver, MAX_OPERATOR_ERROR_DETAIL_BYTES,
+		MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic, OperatorErrorClass, PackageDisposition,
+		PreparationRequest, PreparedEvidence, PreparedVerification, RECORD_SCHEMA,
+		REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode,
+		RejectionGatewayResponse, Secret, Transport, UreqTransport, ValidateEnvironmentCli,
+		VerificationGatewayResponse, VerificationRecord, VerifierEnvironment, VerifyLocalCli,
+		Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
@@ -3192,6 +3259,14 @@ mod tests {
 	struct ArtifactTransport {
 		bytes: Vec<u8>,
 		kind: &'static str,
+	}
+
+	struct RetryArtifactTransport {
+		bytes: Vec<u8>,
+		resolver_statuses: Mutex<VecDeque<u16>>,
+		object_statuses: Mutex<VecDeque<u16>>,
+		resolver_calls: Mutex<usize>,
+		object_calls: Mutex<usize>,
 	}
 
 	struct AckConflictTransport {
@@ -3258,16 +3333,21 @@ mod tests {
 				.map_err(|_| WorkerError::transient("renewal request lock failed"))?
 				.push(request.clone());
 
-			let response_body = serde_json::json!({
-				"status": "renewed",
-				"inbox_id": request["inbox_id"],
-				"lease_token": request["lease_token"],
-				"lease_expires_at": "2026-07-25T12:20:00Z",
-				"attempt": 1
-			});
+			let is_ack = request["action"] == "ack";
+			let response_body = if is_ack {
+				serde_json::json!({ "status": "acknowledged" })
+			} else {
+				serde_json::json!({
+					"status": "renewed",
+					"inbox_id": request["inbox_id"],
+					"lease_token": request["lease_token"],
+					"lease_expires_at": "2026-07-25T12:20:00Z",
+					"attempt": 1
+				})
+			};
 
 			Ok(HttpResponse {
-				status: self.status,
+				status: if is_ack { 200 } else { self.status },
 				body: serde_json::to_vec(&response_body)
 					.map_err(|error| WorkerError::transient(error.to_string()))?,
 			})
@@ -3322,6 +3402,61 @@ mod tests {
 			assert_eq!(url, "https://storage.invalid/signed");
 
 			Ok(HttpResponse { status: 200, body: self.bytes.clone() })
+		}
+	}
+
+	impl Transport for RetryArtifactTransport {
+		fn post_json(
+			&self,
+			url: &str,
+			_token: &Secret,
+			_body: &[u8],
+		) -> Result<HttpResponse, WorkerError> {
+			assert_eq!(url, "https://gateway.invalid/api/artifacts/resolve");
+
+			*self.resolver_calls.lock().expect("resolver calls") += 1;
+
+			let status = self
+				.resolver_statuses
+				.lock()
+				.expect("resolver statuses")
+				.pop_front()
+				.unwrap_or(200);
+			let digest = hex::encode(Sha256::digest(&self.bytes));
+			let body = if status == 200 {
+				serde_json::to_vec(&serde_json::json!({
+					"artifact": {
+						"kind": "workspace-snapshot.json",
+						"content_sha256": digest,
+						"bytes": self.bytes.len(),
+						"url": "https://storage.invalid/signed",
+						"url_expires_in_seconds": 120
+					}
+				}))
+				.expect("resolve response")
+			} else {
+				Vec::new()
+			};
+
+			Ok(HttpResponse { status, body })
+		}
+
+		fn get_object(&self, _url: &str) -> Result<HttpResponse, WorkerError> {
+			Err(WorkerError::transient("package download is not expected"))
+		}
+
+		fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
+			assert_eq!(url, "https://storage.invalid/signed");
+
+			*self.object_calls.lock().expect("object calls") += 1;
+
+			let status =
+				self.object_statuses.lock().expect("object statuses").pop_front().unwrap_or(200);
+
+			Ok(HttpResponse {
+				status,
+				body: if status == 200 { self.bytes.clone() } else { Vec::new() },
+			})
 		}
 	}
 
@@ -4663,6 +4798,8 @@ mod tests {
 			inbox_id: "inbox",
 			lease_token: "lease",
 			lease: Some(&lease),
+			max_retries: 3,
+			backoff: Duration::from_millis(1),
 		};
 		let digest = hex::encode(Sha256::digest(&bytes));
 
@@ -4676,6 +4813,244 @@ mod tests {
 				.expect("resolve"),
 			bytes
 		);
+	}
+
+	#[test]
+	fn artifact_resolver_retries_transient_gateway_statuses() {
+		for status in [408, 409, 429, 500, 599] {
+			let bytes = b"workspace snapshot".to_vec();
+			let transport = RetryArtifactTransport {
+				bytes: bytes.clone(),
+				resolver_statuses: Mutex::new(VecDeque::from([status, 200])),
+				object_statuses: Mutex::new(VecDeque::from([200])),
+				resolver_calls: Mutex::new(0),
+				object_calls: Mutex::new(0),
+			};
+			let token = Secret("token".to_owned());
+			let lease = NoopLease;
+			let resolver = HttpArtifactResolver {
+				transport: &transport,
+				token: &token,
+				endpoint: "https://gateway.invalid",
+				inbox_id: "inbox",
+				lease_token: "lease",
+				lease: Some(&lease),
+				max_retries: 2,
+				backoff: Duration::ZERO,
+			};
+			let digest = hex::encode(Sha256::digest(&bytes));
+
+			assert_eq!(
+				resolver
+					.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
+					.expect("transient resolver status must recover"),
+				bytes,
+				"HTTP {status}"
+			);
+			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 2);
+			assert_eq!(*transport.object_calls.lock().expect("object calls"), 1);
+		}
+	}
+
+	#[test]
+	fn artifact_resolver_refreshes_signed_urls_after_transient_object_statuses() {
+		for status in [403, 408, 409, 429, 500, 599] {
+			let bytes = b"workspace snapshot".to_vec();
+			let transport = RetryArtifactTransport {
+				bytes: bytes.clone(),
+				resolver_statuses: Mutex::new(VecDeque::new()),
+				object_statuses: Mutex::new(VecDeque::from([status, 200])),
+				resolver_calls: Mutex::new(0),
+				object_calls: Mutex::new(0),
+			};
+			let token = Secret("token".to_owned());
+			let lease = NoopLease;
+			let resolver = HttpArtifactResolver {
+				transport: &transport,
+				token: &token,
+				endpoint: "https://gateway.invalid",
+				inbox_id: "inbox",
+				lease_token: "lease",
+				lease: Some(&lease),
+				max_retries: 2,
+				backoff: Duration::ZERO,
+			};
+			let digest = hex::encode(Sha256::digest(&bytes));
+
+			assert_eq!(
+				resolver
+					.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
+					.expect("transient signed-object status must recover"),
+				bytes,
+				"HTTP {status}"
+			);
+			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 2);
+			assert_eq!(*transport.object_calls.lock().expect("object calls"), 2);
+		}
+	}
+
+	#[test]
+	fn exhausted_signed_object_retries_remain_transient() {
+		let bytes = b"workspace snapshot".to_vec();
+		let transport = RetryArtifactTransport {
+			bytes: bytes.clone(),
+			resolver_statuses: Mutex::new(VecDeque::new()),
+			object_statuses: Mutex::new(VecDeque::from([403, 403, 403])),
+			resolver_calls: Mutex::new(0),
+			object_calls: Mutex::new(0),
+		};
+		let token = Secret("token".to_owned());
+		let lease = NoopLease;
+		let resolver = HttpArtifactResolver {
+			transport: &transport,
+			token: &token,
+			endpoint: "https://gateway.invalid",
+			inbox_id: "inbox",
+			lease_token: "lease",
+			lease: Some(&lease),
+			max_retries: 3,
+			backoff: Duration::ZERO,
+		};
+		let digest = hex::encode(Sha256::digest(&bytes));
+		let error = resolver
+			.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
+			.expect_err("retry budget must be bounded");
+
+		assert!(error.is_transient());
+		assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 3);
+		assert_eq!(*transport.object_calls.lock().expect("object calls"), 3);
+	}
+
+	#[test]
+	fn artifact_resolver_preserves_missing_and_identity_failures_as_terminal() {
+		let bytes = b"workspace snapshot".to_vec();
+		let token = Secret("token".to_owned());
+		let lease = NoopLease;
+		let missing_transport = RetryArtifactTransport {
+			bytes: bytes.clone(),
+			resolver_statuses: Mutex::new(VecDeque::from([404])),
+			object_statuses: Mutex::new(VecDeque::new()),
+			resolver_calls: Mutex::new(0),
+			object_calls: Mutex::new(0),
+		};
+		let missing_resolver = HttpArtifactResolver {
+			transport: &missing_transport,
+			token: &token,
+			endpoint: "https://gateway.invalid",
+			inbox_id: "inbox",
+			lease_token: "lease",
+			lease: Some(&lease),
+			max_retries: 3,
+			backoff: Duration::ZERO,
+		};
+		let digest = hex::encode(Sha256::digest(&bytes));
+		let missing = missing_resolver
+			.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
+			.expect_err("missing artifact must reject");
+
+		assert_eq!(missing.kind, ErrorKind::Terminal(ReasonCode::ArtifactEvidenceUnavailable));
+		assert_eq!(*missing_transport.resolver_calls.lock().expect("resolver calls"), 1);
+		assert_eq!(*missing_transport.object_calls.lock().expect("object calls"), 0);
+
+		let identity_transport =
+			ArtifactTransport { bytes: bytes.clone(), kind: "workspace-snapshot.json" };
+		let identity_resolver = HttpArtifactResolver {
+			transport: &identity_transport,
+			token: &token,
+			endpoint: "https://gateway.invalid",
+			inbox_id: "inbox",
+			lease_token: "lease",
+			lease: Some(&lease),
+			max_retries: 3,
+			backoff: Duration::ZERO,
+		};
+		let mismatch = identity_resolver
+			.resolve(&"0".repeat(64), "workspace-snapshot.json", bytes.len() as u64)
+			.expect_err("mismatched resolver identity must reject");
+
+		assert_eq!(mismatch.kind, ErrorKind::Terminal(ReasonCode::ArtifactEvidenceMismatch));
+	}
+
+	#[test]
+	fn artifact_resolver_does_not_retry_terminal_http_statuses() {
+		let bytes = b"workspace snapshot".to_vec();
+		let digest = hex::encode(Sha256::digest(&bytes));
+		let token = Secret("token".to_owned());
+		let lease = NoopLease;
+
+		for status in [400, 401, 403, 404] {
+			let transport = RetryArtifactTransport {
+				bytes: bytes.clone(),
+				resolver_statuses: Mutex::new(VecDeque::from([status])),
+				object_statuses: Mutex::new(VecDeque::new()),
+				resolver_calls: Mutex::new(0),
+				object_calls: Mutex::new(0),
+			};
+			let resolver = HttpArtifactResolver {
+				transport: &transport,
+				token: &token,
+				endpoint: "https://gateway.invalid",
+				inbox_id: "inbox",
+				lease_token: "lease",
+				lease: Some(&lease),
+				max_retries: 3,
+				backoff: Duration::ZERO,
+			};
+			let error = resolver
+				.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
+				.expect_err("terminal resolver response must fail");
+
+			if matches!(status, 401 | 403) {
+				assert_eq!(error.kind, ErrorKind::Configuration, "HTTP {status}");
+			} else {
+				assert_eq!(
+					error.kind,
+					ErrorKind::Terminal(ReasonCode::ArtifactEvidenceUnavailable),
+					"HTTP {status}"
+				);
+			}
+
+			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 1);
+			assert_eq!(*transport.object_calls.lock().expect("object calls"), 0);
+		}
+		for status in [400, 401, 404] {
+			let transport = RetryArtifactTransport {
+				bytes: bytes.clone(),
+				resolver_statuses: Mutex::new(VecDeque::new()),
+				object_statuses: Mutex::new(VecDeque::from([status])),
+				resolver_calls: Mutex::new(0),
+				object_calls: Mutex::new(0),
+			};
+			let resolver = HttpArtifactResolver {
+				transport: &transport,
+				token: &token,
+				endpoint: "https://gateway.invalid",
+				inbox_id: "inbox",
+				lease_token: "lease",
+				lease: Some(&lease),
+				max_retries: 3,
+				backoff: Duration::ZERO,
+			};
+			let error = resolver
+				.resolve(&digest, "workspace-snapshot.json", bytes.len() as u64)
+				.expect_err("terminal signed-object response must fail");
+
+			assert!(matches!(error.kind, ErrorKind::Terminal(_)), "HTTP {status}");
+			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 1);
+			assert_eq!(*transport.object_calls.lock().expect("object calls"), 1);
+		}
+	}
+
+	#[test]
+	fn artifact_transport_errors_retry_only_when_transient() {
+		assert!(matches!(
+			ArtifactResolveAttemptError::from_transport(WorkerError::transient("network")),
+			ArtifactResolveAttemptError::Retry(_)
+		));
+		assert!(matches!(
+			ArtifactResolveAttemptError::from_transport(WorkerError::configuration("URL")),
+			ArtifactResolveAttemptError::Final(_)
+		));
 	}
 
 	#[test]
@@ -5102,6 +5477,13 @@ mod tests {
 		assert_eq!(record.error_class, Some(OperatorErrorClass::Transient));
 		assert_eq!(record.error_code, Some("claim_lease_renewal_unavailable"));
 		assert_eq!(record.error_detail.as_deref(), Some("claim lease renewal is unavailable"));
+
+		let requests = worker.transport.requests.lock().expect("requests");
+
+		assert_eq!(requests.len(), 2);
+		assert_eq!(requests[0]["action"], "renew");
+		assert_eq!(requests[1]["action"], "ack");
+		assert_eq!(requests[1]["disposition"], "retry");
 	}
 
 	#[test]
