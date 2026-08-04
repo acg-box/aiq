@@ -249,7 +249,11 @@ export default async function OverviewPage() {
         </div>
         <ReadStateNote result={leaderboardResult} subject="Latest matrix" />
         <ModelMatrixChart entries={leaderboard} />
-        {selectedRun ? <RunOutcomeCard run={selectedRun} /> : null}
+        {selectedRun ? (
+          <RunOutcomeCard run={selectedRun} />
+        ) : (
+          <ReadStateNote result={selectedRunResult} subject="Highlighted run outcomes" />
+        )}
         <EfficiencyPlot entries={leaderboard} rows={officialEfficiencyResult.data} />
         <details className="leaderboard-disclosure">
           <summary>Show all {leaderboard.length} configurations and intervals</summary>
