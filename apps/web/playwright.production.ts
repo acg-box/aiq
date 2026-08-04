@@ -18,6 +18,7 @@ export default defineConfig({
     baseURL: productionOrigin,
     browserName: 'chromium',
     navigationTimeout: 60_000,
+    serviceWorkers: 'block',
     trace: 'retain-on-failure',
     viewport: { width: 1_440, height: 900 },
   },

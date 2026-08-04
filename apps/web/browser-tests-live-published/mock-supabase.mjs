@@ -138,7 +138,7 @@ const runRows = matrix.map((entry, index) => {
     completed_at: '2026-08-03T13:37:24.411Z',
     benchmark_version: 'aiq-core@1.0.2',
     scoring_version: '1.0.2',
-    prompt_set_digest: `sha256:${'2'.repeat(64)}`,
+    prompt_set_digest: `sha256:${'5'.repeat(64)}`,
     runner_commit: '7a0c4d1',
     region: 'us-east-1',
     synthetic: false,
@@ -360,61 +360,69 @@ calibrationResults.push(
     ),
 );
 
-const modelEfficiency = calibrationScores.map((score, index) => ({
-  run_id: leaderboard[index]?.run_id ?? `run-live-${matrix[index]?.id ?? index}`,
-  matrix_batch_id: `run_${'b'.repeat(64)}`,
-  model_family: score.model_family,
-  reasoning_effort: score.reasoning_effort,
-  matrix_batch_elapsed_ms: 5_844_411,
-  summed_cell_adapter_elapsed_ms: score.observed_total_wall_ms,
-  observed_median_wall_ms: score.observed_median_wall_ms,
-  observed_p95_wall_ms: score.observed_p95_wall_ms,
-  observed_time_sample_count: score.observed_time_sample_count,
-  observed_time_coverage_percent: score.observed_time_coverage_percent,
-  duration_evidence_level: score.duration_evidence_level,
-  input_tokens: null,
-  cached_input_tokens: null,
-  cache_write_input_tokens: null,
-  output_tokens: null,
-  reasoning_output_tokens: null,
-  total_tokens: null,
-  token_usage_sample_count: 0,
-  token_usage_coverage_percent: null,
-  input_token_coverage_count: null,
-  input_token_coverage_percent: null,
-  cached_input_token_coverage_count: null,
-  cached_input_token_coverage_percent: null,
-  cache_write_input_token_coverage_count: null,
-  cache_write_input_token_coverage_percent: null,
-  output_token_coverage_count: null,
-  output_token_coverage_percent: null,
-  reasoning_token_coverage_count: null,
-  reasoning_token_coverage_percent: null,
-  total_token_coverage_count: null,
-  total_token_coverage_percent: null,
-  token_usage_source_level: null,
-  token_usage_evidence_level: null,
-  standard_api_equivalent_usd_nanos: null,
-  cost_estimator_status: 'unavailable_missing_usage',
-  cost_evidence_level: null,
-  cost_method: 'standard_api_equivalent_text_token_estimate',
-  pricing_source: score.pricing_source,
-  pricing_as_of: score.pricing_as_of,
-  pricing_version: score.pricing_version,
-  pricing_currency: score.pricing_currency,
-  pricing_processing_tier: score.pricing_processing_tier,
-  result_count: 72,
-  attempted_result_count: 72,
-  invoked_result_count: 72,
-  adapter_elapsed_observed_result_count: 72,
-  token_observed_result_count: 0,
-  priced_result_count: 0,
-  execution_concurrency: 17,
-  estimated_cost_sample_count: 0,
-  cost_estimator_limitations: score.cost_estimator_limitations,
-  pricing_rates: pricingRates,
-  cost_formula: costFormula,
-}));
+const modelEfficiency = calibrationScores.map((score, index) => {
+  const completeTokens = index === 0;
+  const partialTokens = index === 2;
+  const tokenCount = completeTokens ? 72 : partialTokens ? 36 : 0;
+  const tokenCoveragePercent = tokenCount === 0 ? null : (tokenCount / 72) * 100;
+  const tokensAvailable = tokenCount > 0;
+  const durationAvailable = index !== 3;
+  return {
+    run_id: leaderboard[index]?.run_id ?? `run-live-${matrix[index]?.id ?? index}`,
+    matrix_batch_id: `run_${'b'.repeat(64)}`,
+    model_family: score.model_family,
+    reasoning_effort: score.reasoning_effort,
+    matrix_batch_elapsed_ms: 5_844_411,
+    summed_cell_adapter_elapsed_ms: durationAvailable ? score.observed_total_wall_ms : null,
+    observed_median_wall_ms: durationAvailable ? score.observed_median_wall_ms : null,
+    observed_p95_wall_ms: durationAvailable ? score.observed_p95_wall_ms : null,
+    observed_time_sample_count: durationAvailable ? 72 : 0,
+    observed_time_coverage_percent: durationAvailable ? 100 : 0,
+    duration_evidence_level: durationAvailable ? 'runner_observed' : null,
+    input_tokens: tokensAvailable ? 72_000 : null,
+    cached_input_tokens: tokensAvailable ? 12_000 : null,
+    cache_write_input_tokens: tokensAvailable ? 6_000 : null,
+    output_tokens: tokensAvailable ? 36_000 : null,
+    reasoning_output_tokens: tokensAvailable ? 12_000 : null,
+    total_tokens: tokensAvailable ? 108_000 : null,
+    token_usage_sample_count: tokenCount,
+    token_usage_coverage_percent: tokenCoveragePercent,
+    input_token_coverage_count: tokensAvailable ? tokenCount : null,
+    input_token_coverage_percent: tokenCoveragePercent,
+    cached_input_token_coverage_count: tokensAvailable ? tokenCount : null,
+    cached_input_token_coverage_percent: tokenCoveragePercent,
+    cache_write_input_token_coverage_count: tokensAvailable ? tokenCount : null,
+    cache_write_input_token_coverage_percent: tokenCoveragePercent,
+    output_token_coverage_count: tokensAvailable ? tokenCount : null,
+    output_token_coverage_percent: tokenCoveragePercent,
+    reasoning_token_coverage_count: tokensAvailable ? tokenCount : null,
+    reasoning_token_coverage_percent: tokenCoveragePercent,
+    total_token_coverage_count: tokensAvailable ? tokenCount : null,
+    total_token_coverage_percent: tokenCoveragePercent,
+    token_usage_source_level: tokensAvailable ? 'provider_reported' : null,
+    token_usage_evidence_level: tokensAvailable ? 'verifier_recomputed' : null,
+    standard_api_equivalent_usd_nanos: completeTokens ? 12_345_600_000 : null,
+    cost_estimator_status: completeTokens ? 'estimated' : 'unavailable_missing_usage',
+    cost_evidence_level: completeTokens ? 'verifier_recomputed' : null,
+    cost_method: 'standard_api_equivalent_text_token_estimate',
+    pricing_source: score.pricing_source,
+    pricing_as_of: score.pricing_as_of,
+    pricing_version: score.pricing_version,
+    pricing_currency: score.pricing_currency,
+    pricing_processing_tier: score.pricing_processing_tier,
+    result_count: 72,
+    attempted_result_count: 72,
+    invoked_result_count: 72,
+    adapter_elapsed_observed_result_count: durationAvailable ? 72 : 0,
+    token_observed_result_count: tokenCount,
+    priced_result_count: completeTokens ? 72 : 0,
+    execution_concurrency: 17,
+    estimated_cost_sample_count: completeTokens ? 72 : 0,
+    cost_estimator_limitations: score.cost_estimator_limitations,
+    pricing_rates: pricingRates,
+    cost_formula: costFormula,
+  };
+});
 
 const historicalModelEfficiency = [
   ...modelEfficiency,
@@ -676,7 +684,10 @@ const server = createServer((request, response) => {
     const olderId = /id\.gt\.([^,)]+)/.exec(cursorExpression)?.[1];
     const newerId = /id\.lt\.([^,)]+)/.exec(cursorExpression)?.[1];
     const ordered = [...runRows];
-    ordered.sort((left, right) => left.id.localeCompare(right.id));
+    const descendingIds = (url.searchParams.get('order') ?? '').includes('id.desc');
+    ordered.sort((left, right) =>
+      descendingIds ? right.id.localeCompare(left.id) : left.id.localeCompare(right.id),
+    );
     const rows = exactId
       ? ordered.filter((run) => run.id === exactId)
       : ordered.filter((run) => (!olderId || run.id > olderId) && (!newerId || run.id < newerId));
