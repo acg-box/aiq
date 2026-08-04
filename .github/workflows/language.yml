@@ -191,6 +191,12 @@ jobs:
           --file -
           < databases/calibration-integration.sql
 
+      - name: Exercise concurrent artifact claim resolution
+        env:
+          AIQ_DATABASE_CONCURRENCY_TEST_PSQL: psql
+          AIQ_DATABASE_CONCURRENCY_TEST_URL: postgresql://postgres:aiq-contract-local-only@127.0.0.1:5432/aiq_initializer
+        run: cargo make test-database-concurrency
+
       - name: Remove initializer test database and roles
         if: always()
         run: |
