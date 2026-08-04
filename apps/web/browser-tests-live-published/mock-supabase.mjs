@@ -446,8 +446,8 @@ for (const [runIndex, run] of runRows.entries()) {
     for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
       globalIndex += 1;
       publishedResultIndex += 1;
-      const estimatedCost = publishedResultIndex <= 1_203;
-      const unavailableContextBand = publishedResultIndex > 1_203 && publishedResultIndex <= 1_218;
+      const estimatedCost = publishedResultIndex <= 1_208;
+      const unavailableContextBand = publishedResultIndex > 1_208 && publishedResultIndex <= 1_218;
       const tokensAvailable = estimatedCost || unavailableContextBand;
       const passed = globalIndex <= outcomes.passed;
       const executionFailure =

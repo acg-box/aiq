@@ -398,8 +398,8 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   expect(resultCount).toBe(1_224);
   expect(taskCostStatuses).toEqual(
     new Map([
-      ['estimated', 1_203],
-      ['unavailable-context-band', 15],
+      ['estimated', 1_208],
+      ['unavailable-context-band', 10],
       ['unavailable-missing-usage', 6],
     ]),
   );
