@@ -218,18 +218,47 @@ create function aiq_private.aiq_claim_storage_deletions_reference_core(max_rows 
     SET search_path to ''
     as $$
 declare
-  database_now timestamptz := clock_timestamp();
+  database_now timestamptz;
 begin
   perform aiq_private.require_request_role('service_role');
   if max_rows not between 1 and 100 or requested_lease_seconds not between 30 and 900 then
     raise exception 'invalid Storage deletion claim bounds' using errcode = '22023';
   end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
+  database_now:=clock_timestamp();
+  if exists(select 1 from aiq_private.aiq_storage_reconciliation_events event
+      where event.mismatch_type in ('storage_only','registry_only','identity_mismatch')
+        and event.resolved_at is null)
+    or not exists(
+      select 1
+      from aiq_private.aiq_storage_reconciliation_events epoch
+      where epoch.mismatch_type='inventory_success'
+        and epoch.resolved_at is not null
+        and epoch.last_observed_at>=database_now-interval '24 hours'
+        and epoch.last_observed_at>=coalesce((
+          select max(event.last_observed_at)
+          from aiq_private.aiq_storage_reconciliation_events event
+          where event.mismatch_type in (
+            'storage_only','registry_only','identity_mismatch'
+          )
+        ),'-infinity'::timestamptz)
+    )
+  then raise exception 'Storage deletion requires a recent clean inventory epoch'
+    using errcode='55000'; end if;
   return query
   with candidates as (
     select object.object_id
     from aiq_private.aiq_storage_objects object
     where object.retention_class <> 'preserve'
       and object.expires_at <= database_now
+      and object.registered_at <= (
+        select max(epoch.last_observed_at)
+        from aiq_private.aiq_storage_reconciliation_events epoch
+        where epoch.mismatch_type='inventory_success'
+          and epoch.resolved_at is not null
+      )
       and not object.legal_hold
       and object.next_attempt_at <= database_now
       and object.lifecycle_state <> 'deleted'
@@ -702,9 +731,10 @@ begin
       stage,
       array[
         'benchmark_version', 'capability_validation_digest', 'content_hash',
-        'finished_unix_ms', 'matrix_batch_id', 'normalization_digest',
-        'package_sha256', 'prompt_set_digest', 'provenance', 'region',
-        'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
+        'efficiency', 'execution_concurrency', 'finished_unix_ms',
+        'matrix_batch_id', 'normalization_digest',
+        'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
+        'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
         'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
         'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version'
       ]::text[]
@@ -735,6 +765,31 @@ begin
     ) is distinct from true
     or jsonb_typeof(stage -> 'runs') is distinct from 'array'
     or jsonb_array_length(stage -> 'runs') is distinct from 17
+    or not aiq_private.dto_uint_is_valid(stage -> 'execution_concurrency',32)
+    or (stage->>'execution_concurrency')::integer not between 1 and 32
+    or jsonb_typeof(stage->'result_efficiency') is distinct from 'array'
+    or jsonb_array_length(stage->'result_efficiency') is distinct from 1224
+    or jsonb_typeof(stage->'efficiency') is distinct from 'array'
+    or jsonb_array_length(stage->'efficiency') is distinct from 17
+    or aiq_private.efficiency_pricing_v1_is_valid(stage->'pricing') is not true
+    or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+      where aiq_private.result_efficiency_v1_is_valid(evidence) is not true)
+    or exists(select 1 from jsonb_array_elements(stage->'efficiency') aggregate
+      where aiq_private.efficiency_aggregate_v1_is_valid(aggregate) is not true)
+    or exists(select 1 from jsonb_array_elements(stage->'efficiency') aggregate
+      where aiq_private.efficiency_aggregate_matches_results(
+        aggregate,stage->'result_efficiency'
+      ) is not true)
+    or (select count(distinct evidence->>'source_result_id')
+      from jsonb_array_elements(stage->'result_efficiency') evidence)<>1224
+    or (select count(distinct (evidence->'model',evidence->>'task_id'))
+      from jsonb_array_elements(stage->'result_efficiency') evidence)<>1224
+    or (select count(distinct aggregate->'model')
+      from jsonb_array_elements(stage->'efficiency') aggregate)<>17
+    or aiq_private.official_model_matrix_is_exact((
+      select jsonb_agg(aggregate.value->'model' order by aggregate.ordinality)
+      from jsonb_array_elements(stage->'efficiency') with ordinality aggregate(value,ordinality)
+    )) is not true
     or not coalesce(stage ->> 'matrix_batch_id' ~ '^run_[0-9a-f]{64}$', false)
     or not aiq_private.jsonb_sha256_field_is_valid(stage, 'package_sha256', false)
     or not aiq_private.jsonb_sha256_field_is_valid(stage, 'content_hash', true)
@@ -798,6 +853,8 @@ begin
     or inbox.envelope -> 'payload' -> 'provenance' is distinct from
       stage_provenance
     or inbox.envelope -> 'payload' -> 'synthetic' is distinct from stage -> 'synthetic'
+    or inbox.envelope -> 'payload' -> 'execution_concurrency'
+      is distinct from stage -> 'execution_concurrency'
     or inbox.envelope -> 'signer' is distinct from stage -> 'signer'
     or inbox.envelope ->> 'content_hash' is distinct from stage ->> 'content_hash'
   then
@@ -831,6 +888,11 @@ begin
         join aiq_private.aiq_package_runs link on link.run_id = result.run_id
         where link.package_sha256 = package_id
       ) = 1224
+      and (
+        select count(*) from aiq_private.efficiency_official_models efficiency
+        join aiq_private.aiq_package_runs link using(run_id)
+        where link.package_sha256=package_id
+      ) = 17
       and (
         select count(*)
         from aiq_private.aiq_verification_audit audit
@@ -1130,7 +1192,8 @@ declare
 begin
   if supplied_reference_type not in (
     'submission_inbox', 'submission_conflict',
-    'artifact_ingress_claim', 'artifact_claim_binding'
+    'artifact_ingress_claim', 'artifact_claim_binding',
+    'calibration_run', 'official_publication'
   ) or not coalesce(supplied_reference_key ~ '^[a-z0-9][a-z0-9._:/-]{0,254}$', false)
   then
     raise exception 'invalid private Storage reference identity' using errcode = '22023';
@@ -1285,14 +1348,20 @@ $$;
 --
 
 create function aiq_private.deactivate_storage_reference(supplied_reference_type text, supplied_reference_key text) returns void
-    language sql security DEFINER
+    language plpgsql security DEFINER
     SET search_path to ''
     as $$
+begin
+  if supplied_reference_type in ('calibration_run','official_publication') then
+    raise exception 'publication-owned Storage references cannot be deactivated generically'
+      using errcode='42501';
+  end if;
   update aiq_private.aiq_storage_object_references reference
   set active = false, deactivated_at = now()
   where reference.reference_type = supplied_reference_type
     and reference.reference_key = supplied_reference_key
     and reference.active;
+end;
 $$;
 
 
@@ -1313,7 +1382,7 @@ begin
     and jsonb_typeof(candidate -> 'kind') = 'string'
     and candidate ->> 'kind' in (
       'spawn','timeout','unsupported','authentication','usage_limit',
-      'non_zero_exit','budget_exceeded','output_truncated'
+      'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'
     )
     and (
       candidate -> 'exit_code' = 'null'::jsonb
@@ -1623,8 +1692,11 @@ begin
 
   usage := candidate -> 'tool_usage';
   if jsonb_typeof(usage) <> 'object'
-    or not aiq_private.has_exact_jsonb_keys(
-      usage, array['by_tool','steps','total_calls']::text[]
+    or not (
+      aiq_private.has_exact_jsonb_keys(usage,array['by_tool','steps','total_calls']::text[])
+      or aiq_private.has_exact_jsonb_keys(
+        usage,array['by_tool','provider_tokens','steps','total_calls']::text[]
+      )
     )
     or not aiq_private.dto_uint_is_valid(usage -> 'steps', 4294967295)
     or not aiq_private.dto_uint_is_valid(usage -> 'total_calls', 4294967295)
@@ -1640,6 +1712,27 @@ begin
   select coalesce(sum((member.value #>> '{}')::bigint),0)
     into total from jsonb_each(usage -> 'by_tool') member;
   if total <> (usage ->> 'total_calls')::bigint then return false; end if;
+  if usage ? 'provider_tokens' and (
+    jsonb_typeof(usage -> 'provider_tokens') <> 'object'
+    or (select count(*) from jsonb_object_keys(usage -> 'provider_tokens')) not between 1 and 6
+    or exists (
+      select 1 from jsonb_each(usage -> 'provider_tokens') token
+      where token.key not in ('input','cached_input','cache_write_input','output','reasoning','total')
+        or not aiq_private.dto_uint_is_valid(token.value,9007199254740991)
+    )
+    or (
+      usage#>>'{provider_tokens,cached_input}' is not null
+      and usage#>>'{provider_tokens,input}' is not null
+      and (usage#>>'{provider_tokens,cached_input}')::numeric >
+        (usage#>>'{provider_tokens,input}')::numeric
+    )
+    or (
+      usage#>>'{provider_tokens,reasoning}' is not null
+      and usage#>>'{provider_tokens,output}' is not null
+      and (usage#>>'{provider_tokens,reasoning}')::numeric >
+        (usage#>>'{provider_tokens,output}')::numeric
+    )
+  ) then return false; end if;
 
   failure := candidate -> 'failure';
   if failure <> 'null'::jsonb and (
@@ -1651,7 +1744,7 @@ begin
       'spawn','timeout','unsupported_model','authentication','subscription_limit','non_zero_exit',
       'capability_unavailable','capability_validation_failed','missing_evaluator',
       'missing_response','evaluator_failure','budget_exceeded','output_truncated',
-      'workspace_unavailable'
+      'workspace_unavailable','workspace_integrity'
     )
     or not aiq_private.dto_ascii_is_valid(failure -> 'message', 128)
     or jsonb_typeof(failure -> 'retryable') <> 'boolean'
@@ -1732,7 +1825,7 @@ begin
       or (
         failure ->> 'kind' in (
           'spawn','authentication','subscription_limit','capability_validation_failed',
-          'evaluator_failure','workspace_unavailable'
+          'evaluator_failure','workspace_unavailable','workspace_integrity'
         ) and candidate -> 'task_score' <> 'null'::jsonb
       )
       or failure ->> 'kind' in ('capability_unavailable','missing_evaluator')
@@ -1760,12 +1853,26 @@ begin
     'capability_unavailable','capability_validation_failed','workspace_unavailable'
   );
   if attempted then
-    if candidate -> 'workspace_manifest' = 'null'::jsonb
+    if failure ->> 'kind' = 'workspace_integrity' then
+      if not (
+        (candidate -> 'workspace_manifest' = 'null'::jsonb
+          and (select count(*) from jsonb_array_elements(candidate -> 'artifacts') item
+            where item ->> 'kind' = 'workspace-snapshot.json') = 0)
+        or (
+          candidate -> 'workspace_manifest' <> 'null'::jsonb
+          and aiq_private.dto_artifact_is_valid(
+            candidate -> 'workspace_manifest', array['workspace-manifest.json'], 4194304
+          )
+          and (select count(*) from jsonb_array_elements(candidate -> 'artifacts') item
+            where item ->> 'kind' = 'workspace-snapshot.json') = 1
+        )
+      ) then return false; end if;
+    elsif candidate -> 'workspace_manifest' = 'null'::jsonb
       or not aiq_private.dto_artifact_is_valid(
         candidate -> 'workspace_manifest', array['workspace-manifest.json'], 4194304
       )
       or (select count(*) from jsonb_array_elements(candidate -> 'artifacts') item
-          where item ->> 'kind' = 'workspace-snapshot.json') <> 1
+        where item ->> 'kind' = 'workspace-snapshot.json') <> 1
     then return false; end if;
   elsif candidate -> 'workspace_manifest' <> 'null'::jsonb
     or exists (
@@ -1827,7 +1934,7 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3'
+      'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
     or candidate ->> 'preflight_digest' is distinct from preflight_digest
   then return false;
@@ -2038,6 +2145,7 @@ create function aiq_private.ensure_storage_object(supplied_object_type text, sup
 declare
   existing aiq_private.aiq_storage_objects%rowtype;
   inserted_id uuid;
+  database_now timestamptz;
 begin
   if supplied_object_type not in ('submission_package', 'runner_artifact')
     or not coalesce(supplied_bucket ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$', false)
@@ -2067,13 +2175,18 @@ begin
   then
     raise exception 'invalid private Storage object identity' using errcode = '22023';
   end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
+  database_now:=clock_timestamp();
 
   insert into aiq_private.aiq_storage_objects (
     object_type, artifact_kind, bucket_name, object_path, content_sha256,
-    byte_size, retention_class, expires_at
+    byte_size, retention_class, expires_at,next_attempt_at,registered_at,updated_at
   ) values (
     supplied_object_type, supplied_artifact_kind, supplied_bucket, supplied_path,
-    supplied_sha256, supplied_bytes, supplied_retention_class, supplied_expires_at
+    supplied_sha256, supplied_bytes, supplied_retention_class, supplied_expires_at,
+    database_now,database_now,database_now
   ) on conflict (bucket_name, object_path) do nothing
   returning object_id into inserted_id;
   if inserted_id is not null then
@@ -2108,6 +2221,28 @@ begin
   return existing.object_id;
 end;
 $_$;
+
+
+--
+-- Name: storage_registry_inventory_digest(); Type: function; Schema: aiq_private; Owner: -
+--
+
+create function aiq_private.storage_registry_inventory_digest() returns text
+    language sql stable
+    SET search_path to ''
+    as $$
+  select aiq_private.jcs_sha256(coalesce(
+    jsonb_agg(jsonb_build_object(
+      'bucket',object.bucket_name,
+      'key',object.object_path,
+      'content_sha256',object.content_sha256,
+      'bytes',object.byte_size
+    ) order by object.bucket_name collate "C",object.object_path collate "C"),
+    '[]'::jsonb
+  ))
+  from aiq_private.aiq_storage_objects object
+  where object.lifecycle_state<>'deleted';
+$$;
 
 
 --
@@ -2225,9 +2360,9 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
     where task_set.task_set_id = target_task_set_id
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.0'
-      and scoring.scoring_version = '1.0.0'
-      and scoring.benchmark_version = 'aiq-core@1.0.0'
+      and task_set.task_set_version = '1.0.2'
+      and scoring.scoring_version = '1.0.2'
+      and scoring.benchmark_version = 'aiq-core@1.0.2'
       and scoring.is_published
       and not scoring.synthetic
       and task_set.task_count = 72
@@ -2237,12 +2372,14 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3'
+        '2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
+      and task_set.metadata ->> 'catalog_release_identity_sha256' =
+        'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -2506,6 +2643,28 @@ $$;
 
 
 --
+-- Name: guard_storage_reconciliation_history(); Type: function; Schema: aiq_private; Owner: -
+--
+
+create function aiq_private.guard_storage_reconciliation_history() returns trigger
+    language plpgsql
+    SET search_path to ''
+    as $$
+begin
+  if tg_op='DELETE' then
+    raise exception 'Storage reconciliation history cannot be deleted'
+      using errcode='55000';
+  end if;
+  if old.mismatch_type='inventory_success' or new.mismatch_type='inventory_success' then
+    raise exception 'successful Storage inventory epochs are append-only'
+      using errcode='55000';
+  end if;
+  return new;
+end;
+$$;
+
+
+--
 -- Name: guard_submission_inbox_lifecycle(); Type: function; Schema: aiq_private; Owner: -
 --
 
@@ -2527,6 +2686,10 @@ begin
       or exists (
         select 1 from aiq_private.aiq_matrix_batches batch
         where batch.package_sha256 = old.package_sha256
+      )
+      or exists (
+        select 1 from aiq_private.calibration_runs calibration
+        where calibration.package_sha256 = old.package_sha256
       )
     then
       raise exception 'retained submission inbox evidence cannot be deleted'
@@ -2593,13 +2756,16 @@ create function aiq_private.has_exact_jsonb_keys(value jsonb, expected_keys text
     as $$
 declare
   observed_keys text[];
+  normalized_expected_keys text[];
 begin
   if jsonb_typeof(value) is distinct from 'object' then
     return false;
   end if;
   select array_agg(key order by key) into observed_keys
   from jsonb_object_keys(value) key;
-  return observed_keys is not distinct from expected_keys;
+  select array_agg(key order by key) into normalized_expected_keys
+  from unnest(expected_keys) key;
+  return observed_keys is not distinct from normalized_expected_keys;
 end;
 $$;
 
@@ -2924,7 +3090,7 @@ begin
   elsif (
     status in ('failed', 'unevaluated')
     and failure_kind in (
-      'evaluator_failure', 'workspace_unavailable', 'missing_evaluator',
+      'evaluator_failure', 'workspace_unavailable', 'workspace_integrity', 'missing_evaluator',
       'spawn', 'authentication', 'subscription_limit', 'capability_validation_failed'
     )
   )
@@ -2954,7 +3120,7 @@ create function aiq_private.normalized_responsibility_from_source(source jsonb, 
     when source -> 'failure' ->> 'kind' in ('missing_response', 'output_truncated')
       then 'wrong_artifact'
     when source -> 'failure' ->> 'kind' in (
-      'evaluator_failure', 'workspace_unavailable', 'missing_evaluator'
+      'evaluator_failure', 'workspace_unavailable', 'workspace_integrity', 'missing_evaluator'
     ) then 'benchmark_infrastructure'
     when source -> 'failure' ->> 'kind' in (
       'spawn', 'authentication', 'subscription_limit', 'capability_validation_failed'
@@ -3039,10 +3205,8 @@ create function aiq_private.ordered_catalog_identity_sha256(target_task_set_id t
         and catalog.hidden_content_ref is null
         and catalog.public_metadata
       ) as relational_binding_is_exact,
-      string_agg(
-        catalog.full_public_metadata::text,
-        ',' order by catalog.catalog_ordinal
-      ) as ordered_metadata
+      jsonb_agg(catalog.metadata order by catalog.catalog_ordinal)
+        as ordered_metadata
     from catalog
   )
   select case
@@ -3053,13 +3217,7 @@ create function aiq_private.ordered_catalog_identity_sha256(target_task_set_id t
       and validated.first_ordinal = 1
       and validated.last_ordinal = 72
       and validated.relational_binding_is_exact
-    then encode(
-      extensions.digest(
-        convert_to('[' || validated.ordered_metadata || ']', 'utf8'),
-        'sha256'
-      ),
-      'hex'
-    )
+    then replace(aiq_private.jcs_sha256(validated.ordered_metadata), 'sha256:', '')
     else null
   end
   from validated;
@@ -3528,6 +3686,286 @@ $$;
 -- Name: result_package_v3_is_valid(jsonb); Type: function; Schema: aiq_private; Owner: -
 --
 
+create function aiq_private.efficiency_pricing_v1_is_valid(candidate jsonb)
+returns boolean language plpgsql immutable set search_path to '' as $$
+begin
+  return jsonb_typeof(candidate)='object'
+    and aiq_private.has_exact_jsonb_keys(candidate,array[
+      'as_of','currency','formula','hosted_tool_fees_included','limitation',
+      'method','processing_tier','rates','source','version'
+    ]::text[])
+    and candidate->>'method'='standard_api_equivalent_text_token_estimate'
+    and candidate->>'version'='aiq.standard-api-equivalent-usd.v1'
+    and candidate->>'as_of'='2026-08-02'
+    and candidate->>'source'='https://developers.openai.com/api/docs/pricing'
+    and candidate->>'currency'='USD'
+    and candidate->>'processing_tier'='standard'
+    and candidate->'hosted_tool_fees_included'='false'::jsonb
+    and candidate->>'formula'=
+      '(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again'
+    and candidate->>'limitation'=
+      'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing'
+    and candidate->'rates'=jsonb_build_array(
+      jsonb_build_object('model','gpt-5.6-sol','input_usd_nanos_per_token',5000,
+        'cached_input_usd_nanos_per_token',500,'cache_write_input_usd_nanos_per_token',6250,
+        'output_usd_nanos_per_token',30000),
+      jsonb_build_object('model','gpt-5.6-terra','input_usd_nanos_per_token',2000,
+        'cached_input_usd_nanos_per_token',200,'cache_write_input_usd_nanos_per_token',2500,
+        'output_usd_nanos_per_token',12000),
+      jsonb_build_object('model','gpt-5.6-luna','input_usd_nanos_per_token',200,
+        'cached_input_usd_nanos_per_token',20,'cache_write_input_usd_nanos_per_token',250,
+        'output_usd_nanos_per_token',1200)
+    );
+exception when others then return false;
+end;
+$$;
+
+create function aiq_private.provider_token_usage_is_valid(candidate jsonb)
+returns boolean language plpgsql immutable set search_path to '' as $$
+begin
+  return jsonb_typeof(candidate)='object'
+    and (select count(*) from jsonb_object_keys(candidate)) between 0 and 6
+    and not exists(select 1 from jsonb_each(candidate) token
+      where token.key not in ('input','cached_input','cache_write_input','output','reasoning','total')
+        or not aiq_private.dto_uint_is_valid(token.value,9007199254740991))
+    and (candidate->>'cached_input' is null or candidate->>'input' is null
+      or (candidate->>'cached_input')::numeric <= (candidate->>'input')::numeric)
+    and (candidate->>'reasoning' is null or candidate->>'output' is null
+      or (candidate->>'reasoning')::numeric <= (candidate->>'output')::numeric);
+exception when others then return false;
+end;
+$$;
+
+create function aiq_private.result_efficiency_v1_is_valid(candidate jsonb)
+returns boolean language plpgsql stable set search_path to '' as $$
+declare
+  input_tokens numeric;
+  cached_input_tokens numeric;
+  cache_write_input_tokens numeric;
+  output_tokens numeric;
+  input_rate numeric;
+  cached_input_rate numeric;
+  cache_write_input_rate numeric;
+  output_rate numeric;
+  expected_cost numeric;
+begin
+  if not (jsonb_typeof(candidate)='object'
+    and aiq_private.has_exact_jsonb_keys(candidate,array[
+      'cost_evidence_level','cost_status','model','observed_wall_ms','provider_tokens',
+      'provider_tokens_evidence_level','provider_tokens_source','source_result_id',
+      'standard_api_equivalent_usd_nanos','task_id','wall_time_evidence_level'
+    ]::text[])
+    and aiq_private.calibration_model_is_valid(candidate->'model')
+    and candidate->>'source_result_id' ~ '^result_[0-9a-f]{64}$'
+    and aiq_private.dto_identifier_is_valid(candidate->'task_id',64)
+    and (candidate->'observed_wall_ms'='null'::jsonb
+      or aiq_private.dto_uint_is_valid(candidate->'observed_wall_ms',9007199254740991))
+    and aiq_private.provider_token_usage_is_valid(candidate->'provider_tokens')
+    and candidate->>'cost_status' in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
+    and ((candidate->'observed_wall_ms'='null'::jsonb)
+      = (candidate->'wall_time_evidence_level'='null'::jsonb))
+    and (candidate->'wall_time_evidence_level'='null'::jsonb
+      or candidate->>'wall_time_evidence_level'='runner_observed')
+    and ((candidate->'provider_tokens'='{}'::jsonb)
+      = (candidate->'provider_tokens_source'='null'::jsonb))
+    and ((candidate->'provider_tokens'='{}'::jsonb)
+      = (candidate->'provider_tokens_evidence_level'='null'::jsonb))
+    and (candidate->'provider_tokens_source'='null'::jsonb
+      or candidate->>'provider_tokens_source'='provider_reported')
+    and (candidate->'provider_tokens_evidence_level'='null'::jsonb
+      or candidate->>'provider_tokens_evidence_level'='verifier_recomputed')
+    and ((candidate->>'cost_status'='estimated')
+      = (candidate->'standard_api_equivalent_usd_nanos'<>'null'::jsonb))
+    and (candidate->'standard_api_equivalent_usd_nanos'='null'::jsonb
+      or aiq_private.dto_uint_is_valid(
+        candidate->'standard_api_equivalent_usd_nanos',9007199254740991
+      ))
+    and ((candidate->'standard_api_equivalent_usd_nanos'='null'::jsonb)
+      = (candidate->'cost_evidence_level'='null'::jsonb))
+    and (candidate->'cost_evidence_level'='null'::jsonb
+      or candidate->>'cost_evidence_level'='verifier_recomputed'))
+  then return false; end if;
+
+  if not (candidate->'provider_tokens'?'input')
+    or not (candidate->'provider_tokens'?'cached_input')
+    or not (candidate->'provider_tokens'?'cache_write_input')
+    or not (candidate->'provider_tokens'?'output')
+  then return candidate->>'cost_status'='unavailable_missing_usage'; end if;
+  input_tokens := (candidate#>>'{provider_tokens,input}')::numeric;
+  cached_input_tokens := (candidate#>>'{provider_tokens,cached_input}')::numeric;
+  cache_write_input_tokens := (candidate#>>'{provider_tokens,cache_write_input}')::numeric;
+  output_tokens := (candidate#>>'{provider_tokens,output}')::numeric;
+  if input_tokens>272000
+  then return candidate->>'cost_status'='unavailable_context_band'; end if;
+  if input_tokens<cached_input_tokens+cache_write_input_tokens
+  then return candidate->>'cost_status'='unavailable_invalid_usage'; end if;
+
+  case candidate#>>'{model,family}'
+    when 'sol' then
+      input_rate:=5000; cached_input_rate:=500; cache_write_input_rate:=6250;
+      output_rate:=30000;
+    when 'terra' then
+      input_rate:=2000; cached_input_rate:=200; cache_write_input_rate:=2500;
+      output_rate:=12000;
+    when 'luna' then
+      input_rate:=200; cached_input_rate:=20; cache_write_input_rate:=250;
+      output_rate:=1200;
+    else return false;
+  end case;
+  expected_cost := (input_tokens-cached_input_tokens-cache_write_input_tokens)*input_rate
+    + cached_input_tokens*cached_input_rate
+    + cache_write_input_tokens*cache_write_input_rate
+    + output_tokens*output_rate;
+  if expected_cost>9007199254740991
+  then return candidate->>'cost_status'='unavailable_invalid_usage'; end if;
+  return candidate->>'cost_status'='estimated'
+    and (candidate->>'standard_api_equivalent_usd_nanos')::numeric=expected_cost;
+exception when others then return false;
+end;
+$$;
+
+create function aiq_private.efficiency_aggregate_v1_is_valid(candidate jsonb)
+returns boolean language plpgsql stable set search_path to '' as $$
+declare selected_count integer; observed_count integer; estimated_count integer;
+begin
+  if jsonb_typeof(candidate)<>'object'
+    or not aiq_private.has_exact_jsonb_keys(candidate,array[
+      'estimated_cost_tasks','median_observed_wall_ms','model','observed_wall_tasks',
+      'p95_observed_wall_ms','provider_token_coverage','provider_token_totals',
+      'schema_version','selected_tasks','standard_api_equivalent_usd_nanos',
+      'total_observed_wall_ms'
+    ]::text[])
+    or candidate->>'schema_version'<>'aiq.calibration-efficiency.v1'
+    or not aiq_private.calibration_model_is_valid(candidate->'model')
+    or not aiq_private.dto_uint_is_valid(candidate->'selected_tasks',72)
+    or not aiq_private.dto_uint_is_valid(candidate->'observed_wall_tasks',72)
+    or not aiq_private.dto_uint_is_valid(candidate->'estimated_cost_tasks',72)
+    or not aiq_private.provider_token_usage_is_valid(candidate->'provider_token_totals')
+    or not aiq_private.has_exact_jsonb_keys(candidate->'provider_token_coverage',array[
+      'cache_write_input_tasks','cached_input_tasks','input_tasks','output_tasks',
+      'reasoning_tasks','selected_tasks','total_tasks'
+    ]::text[])
+    or exists(select 1 from jsonb_each(candidate->'provider_token_coverage') coverage
+      where not aiq_private.dto_uint_is_valid(coverage.value,72))
+  then return false; end if;
+  selected_count := (candidate->>'selected_tasks')::integer;
+  observed_count := (candidate->>'observed_wall_tasks')::integer;
+  estimated_count := (candidate->>'estimated_cost_tasks')::integer;
+  return selected_count between 1 and 72
+    and observed_count between 0 and selected_count
+    and estimated_count between 0 and selected_count
+    and (candidate#>>'{provider_token_coverage,selected_tasks}')::integer=selected_count
+    and not exists(select 1 from jsonb_each(candidate->'provider_token_coverage') coverage
+      where coverage.key<>'selected_tasks' and (coverage.value#>>'{}')::integer>selected_count)
+    and ((observed_count=0) = (candidate->'total_observed_wall_ms'='null'::jsonb))
+    and ((observed_count=0) = (candidate->'median_observed_wall_ms'='null'::jsonb))
+    and ((observed_count=0) = (candidate->'p95_observed_wall_ms'='null'::jsonb))
+    and (candidate->'total_observed_wall_ms'='null'::jsonb
+      or aiq_private.dto_uint_is_valid(candidate->'total_observed_wall_ms',9007199254740991))
+    and (candidate->'median_observed_wall_ms'='null'::jsonb
+      or aiq_private.dto_uint_is_valid(candidate->'median_observed_wall_ms',9007199254740991))
+    and (candidate->'p95_observed_wall_ms'='null'::jsonb
+      or aiq_private.dto_uint_is_valid(candidate->'p95_observed_wall_ms',9007199254740991))
+    and (candidate->'standard_api_equivalent_usd_nanos'='null'::jsonb
+      or (estimated_count=selected_count and aiq_private.dto_uint_is_valid(
+        candidate->'standard_api_equivalent_usd_nanos',9007199254740991
+      )));
+exception when others then return false;
+end;
+$$;
+
+create function aiq_private.efficiency_aggregate_matches_results(
+  candidate jsonb, result_efficiency jsonb
+) returns boolean language plpgsql stable set search_path to '' as $$
+declare
+  selected_count integer;
+  model_results jsonb;
+  observed_count integer;
+  observed_total numeric;
+  observed_walls numeric[];
+  expected_median numeric;
+  expected_p95 numeric;
+  estimated_count integer;
+  estimated_total numeric;
+  token_totals jsonb;
+  token_coverage jsonb;
+  cost_is_available boolean;
+begin
+  if aiq_private.efficiency_aggregate_v1_is_valid(candidate) is not true
+    or jsonb_typeof(result_efficiency)<>'array'
+  then return false; end if;
+  selected_count := (candidate->>'selected_tasks')::integer;
+  select coalesce(jsonb_agg(evidence.value),'[]'::jsonb) into model_results
+  from jsonb_array_elements(result_efficiency) evidence(value)
+  where evidence.value->'model'=candidate->'model';
+  if jsonb_array_length(model_results)<>selected_count then return false; end if;
+
+  select count(*) filter(where evidence->'observed_wall_ms'<>'null'::jsonb)::integer,
+    sum((evidence->>'observed_wall_ms')::numeric)
+      filter(where evidence->'observed_wall_ms'<>'null'::jsonb),
+    count(*) filter(where evidence->>'cost_status'='estimated')::integer,
+    sum((evidence->>'standard_api_equivalent_usd_nanos')::numeric)
+      filter(where evidence->>'cost_status'='estimated')
+  into observed_count,observed_total,estimated_count,estimated_total
+  from jsonb_array_elements(model_results) evidence;
+  select array_agg(
+    (evidence->>'observed_wall_ms')::numeric
+    order by (evidence->>'observed_wall_ms')::numeric
+  ) into observed_walls
+  from jsonb_array_elements(model_results) evidence
+  where evidence->'observed_wall_ms'<>'null'::jsonb;
+  if observed_count>0 then
+    if observed_count%2=0 then
+      expected_median:=trunc(
+        (observed_walls[observed_count/2]+observed_walls[observed_count/2+1])/2
+      );
+    else
+      expected_median:=observed_walls[(observed_count+1)/2];
+    end if;
+    expected_p95:=observed_walls[(observed_count*95+99)/100];
+  end if;
+
+  select coalesce(jsonb_object_agg(total.key,total.value order by total.key),'{}'::jsonb)
+  into token_totals
+  from (
+    select token.key,sum((token.value#>>'{}')::numeric) as value
+    from jsonb_array_elements(model_results) evidence
+    cross join lateral jsonb_each(evidence->'provider_tokens') token
+    group by token.key
+  ) total;
+  select jsonb_build_object(
+    'selected_tasks',selected_count,
+    'input_tasks',count(*) filter(where evidence->'provider_tokens'?'input'),
+    'cached_input_tasks',count(*) filter(where evidence->'provider_tokens'?'cached_input'),
+    'cache_write_input_tasks',count(*) filter(where evidence->'provider_tokens'?'cache_write_input'),
+    'output_tasks',count(*) filter(where evidence->'provider_tokens'?'output'),
+    'reasoning_tasks',count(*) filter(where evidence->'provider_tokens'?'reasoning'),
+    'total_tasks',count(*) filter(where evidence->'provider_tokens'?'total')
+  ) into token_coverage
+  from jsonb_array_elements(model_results) evidence;
+  cost_is_available := estimated_count=selected_count
+    and estimated_total between 0 and 9007199254740991;
+
+  return observed_count=(candidate->>'observed_wall_tasks')::integer
+    and (observed_count=0 or observed_total=(candidate->>'total_observed_wall_ms')::numeric)
+    and (observed_count=0 or expected_median=(candidate->>'median_observed_wall_ms')::numeric)
+    and (observed_count=0 or expected_p95=(candidate->>'p95_observed_wall_ms')::numeric)
+    and estimated_count=(candidate->>'estimated_cost_tasks')::integer
+    and token_totals=candidate->'provider_token_totals'
+    and token_coverage=candidate->'provider_token_coverage'
+    and (
+      (not cost_is_available
+        and candidate->'standard_api_equivalent_usd_nanos'='null'::jsonb)
+      or (cost_is_available
+        and (candidate->>'standard_api_equivalent_usd_nanos')::numeric=estimated_total)
+    );
+exception when others then return false;
+end;
+$$;
+
 create function aiq_private.result_package_v3_is_valid(envelope jsonb) returns boolean
     language plpgsql stable
     SET search_path to ''
@@ -3574,15 +4012,17 @@ begin
   then return false;
   end if;
   if not aiq_private.has_exact_jsonb_keys(payload, array[
-      'capability_validation','evaluator_results_artifact','finished_unix_ms',
-      'models','provenance','results','run_id','schedule_slot',
+      'capability_validation','evaluator_results_artifact','execution_concurrency',
+      'finished_unix_ms','models','provenance','results','run_id','schedule_slot',
       'schema_version','scoring_version','started_unix_ms','synthetic',
       'task_set_hash'
     ]::text[])
     or jsonb_typeof(payload -> 'schema_version') is distinct from 'string'
     or payload ->> 'schema_version' is distinct from 'aiq.run.v3'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.0'
+    or payload ->> 'scoring_version' <> '1.0.2'
+    or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
+    or (payload->>'execution_concurrency')::integer not between 1 and 32
     or jsonb_typeof(payload -> 'synthetic') <> 'boolean'
     or not aiq_private.dto_schedule_is_valid(payload -> 'schedule_slot')
     or not aiq_private.dto_sha256_is_valid(payload -> 'task_set_hash')
@@ -3646,7 +4086,7 @@ begin
     )
   then return false; end if;
 
-  select aiq_private.jcs_sha256(jsonb_agg(task_hash order by task_hash))
+  select aiq_private.jcs_sha256(jsonb_agg(task_hash order by task_hash collate "C"))
   into task_set_hash
   from (
     select distinct result ->> 'task_hash' as task_hash
@@ -3818,7 +4258,7 @@ begin
     or jsonb_typeof(candidate -> 'schema_version') is distinct from 'string'
     or candidate ->> 'schema_version' is distinct from 'aiq.run-provenance.v2'
     or jsonb_typeof(candidate -> 'run_class') is distinct from 'string'
-    or candidate ->> 'run_class' is distinct from 'official'
+    or candidate ->> 'run_class' not in ('official', 'calibration')
     or jsonb_typeof(candidate -> 'corpus_release_id') is distinct from 'string'
     or not coalesce(
       candidate ->> 'corpus_release_id'
@@ -3845,7 +4285,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
+    'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
 end;
 $_$;
 
@@ -4005,6 +4445,9 @@ declare
   binary_success_count integer;
   computed_domains jsonb;
   supplied_domains jsonb;
+  efficiency_entry jsonb;
+  pricing jsonb;
+  pricing_digest text;
 begin
   perform aiq_private.require_request_role('aiq_verifier');
   if jsonb_typeof(stage) is distinct from 'object' then
@@ -4015,15 +4458,16 @@ begin
       stage,
       array[
         'benchmark_version', 'capability_validation_digest', 'content_hash',
-        'finished_unix_ms', 'matrix_batch_id', 'normalization_digest',
-        'package_sha256', 'prompt_set_digest', 'provenance', 'region',
-        'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
+        'efficiency', 'execution_concurrency', 'finished_unix_ms',
+        'matrix_batch_id', 'normalization_digest',
+        'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
+        'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
         'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
         'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version'
       ]::text[]
     )
     or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
-    or stage ->> 'scoring_version' is distinct from '1.0.0'
+    or stage ->> 'scoring_version' is distinct from '1.0.2'
     or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
@@ -4045,6 +4489,31 @@ begin
     or jsonb_typeof(stage -> 'signer' -> 'public_key') is distinct from 'string'
     or jsonb_typeof(stage -> 'runs') is distinct from 'array'
     or jsonb_array_length(stage -> 'runs') is distinct from 17
+    or not aiq_private.dto_uint_is_valid(stage -> 'execution_concurrency',32)
+    or (stage->>'execution_concurrency')::integer not between 1 and 32
+    or jsonb_typeof(stage->'result_efficiency') is distinct from 'array'
+    or jsonb_array_length(stage->'result_efficiency') is distinct from 1224
+    or jsonb_typeof(stage->'efficiency') is distinct from 'array'
+    or jsonb_array_length(stage->'efficiency') is distinct from 17
+    or aiq_private.efficiency_pricing_v1_is_valid(stage->'pricing') is not true
+    or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+      where aiq_private.result_efficiency_v1_is_valid(evidence) is not true)
+    or exists(select 1 from jsonb_array_elements(stage->'efficiency') aggregate
+      where aiq_private.efficiency_aggregate_v1_is_valid(aggregate) is not true)
+    or exists(select 1 from jsonb_array_elements(stage->'efficiency') aggregate
+      where aiq_private.efficiency_aggregate_matches_results(
+        aggregate,stage->'result_efficiency'
+      ) is not true)
+    or (select count(distinct evidence->>'source_result_id')
+      from jsonb_array_elements(stage->'result_efficiency') evidence)<>1224
+    or (select count(distinct (evidence->'model',evidence->>'task_id'))
+      from jsonb_array_elements(stage->'result_efficiency') evidence)<>1224
+    or (select count(distinct aggregate->'model')
+      from jsonb_array_elements(stage->'efficiency') aggregate)<>17
+    or aiq_private.official_model_matrix_is_exact((
+      select jsonb_agg(aggregate.value->'model' order by aggregate.ordinality)
+      from jsonb_array_elements(stage->'efficiency') with ordinality aggregate(value,ordinality)
+    )) is not true
     or not coalesce(stage ->> 'matrix_batch_id' ~ '^run_[0-9a-f]{64}$', false)
     or not coalesce(stage ->> 'normalization_digest' ~ '^sha256:[0-9a-f]{64}$', false)
     or not coalesce(stage ->> 'package_sha256' ~ '^[0-9a-f]{64}$', false)
@@ -4117,7 +4586,7 @@ begin
         and existing_batch.source_node_id = source_node
         and existing_batch.task_set_id = stage ->> 'task_set_id'
         and existing_batch.task_set_version = stage ->> 'task_set_version'
-        and existing_batch.scoring_version = '1.0.0'
+        and existing_batch.scoring_version = '1.0.2'
         and existing_batch.synthetic = is_synthetic
         and existing_batch.task_set_hash = stage ->> 'task_set_hash'
         and existing_batch.capability_validation_digest
@@ -4127,6 +4596,8 @@ begin
         and existing_batch.source_scoring_version = stage ->> 'scoring_version'
         and existing_batch.runner_commit = stage ->> 'runner_commit'
         and existing_batch.region = stage ->> 'region'
+        and existing_batch.execution_concurrency =
+          (stage ->> 'execution_concurrency')::integer
         and existing_batch.scheduled_unix_ms = (stage ->> 'scheduled_unix_ms')::bigint
         and existing_batch.started_unix_ms = (stage ->> 'started_unix_ms')::bigint
         and existing_batch.finished_unix_ms = (stage ->> 'finished_unix_ms')::bigint
@@ -4151,6 +4622,11 @@ begin
       join aiq_private.aiq_package_runs link on link.run_id = result.run_id
       where link.package_sha256 = package_id
     ) = 1224
+    and (
+      select count(*) from aiq_private.efficiency_official_models efficiency
+      join aiq_private.aiq_package_runs link using(run_id)
+      where link.package_sha256=package_id
+    ) = 17
     and (
       select count(*)
       from aiq_private.aiq_verification_audit audit
@@ -4183,6 +4659,7 @@ begin
     or payload ->> 'scoring_version' is distinct from stage ->> 'scoring_version'
     or payload -> 'synthetic' is distinct from stage -> 'synthetic'
     or payload -> 'provenance' is distinct from stage -> 'provenance'
+    or payload -> 'execution_concurrency' is distinct from stage -> 'execution_concurrency'
     or inbox.envelope -> 'signer' is distinct from stage -> 'signer'
     or jsonb_array_length(payload -> 'models') is distinct from 17
     or jsonb_array_length(payload -> 'results') is distinct from 1224
@@ -4192,6 +4669,26 @@ begin
       is distinct from (payload ->> 'started_unix_ms')::bigint
     or (stage ->> 'finished_unix_ms')::bigint
       is distinct from (payload ->> 'finished_unix_ms')::bigint
+    or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+      where not exists(select 1 from jsonb_array_elements(payload->'results') source
+        where source->>'result_id'=evidence->>'source_result_id'
+          and source->>'task_id'=evidence->>'task_id'
+          and source->'model'=evidence->'model'))
+    or exists(
+      select 1
+      from jsonb_array_elements(stage->'result_efficiency') evidence
+      join jsonb_array_elements(payload->'results') source
+        on source->>'result_id'=evidence->>'source_result_id'
+        and source->>'task_id'=evidence->>'task_id'
+        and source->'model'=evidence->'model'
+      where source#>>'{failure,kind}' in (
+        'capability_unavailable','capability_validation_failed','workspace_unavailable'
+      ) and (
+        evidence->'observed_wall_ms'<>'null'::jsonb
+        or evidence->'provider_tokens'<>'{}'::jsonb
+        or evidence->>'cost_status'<>'unavailable_missing_usage'
+      )
+    )
     or (
       is_synthetic
       and (
@@ -4239,6 +4736,20 @@ begin
     raise exception 'normalized batch identity differs from immutable signed payload'
       using errcode = '22023';
   end if;
+
+  pricing := stage->'pricing';
+  pricing_digest := aiq_private.jcs_sha256(pricing);
+  insert into aiq_private.efficiency_pricing_methods(
+    pricing_digest,method,version,as_of,source,currency,processing_tier,
+    rates,formula,limitations,pricing_record
+  ) values(
+    pricing_digest,pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
+    pricing->>'source',pricing->>'currency',pricing->>'processing_tier',pricing->'rates',
+    pricing->>'formula',array[pricing->>'limitation'],pricing
+  ) on conflict (pricing_digest) do nothing;
+  if not exists(select 1 from aiq_private.efficiency_pricing_methods method
+    where method.pricing_digest=pricing_digest and method.pricing_record=pricing)
+  then raise exception 'conflicting Official pricing evidence' using errcode='23505'; end if;
 
   if not exists (
     select 1 from aiq_private.aiq_nodes node
@@ -4483,15 +4994,17 @@ begin
     source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
     task_set_hash, capability_validation_digest, benchmark_version,
     prompt_set_digest, source_scoring_version, runner_commit, region,
+    execution_concurrency,
     scheduled_unix_ms, started_unix_ms, finished_unix_ms, run_provenance,
     normalized_stage
   ) values (
     batch_id, package_id, stage ->> 'content_hash', normalization,
     source_node, stage ->> 'task_set_id', stage ->> 'task_set_version',
-    '1.0.0', is_synthetic, stage ->> 'task_set_hash',
+    '1.0.2', is_synthetic, stage ->> 'task_set_hash',
     nullif(stage ->> 'capability_validation_digest', ''),
     stage ->> 'benchmark_version', stage ->> 'prompt_set_digest',
     stage ->> 'scoring_version', stage ->> 'runner_commit', stage ->> 'region',
+    (stage ->> 'execution_concurrency')::integer,
     (stage ->> 'scheduled_unix_ms')::bigint,
     (stage ->> 'started_unix_ms')::bigint,
     (stage ->> 'finished_unix_ms')::bigint,
@@ -4798,7 +5311,7 @@ begin
       child_id, batch_id, child_id, 'manual',
       to_timestamp((stage ->> 'scheduled_unix_ms')::double precision / 1000),
       'UTC', stage ->> 'task_set_id', stage ->> 'task_set_version',
-      stage ->> 'benchmark_version', '1.0.0', model.model_config_id,
+      stage ->> 'benchmark_version', '1.0.2', model.model_config_id,
       source_node,
       (case when valid_count = 72 then 'completed' else 'partial' end)
         ::aiq_private.run_status,
@@ -4817,6 +5330,77 @@ begin
       ),
       stage_provenance
     );
+    select value into efficiency_entry
+    from jsonb_array_elements(stage->'efficiency') aggregate
+    where aggregate->'model'=child->'model';
+    if efficiency_entry is null
+      or (efficiency_entry->>'selected_tasks')::integer<>72
+    then raise exception 'Official model efficiency aggregate is absent or incomplete'
+      using errcode='22023'; end if;
+    insert into aiq_private.efficiency_official_models(
+      run_id,result_count,attempted_result_count,execution_concurrency,invoked_result_count,
+      adapter_elapsed_observed_result_count,observed_total_wall_ms,
+      observed_median_wall_ms,observed_p95_wall_ms,input_tokens,cached_input_tokens,
+      cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,
+      token_observed_result_count,input_token_observed_result_count,
+      cached_input_token_observed_result_count,cache_write_input_token_observed_result_count,
+      output_token_observed_result_count,reasoning_token_observed_result_count,
+      total_token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
+      cost_estimator_status,cost_evidence_level,pricing_digest,efficiency_record
+    ) values(
+      child_id,72,
+      case when is_synthetic then 0 else
+        (select count(*)::integer from jsonb_array_elements(normalized_results) result
+          where coalesce(result#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed'
+          ))
+      end,
+      (stage->>'execution_concurrency')::integer,
+      case when is_synthetic then 0 else
+        (select count(*)::integer from jsonb_array_elements(normalized_results) result
+          where coalesce(result#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed','workspace_unavailable'
+          ))
+      end,
+      (efficiency_entry->>'observed_wall_tasks')::integer,
+      (efficiency_entry->>'total_observed_wall_ms')::bigint,
+      (efficiency_entry->>'median_observed_wall_ms')::bigint,
+      (efficiency_entry->>'p95_observed_wall_ms')::bigint,
+      (efficiency_entry#>>'{provider_token_totals,input}')::bigint,
+      (efficiency_entry#>>'{provider_token_totals,cached_input}')::bigint,
+      (efficiency_entry#>>'{provider_token_totals,cache_write_input}')::bigint,
+      (efficiency_entry#>>'{provider_token_totals,output}')::bigint,
+      (efficiency_entry#>>'{provider_token_totals,reasoning}')::bigint,
+      (efficiency_entry#>>'{provider_token_totals,total}')::bigint,
+      (select count(*)::integer from jsonb_array_elements(stage->'result_efficiency') evidence
+        where evidence->'model'=child->'model' and evidence->'provider_tokens'<>'{}'::jsonb),
+      (efficiency_entry#>>'{provider_token_coverage,input_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,cached_input_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,cache_write_input_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,output_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,reasoning_tasks}')::integer,
+      (efficiency_entry#>>'{provider_token_coverage,total_tasks}')::integer,
+      (efficiency_entry->>'estimated_cost_tasks')::integer,
+      (efficiency_entry->>'standard_api_equivalent_usd_nanos')::bigint,
+      case when efficiency_entry->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
+        and (efficiency_entry->>'estimated_cost_tasks')::integer=72 then 'estimated'
+        when (efficiency_entry->>'estimated_cost_tasks')::integer=72
+          then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=child->'model'
+            and evidence->>'cost_status'='unavailable_invalid_usage'
+        ) then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=child->'model'
+            and evidence->>'cost_status'='unavailable_context_band'
+        ) then 'unavailable_context_band'
+        else 'unavailable_missing_usage' end,
+      case when efficiency_entry->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
+        then 'verifier_recomputed' end,
+      pricing_digest,efficiency_entry
+    );
     insert into aiq_private.aiq_package_runs
       (package_sha256, run_id, model_config_id, matrix_order)
     values (package_id, child_id, model.model_config_id, model.matrix_order);
@@ -4824,29 +5408,51 @@ begin
       source_result_id, run_id, task_id, task_version, domain, attempt_number,
       outcome, task_score, scorer_version, failure_code,
       failure_responsibility, failure_detail, failure_retryable, latency_ms,
-      tool_usage, usage, result_package_sha256, provenance
+      latency_evidence_level,
+      tool_usage, usage,input_tokens,cached_input_tokens,cache_write_input_tokens,
+      output_tokens,reasoning_output_tokens,total_tokens,token_usage_evidence_level,
+      standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,
+      pricing_digest,result_package_sha256, provenance
     )
     select
       value ->> 'source_result_id', child_id, value ->> 'task_id',
       value ->> 'task_version', value ->> 'domain', 1,
       (value ->> 'outcome')::aiq_private.result_outcome,
-      (value ->> 'task_score')::numeric, '1.0.0',
+      (value ->> 'task_score')::numeric, '1.0.2',
       value -> 'failure' ->> 'kind', value ->> 'failure_responsibility',
       value -> 'failure' ->> 'message',
       (value -> 'failure' ->> 'retryable')::boolean,
-      (value -> 'latency' ->> 'wall_ms')::bigint, value -> 'tool_usage',
+      (verified.evidence->>'observed_wall_ms')::bigint,
+      verified.evidence->>'wall_time_evidence_level',
+      value -> 'tool_usage',
       jsonb_build_object(
         'response_sha256', value -> 'response_sha256',
         'evaluator_stdout_sha256', value -> 'evaluator_stdout_sha256'
       ),
-      package_id,
+      (verified.evidence#>>'{provider_tokens,input}')::bigint,
+      (verified.evidence#>>'{provider_tokens,cached_input}')::bigint,
+      (verified.evidence#>>'{provider_tokens,cache_write_input}')::bigint,
+      (verified.evidence#>>'{provider_tokens,output}')::bigint,
+      (verified.evidence#>>'{provider_tokens,reasoning}')::bigint,
+      (verified.evidence#>>'{provider_tokens,total}')::bigint,
+      verified.evidence->>'provider_tokens_evidence_level',
+      (verified.evidence->>'standard_api_equivalent_usd_nanos')::bigint,
+      verified.evidence->>'cost_status',verified.evidence->>'cost_evidence_level',
+      pricing_digest,package_id,
       (value -> 'provenance') || jsonb_build_object(
         'source_result_id', value ->> 'source_result_id',
         'task_hash', value ->> 'task_hash',
         'normalization_digest', normalization,
         'rerun_required', value ->> 'outcome' = 'invalid'
       )
-    from jsonb_array_elements(normalized_results);
+    from jsonb_array_elements(normalized_results)
+    cross join lateral (
+      select telemetry.value as evidence
+      from jsonb_array_elements(stage->'result_efficiency') telemetry(value)
+      where telemetry.value->>'source_result_id'=value->>'source_result_id'
+        and telemetry.value->'model'=value->'model'
+        and telemetry.value->>'task_id'=value->>'task_id'
+    ) verified;
 
     insert into aiq_private.aiq_score_snapshots (
       run_id, scoring_version, score_status, fixed_fixture_aiq,
@@ -4857,7 +5463,7 @@ begin
       not_applicable_count, domain_scores, interval_parameters, published,
       normalization_digest
     ) values (
-      child_id, '1.0.0', (score ->> 'tier')::aiq_private.score_status,
+      child_id, '1.0.2', (score ->> 'tier')::aiq_private.score_status,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round(fixed_score, 3) end,
       (score -> 'task_resampling_sensitivity_interval' ->> 'lower')::numeric,
@@ -5102,7 +5708,7 @@ create function aiq_private.task_catalog_is_exact(target_task_set_id text, targe
         and task.task_set_version = target_task_set_version
     )
     else aiq_private.frozen_catalog_identity_is_valid(
-      target_task_set_id, target_task_set_version, '1.0.0'
+      target_task_set_id, target_task_set_version, '1.0.2'
     )
   end
   from aiq_private.aiq_task_sets task_set
@@ -5618,13 +6224,14 @@ create table aiq_private.aiq_matrix_batches (
     source_scoring_version text,
     runner_commit text,
     region text,
+    execution_concurrency integer not null,
     scheduled_unix_ms bigint,
     started_unix_ms bigint,
     finished_unix_ms bigint,
     run_provenance jsonb,
     normalized_stage jsonb,
     constraint aiq_batch_capability_evidence_policy check (((synthetic and (capability_validation_digest IS null)) or ((not synthetic) and (capability_validation_digest IS not null) and (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)))),
-    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.0'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
+    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.2'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
     constraint aiq_matrix_batches_check check (((published_at IS null) or (verified_at IS not null))),
     constraint aiq_matrix_batches_child_count_check check ((child_count = 17)),
     constraint aiq_matrix_batches_content_hash_check check ((content_hash ~ '^sha256:[0-9a-f]{64}$'::text)),
@@ -6104,12 +6711,16 @@ create function public.aiq_ack_storage_deletion(target_object_id uuid, supplied_
     as $$
 declare
   object aiq_private.aiq_storage_objects%rowtype;
-  database_now timestamptz := clock_timestamp();
+  database_now timestamptz;
 begin
   perform aiq_private.require_request_role('service_role');
   if supplied_outcome not in ('deleted', 'not_found') then
     raise exception 'invalid Storage deletion outcome' using errcode = '22023';
   end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
+  database_now:=clock_timestamp();
   select * into object from aiq_private.aiq_storage_objects candidate
   where candidate.object_id = target_object_id for update;
   if object.object_id is null then
@@ -6267,7 +6878,10 @@ create function public.aiq_describe_web_rpc_contract() returns jsonb
       ('aiq_stage_verifier_result', 'jsonb, uuid, uuid, integer'),
       ('aiq_record_verifier_attestation', 'text, text, jsonb, uuid, uuid, integer'),
       ('aiq_record_verification_rejection', 'text, text, jsonb, uuid, uuid, integer'),
-      ('aiq_verify_and_publish', 'text, text, uuid, uuid, integer')
+      ('aiq_verify_and_publish', 'text, text, uuid, uuid, integer'),
+      ('aiq_stage_calibration_verification', 'jsonb, uuid, uuid, integer'),
+      ('aiq_record_calibration_attestation', 'jsonb, uuid, uuid, integer'),
+      ('aiq_publish_calibration_evidence', 'text, text, uuid, uuid, integer')
   ),
   contracts as (
     select
@@ -6301,8 +6915,8 @@ create function public.aiq_describe_web_rpc_contract() returns jsonb
     where namespace.nspname = 'public'
   )
   select case
-    when count(*) = 14
-      and count(distinct function_name) = 14
+    when count(*) = 17
+      and count(distinct function_name) = 17
       and not exists (
         select 1
         from pg_catalog.pg_proc unexpected
@@ -6376,7 +6990,10 @@ declare
   supplied_received_at timestamptz;
 begin
   perform aiq_private.require_request_role('service_role');
-  if aiq_private.result_package_v3_is_valid(envelope) is distinct from true
+  if not (
+      aiq_private.result_package_v3_is_valid(envelope) is true
+      or aiq_private.calibration_package_v3_is_valid(envelope) is true
+    )
     or jsonb_typeof(request_context) is distinct from 'object'
     or not aiq_private.has_exact_jsonb_keys(request_context, array[
       'body_bytes','idempotency_key','package_sha256','received_at','source'
@@ -6390,7 +7007,7 @@ begin
     or not aiq_private.jsonb_sha256_field_is_valid(
       request_context, 'package_sha256', false
     )
-  then raise exception 'invalid signed result package or request context'
+  then raise exception 'invalid signed result or calibration package or request context'
     using errcode = '22023';
   end if;
   supplied_idempotency_key := envelope ->> 'idempotency_key';
@@ -6728,7 +7345,7 @@ begin
     select
       count(*)::integer as scoring_count,
       count(*) filter (
-        where scoring.benchmark_version = 'aiq-core@1.0.0'
+        where scoring.benchmark_version = 'aiq-core@1.0.2'
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
@@ -6762,7 +7379,7 @@ begin
           }'::jsonb
       )::integer as valid_scoring_count
     from aiq_private.aiq_scoring_versions scoring
-    where scoring.scoring_version = '1.0.0'
+    where scoring.scoring_version = '1.0.2'
   ),
   task_facts as (
     select
@@ -6787,7 +7404,7 @@ begin
         as reliability_recovery_count
     from aiq_private.aiq_task_catalog task
     where task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.0'
+      and task.task_set_version = '1.0.2'
   ),
   catalog_facts as (
     select
@@ -6797,7 +7414,7 @@ begin
       end as catalog_identity_sha256
     from aiq_private.aiq_task_sets task_set
     where task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.0'
+      and task_set.task_set_version = '1.0.2'
   ),
   eligible_nodes as (
     select node.node_id, 'runner'::text as approved_role
@@ -6856,6 +7473,44 @@ begin
         as publisher_count
     from eligible_nodes node
   ),
+  schema_facts as (
+    select
+      count(*)::integer as private_table_count,
+      count(*) filter (
+        where relation.relrowsecurity and relation.relforcerowsecurity
+      )::integer as forced_rls_table_count
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid=relation.relnamespace
+    where namespace.nspname='aiq_private'
+      and relation.relkind in ('r','p')
+  ),
+  view_facts as (
+    select count(*)::integer as public_view_count,
+      count(*) filter(where coalesce(relation.reloptions,array[]::text[])
+        @>array['security_invoker=true'])::integer as security_invoker_view_count,
+      count(*) filter(where relation.relname in (
+        'public_distributed_radar','public_leaderboard','public_model_matrix',
+        'public_nodes','public_run_results','public_runs',
+        'public_scoring_versions','public_task_coverage',
+        'public_calibration_runs','public_calibration_results',
+        'public_calibration_scores','public_model_efficiency'
+      ))::integer as canonical_public_view_count
+    from pg_catalog.pg_class relation
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid=relation.relnamespace
+    where namespace.nspname='public' and relation.relkind='v'
+  ),
+  role_facts as (
+    select count(*)::integer as hardened_gateway_role_count
+    from pg_catalog.pg_roles gateway_role
+    where gateway_role.rolname in ('aiq_verifier','aiq_publisher')
+      and not gateway_role.rolsuper and not gateway_role.rolcreatedb
+      and not gateway_role.rolcreaterole and not gateway_role.rolreplication
+      and not gateway_role.rolbypassrls and not gateway_role.rolcanlogin
+      and not gateway_role.rolinherit
+      and pg_catalog.pg_has_role('authenticator',gateway_role.rolname,'MEMBER')
+  ),
   facts as (
     select
       model_facts.*,
@@ -6863,14 +7518,20 @@ begin
       task_facts.*,
       catalog_facts.*,
       node_facts.*,
+      schema_facts.*,
+      view_facts.*,
+      role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.0', '1.0.0'
+        'aiq-core', '1.0.2', '1.0.2'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
     cross join task_facts
     cross join catalog_facts
     cross join node_facts
+    cross join schema_facts
+    cross join view_facts
+    cross join role_facts
   )
   select jsonb_build_object(
     'initialized',
@@ -6886,7 +7547,11 @@ begin
       and frozen_catalog_valid
       and node_count = 3 and distinct_node_count = 3
       and runner_count = 1
-      and verifier_count = 1 and publisher_count = 1,
+      and verifier_count = 1 and publisher_count = 1
+      and private_table_count=40 and forced_rls_table_count=40
+      and public_view_count=12 and security_invoker_view_count=12
+      and canonical_public_view_count=12
+      and hardened_gateway_role_count=2,
     'model_config_count', enabled_count,
     'model_config_mismatch_count', mismatch_count,
     'scoring_version_count', scoring_count,
@@ -6911,7 +7576,12 @@ begin
     'distinct_production_node_count', distinct_node_count,
     'runner_count', runner_count,
     'verifier_count', verifier_count,
-    'publisher_count', publisher_count
+    'publisher_count', publisher_count,
+    'private_table_count', private_table_count,
+    'forced_rls_table_count', forced_rls_table_count,
+    'public_view_count', public_view_count,
+    'security_invoker_view_count', security_invoker_view_count,
+    'hardened_gateway_role_count', hardened_gateway_role_count
   )
   from facts
   );
@@ -6931,6 +7601,9 @@ declare
   event_record aiq_private.aiq_storage_reconciliation_events%rowtype;
 begin
   perform aiq_private.require_request_role('service_role');
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
   select * into event_record
   from aiq_private.aiq_storage_reconciliation_events event
   where event.bucket_name = supplied_bucket
@@ -6940,7 +7613,7 @@ begin
   for update;
   if event_record.event_id is null
     or event_record.eligible_after is null
-    or event_record.eligible_after > now()
+    or event_record.eligible_after > clock_timestamp()
   then
     return null;
   end if;
@@ -7158,7 +7831,9 @@ create function public.aiq_record_storage_reconciliation(supplied_bucket text, s
     language plpgsql security DEFINER
     SET search_path to ''
     as $_$
-declare recorded_id uuid;
+declare
+  recorded_id uuid;
+  database_now timestamptz;
 begin
   perform aiq_private.require_request_role('service_role');
   if not coalesce(supplied_bucket ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$', false)
@@ -7167,14 +7842,19 @@ begin
     or not coalesce(supplied_detail_code ~ '^[a-z0-9][a-z0-9._:-]{0,127}$', false)
     or (supplied_mismatch_type = 'storage_only' and supplied_eligible_after is null)
   then raise exception 'invalid Storage reconciliation event' using errcode = '22023'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
+  database_now:=clock_timestamp();
   insert into aiq_private.aiq_storage_reconciliation_events (
-    bucket_name, object_path, mismatch_type, eligible_after, detail_code
+    bucket_name, object_path, mismatch_type,observed_at,eligible_after,
+    detail_code,last_observed_at
   ) values (
-    supplied_bucket, supplied_path, supplied_mismatch_type,
-    supplied_eligible_after, supplied_detail_code
+    supplied_bucket, supplied_path, supplied_mismatch_type,database_now,
+    supplied_eligible_after,supplied_detail_code,database_now
   ) on conflict (bucket_name, object_path, mismatch_type) do update
     set occurrence_count = aiq_storage_reconciliation_events.occurrence_count + 1,
-        last_observed_at = now(), detail_code = excluded.detail_code,
+        last_observed_at = database_now, detail_code = excluded.detail_code,
         eligible_after = case
           -- A resolved event that recurs is a new observation window. Reusing
           -- its historical deadline could make a reappearing object eligible
@@ -7195,6 +7875,61 @@ begin
   return recorded_id;
 end;
 $_$;
+
+
+--
+-- Name: aiq_record_storage_inventory_epoch(bigint, text); Type: function; Schema: public; Owner: -
+--
+
+create function public.aiq_record_storage_inventory_epoch(
+  supplied_inventory_object_count bigint,supplied_inventory_digest text
+) returns timestamp with time zone
+    language plpgsql security definer
+    SET search_path to ''
+    as $$
+declare
+  database_now timestamptz;
+  epoch_id uuid;
+begin
+  perform aiq_private.require_request_role('service_role');
+  if supplied_inventory_object_count is null
+    or supplied_inventory_object_count not between 0 and 9007199254740991
+    or not coalesce(supplied_inventory_digest~'^sha256:[0-9a-f]{64}$',false)
+  then raise exception 'invalid Storage inventory identity'
+    using errcode='22023'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
+  database_now:=clock_timestamp();
+  epoch_id:=extensions.gen_random_uuid();
+  if exists(select 1 from aiq_private.aiq_storage_reconciliation_events event
+      where event.mismatch_type in ('storage_only','registry_only','identity_mismatch')
+        and event.resolved_at is null)
+    or supplied_inventory_object_count<>(
+      select count(*)
+      from aiq_private.aiq_storage_objects object
+      where object.lifecycle_state<>'deleted'
+    )
+    or supplied_inventory_digest is distinct from
+      aiq_private.storage_registry_inventory_digest()
+  then raise exception 'Storage inventory epoch is not reconciled with the registry'
+    using errcode='55000'; end if;
+  insert into aiq_private.aiq_storage_reconciliation_events(
+    event_id,bucket_name,object_path,mismatch_type,observed_at,eligible_after,
+    detail_code,resolved_at,inventory_object_count,inventory_digest,
+    occurrence_count,last_observed_at
+  ) values(
+    epoch_id,'aiq-system','sha256/'||encode(extensions.digest(convert_to(
+      epoch_id::text||':'||database_now::text||':'||supplied_inventory_object_count::text||
+        ':'||supplied_inventory_digest,
+      'utf8'
+    ),'sha256'),'hex')||'/inventory','inventory_success',
+    database_now,null,'inventory_complete',database_now,
+    supplied_inventory_object_count,supplied_inventory_digest,1,database_now
+  );
+  return database_now;
+end;
+$$;
 
 
 --
@@ -7374,9 +8109,13 @@ begin
   if not coalesce(supplied_bucket ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$', false)
     or not coalesce(supplied_path ~ '^sha256/[0-9a-f]{64}(/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$', false)
   then raise exception 'invalid Storage reconciliation identity' using errcode = '22023'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.storage.inventory-deletion-gate',71783153620529
+  ));
   update aiq_private.aiq_storage_reconciliation_events event
-  set resolved_at = now()
+  set resolved_at = clock_timestamp()
   where event.bucket_name = supplied_bucket and event.object_path = supplied_path
+    and event.mismatch_type in ('storage_only','registry_only','identity_mismatch')
     and event.resolved_at is null;
   get diagnostics resolved_count = row_count;
   return resolved_count;
@@ -7504,7 +8243,29 @@ begin
     'held_objects', (select count(*) from aiq_private.aiq_storage_objects where legal_hold),
     'legal_hold_events', (select count(*) from aiq_private.aiq_storage_legal_hold_events),
     'active_references', (select count(*) from aiq_private.aiq_storage_object_references where active),
-    'unresolved_mismatches', (select count(*) from aiq_private.aiq_storage_reconciliation_events where resolved_at is null),
+    'unresolved_mismatches', (select count(*)
+      from aiq_private.aiq_storage_reconciliation_events
+      where mismatch_type in ('storage_only','registry_only','identity_mismatch')
+        and resolved_at is null),
+    'latest_inventory_epoch_at', (select max(last_observed_at)
+      from aiq_private.aiq_storage_reconciliation_events
+      where mismatch_type='inventory_success' and resolved_at is not null),
+    'registry_inventory_digest',aiq_private.storage_registry_inventory_digest(),
+    'deletion_inventory_gate_ready', exists(
+      select 1 from aiq_private.aiq_storage_reconciliation_events epoch
+      where epoch.mismatch_type='inventory_success'
+        and epoch.resolved_at is not null
+        and epoch.last_observed_at>=now()-interval '24 hours'
+        and epoch.last_observed_at>=coalesce((select max(event.last_observed_at)
+          from aiq_private.aiq_storage_reconciliation_events event
+          where event.mismatch_type in (
+            'storage_only','registry_only','identity_mismatch'
+          )),'-infinity'::timestamptz)
+        and not exists(select 1 from aiq_private.aiq_storage_reconciliation_events open_event
+          where open_event.mismatch_type in (
+            'storage_only','registry_only','identity_mismatch'
+          ) and open_event.resolved_at is null)
+    ),
     'retained_bytes', (select coalesce(sum(byte_size), 0) from aiq_private.aiq_storage_objects where lifecycle_state <> 'deleted'),
     'oldest_due_at', (select min(expires_at) from aiq_private.aiq_storage_objects
       where lifecycle_state <> 'deleted' and not legal_hold and expires_at <= now())
@@ -7531,6 +8292,9 @@ begin
   );
   perform aiq_private.aiq_verify_and_publish_unbound_core(
     target_run_id, target_package_sha256
+  );
+  perform aiq_private.reconcile_publication_storage_evidence(
+    'official',target_run_id,target_package_sha256,target_inbox_id
   );
   if claimed.claim_ack is null then
     update aiq_private.aiq_submission_inbox inbox
@@ -8281,7 +9045,7 @@ create table aiq_private.aiq_storage_object_references (
     deactivated_at timestamp with time zone,
     constraint aiq_storage_object_references_check check (((active and (deactivated_at IS null)) or ((not active) and (deactivated_at IS not null)))),
     constraint aiq_storage_object_references_reference_key_check check ((reference_key ~ '^[a-z0-9][a-z0-9._:/-]{0,254}$'::text)),
-    constraint aiq_storage_object_references_reference_type_check check ((reference_type = ANY (ARRAY['submission_inbox'::text, 'submission_conflict'::text, 'artifact_ingress_claim'::text, 'artifact_claim_binding'::text])))
+    constraint aiq_storage_object_references_reference_type_check check ((reference_type = ANY (ARRAY['submission_inbox'::text, 'submission_conflict'::text, 'artifact_ingress_claim'::text, 'artifact_claim_binding'::text, 'calibration_run'::text, 'official_publication'::text])))
 );
 
 
@@ -8361,13 +9125,30 @@ create table aiq_private.aiq_storage_reconciliation_events (
     eligible_after timestamp with time zone,
     detail_code text not null,
     resolved_at timestamp with time zone,
+    inventory_object_count bigint,
+    inventory_digest text,
     occurrence_count integer default 1 not null,
     last_observed_at timestamp with time zone default now() not null,
     constraint aiq_storage_reconciliation_events_bucket_name_check check ((bucket_name ~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$'::text)),
     constraint aiq_storage_reconciliation_events_detail_code_check check ((detail_code ~ '^[a-z0-9][a-z0-9._:-]{0,127}$'::text)),
-    constraint aiq_storage_reconciliation_events_mismatch_type_check check ((mismatch_type = ANY (ARRAY['storage_only'::text, 'registry_only'::text, 'identity_mismatch'::text]))),
+    constraint aiq_storage_reconciliation_events_mismatch_type_check check ((mismatch_type = ANY (ARRAY['storage_only'::text, 'registry_only'::text, 'identity_mismatch'::text, 'inventory_success'::text]))),
     constraint aiq_storage_reconciliation_events_object_path_check check ((object_path ~ '^sha256/[0-9a-f]{64}(/[A-Za-z0-9][A-Za-z0-9._-]{0,63})?$'::text)),
-    constraint aiq_storage_reconciliation_events_occurrence_count_check check ((occurrence_count > 0))
+    constraint aiq_storage_reconciliation_events_occurrence_count_check check ((occurrence_count > 0)),
+    constraint aiq_storage_reconciliation_events_inventory_shape check (
+      ((mismatch_type = 'inventory_success'::text)
+        and bucket_name = 'aiq-system'::text
+        and object_path ~ '^sha256/[0-9a-f]{64}/inventory$'::text
+        and detail_code = 'inventory_complete'::text
+        and eligible_after is null and resolved_at is not null
+        and observed_at=last_observed_at and resolved_at=last_observed_at
+        and occurrence_count=1
+        and inventory_object_count is not null
+        and inventory_object_count between 0 and '9007199254740991'::bigint
+        and inventory_digest is not null
+        and inventory_digest~'^sha256:[0-9a-f]{64}$'::text)
+      or ((mismatch_type <> 'inventory_success'::text)
+        and inventory_object_count is null and inventory_digest is null)
+    )
 );
 
 
@@ -8375,7 +9156,7 @@ create table aiq_private.aiq_storage_reconciliation_events (
 -- Name: table aiq_storage_reconciliation_events; Type: COMMENT; Schema: aiq_private; Owner: -
 --
 
-comment on table aiq_private.aiq_storage_reconciliation_events IS 'Durable sanitized registry-only, Storage-only, and identity-mismatch observations.';
+comment on table aiq_private.aiq_storage_reconciliation_events IS 'Durable sanitized mismatch observations plus append-only successful full-inventory epochs that gate deletion leasing.';
 
 
 --
@@ -8430,6 +9211,7 @@ create table aiq_private.aiq_task_catalog (
     budget jsonb not null,
     tags text[] default '{}'::text[] not null,
     fixture_commitment text,
+    task_hash text generated always as ('sha256:'::text || fixture_commitment) stored,
     hidden_content_ref text,
     leakage_notes text not null,
     public_metadata boolean default true not null,
@@ -8441,11 +9223,18 @@ create table aiq_private.aiq_task_catalog (
     constraint aiq_task_catalog_difficulty_check check ((difficulty = ANY (ARRAY['easy'::text, 'medium'::text, 'hard'::text]))),
     constraint aiq_task_catalog_domain_check check ((domain = ANY (ARRAY['coding'::text, 'debugging'::text, 'repository_understanding'::text, 'data_processing'::text, 'retrieval_verification'::text, 'documentation_communication'::text, 'planning_execution'::text, 'tool_use'::text, 'instruction_following'::text, 'reliability_recovery'::text]))),
     constraint aiq_task_catalog_fixture_commitment_check check (((fixture_commitment IS null) or (fixture_commitment ~ '^[0-9a-f]{64}$'::text))),
+    constraint aiq_task_catalog_exact_commitment_key unique (
+        task_set_id, task_set_version, task_id, task_version, task_hash
+    ),
     constraint aiq_task_catalog_identity_pair check (((catalog_ordinal IS null) = (full_public_metadata IS null))),
     constraint aiq_task_catalog_ordinal_range check (((catalog_ordinal IS null) or ((catalog_ordinal >= 1) and (catalog_ordinal <= 72)))),
     constraint aiq_task_catalog_scorer_version_check check ((scorer_version ~ '^[0-9]+\.[0-9]+\.[0-9]+$'::text)),
     constraint aiq_task_catalog_task_version_check check ((task_version ~ '^[0-9]+\.[0-9]+\.[0-9]+$'::text))
 );
+
+
+comment on column aiq_private.aiq_task_catalog.task_hash IS
+  'Exact wire task hash derived from the committed fixture digest.';
 
 
 --
@@ -8467,8 +9256,20 @@ create table aiq_private.aiq_task_results (
     failure_detail text,
     failure_retryable boolean,
     latency_ms bigint,
+    latency_evidence_level text,
     tool_usage jsonb default '{}'::jsonb not null,
     usage jsonb default '{}'::jsonb not null,
+    input_tokens bigint,
+    cached_input_tokens bigint,
+    cache_write_input_tokens bigint,
+    output_tokens bigint,
+    reasoning_output_tokens bigint,
+    total_tokens bigint,
+    token_usage_evidence_level text,
+    standard_api_equivalent_usd_nanos bigint,
+    cost_estimator_status text default 'unavailable_missing_usage' not null,
+    cost_evidence_level text,
+    pricing_digest text,
     result_package_sha256 text,
     provenance jsonb not null,
     created_at timestamp with time zone default now() not null,
@@ -8483,8 +9284,43 @@ create table aiq_private.aiq_task_results (
     constraint aiq_task_results_domain_check check ((domain = ANY (ARRAY['coding'::text, 'debugging'::text, 'repository_understanding'::text, 'data_processing'::text, 'retrieval_verification'::text, 'documentation_communication'::text, 'planning_execution'::text, 'tool_use'::text, 'instruction_following'::text, 'reliability_recovery'::text]))),
     constraint aiq_task_results_failure_responsibility_check check (((failure_responsibility IS null) or (failure_responsibility = ANY (ARRAY['agent'::text, 'model'::text, 'tool'::text, 'timeout'::text, 'budget'::text, 'wrong_artifact'::text, 'benchmark_infrastructure'::text, 'platform'::text])))),
     constraint aiq_task_results_latency_ms_check check (((latency_ms IS null) or (latency_ms >= 0))),
+    constraint aiq_task_results_latency_evidence_check check (
+      (latency_ms is null) = (latency_evidence_level is null)
+      and (latency_evidence_level is null or latency_evidence_level = 'runner_observed')
+    ),
     constraint aiq_task_results_result_package_sha256_check check (((result_package_sha256 IS null) or (result_package_sha256 ~ '^[0-9a-f]{64}$'::text))),
     constraint aiq_task_results_task_score_check check (((task_score IS null) or ((task_score >= (0)::numeric) and (task_score <= (1)::numeric))))
+    ,constraint aiq_task_results_structured_usage_nonnegative check (
+      input_tokens >= 0 and cached_input_tokens >= 0 and cache_write_input_tokens >= 0
+      and output_tokens >= 0 and reasoning_output_tokens >= 0 and total_tokens >= 0
+      and standard_api_equivalent_usd_nanos >= 0
+    )
+    ,constraint aiq_task_results_structured_usage_bounds check (
+      (cached_input_tokens is null or input_tokens is null or cached_input_tokens <= input_tokens)
+      and (reasoning_output_tokens is null or output_tokens is null or reasoning_output_tokens <= output_tokens)
+    )
+    ,constraint aiq_task_results_usage_evidence check (
+      (token_usage_evidence_level is null
+        or token_usage_evidence_level = 'verifier_recomputed')
+      and ((input_tokens is null and cached_input_tokens is null
+        and cache_write_input_tokens is null and output_tokens is null
+        and reasoning_output_tokens is null and total_tokens is null)
+        = (token_usage_evidence_level is null))
+    )
+    ,constraint aiq_task_results_cost_status check (
+      cost_estimator_status in (
+        'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+        'unavailable_context_band'
+      )
+      and (cost_estimator_status <> 'estimated' or standard_api_equivalent_usd_nanos is not null)
+      and (cost_estimator_status = 'estimated' or standard_api_equivalent_usd_nanos is null)
+      and (cost_evidence_level is null or cost_evidence_level = 'verifier_recomputed')
+      and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
+      and ((cost_estimator_status = 'unavailable_context_band') = coalesce((
+        input_tokens > 272000 and cached_input_tokens is not null
+        and cache_write_input_tokens is not null and output_tokens is not null
+      ), false))
+    )
 );
 
 
@@ -8493,6 +9329,9 @@ create table aiq_private.aiq_task_results (
 --
 
 comment on COLUMN aiq_private.aiq_task_results.failure_detail IS 'Restricted raw failure detail. Public views expose only a fixed summary.';
+
+comment on COLUMN aiq_private.aiq_task_results.latency_ms IS
+  'Observed Codex adapter invocation elapsed milliseconds. It is NULL when the adapter was not invoked.';
 
 
 --
@@ -8793,7 +9632,22 @@ create view public.public_run_results with (security_invoker = true) as
                     else '{}'::jsonb
                 end) tool_name(tool_name)
           ORDER BY tool_name.tool_name), '{}'::text[]) as tools,
-    result.latency_ms
+    result.latency_ms,
+    result.latency_evidence_level,
+    result.input_tokens,
+    result.cached_input_tokens,
+    result.cache_write_input_tokens,
+    result.output_tokens,
+    result.reasoning_output_tokens,
+    result.total_tokens,
+    result.token_usage_evidence_level,
+        case
+            when (result.token_usage_evidence_level IS null) then null::text
+            else 'provider_reported'::text
+        end as token_usage_source_level,
+    result.standard_api_equivalent_usd_nanos,
+    result.cost_estimator_status,
+    result.cost_evidence_level
    from ((aiq_private.aiq_task_results result
      join aiq_private.aiq_runs run on ((run.run_id = result.run_id)))
      left join aiq_private.aiq_task_catalog catalog on (((catalog.task_set_id = run.task_set_id) and (catalog.task_set_version = run.task_set_version) and (catalog.task_id = result.task_id) and (catalog.task_version = result.task_version))))
@@ -8906,247 +9760,6 @@ create view public.public_task_coverage with (security_invoker = true) as
 
 comment on view public.public_task_coverage IS 'Published task counts and canonical equal domain weight for each scoring version.';
 
-
---
--- Name: preview_status_v1(); Type: FUNCTION; Schema: aiq_private; Owner: -
---
-
-create function aiq_private.preview_status_v1() returns table(contract_version text, profile_id text, task_count bigint, model_configuration_count bigint, synthetic_run_count bigint, synthetic_task_result_count bigint, synthetic_score_snapshot_count bigint, synthetic_scoring_definition_count bigint, synthetic_radar_node_count bigint, published_run_count bigint, published_leaderboard_count bigint, published_trend_point_count bigint, non_synthetic_evidence_count bigint, canonical_model_matrix boolean)
-    language plpgsql stable security definer
-    set search_path to ''
-    as $$
-begin
-  if not exists (
-    select 1
-    from aiq_private.aiq_scoring_versions scoring
-    where scoring.scoring_version = '1.0.0'
-      and scoring.schema_version = 'aiq.score-snapshot.v1'
-      and scoring.benchmark_version = 'aiq-core@1.0.0'
-      and scoring.synthetic
-      and scoring.is_published
-      and scoring.formula = '{
-        "aggregate":"mean_of_domain_means",
-        "coverage_multiplier":false,
-        "domain_weight":0.1,
-        "official_valid_task_count":72,
-        "official_covered_domain_count":10,
-        "synthetic_complete":{
-          "covered_domain_count":10,
-          "official_aiq":null,
-          "ranking_eligible":false,
-          "valid_task_count":72
-        }
-      }'::jsonb
-      and scoring.interval_method = '{
-        "central_mass":0.95,
-        "deviation_scale":1.3,
-        "method":"finite_cluster_calibrated_percentile_sensitivity_v1",
-        "samples":10000,
-        "scope":"fixed_fixture_calibrated_sensitivity",
-        "synthetic":false,
-        "universal_confidence_interval":false
-      }'::jsonb
-      and scoring.failure_policy = '{
-        "attributable_failure_score":0,
-        "infrastructure_failure_score":null,
-        "missing_blocks_official":true,
-        "provisional_ranked":false,
-        "synthetic_complete_ranked":false
-      }'::jsonb
-  )
-  then
-    return;
-  end if;
-
-  return query
-with expected_model_matrix(id, model_family, model_name, reasoning_tier) as (
-  values
-    ('sol-low', 'Sol', 'gpt-5.6-sol', 'low'),
-    ('sol-medium', 'Sol', 'gpt-5.6-sol', 'medium'),
-    ('sol-high', 'Sol', 'gpt-5.6-sol', 'high'),
-    ('sol-xhigh', 'Sol', 'gpt-5.6-sol', 'xhigh'),
-    ('sol-max', 'Sol', 'gpt-5.6-sol', 'max'),
-    ('sol-ultra', 'Sol', 'gpt-5.6-sol', 'ultra'),
-    ('terra-low', 'Terra', 'gpt-5.6-terra', 'low'),
-    ('terra-medium', 'Terra', 'gpt-5.6-terra', 'medium'),
-    ('terra-high', 'Terra', 'gpt-5.6-terra', 'high'),
-    ('terra-xhigh', 'Terra', 'gpt-5.6-terra', 'xhigh'),
-    ('terra-max', 'Terra', 'gpt-5.6-terra', 'max'),
-    ('terra-ultra', 'Terra', 'gpt-5.6-terra', 'ultra'),
-    ('luna-low', 'Luna', 'gpt-5.6-luna', 'low'),
-    ('luna-medium', 'Luna', 'gpt-5.6-luna', 'medium'),
-    ('luna-high', 'Luna', 'gpt-5.6-luna', 'high'),
-    ('luna-xhigh', 'Luna', 'gpt-5.6-luna', 'xhigh'),
-    ('luna-max', 'Luna', 'gpt-5.6-luna', 'max')
-), actual_model_matrix as (
-  select
-    model.model_config_id as id,
-    case model.model_family
-      when 'sol' then 'Sol'
-      when 'terra' then 'Terra'
-      when 'luna' then 'Luna'
-      else null
-    end as model_family,
-    model.provider_model_id as model_name,
-    model.reasoning_effort as reasoning_tier
-  from aiq_private.aiq_model_configs model
-  where model.expected_in_matrix
-), published_trends as (
-  select count(*) as count
-  from public.public_trend_points('all')
-), non_synthetic_evidence as (
-  select count(*) as count
-  from (
-    select run.run_id as evidence_id
-    from aiq_private.aiq_runs run
-    where not run.synthetic or run.published
-    union all
-    select batch.matrix_batch_id
-    from aiq_private.aiq_matrix_batches batch
-    where not batch.synthetic
-    union all
-    select package.package_sha256
-    from aiq_private.aiq_result_packages package
-    where package.envelope #> '{payload,synthetic}' is distinct from 'true'::jsonb
-    union all
-    select inbox.inbox_id::text
-    from aiq_private.aiq_submission_inbox inbox
-    where inbox.envelope #> '{payload,synthetic}' is distinct from 'true'::jsonb
-    union all
-    select conflict.conflict_id::text
-    from aiq_private.aiq_submission_conflicts conflict
-    where conflict.envelope #> '{payload,synthetic}' is distinct from 'true'::jsonb
-    union all
-    select result.result_id::text
-    from aiq_private.aiq_task_results result
-    join aiq_private.aiq_runs run on run.run_id = result.run_id
-    where not run.synthetic
-    union all
-    select score.score_snapshot_id::text
-    from aiq_private.aiq_score_snapshots score
-    join aiq_private.aiq_runs run on run.run_id = score.run_id
-    where not run.synthetic or score.published
-    union all
-    select scoring.scoring_version
-    from aiq_private.aiq_scoring_versions scoring
-    where not scoring.synthetic
-    union all
-    select node.node_id
-    from aiq_private.aiq_nodes node
-    where not node.synthetic
-    union all
-    select declaration.declaration_id::text
-    from aiq_private.aiq_distributed_capability_declarations declaration
-    where not declaration.synthetic
-    union all
-    select observation.observation_id::text
-    from aiq_private.aiq_distributed_node_observations observation
-    where not observation.synthetic
-    union all
-    select assignment.assignment_id::text
-    from aiq_private.aiq_distributed_assignments assignment
-    where not assignment.synthetic
-    union all
-    select assignment_model.run_id || ':' || assignment_model.assignment_id
-    from aiq_private.aiq_distributed_assignment_models assignment_model
-    where not assignment_model.synthetic
-    union all
-    select receipt.receipt_id::text
-    from aiq_private.aiq_distributed_result_receipts receipt
-    where not receipt.synthetic
-    union all
-    select package.task_package_id::text
-    from aiq_private.aiq_distributed_task_packages package
-    where not package.synthetic
-    union all
-    select input.aggregation_input_id::text
-    from aiq_private.aiq_distributed_aggregation_inputs input
-    where not input.synthetic
-  ) evidence
-), status as (
-select
-  'aiq.preview-status.v1'::text as contract_version,
-  'acgbox-aiq-preview-v1'::text as profile_id,
-  (select count(*) from aiq_private.aiq_task_catalog) as task_count,
-  (select count(*) from actual_model_matrix) as model_configuration_count,
-  (select count(*) from aiq_private.aiq_runs where synthetic) as synthetic_run_count,
-  (
-    select count(*)
-    from aiq_private.aiq_task_results result
-    join aiq_private.aiq_runs run on run.run_id = result.run_id
-    where run.synthetic
-  ) as synthetic_task_result_count,
-  (
-    select count(*)
-    from aiq_private.aiq_score_snapshots score
-    join aiq_private.aiq_runs run on run.run_id = score.run_id
-    where run.synthetic
-  ) as synthetic_score_snapshot_count,
-  (
-    select count(*) from aiq_private.aiq_scoring_versions where synthetic
-  ) as synthetic_scoring_definition_count,
-  (
-    select count(*) from aiq_private.aiq_nodes where synthetic and public_visible
-  ) as synthetic_radar_node_count,
-  (select count(*) from public.public_runs) as published_run_count,
-  (select count(*) from public.public_leaderboard) as published_leaderboard_count,
-  (select count from published_trends) as published_trend_point_count,
-  (select count from non_synthetic_evidence) as non_synthetic_evidence_count,
-  not exists (
-    (select * from expected_model_matrix)
-    except
-    (select * from actual_model_matrix)
-  ) and not exists (
-    (select * from actual_model_matrix)
-    except
-    (select * from expected_model_matrix)
-  ) as canonical_model_matrix
-)
-select *
-from status
-where status.task_count = 72
-  and status.model_configuration_count = 17
-  and status.synthetic_run_count = 17
-  and status.synthetic_task_result_count = 1224
-  and status.synthetic_score_snapshot_count = 17
-  and status.synthetic_scoring_definition_count = 1
-  and status.synthetic_radar_node_count = 3
-  and status.published_run_count = 0
-  and status.published_leaderboard_count = 0
-  and status.published_trend_point_count = 0
-  and status.non_synthetic_evidence_count = 0
-  and status.canonical_model_matrix;
-end;
-$$;
-
-
---
--- Name: aiq_preview_status_v1; Type: VIEW; Schema: public; Owner: -
---
-
-create view public.aiq_preview_status_v1 with (security_invoker = true) as
- select preview_status.contract_version,
-    preview_status.profile_id,
-    preview_status.task_count,
-    preview_status.model_configuration_count,
-    preview_status.synthetic_run_count,
-    preview_status.synthetic_task_result_count,
-    preview_status.synthetic_score_snapshot_count,
-    preview_status.synthetic_scoring_definition_count,
-    preview_status.synthetic_radar_node_count,
-    preview_status.published_run_count,
-    preview_status.published_leaderboard_count,
-    preview_status.published_trend_point_count,
-    preview_status.non_synthetic_evidence_count,
-    preview_status.canonical_model_matrix
-   from aiq_private.preview_status_v1() preview_status;
-
-
---
--- Name: view aiq_preview_status_v1; Type: COMMENT; Schema: public; Owner: -
---
-
-comment on view public.aiq_preview_status_v1 IS 'Bounded, read-only identity and readiness status for the disposable synthetic preview profile.';
 
 
 --
@@ -9453,6 +10066,10 @@ alter table ONLY aiq_private.aiq_matrix_batches
     ADD constraint aiq_matrix_batches_package_sha256_key unique (package_sha256);
 
 
+alter table ONLY aiq_private.aiq_matrix_batches
+    ADD constraint aiq_matrix_batches_identity_package_key unique (matrix_batch_id, package_sha256);
+
+
 --
 -- Name: aiq_matrix_batches aiq_matrix_batches_pkey; Type: constraint; Schema: aiq_private; Owner: -
 --
@@ -9659,6 +10276,10 @@ alter table ONLY aiq_private.aiq_storage_objects
 
 alter table ONLY aiq_private.aiq_storage_objects
     ADD constraint aiq_storage_objects_pkey primary key (object_id);
+
+
+alter table ONLY aiq_private.aiq_storage_objects
+    ADD constraint aiq_storage_objects_identity_digest_key unique (object_id, content_sha256);
 
 
 --
@@ -9902,6 +10523,8 @@ create index aiq_storage_objects_claim_idx on aiq_private.aiq_storage_objects us
 --
 
 create index aiq_storage_reconciliation_events_open_page_idx on aiq_private.aiq_storage_reconciliation_events using btree (bucket_name, object_path, mismatch_type) where (resolved_at IS null);
+
+create index aiq_storage_inventory_epoch_latest_idx on aiq_private.aiq_storage_reconciliation_events using btree (last_observed_at DESC) where (mismatch_type = 'inventory_success'::text);
 
 
 --
@@ -10161,6 +10784,9 @@ create trigger aiq_storage_legal_hold_events_append_only before delete or update
 --
 
 create trigger aiq_storage_objects_guard before delete or update on aiq_private.aiq_storage_objects for each row execute function aiq_private.guard_storage_registry_mutation();
+
+
+create trigger aiq_storage_reconciliation_history_guard before delete or update on aiq_private.aiq_storage_reconciliation_events for each row execute function aiq_private.guard_storage_reconciliation_history();
 
 
 --
@@ -11124,6 +11750,13 @@ revoke all on function aiq_private.ensure_storage_object(supplied_object_type te
 
 
 --
+-- Name: function storage_registry_inventory_digest(); Type: ACL; Schema: aiq_private; Owner: -
+--
+
+revoke all on function aiq_private.storage_registry_inventory_digest() from PUBLIC;
+
+
+--
 -- Name: function evaluator_result_bindings_v3_are_valid(payload jsonb); Type: ACL; Schema: aiq_private; Owner: -
 --
 
@@ -11184,6 +11817,9 @@ revoke all on function aiq_private.guard_score_snapshot_lifecycle() from PUBLIC;
 --
 
 revoke all on function aiq_private.guard_storage_registry_mutation() from PUBLIC;
+
+
+revoke all on function aiq_private.guard_storage_reconciliation_history() from PUBLIC;
 
 
 --
@@ -11694,6 +12330,14 @@ grant all on function public.aiq_record_storage_reconciliation(supplied_bucket t
 
 
 --
+-- Name: function aiq_record_storage_inventory_epoch(supplied_inventory_object_count bigint, supplied_inventory_digest text); Type: ACL; Schema: public; Owner: -
+--
+
+revoke all on function public.aiq_record_storage_inventory_epoch(supplied_inventory_object_count bigint, supplied_inventory_digest text) from PUBLIC;
+grant all on function public.aiq_record_storage_inventory_epoch(supplied_inventory_object_count bigint, supplied_inventory_digest text) to service_role;
+
+
+--
 -- Name: function aiq_record_verification_rejection(target_run_id text, target_package_sha256 text, rejection jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer); Type: ACL; Schema: public; Owner: -
 --
 
@@ -11788,15 +12432,6 @@ grant all on function public.aiq_verify_and_publish(target_run_id text, target_p
 revoke all on function public.public_trend_points(supplied_range text) from PUBLIC;
 grant all on function public.public_trend_points(supplied_range text) to anon;
 grant all on function public.public_trend_points(supplied_range text) to authenticated;
-
-
---
--- Name: function preview_status_v1(); Type: ACL; Schema: aiq_private; Owner: -
---
-
-revoke all on function aiq_private.preview_status_v1() from PUBLIC;
-grant all on function aiq_private.preview_status_v1() to anon;
-grant all on function aiq_private.preview_status_v1() to authenticated;
 
 
 --
@@ -12280,6 +12915,14 @@ grant select(run_id) on table aiq_private.aiq_runs to authenticated;
 
 
 --
+-- Name: COLUMN aiq_runs.matrix_batch_id; Type: ACL; Schema: aiq_private; Owner: -
+--
+
+grant select(matrix_batch_id) on table aiq_private.aiq_runs to anon;
+grant select(matrix_batch_id) on table aiq_private.aiq_runs to authenticated;
+
+
+--
 -- Name: COLUMN aiq_runs.scheduled_for; Type: ACL; Schema: aiq_private; Owner: -
 --
 
@@ -12725,8 +13368,7 @@ revoke all on table
   public.public_run_results,
   public.public_runs,
   public.public_scoring_versions,
-  public.public_task_coverage,
-  public.aiq_preview_status_v1
+  public.public_task_coverage
 from public, anon, authenticated;
 
 grant select on table public.public_distributed_radar to anon;
@@ -12789,12 +13431,2173 @@ grant select on table public.public_task_coverage to anon;
 grant select on table public.public_task_coverage to authenticated;
 
 
---
--- Name: table aiq_preview_status_v1; Type: ACL; Schema: public; Owner: -
---
+-- Calibration evidence is a separate, explicitly non-Official publication
+-- surface. It reuses package ingress and verifier claims, but it cannot write
+-- any Official batch, package, run, score, leaderboard, or trend relation.
+create function aiq_private.calibration_model_is_valid(candidate jsonb) returns boolean
+    language sql stable
+    SET search_path to ''
+    as $$
+  select coalesce(
+    jsonb_typeof(candidate) = 'object'
+      and aiq_private.has_exact_jsonb_keys(
+        candidate, array['family','reasoning_effort']::text[]
+      )
+      and exists (
+        select 1
+        from aiq_private.aiq_model_configs model
+        where model.model_family = candidate ->> 'family'
+          and model.reasoning_effort = candidate ->> 'reasoning_effort'
+          and model.is_enabled
+      ),
+    false
+  );
+$$;
 
-grant select on table public.aiq_preview_status_v1 to anon;
-grant select on table public.aiq_preview_status_v1 to authenticated;
+create function aiq_private.calibration_package_v3_is_valid(envelope jsonb) returns boolean
+    language plpgsql stable
+    SET search_path to ''
+    as $$
+declare
+  payload jsonb;
+  preflight jsonb;
+  provenance jsonb;
+  result jsonb;
+  model jsonb;
+  candidate_task_id jsonb;
+  expected_run_id text;
+  expected_task_set_hash text;
+begin
+  if jsonb_typeof(envelope) <> 'object'
+    or aiq_private.jcs_bytes_is_within(envelope,3948544) is not true
+    or aiq_private.jsonb_wire_value_is_bounded(envelope) is not true
+    or not aiq_private.has_exact_jsonb_keys(envelope,array[
+      'claimed_trust','content_hash','idempotency_key','payload','payload_type',
+      'schema_version','signature','signer'
+    ]::text[])
+    or envelope ->> 'schema_version' <> 'aiq.result-package.v3'
+    or envelope ->> 'payload_type' <> 'aiq.calibration-run.v3'
+    or envelope ->> 'claimed_trust' <> 'untrusted'
+    or envelope ->> 'idempotency_key' !~ '^run_[0-9a-f]{64}$'
+    or not aiq_private.dto_sha256_is_valid(envelope -> 'content_hash')
+    or envelope ->> 'signature' !~ '^[0-9a-f]{128}$'
+    or envelope ->> 'signature' = repeat('0',128)
+    or jsonb_typeof(envelope -> 'signer') <> 'object'
+    or not aiq_private.has_exact_jsonb_keys(envelope -> 'signer',array['node_id','public_key']::text[])
+    or aiq_private.node_public_key_matches_id(
+      envelope #>> '{signer,node_id}',envelope #>> '{signer,public_key}'
+    ) is not true
+  then return false; end if;
+  payload := envelope -> 'payload';
+  if jsonb_typeof(payload) <> 'object'
+    or not aiq_private.has_exact_jsonb_keys(payload,array[
+      'capability_validation','classification','evaluator_results_artifact',
+      'execution_concurrency','finished_unix_ms','models','official_eligible','provenance','results',
+      'run_id','schedule_slot','schema_version','scoring_version','started_unix_ms',
+      'task_ids','task_set_hash'
+    ]::text[])
+    or payload ->> 'schema_version' <> 'aiq.calibration-run.v3'
+    or payload -> 'official_eligible' <> 'false'::jsonb
+    or payload ->> 'classification' <> 'local_calibration_non_official'
+    or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
+    or payload ->> 'scoring_version' <> '1.0.2'
+    or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
+    or (payload->>'execution_concurrency')::integer not between 1 and 32
+    or not aiq_private.dto_schedule_is_valid(payload -> 'schedule_slot')
+    or not aiq_private.dto_sha256_is_valid(payload -> 'task_set_hash')
+    or not aiq_private.dto_uint_is_valid(payload -> 'started_unix_ms',9007199254740991)
+    or not aiq_private.dto_uint_is_valid(payload -> 'finished_unix_ms',9007199254740991)
+    or (payload ->> 'finished_unix_ms')::numeric < (payload ->> 'started_unix_ms')::numeric
+    or jsonb_typeof(payload -> 'models') <> 'array'
+    or jsonb_array_length(payload -> 'models') not between 1 and 17
+    or jsonb_typeof(payload -> 'task_ids') <> 'array'
+    or jsonb_array_length(payload -> 'task_ids') not between 1 and 72
+    or jsonb_typeof(payload -> 'results') <> 'array'
+    or jsonb_array_length(payload -> 'results') <> jsonb_array_length(payload -> 'models') * jsonb_array_length(payload -> 'task_ids')
+    or aiq_private.jcs_sha256(payload) is distinct from envelope ->> 'content_hash'
+    or not aiq_private.dto_artifact_is_valid(
+      payload -> 'evaluator_results_artifact',array['evaluator-results.json'],3948544
+    )
+  then return false; end if;
+  for model in select value from jsonb_array_elements(payload -> 'models') loop
+    if aiq_private.calibration_model_is_valid(model) is not true then return false; end if;
+  end loop;
+  if (select count(distinct value) from jsonb_array_elements(payload -> 'models'))
+       <> jsonb_array_length(payload -> 'models')
+  then return false; end if;
+  for candidate_task_id in select value from jsonb_array_elements(payload -> 'task_ids') loop
+    if not aiq_private.dto_identifier_is_valid(candidate_task_id,64)
+      or not exists (
+        select 1 from aiq_private.aiq_task_catalog catalog
+        where catalog.task_id = candidate_task_id #>> '{}'
+      )
+    then return false; end if;
+  end loop;
+  if (select count(distinct value) from jsonb_array_elements(payload -> 'task_ids'))
+       <> jsonb_array_length(payload -> 'task_ids')
+  then return false; end if;
+  preflight := payload -> 'capability_validation';
+  if jsonb_typeof(preflight) <> 'object'
+    or preflight ->> 'schema_version' <> 'aiq.capability-validation.v2'
+    or preflight ->> 'node_id' is distinct from envelope #>> '{signer,node_id}'
+    or jsonb_typeof(preflight -> 'models') <> 'array'
+    or (select jsonb_agg(value -> 'model' order by ordinality)
+        from jsonb_array_elements(preflight -> 'models') with ordinality entry(value,ordinality))
+       is distinct from payload -> 'models'
+  then return false; end if;
+  provenance := payload -> 'provenance';
+  if aiq_private.run_provenance_v2_is_valid(provenance) is not true
+    or provenance ->> 'run_class' <> 'calibration'
+    or aiq_private.production_execution_identities_are_authorized(
+      envelope #>> '{signer,node_id}',null
+    ) is not true
+  then return false; end if;
+  for result in select value from jsonb_array_elements(payload -> 'results') loop
+    if aiq_private.dto_result_is_valid(result,payload ->> 'run_id',false,preflight) is not true
+      or not (payload -> 'models') @> jsonb_build_array(result -> 'model')
+      or not (payload -> 'task_ids') @> jsonb_build_array(result -> 'task_id')
+      or not exists (
+        select 1
+        from aiq_private.aiq_task_catalog catalog
+        where catalog.task_id = result ->> 'task_id'
+          and catalog.task_version = result ->> 'task_version'
+          and catalog.fixture_commitment is not null
+          and result ->> 'task_hash' = 'sha256:' || catalog.fixture_commitment
+      )
+    then return false; end if;
+  end loop;
+  if (select count(distinct (value ->> 'task_id',value -> 'model'))
+      from jsonb_array_elements(payload -> 'results')) <> jsonb_array_length(payload -> 'results')
+    or exists(
+      select 1
+      from jsonb_array_elements(payload->'results') left_result
+      join jsonb_array_elements(payload->'results') right_result
+        on left_result->>'task_id'=right_result->>'task_id'
+      where left_result->>'task_version'<>right_result->>'task_version'
+        or left_result->>'task_hash'<>right_result->>'task_hash'
+  )
+  then return false; end if;
+  select aiq_private.jcs_sha256(jsonb_agg(task_hash order by task_hash collate "C"))
+  into expected_task_set_hash
+  from (
+    select distinct result_entry.value->>'task_hash' as task_hash
+    from jsonb_array_elements(payload->'results') result_entry(value)
+  ) hashes;
+  if expected_task_set_hash is distinct from payload->>'task_set_hash'
+  then return false; end if;
+  expected_run_id := 'run_' || substr(aiq_private.jcs_sha256(jsonb_build_object(
+    'schema_version','aiq.run-identity.v3','run_class','calibration',
+    'slot',payload -> 'schedule_slot','task_set_hash',payload -> 'task_set_hash',
+    'corpus_commitment_sha256',provenance -> 'corpus_commitment_sha256',
+    'models',payload -> 'models','scoring_version',payload -> 'scoring_version'
+  )),8);
+  return payload ->> 'run_id' = expected_run_id;
+exception when others then return false;
+end;
+$$;
+
+create table aiq_private.efficiency_pricing_methods (
+  pricing_digest text primary key,
+  method text not null,
+  version text not null,
+  as_of date not null,
+  source text not null,
+  currency text not null,
+  processing_tier text not null,
+  rates jsonb not null,
+  formula text not null,
+  limitations text[] not null,
+  pricing_record jsonb not null,
+  recorded_at timestamptz not null default clock_timestamp(),
+  constraint efficiency_pricing_methods_digest check (pricing_digest ~ '^sha256:[0-9a-f]{64}$'),
+  constraint efficiency_pricing_methods_currency check (currency = 'USD'),
+  constraint efficiency_pricing_methods_processing_tier check (processing_tier = 'standard'),
+  constraint efficiency_pricing_methods_shape check (
+    aiq_private.efficiency_pricing_v1_is_valid(pricing_record)
+    and pricing_digest=aiq_private.jcs_sha256(pricing_record)
+    and method=pricing_record->>'method'
+    and version=pricing_record->>'version'
+    and as_of::text=pricing_record->>'as_of'
+    and source=pricing_record->>'source'
+    and currency=pricing_record->>'currency'
+    and processing_tier=pricing_record->>'processing_tier'
+    and rates=pricing_record->'rates'
+    and formula=pricing_record->>'formula'
+    and limitations=array[pricing_record->>'limitation']
+  )
+);
+
+comment on table aiq_private.efficiency_pricing_methods IS 'Immutable pricing-method evidence. Historical estimates bind this digest and never use a mutable current-price lookup.';
+
+create table aiq_private.efficiency_official_models (
+  run_id text primary key references aiq_private.aiq_runs(run_id),
+  result_count integer not null,
+  attempted_result_count integer not null,
+  execution_concurrency integer not null,
+  invoked_result_count integer not null,
+  adapter_elapsed_observed_result_count integer not null,
+  observed_total_wall_ms bigint,
+  observed_median_wall_ms bigint,
+  observed_p95_wall_ms bigint,
+  input_tokens bigint,
+  cached_input_tokens bigint,
+  cache_write_input_tokens bigint,
+  output_tokens bigint,
+  reasoning_output_tokens bigint,
+  total_tokens bigint,
+  token_observed_result_count integer not null,
+  input_token_observed_result_count integer not null,
+  cached_input_token_observed_result_count integer not null,
+  cache_write_input_token_observed_result_count integer not null,
+  output_token_observed_result_count integer not null,
+  reasoning_token_observed_result_count integer not null,
+  total_token_observed_result_count integer not null,
+  priced_result_count integer not null,
+  standard_api_equivalent_usd_nanos bigint,
+  cost_estimator_status text not null,
+  cost_evidence_level text,
+  pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
+  efficiency_record jsonb not null,
+  recorded_at timestamptz not null default clock_timestamp(),
+  constraint efficiency_official_models_counts check (
+    result_count = 72 and attempted_result_count between 0 and result_count
+    and execution_concurrency between 1 and 32
+    and invoked_result_count between 0 and attempted_result_count
+    and adapter_elapsed_observed_result_count between 0 and invoked_result_count
+    and token_observed_result_count between 0 and result_count
+    and input_token_observed_result_count between 0 and result_count
+    and cached_input_token_observed_result_count between 0 and result_count
+    and cache_write_input_token_observed_result_count between 0 and result_count
+    and output_token_observed_result_count between 0 and result_count
+    and reasoning_token_observed_result_count between 0 and result_count
+    and total_token_observed_result_count between 0 and result_count
+    and priced_result_count between 0 and result_count
+  ),
+  constraint efficiency_official_models_elapsed check (
+    ((adapter_elapsed_observed_result_count=0)=(observed_total_wall_ms is null))
+    and ((adapter_elapsed_observed_result_count=0)=(observed_median_wall_ms is null))
+    and ((adapter_elapsed_observed_result_count=0)=(observed_p95_wall_ms is null))
+    and observed_total_wall_ms>=0 and observed_median_wall_ms>=0 and observed_p95_wall_ms>=0
+  ),
+  constraint efficiency_official_models_tokens check (
+    input_tokens>=0 and cached_input_tokens>=0 and cache_write_input_tokens>=0
+    and output_tokens>=0 and reasoning_output_tokens>=0 and total_tokens>=0
+    and ((token_observed_result_count=0)=(input_tokens is null
+      and cached_input_tokens is null and cache_write_input_tokens is null
+      and output_tokens is null and reasoning_output_tokens is null and total_tokens is null))
+    and (cached_input_tokens is null or input_tokens is null or cached_input_tokens<=input_tokens)
+    and (reasoning_output_tokens is null or output_tokens is null
+      or reasoning_output_tokens<=output_tokens)
+  ),
+  constraint efficiency_official_models_cost check (
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
+    and ((cost_estimator_status='estimated')=(standard_api_equivalent_usd_nanos is not null))
+    and (cost_estimator_status<>'estimated' or priced_result_count=result_count)
+    and (standard_api_equivalent_usd_nanos is null
+      or standard_api_equivalent_usd_nanos between 0 and 9007199254740991)
+    and (cost_evidence_level is null or cost_evidence_level='verifier_recomputed')
+    and ((standard_api_equivalent_usd_nanos is null)=(cost_evidence_level is null))
+  ),
+  constraint efficiency_official_models_record check (
+    aiq_private.efficiency_aggregate_v1_is_valid(efficiency_record)
+    and result_count::text=efficiency_record->>'selected_tasks'
+    and adapter_elapsed_observed_result_count::text=
+      efficiency_record->>'observed_wall_tasks'
+    and observed_total_wall_ms::text is not distinct from
+      efficiency_record->>'total_observed_wall_ms'
+    and observed_median_wall_ms::text is not distinct from
+      efficiency_record->>'median_observed_wall_ms'
+    and observed_p95_wall_ms::text is not distinct from
+      efficiency_record->>'p95_observed_wall_ms'
+    and input_tokens::text is not distinct from
+      efficiency_record#>>'{provider_token_totals,input}'
+    and cached_input_tokens::text is not distinct from
+      efficiency_record#>>'{provider_token_totals,cached_input}'
+    and cache_write_input_tokens::text is not distinct from
+      efficiency_record#>>'{provider_token_totals,cache_write_input}'
+    and output_tokens::text is not distinct from
+      efficiency_record#>>'{provider_token_totals,output}'
+    and reasoning_output_tokens::text is not distinct from
+      efficiency_record#>>'{provider_token_totals,reasoning}'
+    and total_tokens::text is not distinct from
+      efficiency_record#>>'{provider_token_totals,total}'
+    and input_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,input_tasks}'
+    and cached_input_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,cached_input_tasks}'
+    and cache_write_input_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,cache_write_input_tasks}'
+    and output_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,output_tasks}'
+    and reasoning_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,reasoning_tasks}'
+    and total_token_observed_result_count::text=
+      efficiency_record#>>'{provider_token_coverage,total_tasks}'
+    and priced_result_count::text=efficiency_record->>'estimated_cost_tasks'
+    and standard_api_equivalent_usd_nanos::text is not distinct from
+      efficiency_record->>'standard_api_equivalent_usd_nanos'
+  )
+);
+
+comment on table aiq_private.efficiency_official_models IS
+  'Immutable verifier-recomputed Official efficiency aggregates. These values do not affect AIQ ranking.';
+comment on column aiq_private.efficiency_official_models.attempted_result_count IS
+  'Selected cells that passed capability admission and entered task preparation.';
+comment on column aiq_private.efficiency_official_models.invoked_result_count IS
+  'Attempted cells that reached the Codex adapter after workspace preparation.';
+comment on column aiq_private.efficiency_official_models.observed_total_wall_ms IS
+  'Sum of observed Codex adapter invocation elapsed milliseconds.';
+comment on column aiq_private.efficiency_official_models.observed_median_wall_ms IS
+  'Rust aggregate median of observed Codex adapter invocation elapsed milliseconds.';
+comment on column aiq_private.efficiency_official_models.observed_p95_wall_ms IS
+  'Rust aggregate nearest-rank p95 of observed Codex adapter invocation elapsed milliseconds.';
+
+alter table aiq_private.aiq_task_results
+  add constraint aiq_task_results_pricing_method_fk
+  foreign key (pricing_digest) references aiq_private.efficiency_pricing_methods(pricing_digest);
+
+create table aiq_private.calibration_verification_stages (
+  run_id text primary key,
+  inbox_id uuid not null unique references aiq_private.aiq_submission_inbox(inbox_id),
+  package_sha256 text not null unique,
+  stage_digest text not null unique,
+  runner_node_id text not null references aiq_private.aiq_nodes(node_id),
+  stage jsonb not null,
+  recorded_at timestamptz not null default clock_timestamp(),
+  constraint calibration_verification_stages_run check (run_id ~ '^run_[0-9a-f]{64}$'),
+  constraint calibration_verification_stages_package check (package_sha256 ~ '^[0-9a-f]{64}$'),
+  constraint calibration_verification_stages_digest check (stage_digest ~ '^sha256:[0-9a-f]{64}$')
+);
+
+create table aiq_private.calibration_runs (
+  run_id text primary key,
+  inbox_id uuid not null unique references aiq_private.aiq_submission_inbox(inbox_id),
+  package_sha256 text not null unique,
+  content_hash text not null,
+  normalization_digest text not null unique,
+  runner_node_id text not null references aiq_private.aiq_nodes(node_id),
+  verifier_node_id text not null references aiq_private.aiq_nodes(node_id),
+  task_set_id text not null,
+  task_set_version text not null,
+  task_set_hash text not null,
+  scoring_version text not null,
+  classification text not null default 'local_calibration_non_official',
+  replay_status text not null,
+  official_eligible boolean not null default false,
+  ranking_eligible boolean not null default false,
+  selected_task_count integer not null,
+  selected_model_count integer not null,
+  result_count integer not null,
+  execution_concurrency integer not null,
+  attempted_result_count integer not null,
+  invoked_result_count integer not null,
+  observed_duration_total_ms bigint,
+  observed_duration_median_ms bigint,
+  observed_duration_p95_ms bigint,
+  duration_evidence_level text,
+  duration_coverage_count integer not null default 0,
+  standard_api_equivalent_usd_nanos bigint,
+  estimated_cost_coverage_count integer not null default 0,
+  token_usage_coverage_count integer not null default 0,
+  cost_estimator_status text not null default 'unavailable_missing_usage',
+  cost_evidence_level text,
+  cost_estimator_limitations text[] not null default array['per_request_long_context_unknown']::text[],
+  cost_method text not null default 'standard_api_equivalent_text_token_estimate',
+  cost_version text not null default 'aiq.standard-api-equivalent-usd.v1',
+  cost_as_of date not null default date '2026-08-02',
+  cost_source text not null default 'https://developers.openai.com/api/docs/pricing',
+  started_at timestamptz not null,
+  completed_at timestamptz not null,
+  verified_at timestamptz not null default clock_timestamp(),
+  verification_record jsonb not null,
+  verifier_attestation jsonb not null,
+  pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
+  unique (run_id,task_set_id,task_set_version),
+  unique (run_id,package_sha256),
+  foreign key (task_set_id,task_set_version)
+    references aiq_private.aiq_task_sets(task_set_id,task_set_version),
+  constraint calibration_runs_identity check (run_id ~ '^run_[0-9a-f]{64}$'),
+  constraint calibration_runs_package_digest check (package_sha256 ~ '^[0-9a-f]{64}$'),
+  constraint calibration_runs_content_digest check (content_hash ~ '^sha256:[0-9a-f]{64}$'),
+  constraint calibration_runs_normalization_digest check (normalization_digest ~ '^sha256:[0-9a-f]{64}$'),
+  constraint calibration_runs_task_set_digest check (task_set_hash ~ '^sha256:[0-9a-f]{64}$'),
+  constraint calibration_runs_classification check (
+    classification = 'local_calibration_non_official'
+    and replay_status = 'evaluator_replayed'
+    and not official_eligible and not ranking_eligible
+  ),
+  constraint calibration_runs_identity_separation check (runner_node_id <> verifier_node_id),
+  constraint calibration_runs_counts check (
+    selected_task_count between 1 and 72
+    and selected_model_count between 1 and 17
+    and result_count=selected_task_count*selected_model_count
+    and execution_concurrency between 1 and 32
+    and attempted_result_count between 0 and result_count
+    and invoked_result_count between 0 and attempted_result_count
+  ),
+  constraint calibration_runs_time check (completed_at >= started_at)
+  ,constraint calibration_runs_efficiency_nonnegative check (
+    observed_duration_total_ms >= 0 and observed_duration_median_ms >= 0
+    and observed_duration_p95_ms >= 0 and standard_api_equivalent_usd_nanos >= 0
+  )
+  ,constraint calibration_runs_efficiency_coverage check (
+    duration_coverage_count between 0 and invoked_result_count
+    and estimated_cost_coverage_count between 0 and result_count
+    and token_usage_coverage_count between 0 and result_count
+    and ((duration_coverage_count = 0) = (observed_duration_total_ms is null))
+    and ((duration_coverage_count = 0) = (observed_duration_median_ms is null))
+    and ((duration_coverage_count = 0) = (observed_duration_p95_ms is null))
+    and ((duration_coverage_count = 0) = (duration_evidence_level is null))
+    and (cost_estimator_status = 'estimated') =
+      (standard_api_equivalent_usd_nanos is not null)
+  )
+  ,constraint calibration_runs_evidence_levels check (
+    (duration_evidence_level is null or duration_evidence_level = 'runner_observed')
+    and (cost_evidence_level is null or cost_evidence_level = 'verifier_recomputed')
+    and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
+  )
+  ,constraint calibration_runs_cost_metadata check (
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
+    and cost_method is not null and cost_version is not null
+    and cost_as_of is not null and cost_source is not null
+    and (cost_estimator_status <> 'estimated'
+      or estimated_cost_coverage_count = result_count)
+  )
+);
+
+comment on table aiq_private.calibration_runs IS 'Append-only verifier-normalized local calibration evidence. It is untrusted, non-Official, and never ranking eligible.';
+comment on column aiq_private.calibration_runs.attempted_result_count IS
+  'Selected cells that passed capability admission and entered task preparation.';
+comment on column aiq_private.calibration_runs.invoked_result_count IS
+  'Attempted cells that reached the Codex adapter after workspace preparation.';
+comment on column aiq_private.calibration_runs.observed_duration_total_ms IS
+  'Sum of observed Codex adapter invocation elapsed milliseconds.';
+comment on column aiq_private.calibration_runs.observed_duration_median_ms IS
+  'Median of observed Codex adapter invocation elapsed milliseconds.';
+comment on column aiq_private.calibration_runs.observed_duration_p95_ms IS
+  'Nearest-rank p95 of observed Codex adapter invocation elapsed milliseconds.';
+
+create table aiq_private.aiq_publication_storage_evidence (
+  publication_class text not null,
+  publication_id text not null,
+  official_batch_id text,
+  calibration_run_id text,
+  package_sha256 text not null,
+  object_id uuid not null,
+  evidence_role text not null,
+  artifact_kind text not null,
+  content_sha256 text not null,
+  reference_type text not null,
+  reference_key text not null unique,
+  bound_at timestamptz not null default clock_timestamp(),
+  primary key(publication_class,publication_id,evidence_role,artifact_kind,content_sha256),
+  foreign key (object_id,content_sha256)
+    references aiq_private.aiq_storage_objects(object_id,content_sha256),
+  foreign key (official_batch_id,package_sha256)
+    references aiq_private.aiq_matrix_batches(matrix_batch_id,package_sha256),
+  foreign key (calibration_run_id,package_sha256)
+    references aiq_private.calibration_runs(run_id,package_sha256),
+  constraint aiq_publication_storage_evidence_class check (
+    (publication_class='official' and official_batch_id is not null
+      and official_batch_id=publication_id
+      and calibration_run_id is null)
+    or (publication_class='calibration' and calibration_run_id is not null
+      and calibration_run_id=publication_id
+      and official_batch_id is null)
+  ),
+  constraint aiq_publication_storage_evidence_identity check (
+    publication_id ~ '^run_[0-9a-f]{64}$'
+    and package_sha256 ~ '^[0-9a-f]{64}$'
+  ),
+  constraint aiq_publication_storage_evidence_role check (
+    evidence_role in ('submitted_package','verified_artifact')
+  ),
+  constraint aiq_publication_storage_evidence_kind check (
+    artifact_kind ~ '^[a-z0-9][a-z0-9._-]{0,63}$'
+  ),
+  constraint aiq_publication_storage_evidence_digest check (
+    content_sha256~'^[0-9a-f]{64}$'
+  ),
+  constraint aiq_publication_storage_evidence_package_role check (
+    (evidence_role='submitted_package' and artifact_kind='result-package.json'
+      and content_sha256=package_sha256)
+    or (evidence_role='verified_artifact' and artifact_kind<>'result-package.json')
+  ),
+  constraint aiq_publication_storage_evidence_reference check (
+    reference_type=case publication_class
+      when 'official' then 'official_publication' else 'calibration_run' end
+    and reference_key=publication_class||'/'||publication_id||'/'||
+      content_sha256||'/'||artifact_kind
+  )
+);
+
+comment on table aiq_private.aiq_publication_storage_evidence IS
+  'Append-only durable ownership map for each retained package and every claim-bound audit artifact required by an Official or calibration publication.';
+
+create function aiq_private.reconcile_publication_storage_evidence(
+  supplied_publication_class text,target_publication_id text,
+  target_package_sha256 text,target_inbox_id uuid
+) returns integer
+    language plpgsql security definer
+    SET search_path to ''
+    as $$
+declare
+  claimed aiq_private.aiq_submission_inbox%rowtype;
+  payload jsonb;
+  reference_kind text;
+  retained_key text;
+  package_object_id uuid;
+  retained_artifact record;
+  retained_count integer;
+begin
+  if supplied_publication_class not in ('official','calibration')
+    or not coalesce(target_publication_id~'^run_[0-9a-f]{64}$',false)
+    or not coalesce(target_package_sha256~'^[0-9a-f]{64}$',false)
+  then raise exception 'invalid publication Storage ownership identity'
+    using errcode='22023'; end if;
+  select * into claimed
+  from aiq_private.aiq_submission_inbox inbox
+  where inbox.inbox_id=target_inbox_id
+    and inbox.idempotency_key=target_publication_id
+    and inbox.package_sha256=target_package_sha256
+  for share;
+  if claimed.inbox_id is null
+    or (supplied_publication_class='official'
+      and (claimed.envelope->>'payload_type'<>'aiq.run.v3'
+        or not exists(select 1 from aiq_private.aiq_matrix_batches batch
+          join aiq_private.aiq_result_packages package
+            on package.matrix_batch_id=batch.matrix_batch_id
+            and package.package_sha256=batch.package_sha256
+          where batch.matrix_batch_id=target_publication_id
+            and batch.package_sha256=target_package_sha256)
+        or aiq_private.publication_is_complete(
+          target_publication_id,target_package_sha256
+        ) is not true))
+    or (supplied_publication_class='calibration'
+      and (claimed.envelope->>'payload_type'<>'aiq.calibration-run.v3'
+        or not exists(select 1 from aiq_private.calibration_runs run
+          where run.run_id=target_publication_id
+            and run.package_sha256=target_package_sha256
+            and run.inbox_id=target_inbox_id)
+        or not exists(select 1 from aiq_private.calibration_verification_audit audit
+          where audit.run_id=target_publication_id
+            and audit.package_sha256=target_package_sha256
+            and audit.inbox_id=target_inbox_id
+            and audit.event_type='verifier_recorded')))
+  then raise exception 'publication Storage ownership source is absent or conflicting'
+    using errcode='55000'; end if;
+  payload:=claimed.envelope->'payload';
+  reference_kind:=case supplied_publication_class
+    when 'official' then 'official_publication' else 'calibration_run' end;
+  select object.object_id into strict package_object_id
+  from aiq_private.aiq_storage_objects object
+  where object.bucket_name=claimed.object_bucket
+    and object.object_path=claimed.object_key
+    and object.content_sha256=claimed.package_sha256
+    and object.lifecycle_state<>'deleted';
+  retained_key:=supplied_publication_class||'/'||target_publication_id||'/'||
+    target_package_sha256||'/result-package.json';
+  insert into aiq_private.aiq_publication_storage_evidence(
+    publication_class,publication_id,official_batch_id,calibration_run_id,
+    package_sha256,object_id,evidence_role,artifact_kind,content_sha256,
+    reference_type,reference_key
+  ) values(
+    supplied_publication_class,target_publication_id,
+    case when supplied_publication_class='official' then target_publication_id end,
+    case when supplied_publication_class='calibration' then target_publication_id end,
+    target_package_sha256,
+    package_object_id,'submitted_package','result-package.json',
+    target_package_sha256,reference_kind,retained_key
+  ) on conflict do nothing;
+  if not exists(select 1 from aiq_private.aiq_publication_storage_evidence evidence
+    where evidence.reference_key=retained_key
+      and evidence.publication_class=supplied_publication_class
+      and evidence.publication_id=target_publication_id
+      and evidence.package_sha256=target_package_sha256
+      and evidence.object_id=package_object_id
+      and evidence.reference_type=reference_kind)
+  then raise exception 'conflicting publication package Storage ownership'
+    using errcode='23505'; end if;
+  perform aiq_private.attach_storage_reference(
+    package_object_id,reference_kind,retained_key
+  );
+  if exists(
+    with required(artifact_kind,content_sha256) as (
+      select payload#>>'{evaluator_results_artifact,kind}',
+        replace(payload#>>'{evaluator_results_artifact,content_hash}','sha256:','')
+      union
+      select artifact->>'kind',replace(artifact->>'content_hash','sha256:','')
+      from jsonb_array_elements(payload->'results') result
+      cross join lateral jsonb_array_elements(result->'artifacts') artifact
+      union
+      select result#>>'{workspace_manifest,kind}',
+        replace(result#>>'{workspace_manifest,content_hash}','sha256:','')
+      from jsonb_array_elements(payload->'results') result
+      where jsonb_typeof(result->'workspace_manifest')='object'
+      union
+      select artifact->>'kind',replace(artifact->>'content_hash','sha256:','')
+      from jsonb_array_elements(payload#>'{capability_validation,models}') model
+      cross join lateral jsonb_array_elements(model#>'{probe,artifacts}') artifact
+    )
+    select 1 from required
+    where not exists(select 1 from aiq_private.aiq_artifact_claim_bindings binding
+      where binding.inbox_id=target_inbox_id
+        and binding.artifact_kind=required.artifact_kind
+        and binding.content_sha256=required.content_sha256)
+  ) then raise exception 'publication audit artifact is not claim-bound'
+    using errcode='55000'; end if;
+  if exists(
+    select 1
+    from aiq_private.aiq_artifact_claim_bindings binding
+    where binding.inbox_id=target_inbox_id
+      and not exists(
+        select 1
+        from aiq_private.aiq_artifact_ingress_objects artifact
+        join aiq_private.aiq_storage_objects storage
+          on storage.bucket_name=artifact.bucket_name
+          and storage.object_path=artifact.object_path
+          and storage.content_sha256=artifact.content_sha256
+          and storage.lifecycle_state<>'deleted'
+        where artifact.artifact_kind=binding.artifact_kind
+          and artifact.content_sha256=binding.content_sha256
+      )
+  ) then raise exception 'claim-bound publication artifact Storage is absent'
+    using errcode='55000'; end if;
+  for retained_artifact in
+    select storage.object_id,binding.artifact_kind,binding.content_sha256
+    from aiq_private.aiq_artifact_claim_bindings binding
+    join aiq_private.aiq_artifact_ingress_objects artifact
+      on artifact.artifact_kind=binding.artifact_kind
+      and artifact.content_sha256=binding.content_sha256
+    join aiq_private.aiq_storage_objects storage
+      on storage.bucket_name=artifact.bucket_name
+      and storage.object_path=artifact.object_path
+      and storage.content_sha256=artifact.content_sha256
+      and storage.lifecycle_state<>'deleted'
+    where binding.inbox_id=target_inbox_id
+  loop
+    retained_key:=supplied_publication_class||'/'||target_publication_id||'/'||
+      retained_artifact.content_sha256||'/'||retained_artifact.artifact_kind;
+    insert into aiq_private.aiq_publication_storage_evidence(
+      publication_class,publication_id,official_batch_id,calibration_run_id,
+      package_sha256,object_id,evidence_role,artifact_kind,content_sha256,
+      reference_type,reference_key
+    ) values(
+      supplied_publication_class,target_publication_id,
+      case when supplied_publication_class='official' then target_publication_id end,
+      case when supplied_publication_class='calibration' then target_publication_id end,
+      target_package_sha256,
+      retained_artifact.object_id,'verified_artifact',retained_artifact.artifact_kind,
+      retained_artifact.content_sha256,reference_kind,retained_key
+    ) on conflict do nothing;
+    if not exists(select 1 from aiq_private.aiq_publication_storage_evidence evidence
+      where evidence.reference_key=retained_key
+        and evidence.publication_class=supplied_publication_class
+        and evidence.publication_id=target_publication_id
+        and evidence.package_sha256=target_package_sha256
+        and evidence.object_id=retained_artifact.object_id
+        and evidence.reference_type=reference_kind)
+    then raise exception 'conflicting publication artifact Storage ownership'
+      using errcode='23505'; end if;
+    perform aiq_private.attach_storage_reference(
+      retained_artifact.object_id,reference_kind,retained_key
+    );
+  end loop;
+  if not exists(select 1 from aiq_private.aiq_publication_storage_evidence evidence
+    where evidence.publication_class=supplied_publication_class
+      and evidence.publication_id=target_publication_id
+      and evidence.package_sha256=target_package_sha256
+      and evidence.evidence_role='submitted_package')
+    or not exists(select 1 from aiq_private.aiq_publication_storage_evidence evidence
+      where evidence.publication_class=supplied_publication_class
+        and evidence.publication_id=target_publication_id
+        and evidence.package_sha256=target_package_sha256
+        and evidence.evidence_role='verified_artifact'
+        and evidence.artifact_kind='evaluator-results.json')
+    or (select count(*) from aiq_private.aiq_artifact_claim_bindings binding
+        where binding.inbox_id=target_inbox_id)<>
+      (select count(*) from aiq_private.aiq_publication_storage_evidence evidence
+        where evidence.publication_class=supplied_publication_class
+          and evidence.publication_id=target_publication_id
+          and evidence.package_sha256=target_package_sha256
+          and evidence.evidence_role='verified_artifact')
+  then raise exception 'publication Storage ownership is incomplete'
+    using errcode='55000'; end if;
+  select count(*)::integer into retained_count
+  from aiq_private.aiq_publication_storage_evidence evidence
+  where evidence.publication_class=supplied_publication_class
+    and evidence.publication_id=target_publication_id
+    and evidence.package_sha256=target_package_sha256;
+  return retained_count;
+end;
+$$;
+
+create table aiq_private.calibration_model_scores (
+  run_id text not null references aiq_private.calibration_runs(run_id),
+  model_family text not null,
+  reasoning_effort text not null,
+  descriptive_status text not null,
+  score numeric(12,8),
+  task_resampling_sensitivity_lower numeric(12,8),
+  task_resampling_sensitivity_upper numeric(12,8),
+  task_resampling_sensitivity_method text,
+  result_count integer not null,
+  scored_result_count integer not null,
+  coverage_percent numeric(7,4) not null,
+  observed_total_wall_ms bigint,
+  observed_median_wall_ms bigint,
+  observed_p95_wall_ms bigint,
+  observed_time_sample_count integer not null default 0,
+  attempted_result_count integer not null,
+  invoked_result_count integer not null,
+  observed_time_coverage_percent numeric(7,4) not null default 0,
+  duration_evidence_level text,
+  standard_api_equivalent_usd_nanos bigint,
+  estimated_cost_sample_count integer not null default 0,
+  input_tokens bigint,
+  cached_input_tokens bigint,
+  cache_write_input_tokens bigint,
+  output_tokens bigint,
+  reasoning_output_tokens bigint,
+  total_tokens bigint,
+  token_usage_sample_count integer not null default 0,
+  token_usage_coverage_percent numeric(7,4) not null default 0,
+  cost_estimator_status text not null default 'unavailable_missing_usage',
+  cost_evidence_level text,
+  cost_estimator_limitations text[] not null default array['per_request_long_context_unknown']::text[],
+  pricing_source text not null default 'https://developers.openai.com/api/docs/pricing',
+  pricing_as_of date not null default date '2026-08-02',
+  pricing_version text not null default 'aiq.standard-api-equivalent-usd.v1',
+  pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
+  primary key (run_id, model_family, reasoning_effort),
+  constraint calibration_model_scores_score check (score is null or score between 0 and 100),
+  constraint calibration_model_scores_interval check (
+    (task_resampling_sensitivity_lower is null) =
+      (task_resampling_sensitivity_upper is null)
+    and (task_resampling_sensitivity_lower is null) =
+      (task_resampling_sensitivity_method is null)
+    and (task_resampling_sensitivity_lower is null or (
+      task_resampling_sensitivity_lower between 0 and 100
+      and task_resampling_sensitivity_upper between task_resampling_sensitivity_lower and 100
+      and task_resampling_sensitivity_method ~ '^[a-z0-9][a-z0-9._-]{0,127}$'
+    ))
+  ),
+  constraint calibration_model_scores_status check (
+    descriptive_status in ('complete_fixture','conditional_observed','coverage_only','not_applicable')
+  ),
+  constraint calibration_model_scores_efficiency check (
+    coverage_percent between 0 and 100
+    and (observed_total_wall_ms is null or observed_total_wall_ms >= 0)
+    and (observed_median_wall_ms is null or observed_median_wall_ms >= 0)
+    and (observed_p95_wall_ms is null or observed_p95_wall_ms >= 0)
+    and attempted_result_count between 0 and result_count
+    and invoked_result_count between 0 and attempted_result_count
+    and observed_time_sample_count between 0 and invoked_result_count
+    and estimated_cost_sample_count between 0 and result_count
+    and token_usage_sample_count between 0 and result_count
+    and observed_time_coverage_percent between 0 and 100
+    and (standard_api_equivalent_usd_nanos is null or standard_api_equivalent_usd_nanos >= 0)
+    and (token_usage_coverage_percent is null or token_usage_coverage_percent between 0 and 100)
+    and token_usage_coverage_percent = round(
+      100 * token_usage_sample_count::numeric / result_count,4
+    )
+    and input_tokens >= 0 and cached_input_tokens >= 0 and cache_write_input_tokens >= 0
+    and output_tokens >= 0 and reasoning_output_tokens >= 0 and total_tokens >= 0
+    and ((token_usage_sample_count=0)=(input_tokens is null
+      and cached_input_tokens is null and cache_write_input_tokens is null
+      and output_tokens is null and reasoning_output_tokens is null and total_tokens is null))
+    and (cached_input_tokens is null or input_tokens is null or cached_input_tokens <= input_tokens)
+    and (reasoning_output_tokens is null or output_tokens is null
+      or reasoning_output_tokens <= output_tokens)
+    and (duration_evidence_level is null or duration_evidence_level = 'runner_observed')
+    and (cost_evidence_level is null or cost_evidence_level = 'verifier_recomputed')
+    and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
+    and ((observed_time_sample_count = 0) = (observed_total_wall_ms is null))
+    and ((observed_time_sample_count = 0) = (observed_median_wall_ms is null))
+    and ((observed_time_sample_count = 0) = (observed_p95_wall_ms is null))
+    and ((observed_time_sample_count = 0) = (duration_evidence_level is null))
+  ),
+  constraint calibration_model_scores_pricing check (
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
+    and (cost_estimator_status = 'estimated') =
+      (standard_api_equivalent_usd_nanos is not null)
+    and (cost_estimator_status <> 'estimated'
+      or estimated_cost_sample_count = result_count)
+  ),
+  constraint calibration_model_scores_counts check (
+    result_count >= 1 and scored_result_count between 0 and result_count
+    and coverage_percent = round(100 * scored_result_count::numeric / result_count, 4)
+    and ((descriptive_status in ('coverage_only','not_applicable')) = (score is null))
+  )
+);
+
+comment on column aiq_private.calibration_model_scores.attempted_result_count IS
+  'Selected cells that passed capability admission and entered task preparation.';
+comment on column aiq_private.calibration_model_scores.invoked_result_count IS
+  'Attempted cells that reached the Codex adapter after workspace preparation.';
+comment on column aiq_private.calibration_model_scores.observed_total_wall_ms IS
+  'Sum of observed Codex adapter invocation elapsed milliseconds.';
+comment on column aiq_private.calibration_model_scores.observed_median_wall_ms IS
+  'Rust aggregate median of observed Codex adapter invocation elapsed milliseconds.';
+comment on column aiq_private.calibration_model_scores.observed_p95_wall_ms IS
+  'Rust aggregate nearest-rank p95 of observed Codex adapter invocation elapsed milliseconds.';
+
+create table aiq_private.calibration_task_results (
+  result_id text primary key,
+  run_id text not null references aiq_private.calibration_runs(run_id),
+  task_set_id text not null,
+  task_set_version text not null,
+  task_id text not null,
+  task_version text not null,
+  task_hash text not null,
+  domain text not null,
+  model_family text not null,
+  reasoning_effort text not null,
+  outcome aiq_private.result_outcome not null,
+  task_score numeric(9,8),
+  failure_code text,
+  latency_ms bigint,
+  latency_evidence_level text,
+  input_tokens bigint,
+  cached_input_tokens bigint,
+  cache_write_input_tokens bigint,
+  output_tokens bigint,
+  reasoning_output_tokens bigint,
+  total_tokens bigint,
+  token_usage_source_level text,
+  token_usage_evidence_level text,
+  standard_api_equivalent_usd_nanos bigint,
+  cost_estimator_status text not null default 'unavailable_missing_usage',
+  cost_evidence_level text,
+  cost_estimator_limitations text[] not null default array['per_request_long_context_unknown']::text[],
+  cost_method text not null default 'standard_api_equivalent_text_token_estimate',
+  cost_version text not null default 'aiq.standard-api-equivalent-usd.v1',
+  cost_as_of date not null default date '2026-08-02',
+  cost_source text not null default 'https://developers.openai.com/api/docs/pricing',
+  pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
+  unique (run_id, task_id, task_version, model_family, reasoning_effort),
+  foreign key (run_id,task_set_id,task_set_version)
+    references aiq_private.calibration_runs(run_id,task_set_id,task_set_version),
+  foreign key (task_set_id,task_set_version,task_id,task_version,task_hash)
+    references aiq_private.aiq_task_catalog(
+      task_set_id,task_set_version,task_id,task_version,task_hash
+    ),
+  constraint calibration_task_results_id check (result_id ~ '^result_[0-9a-f]{64}$'),
+  constraint calibration_task_results_task_hash check (task_hash ~ '^sha256:[0-9a-f]{64}$'),
+  constraint calibration_task_results_outcome_score check (
+    (outcome='correct' and task_score is not null and task_score=1)
+    or (outcome='partial' and task_score is not null and task_score>0 and task_score<1)
+    or (outcome in (
+      'incorrect','timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'
+    ) and task_score is not null and task_score=0)
+    or (outcome in ('invalid','missing','not_applicable') and task_score is null)
+  ),
+  constraint calibration_task_results_failure_code check (
+    failure_code is null or failure_code ~ '^[a-z0-9][a-z0-9._:-]{0,63}$'
+  ),
+  constraint calibration_task_results_failure_binding check (
+    (outcome in ('correct','partial','incorrect','missing') and failure_code is null)
+    or (outcome='timeout' and failure_code is not null and failure_code='timeout')
+    or (outcome='budget_exhausted' and failure_code is not null
+      and failure_code='budget_exceeded')
+    or (outcome='tool_failure' and failure_code is not null
+      and failure_code in ('unsupported_model','non_zero_exit'))
+    or (outcome='policy_failure' and failure_code is not null
+      and failure_code='output_truncated')
+    or (outcome='wrong_artifact' and failure_code is not null
+      and failure_code='missing_response')
+    or (outcome='invalid' and failure_code is not null and failure_code in (
+      'evaluator_failure','workspace_unavailable','workspace_integrity','missing_evaluator','spawn',
+      'authentication','subscription_limit','capability_validation_failed'
+    ))
+    or (outcome='not_applicable' and failure_code is not null
+      and failure_code='capability_unavailable')
+  )
+  ,constraint calibration_task_results_efficiency_nonnegative check (
+    latency_ms >= 0 and input_tokens >= 0 and cached_input_tokens >= 0
+    and cache_write_input_tokens >= 0 and output_tokens >= 0 and reasoning_output_tokens >= 0
+    and total_tokens >= 0 and standard_api_equivalent_usd_nanos >= 0
+  )
+  ,constraint calibration_task_results_cached_tokens check (
+    cached_input_tokens is null or input_tokens is null or cached_input_tokens <= input_tokens
+  )
+  ,constraint calibration_task_results_reasoning_subset check (
+    reasoning_output_tokens is null or output_tokens is null
+    or reasoning_output_tokens <= output_tokens
+  )
+  ,constraint calibration_task_results_evidence_levels check (
+    (latency_evidence_level is null or latency_evidence_level = 'runner_observed')
+    and (token_usage_source_level is null or token_usage_source_level = 'provider_reported')
+    and (token_usage_evidence_level is null or token_usage_evidence_level = 'verifier_recomputed')
+    and (cost_evidence_level is null or cost_evidence_level = 'verifier_recomputed')
+    and ((latency_ms is null) = (latency_evidence_level is null))
+    and ((input_tokens is null and cached_input_tokens is null
+      and cache_write_input_tokens is null and output_tokens is null
+      and reasoning_output_tokens is null and total_tokens is null)
+      = (token_usage_evidence_level is null))
+    and ((token_usage_source_level is null) = (token_usage_evidence_level is null))
+    and ((standard_api_equivalent_usd_nanos is null) = (cost_evidence_level is null))
+  )
+  ,constraint calibration_task_results_cost_metadata check (
+    cost_estimator_status in (
+      'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+      'unavailable_context_band'
+    )
+    and cost_method is not null and cost_version is not null
+    and cost_as_of is not null and cost_source is not null
+    and (cost_estimator_status <> 'estimated' or standard_api_equivalent_usd_nanos is not null)
+    and (cost_estimator_status = 'estimated' or standard_api_equivalent_usd_nanos is null)
+    and ((cost_estimator_status = 'unavailable_context_band') = coalesce((
+      input_tokens > 272000 and cached_input_tokens is not null
+      and cache_write_input_tokens is not null and output_tokens is not null
+    ), false))
+  )
+);
+
+comment on column aiq_private.calibration_task_results.latency_ms IS
+  'Observed Codex adapter invocation elapsed milliseconds. It is NULL when the adapter was not invoked.';
+comment on column aiq_private.calibration_task_results.outcome IS
+  'Normalized result outcome derived from the signed source status, failure kind, and model score tier.';
+comment on column aiq_private.calibration_task_results.failure_code IS
+  'Bounded structured source failure kind. Public views never expose the raw failure message.';
+
+create table aiq_private.calibration_verification_audit (
+  audit_id uuid primary key default extensions.gen_random_uuid(),
+  run_id text not null,
+  inbox_id uuid not null references aiq_private.aiq_submission_inbox(inbox_id),
+  package_sha256 text not null,
+  event_type text not null,
+  actor_node_id text not null references aiq_private.aiq_nodes(node_id),
+  event_digest text not null,
+  recorded_at timestamptz not null default clock_timestamp(),
+  unique (run_id, event_type),
+  foreign key (run_id,package_sha256)
+    references aiq_private.calibration_runs(run_id,package_sha256),
+  constraint calibration_verification_audit_event check (
+    event_type in ('verifier_recorded','publisher_published')
+  ),
+  constraint calibration_verification_audit_package check (package_sha256 ~ '^[0-9a-f]{64}$'),
+  constraint calibration_verification_audit_digest check (event_digest ~ '^sha256:[0-9a-f]{64}$')
+);
+
+create table aiq_private.calibration_publications (
+  run_id text primary key,
+  package_sha256 text not null unique,
+  publisher_node_id text not null references aiq_private.aiq_nodes(node_id),
+  classification text not null default 'local_calibration_non_official',
+  official_eligible boolean not null default false,
+  ranking_eligible boolean not null default false,
+  published_at timestamptz not null default clock_timestamp(),
+  foreign key (run_id,package_sha256)
+    references aiq_private.calibration_runs(run_id,package_sha256),
+  constraint calibration_publications_classification check (
+    classification = 'local_calibration_non_official'
+    and not official_eligible and not ranking_eligible
+  )
+);
+
+create function aiq_private.reject_calibration_evidence_mutation() returns trigger
+    language plpgsql
+    SET search_path to ''
+    as $$
+begin
+  raise exception 'publication and calibration evidence is append-only'
+    using errcode = '55000';
+end;
+$$;
+
+create trigger calibration_runs_append_only before update or delete on aiq_private.calibration_runs
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger aiq_publication_storage_evidence_append_only before update or delete on aiq_private.aiq_publication_storage_evidence
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger calibration_verification_stages_append_only before update or delete on aiq_private.calibration_verification_stages
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger efficiency_pricing_methods_append_only before update or delete on aiq_private.efficiency_pricing_methods
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger efficiency_official_models_append_only before update or delete on aiq_private.efficiency_official_models
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger calibration_model_scores_append_only before update or delete on aiq_private.calibration_model_scores
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger calibration_task_results_append_only before update or delete on aiq_private.calibration_task_results
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger calibration_verification_audit_append_only before update or delete on aiq_private.calibration_verification_audit
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger calibration_publications_append_only before update or delete on aiq_private.calibration_publications
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+
+create function public.aiq_stage_calibration_verification(
+  stage jsonb,target_inbox_id uuid,supplied_lease_token uuid,supplied_attempt integer
+) returns text
+    language plpgsql security definer
+    SET search_path to ''
+    as $$
+declare
+  claimed aiq_private.aiq_submission_inbox%rowtype;
+  existing_stage aiq_private.calibration_verification_stages%rowtype;
+  payload jsonb;
+  expected_stage_digest text;
+begin
+  perform aiq_private.require_request_role('aiq_verifier');
+  if jsonb_typeof(stage) <> 'object'
+    or not aiq_private.has_exact_jsonb_keys(stage,array[
+      'benchmark_version','capability_validation_digest','classification','content_hash',
+      'evaluator_results_artifact','execution_concurrency','finished_unix_ms','models','model_selection_digest',
+      'official_eligible','package_sha256','pricing','prompt_set_digest','provenance','ranking_eligible',
+      'region','result_efficiency','run_class','run_id','runner','runner_commit','scheduled_unix_ms',
+      'schema_version','score_reports_digest','scores','scoring_version','stage_digest',
+      'started_unix_ms','task_ids','task_selection_digest','task_set_hash','task_set_id',
+      'task_set_version','telemetry_digest','trust'
+    ]::text[])
+    or stage ->> 'schema_version' <> 'aiq.calibration-verified-stage.v1'
+    or stage ->> 'classification' <> 'local_calibration_non_official'
+    or stage ->> 'run_class' <> 'calibration'
+    or stage ->> 'trust' <> 'untrusted'
+    or stage -> 'official_eligible' <> 'false'::jsonb
+    or stage -> 'ranking_eligible' <> 'false'::jsonb
+    or stage ->> 'run_id' !~ '^run_[0-9a-f]{64}$'
+    or stage ->> 'package_sha256' !~ '^[0-9a-f]{64}$'
+    or not aiq_private.dto_sha256_is_valid(stage -> 'content_hash')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'task_set_hash')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'task_selection_digest')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'model_selection_digest')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'score_reports_digest')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'telemetry_digest')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'capability_validation_digest')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'prompt_set_digest')
+    or jsonb_typeof(stage -> 'runner') <> 'object'
+    or not aiq_private.has_exact_jsonb_keys(stage -> 'runner',array['node_id','public_key']::text[])
+    or aiq_private.node_public_key_matches_id(
+      stage #>> '{runner,node_id}',stage #>> '{runner,public_key}'
+    ) is not true
+    or jsonb_typeof(stage -> 'task_ids') <> 'array'
+    or jsonb_typeof(stage -> 'models') <> 'array'
+    or jsonb_typeof(stage -> 'scores') <> 'array'
+    or jsonb_typeof(stage -> 'result_efficiency') <> 'array'
+    or aiq_private.efficiency_pricing_v1_is_valid(stage -> 'pricing') is not true
+    or jsonb_array_length(stage->'scores')<>jsonb_array_length(stage->'models')
+    or jsonb_array_length(stage->'result_efficiency')<>
+      jsonb_array_length(stage->'models')*jsonb_array_length(stage->'task_ids')
+    or exists(select 1 from jsonb_array_elements(stage->'scores') score
+      where not aiq_private.has_exact_jsonb_keys(score,array['efficiency','model','score']::text[])
+        or aiq_private.calibration_model_is_valid(score->'model') is not true
+        or score->'model' is distinct from score#>'{score,model}'
+        or score->'model' is distinct from score#>'{efficiency,model}'
+        or score#>>'{efficiency,selected_tasks}' is distinct from
+          jsonb_array_length(stage->'task_ids')::text
+        or aiq_private.efficiency_aggregate_v1_is_valid(score->'efficiency') is not true
+        or aiq_private.efficiency_aggregate_matches_results(
+          score->'efficiency',stage->'result_efficiency'
+        ) is not true)
+    or (select count(distinct score->'model') from jsonb_array_elements(stage->'scores') score)
+      <>jsonb_array_length(stage->'models')
+    or exists(select 1 from jsonb_array_elements(stage->'scores') score
+      where not ((stage->'models') @> jsonb_build_array(score->'model')))
+    or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+      where aiq_private.result_efficiency_v1_is_valid(evidence) is not true
+        or not ((stage->'models') @> jsonb_build_array(evidence->'model'))
+        or not ((stage->'task_ids') @> jsonb_build_array(evidence->'task_id')))
+    or (select count(distinct (evidence->'model',evidence->>'task_id'))
+      from jsonb_array_elements(stage->'result_efficiency') evidence)
+      <>jsonb_array_length(stage->'result_efficiency')
+    or not aiq_private.dto_uint_is_valid(stage -> 'scheduled_unix_ms',9007199254740991)
+    or not aiq_private.dto_uint_is_valid(stage -> 'started_unix_ms',9007199254740991)
+    or not aiq_private.dto_uint_is_valid(stage -> 'finished_unix_ms',9007199254740991)
+    or not aiq_private.dto_uint_is_valid(stage -> 'execution_concurrency',32)
+    or (stage->>'execution_concurrency')::integer not between 1 and 32
+  then raise exception 'invalid calibration verification stage' using errcode = '22023'; end if;
+  expected_stage_digest := aiq_private.jcs_sha256(
+    stage - 'stage_digest'
+  );
+  if stage ->> 'stage_digest' is distinct from expected_stage_digest
+    or stage ->> 'task_selection_digest' is distinct from aiq_private.jcs_sha256(stage -> 'task_ids')
+    or stage ->> 'model_selection_digest' is distinct from aiq_private.jcs_sha256(stage -> 'models')
+    or stage ->> 'score_reports_digest' is distinct from aiq_private.jcs_sha256(stage -> 'scores')
+    or stage ->> 'telemetry_digest' is distinct from aiq_private.jcs_sha256(stage -> 'result_efficiency')
+  then raise exception 'calibration stage digest binding is invalid' using errcode = '22023'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.calibration:'||(stage->>'run_id'),
+    71783153620529
+  ));
+  select * into claimed from aiq_private.aiq_submission_inbox inbox
+  where inbox.inbox_id=target_inbox_id for update;
+  if claimed.inbox_id is null
+    or claimed.idempotency_key is distinct from stage->>'run_id'
+    or claimed.package_sha256 is distinct from stage->>'package_sha256'
+    or claimed.claim_token is distinct from supplied_lease_token
+    or claimed.claim_attempts is distinct from supplied_attempt
+  then raise exception 'calibration stage claim identity is absent or superseded'
+    using errcode='55000'; end if;
+  select * into existing_stage
+  from aiq_private.calibration_verification_stages saved
+  where saved.run_id=$1->>'run_id'
+  for update;
+  if existing_stage.run_id is not null then
+    if existing_stage.stage=$1
+      and existing_stage.inbox_id=target_inbox_id
+      and existing_stage.package_sha256=stage->>'package_sha256'
+    then return 'duplicate'; end if;
+    raise exception 'conflicting calibration stage' using errcode='23505';
+  end if;
+  claimed := aiq_private.require_verification_claim(
+    target_inbox_id,supplied_lease_token,supplied_attempt,
+    stage->>'run_id',stage->>'package_sha256',null
+  );
+  if aiq_private.calibration_package_v3_is_valid(claimed.envelope) is not true
+  then raise exception 'claim is not an admitted calibration package' using errcode='22023'; end if;
+  payload := claimed.envelope -> 'payload';
+  if stage ->> 'content_hash' is distinct from claimed.envelope ->> 'content_hash'
+    or stage -> 'runner' is distinct from claimed.envelope -> 'signer'
+    or stage ->> 'task_set_hash' is distinct from payload ->> 'task_set_hash'
+    or stage -> 'task_ids' is distinct from payload -> 'task_ids'
+    or stage -> 'models' is distinct from payload -> 'models'
+    or stage -> 'provenance' is distinct from payload -> 'provenance'
+    or stage -> 'execution_concurrency' is distinct from payload -> 'execution_concurrency'
+    or stage -> 'evaluator_results_artifact' is distinct from payload -> 'evaluator_results_artifact'
+    or stage ->> 'scoring_version' is distinct from payload ->> 'scoring_version'
+    or stage ->> 'started_unix_ms' is distinct from payload ->> 'started_unix_ms'
+    or stage ->> 'finished_unix_ms' is distinct from payload ->> 'finished_unix_ms'
+    or stage ->> 'capability_validation_digest' is distinct from aiq_private.jcs_sha256(payload -> 'capability_validation')
+    or not exists(select 1 from aiq_private.aiq_task_sets task_set
+      where task_set.task_set_id=stage->>'task_set_id'
+        and task_set.task_set_version=stage->>'task_set_version'
+        and task_set.task_count=72 and task_set.domain_count=10
+        and not coalesce((task_set.metadata->>'synthetic')::boolean,true))
+    or aiq_private.task_catalog_is_exact(
+      stage->>'task_set_id',stage->>'task_set_version'
+    ) is not true
+    or (select count(*)
+      from aiq_private.aiq_task_catalog catalog
+      join jsonb_array_elements_text(stage->'task_ids') selected(task_id)
+        on selected.task_id=catalog.task_id
+      where catalog.task_set_id=stage->>'task_set_id'
+        and catalog.task_set_version=stage->>'task_set_version'
+        and catalog.fixture_commitment is not null)<>
+      jsonb_array_length(stage->'task_ids')
+    or stage->>'task_set_hash' is distinct from (
+      select aiq_private.jcs_sha256(jsonb_agg(task_hash order by task_hash collate "C"))
+      from (
+        select distinct 'sha256:'||catalog.fixture_commitment as task_hash
+        from aiq_private.aiq_task_catalog catalog
+        join jsonb_array_elements_text(stage->'task_ids') selected(task_id)
+          on selected.task_id=catalog.task_id
+        where catalog.task_set_id=stage->>'task_set_id'
+          and catalog.task_set_version=stage->>'task_set_version'
+      ) selected_hashes
+    )
+    or exists(select 1 from jsonb_array_elements(payload->'results') source
+      where not exists(select 1 from aiq_private.aiq_task_catalog catalog
+        where catalog.task_set_id=stage->>'task_set_id'
+          and catalog.task_set_version=stage->>'task_set_version'
+          and catalog.task_id=source->>'task_id'
+          and catalog.task_version=source->>'task_version'
+          and catalog.fixture_commitment is not null
+          and source->>'task_hash'='sha256:'||catalog.fixture_commitment))
+    or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+      where not exists(select 1 from jsonb_array_elements(payload->'results') source
+        where source->>'result_id'=evidence->>'source_result_id'
+          and source->>'task_id'=evidence->>'task_id'
+          and source->'model'=evidence->'model'))
+    or exists(
+      select 1
+      from jsonb_array_elements(stage->'result_efficiency') evidence
+      join jsonb_array_elements(payload->'results') source
+        on source->>'result_id'=evidence->>'source_result_id'
+        and source->>'task_id'=evidence->>'task_id'
+        and source->'model'=evidence->'model'
+      where source#>>'{failure,kind}' in (
+        'capability_unavailable','capability_validation_failed','workspace_unavailable'
+      ) and (
+        evidence->'observed_wall_ms'<>'null'::jsonb
+        or evidence->'provider_tokens'<>'{}'::jsonb
+        or evidence->>'cost_status'<>'unavailable_missing_usage'
+      )
+    )
+  then raise exception 'calibration stage does not bind admitted package' using errcode='22023'; end if;
+  insert into aiq_private.calibration_verification_stages(
+    run_id,inbox_id,package_sha256,stage_digest,runner_node_id,stage
+  ) values(stage->>'run_id',target_inbox_id,stage->>'package_sha256',stage->>'stage_digest',
+    stage#>>'{runner,node_id}',$1);
+  return 'recorded';
+end;
+$$;
+
+create function public.aiq_record_calibration_attestation(
+  attestation jsonb,target_inbox_id uuid,supplied_lease_token uuid,supplied_attempt integer
+) returns text
+    language plpgsql security definer
+    SET search_path to ''
+    as $$
+declare
+  saved aiq_private.calibration_verification_stages%rowtype;
+  existing_run aiq_private.calibration_runs%rowtype;
+  claimed aiq_private.aiq_submission_inbox%rowtype;
+  payload jsonb;
+  stage jsonb;
+  verifier_node_id text;
+  score jsonb;
+  score_report jsonb;
+  score_efficiency jsonb;
+  result jsonb;
+  source_result jsonb;
+  result_score_tier text;
+  normalized_outcome text;
+  provider_tokens jsonb;
+  pricing jsonb;
+  computed_pricing_digest text;
+  attempted_count integer;
+  invoked_count integer;
+  inserted_rows integer;
+  stored_result_count integer;
+  duration_count integer;
+  duration_total bigint;
+  duration_median bigint;
+  duration_p95 bigint;
+begin
+  perform aiq_private.require_request_role('aiq_verifier');
+  if jsonb_typeof(attestation) <> 'object'
+    or not aiq_private.has_exact_jsonb_keys(attestation,array[
+      'capability_validation_digest','classification','content_hash','execution_concurrency',
+      'model_selection_digest','observed_unix_ms','official_eligible','package_sha256','ranking_eligible',
+      'replay_status','run_class','run_id','runner','schema_version','score_reports_digest',
+      'scoring_version','signature','signature_algorithm','signature_version','stage_digest',
+      'task_selection_digest','task_set_hash','telemetry_digest','trust','verifier'
+    ]::text[])
+    or attestation ->> 'schema_version' <> 'aiq.calibration-verifier-attestation.v1'
+    or attestation ->> 'signature_algorithm' <> 'ed25519'
+    or attestation ->> 'signature_version' <> 'aiq.ed25519-jcs.v1'
+    or attestation ->> 'classification' <> 'local_calibration_non_official'
+    or attestation ->> 'run_class' <> 'calibration'
+    or attestation ->> 'trust' <> 'untrusted'
+    or not coalesce(attestation->>'run_id'~'^run_[0-9a-f]{64}$',false)
+    or not coalesce(attestation->>'package_sha256'~'^[0-9a-f]{64}$',false)
+    or attestation -> 'official_eligible' <> 'false'::jsonb
+    or attestation -> 'ranking_eligible' <> 'false'::jsonb
+    or attestation ->> 'replay_status' <> 'evaluator_replayed'
+    or not aiq_private.dto_uint_is_valid(attestation -> 'observed_unix_ms',9007199254740991)
+    or attestation ->> 'signature' !~ '^[0-9a-f]{128}$'
+    or attestation ->> 'signature' = repeat('0',128)
+    or jsonb_typeof(attestation -> 'runner') <> 'object'
+    or jsonb_typeof(attestation -> 'verifier') <> 'object'
+    or not aiq_private.has_exact_jsonb_keys(attestation -> 'runner',array['node_id','public_key']::text[])
+    or not aiq_private.has_exact_jsonb_keys(attestation -> 'verifier',array['node_id','public_key']::text[])
+    or aiq_private.node_public_key_matches_id(
+      attestation#>>'{verifier,node_id}',attestation#>>'{verifier,public_key}'
+    ) is not true
+  then raise exception 'invalid calibration verifier attestation' using errcode='22023'; end if;
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.calibration:'||(attestation->>'run_id'),
+    71783153620529
+  ));
+  select * into claimed from aiq_private.aiq_submission_inbox inbox
+  where inbox.inbox_id=target_inbox_id for update;
+  if claimed.inbox_id is null
+    or claimed.idempotency_key is distinct from attestation->>'run_id'
+    or claimed.package_sha256 is distinct from attestation->>'package_sha256'
+    or claimed.claim_token is distinct from supplied_lease_token
+    or claimed.claim_attempts is distinct from supplied_attempt
+  then raise exception 'calibration attestation claim identity is absent or superseded'
+    using errcode='55000'; end if;
+  select * into saved from aiq_private.calibration_verification_stages candidate
+  where candidate.run_id=attestation->>'run_id'
+    and candidate.package_sha256=attestation->>'package_sha256'
+  for update;
+  if saved.run_id is null then raise exception 'calibration stage is absent' using errcode='55000'; end if;
+  stage := saved.stage;
+  select * into existing_run from aiq_private.calibration_runs run
+  where run.run_id=saved.run_id for update;
+  if existing_run.run_id is not null then
+    if existing_run.verifier_attestation=attestation
+      and existing_run.inbox_id=target_inbox_id
+      and existing_run.package_sha256=attestation->>'package_sha256'
+    then
+      perform aiq_private.reconcile_publication_storage_evidence(
+        'calibration',saved.run_id,saved.package_sha256,target_inbox_id
+      );
+      return 'duplicate';
+    end if;
+    raise exception 'conflicting calibration attestation' using errcode='23505';
+  end if;
+  if attestation ->> 'run_id' is distinct from stage ->> 'run_id'
+    or attestation ->> 'package_sha256' is distinct from stage ->> 'package_sha256'
+    or attestation ->> 'content_hash' is distinct from stage ->> 'content_hash'
+    or attestation ->> 'stage_digest' is distinct from stage ->> 'stage_digest'
+    or attestation -> 'runner' is distinct from stage -> 'runner'
+    or attestation ->> 'classification' is distinct from stage ->> 'classification'
+    or attestation ->> 'run_class' is distinct from stage ->> 'run_class'
+    or attestation -> 'official_eligible' is distinct from stage -> 'official_eligible'
+    or attestation -> 'ranking_eligible' is distinct from stage -> 'ranking_eligible'
+    or attestation ->> 'trust' is distinct from stage ->> 'trust'
+    or attestation ->> 'task_set_hash' is distinct from stage ->> 'task_set_hash'
+    or attestation ->> 'task_selection_digest' is distinct from stage ->> 'task_selection_digest'
+    or attestation ->> 'model_selection_digest' is distinct from stage ->> 'model_selection_digest'
+    or attestation ->> 'score_reports_digest' is distinct from stage ->> 'score_reports_digest'
+    or attestation ->> 'telemetry_digest' is distinct from stage ->> 'telemetry_digest'
+    or attestation ->> 'capability_validation_digest' is distinct from stage ->> 'capability_validation_digest'
+    or attestation ->> 'scoring_version' is distinct from stage ->> 'scoring_version'
+    or attestation -> 'execution_concurrency' is distinct from stage -> 'execution_concurrency'
+  then raise exception 'calibration attestation does not bind stage' using errcode='22023'; end if;
+  verifier_node_id := attestation#>>'{verifier,node_id}';
+  if aiq_private.production_execution_identities_are_authorized(saved.runner_node_id,verifier_node_id) is not true
+  then raise exception 'calibration verifier identity is not authorized or distinct' using errcode='42501'; end if;
+  claimed := aiq_private.require_verification_claim(
+    target_inbox_id,supplied_lease_token,supplied_attempt,saved.run_id,saved.package_sha256,null
+  );
+  if saved.inbox_id <> target_inbox_id then raise exception 'calibration claim differs from stage' using errcode='55000'; end if;
+  payload := claimed.envelope -> 'payload';
+  pricing := stage -> 'pricing';
+  if aiq_private.efficiency_pricing_v1_is_valid(pricing) is not true
+  then raise exception 'invalid calibration pricing evidence' using errcode='22023'; end if;
+  computed_pricing_digest := aiq_private.jcs_sha256(pricing);
+  insert into aiq_private.efficiency_pricing_methods(
+    pricing_digest,method,version,as_of,source,currency,processing_tier,
+    rates,formula,limitations,pricing_record
+  ) values(computed_pricing_digest,pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
+    pricing->>'source',pricing->>'currency',pricing->>'processing_tier',
+    pricing->'rates',pricing->>'formula',
+    array[pricing->>'limitation'],pricing)
+  on conflict on constraint efficiency_pricing_methods_pkey do nothing;
+  if not exists(select 1 from aiq_private.efficiency_pricing_methods method
+    where method.pricing_digest=computed_pricing_digest and method.pricing_record=pricing)
+  then raise exception 'conflicting calibration pricing evidence' using errcode='23505'; end if;
+  select count(*)::integer into attempted_count
+  from jsonb_array_elements(payload->'results') source
+  where coalesce(source#>>'{failure,kind}','') not in (
+    'capability_unavailable','capability_validation_failed'
+  );
+  select count(*)::integer into invoked_count
+  from jsonb_array_elements(payload->'results') source
+  where coalesce(source#>>'{failure,kind}','') not in (
+    'capability_unavailable','capability_validation_failed','workspace_unavailable'
+  );
+  with observed as (
+    select (efficiency.value->>'observed_wall_ms')::numeric as wall_ms
+    from jsonb_array_elements(stage -> 'result_efficiency') efficiency(value)
+    where efficiency.value -> 'observed_wall_ms' <> 'null'::jsonb
+      and not exists(
+        select 1 from jsonb_array_elements(payload -> 'results') source
+        where source ->> 'result_id'=efficiency.value ->> 'source_result_id'
+          and source #>> '{failure,kind}' in (
+            'capability_unavailable','capability_validation_failed','workspace_unavailable'
+          )
+      )
+  ), duration_aggregate as (
+    select count(*)::integer as sample_count,
+      sum(wall_ms) as total_ms,
+      array_agg(wall_ms order by wall_ms) as ordered_ms
+    from observed
+  )
+  select sample_count,
+    case when total_ms<=9007199254740991 then total_ms::bigint end,
+    case when sample_count=0 then null
+      when sample_count%2=0 then trunc(
+        (ordered_ms[sample_count/2]+ordered_ms[sample_count/2+1])/2
+      )::bigint
+      else ordered_ms[(sample_count+1)/2]::bigint end,
+    case when sample_count=0 then null
+      else ordered_ms[(sample_count*95+99)/100]::bigint end
+  into duration_count,duration_total,duration_median,duration_p95
+  from duration_aggregate;
+  if duration_count>0 and duration_total is null then
+    raise exception 'calibration duration total exceeds the safe integer range'
+      using errcode='22023';
+  end if;
+  insert into aiq_private.calibration_runs(
+    run_id,inbox_id,package_sha256,content_hash,normalization_digest,runner_node_id,
+    verifier_node_id,task_set_id,task_set_version,task_set_hash,scoring_version,
+    replay_status,selected_task_count,
+    selected_model_count,result_count,execution_concurrency,
+    attempted_result_count,invoked_result_count,
+    observed_duration_total_ms,observed_duration_median_ms,
+    observed_duration_p95_ms,duration_evidence_level,duration_coverage_count,started_at,completed_at,
+    standard_api_equivalent_usd_nanos,estimated_cost_coverage_count,token_usage_coverage_count,
+    cost_estimator_status,cost_evidence_level,cost_estimator_limitations,cost_method,
+    cost_version,cost_as_of,cost_source,verification_record,verifier_attestation,pricing_digest
+  ) values(
+    saved.run_id,saved.inbox_id,saved.package_sha256,stage->>'content_hash',saved.stage_digest,
+    saved.runner_node_id,verifier_node_id,stage->>'task_set_id',stage->>'task_set_version',
+    stage->>'task_set_hash',stage->>'scoring_version',
+    'evaluator_replayed',jsonb_array_length(stage->'task_ids'),jsonb_array_length(stage->'models'),
+    jsonb_array_length(payload->'results'),(stage->>'execution_concurrency')::integer,
+    attempted_count,invoked_count,
+    duration_total,duration_median,duration_p95,
+    case when duration_count=0 then null else 'runner_observed' end,duration_count,
+    to_timestamp((stage->>'started_unix_ms')::numeric/1000),
+    to_timestamp((stage->>'finished_unix_ms')::numeric/1000),
+    (select case when count(*)=count(value->>'standard_api_equivalent_usd_nanos')
+        and sum((value->>'standard_api_equivalent_usd_nanos')::numeric)
+          <= 9007199254740991
+      then sum((value->>'standard_api_equivalent_usd_nanos')::numeric)::bigint end
+      from jsonb_array_elements(stage->'result_efficiency')),
+    (select count(*)::integer from jsonb_array_elements(stage->'result_efficiency')
+      where value->'standard_api_equivalent_usd_nanos'<>'null'::jsonb),
+    (select count(*)::integer from jsonb_array_elements(stage->'result_efficiency')
+      where value->'provider_tokens'<>'{}'::jsonb),
+    case when not exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
+      where value->>'cost_status'<>'estimated')
+      and (select sum((value->>'standard_api_equivalent_usd_nanos')::numeric)
+        from jsonb_array_elements(stage->'result_efficiency')) <= 9007199254740991
+      then 'estimated'
+      when not exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
+        where value->>'cost_status'<>'estimated') then 'unavailable_invalid_usage'
+      when exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
+      where value->>'cost_status'='unavailable_invalid_usage') then 'unavailable_invalid_usage'
+      when exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
+      where value->>'cost_status'='unavailable_context_band') then 'unavailable_context_band'
+      else 'unavailable_missing_usage' end,
+    case when not exists(select 1 from jsonb_array_elements(stage->'result_efficiency') value
+      where value->>'cost_status'<>'estimated')
+      and (select sum((value->>'standard_api_equivalent_usd_nanos')::numeric)
+        from jsonb_array_elements(stage->'result_efficiency')) <= 9007199254740991
+      then 'verifier_recomputed' end,
+    array[pricing->>'limitation'],pricing->>'method',pricing->>'version',
+    (pricing->>'as_of')::date,pricing->>'source',stage,attestation,computed_pricing_digest
+  );
+  for score in select value from jsonb_array_elements(stage -> 'scores') loop
+    if jsonb_typeof(score) <> 'object'
+      or not aiq_private.has_exact_jsonb_keys(score,array['efficiency','model','score']::text[])
+      or aiq_private.calibration_model_is_valid(score->'model') is not true
+      or score->'model' is distinct from score#>'{score,model}'
+      or score->'model' is distinct from score#>'{efficiency,model}'
+    then raise exception 'invalid calibration verified score wrapper' using errcode='22023'; end if;
+    score_report := score -> 'score';
+    score_efficiency := score -> 'efficiency';
+    if jsonb_typeof(score_report) <> 'object'
+      or not aiq_private.has_exact_jsonb_keys(score_report,array[
+        'binary_micro_diagnostic','completion_bounds','conditional_observed_aiq','coverage',
+        'descriptive_status','difficulty_coverage','domains','duplicate_results','fixed_fixture_aiq',
+        'model','official_eligible','ranking_eligible','rule','run_class','schema_version',
+        'scoring_version','task_resampling_sensitivity_interval'
+      ]::text[])
+      or score_report->>'schema_version' <> 'aiq.calibration-score-report.v1'
+      or score_report->>'run_class' <> 'calibration'
+      or score_report->'official_eligible' <> 'false'::jsonb
+      or score_report->'ranking_eligible' <> 'false'::jsonb
+      or score_report->>'scoring_version' is distinct from stage->>'scoring_version'
+      or score_report->>'descriptive_status' not in ('complete_fixture','conditional_observed','coverage_only','not_applicable')
+      or score_report#>>'{coverage,expected_tasks}' is distinct from
+        jsonb_array_length(stage->'task_ids')::text
+      or score_efficiency->>'selected_tasks' is distinct from
+        jsonb_array_length(stage->'task_ids')::text
+      or not aiq_private.has_exact_jsonb_keys(score_efficiency,array[
+        'estimated_cost_tasks','median_observed_wall_ms','model','observed_wall_tasks',
+        'p95_observed_wall_ms','provider_token_coverage',
+        'provider_token_totals','schema_version','selected_tasks',
+        'standard_api_equivalent_usd_nanos','total_observed_wall_ms'
+      ]::text[])
+      or score_efficiency->>'schema_version'<>'aiq.calibration-efficiency.v1'
+      or jsonb_typeof(score_efficiency->'provider_token_totals')<>'object'
+      or (select count(*) from jsonb_object_keys(score_efficiency->'provider_token_totals'))>6
+      or exists(select 1 from jsonb_each(score_efficiency->'provider_token_totals') token
+        where token.key not in ('input','cached_input','cache_write_input','output','reasoning','total')
+          or not aiq_private.dto_uint_is_valid(token.value,9007199254740991))
+      or not aiq_private.has_exact_jsonb_keys(score_efficiency->'provider_token_coverage',array[
+        'cached_input_tasks','cache_write_input_tasks','input_tasks','output_tasks',
+        'reasoning_tasks','selected_tasks','total_tasks'
+      ]::text[])
+      or exists(select 1 from jsonb_each(score_efficiency->'provider_token_coverage') coverage
+        where not aiq_private.dto_uint_is_valid(coverage.value,1224))
+      or score_efficiency#>>'{provider_token_coverage,selected_tasks}'
+        is distinct from score_efficiency->>'selected_tasks'
+    then raise exception 'invalid calibration score report' using errcode='22023'; end if;
+    insert into aiq_private.calibration_model_scores(
+      run_id,model_family,reasoning_effort,descriptive_status,score,
+      task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,
+      task_resampling_sensitivity_method,result_count,
+      scored_result_count,coverage_percent,observed_total_wall_ms,
+      observed_median_wall_ms,observed_p95_wall_ms,observed_time_sample_count,
+      attempted_result_count,invoked_result_count,
+      observed_time_coverage_percent,duration_evidence_level,
+      standard_api_equivalent_usd_nanos,
+      estimated_cost_sample_count,input_tokens,cached_input_tokens,cache_write_input_tokens,
+      output_tokens,reasoning_output_tokens,total_tokens,token_usage_sample_count,
+      token_usage_coverage_percent,
+      cost_estimator_status,cost_evidence_level,
+      cost_estimator_limitations,pricing_source,pricing_as_of,pricing_version,pricing_digest
+    ) select saved.run_id,score#>>'{model,family}',score#>>'{model,reasoning_effort}',
+      score_report->>'descriptive_status',coalesce(
+        (score_report->>'fixed_fixture_aiq')::numeric,
+        (score_report->>'conditional_observed_aiq')::numeric
+      ),(score_report#>>'{task_resampling_sensitivity_interval,lower}')::numeric,
+      (score_report#>>'{task_resampling_sensitivity_interval,upper}')::numeric,
+      score_report#>>'{task_resampling_sensitivity_interval,method}',
+      (score_report#>>'{coverage,expected_tasks}')::integer,
+      (score_report#>>'{coverage,valid_tasks}')::integer,
+      round(100*(score_report#>>'{coverage,valid_tasks}')::numeric/
+        nullif((score_report#>>'{coverage,expected_tasks}')::numeric,0),4),
+      (score_efficiency->>'total_observed_wall_ms')::bigint,
+      (score_efficiency->>'median_observed_wall_ms')::bigint,
+      (score_efficiency->>'p95_observed_wall_ms')::bigint,
+      (score_efficiency->>'observed_wall_tasks')::integer,
+      (select count(*)::integer from jsonb_array_elements(payload->'results') source
+        where source->'model'=score->'model'
+          and coalesce(source#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed'
+          )),
+      (select count(*)::integer from jsonb_array_elements(payload->'results') source
+        where source->'model'=score->'model'
+          and coalesce(source#>>'{failure,kind}','') not in (
+            'capability_unavailable','capability_validation_failed','workspace_unavailable'
+          )),
+      round(100*(score_efficiency->>'observed_wall_tasks')::numeric/
+        nullif((score_efficiency->>'selected_tasks')::numeric,0),4),
+      case when (score_efficiency->>'observed_wall_tasks')::integer=0 then null else 'runner_observed' end,
+      case when (score_efficiency->>'estimated_cost_tasks')::integer=
+        (score_efficiency->>'selected_tasks')::integer
+        and score_efficiency->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
+        then (score_efficiency->>'standard_api_equivalent_usd_nanos')::bigint end,
+      (score_efficiency->>'estimated_cost_tasks')::integer,
+      (score_efficiency#>>'{provider_token_totals,input}')::bigint,
+      (score_efficiency#>>'{provider_token_totals,cached_input}')::bigint,
+      (score_efficiency#>>'{provider_token_totals,cache_write_input}')::bigint,
+      (score_efficiency#>>'{provider_token_totals,output}')::bigint,
+      (score_efficiency#>>'{provider_token_totals,reasoning}')::bigint,
+      (score_efficiency#>>'{provider_token_totals,total}')::bigint,
+      (select count(*)::integer from jsonb_array_elements(stage->'result_efficiency') evidence
+        where evidence->'model'=score->'model' and evidence->'provider_tokens'<>'{}'::jsonb),
+      round(100*(select count(*) from jsonb_array_elements(stage->'result_efficiency') evidence
+        where evidence->'model'=score->'model' and evidence->'provider_tokens'<>'{}'::jsonb)::numeric/
+        nullif((score_efficiency->>'selected_tasks')::numeric,0),4),
+      case when (score_efficiency->>'estimated_cost_tasks')::integer=
+        (score_efficiency->>'selected_tasks')::integer
+        and score_efficiency->'standard_api_equivalent_usd_nanos'<>'null'::jsonb then 'estimated'
+        when (score_efficiency->>'estimated_cost_tasks')::integer=
+          (score_efficiency->>'selected_tasks')::integer then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=score->'model'
+            and evidence->>'cost_status'='unavailable_invalid_usage'
+        ) then 'unavailable_invalid_usage'
+        when exists(
+          select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
+          where evidence->'model'=score->'model'
+            and evidence->>'cost_status'='unavailable_context_band'
+        ) then 'unavailable_context_band'
+        else 'unavailable_missing_usage' end,
+      case when score_efficiency->'standard_api_equivalent_usd_nanos'<>'null'::jsonb
+        then 'verifier_recomputed' end,
+      array[pricing->>'limitation'],pricing->>'source',
+      (pricing->>'as_of')::date,pricing->>'version',computed_pricing_digest;
+  end loop;
+  for result in select value from jsonb_array_elements(stage -> 'result_efficiency') loop
+    if not aiq_private.has_exact_jsonb_keys(result,array[
+      'cost_evidence_level','cost_status','model','observed_wall_ms',
+      'provider_tokens','provider_tokens_evidence_level',
+      'provider_tokens_source','source_result_id','standard_api_equivalent_usd_nanos',
+      'task_id','wall_time_evidence_level'
+    ]::text[])
+      or jsonb_typeof(result->'provider_tokens')<>'object'
+      or (select count(*) from jsonb_object_keys(result->'provider_tokens'))>6
+      or exists(select 1 from jsonb_each(result->'provider_tokens') token
+        where token.key not in ('input','cached_input','cache_write_input','output','reasoning','total')
+          or not aiq_private.dto_uint_is_valid(token.value,9007199254740991))
+      or result->>'wall_time_evidence_level'<>'runner_observed'
+      or result->>'provider_tokens_source'<>'provider_reported'
+      or result->>'provider_tokens_evidence_level'<>'verifier_recomputed'
+      or result->>'cost_evidence_level'<>'verifier_recomputed'
+      or result->>'cost_status' not in (
+        'estimated','unavailable_missing_usage','unavailable_invalid_usage',
+        'unavailable_context_band'
+      )
+      or (result->>'cost_status'='estimated') is distinct from
+        (result->'standard_api_equivalent_usd_nanos'<>'null'::jsonb)
+      or (result->'provider_tokens'='{}'::jsonb) is distinct from
+        (result->'provider_tokens_source'='null'::jsonb)
+      or (result->'provider_tokens'='{}'::jsonb) is distinct from
+        (result->'provider_tokens_evidence_level'='null'::jsonb)
+      or (result->'observed_wall_ms'='null'::jsonb) is distinct from
+        (result->'wall_time_evidence_level'='null'::jsonb)
+      or (result->'standard_api_equivalent_usd_nanos'='null'::jsonb) is distinct from
+        (result->'cost_evidence_level'='null'::jsonb)
+    then raise exception 'invalid calibration result efficiency' using errcode='22023'; end if;
+    select value into source_result from jsonb_array_elements(payload->'results') source
+    where source->>'result_id'=result->>'source_result_id'
+      and source->>'task_id'=result->>'task_id' and source->'model'=result->'model';
+    if source_result is null then raise exception 'calibration efficiency source result is absent' using errcode='22023'; end if;
+    select score_entry.value#>>'{score,descriptive_status}' into result_score_tier
+    from jsonb_array_elements(stage->'scores') score_entry(value)
+    where score_entry.value->'model'=result->'model';
+    normalized_outcome:=aiq_private.normalized_outcome_from_source(
+      source_result,result_score_tier
+    );
+    if result_score_tier is null or normalized_outcome is null then
+      raise exception 'calibration result outcome is not normalized from its score tier'
+        using errcode='22023';
+    end if;
+    provider_tokens := result -> 'provider_tokens';
+    insert into aiq_private.calibration_task_results(
+      result_id,run_id,task_set_id,task_set_version,task_id,task_version,task_hash,domain,
+      model_family,reasoning_effort,
+      outcome,task_score,failure_code,latency_ms,latency_evidence_level,input_tokens,
+      cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,
+      total_tokens,token_usage_source_level,token_usage_evidence_level,
+      standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,
+      cost_estimator_limitations,cost_method,cost_version,cost_as_of,cost_source,pricing_digest
+    ) select source_result->>'result_id',saved.run_id,stage->>'task_set_id',
+      stage->>'task_set_version',source_result->>'task_id',
+      source_result->>'task_version',source_result->>'task_hash',catalog.domain,
+      result#>>'{model,family}',
+      result#>>'{model,reasoning_effort}',
+      normalized_outcome::aiq_private.result_outcome,
+      (source_result->>'task_score')::numeric,source_result#>>'{failure,kind}',
+      case when source_result #>> '{failure,kind}' in (
+        'capability_unavailable','capability_validation_failed','workspace_unavailable'
+      ) then null else (result->>'observed_wall_ms')::bigint end,
+      case when result->'observed_wall_ms'='null'::jsonb
+        or source_result #>> '{failure,kind}' in (
+          'capability_unavailable','capability_validation_failed','workspace_unavailable'
+        ) then null else 'runner_observed' end,
+      (provider_tokens->>'input')::bigint,(provider_tokens->>'cached_input')::bigint,
+      (provider_tokens->>'cache_write_input')::bigint,(provider_tokens->>'output')::bigint,
+      (provider_tokens->>'reasoning')::bigint,(provider_tokens->>'total')::bigint,
+      result->>'provider_tokens_source',result->>'provider_tokens_evidence_level',
+      (result->>'standard_api_equivalent_usd_nanos')::bigint,
+      result->>'cost_status',result->>'cost_evidence_level',array[pricing->>'limitation'],
+      pricing->>'method',pricing->>'version',(pricing->>'as_of')::date,
+      pricing->>'source',computed_pricing_digest
+    from aiq_private.aiq_task_catalog catalog
+    where catalog.task_set_id=stage->>'task_set_id'
+      and catalog.task_set_version=stage->>'task_set_version'
+      and catalog.task_id=source_result->>'task_id'
+      and catalog.task_version=source_result->>'task_version'
+      and catalog.fixture_commitment is not null
+      and source_result->>'task_hash'='sha256:'||catalog.fixture_commitment;
+    get diagnostics inserted_rows=row_count;
+    if inserted_rows<>1 then
+      raise exception 'calibration result did not bind exactly one catalog task'
+        using errcode='23514';
+    end if;
+  end loop;
+  select count(*)::integer into stored_result_count
+  from aiq_private.calibration_task_results stored
+  where stored.run_id=saved.run_id;
+  if stored_result_count<>jsonb_array_length(payload->'results')
+    or stored_result_count<>(select run.result_count
+      from aiq_private.calibration_runs run where run.run_id=saved.run_id)
+  then raise exception 'stored calibration result count differs from verified package'
+    using errcode='23514'; end if;
+  insert into aiq_private.calibration_verification_audit(
+    run_id,inbox_id,package_sha256,event_type,actor_node_id,event_digest
+  ) values(saved.run_id,saved.inbox_id,saved.package_sha256,'verifier_recorded',verifier_node_id,
+    aiq_private.jcs_sha256(jsonb_build_array(stage,attestation)));
+  perform aiq_private.reconcile_publication_storage_evidence(
+    'calibration',saved.run_id,saved.package_sha256,target_inbox_id
+  );
+  return 'recorded';
+exception when invalid_text_representation or numeric_value_out_of_range then
+  raise exception 'invalid calibration numeric field' using errcode='22023';
+end;
+$$;
+
+create function public.aiq_publish_calibration_evidence(
+  target_run_id text, target_package_sha256 text, target_inbox_id uuid,
+  supplied_lease_token uuid, supplied_attempt integer
+) returns text
+    language plpgsql security definer
+    SET search_path to ''
+    as $$
+declare
+  claimed aiq_private.aiq_submission_inbox%rowtype;
+  calibration aiq_private.calibration_runs%rowtype;
+  publication aiq_private.calibration_publications%rowtype;
+  publisher_node_id text;
+begin
+  perform aiq_private.require_request_role('aiq_publisher');
+  if not coalesce(target_run_id~'^run_[0-9a-f]{64}$',false)
+    or not coalesce(target_package_sha256~'^[0-9a-f]{64}$',false)
+  then raise exception 'invalid calibration publication identity'
+    using errcode='22023'; end if;
+  publisher_node_id := aiq_private.request_publisher_node_id();
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    'aiq.calibration:'||target_run_id,
+    71783153620529
+  ));
+  select * into claimed from aiq_private.aiq_submission_inbox inbox
+  where inbox.inbox_id=target_inbox_id for update;
+  if claimed.inbox_id is null
+    or claimed.idempotency_key is distinct from target_run_id
+    or claimed.package_sha256 is distinct from target_package_sha256
+    or claimed.claim_token is distinct from supplied_lease_token
+    or claimed.claim_attempts is distinct from supplied_attempt
+  then raise exception 'calibration publication claim identity is absent or superseded'
+    using errcode='55000'; end if;
+  select * into calibration from aiq_private.calibration_runs run
+  where run.run_id = target_run_id and run.package_sha256 = target_package_sha256
+  for update;
+  if calibration.run_id is null then
+    raise exception 'verified calibration evidence is absent' using errcode = '55000';
+  end if;
+  select * into publication from aiq_private.calibration_publications existing
+  where existing.run_id=target_run_id for update;
+  if publication.run_id is not null then
+    if publication.package_sha256=target_package_sha256
+      and publication.publisher_node_id=publisher_node_id
+      and calibration.inbox_id=target_inbox_id
+    then
+      perform aiq_private.reconcile_publication_storage_evidence(
+        'calibration',target_run_id,target_package_sha256,target_inbox_id
+      );
+      return 'duplicate';
+    end if;
+    raise exception 'conflicting calibration publication' using errcode = '23505';
+  end if;
+  claimed := aiq_private.require_verification_claim(
+    target_inbox_id,supplied_lease_token,supplied_attempt,
+    target_run_id,target_package_sha256,null
+  );
+  if calibration.inbox_id <> target_inbox_id
+    or aiq_private.production_publisher_identity_is_authorized(
+      publisher_node_id,calibration.runner_node_id,calibration.verifier_node_id
+    ) is not true
+  then raise exception 'calibration publisher identity or claim is invalid' using errcode = '42501'; end if;
+  perform aiq_private.reconcile_publication_storage_evidence(
+    'calibration',target_run_id,target_package_sha256,target_inbox_id
+  );
+  insert into aiq_private.calibration_publications (
+    run_id,package_sha256,publisher_node_id
+  ) values (target_run_id,target_package_sha256,publisher_node_id);
+  insert into aiq_private.calibration_verification_audit (
+    run_id,inbox_id,package_sha256,event_type,actor_node_id,event_digest
+  ) values (
+    target_run_id,target_inbox_id,target_package_sha256,'publisher_published',publisher_node_id,
+    aiq_private.jcs_sha256(jsonb_build_object(
+      'schema_version','aiq.calibration-publication.v1','run_id',target_run_id,
+      'package_sha256',target_package_sha256,'publisher_node_id',publisher_node_id,
+      'classification','local_calibration_non_official',
+      'official_eligible',false,'ranking_eligible',false
+    ))
+  );
+  update aiq_private.aiq_submission_inbox inbox
+  set verification_status = 'verified',state = 'processed',claim_ack = 'completed',
+      claim_expires_at = null,expires_at = greatest(inbox.expires_at,clock_timestamp() + interval '1 year')
+  where inbox.inbox_id = target_inbox_id
+    and inbox.claim_token = supplied_lease_token
+    and inbox.claim_attempts = supplied_attempt;
+  perform aiq_private.retire_claim_artifact_references(
+    target_inbox_id,supplied_lease_token,supplied_attempt,'completed'
+  );
+  return 'published';
+end;
+$$;
+
+CREATE VIEW public.public_calibration_runs with (security_invoker=true) as
+select run.run_id,
+  run.classification,
+  run.scoring_version,
+  run.selected_task_count,
+  run.selected_model_count,
+  run.result_count,
+  run.attempted_result_count,
+  run.invoked_result_count,
+  run.duration_coverage_count as adapter_elapsed_observed_result_count,
+  run.token_usage_coverage_count as token_observed_result_count,
+  run.estimated_cost_coverage_count as priced_result_count,
+  run.execution_concurrency,
+  run.observed_duration_total_ms,
+  run.observed_duration_median_ms,
+  run.observed_duration_p95_ms,
+  run.duration_evidence_level,
+  run.duration_coverage_count,
+  run.standard_api_equivalent_usd_nanos,
+  run.estimated_cost_coverage_count,
+  run.token_usage_coverage_count,
+  case when run.token_usage_coverage_count=0 then null else 'provider_reported' end
+    as token_usage_source_level,
+  case when run.token_usage_coverage_count=0 then null else 'verifier_recomputed' end
+    as token_usage_evidence_level,
+  run.cost_estimator_status,
+  run.cost_evidence_level,
+  run.cost_estimator_limitations,
+  run.cost_method,
+  run.cost_version,
+  run.cost_as_of,
+  run.cost_source,
+  run.pricing_digest,
+  pricing.currency as pricing_currency,
+  pricing.processing_tier as pricing_processing_tier,
+  pricing.rates as pricing_rates,
+  pricing.formula as cost_formula,
+  run.started_at,
+  run.completed_at,
+  run.verified_at,
+  publication.published_at,
+  run.replay_status,
+  false as official,
+  false as ranking_eligible
+from aiq_private.calibration_runs run
+join aiq_private.calibration_publications publication using (run_id)
+join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
+where not run.official_eligible and not run.ranking_eligible
+  and not publication.official_eligible and not publication.ranking_eligible;
+
+CREATE VIEW public.public_model_efficiency with (security_invoker=true) as
+select efficiency.run_id,run.matrix_batch_id,model.model_family,model.reasoning_effort,
+  floor(extract(epoch from (run.completed_at-run.started_at))*1000)::bigint
+    as matrix_batch_elapsed_ms,
+  efficiency.observed_total_wall_ms as summed_cell_adapter_elapsed_ms,
+  efficiency.observed_median_wall_ms,
+  efficiency.observed_p95_wall_ms,
+  efficiency.adapter_elapsed_observed_result_count as observed_time_sample_count,
+  round(100*efficiency.adapter_elapsed_observed_result_count::numeric/
+    efficiency.result_count,4) as observed_time_coverage_percent,
+  case when efficiency.adapter_elapsed_observed_result_count=0 then null else 'runner_observed' end
+    as duration_evidence_level,
+  efficiency.input_tokens,efficiency.cached_input_tokens,
+  efficiency.cache_write_input_tokens,efficiency.output_tokens,
+  efficiency.reasoning_output_tokens,efficiency.total_tokens,
+  efficiency.token_observed_result_count as token_usage_sample_count,
+  case when efficiency.token_observed_result_count=0 then null else
+    round(100*efficiency.token_observed_result_count::numeric/efficiency.result_count,4) end
+    as token_usage_coverage_percent,
+  nullif(efficiency.input_token_observed_result_count,0) as input_token_coverage_count,
+  case when efficiency.input_token_observed_result_count=0 then null else
+    round(100*efficiency.input_token_observed_result_count::numeric/efficiency.result_count,4) end
+    as input_token_coverage_percent,
+  nullif(efficiency.cached_input_token_observed_result_count,0) as cached_input_token_coverage_count,
+  case when efficiency.cached_input_token_observed_result_count=0 then null else
+    round(100*efficiency.cached_input_token_observed_result_count::numeric/efficiency.result_count,4)
+    end as cached_input_token_coverage_percent,
+  nullif(efficiency.cache_write_input_token_observed_result_count,0)
+    as cache_write_input_token_coverage_count,
+  case when efficiency.cache_write_input_token_observed_result_count=0 then null else
+    round(100*efficiency.cache_write_input_token_observed_result_count::numeric/
+      efficiency.result_count,4) end as cache_write_input_token_coverage_percent,
+  nullif(efficiency.output_token_observed_result_count,0) as output_token_coverage_count,
+  case when efficiency.output_token_observed_result_count=0 then null else
+    round(100*efficiency.output_token_observed_result_count::numeric/efficiency.result_count,4) end
+    as output_token_coverage_percent,
+  nullif(efficiency.reasoning_token_observed_result_count,0) as reasoning_token_coverage_count,
+  case when efficiency.reasoning_token_observed_result_count=0 then null else
+    round(100*efficiency.reasoning_token_observed_result_count::numeric/
+      efficiency.result_count,4) end as reasoning_token_coverage_percent,
+  nullif(efficiency.total_token_observed_result_count,0) as total_token_coverage_count,
+  case when efficiency.total_token_observed_result_count=0 then null else
+    round(100*efficiency.total_token_observed_result_count::numeric/efficiency.result_count,4) end
+    as total_token_coverage_percent,
+  case when efficiency.token_observed_result_count=0 then null else 'provider_reported' end
+    as token_usage_source_level,
+  case when efficiency.token_observed_result_count=0 then null else 'verifier_recomputed' end
+    as token_usage_evidence_level,
+  efficiency.result_count,efficiency.priced_result_count as estimated_cost_sample_count,
+  efficiency.attempted_result_count,efficiency.invoked_result_count,
+  efficiency.adapter_elapsed_observed_result_count,
+  efficiency.token_observed_result_count,efficiency.priced_result_count,
+  efficiency.standard_api_equivalent_usd_nanos,efficiency.cost_estimator_status,
+  efficiency.cost_evidence_level,efficiency.execution_concurrency,
+  pricing.method as cost_method,pricing.source as pricing_source,
+  pricing.as_of as pricing_as_of,pricing.version as pricing_version,
+  efficiency.pricing_digest,
+  pricing.currency as pricing_currency,
+  pricing.processing_tier as pricing_processing_tier,
+  pricing.rates as pricing_rates,pricing.formula as cost_formula,
+  pricing.limitations as cost_estimator_limitations
+from aiq_private.efficiency_official_models efficiency
+join aiq_private.aiq_runs run using(run_id)
+join aiq_private.aiq_model_configs model using(model_config_id)
+join aiq_private.efficiency_pricing_methods pricing using(pricing_digest)
+where run.published and not run.synthetic
+  and run.started_at is not null and run.completed_at is not null
+  and exists(select 1 from aiq_private.aiq_score_snapshots score
+    where score.run_id=run.run_id and score.published and score.score_status='official');
+
+comment on column public.public_model_efficiency.matrix_batch_elapsed_ms is
+  'Signed matrix-stage wall-clock elapsed time. All 17 child runs share this value; count it once.';
+comment on column public.public_model_efficiency.summed_cell_adapter_elapsed_ms is
+  'Sum of retained per-result Codex adapter elapsed times. Concurrent calls can overlap.';
+
+CREATE VIEW public.public_calibration_results with (security_invoker=true) as
+select result.result_id,
+  result.run_id,
+  result.task_id,
+  result.task_version,
+  result.domain,
+  result.model_family,
+  result.reasoning_effort,
+  result.outcome::text as outcome,
+  case
+    when result.outcome in ('correct','partial') then 'passed'
+    when result.outcome='invalid' then 'invalid'
+    when result.outcome='missing' then 'missing'
+    when result.outcome='not_applicable' then 'not_applicable'
+    else 'failed'
+  end as status,
+  result.task_score,
+  result.failure_code,
+  result.failure_code as explanation_code,
+  case
+    when result.outcome='timeout' then 'The task exceeded its time limit.'
+    when result.outcome='budget_exhausted' then 'The task exceeded a resource budget.'
+    when result.outcome='tool_failure' then 'A permitted execution tool failed.'
+    when result.outcome='policy_failure' then 'The result violated a controlled-output policy.'
+    when result.outcome='wrong_artifact' then 'The expected artifact was not produced.'
+    when result.outcome='invalid' then
+      'Benchmark infrastructure invalidated this result; an audited rerun is required.'
+    when result.outcome='missing' then 'No task result was available.'
+    when result.outcome='not_applicable' then
+      'The complete model configuration was unavailable.'
+    when result.outcome='incorrect' then 'The evaluator rejected the response.'
+    else null
+  end as explanation_summary,
+  result.latency_ms,
+  result.latency_evidence_level,
+  result.input_tokens,
+  result.cached_input_tokens,
+  result.output_tokens,
+  result.cache_write_input_tokens,
+  result.reasoning_output_tokens,
+  result.total_tokens,
+  result.token_usage_source_level,
+  result.token_usage_evidence_level,
+  result.standard_api_equivalent_usd_nanos,
+  result.cost_estimator_status,
+  result.cost_evidence_level,
+  result.cost_estimator_limitations,
+  result.cost_method,
+  result.cost_version,
+  result.cost_as_of,
+  result.cost_source,
+  result.pricing_digest,
+  pricing.currency as pricing_currency,
+  pricing.processing_tier as pricing_processing_tier,
+  pricing.rates as pricing_rates,
+  pricing.formula as cost_formula
+from aiq_private.calibration_task_results result
+join aiq_private.calibration_publications publication using (run_id)
+join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
+where not publication.official_eligible and not publication.ranking_eligible;
+
+CREATE VIEW public.public_calibration_scores with (security_invoker=true) as
+select score.run_id,
+  score.model_family,
+  score.reasoning_effort,
+  score.descriptive_status,
+  score.score as aiq,
+  score.task_resampling_sensitivity_lower,
+  score.task_resampling_sensitivity_upper,
+  score.task_resampling_sensitivity_method,
+  score.result_count,
+  score.attempted_result_count,
+  score.invoked_result_count,
+  score.observed_time_sample_count as adapter_elapsed_observed_result_count,
+  score.token_usage_sample_count as token_observed_result_count,
+  score.estimated_cost_sample_count as priced_result_count,
+  score.scored_result_count as sample_size,
+  score.coverage_percent,
+  score.observed_total_wall_ms,
+  score.observed_median_wall_ms,
+  score.observed_p95_wall_ms,
+  score.observed_time_sample_count,
+  score.observed_time_coverage_percent,
+  score.duration_evidence_level,
+  score.standard_api_equivalent_usd_nanos,
+  score.estimated_cost_sample_count,
+  score.input_tokens,
+  score.cached_input_tokens,
+  score.cache_write_input_tokens,
+  score.output_tokens,
+  score.reasoning_output_tokens,
+  score.total_tokens,
+  score.token_usage_sample_count,
+  score.token_usage_coverage_percent,
+  case when score.token_usage_sample_count=0 then null else 'provider_reported' end
+    as token_usage_source_level,
+  case when score.token_usage_sample_count=0 then null else 'verifier_recomputed' end
+    as token_usage_evidence_level,
+  score.cost_estimator_status,
+  score.cost_evidence_level,
+  score.cost_estimator_limitations,
+  score.pricing_source,
+  score.pricing_as_of,
+  score.pricing_version,
+  score.pricing_digest,
+  pricing.method as cost_method,
+  pricing.currency as pricing_currency,
+  pricing.processing_tier as pricing_processing_tier,
+  pricing.rates as pricing_rates,
+  pricing.formula as cost_formula
+from aiq_private.calibration_model_scores score
+join aiq_private.calibration_publications publication using (run_id)
+join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
+where not publication.official_eligible and not publication.ranking_eligible;
+
+alter table aiq_private.calibration_runs enable row level security;
+alter table aiq_private.aiq_publication_storage_evidence enable row level security;
+alter table aiq_private.calibration_verification_stages enable row level security;
+alter table aiq_private.efficiency_pricing_methods enable row level security;
+alter table aiq_private.efficiency_official_models enable row level security;
+alter table aiq_private.calibration_model_scores enable row level security;
+alter table aiq_private.calibration_task_results enable row level security;
+alter table aiq_private.calibration_verification_audit enable row level security;
+alter table aiq_private.calibration_publications enable row level security;
+ALTER TABLE aiq_private.calibration_runs FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.aiq_publication_storage_evidence FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.calibration_verification_stages FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.efficiency_pricing_methods FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.efficiency_official_models FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.calibration_model_scores FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.calibration_task_results FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.calibration_verification_audit FORCE ROW LEVEL SECURITY;
+ALTER TABLE aiq_private.calibration_publications FORCE ROW LEVEL SECURITY;
+
+create policy calibration_runs_public_read on aiq_private.calibration_runs
+  for select to anon, authenticated using (exists (
+    select 1 from aiq_private.calibration_publications publication
+    where publication.run_id = calibration_runs.run_id
+      and not publication.official_eligible and not publication.ranking_eligible
+  ));
+create policy calibration_task_results_public_read on aiq_private.calibration_task_results
+  for select to anon, authenticated using (exists (
+    select 1 from aiq_private.calibration_publications publication
+    where publication.run_id = calibration_task_results.run_id
+      and not publication.official_eligible and not publication.ranking_eligible
+  ));
+create policy calibration_model_scores_public_read on aiq_private.calibration_model_scores
+  for select to anon, authenticated using (exists (
+    select 1 from aiq_private.calibration_publications publication
+    where publication.run_id = calibration_model_scores.run_id
+      and not publication.official_eligible and not publication.ranking_eligible
+  ));
+create policy calibration_publications_public_read on aiq_private.calibration_publications
+  for select to anon, authenticated using (
+    not official_eligible and not ranking_eligible
+  );
+create policy efficiency_pricing_methods_public_read on aiq_private.efficiency_pricing_methods
+  for select to anon, authenticated using (
+    exists(select 1 from aiq_private.calibration_runs calibration
+      join aiq_private.calibration_publications publication using(run_id)
+      where calibration.pricing_digest=efficiency_pricing_methods.pricing_digest)
+    or exists(select 1 from aiq_private.aiq_task_results result
+      join aiq_private.aiq_runs run using(run_id)
+      where result.pricing_digest=efficiency_pricing_methods.pricing_digest
+        and run.published and not run.synthetic)
+  );
+create policy efficiency_official_models_public_read on aiq_private.efficiency_official_models
+  for select to anon, authenticated using (
+    exists(select 1 from aiq_private.aiq_runs run
+      where run.run_id=efficiency_official_models.run_id
+        and run.published and not run.synthetic
+        and exists(select 1 from aiq_private.aiq_score_snapshots score
+          where score.run_id=run.run_id and score.published and score.score_status='official'))
+  );
+
+revoke all on function aiq_private.calibration_model_is_valid(jsonb) from PUBLIC;
+revoke all on function aiq_private.calibration_package_v3_is_valid(jsonb) from PUBLIC;
+revoke all on function aiq_private.reconcile_publication_storage_evidence(text,text,text,uuid)
+  from PUBLIC;
+revoke all on function aiq_private.efficiency_pricing_v1_is_valid(jsonb) from PUBLIC;
+revoke all on function aiq_private.provider_token_usage_is_valid(jsonb) from PUBLIC;
+revoke all on function aiq_private.result_efficiency_v1_is_valid(jsonb) from PUBLIC;
+revoke all on function aiq_private.efficiency_aggregate_v1_is_valid(jsonb) from PUBLIC;
+revoke all on function aiq_private.efficiency_aggregate_matches_results(jsonb,jsonb)
+  from PUBLIC;
+revoke all on function aiq_private.reject_calibration_evidence_mutation() from PUBLIC;
+revoke all on function public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)
+  from public,anon,authenticated,service_role,aiq_publisher;
+grant execute on function public.aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)
+  to aiq_verifier;
+revoke all on function public.aiq_record_calibration_attestation(jsonb,uuid,uuid,integer)
+  from public,anon,authenticated,service_role,aiq_publisher;
+grant execute on function public.aiq_record_calibration_attestation(jsonb,uuid,uuid,integer)
+  to aiq_verifier;
+revoke all on function public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)
+  from public, anon, authenticated, service_role, aiq_verifier;
+grant execute on function public.aiq_publish_calibration_evidence(text,text,uuid,uuid,integer)
+  to aiq_publisher;
+
+revoke all on table public.public_calibration_runs, public.public_calibration_results,
+  public.public_calibration_scores,public.public_model_efficiency
+  from public, anon, authenticated;
+grant select on table public.public_calibration_runs to anon, authenticated;
+grant select on table public.public_calibration_results to anon, authenticated;
+grant select on table public.public_calibration_scores to anon, authenticated;
+grant select on table public.public_model_efficiency to anon, authenticated;
+grant select(run_id,classification,scoring_version,selected_task_count,selected_model_count,
+  result_count,execution_concurrency,attempted_result_count,invoked_result_count,
+  observed_duration_total_ms,observed_duration_median_ms,
+  observed_duration_p95_ms,duration_evidence_level,duration_coverage_count,
+  standard_api_equivalent_usd_nanos,
+  estimated_cost_coverage_count,token_usage_coverage_count,cost_estimator_status,cost_evidence_level,
+  cost_estimator_limitations,cost_method,cost_version,
+  cost_as_of,cost_source,started_at,completed_at,
+  verified_at,replay_status,official_eligible,ranking_eligible,pricing_digest)
+  on aiq_private.calibration_runs to anon, authenticated;
+grant select(run_id,official_eligible,ranking_eligible,published_at)
+  on aiq_private.calibration_publications to anon, authenticated;
+grant select(result_id,run_id,task_id,task_version,domain,model_family,reasoning_effort,
+  outcome,task_score,failure_code,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,
+  cache_write_input_tokens,
+  output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,
+  token_usage_evidence_level,
+  standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,
+  cost_estimator_limitations,cost_method,cost_version,
+  cost_as_of,cost_source,pricing_digest)
+  on aiq_private.calibration_task_results to anon, authenticated;
+grant select(run_id,model_family,reasoning_effort,descriptive_status,score,result_count,
+  task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,
+  task_resampling_sensitivity_method,
+  scored_result_count,coverage_percent,observed_total_wall_ms,observed_median_wall_ms,
+  observed_p95_wall_ms,observed_time_sample_count,attempted_result_count,invoked_result_count,
+  observed_time_coverage_percent,
+  duration_evidence_level,
+  standard_api_equivalent_usd_nanos,estimated_cost_sample_count,input_tokens,
+  cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,
+  token_usage_sample_count,token_usage_coverage_percent,cost_estimator_status,cost_evidence_level,
+  cost_estimator_limitations,
+  pricing_source,pricing_as_of,pricing_version,pricing_digest)
+  on aiq_private.calibration_model_scores to anon, authenticated;
+grant select(latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,
+  reasoning_output_tokens,total_tokens,token_usage_evidence_level,
+  standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,pricing_digest)
+  on aiq_private.aiq_task_results to anon, authenticated;
+grant select(pricing_digest,method,version,as_of,source,currency,processing_tier,rates,formula,limitations)
+  on aiq_private.efficiency_pricing_methods to anon, authenticated;
+grant select(run_id,result_count,attempted_result_count,execution_concurrency,
+  invoked_result_count,adapter_elapsed_observed_result_count,observed_total_wall_ms,
+  observed_median_wall_ms,observed_p95_wall_ms,input_tokens,cached_input_tokens,
+  cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,
+  token_observed_result_count,input_token_observed_result_count,
+  cached_input_token_observed_result_count,cache_write_input_token_observed_result_count,
+  output_token_observed_result_count,reasoning_token_observed_result_count,
+  total_token_observed_result_count,priced_result_count,standard_api_equivalent_usd_nanos,
+  cost_estimator_status,cost_evidence_level,pricing_digest)
+  on aiq_private.efficiency_official_models to anon, authenticated;
+
+create index calibration_runs_package_idx on aiq_private.calibration_runs(package_sha256);
+create index calibration_runs_pricing_idx on aiq_private.calibration_runs(pricing_digest);
+create index aiq_publication_storage_evidence_object_idx
+  on aiq_private.aiq_publication_storage_evidence(object_id,content_sha256);
+create index aiq_publication_storage_evidence_official_fk_idx
+  on aiq_private.aiq_publication_storage_evidence(official_batch_id,package_sha256)
+  where official_batch_id is not null;
+create index aiq_publication_storage_evidence_calibration_fk_idx
+  on aiq_private.aiq_publication_storage_evidence(calibration_run_id,package_sha256)
+  where calibration_run_id is not null;
+create index efficiency_official_models_pricing_idx
+  on aiq_private.efficiency_official_models(pricing_digest);
+create index aiq_task_results_pricing_idx
+  on aiq_private.aiq_task_results(pricing_digest)
+  where pricing_digest is not null;
+create index calibration_runs_register_cursor_idx
+  on aiq_private.calibration_runs(started_at desc,run_id);
+create index calibration_task_results_model_detail_idx
+  on aiq_private.calibration_task_results(
+    run_id,model_family,reasoning_effort,result_id
+  );
+create index calibration_runs_task_set_idx
+  on aiq_private.calibration_runs(task_set_id,task_set_version);
+create index calibration_task_results_catalog_idx
+  on aiq_private.calibration_task_results(
+    task_set_id,task_set_version,task_id,task_version,task_hash
+  );
+create index calibration_publications_published_idx on aiq_private.calibration_publications(published_at,run_id);
 
 
 -- Foreign-key and RLS predicate indexes are explicit because PostgreSQL does

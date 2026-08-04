@@ -12,7 +12,7 @@ import { canonicalJson, initializeDatabase, prepareInitialization } from './init
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const catalogPath = resolve(repositoryRoot, 'benchmarks/catalog/aiq-core-v1.json');
+const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.2/catalog.json');
 const corpusSchemaPath = resolve(
   repositoryRoot,
   'benchmarks/schema/corpus-commitment-v2.schema.json',
@@ -227,6 +227,7 @@ async function referenceFixture(): Promise<JsonObject> {
     .digest('hex')}`;
   return {
     schema_version: 'aiq.production-reference.v1',
+    published_at: '2026-08-03T12:00:00.000Z',
     corpus_commitment: {
       schema_version: 'aiq.corpus-commitment.v2',
       release_id: 'corpus_initial_greenfield',
@@ -235,8 +236,8 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.0',
-        identity_sha256: object(catalog.identity_commitment).digest,
+        task_set_version: '1.0.2',
+        identity_sha256: object(catalog.task_metadata_identity).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
       execution: {
@@ -363,7 +364,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.0', '1\.0\.0'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.2', '1\.0\.2'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -379,8 +380,22 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       task_count: prepared.receipt.task_count,
       model_config_count: prepared.receipt.model_config_count,
       public_node_count: prepared.receipt.public_node_count,
+      private_table_count: prepared.receipt.private_table_count,
+      forced_rls_table_count: prepared.receipt.forced_rls_table_count,
+      public_view_count: prepared.receipt.public_view_count,
+      security_invoker_view_count: prepared.receipt.security_invoker_view_count,
+      hardened_gateway_role_count: prepared.receipt.hardened_gateway_role_count,
     },
-    { task_count: 72, model_config_count: 17, public_node_count: 3 },
+    {
+      task_count: 72,
+      model_config_count: 17,
+      public_node_count: 3,
+      private_table_count: 40,
+      forced_rls_table_count: 40,
+      public_view_count: 12,
+      security_invoker_view_count: 12,
+      hardened_gateway_role_count: 2,
+    },
   );
   strictEqual(
     prepared.receipt.corpus_commitment_sha256,
@@ -388,13 +403,22 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .update(canonicalJson(object(reference.corpus_commitment)))
       .digest('hex')}`,
   );
+  strictEqual(prepared.receipt.scoring_version, '1.0.2');
+  strictEqual(
+    prepared.receipt.catalog_identity_sha256,
+    'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+  );
+  strictEqual(
+    prepared.receipt.catalog_release_identity_sha256,
+    'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6',
+  );
   const taskGroup = groups[2];
   if (taskGroup === undefined) throw new Error('task row group is missing');
   strictEqual(
     `sha256:${createHash('sha256')
-      .update(JSON.stringify(taskGroup.map((row) => object(object(row).full_public_metadata))))
+      .update(canonicalJson(taskGroup.map((row) => object(object(row).full_public_metadata))))
       .digest('hex')}`,
-    object(object(await catalogFixture()).identity_commitment).digest,
+    object(object(await catalogFixture()).task_metadata_identity).digest,
   );
 });
 
@@ -480,6 +504,11 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(receipt.task_count, 72);
   strictEqual(receipt.model_config_count, 17);
   strictEqual(receipt.public_node_count, 3);
+  strictEqual(receipt.private_table_count, 40);
+  strictEqual(receipt.forced_rls_table_count, 40);
+  strictEqual(receipt.public_view_count, 12);
+  strictEqual(receipt.security_invoker_view_count, 12);
+  strictEqual(receipt.hardened_gateway_role_count, 2);
   strictEqual(Object.keys(receipt.node_ids).length, 3);
 });
 
@@ -544,6 +573,18 @@ void test('rejects malformed, incomplete, duplicate, and mismatched references',
       'synthetic',
       (reference) => {
         object(reference.corpus_commitment).synthetic = true;
+      },
+    ],
+    [
+      'invalid publication timestamp',
+      (reference) => {
+        reference.published_at = 'not-a-timestamp';
+      },
+    ],
+    [
+      'non-canonical publication timestamp',
+      (reference) => {
+        reference.published_at = '2026-08-03T12:00:00Z';
       },
     ],
     [
@@ -831,10 +872,54 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(receipt.task_count, 72);
     strictEqual(receipt.model_config_count, 17);
     strictEqual(receipt.public_node_count, 3);
+    strictEqual(receipt.private_table_count, 40);
+    strictEqual(receipt.forced_rls_table_count, 40);
+    strictEqual(receipt.public_view_count, 12);
+    strictEqual(receipt.security_invoker_view_count, 12);
+    strictEqual(receipt.hardened_gateway_role_count, 2);
     strictEqual(readiness.initialized, true);
     strictEqual(readiness.task_count, 72);
     strictEqual(readiness.model_config_count, 17);
     strictEqual(readiness.production_node_count, 3);
+    strictEqual(readiness.private_table_count, 40);
+    strictEqual(readiness.forced_rls_table_count, 40);
+    strictEqual(readiness.public_view_count, 12);
+    strictEqual(readiness.security_invoker_view_count, 12);
+    strictEqual(readiness.hardened_gateway_role_count, 2);
+
+    const { stdout: residueOutput } = await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--quiet',
+        '--tuples-only',
+        '--no-align',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--command',
+        `begin;
+create view public.aiq_obsolete_extra_status with (security_invoker = true)
+as select true as ready;
+grant select on table public.aiq_obsolete_extra_status to anon, authenticated;
+set local role service_role;
+set local request.jwt.claims = '{"role":"service_role"}';
+select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::text;
+rollback;`,
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
+    const residueReadiness = object(
+      JSON.parse(
+        residueOutput
+          .trim()
+          .split(/\r?\n/)
+          .find((line) => line.startsWith('{')) ?? 'null',
+      ),
+    );
+    strictEqual(residueReadiness.initialized, false);
+    strictEqual(residueReadiness.public_view_count, 13);
+    strictEqual(residueReadiness.security_invoker_view_count, 13);
 
     const expectedPublicShape = {
       distributed_radar_count: 3,

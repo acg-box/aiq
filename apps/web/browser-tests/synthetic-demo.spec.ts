@@ -1,9 +1,21 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 
+const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
+
 const routes = [
   { path: '/', heading: 'A score is only useful', navigation: 'Overview' },
   { path: '/runs', heading: 'Every public run stays inspectable.', navigation: 'Runs' },
+  {
+    path: '/calibrations',
+    heading: 'Verified provenance',
+    navigation: 'Calibrations',
+  },
+  {
+    path: `/calibrations/${seedCalibrationRunId}`,
+    heading: 'Verified provenance',
+    navigation: 'Calibrations',
+  },
   { path: '/compare', heading: 'One model is not one behavior.', navigation: 'Compare' },
   { path: '/trends', heading: 'The past remains part of the record.', navigation: 'Trends' },
   { path: '/radar', heading: 'Know the runner behind the result.', navigation: 'Radar' },
@@ -47,6 +59,13 @@ for (const route of routes) {
     const response = await page.goto(route.path);
     expect(response?.status()).toBe(200);
     expect(response?.headers()['cache-control']).toContain('no-store');
+    expect(response?.headers()['x-content-type-options']).toBe('nosniff');
+    expect(response?.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin');
+    expect(response?.headers()['permissions-policy']).toContain('camera=()');
+    expect(response?.headers()['x-frame-options']).toBe('DENY');
+    const canonicalUrl = route.path === '/' ? 'https://aiq.wiki' : `https://aiq.wiki${route.path}`;
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', canonicalUrl);
+    await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', canonicalUrl);
     await expect(
       page.getByRole('heading', { level: 1, name: new RegExp(route.heading) }),
     ).toBeVisible();
@@ -66,6 +85,27 @@ for (const route of routes) {
     expect(runtimeFailures).toEqual([]);
   });
 }
+
+test('crawler metadata routes expose only the public surface', async ({ request }) => {
+  const robotsResponse = await request.get('/robots.txt');
+  expect(robotsResponse.status()).toBe(200);
+  expect(robotsResponse.headers()['content-type']).toContain('text/plain');
+  const robotsBody = await robotsResponse.text();
+  expect(robotsBody).toContain('Allow: /');
+  expect(robotsBody).toContain('Disallow: /api/');
+  expect(robotsBody).toContain('Sitemap: https://aiq.wiki/sitemap.xml');
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(sitemapResponse.status()).toBe(200);
+  expect(sitemapResponse.headers()['content-type']).toContain('application/xml');
+  const sitemapBody = await sitemapResponse.text();
+  for (const publicRoute of routes.filter(
+    (candidate) => !candidate.path.includes(seedCalibrationRunId),
+  )) {
+    expect(sitemapBody).toContain(`<loc>https://aiq.wiki${publicRoute.path}</loc>`);
+  }
+  expect(sitemapBody).not.toContain('/api/');
+});
 
 test('the index exposes the fixed 17-configuration matrix and a complete run', async ({
   page,
@@ -94,13 +134,15 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   const runResponse = await page.goto(runHref ?? '/runs/unavailable');
   expect(runResponse?.headers()['cache-control']).toContain('no-store');
   await expect(page).toHaveURL(/\/runs\/run-2026-07-\d{2}-/);
-  await expect(page).toHaveTitle(/Run detail · AIQ Wiki/);
+  await expect(page).toHaveTitle(/Run detail · AIQ/);
   await expect(page.getByRole('link', { name: 'Runs', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
   );
   await expect(page.getByRole('heading', { level: 1 })).toContainText(/Sol|Terra|Luna/);
   await expect(page.locator('.task-list > article')).toHaveCount(72);
+  await expect(page.locator('.task-list')).toContainText('Codex adapter elapsed: unavailable');
+  await expect(page.locator('.task-list')).not.toContainText('runner-observed');
   const failedTasks = page.locator('.task-list > article').filter({
     has: page.locator('.result-failed'),
   });
@@ -117,6 +159,32 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   await expectNoDocumentOverflow(page, testInfo);
   await expectAccessible(page);
   expect(runtimeFailures).toEqual([]);
+});
+
+test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
+  await expect(
+    page.getByText('not Official / not ranking eligible', { exact: false }),
+  ).toBeVisible();
+
+  await page.goto('/calibrations');
+  const register = page.getByRole('region', { name: 'Public calibration register' });
+  await expect(register.getByRole('row')).toHaveCount(2);
+  await expect(register).toContainText('Synthetic seed');
+  await register.getByRole('link', { name: 'Inspect calibration' }).click();
+  await expect(page).toHaveURL(`/calibrations/${seedCalibrationRunId}`);
+  await expect(page.getByLabel('Model and reasoning configuration').locator('option')).toHaveCount(
+    1,
+  );
+  await expect(page.getByRole('status')).toContainText('Showing 1 of 1 result cells');
+  await expect(
+    page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
+  ).toHaveCount(2);
+  await expect(page.getByText('v1.0.2', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('0 attempted · 0 adapter-invoked · 0 elapsed-observed'),
+  ).toBeVisible();
 });
 
 test('radar separates synthetic registry, observation, and aggregation evidence', async ({
@@ -321,7 +389,7 @@ test('keyboard users can reach navigation and operate trend controls with visibl
   await expect(skipLink).toHaveCSS('position', 'fixed');
 
   await page.keyboard.press(linkNavigationKey);
-  await expect(page.getByRole('link', { name: 'AIQ Wiki home' })).toBeFocused();
+  await expect(page.getByRole('link', { name: 'AIQ home' })).toBeFocused();
 
   await page.goto('/trends');
   const day = page.getByRole('link', { name: 'Day' });

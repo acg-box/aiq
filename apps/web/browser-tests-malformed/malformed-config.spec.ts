@@ -8,7 +8,9 @@ test('malformed public Supabase configuration fails closed with sanitized diagno
   expect(response?.status()).toBe(200);
   await expect(page.getByText('invalid config', { exact: true })).toBeVisible();
   await expect(page.getByText('Invalid public data configuration', { exact: false })).toBeVisible();
-  await expect(page.getByText('Published evidence unavailable', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Published evidence unavailable', { exact: true }).first(),
+  ).toBeVisible();
   await expect(
     page
       .getByText('must be an origin without credentials, a path, a query, or a fragment', {

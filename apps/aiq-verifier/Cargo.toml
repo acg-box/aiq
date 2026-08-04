@@ -20,6 +20,10 @@ serde_json = { workspace = true }
 sha2       = { workspace = true }
 ureq       = { workspace = true }
 
+[target.'cfg(unix)'.dependencies]
+# crates.io
+libc = "0.2"
+
 [[bin]]
 name = "aiq-verifier"
 path = "src/main.rs"

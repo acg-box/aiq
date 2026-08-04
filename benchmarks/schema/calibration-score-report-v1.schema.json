@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/calibration-score-report-v1.schema.json",
+  "title": "AIQ calibration descriptive score report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_class",
+    "scoring_version",
+    "model",
+    "descriptive_status",
+    "official_eligible",
+    "ranking_eligible",
+    "fixed_fixture_aiq",
+    "conditional_observed_aiq",
+    "completion_bounds",
+    "task_resampling_sensitivity_interval",
+    "binary_micro_diagnostic",
+    "coverage",
+    "difficulty_coverage",
+    "duplicate_results",
+    "domains",
+    "rule"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.calibration-score-report.v1" },
+    "run_class": { "const": "calibration" },
+    "scoring_version": { "const": "1.0.2" },
+    "model": { "$ref": "calibration-run-v3.schema.json#/$defs/model" },
+    "descriptive_status": {
+      "enum": ["complete_fixture", "conditional_observed", "coverage_only", "not_applicable"]
+    },
+    "official_eligible": { "const": false },
+    "ranking_eligible": { "const": false },
+    "fixed_fixture_aiq": { "$ref": "normalized-batch-v3.schema.json#/$defs/nullableAiqScore" },
+    "conditional_observed_aiq": {
+      "$ref": "normalized-batch-v3.schema.json#/$defs/nullableAiqScore"
+    },
+    "completion_bounds": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "normalized-batch-v3.schema.json#/$defs/completionBounds" }
+      ]
+    },
+    "task_resampling_sensitivity_interval": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "normalized-batch-v3.schema.json#/$defs/taskResamplingSensitivityInterval" }
+      ]
+    },
+    "binary_micro_diagnostic": {
+      "$ref": "normalized-batch-v3.schema.json#/$defs/binaryMicroDiagnostic"
+    },
+    "coverage": { "$ref": "normalized-batch-v3.schema.json#/$defs/coverageSummary" },
+    "difficulty_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 3,
+      "properties": {
+        "easy": { "$ref": "normalized-batch-v3.schema.json#/$defs/difficultyCoverage" },
+        "medium": { "$ref": "normalized-batch-v3.schema.json#/$defs/difficultyCoverage" },
+        "hard": { "$ref": "normalized-batch-v3.schema.json#/$defs/difficultyCoverage" }
+      }
+    },
+    "duplicate_results": { "type": "integer", "minimum": 0, "maximum": 1223 },
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": { "$ref": "normalized-batch-v3.schema.json#/$defs/domainScore" }
+    },
+    "rule": { "type": "string", "minLength": 1, "maxLength": 4096 }
+  }
+}

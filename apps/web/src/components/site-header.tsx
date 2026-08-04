@@ -4,35 +4,27 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import type { AiqRepository } from '../data/types.ts';
-import type { DeploymentProfile } from '../data/deployment-profile.ts';
 
 const navigation = [
   ['Overview', '/'],
   ['Runs', '/runs'],
+  ['Calibrations', '/calibrations'],
   ['Compare', '/compare'],
   ['Trends', '/trends'],
   ['Method', '/method'],
   ['Radar', '/radar'],
 ] as const;
 
-export function SiteHeader({
-  configuration,
-  deploymentProfile,
-}: {
-  configuration: AiqRepository['configuration'];
-  deploymentProfile: DeploymentProfile;
-}) {
+export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
 
   return (
     <header className="site-header">
-      <Link className="brand" href="/" aria-label="AIQ Wiki home">
+      <Link className="brand" href="/" aria-label="AIQ home" prefetch={false}>
         <span className="brand-mark" aria-hidden="true">
           A
         </span>
-        <span>
-          AIQ <em>Wiki</em>
-        </span>
+        <span>AIQ</span>
       </Link>
       <nav aria-label="Main navigation">
         {navigation.map(([label, href]) => {
@@ -40,7 +32,12 @@ export function SiteHeader({
             href === '/' ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
           return (
-            <Link key={href} href={href} aria-current={current ? 'page' : undefined}>
+            <Link
+              key={href}
+              href={href}
+              aria-current={current ? 'page' : undefined}
+              prefetch={false}
+            >
               {label}
             </Link>
           );
@@ -48,13 +45,11 @@ export function SiteHeader({
       </nav>
       <span className="live-pill">
         <span aria-hidden="true" />
-        {deploymentProfile === 'preview'
-          ? 'preview data'
-          : configuration === 'live'
-            ? 'public data'
-            : configuration === 'invalid'
-              ? 'invalid config'
-              : 'seed mode'}
+        {configuration === 'live'
+          ? 'public data'
+          : configuration === 'invalid'
+            ? 'invalid config'
+            : 'seed mode'}
       </span>
     </header>
   );

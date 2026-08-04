@@ -8,7 +8,9 @@ test('partial public Supabase configuration fails closed with its missing-variab
   expect(response?.status()).toBe(200);
   await expect(page.getByText('invalid config', { exact: true })).toBeVisible();
   await expect(page.getByText('Invalid public data configuration', { exact: false })).toBeVisible();
-  await expect(page.getByText('Published evidence unavailable', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Published evidence unavailable', { exact: true }).first(),
+  ).toBeVisible();
   await expect(
     page.getByText('NEXT_PUBLIC_SUPABASE_URL is missing', { exact: false }).first(),
   ).toBeVisible();

@@ -1,5 +1,5 @@
 {
-  "name": "aiq-wiki-workspace",
+  "name": "aiq-workspace",
   "private": true,
   "description": "Transparent, reproducible benchmarks for practical AI and agent work",
   "homepage": "https://aiq.wiki",
@@ -13,15 +13,15 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "npm run build --workspace @aiq/wiki-web",
-    "check": "tsc --project tsconfig.json && npm run check --workspace @aiq/wiki-web",
-    "dev": "npm run dev --workspace @aiq/wiki-web",
+    "build": "npm run build --workspace @aiq/web",
+    "check": "tsc --project tsconfig.json && npm run check --workspace @aiq/web",
+    "dev": "npm run dev --workspace @aiq/web",
     "format": "oxfmt --check scripts databases apps/web package.json vercel.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
     "format:fix": "oxfmt --write scripts databases apps/web package.json vercel.json tsconfig.json .oxfmtrc.json .oxlintrc.json",
     "lint": "oxlint . --type-aware",
     "storage:lifecycle": "node scripts/storage-object-lifecycle.ts",
-    "start": "npm run start --workspace @aiq/wiki-web",
-    "test": "node --test scripts/*.test.ts databases/*.test.ts && npm run test --workspace @aiq/wiki-web"
+    "start": "npm run start --workspace @aiq/web",
+    "test": "node --test scripts/*.test.ts scripts/candidates/aiq-core-1.0.2/*.test.ts databases/*.test.ts && npm run test --workspace @aiq/web"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
@@ -32,7 +32,6 @@
   },
   "overrides": {
     "next": {
-      "postcss": "8.5.22",
       "sharp": "0.35.3"
     }
   },

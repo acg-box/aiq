@@ -25,15 +25,27 @@ it claims work.
 The verifier identity must differ from the runner/package signer. Publication
 uses a third identity.
 
-Show the complete CLI contract:
+Show the production worker contract and the two model-free local modes:
 
 ```sh
 cargo run -p aiq-verifier -- --help
+cargo run -p aiq-verifier -- validate-environment --help
+cargo run -p aiq-verifier -- verify-local --help
 ```
+
+The production worker emits one compact `aiq.verifier-record.v1` JSON object to
+standard output after each claimed package. If the operator retains those
+objects in a create-once private JSONL file, the operator shell owns that
+redirection. The offline `verify-local` mode instead writes its explicit,
+create-new stage and attestation output files and does not publish them.
 
 The worker has bounded claim, lease, retry, polling, and HTTP timeout settings.
 It renews an active lease while it processes a package and records a controlled
 rejection when validation cannot continue.
+
+Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
+`32` to match controlled host capacity. Replay output stays in signed result
+order, independent of this setting.
 
 ## Verification flow
 

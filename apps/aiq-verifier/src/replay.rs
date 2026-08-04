@@ -9,7 +9,7 @@ mod tests {
 		env, fs,
 		path::{Path, PathBuf},
 		process,
-		sync::atomic::{AtomicU64, Ordering},
+		sync::atomic::{AtomicBool, AtomicU64, Ordering},
 	};
 
 	use sha2::{Digest, Sha256};
@@ -31,6 +31,7 @@ mod tests {
 			WorkspaceManifest, WorkspaceManifestEntry, WorkspaceSnapshot, WorkspaceSnapshotEntry,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
+		scoring::AIQ_SCORING_VERSION,
 		task::{
 			EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationResult, EvaluatorCheck,
 			EvaluatorCheckFailureClass, EvaluatorOutcome, TaskDefinition,
@@ -46,6 +47,11 @@ mod tests {
 
 	struct FailingLeaseResolver {
 		inner: MemoryResolver,
+	}
+
+	struct PanickingResolver {
+		inner: MemoryResolver,
+		panicked: AtomicBool,
 	}
 
 	impl ArtifactResolverClient for MemoryResolver {
@@ -87,6 +93,21 @@ mod tests {
 			kind: &str,
 			expected_bytes: u64,
 		) -> Result<Vec<u8>, WorkerError> {
+			self.inner.resolve(digest, kind, expected_bytes)
+		}
+	}
+
+	impl ArtifactResolverClient for PanickingResolver {
+		fn resolve(
+			&self,
+			digest: &str,
+			kind: &str,
+			expected_bytes: u64,
+		) -> Result<Vec<u8>, WorkerError> {
+			if kind != "evaluator-results.json" && !self.panicked.swap(true, Ordering::SeqCst) {
+				panic!("fixture resolver panic");
+			}
+
 			self.inner.resolve(digest, kind, expected_bytes)
 		}
 	}
@@ -198,7 +219,8 @@ mod tests {
 					.slot("2026-07-25", ScheduleOccurrence::Day)
 					.expect("slot"),
 				task_set_hash: format!("sha256:{}", "4".repeat(64)),
-				scoring_version: "1.0.0".to_owned(),
+				scoring_version: AIQ_SCORING_VERSION.to_owned(),
+				execution_concurrency: Some(1),
 				models: vec![model],
 				started_unix_ms: 1,
 				finished_unix_ms: 2,
@@ -221,6 +243,17 @@ mod tests {
 		}
 
 		fn verify(&self) -> Result<(), WorkerError> {
+			self.verify_usage().map(drop)
+		}
+
+		fn verify_usage(&self) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError> {
+			self.verify_usage_with_jobs(1)
+		}
+
+		fn verify_usage_with_jobs(
+			&self,
+			replay_jobs: usize,
+		) -> Result<Vec<runner::ProviderTokenUsage>, WorkerError> {
 			replay::verify_production_run(
 				&self.run,
 				&self.tasks,
@@ -229,7 +262,100 @@ mod tests {
 				&self.evaluator_runtime,
 				&self.replay_root,
 				"123e4567-e89b-42d3-a456-426614174000",
+				replay_jobs,
 			)
+		}
+
+		fn replay_evidence(&self) -> Result<replay::ProductionReplayEvidence, WorkerError> {
+			self.replay_evidence_with_jobs(1)
+		}
+
+		fn replay_evidence_with_jobs(
+			&self,
+			replay_jobs: usize,
+		) -> Result<replay::ProductionReplayEvidence, WorkerError> {
+			replay::replay_production_run(
+				&self.run,
+				&self.tasks,
+				&self.resolver,
+				&self.evaluator_root,
+				&self.evaluator_runtime,
+				&self.replay_root,
+				"123e4567-e89b-42d3-a456-426614174000",
+				replay_jobs,
+			)
+		}
+
+		fn expand_results(&mut self, count: usize) {
+			let result = self.run.results[0].clone();
+			let reference = self.run.evaluator_results_artifact.clone();
+			let bytes = self
+				.resolver
+				.objects
+				.get(&(
+					reference.content_hash.trim_start_matches("sha256:").to_owned(),
+					reference.kind.clone(),
+				))
+				.expect("evaluator-results bytes");
+			let bundle: EvaluatorResultsBundle =
+				serde_json::from_slice(bytes).expect("evaluator-results bundle");
+			let evaluation = bundle.results[0].clone();
+
+			self.run.results = (0..count)
+				.map(|index| {
+					let mut result = result.clone();
+
+					result.result_id = format!("result_{index:064x}");
+
+					result
+				})
+				.collect();
+
+			let expanded = EvaluatorResultsBundle {
+				schema_version: EVALUATOR_RESULTS_SCHEMA_VERSION.to_owned(),
+				results: (0..count).map(|_| evaluation.clone()).collect(),
+			};
+
+			self.replace_evaluator_bundle_bytes(
+				protocol::canonical_json(&expanded).expect("expanded evaluator results"),
+			);
+		}
+
+		fn make_failed(&mut self, kind: FailureKind) {
+			let result = &mut self.run.results[0];
+
+			result.status = ResultStatus::Failed;
+			result.evaluation = EvaluationOutcome::NotEvaluated;
+			result.task_score = matches!(
+				kind,
+				FailureKind::Timeout
+					| FailureKind::UnsupportedModel
+					| FailureKind::NonZeroExit
+					| FailureKind::MissingResponse
+					| FailureKind::BudgetExceeded
+					| FailureKind::OutputTruncated
+			)
+			.then_some(0.0);
+			result.response = None;
+			result.response_sha256 = None;
+			result.evaluator_result_sha256 = None;
+			result.evaluator_stdout_sha256 = None;
+
+			result.evaluator_checks.clear();
+
+			result.failure = Some(ResultFailure {
+				kind,
+				message: "controlled failed-result fixture".to_owned(),
+				exit_code: Some(17),
+				retryable: true,
+			});
+
+			self.replace_evaluator_result(None);
+		}
+
+		fn remove_artifact(&mut self, kind: &str) {
+			self.resolver.objects.retain(|(_, object_kind), _| object_kind != kind);
+			self.run.results[0].artifacts.retain(|artifact| artifact.kind != kind);
 		}
 
 		fn replace_snapshot(&mut self, snapshot: WorkspaceSnapshot) {
@@ -479,9 +605,15 @@ mod tests {
 	#[test]
 	fn valid_completed_replay_uses_inline_response_and_cleans_workspace() {
 		let fixture = Fixture::completed("OK");
+		let evidence = fixture.replay_evidence().expect("valid replay evidence");
 
-		fixture.verify().expect("valid replay");
+		assert_eq!(evidence.provider_usage.len(), 1);
 
+		let replayed = evidence.evaluator_results[0].as_ref().expect("replayed evaluator result");
+
+		assert_eq!(replayed.outcome, EvaluatorOutcome::Correct);
+		assert_eq!(replayed.score, 1.0);
+		assert!(!replayed.checks.is_empty());
 		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
 	}
 
@@ -728,6 +860,7 @@ mod tests {
 			&fixture.evaluator_runtime,
 			&fixture.replay_root,
 			"123e4567-e89b-42d3-a456-426614174000",
+			1,
 		)
 		.expect_err("lease failure");
 
@@ -791,6 +924,102 @@ mod tests {
 		fixture.run.results[0].tool_usage = runner::parse_codex_tool_usage(&stdout);
 
 		fixture.verify().expect("shared parser replay");
+	}
+
+	fn failed_usage_stdout() -> String {
+		[
+			r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
+			r#"{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":2,"cache_write_input_tokens":1,"output_tokens":5,"reasoning_output_tokens":3,"total_tokens":16}}"#,
+		]
+		.join("\n")
+	}
+
+	#[test]
+	fn failed_results_replay_signed_tool_and_provider_usage() {
+		for kind in [FailureKind::NonZeroExit, FailureKind::Timeout] {
+			let stdout = failed_usage_stdout();
+			let expected = runner::parse_codex_tool_usage(&stdout);
+			let mut fixture = Fixture::completed("OK");
+
+			fixture.make_failed(kind);
+			fixture.replace_artifact("stdout.jsonl", stdout.into_bytes());
+
+			fixture.run.results[0].tool_usage = expected.clone();
+
+			let usage = fixture.verify_usage().expect("failed-result evidence replay");
+
+			assert_eq!(usage, vec![expected.provider_tokens]);
+		}
+	}
+
+	#[test]
+	fn failed_result_without_stdout_accepts_only_default_counters() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.make_failed(FailureKind::NonZeroExit);
+		fixture.remove_artifact("stdout.jsonl");
+
+		fixture.run.results[0].tool_usage = runner::ToolUsage::default();
+
+		assert_eq!(
+			fixture.verify_usage().expect("empty failed-result usage"),
+			vec![runner::ProviderTokenUsage::default()]
+		);
+
+		fixture.run.results[0].tool_usage.total_calls = 1;
+
+		assert_replay_error(
+			fixture.verify().expect_err("unsigned failed-result counters"),
+			ReasonCode::ArtifactEvidenceMismatch,
+		);
+	}
+
+	#[test]
+	fn workspace_integrity_replays_with_or_without_paired_workspace_evidence() {
+		for retain_workspace in [false, true] {
+			let stdout = failed_usage_stdout();
+			let expected = runner::parse_codex_tool_usage(&stdout);
+			let mut fixture = Fixture::completed("OK");
+
+			fixture.make_failed(FailureKind::WorkspaceIntegrity);
+			fixture.replace_artifact("stdout.jsonl", stdout.into_bytes());
+
+			fixture.run.results[0].tool_usage = expected.clone();
+
+			if !retain_workspace {
+				fixture.run.results[0].workspace_manifest = None;
+
+				fixture.remove_artifact("workspace-snapshot.json");
+			}
+
+			let usage = fixture.verify_usage().expect("workspace-integrity replay");
+
+			assert_eq!(usage, vec![expected.provider_tokens]);
+		}
+	}
+
+	#[test]
+	fn workspace_integrity_rejects_one_sided_workspace_evidence() {
+		let mut manifest_only = Fixture::completed("OK");
+
+		manifest_only.make_failed(FailureKind::WorkspaceIntegrity);
+		manifest_only.remove_artifact("workspace-snapshot.json");
+
+		assert_replay_error(
+			manifest_only.verify().expect_err("manifest-only workspace evidence"),
+			ReasonCode::InvalidReplayEvidence,
+		);
+
+		let mut snapshot_only = Fixture::completed("OK");
+
+		snapshot_only.make_failed(FailureKind::WorkspaceIntegrity);
+
+		snapshot_only.run.results[0].workspace_manifest = None;
+
+		assert_replay_error(
+			snapshot_only.verify().expect_err("snapshot-only workspace evidence"),
+			ReasonCode::InvalidReplayEvidence,
+		);
 	}
 
 	#[test]
@@ -1236,15 +1465,123 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 		assert_eq!(keys.len(), fixture.resolver.objects.len());
 		assert!(Path::new(&fixture.replay_root).is_dir());
 	}
+
+	#[test]
+	fn parallel_replay_matches_single_job_order_and_evidence() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.expand_results(16);
+
+		let single = fixture.replay_evidence_with_jobs(1).expect("single-job replay");
+		let parallel = fixture.replay_evidence_with_jobs(4).expect("parallel replay");
+
+		assert_eq!(parallel.provider_usage, single.provider_usage);
+		assert_eq!(parallel.evaluator_results, single.evaluator_results);
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
+	fn parallel_replay_preserves_provider_usage_indices() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.expand_results(12);
+
+		let stdout = failed_usage_stdout();
+		let expected = runner::parse_codex_tool_usage(&stdout);
+		let reference = artifact("stdout.jsonl", stdout.as_bytes());
+
+		fixture.resolver.objects.insert(
+			(
+				reference.content_hash.trim_start_matches("sha256:").to_owned(),
+				reference.kind.clone(),
+			),
+			stdout.into_bytes(),
+		);
+
+		for (index, result) in fixture.run.results.iter_mut().enumerate() {
+			if index % 2 == 1 {
+				result.artifacts.retain(|artifact| artifact.kind != "stdout.jsonl");
+				result.artifacts.push(reference.clone());
+
+				result.tool_usage = expected.clone();
+			}
+		}
+
+		let usage = fixture.verify_usage_with_jobs(4).expect("parallel provider replay");
+
+		for (index, observed) in usage.iter().enumerate() {
+			if index % 2 == 1 {
+				assert_eq!(observed, &expected.provider_tokens);
+			} else {
+				assert_eq!(observed, &runner::ProviderTokenUsage::default());
+			}
+		}
+	}
+
+	#[test]
+	fn parallel_failure_uses_lowest_result_index_and_cleans_after_join() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.expand_results(16);
+		fixture.run.results[2].artifacts.retain(|artifact| artifact.kind != "stdout.jsonl");
+
+		fixture.run.results[5]
+			.workspace_manifest
+			.as_mut()
+			.expect("workspace manifest")
+			.content_hash = format!("sha256:{}", "9".repeat(64));
+
+		let error = fixture.verify_usage_with_jobs(8).expect_err("parallel failure");
+
+		assert_replay_error(error, ReasonCode::InvalidReplayEvidence);
+
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
+	fn replay_worker_panic_is_joined_and_cleaned() {
+		let fixture = Fixture::completed("OK");
+		let resolver =
+			PanickingResolver { inner: fixture.resolver.clone(), panicked: AtomicBool::new(false) };
+		let error = replay::verify_production_run(
+			&fixture.run,
+			&fixture.tasks,
+			&resolver,
+			&fixture.evaluator_root,
+			&fixture.evaluator_runtime,
+			&fixture.replay_root,
+			"123e4567-e89b-42d3-a456-426614174000",
+			4,
+		)
+		.expect_err("worker panic must become a replay error");
+
+		assert!(error.is_transient());
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
+	fn maximum_official_shape_replays_with_bounded_parallelism() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.expand_results(1_224);
+
+		let usage = fixture.verify_usage_with_jobs(32).expect("maximum-shape replay");
+
+		assert_eq!(usage.len(), 1_224);
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
 }
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt as _;
+use std::thread::{self, Builder};
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	fs,
+	panic::{self, AssertUnwindSafe},
 	path::{Path, PathBuf},
 	str,
+	sync::Mutex,
 };
 
 use sha2::{Digest, Sha256};
@@ -1252,10 +1589,11 @@ use sha2::{Digest, Sha256};
 use crate::{ArtifactResolverClient, ReasonCode, WorkerError};
 use aiq_runner::{
 	adapter::ArtifactReference,
-	protocol, run_validation,
+	protocol,
+	run_validation::{self, RunValidationError},
 	runner::{
-		self, EvaluationOutcome, EvaluatorResultsBundle, FailureKind, ResultStatus, RunRecord,
-		TaskResult, ToolUsage, WorkspaceSnapshot,
+		self, CalibrationRunRecord, EvaluationOutcome, EvaluatorResultsBundle, FailureKind,
+		ResultStatus, RunRecord, TaskResult, WorkspaceSnapshot,
 	},
 	submission::MAX_ARTIFACT_BYTES,
 	task::{
@@ -1266,6 +1604,69 @@ use aiq_runner::{
 
 /// Successful production replay scope recorded by the worker.
 pub(crate) const PRODUCTION_REPLAY_SCOPE: &str = "candidate_reconstructed_and_evaluator_replayed";
+
+pub(crate) trait ReplayRun: Sync {
+	fn run_id(&self) -> &str;
+	fn results(&self) -> &[TaskResult];
+	fn evaluator_results_artifact(&self) -> &ArtifactReference;
+	fn validate_evaluator_results(
+		&self,
+		bytes: &[u8],
+	) -> Result<EvaluatorResultsBundle, RunValidationError>;
+}
+
+impl ReplayRun for RunRecord {
+	fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		&self.results
+	}
+
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		&self.evaluator_results_artifact
+	}
+
+	fn validate_evaluator_results(
+		&self,
+		bytes: &[u8],
+	) -> Result<EvaluatorResultsBundle, RunValidationError> {
+		run_validation::validate_evaluator_results_bundle(self, bytes)
+	}
+}
+
+impl ReplayRun for CalibrationRunRecord {
+	fn run_id(&self) -> &str {
+		&self.run_id
+	}
+
+	fn results(&self) -> &[TaskResult] {
+		&self.results
+	}
+
+	fn evaluator_results_artifact(&self) -> &ArtifactReference {
+		&self.evaluator_results_artifact
+	}
+
+	fn validate_evaluator_results(
+		&self,
+		bytes: &[u8],
+	) -> Result<EvaluatorResultsBundle, RunValidationError> {
+		run_validation::validate_calibration_evaluator_results_bundle(self, bytes)
+	}
+}
+
+/// Evidence produced by one complete deterministic replay.
+///
+/// The evaluator vector is aligned with the signed run results. Completed
+/// results contain the independently recomputed evaluator result; all other
+/// terminal states contain `None`.
+#[cfg(test)]
+pub(crate) struct ProductionReplayEvidence {
+	pub provider_usage: Vec<aiq_runner::runner::ProviderTokenUsage>,
+	pub evaluator_results: Vec<Option<EvaluationResult>>,
+}
 
 struct CandidateEvidence {
 	manifest_reference: ArtifactReference,
@@ -1332,161 +1733,470 @@ impl Drop for ReplayDirectory {
 	}
 }
 
+struct CandidateReplayOutput {
+	provider_usage: runner::ProviderTokenUsage,
+	evaluator_result: Option<EvaluationResult>,
+}
+
+struct ReplayScheduler {
+	next_index: usize,
+	failure: Option<(usize, WorkerError)>,
+	outputs: Vec<Option<CandidateReplayOutput>>,
+	cancelled: bool,
+}
+impl ReplayScheduler {
+	fn new(result_count: usize) -> Self {
+		Self {
+			next_index: 0,
+			failure: None,
+			outputs: (0..result_count).map(|_| None).collect(),
+			cancelled: false,
+		}
+	}
+}
+
 /// Reconstructs all attempted candidates and replays every completed evaluator result.
-pub(crate) fn verify_production_run<R>(
-	run: &RunRecord,
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn verify_production_run<R, U>(
+	run: &U,
 	tasks: &[TaskDefinition],
 	resolver: &R,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	replay_root: &Path,
 	claim_identity: &str,
-) -> Result<(), WorkerError>
+	replay_jobs: usize,
+) -> Result<Vec<aiq_runner::runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
 {
+	with_replay_directory(replay_root, claim_identity, |claim_root| {
+		verify_production_run_in(
+			run,
+			tasks,
+			resolver,
+			evaluator_root,
+			evaluator_runtime,
+			claim_root,
+			replay_jobs,
+			|_, _| {},
+		)
+	})
+}
+
+/// Reconstructs candidates and returns every independently replayed evaluator result.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn replay_production_run<R, U>(
+	run: &U,
+	tasks: &[TaskDefinition],
+	resolver: &R,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+	replay_root: &Path,
+	claim_identity: &str,
+	replay_jobs: usize,
+) -> Result<ProductionReplayEvidence, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	let mut evaluator_results = (0..run.results().len()).map(|_| None).collect::<Vec<_>>();
+	let provider_usage = with_replay_directory(replay_root, claim_identity, |claim_root| {
+		verify_production_run_in(
+			run,
+			tasks,
+			resolver,
+			evaluator_root,
+			evaluator_runtime,
+			claim_root,
+			replay_jobs,
+			|index, result| evaluator_results[index] = Some(result),
+		)
+	})?;
+
+	Ok(ProductionReplayEvidence { provider_usage, evaluator_results })
+}
+
+fn with_replay_directory<T>(
+	replay_root: &Path,
+	claim_identity: &str,
+	operation: impl FnOnce(&Path) -> Result<T, WorkerError>,
+) -> Result<T, WorkerError> {
 	let replay = ReplayDirectory::create(replay_root, claim_identity)?;
-	let result = verify_production_run_in(
-		run,
-		tasks,
-		resolver,
-		evaluator_root,
-		evaluator_runtime,
-		replay.path()?,
-	);
+	let result = operation(replay.path()?);
 	let cleanup = replay.cleanup();
 
 	match (result, cleanup) {
 		(Err(primary), _) => Err(primary),
-		(Ok(()), Err(cleanup)) => Err(cleanup),
-		(Ok(()), Ok(())) => Ok(()),
+		(Ok(_), Err(cleanup)) => Err(cleanup),
+		(Ok(output), Ok(())) => Ok(output),
 	}
 }
 
-fn verify_production_run_in<R>(
-	run: &RunRecord,
+#[allow(clippy::too_many_arguments)]
+fn verify_production_run_in<R, U, F>(
+	run: &U,
 	tasks: &[TaskDefinition],
 	resolver: &R,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	claim_root: &Path,
-) -> Result<(), WorkerError>
+	replay_jobs: usize,
+	mut record_evaluator_result: F,
+) -> Result<Vec<aiq_runner::runner::ProviderTokenUsage>, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+	F: FnMut(usize, EvaluationResult),
 {
-	if run.synthetic {
-		return Err(WorkerError::terminal(
-			ReasonCode::InvalidReplayEvidence,
-			"production replay cannot accept a synthetic run",
-		));
+	if replay_jobs == 0 || replay_jobs > 32 {
+		return Err(WorkerError::configuration("replay jobs must be between 1 and 32"));
 	}
 
 	let evaluator_results = resolve_evaluator_results(run, resolver)?;
 	let task_map = controlled_task_map(tasks)?;
+	let scheduler = Mutex::new(ReplayScheduler::new(run.results().len()));
+	let worker_error = thread::scope(|scope| {
+		let mut workers = Vec::with_capacity(replay_jobs.min(run.results().len()));
+		let mut worker_error = None;
 
-	for (index, result) in run.results.iter().enumerate() {
-		if !execution_attempted(result) {
-			if result.workspace_manifest.is_some() || !result.artifacts.is_empty() {
-				return Err(WorkerError::terminal(
-					ReasonCode::InvalidReplayEvidence,
-					"unattempted result contains execution artifacts",
-				));
-			}
+		for worker_index in 0..replay_jobs.min(run.results().len()) {
+			let worker = Builder::new()
+				.name(format!("aiq-verifier-replay-{worker_index:02}"))
+				.spawn_scoped(scope, || {
+					catch_replay_worker_panic(
+						&scheduler,
+						run,
+						&evaluator_results,
+						&task_map,
+						resolver,
+						claim_root,
+						evaluator_root,
+						evaluator_runtime,
+					)
+				});
 
-			continue;
-		}
-
-		let task = task_map
-			.get(&(result.task_id.as_str(), result.task_version.as_str()))
-			.ok_or_else(|| {
-				WorkerError::terminal(
-					ReasonCode::InvalidReplayEvidence,
-					"result does not bind a controlled task",
-				)
-			})?;
-		let evidence = resolve_candidate_evidence(result, resolver)?;
-		let destination = claim_root.join(format!("candidate-{index:04}"));
-		let materialized = evidence.snapshot.materialize_verified(&destination).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::InvalidReplayEvidence,
-				"workspace snapshot could not be reconstructed safely",
-			)
-		})?;
-		let materialized_hash = protocol::canonical_hash(&materialized).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::InvalidReplayEvidence,
-				"reconstructed workspace manifest could not be committed",
-			)
-		})?;
-		let materialized_bytes = protocol::canonical_json(&materialized).map_err(|_| {
-			WorkerError::terminal(
-				ReasonCode::InvalidReplayEvidence,
-				"reconstructed workspace manifest could not be serialized",
-			)
-		})?;
-
-		if materialized_hash != evidence.manifest_reference.content_hash
-			|| materialized_bytes != evidence.manifest_bytes
-		{
-			return Err(WorkerError::terminal(
-				ReasonCode::ArtifactEvidenceMismatch,
-				"reconstructed workspace differs from the signed manifest reference",
-			));
-		}
-
-		match result.status {
-			ResultStatus::Completed => {
-				let evaluator_result =
-					evaluator_results.results.get(index).and_then(Option::as_ref).ok_or_else(
-						|| {
-							WorkerError::terminal(
-								ReasonCode::InvalidReplayEvidence,
-								"completed result lacks its signed evaluator-result entry",
-							)
+			match worker {
+				Ok(worker) => workers.push(worker),
+				Err(_) => {
+					match scheduler.lock() {
+						Ok(mut scheduler) => scheduler.cancelled = true,
+						Err(_) => {
+							worker_error =
+								Some(WorkerError::transient("replay scheduler is unavailable"));
 						},
-					)?;
-				let response = complete_response(result, &evidence)?;
-				let tool_usage = verified_tool_usage(result, &evidence)?;
+					}
 
-				resolver.maintain_lease()?;
+					worker_error.get_or_insert_with(|| {
+						WorkerError::transient("candidate replay worker could not start")
+					});
 
-				replay_evaluator(
-					run,
-					result,
-					task,
-					&response,
-					&tool_usage,
-					&destination,
-					evaluator_root,
-					evaluator_runtime,
-					evaluator_result,
-				)?;
+					break;
+				},
+			}
+		}
+		for worker in workers {
+			let result = worker.join().unwrap_or_else(|_| {
+				if let Ok(mut scheduler) = scheduler.lock() {
+					scheduler.cancelled = true;
+				}
 
-				resolver.maintain_lease()?;
-			},
-			ResultStatus::Failed => {
-				verify_failed_result_policy(result)?;
+				Err(WorkerError::transient("candidate replay worker panicked"))
+			});
 
-				resolver.maintain_lease()?;
-			},
-			ResultStatus::Unevaluated => {
-				return Err(WorkerError::terminal(
-					ReasonCode::EvaluatorReplayMismatch,
-					"attempted result has no committed evaluator result",
-				));
-			},
-			ResultStatus::Unsupported => {
-				return Err(WorkerError::terminal(
-					ReasonCode::InvalidReplayEvidence,
-					"unsupported result cannot contain attempted candidate evidence",
-				));
-			},
+			if let Err(error) = result
+				&& worker_error.is_none()
+			{
+				worker_error = Some(error);
+			}
+		}
+
+		worker_error
+	});
+	let mut scheduler = scheduler
+		.into_inner()
+		.map_err(|_| WorkerError::transient("replay scheduler is unavailable"))?;
+
+	if let Some((_, error)) = scheduler.failure.take() {
+		return Err(error);
+	}
+	if let Some(error) = worker_error {
+		return Err(error);
+	}
+
+	let mut provider_usage = Vec::with_capacity(scheduler.outputs.len());
+
+	for (index, output) in scheduler.outputs.into_iter().enumerate() {
+		let output = output.ok_or_else(|| {
+			WorkerError::transient("candidate replay stopped without a recorded failure")
+		})?;
+
+		provider_usage.push(output.provider_usage);
+
+		if let Some(evaluator_result) = output.evaluator_result {
+			record_evaluator_result(index, evaluator_result);
 		}
 	}
 
 	resolver.maintain_lease()?;
 
-	Ok(())
+	Ok(provider_usage)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn catch_replay_worker_panic<R, U>(
+	scheduler: &Mutex<ReplayScheduler>,
+	run: &U,
+	evaluator_results: &EvaluatorResultsBundle,
+	task_map: &BTreeMap<(&str, &str), &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	match panic::catch_unwind(AssertUnwindSafe(|| {
+		replay_worker(
+			scheduler,
+			run,
+			evaluator_results,
+			task_map,
+			resolver,
+			claim_root,
+			evaluator_root,
+			evaluator_runtime,
+		)
+	})) {
+		Ok(result) => result,
+		Err(_) => {
+			if let Ok(mut scheduler) = scheduler.lock() {
+				scheduler.cancelled = true;
+			}
+
+			Err(WorkerError::transient("candidate replay worker panicked"))
+		},
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replay_worker<R, U>(
+	scheduler: &Mutex<ReplayScheduler>,
+	run: &U,
+	evaluator_results: &EvaluatorResultsBundle,
+	task_map: &BTreeMap<(&str, &str), &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	loop {
+		let index = {
+			let mut scheduler = scheduler
+				.lock()
+				.map_err(|_| WorkerError::transient("replay scheduler is unavailable"))?;
+
+			if scheduler.cancelled
+				|| scheduler.failure.is_some()
+				|| scheduler.next_index >= run.results().len()
+			{
+				return Ok(());
+			}
+
+			let index = scheduler.next_index;
+
+			scheduler.next_index += 1;
+
+			index
+		};
+		let result = replay_candidate(
+			index,
+			run,
+			evaluator_results,
+			task_map,
+			resolver,
+			claim_root,
+			evaluator_root,
+			evaluator_runtime,
+		);
+		let mut scheduler = scheduler
+			.lock()
+			.map_err(|_| WorkerError::transient("replay scheduler is unavailable"))?;
+
+		match result {
+			Ok(output) => scheduler.outputs[index] = Some(output),
+			Err(error) => {
+				if scheduler.failure.as_ref().is_none_or(|(failed, _)| index < *failed) {
+					scheduler.failure = Some((index, error));
+				}
+			},
+		}
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replay_candidate<R, U>(
+	index: usize,
+	run: &U,
+	evaluator_results: &EvaluatorResultsBundle,
+	task_map: &BTreeMap<(&str, &str), &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<CandidateReplayOutput, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	let result = &run.results()[index];
+
+	if !execution_attempted(result) {
+		if result.workspace_manifest.is_some() || !result.artifacts.is_empty() {
+			return Err(WorkerError::terminal(
+				ReasonCode::InvalidReplayEvidence,
+				"unattempted result contains execution artifacts",
+			));
+		}
+
+		return Ok(CandidateReplayOutput {
+			provider_usage: runner::ProviderTokenUsage::default(),
+			evaluator_result: None,
+		});
+	}
+
+	let task = task_map.get(&(result.task_id.as_str(), result.task_version.as_str())).ok_or_else(
+		|| {
+			WorkerError::terminal(
+				ReasonCode::InvalidReplayEvidence,
+				"result does not bind a controlled task",
+			)
+		},
+	)?;
+	let workspace_integrity_without_snapshot = result
+		.failure
+		.as_ref()
+		.is_some_and(|failure| failure.kind == FailureKind::WorkspaceIntegrity)
+		&& result.workspace_manifest.is_none();
+
+	if workspace_integrity_without_snapshot {
+		verify_failed_result_policy(result)?;
+
+		let tool_usage = verified_failed_tool_usage_without_workspace(result, resolver)?;
+
+		resolver.maintain_lease()?;
+
+		return Ok(CandidateReplayOutput {
+			provider_usage: tool_usage.provider_tokens,
+			evaluator_result: None,
+		});
+	}
+
+	let destination = claim_root.join(format!("candidate-{index:04}"));
+	let evidence = materialize_candidate(result, resolver, &destination)?;
+
+	match result.status {
+		ResultStatus::Completed => {
+			let evaluator_result =
+				evaluator_results.results.get(index).and_then(Option::as_ref).ok_or_else(|| {
+					WorkerError::terminal(
+						ReasonCode::InvalidReplayEvidence,
+						"completed result lacks its signed evaluator-result entry",
+					)
+				})?;
+			let response = complete_response(result, &evidence)?;
+			let tool_usage = verified_tool_usage(result, &evidence)?;
+
+			resolver.maintain_lease()?;
+
+			let replayed = replay_evaluator(
+				run.run_id(),
+				result,
+				task,
+				&response,
+				&tool_usage,
+				&destination,
+				evaluator_root,
+				evaluator_runtime,
+				evaluator_result,
+			)?;
+
+			resolver.maintain_lease()?;
+
+			Ok(CandidateReplayOutput {
+				provider_usage: tool_usage.provider_tokens,
+				evaluator_result: Some(replayed),
+			})
+		},
+		ResultStatus::Failed => {
+			verify_failed_result_policy(result)?;
+
+			let tool_usage = verified_failed_tool_usage(result, &evidence)?;
+
+			resolver.maintain_lease()?;
+
+			Ok(CandidateReplayOutput {
+				provider_usage: tool_usage.provider_tokens,
+				evaluator_result: None,
+			})
+		},
+		ResultStatus::Unevaluated => Err(WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"attempted result has no committed evaluator result",
+		)),
+		ResultStatus::Unsupported => Err(WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"unsupported result cannot contain attempted candidate evidence",
+		)),
+	}
+}
+
+fn materialize_candidate<R>(
+	result: &TaskResult,
+	resolver: &R,
+	destination: &Path,
+) -> Result<CandidateEvidence, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+{
+	let evidence = resolve_candidate_evidence(result, resolver)?;
+	let materialized = evidence.snapshot.materialize_verified(destination).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"workspace snapshot could not be reconstructed safely",
+		)
+	})?;
+	let materialized_hash = protocol::canonical_hash(&materialized).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"reconstructed workspace manifest could not be committed",
+		)
+	})?;
+	let materialized_bytes = protocol::canonical_json(&materialized).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"reconstructed workspace manifest could not be serialized",
+		)
+	})?;
+
+	if materialized_hash != evidence.manifest_reference.content_hash
+		|| materialized_bytes != evidence.manifest_bytes
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::ArtifactEvidenceMismatch,
+			"reconstructed workspace differs from the signed manifest reference",
+		));
+	}
+
+	Ok(evidence)
 }
 
 fn controlled_task_map(
@@ -1507,14 +2217,15 @@ fn controlled_task_map(
 	Ok(task_map)
 }
 
-fn resolve_evaluator_results<R>(
-	run: &RunRecord,
+fn resolve_evaluator_results<R, U>(
+	run: &U,
 	resolver: &R,
 ) -> Result<EvaluatorResultsBundle, WorkerError>
 where
 	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
 {
-	let reference = &run.evaluator_results_artifact;
+	let reference = run.evaluator_results_artifact();
 
 	if reference.kind != "evaluator-results.json"
 		|| reference.bytes == 0
@@ -1535,7 +2246,7 @@ where
 		));
 	}
 
-	let bundle = run_validation::validate_evaluator_results_bundle(run, &bytes).map_err(|_| {
+	let bundle = run.validate_evaluator_results(&bytes).map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidReplayEvidence,
 			"evaluator-results bundle is malformed, noncanonical, or misaligned",
@@ -1642,7 +2353,7 @@ where
 fn verified_tool_usage(
 	result: &TaskResult,
 	evidence: &CandidateEvidence,
-) -> Result<ToolUsage, WorkerError> {
+) -> Result<aiq_runner::runner::ToolUsage, WorkerError> {
 	let stdout = evidence.artifacts.get("stdout.jsonl").ok_or_else(|| {
 		WorkerError::terminal(
 			ReasonCode::InvalidReplayEvidence,
@@ -1657,10 +2368,84 @@ fn verified_tool_usage(
 	})?;
 	let observed = runner::parse_codex_tool_usage(stdout);
 
-	if observed != result.tool_usage {
+	if observed.steps != result.tool_usage.steps
+		|| observed.total_calls != result.tool_usage.total_calls
+		|| observed.by_tool != result.tool_usage.by_tool
+	{
 		return Err(WorkerError::terminal(
 			ReasonCode::ArtifactEvidenceMismatch,
 			"signed tool-use counters differ from content-addressed stdout",
+		));
+	}
+
+	Ok(observed)
+}
+
+fn verified_failed_tool_usage(
+	result: &TaskResult,
+	evidence: &CandidateEvidence,
+) -> Result<aiq_runner::runner::ToolUsage, WorkerError> {
+	if evidence.artifacts.contains_key("stdout.jsonl") {
+		return verified_tool_usage(result, evidence);
+	}
+	if result.tool_usage != aiq_runner::runner::ToolUsage::default() {
+		return Err(WorkerError::terminal(
+			ReasonCode::ArtifactEvidenceMismatch,
+			"failed result signs tool-use counters without content-addressed stdout",
+		));
+	}
+
+	Ok(aiq_runner::runner::ToolUsage::default())
+}
+
+fn verified_failed_tool_usage_without_workspace<R>(
+	result: &TaskResult,
+	resolver: &R,
+) -> Result<aiq_runner::runner::ToolUsage, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+{
+	let mut stdout = None;
+
+	for artifact in &result.artifacts {
+		let bytes = resolve_exact(artifact, resolver)?;
+
+		if artifact.kind == "workspace-snapshot.json" {
+			return Err(WorkerError::terminal(
+				ReasonCode::InvalidReplayEvidence,
+				"workspace-integrity result has a snapshot without a manifest",
+			));
+		}
+		if artifact.kind == "stdout.jsonl" {
+			stdout = Some(bytes);
+		}
+	}
+
+	let Some(stdout) = stdout else {
+		if result.tool_usage != aiq_runner::runner::ToolUsage::default() {
+			return Err(WorkerError::terminal(
+				ReasonCode::ArtifactEvidenceMismatch,
+				"workspace-integrity result signs counters without stdout evidence",
+			));
+		}
+
+		return Ok(aiq_runner::runner::ToolUsage::default());
+	};
+	let stdout = str::from_utf8(&stdout).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"content-addressed stdout is not UTF-8",
+		)
+	})?;
+	let observed = runner::parse_codex_tool_usage(stdout);
+
+	if observed.steps != result.tool_usage.steps
+		|| observed.total_calls != result.tool_usage.total_calls
+		|| observed.by_tool != result.tool_usage.by_tool
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::ArtifactEvidenceMismatch,
+			"workspace-integrity counters differ from content-addressed stdout",
 		));
 	}
 
@@ -1732,16 +2517,16 @@ fn complete_response(
 
 #[allow(clippy::too_many_arguments)]
 fn replay_evaluator(
-	run: &RunRecord,
+	run_id: &str,
 	result: &TaskResult,
 	task: &TaskDefinition,
 	response: &str,
-	tool_usage: &ToolUsage,
+	tool_usage: &aiq_runner::runner::ToolUsage,
 	candidate_workspace: &Path,
 	evaluator_root: &Path,
 	evaluator_runtime: &EvaluatorRuntime,
 	expected: &EvaluationResult,
-) -> Result<(), WorkerError> {
+) -> Result<EvaluationResult, WorkerError> {
 	let evaluator = task.evaluator.as_ref().ok_or_else(|| {
 		WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
@@ -1762,7 +2547,7 @@ fn replay_evaluator(
 	let context = EvaluatorContext {
 		task_id: &result.task_id,
 		task_version: &result.task_version,
-		run_id: &run.run_id,
+		run_id,
 		model: result.model,
 		final_response: response,
 		candidate_workspace,
@@ -1855,7 +2640,7 @@ fn replay_evaluator(
 		));
 	}
 
-	Ok(())
+	Ok(replayed)
 }
 
 fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {
@@ -1892,7 +2677,8 @@ fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {
 		FailureKind::Spawn
 		| FailureKind::Authentication
 		| FailureKind::SubscriptionLimit
-		| FailureKind::EvaluatorFailure => None,
+		| FailureKind::EvaluatorFailure
+		| FailureKind::WorkspaceIntegrity => None,
 		FailureKind::CapabilityUnavailable
 		| FailureKind::CapabilityValidationFailed
 		| FailureKind::MissingEvaluator

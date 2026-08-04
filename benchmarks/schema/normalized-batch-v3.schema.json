@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aiq.wiki/schema/normalized-batch-v3.schema.json",
   "title": "AIQ normalized database batch v3",
-  "description": "One verifier-normalized 17-model matrix batch. The Rust verifier additionally checks deterministic identities, matrix order, unique task identities, cross-field bindings, score recomputation, digest commitments, timestamp order, and the four MiB canonical representation bound.",
+  "description": "One verifier-normalized 17-model matrix batch with separate time, token, and Standard API-equivalent cost evidence. The Rust verifier additionally checks deterministic identities, matrix order, unique task identities, cross-field bindings, score recomputation, digest commitments, timestamp order, and the four MiB canonical representation bound.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -27,6 +27,10 @@
     "finished_unix_ms",
     "synthetic",
     "runs",
+    "execution_concurrency",
+    "result_efficiency",
+    "efficiency",
+    "pricing",
     "normalization_digest"
   ],
   "properties": {
@@ -46,12 +50,10 @@
       "$ref": "#/$defs/nodeIdentity"
     },
     "task_set_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128
+      "const": "aiq-core"
     },
     "task_set_version": {
-      "$ref": "#/$defs/semanticVersion"
+      "const": "1.0.2"
     },
     "task_set_hash": {
       "$ref": "#/$defs/sha256"
@@ -87,14 +89,13 @@
       ]
     },
     "benchmark_version": {
-      "type": "string",
-      "minLength": 1
+      "const": "aiq-core@1.0.2"
     },
     "prompt_set_digest": {
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "const": "1.0.0"
+      "const": "1.0.2"
     },
     "runner_commit": {
       "type": "string",
@@ -124,6 +125,54 @@
       "items": {
         "$ref": "#/$defs/normalizedModelRun"
       }
+    },
+    "execution_concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32
+    },
+    "result_efficiency": {
+      "type": "array",
+      "minItems": 1224,
+      "maxItems": 1224,
+      "x-aiq-uniqueBy": ["source_result_id"],
+      "x-aiq-uniqueTuple": ["model.family", "model.reasoning_effort", "task_id"],
+      "x-aiq-distinctCount": {
+        "path": "model",
+        "equals": 17
+      },
+      "items": {
+        "$ref": "#/$defs/resultEfficiency"
+      }
+    },
+    "efficiency": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "x-aiq-uniqueTuple": ["model.family", "model.reasoning_effort"],
+      "prefixItems": [
+        { "$ref": "#/$defs/solLowEfficiency" },
+        { "$ref": "#/$defs/solMediumEfficiency" },
+        { "$ref": "#/$defs/solHighEfficiency" },
+        { "$ref": "#/$defs/solXhighEfficiency" },
+        { "$ref": "#/$defs/solMaxEfficiency" },
+        { "$ref": "#/$defs/solUltraEfficiency" },
+        { "$ref": "#/$defs/terraLowEfficiency" },
+        { "$ref": "#/$defs/terraMediumEfficiency" },
+        { "$ref": "#/$defs/terraHighEfficiency" },
+        { "$ref": "#/$defs/terraXhighEfficiency" },
+        { "$ref": "#/$defs/terraMaxEfficiency" },
+        { "$ref": "#/$defs/terraUltraEfficiency" },
+        { "$ref": "#/$defs/lunaLowEfficiency" },
+        { "$ref": "#/$defs/lunaMediumEfficiency" },
+        { "$ref": "#/$defs/lunaHighEfficiency" },
+        { "$ref": "#/$defs/lunaXhighEfficiency" },
+        { "$ref": "#/$defs/lunaMaxEfficiency" }
+      ],
+      "items": false
+    },
+    "pricing": {
+      "$ref": "#/$defs/apiEquivalentPricing"
     },
     "normalization_digest": {
       "$ref": "#/$defs/sha256"
@@ -242,7 +291,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3"
+          "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
@@ -415,6 +464,653 @@
         }
       ]
     },
+    "nullableSafeUnsignedInteger": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        }
+      ]
+    },
+    "providerTokenUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 6,
+      "properties": {
+        "input": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        },
+        "cached_input": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        },
+        "cache_write_input": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        },
+        "output": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        },
+        "reasoning": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        },
+        "total": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        }
+      }
+    },
+    "resultEfficiency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_result_id",
+        "task_id",
+        "model",
+        "observed_wall_ms",
+        "wall_time_evidence_level",
+        "provider_tokens",
+        "provider_tokens_source",
+        "provider_tokens_evidence_level",
+        "standard_api_equivalent_usd_nanos",
+        "cost_status",
+        "cost_evidence_level"
+      ],
+      "properties": {
+        "source_result_id": {
+          "$ref": "#/$defs/resultId"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "x-aiq-maxUtf8Bytes": 64,
+          "pattern": "^[A-Za-z0-9._-]+(?![\\s\\S])"
+        },
+        "model": {
+          "$ref": "#/$defs/modelConfig"
+        },
+        "observed_wall_ms": {
+          "$ref": "#/$defs/nullableSafeUnsignedInteger"
+        },
+        "wall_time_evidence_level": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "runner_observed"
+            }
+          ]
+        },
+        "provider_tokens": {
+          "$ref": "#/$defs/providerTokenUsage"
+        },
+        "provider_tokens_source": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "provider_reported"
+            }
+          ]
+        },
+        "provider_tokens_evidence_level": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "verifier_recomputed"
+            }
+          ]
+        },
+        "standard_api_equivalent_usd_nanos": {
+          "$ref": "#/$defs/nullableSafeUnsignedInteger"
+        },
+        "cost_status": {
+          "enum": [
+            "estimated",
+            "unavailable_missing_usage",
+            "unavailable_invalid_usage",
+            "unavailable_context_band"
+          ]
+        },
+        "cost_evidence_level": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "const": "verifier_recomputed"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "observed_wall_ms": {
+                "type": "null"
+              }
+            },
+            "required": ["observed_wall_ms"]
+          },
+          "then": {
+            "properties": {
+              "wall_time_evidence_level": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "wall_time_evidence_level": {
+                "const": "runner_observed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider_tokens": {
+                "type": "object",
+                "maxProperties": 0
+              }
+            },
+            "required": ["provider_tokens"]
+          },
+          "then": {
+            "properties": {
+              "provider_tokens_source": {
+                "type": "null"
+              },
+              "provider_tokens_evidence_level": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "provider_tokens_source": {
+                "const": "provider_reported"
+              },
+              "provider_tokens_evidence_level": {
+                "const": "verifier_recomputed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "cost_status": {
+                "const": "estimated"
+              }
+            },
+            "required": ["cost_status"]
+          },
+          "then": {
+            "properties": {
+              "standard_api_equivalent_usd_nanos": {
+                "$ref": "#/$defs/safeUnsignedInteger"
+              },
+              "cost_evidence_level": {
+                "const": "verifier_recomputed"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "standard_api_equivalent_usd_nanos": {
+                "type": "null"
+              },
+              "cost_evidence_level": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider_tokens": {
+                "not": {
+                  "required": ["input", "cached_input", "cache_write_input", "output"]
+                }
+              }
+            },
+            "required": ["provider_tokens"]
+          },
+          "then": {
+            "properties": {
+              "cost_status": {
+                "const": "unavailable_missing_usage"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "cost_status": {
+                "enum": ["estimated", "unavailable_invalid_usage", "unavailable_context_band"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "cost_status": {
+                "const": "unavailable_context_band"
+              }
+            },
+            "required": ["cost_status"]
+          },
+          "then": {
+            "properties": {
+              "provider_tokens": {
+                "properties": {
+                  "input": {
+                    "type": "integer",
+                    "minimum": 272001
+                  }
+                },
+                "required": ["input", "cached_input", "cache_write_input", "output"]
+              },
+              "standard_api_equivalent_usd_nanos": {
+                "type": "null"
+              },
+              "cost_evidence_level": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider_tokens": {
+                "properties": {
+                  "input": {
+                    "type": "integer",
+                    "minimum": 272001
+                  }
+                },
+                "required": ["input", "cached_input", "cache_write_input", "output"]
+              }
+            },
+            "required": ["provider_tokens"]
+          },
+          "then": {
+            "properties": {
+              "cost_status": {
+                "const": "unavailable_context_band"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "providerTokenCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_tasks",
+        "input_tasks",
+        "cached_input_tasks",
+        "cache_write_input_tasks",
+        "output_tasks",
+        "reasoning_tasks",
+        "total_tasks"
+      ],
+      "properties": {
+        "selected_tasks": {
+          "const": 72
+        },
+        "input_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "cached_input_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "cache_write_input_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "output_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "reasoning_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "total_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        }
+      }
+    },
+    "efficiencyAggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "model",
+        "selected_tasks",
+        "observed_wall_tasks",
+        "total_observed_wall_ms",
+        "median_observed_wall_ms",
+        "p95_observed_wall_ms",
+        "provider_token_totals",
+        "provider_token_coverage",
+        "estimated_cost_tasks",
+        "standard_api_equivalent_usd_nanos"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "aiq.calibration-efficiency.v1"
+        },
+        "model": {
+          "$ref": "#/$defs/modelConfig"
+        },
+        "selected_tasks": {
+          "const": 72
+        },
+        "observed_wall_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "total_observed_wall_ms": {
+          "$ref": "#/$defs/nullableSafeUnsignedInteger"
+        },
+        "median_observed_wall_ms": {
+          "$ref": "#/$defs/nullableSafeUnsignedInteger"
+        },
+        "p95_observed_wall_ms": {
+          "$ref": "#/$defs/nullableSafeUnsignedInteger"
+        },
+        "provider_token_totals": {
+          "$ref": "#/$defs/providerTokenUsage"
+        },
+        "provider_token_coverage": {
+          "$ref": "#/$defs/providerTokenCoverage"
+        },
+        "estimated_cost_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 72
+        },
+        "standard_api_equivalent_usd_nanos": {
+          "$ref": "#/$defs/nullableSafeUnsignedInteger"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "observed_wall_tasks": {
+                "const": 0
+              }
+            },
+            "required": ["observed_wall_tasks"]
+          },
+          "then": {
+            "properties": {
+              "total_observed_wall_ms": {
+                "type": "null"
+              },
+              "median_observed_wall_ms": {
+                "type": "null"
+              },
+              "p95_observed_wall_ms": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "total_observed_wall_ms": {
+                "$ref": "#/$defs/safeUnsignedInteger"
+              },
+              "median_observed_wall_ms": {
+                "$ref": "#/$defs/safeUnsignedInteger"
+              },
+              "p95_observed_wall_ms": {
+                "$ref": "#/$defs/safeUnsignedInteger"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "estimated_cost_tasks": {
+                "type": "integer",
+                "maximum": 71
+              }
+            },
+            "required": ["estimated_cost_tasks"]
+          },
+          "then": {
+            "properties": {
+              "standard_api_equivalent_usd_nanos": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "solLowEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "sol", "reasoning_effort": "low" } } } }
+      ]
+    },
+    "solMediumEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": { "model": { "const": { "family": "sol", "reasoning_effort": "medium" } } }
+        }
+      ]
+    },
+    "solHighEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "sol", "reasoning_effort": "high" } } } }
+      ]
+    },
+    "solXhighEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "sol", "reasoning_effort": "xhigh" } } } }
+      ]
+    },
+    "solMaxEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "sol", "reasoning_effort": "max" } } } }
+      ]
+    },
+    "solUltraEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "sol", "reasoning_effort": "ultra" } } } }
+      ]
+    },
+    "terraLowEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "terra", "reasoning_effort": "low" } } } }
+      ]
+    },
+    "terraMediumEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": {
+            "model": { "const": { "family": "terra", "reasoning_effort": "medium" } }
+          }
+        }
+      ]
+    },
+    "terraHighEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": { "model": { "const": { "family": "terra", "reasoning_effort": "high" } } }
+        }
+      ]
+    },
+    "terraXhighEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": { "model": { "const": { "family": "terra", "reasoning_effort": "xhigh" } } }
+        }
+      ]
+    },
+    "terraMaxEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "terra", "reasoning_effort": "max" } } } }
+      ]
+    },
+    "terraUltraEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": { "model": { "const": { "family": "terra", "reasoning_effort": "ultra" } } }
+        }
+      ]
+    },
+    "lunaLowEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "luna", "reasoning_effort": "low" } } } }
+      ]
+    },
+    "lunaMediumEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": { "model": { "const": { "family": "luna", "reasoning_effort": "medium" } } }
+        }
+      ]
+    },
+    "lunaHighEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "luna", "reasoning_effort": "high" } } } }
+      ]
+    },
+    "lunaXhighEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        {
+          "properties": { "model": { "const": { "family": "luna", "reasoning_effort": "xhigh" } } }
+        }
+      ]
+    },
+    "lunaMaxEfficiency": {
+      "allOf": [
+        { "$ref": "#/$defs/efficiencyAggregate" },
+        { "properties": { "model": { "const": { "family": "luna", "reasoning_effort": "max" } } } }
+      ]
+    },
+    "apiEquivalentPricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "version",
+        "as_of",
+        "source",
+        "currency",
+        "processing_tier",
+        "rates",
+        "formula",
+        "hosted_tool_fees_included",
+        "limitation"
+      ],
+      "properties": {
+        "method": {
+          "const": "standard_api_equivalent_text_token_estimate"
+        },
+        "version": {
+          "const": "aiq.standard-api-equivalent-usd.v1"
+        },
+        "as_of": {
+          "const": "2026-08-02"
+        },
+        "source": {
+          "const": "https://developers.openai.com/api/docs/pricing"
+        },
+        "currency": {
+          "const": "USD"
+        },
+        "processing_tier": {
+          "const": "standard"
+        },
+        "rates": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "prefixItems": [
+            {
+              "const": {
+                "model": "gpt-5.6-sol",
+                "input_usd_nanos_per_token": 5000,
+                "cached_input_usd_nanos_per_token": 500,
+                "cache_write_input_usd_nanos_per_token": 6250,
+                "output_usd_nanos_per_token": 30000
+              }
+            },
+            {
+              "const": {
+                "model": "gpt-5.6-terra",
+                "input_usd_nanos_per_token": 2000,
+                "cached_input_usd_nanos_per_token": 200,
+                "cache_write_input_usd_nanos_per_token": 2500,
+                "output_usd_nanos_per_token": 12000
+              }
+            },
+            {
+              "const": {
+                "model": "gpt-5.6-luna",
+                "input_usd_nanos_per_token": 200,
+                "cached_input_usd_nanos_per_token": 20,
+                "cache_write_input_usd_nanos_per_token": 250,
+                "output_usd_nanos_per_token": 1200
+              }
+            }
+          ],
+          "items": false
+        },
+        "formula": {
+          "const": "(input-cached_input-cache_write_input)*input_usd_nanos_per_token + cached_input*cached_input_usd_nanos_per_token + cache_write_input*cache_write_input_usd_nanos_per_token + output*output_usd_nanos_per_token; reasoning is a subset of output and is not added again"
+        },
+        "hosted_tool_fees_included": {
+          "const": false
+        },
+        "limitation": {
+          "const": "Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing"
+        }
+      }
+    },
     "normalizedModelRun": {
       "type": "object",
       "additionalProperties": false,
@@ -499,7 +1195,7 @@
           "const": "aiq.score-report.v1"
         },
         "scoring_version": {
-          "const": "1.0.0"
+          "const": "1.0.2"
         },
         "model": {
           "$ref": "#/$defs/modelConfig"
@@ -763,12 +1459,7 @@
                 "$ref": "#/$defs/unitInterval"
               }
             },
-            "required": [
-              "invalid_tasks",
-              "missing_tasks",
-              "not_applicable_tasks",
-              "score"
-            ]
+            "required": ["invalid_tasks", "missing_tasks", "not_applicable_tasks", "score"]
           },
           "allOf": [
             {
@@ -1144,7 +1835,7 @@
           "minLength": 1
         },
         "task_version": {
-          "$ref": "#/$defs/semanticVersion"
+          "const": "1.0.2"
         },
         "task_hash": {
           "$ref": "#/$defs/sha256"
@@ -1164,7 +1855,7 @@
           ]
         },
         "scorer_version": {
-          "$ref": "#/$defs/semanticVersion"
+          "const": "1.0.2"
         },
         "model": {
           "$ref": "#/$defs/modelConfig"
@@ -1288,7 +1979,8 @@
             "evaluator_failure",
             "budget_exceeded",
             "output_truncated",
-            "workspace_unavailable"
+            "workspace_unavailable",
+            "workspace_integrity"
           ]
         },
         "message": {
@@ -1437,6 +2129,9 @@
     "canonical_stage_bytes": 4194304,
     "model_runs": 17,
     "results_per_model_run": 72,
+    "execution_concurrency": 32,
+    "result_efficiency": 1224,
+    "efficiency_aggregates": 17,
     "result_response_preview_utf8_bytes": 1024
   }
 }
