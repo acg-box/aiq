@@ -130,6 +130,11 @@
         { "type": "null" }
       ]
     },
+    "additionalComponentVersion": {
+      "type": "string",
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9.+_-]{0,80}(?![\\s\\S])"
+    },
     "toolchainCommand": {
       "type": "object",
       "additionalProperties": false,
@@ -360,7 +365,14 @@
             },
             "components": {
               "type": "object",
-              "additionalProperties": false,
+              "minProperties": 7,
+              "maxProperties": 64,
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^[a-z][a-z0-9_]{0,31}(?![\\s\\S])"
+              },
+              "additionalProperties": { "$ref": "#/$defs/additionalComponentVersion" },
               "required": ["icu", "tz", "unicode", "v8", "modules", "openssl", "zlib"],
               "properties": {
                 "icu": { "$ref": "#/$defs/nullableComponentVersion" },

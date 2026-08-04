@@ -275,6 +275,18 @@ function validateSchemaNode(
   }
   if (isObject(value)) {
     const properties = isObject(schema.properties) ? schema.properties : {};
+    const propertyEntries = Object.entries(value);
+    if (typeof schema.minProperties === 'number' && propertyEntries.length < schema.minProperties) {
+      throw new Error(`${path} has too few corpus properties`);
+    }
+    if (typeof schema.maxProperties === 'number' && propertyEntries.length > schema.maxProperties) {
+      throw new Error(`${path} has too many corpus properties`);
+    }
+    if (schema.propertyNames !== undefined) {
+      for (const [key] of propertyEntries) {
+        validateSchemaNode(root, schema.propertyNames, key, `${path} property name`);
+      }
+    }
     if (Array.isArray(schema.required)) {
       for (const key of schema.required) {
         if (typeof key !== 'string' || !Object.hasOwn(value, key)) {
@@ -389,6 +401,15 @@ function validateCommitment(
   if (catalogTasks.length !== 72 || taskBindings.length !== 72) {
     throw new Error('corpus commitment must bind all 72 catalog tasks');
   }
+  const catalogByTaskId = new Map<string, JsonObject>();
+  catalogTasks.forEach((task, index) => {
+    const taskId = string(task.task_id, `catalog.tasks[${String(index)}].task_id`);
+    if (catalogByTaskId.has(taskId)) {
+      throw new Error(`catalog contains duplicate task ${taskId}`);
+    }
+    catalogByTaskId.set(taskId, task);
+  });
+  const bindingsByTaskId = new Map<string, JsonObject>();
   taskBindings.forEach((binding, index) => {
     exactKeys(
       binding,
@@ -408,14 +429,18 @@ function validateCommitment(
       ],
       `corpus commitment tasks[${String(index)}]`,
     );
-    const task = catalogTasks[index];
+    const taskId = string(binding.task_id, `corpus commitment tasks[${String(index)}].task_id`);
+    if (bindingsByTaskId.has(taskId)) {
+      throw new Error(`corpus commitment contains duplicate task ${taskId}`);
+    }
+    bindingsByTaskId.set(taskId, binding);
+    const task = catalogByTaskId.get(taskId);
     if (
       task === undefined ||
-      binding.task_id !== task.task_id ||
       binding.task_version !== task.task_version ||
       digest(binding.catalog_entry_sha256, 'catalog_entry_sha256') !== documentDigest(task)
     ) {
-      throw new Error(`corpus commitment task ${String(index)} is not ordered and exact`);
+      throw new Error(`corpus commitment task ${taskId} does not exactly match the catalog`);
     }
     if (binding.evaluator_runtime_kind !== 'node') {
       throw new Error(`corpus commitment task ${String(index)} runtime is invalid`);
@@ -433,11 +458,23 @@ function validateCommitment(
       digest(binding[field], `corpus commitment task ${String(index)} ${field}`);
     }
   });
+  const orderedTaskBindings = catalogTasks.map((task, index) => {
+    const taskId = string(task.task_id, `catalog.tasks[${String(index)}].task_id`);
+    const binding = bindingsByTaskId.get(taskId);
+    if (binding === undefined) {
+      throw new Error(`corpus commitment is missing catalog task ${taskId}`);
+    }
+    return binding;
+  });
   const taskSetIdentitySha256 = validateReviewedTaskCommitments(
     reviewedTaskCommitments,
-    taskBindings,
+    orderedTaskBindings,
   );
-  const evaluatorIdentitySha256 = validateRuntimeProvenance(execution, catalogTasks, taskBindings);
+  const evaluatorIdentitySha256 = validateRuntimeProvenance(
+    execution,
+    catalogTasks,
+    orderedTaskBindings,
+  );
   const nodes = validateNodes(reference.nodes);
   return {
     corpusCommitmentSha256: commitmentSha256,
@@ -445,7 +482,7 @@ function validateCommitment(
     evaluatorIdentitySha256,
     releaseId,
     publishedAt: timestamp(reference.published_at, 'reference.published_at'),
-    taskBindings,
+    taskBindings: orderedTaskBindings,
     nodes,
   };
 }
