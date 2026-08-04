@@ -121,6 +121,10 @@ export default async function CalibrationDetailPage({
               <dd>Evaluator replayed</dd>
             </div>
             <div>
+              <dt>Scoring</dt>
+              <dd>{run.scoringVersion || 'Unavailable'}</dd>
+            </div>
+            <div>
               <dt>Published</dt>
               <dd>
                 <time dateTime={run.publishedAt}>{new Date(run.publishedAt).toLocaleString()}</time>
@@ -212,7 +216,12 @@ export default async function CalibrationDetailPage({
             </table>
           </div>
           <ReadStateNote result={scores} subject="Full run score matrix" />
-          {scores.state === 'unavailable' ? null : <CalibrationEfficiency scores={scores.data} />}
+          {scores.state === 'unavailable' ? null : (
+            <CalibrationEfficiency
+              scores={scores.data}
+              scoringVersion={run.scoringVersion || null}
+            />
+          )}
         </>
       ) : null}
     </section>

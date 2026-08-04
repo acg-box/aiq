@@ -27,26 +27,24 @@ export function formatProtocolToken(value: string): string {
   return value.replaceAll('_', ' ');
 }
 
-export function radarOrbitPosition(index: number): Readonly<{ left: string; top: string }> {
-  const angle = index * 2.399963229728653 - Math.PI / 2;
-  const radius = 19 + (index % 3) * 9;
-  return {
-    left: `${(50 + Math.cos(angle) * radius).toFixed(2)}%`,
-    top: `${(50 + Math.sin(angle) * radius).toFixed(2)}%`,
-  };
+export type ObservationRecency = 'never' | 'unavailable' | 'recent' | 'stale';
+
+export function classifyObservationRecency(
+  lastSeenAt: string | null,
+  now = new Date(),
+): ObservationRecency {
+  if (lastSeenAt === null) return 'never';
+  const observedAt = new Date(lastSeenAt);
+  if (Number.isNaN(observedAt.getTime())) return 'unavailable';
+  const age = now.getTime() - observedAt.getTime();
+  return age > 15 * 60 * 1_000 ? 'stale' : 'recent';
 }
 
 export function formatLastObservation(lastSeenAt: string | null, now = new Date()): string {
-  if (lastSeenAt === null) {
-    return 'Never observed';
-  }
-  const observedAt = new Date(lastSeenAt);
-  if (Number.isNaN(observedAt.getTime())) {
-    return 'Observation time unavailable';
-  }
-  const age = now.getTime() - observedAt.getTime();
-  const freshness = age > 15 * 60 * 1_000 ? 'stale' : 'recent';
-  return `${observedAt.toLocaleString()} · ${freshness}`;
+  const recency = classifyObservationRecency(lastSeenAt, now);
+  if (recency === 'never') return 'Never observed';
+  if (recency === 'unavailable') return 'Observation time unavailable';
+  return `${new Date(lastSeenAt ?? '').toLocaleString()} · ${recency}`;
 }
 
 export function leaderboardRunHref(entry: LeaderboardEntry): string | null {
@@ -93,6 +91,22 @@ export function sortLeaderboardByPointEstimate(
   });
 }
 
+export function latestCompletedRun<T extends Pick<BenchmarkRunSummary, 'completedAt' | 'id'>>(
+  runs: readonly T[],
+): T | null {
+  return (
+    runs.toSorted((left, right) => {
+      const leftCompletedAt = new Date(left.completedAt).getTime();
+      const rightCompletedAt = new Date(right.completedAt).getTime();
+      const leftTime = Number.isNaN(leftCompletedAt) ? Number.NEGATIVE_INFINITY : leftCompletedAt;
+      const rightTime = Number.isNaN(rightCompletedAt)
+        ? Number.NEGATIVE_INFINITY
+        : rightCompletedAt;
+      return rightTime - leftTime || left.id.localeCompare(right.id);
+    })[0] ?? null
+  );
+}
+
 export function summarizeRun(run: BenchmarkRun): {
   correct: number;
   partial: number;
@@ -130,11 +144,13 @@ export interface RunOutcomeSummary {
   partial: number;
   incorrect: number;
   runtimeIssues: number;
-  unscored: number;
-  credited: number;
-  completed: number;
+  invalid: number;
+  missing: number;
+  notApplicable: number;
+  anyCredit: number;
+  completedOutcomes: number;
   total: number;
-  successRate: number | null;
+  anyCreditRate: number | null;
 }
 
 /**
@@ -147,12 +163,18 @@ export function summarizeRunOutcomes(run: BenchmarkRun): RunOutcomeSummary {
   let partial = 0;
   let incorrect = 0;
   let runtimeIssues = 0;
-  let unscored = 0;
+  let invalid = 0;
+  let missing = 0;
+  let notApplicable = 0;
   for (const task of run.tasks) {
     if (task.executionStatus === 'runtime_issue') {
       runtimeIssues += 1;
-    } else if (task.executionStatus !== 'completed') {
-      unscored += 1;
+    } else if (task.executionStatus === 'invalid') {
+      invalid += 1;
+    } else if (task.executionStatus === 'missing') {
+      missing += 1;
+    } else if (task.executionStatus === 'not_applicable') {
+      notApplicable += 1;
     } else if (task.outcome === 'correct') {
       correct += 1;
     } else if (task.outcome === 'partial') {
@@ -160,22 +182,24 @@ export function summarizeRunOutcomes(run: BenchmarkRun): RunOutcomeSummary {
     } else if (task.outcome === 'incorrect') {
       incorrect += 1;
     } else {
-      unscored += 1;
+      invalid += 1;
     }
   }
   const total = run.tasks.length;
-  const credited = correct + partial;
-  const completed = correct + partial + incorrect;
+  const anyCredit = correct + partial;
+  const completedOutcomes = correct + partial + incorrect;
   return {
     correct,
     partial,
     incorrect,
     runtimeIssues,
-    unscored,
-    credited,
-    completed,
+    invalid,
+    missing,
+    notApplicable,
+    anyCredit,
+    completedOutcomes,
     total,
-    successRate: completed === 0 ? null : (credited / completed) * 100,
+    anyCreditRate: completedOutcomes === 0 ? null : (anyCredit / completedOutcomes) * 100,
   };
 }
 

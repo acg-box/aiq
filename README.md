@@ -37,9 +37,11 @@ artifact bindings, including 19 capability artifacts.
 
 - Repository source targets AIQ Core `1.0.3` and scoring `1.0.3`, with 72
   private controlled tasks in ten domains.
-- AIQ Core `1.0.3` is the current code contract. Model-free native corpus
-  validation passes; clean-commit release binding, real execution, and
-  publication are pending. Production remains on the historical `1.0.2` matrix.
+- AIQ Core `1.0.3` is the current code contract. Model-free candidate validation
+  passes. The final clean source commit, create-new corpus regeneration,
+  final native build verification, its private audit receipt, real execution,
+  and publication are pending. Production remains on the historical `1.0.2`
+  matrix.
 - The public catalog contains metadata and commitments, not private task content.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
@@ -64,21 +66,29 @@ The release identity is `aiq-core/1.0.3`. The scorer-manifest identity is
 `sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
 and the evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-The model-free source candidate commitment is
-`sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`.
-Its runtime `task_set_hash` is
+The runtime `task_set_hash` is
 `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
 the distinct controlled generated-task tree identity is
 `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
-The separate six-task AIQ Core Contrast calibration commitment is
-`sha256:df3028d576c91f9b57e6aa23a94f0b1ffb61fd04b53a141fe9f0160c08a7c5d9`;
-its ordered metadata catalog identity is
+The separate six-task AIQ Core Contrast calibration ordered metadata catalog
+identity is
 `sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
-The production commitment remains create-new until a clean commit and native
-release binaries replace the candidate's null binary bindings. Do not infer a
-runtime hash from a generated-task tree digest. The
-published historical `1.0.2` Official `72 × 17` matrix is one batch of 17
-configuration runs and 1,224 task-level executions.
+Earlier Core promotion and Contrast authoring candidates are not final corpus
+identities. Create-new regeneration from the final clean source will establish
+the canonical Core and Contrast commitment digests. The checked Core schema
+requires `runner.identity_kind` to remain `source_only` and
+`runner.built_binary_sha256` to remain null. The shared Rust validator now fails
+closed on this runner subtree for both Core and Contrast. Contrast does not have
+a separate checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
+identities. The source-only corpus rule and signed per-run runner and Codex
+executable provenance are the executable product contracts. After the final
+clean build, the operator retains a private, unsigned audit receipt with the
+exact source commit and tree identity and SHA-256 values for the native runner,
+verifier, Node.js, and ripgrep executables. This receipt is reproducibility
+evidence, not a product protocol, database input, or published artifact. The
+repository does not validate it. Do not infer a runtime hash from a generated-task
+tree digest. The published historical `1.0.2` Official `72 × 17` matrix is one
+batch of 17 configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
 
@@ -175,10 +185,12 @@ For an empty AIQ namespace, the production reference must contain the real
 controlled, non-synthetic AIQ Core `1.0.3` corpus commitment, its real canonical
 `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
-only after the controlled corpus and final native binaries pass model-free
-validation; the repository contains no substitute production reference.
-A successful receipt reports scoring `1.0.3`, both source-head catalog
-identities, 72 tasks, 17 model configurations, and three nodes.
+only after the controlled corpus passes model-free validation and the operator
+verifies the final native build; the repository contains no substitute
+production reference. Retain the private final-build audit receipt separately.
+Database initialization does not accept or validate that receipt.
+A successful initialization receipt reports scoring `1.0.3`, both source-head
+catalog identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and
 calibration publication checks:

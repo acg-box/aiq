@@ -96,15 +96,15 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
   const snapshot = page.getByLabel('Latest matrix snapshot');
   const coverage = snapshot.getByText('Coverage', { exact: true }).locator('..');
-  const latestVerified = snapshot.getByText('Latest verified', { exact: true }).locator('..');
+  const newestRetained = snapshot.getByText('Newest retained run', { exact: true }).locator('..');
   await expect(coverage).toContainText('Sample size unavailable');
   await expect(coverage).not.toContainText('0 fixed task cells');
   await expect(
     page.getByText('17 configurations · task cells unavailable', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('17 configurations · 0 task cells', { exact: true })).toHaveCount(0);
-  await expect(latestVerified).toContainText('Unavailable');
-  await expect(latestVerified).toContainText('No published run evidence');
+  await expect(newestRetained).toContainText('Unavailable');
+  await expect(newestRetained).toContainText('No published run evidence');
   await expect(snapshot).not.toContainText('trusted publication');
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
   await expect(page.getByRole('status', { name: 'Latest calibration status' })).toContainText(

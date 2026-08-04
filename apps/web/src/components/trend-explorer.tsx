@@ -21,8 +21,8 @@ const ranges: ReadonlyArray<{ value: TrendRange; label: string }> = [
   { value: 'month', label: 'Month' },
   { value: 'all', label: 'All history' },
 ];
-type SeriesFilter = 'Top 5' | ModelFamily;
-const seriesFilters: readonly SeriesFilter[] = ['Top 5', 'Sol', 'Terra', 'Luna'];
+type SeriesFilter = ModelFamily;
+const seriesFilters: readonly SeriesFilter[] = ['Sol', 'Terra', 'Luna'];
 const formatDate = (value: string) => value.slice(0, 10);
 const pointProvenance = (point: TrendPoint) => (point.synthetic ? 'Synthetic' : 'Published');
 
@@ -93,14 +93,10 @@ export function TrendExplorer({
   range: TrendRange;
 }) {
   const [mode, setMode] = useState<'line' | 'bar'>('line');
-  const [seriesFilter, setSeriesFilter] = useState<SeriesFilter>('Top 5');
+  const [seriesFilter, setSeriesFilter] = useState<SeriesFilter>('Sol');
   const [isPending, startTransition] = useTransition();
   const selectedEntries = useMemo(
-    () =>
-      entries
-        .filter((entry) => seriesFilter === 'Top 5' || entry.modelFamily === seriesFilter)
-        .toSorted((left, right) => (right.score ?? -1) - (left.score ?? -1))
-        .slice(0, 5),
+    () => entries.filter((entry) => entry.modelFamily === seriesFilter),
     [entries, seriesFilter],
   );
   const selectedIds = useMemo(() => selectedEntries.map((entry) => entry.id), [selectedEntries]);
@@ -127,7 +123,7 @@ export function TrendExplorer({
         barMaxWidth: TREND_BAR_MAX_WIDTH,
         barGap: 0,
         showSymbol: mode === 'line',
-        symbol: ['circle', 'rect', 'triangle', 'diamond', 'roundRect'][index],
+        symbol: ['circle', 'rect', 'triangle', 'diamond', 'roundRect'][index % 5],
         symbolSize: 7,
         lineStyle: {
           width: 1.8,
@@ -243,6 +239,7 @@ export function TrendExplorer({
         nameGap: 40,
         axisLabel: { color: 'var(--muted)' },
         nameTextStyle: { color: 'var(--muted)' },
+        axisLine: { lineStyle: { color: 'var(--line-bright)' } },
         splitLine: { lineStyle: { color: 'var(--line)' } },
       },
       series: [...series, ...intervalSeries],
@@ -291,15 +288,13 @@ export function TrendExplorer({
         </div>
       </div>
       <p className="trend-resolution" role="note">
-        Showing at most five series:{' '}
-        {seriesFilter === 'Top 5'
-          ? 'the highest latest point estimates'
-          : `the highest ${seriesFilter} point estimates`}
-        . Lines connect ordered observations only; absent buckets remain gaps. Bars use a zero
-        baseline. Each grouped bar and its task-sensitivity interval use the same per-series
-        category offset. The server returns at most 20 buckets per configuration and uses the latest
-        exact Official run, not an average. Runtime and missing counts are unavailable in this
-        aggregate and are never inferred as zero. Scoring versions:{' '}
+        Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
+        order. The family is an explicit filter, not a point-estimate cutoff. Lines connect ordered
+        observations only; absent buckets remain gaps. Bars use a zero baseline. Each grouped bar
+        and its task-sensitivity interval use the same per-series category offset. The server
+        returns at most 20 buckets per configuration and uses the latest exact Official run, not an
+        average. Runtime and missing counts are unavailable in this aggregate and are never inferred
+        as zero. Scoring versions:{' '}
         {[...new Set(visible.map((point) => point.scoringVersion))].join(', ') || 'unavailable'}.
       </p>
       <div className={`trend-layout${isPending ? ' is-pending' : ''}`}>

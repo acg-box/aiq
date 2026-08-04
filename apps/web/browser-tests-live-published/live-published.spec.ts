@@ -345,6 +345,12 @@ test('the live overview exposes all 17 published configurations without seed sub
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Current configuration matrix' })).toBeVisible();
+  await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
+  await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
+  const snapshot = page.getByLabel('Latest matrix snapshot');
+  await expect(
+    snapshot.getByText('Newest retained run', { exact: true }).locator('..'),
+  ).toContainText('Aug 3, 2026');
   await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
   const leaderboardRegion = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
@@ -355,12 +361,15 @@ test('the live overview exposes all 17 published configurations without seed sub
   const efficiencyPlot = page.getByRole('region', { name: 'AIQ versus estimated cost' });
   await expect(efficiencyPlot).toBeVisible();
   await expect(efficiencyPlot).toContainText('Upper-left is better');
+  await expect(efficiencyPlot.locator('.efficiency-chart svg')).toBeVisible();
+  await expect(efficiencyPlot.locator('canvas')).toHaveCount(0);
+  await expect(efficiencyPlot).toContainText('Rings mark nondominated points');
   await efficiencyPlot.getByRole('button', { name: 'Duration', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'AIQ versus duration' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
   await page.getByText('Open 1 × 5 calibration evidence', { exact: true }).click();
   await expect(
-    page.getByText(/not Official.*not ranking eligible/, { exact: false }),
+    page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
   ).toBeVisible();
   const calibrationEfficiency = page.getByRole('region', {
     name: 'Calibration model efficiency',
@@ -369,6 +378,8 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     calibrationEfficiency.getByRole('row').filter({ hasText: 'terra · medium' }),
   ).toBeVisible();
+  await expect(page.locator('.calibration-chart svg')).toHaveCount(2);
+  await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Inspect calibration subsets' })).toHaveAttribute(
     'href',
     `/calibrations/${subsetCalibrationRunId}`,
@@ -447,6 +458,8 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   await expect(selector.locator('option')).toHaveCount(17);
   const results = page.getByRole('region', { name: 'Calibration results' });
   await expect(results.getByRole('row')).toHaveCount(73);
+  await expect(page.locator('.calibration-chart svg')).toHaveCount(2);
+  await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
   const workspaceIntegrity = results
     .getByRole('row')
     .filter({ hasText: 'aiq-v1-calibration-task-01' });
@@ -741,7 +754,7 @@ test('the published method and radar retain versioned, signed provenance', async
 
   await page.goto('/radar');
   await expect(page.getByText('Registry trust: trusted verified', { exact: true })).toBeVisible();
-  await expect(page.getByText('Published', { exact: true })).toBeVisible();
+  await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Verified observation signatures').locator('..')).toContainText('1');
   await expect(page.getByText('Receiver-verified trusted', { exact: true })).toBeVisible();
 });

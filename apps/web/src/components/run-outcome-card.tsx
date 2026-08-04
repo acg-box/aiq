@@ -6,11 +6,15 @@ import type { BenchmarkRun } from '../data/types.ts';
 export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
   const outcomes = summarizeRunOutcomes(run);
   const domains = summarizeRunDomains(run);
-  const width = outcomes.total === 0 ? 0 : (outcomes.credited / outcomes.total) * 100;
-  const partialWidth = outcomes.total === 0 ? 0 : (outcomes.partial / outcomes.total) * 100;
-  const incorrectWidth = outcomes.total === 0 ? 0 : (outcomes.incorrect / outcomes.total) * 100;
-  const executionWidth = outcomes.total === 0 ? 0 : (outcomes.runtimeIssues / outcomes.total) * 100;
-
+  const segments = [
+    { key: 'correct', label: 'Correct', count: outcomes.correct },
+    { key: 'partial', label: 'Partial', count: outcomes.partial },
+    { key: 'incorrect', label: 'Incorrect', count: outcomes.incorrect },
+    { key: 'runtime', label: 'Runtime issues', count: outcomes.runtimeIssues },
+    { key: 'invalid', label: 'Invalid', count: outcomes.invalid },
+    { key: 'missing', label: 'Missing', count: outcomes.missing },
+    { key: 'not-applicable', label: 'N/A', count: outcomes.notApplicable },
+  ] as const;
   return (
     <section className="outcome-card" aria-labelledby="outcome-card-heading">
       <div className="outcome-card-heading">
@@ -19,79 +23,61 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
           <h2 id="outcome-card-heading">Task outcomes, not model IQ</h2>
         </div>
         <strong className="outcome-rate">
-          {outcomes.successRate === null ? '—' : `${outcomes.successRate.toFixed(0)}%`}
-          <small>credit among completed outcomes</small>
+          {outcomes.anyCreditRate === null ? '—' : `${outcomes.anyCreditRate.toFixed(0)}%`}
+          <small>completed tasks earning any credit</small>
         </strong>
       </div>
       <p className="outcome-card-copy">
-        AIQ is the equal-weight average of ten task domains. The rate above uses completed semantic
-        outcomes only; runtime, invalid, missing, and not-applicable cells stay separate. Partial
-        credit remains visible below.
+        AIQ is the equal-weight average of ten task domains. The rate above counts completed tasks
+        marked correct or partial; it is not a score-weighted percentage or the AIQ index. Runtime,
+        invalid, missing, and not-applicable cells remain separate.
       </p>
-      <div
-        className="outcome-stack"
-        role="img"
-        aria-label={`Task outcomes: ${outcomes.correct} correct, ${outcomes.partial} partial, ${outcomes.incorrect} incorrect, ${outcomes.runtimeIssues} runtime issues`}
+      <dl
+        className="outcome-grid"
+        aria-label={`Exact task outcome states; ${outcomes.total} total`}
       >
-        <span className="outcome-segment correct" style={{ width: `${width - partialWidth}%` }} />
-        <span className="outcome-segment partial" style={{ width: `${partialWidth}%` }} />
-        <span className="outcome-segment incorrect" style={{ width: `${incorrectWidth}%` }} />
-        <span className="outcome-segment execution" style={{ width: `${executionWidth}%` }} />
-      </div>
-      <dl className="outcome-legend">
-        <div>
-          <dt>
-            <span className="legend-dot correct" />
-            Correct
-          </dt>
-          <dd>{outcomes.correct}</dd>
-        </div>
-        <div>
-          <dt>
-            <span className="legend-dot partial" />
-            Partial
-          </dt>
-          <dd>{outcomes.partial}</dd>
-        </div>
-        <div>
-          <dt>
-            <span className="legend-dot incorrect" />
-            Incorrect
-          </dt>
-          <dd>{outcomes.incorrect}</dd>
-        </div>
-        <div>
-          <dt>
-            <span className="legend-dot execution" />
-            Runtime issues
-          </dt>
-          <dd>{outcomes.runtimeIssues}</dd>
-        </div>
+        {segments.map((segment) => (
+          <div key={segment.key}>
+            <dt>{segment.label}</dt>
+            <dd>{segment.count}</dd>
+          </div>
+        ))}
       </dl>
       <section className="outcome-domain-disclosure" aria-labelledby="domain-matrix-heading">
         <div className="domain-matrix-heading">
           <span className="eyebrow">Domain matrix</span>
-          <h3 id="domain-matrix-heading">Where the leader gains and loses ground</h3>
+          <h3 id="domain-matrix-heading">Domain profile for this configuration</h3>
         </div>
-        <div className="domain-score-bars" role="list" aria-label="Domain AIQ index scores">
-          {domains.map((domain) => {
-            const score = domain.score ?? 0;
-            return (
-              <div className="domain-score-row" key={domain.domain} role="listitem">
-                <div className="domain-score-label">
-                  <span>{domain.domain.replaceAll('_', ' ')}</span>
-                  <strong>{domain.score === null ? '—' : `${score.toFixed(0)}%`}</strong>
-                </div>
-                <div className="domain-score-track" aria-hidden="true">
-                  <span style={{ width: `${score}%` }} />
-                </div>
-                <small>
-                  {domain.completed + domain.runtimeIssues}/{domain.total} observed ·{' '}
-                  {domain.coveragePercent.toFixed(0)}% coverage
-                </small>
-              </div>
-            );
-          })}
+        <div className="table-scroll outcome-domain-table" tabIndex={0}>
+          <table>
+            <caption>
+              Exact domain scores and execution-state counts for this configuration.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Domain</th>
+                <th scope="col">AIQ</th>
+                <th scope="col">Completed</th>
+                <th scope="col">Runtime</th>
+                <th scope="col">Invalid / missing / N/A</th>
+                <th scope="col">Coverage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {domains.map((domain) => (
+                <tr key={domain.domain}>
+                  <th scope="row">{domain.domain.replaceAll('_', ' ')}</th>
+                  <td>{domain.score === null ? '—' : domain.score.toFixed(1)}</td>
+                  <td>{domain.completed}</td>
+                  <td>{domain.runtimeIssues}</td>
+                  <td>
+                    {domain.invalid} / {domain.missing} / {domain.notApplicable}
+                  </td>
+                  <td>{domain.coveragePercent.toFixed(1)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <p className="fine-print domain-score-note">
           A zero here is a valid scored outcome for this fixed fixture, not missing data. Missing,

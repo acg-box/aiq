@@ -42,6 +42,7 @@ The scorer-manifest identity is
 `sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
 and the evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-Model-free native corpus validation passes. Clean-commit native release binding,
-real execution, and publication remain pending. Live production retains the
-historical AIQ Core `1.0.2` matrix.
+Model-free candidate validation passes. The final clean source commit,
+create-new source-only corpus regeneration, final native build verification,
+its private audit receipt, real execution, and publication remain pending. Live
+production retains the historical AIQ Core `1.0.2` matrix.

@@ -5,11 +5,28 @@
 	--panel: #0e1012;
 	--panel-soft: #14171a;
 	--line: #262a2f;
+	--line-bright: #56616c;
 	--acid: #d8dde5;
 	--acid-ink: #101214;
 	--data-lime: #8bb8a8;
 	--data-cyan: #78b8c2;
 	--data-violet: #9b94be;
+	--series-1: #9bc7b4;
+	--series-2: #f7ad96;
+	--series-3: #a5bfff;
+	--series-4: #c4a8dc;
+	--series-5: #87c5d1;
+	--series-6: #dec078;
+	--interval: #aeb8c2;
+	--frontier: #eef1f4;
+	--semantic-positive: #9bc7b4;
+	--semantic-negative: #ff9b7f;
+	--semantic-runtime: #f7ad96;
+	--semantic-invalid: #c1c7ce;
+	--semantic-missing: #91b6ff;
+	--semantic-na: #aeb4bc;
+	--status-offline: #aeb4bc;
+	--focus: #a5bfff;
 	--content: min(1360px, calc(100vw - 48px));
 	--header-bg: rgba(8, 9, 10, 0.84);
 	--panel-gradient: linear-gradient(180deg, rgba(17, 19, 22, 0.96), rgba(11, 13, 15, 0.96));
@@ -24,12 +41,28 @@
 	--panel: #ffffff;
 	--panel-soft: #eceff2;
 	--line: #d9dde2;
-	--line-bright: #b9c0c9;
+	--line-bright: #7a8490;
 	--acid: #27313d;
 	--acid-ink: #ffffff;
 	--data-lime: #347761;
 	--data-cyan: #267687;
 	--data-violet: #665b91;
+	--series-1: #21644f;
+	--series-2: #8c3b27;
+	--series-3: #345b91;
+	--series-4: #665b91;
+	--series-5: #236879;
+	--series-6: #705500;
+	--interval: #586474;
+	--frontier: #202833;
+	--semantic-positive: #21644f;
+	--semantic-negative: #97351f;
+	--semantic-runtime: #8c3b27;
+	--semantic-invalid: #535b65;
+	--semantic-missing: #285b9c;
+	--semantic-na: #59616b;
+	--status-offline: #59616b;
+	--focus: #1f5f9f;
 	--header-bg: rgba(248, 249, 250, 0.88);
 	--panel-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 248, 249, 0.98));
 	--shadow: rgba(28, 35, 44, 0.09);
@@ -44,12 +77,28 @@
 		--panel: #ffffff;
 		--panel-soft: #eceff2;
 		--line: #d9dde2;
-		--line-bright: #b9c0c9;
+		--line-bright: #7a8490;
 		--acid: #27313d;
 		--acid-ink: #ffffff;
 		--data-lime: #347761;
 		--data-cyan: #267687;
 		--data-violet: #665b91;
+		--series-1: #21644f;
+		--series-2: #8c3b27;
+		--series-3: #345b91;
+		--series-4: #665b91;
+		--series-5: #236879;
+		--series-6: #705500;
+		--interval: #586474;
+		--frontier: #202833;
+		--semantic-positive: #21644f;
+		--semantic-negative: #97351f;
+		--semantic-runtime: #8c3b27;
+		--semantic-invalid: #535b65;
+		--semantic-missing: #285b9c;
+		--semantic-na: #59616b;
+		--status-offline: #59616b;
+		--focus: #1f5f9f;
 		--header-bg: rgba(248, 249, 250, 0.88);
 		--panel-gradient: linear-gradient(180deg, #ffffff, #f6f8f9);
 		--shadow: rgba(28, 35, 44, 0.09);
@@ -186,7 +235,7 @@ body {
 	box-shadow: 0 24px 70px var(--shadow);
 }
 
-.snapshot-leader {
+.snapshot-estimate {
 	display: flex;
 	gap: 18px;
 	align-items: center;
@@ -194,19 +243,19 @@ body {
 	border-right: 1px solid var(--line);
 }
 
-.snapshot-leader > div:last-child {
+.snapshot-estimate > div:last-child {
 	display: grid;
 	min-width: 0;
 	gap: 3px;
 }
 
-.snapshot-leader strong,
-.snapshot-leader small,
+.snapshot-estimate strong,
+.snapshot-estimate small,
 .snapshot-label {
 	display: block;
 }
 
-.snapshot-leader strong {
+.snapshot-estimate strong {
 	font-size: 1.2rem;
 	line-height: 1.2;
 }
@@ -351,7 +400,7 @@ body {
 :root[data-theme='light']
 	:is(
 		.benchmark-snapshot,
-		.snapshot-leader,
+		.snapshot-estimate,
 		.snapshot-metrics,
 		.page-intro,
 		.matrix-chart,
@@ -393,7 +442,7 @@ body {
 		section,
 		article,
 		aside,
-		div:not(.score-ring),
+		div:not(.score-readout),
 		nav,
 		table,
 		thead,
@@ -413,7 +462,7 @@ body {
 	body
 	:is(
 		.benchmark-snapshot,
-		.snapshot-leader,
+		.snapshot-estimate,
 		.snapshot-metrics,
 		.matrix-chart,
 		.efficiency-plot,
@@ -436,7 +485,7 @@ body {
 	border-color: var(--line) !important;
 }
 
-:root[data-theme='light'] body :is(h1, h2, h3, h4, strong, dd, td, th, summary, button, a, code) {
+:root[data-theme='light'] body :is(h1, h2, h3, h4, strong, dd, td, th, summary, button, code) {
 	color: var(--ink) !important;
 }
 
@@ -459,8 +508,28 @@ body {
 	background: #27313d !important;
 }
 
-:root[data-theme='light'] :is(.result-runtime_issue, .trust.unverified) {
-	color: #9b341f !important;
+:root[data-theme='light'] body :is(.result-runtime_issue) {
+	color: var(--semantic-runtime) !important;
+}
+
+:root[data-theme='light'] body :is(.result-missing) {
+	color: var(--semantic-missing) !important;
+}
+
+:root[data-theme='light'] body :is(.result-invalid) {
+	color: var(--semantic-invalid) !important;
+}
+
+:root[data-theme='light'] body :is(.result-not_applicable) {
+	color: var(--semantic-na) !important;
+}
+
+:root[data-theme='light'] body :is(.trust.unverified, .trust.signed_community) {
+	color: var(--semantic-negative) !important;
+}
+
+:root[data-theme='light'] body .trust.signed_official {
+	color: var(--semantic-positive) !important;
 }
 
 .matrix-chart,
@@ -561,11 +630,6 @@ body {
 	animation: chart-rise 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.rank-chart li {
-	animation: none;
-	transition: background 140ms ease;
-}
-
 .efficiency-chart {
 	display: block;
 	width: 100%;
@@ -653,7 +717,7 @@ details[open]::details-content {
 		grid-template-columns: 1fr;
 	}
 
-	.snapshot-leader {
+	.snapshot-estimate {
 		min-height: 132px;
 		border-right: 0;
 		border-bottom: 1px solid var(--line);

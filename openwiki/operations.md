@@ -41,9 +41,10 @@ Public views contain 17 runs, 1,224 results, 17 leaderboard rows, 17
 model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
 
-Repository source now accepts AIQ Core and scoring `1.0.3`. Native acceptance,
-the first `1.0.3` run, and publication are pending; this source-head change does
-not claim that `1.0.3` is live.
+Repository source now accepts AIQ Core and scoring `1.0.3`. Final native build
+verification, operator acceptance of that build, the first `1.0.3` run, and
+publication are pending; this source-head change does not claim that `1.0.3` is
+live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -123,8 +124,11 @@ Before a live run:
    `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
    Do not substitute controlled generated-task tree identity
    `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
-   Create the production corpus commitment only after clean-commit native
-   release binding.
+   Create new source-only Core and Contrast corpus commitments from the final
+   clean source. Keep `runner.identity_kind` as `source_only` and
+   `runner.built_binary_sha256` as null. Keep the Node.js and ripgrep identities
+   in each corpus. This source-only rule and the signed per-run runner and Codex
+   executable provenance are the executable product contracts.
 3. Create distinct runner, verifier, and publisher Ed25519 identities.
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
@@ -134,8 +138,13 @@ Before a live run:
 
 Use a separate private Codex home whose copied `auth.json` is owner immutable
 with `uchg`. Do not make the active Codex profile immutable. Build
-`aiq-runner` and `aiq-verifier` with `cargo build --locked --release`; bind the
-exact Mach-O arm64 executable digests in the controlled corpus and run plan.
+`aiq-runner` and `aiq-verifier` with `cargo build --locked --release`. After the
+final clean build, the operator generates a private, unsigned audit receipt.
+Record the exact source commit and tree identity and SHA-256 values for the
+native runner, verifier, Node.js, and ripgrep executables. Retain the receipt with
+private release records. The repository does not validate or publish it, and it
+is not a database input. Bind the actual runner and Codex executables in the run
+plan and signed per-run provenance.
 
 Use CLI help as the exact command authority:
 
@@ -148,7 +157,11 @@ cargo run -p aiq-runner -- run --help
 ```
 
 Run both model-free corpus validators before `admit-permissions`. They validate
-the controlled 72-task AIQ Core corpus and the separate six-unit contrast corpus.
+the controlled 72-task AIQ Core corpus and the separate six-unit Contrast
+corpus. Their shared Rust validator now fails closed unless each runner subtree uses
+`identity_kind: source_only` with a null `built_binary_sha256`. The checked Core
+JSON schema enforces the same rule. Contrast has equivalent shared typed
+enforcement even though it has no separate checked-in JSON schema.
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
 exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, and planned
@@ -299,12 +312,15 @@ cargo make init-database
 ```
 
 The command uses one connection and one transaction. It rejects existing AIQ
-schema or roles. After the controlled corpus and final native binaries pass the
-model-free checks in [Deployment Handoff](deployment-handoff.md), prepare a
-separately controlled production reference containing a non-synthetic AIQ Core `1.0.3` corpus
+schema or roles. After the controlled corpus passes the model-free checks and
+the operator verifies the final native build as specified in
+[Deployment Handoff](deployment-handoff.md), prepare a separately controlled
+production reference containing a non-synthetic AIQ Core `1.0.3` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
-identities. Initialization validates those fields and bindings. The repository
-defines one greenfield desired state. The receipt must report scoring `1.0.3`,
+identities. Retain the private final-build audit receipt separately; database
+initialization does not consume or validate it. Initialization validates the
+production-reference fields and bindings. The repository defines one greenfield
+desired state. The initialization receipt must report scoring `1.0.3`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the

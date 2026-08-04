@@ -6,10 +6,12 @@ domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
-AIQ Core `1.0.3` is the current accepted code contract. Its native acceptance
-and publication are pending. Live production remains the historical `1.0.2`
-contract: the native macOS runner completed its real, non-synthetic Official
-benchmark matrix with 17
+AIQ Core `1.0.3` is the current accepted code contract. Model-free candidate
+validation passes. The final clean source commit, create-new corpus
+regeneration, final native build verification, its private audit receipt,
+operator acceptance of that build, and publication are pending. Live
+production remains the historical `1.0.2` contract: the native macOS runner
+completed its real, non-synthetic Official benchmark matrix with 17
 configurations by 72 tasks, or 1,224 task-level results. The verifier replayed
 and accepted its evidence. The distinct publisher published the matrix as
 `trusted_verified`. Of the 1,224 results, 1,218 completed and 6 failed. Outcomes
@@ -28,8 +30,8 @@ has 4,395 artifact bindings, including 19 capability artifacts.
   catalog for repository source.
 - `candidates/aiq-core-1.0.3/catalog.schema.json` validates the active source
   catalog.
-- `schema/corpus-commitment-v2.schema.json` validates a controlled corpus
-  commitment document.
+- `schema/corpus-commitment-v2.schema.json` validates the controlled AIQ Core
+  corpus commitment document.
 - `schema/result-package-v3.schema.json` validates signed runner packages.
 - `schema/normalized-batch-v3.schema.json` validates the database stage.
 - `schema/verifier-attestation-v3.schema.json` validates verifier evidence.
@@ -75,18 +77,29 @@ sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d
 ```
 
 The first digest binds the ordered task metadata. The second binds the catalog
-release identity. Model-free native validation passes all 72 tasks. The
-source-only candidate commitment is
-`sha256:353ca496bc57c4a7aa43e30e40d8bb9e39c8390cfeb63156e2fad04d832dc9a9`;
-the runtime `task_set_hash` is
+release identity. Model-free candidate validation passes all 72 tasks. The
+runtime `task_set_hash` is
 `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
 The distinct controlled generated-task tree identity is
 `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
-The separate six-task AIQ Core Contrast calibration has commitment
-`sha256:df3028d576c91f9b57e6aa23a94f0b1ffb61fd04b53a141fe9f0160c08a7c5d9`
-and ordered metadata catalog identity
+The separate six-task AIQ Core Contrast calibration has ordered metadata
+catalog identity
 `sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
-The production commitment remains pending clean-commit native release binding.
+Earlier Core promotion and Contrast authoring candidates are not final corpus
+identities. Create-new regeneration from the final clean source will establish
+the canonical commitment digests. The shared Rust validator now fails closed
+unless `runner.identity_kind` is `source_only` and
+`runner.built_binary_sha256` is null. The Core JSON schema enforces the same
+rule. Contrast has equivalent shared typed enforcement even though it does not
+have a separate checked-in JSON schema.
+These fields remain source-only in the final corpus documents. Each corpus also
+binds the Node.js and ripgrep identities. The source-only corpus rule and signed
+per-run runner and Codex executable provenance are the executable product
+contracts. After the final clean build, the operator retains a private, unsigned
+audit receipt with the exact source commit and tree identity and SHA-256 values
+for the native runner, verifier, Node.js, and ripgrep executables. This receipt
+is reproducibility evidence, not a product protocol, database input, or
+published artifact. The repository does not validate it.
 Model-free validation replays each task's gold, alternate-correct, partial,
 adversarial-format, empty, and timeout fixtures twice and requires byte-identical
 expected results. Near-miss and paired-contrast evidence is validated in the

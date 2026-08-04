@@ -433,8 +433,13 @@ test('production method, trends, and radar preserve transparent evidence semanti
   await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
-  ).toHaveCount(5);
-  await expect(page.getByRole('note')).toContainText('highest latest point estimates');
+  ).toHaveCount(6);
+  await expect(page.getByRole('note')).toContainText(
+    'Showing all 6 Sol configurations in canonical matrix order',
+  );
+  await expect(page.getByRole('note')).toContainText(
+    'The family is an explicit filter, not a point-estimate cutoff.',
+  );
   await expect(
     page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
   ).toBeVisible();

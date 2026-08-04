@@ -8,10 +8,14 @@ import { ModelMatrixChart } from '../components/model-matrix-chart.tsx';
 import { OfficialEfficiencyTable } from '../components/official-efficiency-table.tsx';
 import { ReadStateNote } from '../components/read-state-note.tsx';
 import { RunOutcomeCard } from '../components/run-outcome-card.tsx';
-import { ScoreRing } from '../components/score-ring.tsx';
+import { ScoreReadout } from '../components/score-readout.tsx';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
-import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
+import {
+  isScoredLeaderboardEntry,
+  type BenchmarkRun,
+  type BenchmarkRunSummary,
+} from '../data/types.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +32,7 @@ function formatDate(value: string | undefined): string {
 
 export default async function OverviewPage() {
   const repository = createAiqRepository();
-  const [leaderboardResult, calibrationRunsResult] = await Promise.all([
+  const [leaderboardResult, calibrationRunsResult, newestRunResult] = await Promise.all([
     readPublicData(
       repository,
       () => repository.listLeaderboard(),
@@ -43,6 +47,13 @@ export default async function OverviewPage() {
       (value) => value.runs.length === 0,
       (value) => value.runs.map((run) => run.synthetic),
     ),
+    readPublicData<BenchmarkRunSummary | null>(
+      repository,
+      () => repository.getNewestCompletedRun(),
+      null,
+      (value) => value === null,
+      (value) => (value ? [value.synthetic] : []),
+    ),
   ]);
 
   const leaderboard = leaderboardResult.data;
@@ -52,7 +63,7 @@ export default async function OverviewPage() {
   const officialRunIds = leaderboard.flatMap((entry) =>
     entry.scoreStatus === 'official' && entry.runId ? [entry.runId] : [],
   );
-  const [latestRunResult, officialEfficiencyResult, calibrationScoresResult] = await Promise.all([
+  const [selectedRunResult, officialEfficiencyResult, calibrationScoresResult] = await Promise.all([
     readPublicData<BenchmarkRun | null>(
       repository,
       () =>
@@ -94,7 +105,8 @@ export default async function OverviewPage() {
       ? null
       : coveredEntries.reduce((sum, entry) => sum + (entry.coveragePercent ?? 0), 0) /
         coveredEntries.length;
-  const latestRun = latestRunResult.data;
+  const selectedRun = selectedRunResult.data;
+  const newestRetainedRun = newestRunResult.data;
   const latestEfficiency = officialEfficiencyResult.data.find(
     (row) => row.runId === highestPointEstimate?.runId,
   );
@@ -131,17 +143,25 @@ export default async function OverviewPage() {
           </p>
         </header>
         <div className="benchmark-snapshot" aria-label="Latest matrix snapshot">
-          <div className="snapshot-leader">
+          <div className="snapshot-estimate">
             {highestPointEstimate ? (
-              <ScoreRing score={highestPointEstimate.score} label={scoreLabel} unit="AIQ index" />
+              <ScoreReadout
+                score={highestPointEstimate.score}
+                label={scoreLabel}
+                unit="AIQ index"
+              />
             ) : (
-              <div className="score-ring score-ring-empty" aria-label="No published score yet">
+              <div
+                className="score-readout score-readout-empty"
+                role="img"
+                aria-label="No published score yet"
+              >
                 <span>—</span>
-                <small>AIQ index</small>
+                <small>AIQ index · 0–100</small>
               </div>
             )}
             <div>
-              <span className="snapshot-label">Leading configuration</span>
+              <span className="snapshot-label">Highest point estimate</span>
               <strong>
                 {highestPointEstimate
                   ? `${highestPointEstimate.modelFamily} / ${highestPointEstimate.reasoningTier}`
@@ -172,13 +192,15 @@ export default async function OverviewPage() {
               </dd>
             </div>
             <div>
-              <dt>Latest verified</dt>
-              <dd>{latestRun ? formatDate(latestRun.completedAt) : 'Unavailable'}</dd>
+              <dt>Newest retained run</dt>
+              <dd>
+                {newestRetainedRun ? formatDate(newestRetainedRun.completedAt) : 'Unavailable'}
+              </dd>
               <dd className="snapshot-note">
-                {latestRun
-                  ? latestRun.synthetic
+                {newestRetainedRun
+                  ? newestRetainedRun.synthetic
                     ? 'synthetic seed'
-                    : 'trusted publication'
+                    : 'published run evidence'
                   : 'No published run evidence'}
               </dd>
             </div>
@@ -227,7 +249,7 @@ export default async function OverviewPage() {
         </div>
         <ReadStateNote result={leaderboardResult} subject="Latest matrix" />
         <ModelMatrixChart entries={leaderboard} />
-        {latestRun ? <RunOutcomeCard run={latestRun} /> : null}
+        {selectedRun ? <RunOutcomeCard run={selectedRun} /> : null}
         <EfficiencyPlot entries={leaderboard} rows={officialEfficiencyResult.data} />
         <details className="leaderboard-disclosure">
           <summary>Show all {leaderboard.length} configurations and intervals</summary>
@@ -303,11 +325,18 @@ export default async function OverviewPage() {
                 <dt>Classification</dt>
                 <dd>Untrusted · not Official · not ranking eligible</dd>
               </div>
+              <div>
+                <dt>Scoring</dt>
+                <dd>{latestCalibration.scoringVersion || 'Unavailable'}</dd>
+              </div>
             </dl>
             <ReadStateNote result={calibrationScoresResult} subject="Calibration score matrix" />
             {calibrationScoresResult.state === 'unavailable' ||
             calibrationScoresResult.state === 'empty' ? null : (
-              <CalibrationEfficiency scores={calibrationScoresResult.data} />
+              <CalibrationEfficiency
+                scores={calibrationScoresResult.data}
+                scoringVersion={latestCalibration.scoringVersion || null}
+              />
             )}
             <Link className="text-link" href={`/calibrations/${latestCalibration.id}`}>
               Inspect calibration subsets <span aria-hidden="true">→</span>

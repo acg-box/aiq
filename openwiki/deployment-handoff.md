@@ -14,8 +14,9 @@ from the first launch evidence.
 
 Live production remains the historical AIQ Core `1.0.2` matrix described below.
 Repository source now accepts AIQ Core `1.0.3`, but its final controlled corpus
-commitment with native binary bindings, first real run, and publication are still
-pending. Model-free native validation passes all 72 tasks; the runtime
+regeneration, final native build verification, private final-build audit receipt,
+first real run, and publication are still pending. Model-free candidate
+validation passes all 72 tasks; the runtime
 `task_set_hash` is
 `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
 Do not treat the source-head change as a deployment claim.
@@ -77,6 +78,7 @@ Record these values after each action succeeds:
 | Runner      | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
 | Verifier    | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
 | Corpus      | Release ID, commitment SHA-256, 72 task count, and evaluator runtime identity |
+| Final build | Private receipt: commit, tree, runner, verifier, Node.js, and ripgrep hashes       |
 | Database    | Source commit, `databases/schema.sql` SHA-256, and initialization receipt     |
 | Vercel      | Deployment ID, source commit, project, scope, and production origin           |
 | Domain      | Vercel domain state, Cloudflare DNS records, TLS, and redirect behavior       |
@@ -84,6 +86,12 @@ Record these values after each action succeeds:
 
 Private task content, credentials, signing seeds, access tokens, and service
 keys must stay outside Git and public evidence.
+
+The operator generates the private, unsigned final-build audit receipt from the
+final clean build. Retain it with the private release records under the existing
+access and retention controls. Keep it outside Git and public evidence. Do not
+use it as a product protocol or database input. The repository does not validate
+the receipt.
 
 ## Supabase setup
 
@@ -191,9 +199,14 @@ private records.
 
 Make a separate copy of the current Codex authentication home. Set the copied
 `auth.json` to mode `0600` and owner immutable with `chflags uchg`. Do not change
-the active Codex profile. Bind the exact Codex executable, Node.js runtime,
-ripgrep executable, and their hashes in the corpus commitment and run
-provenance.
+the active Codex profile. Keep each corpus runner subtree source-only with a null
+built-binary digest, and keep the Node.js and ripgrep identities in the corpus.
+After the final clean build, generate the private, unsigned audit receipt. Record
+the exact source commit and tree identity and SHA-256 values for the native
+runner, verifier, Node.js, and ripgrep executables. This receipt is private
+reproducibility evidence only. The executable product contracts are the
+source-only corpus rule and the signed per-run provenance for the actual runner
+and Codex executables.
 
 Use CLI help as the exact argument authority:
 
@@ -208,7 +221,11 @@ target/release/aiq-runner package --help
 target/release/aiq-runner submit --help
 ```
 
-Run both model-free corpus validators before `admit-permissions`. Pass the same
+Run both model-free corpus validators before `admit-permissions`. The shared
+Rust validator now fails closed unless the Core and Contrast runner subtrees use
+`identity_kind: source_only` with a null `built_binary_sha256`. The checked Core
+JSON schema enforces the same rule. Contrast has equivalent shared typed
+enforcement even though it has no separate checked-in JSON schema. Pass the same
 private admission receipt to preflight, run, score, and package. Use the host's
 direct Codex connection. Keep the checkpoint, artifacts, run reservation, and
 preflight cache after interruption. Resume only the unchanged run.
