@@ -320,15 +320,21 @@ args = [
 # Test
 # | task                       | type      | cwd |
 # | -------------------------- | --------- | --- |
-# | test                 | composite |     |
-# | test-real-codex-host | command   |     |
-# | test-rust            | command   |     |
-# | test-typescript      | command   |     |
+# | test                      | composite |     |
+# | test-database-concurrency | command   |     |
+# | test-real-codex-host      | command   |     |
+# | test-rust                 | command   |     |
+# | test-typescript           | command   |     |
 
 [tasks.test]
 clear = true
 workspace = false
 dependencies = ["test-rust", "test-typescript"]
+
+[tasks.test-database-concurrency]
+workspace = false
+command = "node"
+args = ["--test", "databases/artifact-resolver-concurrency.test.ts"]
 
 [tasks.test-rust]
 workspace = false
