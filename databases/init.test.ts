@@ -173,6 +173,8 @@ async function referenceFixture(): Promise<JsonObject> {
         modules: '137',
         openssl: '3.5.4',
         zlib: '1.3.1',
+        acorn: '8.15.0',
+        nghttp3: '',
       },
     },
     model_toolchain: modelToolchain,
@@ -480,6 +482,41 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
 });
 
+void test('normalizes commitment bindings by task identity before building rows', async () => {
+  const [schema, catalog, reference, corpusSchema, taskCommitments] = await Promise.all([
+    readFile(schemaPath, 'utf8'),
+    catalogFixture(),
+    referenceFixture(),
+    corpusSchemaFixture(),
+    taskCommitmentsFixture(),
+  ]);
+  const bindings = mutableArray(object(reference.corpus_commitment), 'tasks');
+  bindings.reverse();
+  const expectedByTaskId = new Map(
+    bindings.map((value) => {
+      const binding = object(value);
+      return [String(binding.task_id), binding.task_definition_sha256] as const;
+    }),
+  );
+
+  const prepared = prepareInitialization(schema, catalog, reference, corpusSchema, taskCommitments);
+  const taskRows = embeddedRowGroups(prepared.sql)[2];
+  const catalogTasks = mutableArray(catalog, 'tasks');
+  if (taskRows === undefined) throw new Error('task row group is missing');
+
+  deepStrictEqual(
+    taskRows.map((row) => object(row).task_id),
+    catalogTasks.map((task) => object(task).task_id),
+  );
+  taskRows.forEach((row) => {
+    const taskRow = object(row);
+    strictEqual(
+      `sha256:${String(taskRow.fixture_commitment)}`,
+      expectedByTaskId.get(String(taskRow.task_id)),
+    );
+  });
+});
+
 void test('rejects a schema stream without one standalone transaction wrapper', async () => {
   const [schema, catalog, reference, corpusSchema, taskCommitments] = await Promise.all([
     readFile(schemaPath, 'utf8'),
@@ -723,10 +760,51 @@ void test('rejects malformed, incomplete, duplicate, and mismatched references',
       },
     ],
     [
-      'reordered task',
+      'duplicate task binding',
       (reference) => {
         const tasks = mutableArray(object(reference.corpus_commitment), 'tasks');
-        [tasks[0], tasks[1]] = [tasks[1], tasks[0]];
+        tasks[1] = structuredClone(tasks[0]);
+      },
+    ],
+    [
+      'unknown task binding',
+      (reference) => {
+        const tasks = mutableArray(object(reference.corpus_commitment), 'tasks');
+        object(tasks[0]).task_id = 'unknown-task';
+      },
+    ],
+    [
+      'invalid Node component name',
+      (reference) => {
+        const execution = object(object(reference.corpus_commitment).execution);
+        const runtime = object(execution.runtime_provenance);
+        object(object(runtime.node_runtime).components)['Invalid Component'] = '1.0.0';
+        execution.environment_sha256 = `sha256:${createHash('sha256')
+          .update(canonicalJson(runtime))
+          .digest('hex')}`;
+      },
+    ],
+    [
+      'empty required Node component',
+      (reference) => {
+        const execution = object(object(reference.corpus_commitment).execution);
+        const runtime = object(execution.runtime_provenance);
+        object(object(runtime.node_runtime).components).v8 = '';
+        execution.environment_sha256 = `sha256:${createHash('sha256')
+          .update(canonicalJson(runtime))
+          .digest('hex')}`;
+      },
+    ],
+    [
+      'too many Node components',
+      (reference) => {
+        const execution = object(object(reference.corpus_commitment).execution);
+        const runtime = object(execution.runtime_provenance);
+        const components = object(object(runtime.node_runtime).components);
+        for (let index = 0; index < 56; index += 1) components[`extra_${String(index)}`] = '1';
+        execution.environment_sha256 = `sha256:${createHash('sha256')
+          .update(canonicalJson(runtime))
+          .digest('hex')}`;
       },
     ],
     [
