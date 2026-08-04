@@ -25,7 +25,7 @@ $$;
 
 select pg_temp.aiq_assert(
   (
-    select routine.proconfig @> array['search_path=""', 'statement_timeout=50s']::text[]
+    select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
       and cardinality(routine.proconfig) = 2
     from pg_catalog.pg_proc routine
     join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
@@ -41,7 +41,7 @@ select pg_temp.aiq_assert(
     select 1
     from pg_catalog.pg_proc routine
     join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
-    where routine.proconfig @> array['statement_timeout=50s']::text[]
+    where routine.proconfig @> array['statement_timeout=110s']::text[]
       and not (
         namespace.nspname = 'public'
         and routine.proname = 'aiq_stage_verifier_result'
