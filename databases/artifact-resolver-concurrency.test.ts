@@ -14,13 +14,27 @@ const inboxId = '71783153-6205-4929-a173-183153620529';
 const leaseToken = '18315362-0529-4717-8315-362052971783';
 const runId = `run_${'7'.repeat(64)}`;
 const artifactBucket = 'resolver-concurrency-artifacts';
-const artifacts = [
+const rejectionBucket = 'resolver-rejection-artifacts';
+const resultArtifacts = [
   ['evaluator-results.json', '1'.repeat(64), 101],
   ['final-response.txt', '2'.repeat(64), 102],
   ['stderr.txt', '3'.repeat(64), 103],
   ['stdout.jsonl', '4'.repeat(64), 104],
   ['workspace-manifest.json', '5'.repeat(64), 105],
   ['workspace-snapshot.json', '6'.repeat(64), 106],
+] as const;
+const capabilityArtifacts = [
+  ['stdout.jsonl', '7'.repeat(64), 107],
+  ['stderr.txt', '8'.repeat(64), 108],
+] as const;
+const artifacts = [...resultArtifacts, ...capabilityArtifacts] as const;
+const rejectedArtifacts = [
+  ['stderr.txt', '9'.repeat(64), 109, 'missing'],
+  ['stderr.txt', 'a'.repeat(64), 110, 'kind'],
+  ['stderr.txt', 'b'.repeat(64), 111, 'hash'],
+  ['stdout.jsonl', 'c'.repeat(64), 112, 'uri'],
+  ['stderr.txt', 'd'.repeat(64), 113, 'bytes'],
+  ['stdout.jsonl', 'e'.repeat(64), 114, 'undeclared'],
 ] as const;
 
 function databaseEnvironment(url: string, applicationName: string): NodeJS.ProcessEnv {
@@ -66,7 +80,7 @@ async function runPsql(
 }
 
 function fixtureSql(): string {
-  const ordinaryArtifacts = artifacts
+  const ordinaryArtifacts = resultArtifacts
     .filter(([kind]) => !['evaluator-results.json', 'workspace-manifest.json'].includes(kind))
     .map(
       ([kind, digest, bytes]) =>
@@ -74,16 +88,57 @@ function fixtureSql(): string {
         `'uri','aiq-artifact://sha256/${digest}/${kind}','bytes',${bytes})`,
     )
     .join(',');
-  const evaluator = artifacts[0];
-  const manifest = artifacts[4];
-  const objectValues = artifacts
+  const evaluator = resultArtifacts[0];
+  const manifest = resultArtifacts[4];
+  const capabilityReferences = [
+    `jsonb_build_object('kind','${capabilityArtifacts[0][0]}',` +
+      `'content_hash','sha256:${capabilityArtifacts[0][1]}',` +
+      `'uri','aiq-artifact://sha256/${capabilityArtifacts[0][1]}/${capabilityArtifacts[0][0]}',` +
+      `'bytes',${capabilityArtifacts[0][2]})`,
+    `jsonb_build_object('kind','${capabilityArtifacts[1][0]}',` +
+      `'content_hash','sha256:${capabilityArtifacts[1][1]}',` +
+      `'uri','aiq-artifact://sha256/${capabilityArtifacts[1][1]}/${capabilityArtifacts[1][0]}',` +
+      `'bytes',${capabilityArtifacts[1][2]})`,
+    `jsonb_build_object('kind','${rejectedArtifacts[0][0]}',` +
+      `'content_hash','sha256:${rejectedArtifacts[0][1]}',` +
+      `'uri','aiq-artifact://sha256/${rejectedArtifacts[0][1]}/${rejectedArtifacts[0][0]}',` +
+      `'bytes',${rejectedArtifacts[0][2]})`,
+    `jsonb_build_object('kind','stdout.jsonl',` +
+      `'content_hash','sha256:${rejectedArtifacts[1][1]}',` +
+      `'uri','aiq-artifact://sha256/${rejectedArtifacts[1][1]}/${rejectedArtifacts[1][0]}',` +
+      `'bytes',${rejectedArtifacts[1][2]})`,
+    `jsonb_build_object('kind','${rejectedArtifacts[2][0]}',` +
+      `'content_hash','sha256:${'f'.repeat(64)}',` +
+      `'uri','aiq-artifact://sha256/${rejectedArtifacts[2][1]}/${rejectedArtifacts[2][0]}',` +
+      `'bytes',${rejectedArtifacts[2][2]})`,
+    `jsonb_build_object('kind','${rejectedArtifacts[3][0]}',` +
+      `'content_hash','sha256:${rejectedArtifacts[3][1]}',` +
+      `'uri','aiq-artifact://sha256/${rejectedArtifacts[3][1]}/stderr.txt',` +
+      `'bytes',${rejectedArtifacts[3][2]})`,
+    `jsonb_build_object('kind','${rejectedArtifacts[4][0]}',` +
+      `'content_hash','sha256:${rejectedArtifacts[4][1]}',` +
+      `'uri','aiq-artifact://sha256/${rejectedArtifacts[4][1]}/${rejectedArtifacts[4][0]}',` +
+      `'bytes',${rejectedArtifacts[4][2] + 1})`,
+  ];
+  const capabilityModels = capabilityReferences
     .map(
-      ([kind, digest, bytes]) =>
-        `('${kind}','${digest}','${artifactBucket}',` +
-        `'sha256/${digest}/${kind}',${bytes}::bigint)`,
+      (reference) =>
+        `jsonb_build_object('probe',jsonb_build_object('artifacts',jsonb_build_array(${reference})))`,
+    )
+    .join(',');
+  const ingressArtifacts = [
+    ...artifacts.map(([kind, digest, bytes]) => [kind, digest, bytes, artifactBucket] as const),
+    ...rejectedArtifacts
+      .filter(([, , , rejection]) => rejection !== 'missing')
+      .map(([kind, digest, bytes]) => [kind, digest, bytes, rejectionBucket] as const),
+  ];
+  const objectValues = ingressArtifacts
+    .map(
+      ([kind, digest, bytes, bucket]) =>
+        `('${kind}','${digest}','${bucket}','sha256/${digest}/${kind}',${bytes}::bigint)`,
     )
     .join(',\n');
-  const claimValues = artifacts
+  const claimValues = ingressArtifacts
     .map(([kind, digest]) => `('${runId}','${kind}','${digest}')`)
     .join(',\n');
 
@@ -102,6 +157,9 @@ insert into aiq_private.aiq_submission_inbox (
       'kind','${evaluator[0]}','content_hash','sha256:${evaluator[1]}',
       'uri','aiq-artifact://sha256/${evaluator[1]}/${evaluator[0]}',
       'bytes',${evaluator[2]}
+    ),
+    'capability_validation',jsonb_build_object(
+      'models',jsonb_build_array(${capabilityModels})
     ),
     'results',jsonb_build_array(jsonb_build_object(
       'artifacts',jsonb_build_array(${ordinaryArtifacts}),
@@ -146,6 +204,22 @@ from public.aiq_resolve_claim_artifact(
   '${inboxId}','${leaseToken}','${kind}','${digest}'
 ) resolved;
 commit;`;
+}
+
+async function assertResolverRejected(
+  command: string,
+  url: string,
+  artifact: (typeof rejectedArtifacts)[number],
+): Promise<void> {
+  const [kind, digest, , reason] = artifact;
+  await assert.rejects(
+    runPsql(command, url, resolverSql(kind, digest), 'aiq-resolver-rejection-worker'),
+    (error: unknown) => {
+      assert.match(errorText(error), /42501/);
+      return true;
+    },
+    `${reason} capability evidence must not resolve`,
+  );
 }
 
 async function waitForBlockedResolvers(command: string, url: string): Promise<void> {
@@ -200,8 +274,24 @@ void test('locks the claim before artifact binding can enter the Storage gate', 
   assert.ok(bindingInsert > claimLock, 'the claim lock must precede the binding trigger');
 });
 
+void test('matches capability probe artifacts by exact claim-bound metadata', () => {
+  const resolver =
+    schema.match(
+      /create function aiq_private\.aiq_resolve_claim_artifact_reference_core[\s\S]*?\n\$_\$;/,
+    )?.[0] ?? '';
+  assert.match(resolver, /payload,capability_validation,models/);
+  assert.match(resolver, /capability_model #> '\{probe,artifacts\}'/);
+  assert.match(resolver, /reference ->> 'kind' = requested_kind/);
+  assert.match(resolver, /reference ->> 'content_hash' = 'sha256:' \|\| requested_sha256/);
+  assert.match(
+    resolver,
+    /reference ->> 'uri' = 'aiq-artifact:\/\/sha256\/' \|\| requested_sha256 \|\| '\/' \|\| requested_kind/,
+  );
+  assert.match(resolver, /\(reference ->> 'bytes'\)::bigint = artifact\.byte_size/);
+});
+
 void test(
-  'resolves one claim artifact set concurrently without 40P01 and remains idempotent',
+  'strictly resolves one claim artifact set concurrently and remains idempotent',
   {
     timeout: 60_000,
     skip:
@@ -230,6 +320,11 @@ void test(
     );
     assert.match(version, /^17(?:\.|$)/);
     await runPsql(psqlCommand, databaseUrl, fixtureSql(), 'aiq-resolver-concurrency-setup');
+    await Promise.all(
+      rejectedArtifacts.map((artifact) =>
+        assertResolverRejected(psqlCommand, databaseUrl, artifact),
+      ),
+    );
 
     const gate = spawn(
       psqlCommand,
@@ -364,7 +459,13 @@ select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
               and object.content_sha256=ingress.content_sha256
               and object.byte_size=ingress.byte_size
               and object.lifecycle_state='active'
-            where binding.inbox_id='${inboxId}')
+            where binding.inbox_id='${inboxId}'),
+          'rejected_binding_count',(select count(*)
+            from aiq_private.aiq_artifact_claim_bindings binding
+            join aiq_private.aiq_artifact_ingress_objects ingress
+              using(artifact_kind,content_sha256)
+            where binding.inbox_id='${inboxId}'
+              and ingress.bucket_name='${rejectionBucket}')
         )::text;`,
         'aiq-resolver-concurrency-state',
       ),
@@ -374,6 +475,7 @@ select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
       active_reference_count: artifacts.length,
       binding_count: artifacts.length,
       ingress_count: artifacts.length,
+      rejected_binding_count: 0,
       registry_match_count: artifacts.length,
     });
   },

@@ -659,26 +659,47 @@ begin
         requested_kind <> 'evaluator-results.json'
         and exists (
       select 1
-      from jsonb_array_elements(
-        case
-          when jsonb_typeof(claimed.envelope #> '{payload,results}') = 'array'
-          then claimed.envelope #> '{payload,results}'
-          else '[]'::jsonb
-        end
-      ) result
-      cross join lateral jsonb_array_elements(
-        case
-          when jsonb_typeof(result -> 'artifacts') = 'array'
-          then result -> 'artifacts'
-          else '[]'::jsonb
-        end
-        ||
-        case
-          when jsonb_typeof(result -> 'workspace_manifest') = 'object'
-          then jsonb_build_array(result -> 'workspace_manifest')
-          else '[]'::jsonb
-        end
-      ) reference
+      from (
+        select result_reference.reference
+        from jsonb_array_elements(
+          case
+            when jsonb_typeof(claimed.envelope #> '{payload,results}') = 'array'
+            then claimed.envelope #> '{payload,results}'
+            else '[]'::jsonb
+          end
+        ) result
+        cross join lateral jsonb_array_elements(
+          case
+            when jsonb_typeof(result -> 'artifacts') = 'array'
+            then result -> 'artifacts'
+            else '[]'::jsonb
+          end
+          ||
+          case
+            when jsonb_typeof(result -> 'workspace_manifest') = 'object'
+            then jsonb_build_array(result -> 'workspace_manifest')
+            else '[]'::jsonb
+          end
+        ) result_reference(reference)
+        union all
+        select capability_reference.reference
+        from jsonb_array_elements(
+          case
+            when jsonb_typeof(
+              claimed.envelope #> '{payload,capability_validation,models}'
+            ) = 'array'
+            then claimed.envelope #> '{payload,capability_validation,models}'
+            else '[]'::jsonb
+          end
+        ) capability_model
+        cross join lateral jsonb_array_elements(
+          case
+            when jsonb_typeof(capability_model #> '{probe,artifacts}') = 'array'
+            then capability_model #> '{probe,artifacts}'
+            else '[]'::jsonb
+          end
+        ) capability_reference(reference)
+      ) claimed_reference(reference)
       where reference ->> 'kind' = requested_kind
         and reference ->> 'content_hash' = 'sha256:' || requested_sha256
         and reference ->> 'uri' = 'aiq-artifact://sha256/' || requested_sha256 || '/' || requested_kind
@@ -6044,9 +6065,9 @@ begin
           score.interval_parameters
         )
         and score.task_resampling_low =
-          (score.interval_parameters ->> 'lower')::numeric
+          round((score.interval_parameters ->> 'lower')::numeric, 3)
         and score.task_resampling_high =
-          (score.interval_parameters ->> 'upper')::numeric
+          round((score.interval_parameters ->> 'upper')::numeric, 3)
     ) <> 17
   then
     return false;
@@ -8260,7 +8281,7 @@ $_$;
 create function public.aiq_stage_verifier_result(stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer) returns text
     language plpgsql security DEFINER
     SET search_path to ''
-    SET statement_timeout to '50s'
+    SET statement_timeout to '110s'
     as $$
 begin
   perform aiq_private.require_request_role('aiq_verifier');

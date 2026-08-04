@@ -9,6 +9,7 @@ import {
   ArtifactResolveUpstreamUnavailableError,
   handleArtifactResolve,
   type ArtifactResolveDependencies,
+  type ResolvedArtifact,
 } from './artifact-resolve-handler.ts';
 
 const token = 'verifier-token';
@@ -87,22 +88,57 @@ void describe('verifier artifact resolution', () => {
     assert.equal(resolves, 0);
   });
 
-  void it('returns a short-lived URL without raw object identity', async () => {
-    let observedExpiry = 0;
-    const response = await handleArtifactResolve(
-      request(),
-      dependencies({
-        createSignedUrl: async (_artifact, expiry) => {
-          observedExpiry = expiry;
-          return 'https://storage.invalid/signed';
+  void it('signs exact claim-bound capability stdout and stderr RPC responses', async () => {
+    for (const capabilityKind of ['stdout.jsonl', 'stderr.txt']) {
+      let observedResolve: readonly string[] = [];
+      let observedArtifact: ResolvedArtifact | undefined;
+      let observedExpiry = 0;
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each capability artifact has independent RPC and signing observations.
+      const response = await handleArtifactResolve(
+        request(`Bearer ${token}`, {
+          inbox_id: inboxId,
+          lease_token: leaseToken,
+          kind: capabilityKind,
+          digest,
+        }),
+        dependencies({
+          resolve: async (...parameters) => {
+            observedResolve = parameters;
+            return resolved({
+              object_key: `sha256/${digest}/${capabilityKind}`,
+              artifact_kind: capabilityKind,
+            });
+          },
+          createSignedUrl: async (artifact, expiry) => {
+            observedArtifact = artifact;
+            observedExpiry = expiry;
+            return `https://storage.invalid/${capabilityKind}`;
+          },
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual(observedResolve, [inboxId, leaseToken, capabilityKind, digest]);
+      assert.deepEqual(observedArtifact, {
+        bucket: 'private-artifacts',
+        key: `sha256/${digest}/${capabilityKind}`,
+        kind: capabilityKind,
+        digest,
+        bytes: 321,
+        leaseExpiresAt: '2026-07-25T12:05:00Z',
+      });
+      assert.equal(observedExpiry, 60);
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each one-shot response body is asserted in its owning capability case.
+      assert.deepEqual(await response.json(), {
+        artifact: {
+          kind: capabilityKind,
+          content_sha256: digest,
+          bytes: 321,
+          url: `https://storage.invalid/${capabilityKind}`,
+          url_expires_in_seconds: 60,
         },
-      }),
-    );
-    assert.equal(response.status, 200);
-    assert.equal(observedExpiry, 60);
-    const value = await response.text();
-    assert.match(value, /"url_expires_in_seconds":60/);
-    assert.doesNotMatch(value, /private-artifacts|object_key|object_bucket/);
+      });
+    }
   });
 
   void it('permits a claim-bound workspace replay snapshot', async () => {
@@ -200,8 +236,8 @@ void describe('verifier artifact resolution', () => {
     }
   });
 
-  void it('keeps missing evidence terminal and makes upstream RPC failures retryable', async () => {
-    const missing = artifactResolveRpcError({
+  void it('keeps denied and unbound evidence private while upstream failures stay retryable', async () => {
+    const denied = artifactResolveRpcError({
       code: '42501',
       message: 'private detail must not escape',
     });
@@ -211,22 +247,31 @@ void describe('verifier artifact resolution', () => {
       message: 'private endpoint and token must not escape',
     });
 
-    assert.ok(missing instanceof ArtifactResolveNotAvailableError);
+    assert.ok(denied instanceof ArtifactResolveNotAvailableError);
     assert.ok(invalid instanceof ArtifactResolveNotAvailableError);
     assert.ok(unavailable instanceof ArtifactResolveUpstreamUnavailableError);
+    assert.doesNotMatch(String(denied), /private detail/i);
     assert.doesNotMatch(String(unavailable), /private|endpoint|token/i);
 
-    const missingResponse = await handleArtifactResolve(
+    const deniedResponse = await handleArtifactResolve(
       request(),
-      dependencies({ resolve: async () => Promise.reject(missing) }),
+      dependencies({ resolve: async () => Promise.reject(denied) }),
+    );
+    const unboundResponse = await handleArtifactResolve(
+      request(),
+      dependencies({ resolve: async () => [] }),
     );
     const unavailableResponse = await handleArtifactResolve(
       request(),
       dependencies({ resolve: async () => Promise.reject(unavailable) }),
     );
 
-    assert.equal(missingResponse.status, 404);
-    assert.deepEqual(await missingResponse.json(), {
+    assert.equal(deniedResponse.status, 404);
+    assert.deepEqual(await deniedResponse.json(), {
+      error: 'ARTIFACT_NOT_AVAILABLE_FOR_CLAIM',
+    });
+    assert.equal(unboundResponse.status, 404);
+    assert.deepEqual(await unboundResponse.json(), {
       error: 'ARTIFACT_NOT_AVAILABLE_FOR_CLAIM',
     });
     assert.equal(unavailableResponse.status, 503);
