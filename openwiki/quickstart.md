@@ -72,8 +72,8 @@ authentication stay outside Git.
 
 ## Local demonstration
 
-Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, and the locked
-dependencies.
+Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+locked dependencies.
 
 ```sh
 npm ci --ignore-scripts
@@ -114,8 +114,9 @@ They are diagnostics, not benchmark results.
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` connects directly to one new Supabase PostgreSQL database and
 applies the schema plus public reference data in one transaction. It rejects an
-existing AIQ database. The repository has one greenfield desired state. Use this
-command once for the new empty production project.
+existing AIQ database. The repository has one greenfield desired state. Current
+production initialization is complete; use this command only for a replacement
+empty project, never against the current production project.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -127,9 +128,10 @@ After the controlled corpus and final native binaries pass model-free
 validation, the separately controlled reference must contain a
 non-synthetic AIQ Core `1.0.2` corpus commitment, a canonical millisecond UTC
 `published_at`, and the three production identities. Initialization validates
-those fields and bindings. The expected receipt
-contains scoring `1.0.2`, 72 tasks, 17 model configurations, and three nodes. The ordered task-metadata catalog
-digest is
+those fields and bindings. The expected receipt contains scoring `1.0.2`, 72
+tasks, 17 model configurations, three nodes, 40 private forced-RLS tables, 12
+security-invoker public views, and two hardened gateway roles. The ordered
+task-metadata catalog digest is
 `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
 the release-policy identity is `aiq-core/1.0.2`, and its catalog
 release-identity digest is

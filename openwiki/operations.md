@@ -241,6 +241,15 @@ it explicitly when controlled evidence must record the selected value:
 target/release/aiq-verifier --replay-jobs 4 ...
 ```
 
+The default initial claim lease is 300 seconds. The worker maintains it every 300
+seconds and renews it for 900 seconds while processing a package. Each gateway
+request has a default 120-second timeout. After replay, gateway HTTP `408`,
+`409`, `429`, and `5xx` responses retry the same prepared verification request
+under the maintained lease. Other `4xx` responses are terminal. The default
+retry budget is three attempts with exponential backoff that starts at 250 ms.
+When that budget is exhausted, the worker acknowledges the claim so the queue
+can retry it.
+
 After a real package has been submitted and an operator authorizes a claim, run
 the native verifier for one bounded lease. The worker emits one compact
 `aiq.verifier-record.v1` JSON object to standard output after each claimed
@@ -258,9 +267,10 @@ of rows is valid until a verified calibration has completed this transition.
 
 ## Fresh database initialization
 
-Create an empty Supabase database for this greenfield release. Do not apply any
-AIQ objects before initialization. Use a direct PostgreSQL URL, not the public
-Data API URL.
+Production initialization is complete. Use this flow only for a replacement
+empty Supabase project, never for the current production project. Do not apply
+any AIQ objects before initialization. Use a direct PostgreSQL URL, not the
+public Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -274,17 +284,30 @@ model-free checks in [Deployment Handoff](deployment-handoff.md), prepare a
 separately controlled production reference containing a non-synthetic AIQ Core `1.0.2` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Initialization validates those fields and bindings. The repository
-defines one greenfield desired state. The receipt
-must report scoring `1.0.2`, both catalog identities, 72 tasks, 17 model
-configurations, and three production nodes. This one-shot behavior enforces the
+defines one greenfield desired state. The receipt must report scoring `1.0.2`,
+both catalog identities, 72 tasks, 17 model configurations, three production
+nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
+views, and two hardened gateway roles. This one-shot behavior enforces the
 database boundary in [Architecture and Runtime](architecture-and-runtime.md);
 the opt-in PostgreSQL 17 test also runs initialization twice and requires the
 second attempt to fail without exposing the connection URL.
 
-For a disposable database, run:
+Against an already initialized disposable production-shape database, run the
+read/RLS smoke test and the rollback-only calibration publication proof:
 
 ```sh
-cargo make smoke-database
+AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-database
+AIQ_DATABASE_URL='<direct-connection-url>' \
+  cargo make smoke-calibration-database
+```
+
+For the separate deterministic SQL integration flow, start with a fresh
+disposable PostgreSQL 17 database and apply this exact sequence. Do not use the
+database created by `init-database`:
+
+```sh
+psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
+  --file databases/schema.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   --file databases/synthetic-demo.sql
 psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
@@ -375,14 +398,16 @@ the bounded, secret-free production browser acceptance gate:
 AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production
 ```
 
-The gate issues only read requests while checking the exact 17-run and
-1,224-result public inventory, efficiency semantics, readiness response,
-unauthenticated write rejection, mobile layout, and selected accessibility
-rules. It deliberately fails when later runs appear until the release contract
-is revised. Use `npm run test:browser:production-contract --workspace @aiq/web`
-for the local published-data mock. These commands validate the public surface
-accepted in [Deployment Handoff](deployment-handoff.md); they do not start a
-server, deploy resources, or create recurring automation.
+Page traffic is read-only. The gate also sends intentional unauthenticated POST
+probes to five write routes and requires uncached `401` responses with no public
+side effects. It checks the exact 17-run and 1,224-result public inventory,
+efficiency semantics, readiness response, mobile layout, and selected
+accessibility rules. It deliberately fails when later runs appear until the
+release contract is revised. Use
+`npm run test:browser:production-contract --workspace @aiq/web` for the local
+published-data mock. These commands validate the public surface accepted in
+[Deployment Handoff](deployment-handoff.md); they do not start a server, deploy
+resources, or create recurring automation.
 
 ## Storage lifecycle
 
