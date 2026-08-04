@@ -203,7 +203,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 }, testInfo) => {
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'A score is only useful');
+  await expectPublishedPage(page, expectedOrigin, '/', 'What can a model actually do');
   await expectNoDocumentOverflow(page, testInfo);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     await expect(
@@ -212,6 +212,9 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
         .getByText('No published evidence', { exact: true }),
     ).toBeVisible();
   }
+
+  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
+  await page.getByText('Open time, token, and cost details', { exact: true }).click();
 
   const leaderboard = page.getByRole('region', {
     name: 'Descriptively ordered public index table',

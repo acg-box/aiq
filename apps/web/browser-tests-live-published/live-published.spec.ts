@@ -93,7 +93,8 @@ test('the live overview exposes all 17 published configurations without seed sub
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByText('Highest published point estimate', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Who leads, and why?' })).toBeVisible();
+  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
   const leaderboardRegion = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
@@ -103,8 +104,9 @@ test('the live overview exposes all 17 published configurations without seed sub
     page.getByRole('region', { name: 'Index summary' }).getByText('17', { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
+  await page.getByText('Open 1 × 5 calibration evidence', { exact: true }).click();
   await expect(
-    page.getByText('not Official / not ranking eligible', { exact: false }),
+    page.getByText(/not Official.*not ranking eligible/, { exact: false }),
   ).toBeVisible();
   const calibrationEfficiency = page.getByRole('region', {
     name: 'Calibration model efficiency',
@@ -113,12 +115,12 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     calibrationEfficiency.getByRole('row').filter({ hasText: 'terra · medium' }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: 'Inspect the bounded 5-task subsets' }),
-  ).toHaveAttribute('href', `/calibrations/${subsetCalibrationRunId}`);
-  await expect(
-    page.getByRole('heading', { name: 'Official time, tokens, and cost' }),
-  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Inspect calibration subsets' })).toHaveAttribute(
+    'href',
+    `/calibrations/${subsetCalibrationRunId}`,
+  );
+  await page.getByText('Open time, token, and cost details', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Time and cost, kept separate' })).toBeVisible();
   await expect(
     page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
   ).toHaveCount(18);
@@ -129,21 +131,19 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(officialEfficiency).not.toContainText('$0');
 });
 
-test('the public index preserves the 588 passed and 636 failed public outcomes', async ({
+test('the public index preserves the 588 credit-bearing and 636 zero-credit outcomes', async ({
   page,
 }) => {
   await page.goto('/');
+  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
   const publicIndex = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
   await expect(publicIndex.getByRole('row')).toHaveCount(18);
-  const failedAndMissing = await publicIndex.locator('tbody tr td:nth-child(6)').allTextContents();
-  const failed = failedAndMissing.reduce(
-    (sum, value) => sum + Number(value.split('/')[0]?.trim()),
-    0,
-  );
-  expect(failed).toBe(636);
-  expect(17 * 72 - failed).toBe(588);
+  const taskCredit = await publicIndex.locator('tbody tr td:nth-child(6)').allTextContents();
+  const credited = taskCredit.reduce((sum, value) => sum + Number(value.split('/')[0]?.trim()), 0);
+  expect(credited).toBe(588);
+  expect(17 * 72 - credited).toBe(636);
 });
 
 test('a partial Terra-only calibration derives a valid default and reports its selected subset', async ({

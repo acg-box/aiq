@@ -211,6 +211,25 @@ production path requires both browser-safe Supabase values and serves only live
 public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
+The overview now leads with a chart of the scored 17-configuration matrix and
+supports bar and line presentations. It fetches the complete run behind the
+highest point estimate and uses that run for a task-outcome card, a ten-domain
+breakdown, and a link to every task result. The full leaderboard, Official
+efficiency table, and latest verified calibration remain available through
+progressive disclosures rather than competing with the first-read matrix. These
+views preserve the scoring and evidence distinctions defined by
+[Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
+coverage is not correctness, and API-equivalent cost is not subscription spend.
+Source anchors are `apps/web/src/app/page.tsx`,
+`apps/web/src/components/model-matrix-chart.tsx`, and
+`apps/web/src/components/run-outcome-card.tsx`.
+
+Primary navigation keeps Overview, Compare, Trends, and Runs visible.
+Calibrations, Method, and Radar remain routable under the `More` disclosure in
+`apps/web/src/components/site-header.tsx`. Browser tests exercise both the
+collapsed evidence sections and secondary-route discovery across synthetic,
+live-empty, live-published, and production fixtures.
+
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
 one selected model's task slice and publishes descriptive score, elapsed-time,

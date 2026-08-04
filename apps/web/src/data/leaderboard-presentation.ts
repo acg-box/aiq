@@ -14,10 +14,9 @@ export interface LeaderboardPresentation {
   confidenceInterval: string;
   samples: string;
   coverage: string;
-  failuresAndMissing: Readonly<{
-    failures: number;
-    missing: number;
-    failuresAreBad: boolean;
+  taskCredit: Readonly<{
+    credited: number;
+    scored: number;
   }> | null;
   scoringVersion: string | null;
   status: string;
@@ -31,13 +30,12 @@ export function presentLeaderboardEntry(entry: LeaderboardEntry): LeaderboardPre
     confidenceInterval: formatConfidenceInterval(entry),
     samples: entry.sampleSize === null ? '—' : String(entry.sampleSize),
     coverage: entry.coveragePercent === null ? '—' : `${entry.coveragePercent.toFixed(1)}%`,
-    failuresAndMissing:
-      entry.failures === null || entry.missing === null
+    taskCredit:
+      entry.failures === null || entry.sampleSize === null
         ? null
         : {
-            failures: entry.failures,
-            missing: entry.missing,
-            failuresAreBad: entry.failures > 2,
+            credited: Math.max(0, entry.sampleSize - entry.failures),
+            scored: entry.sampleSize,
           },
     scoringVersion: entry.scoringVersion,
     status: statusLabels[entry.scoreStatus],

@@ -7,10 +7,13 @@ import type { AiqRepository } from '../data/types.ts';
 
 const navigation = [
   ['Overview', '/'],
-  ['Runs', '/runs'],
-  ['Calibrations', '/calibrations'],
   ['Compare', '/compare'],
   ['Trends', '/trends'],
+  ['Runs', '/runs'],
+] as const;
+
+const secondaryNavigation = [
+  ['Calibrations', '/calibrations'],
   ['Method', '/method'],
   ['Radar', '/radar'],
 ] as const;
@@ -42,6 +45,34 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
             </Link>
           );
         })}
+        <details className="site-more">
+          <summary
+            className={
+              secondaryNavigation.some(
+                ([, href]) => href === pathname || pathname.startsWith(`${href}/`),
+              )
+                ? 'is-active'
+                : undefined
+            }
+          >
+            More
+          </summary>
+          <div className="site-more-menu" aria-label="More navigation">
+            {secondaryNavigation.map(([label, href]) => {
+              const current = pathname === href || pathname.startsWith(`${href}/`);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={current ? 'page' : undefined}
+                  prefetch={false}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </details>
       </nav>
       <span className="live-pill">
         <span aria-hidden="true" />

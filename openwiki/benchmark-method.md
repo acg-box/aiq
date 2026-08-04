@@ -173,6 +173,18 @@ incorrect, timeout, budget, tool, policy, and wrong-artifact outcomes contribute
 zero. Infrastructure-invalid and missing outcomes block an Official score.
 Unsupported configurations use `not_applicable` and remain visible.
 
+The overview's outcome card derives its presentation from immutable task scores
+in `apps/web/src/data/format.ts`. A score of at least `1` is correct, a score
+strictly between `0` and `1` is partial, and a scored zero is evaluator-incorrect
+unless its public explanation code is `timeout`, `budget_exceeded`,
+`unsupported_model`, `output_truncated`, or `missing_response`; those five codes
+are grouped as execution failures. Null scores and `invalid`, `missing`, or
+`not_applicable` statuses are unscored. “Full or partial credit” counts correct
+plus partial cells; it is a descriptive task-cell rate, not the domain-weighted
+AIQ index. The outcome and domain views in the
+[public application](architecture-and-runtime.md#public-application) keep these
+categories separate.
+
 AIQ v1 computes each domain mean and then gives each of the ten domains weight
 `0.1`. It does not multiply the score by coverage. The reported interval is a
 fixed-fixture task-resampling sensitivity interval with 10,000 deterministic
