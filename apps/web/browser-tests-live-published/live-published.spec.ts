@@ -285,7 +285,7 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(page.getByText('Passed', { exact: true }).locator('..')).toContainText('35');
   await expect(page.getByText('Failed', { exact: true }).locator('..').first()).toContainText('37');
   const provenance = page.getByRole('heading', { name: 'Run provenance' }).locator('..');
-  await expect(provenance).toContainText('corpus_2026.07.29');
+  await expect(provenance).toContainText('corpus_2026.08.02-aiq-core-1.0.2-controlled.1');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
   await expect(provenance.getByText('Not published', { exact: true })).toHaveCount(0);
   await expect(
