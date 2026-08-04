@@ -23,7 +23,8 @@ export async function generateMetadata({
   return createPageMetadata({
     title: 'Run detail',
     path: `/runs/${encodeURIComponent(id)}`,
-    description: 'Inspect the outcomes, coverage, and provenance for one public AIQ run.',
+    description:
+      'Inspect the outcomes, coverage, and provenance for one public AIQ configuration run.',
   });
 }
 export const dynamic = 'force-dynamic';
@@ -88,13 +89,17 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
             {entry?.modelName} · started {new Date(run.startedAt).toLocaleString()}
           </p>
           <small>
-            AIQ v1 fixed-fixture run ·{' '}
+            AIQ v1 fixed-fixture configuration run ·{' '}
             {run.synthetic ? 'synthetic seed evidence' : 'published evidence'}
           </small>
         </div>
         <code>{run.id}</code>
       </div>
       <DataNote provenance={run.synthetic ? 'synthetic' : 'published'} />
+      <p className="fine-print">
+        This is one configuration run. A complete Official matrix is one batch of 17 configuration
+        runs and 1,224 task-level executions—not 1,224 benchmark runs.
+      </p>
       <p className="fine-print">
         Completeness: <strong>{completeness.label}</strong> ·{' '}
         {completeness.notApplicable
