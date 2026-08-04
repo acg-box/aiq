@@ -285,7 +285,9 @@ does not identify every later deployment and does not create a benchmark,
 Storage, or OpenWiki schedule. Rerun the command after each future publication
 or production deployment change.
 
-The browser blocks non-read requests. The gate covers public pages, exact matrix
+Page-initiated non-read requests are blocked. The gate also sends intentional
+unauthenticated POST probes to five write routes and requires uncached `401`
+responses with no public side effects. It covers public pages, exact matrix
 counts, evidence semantics, readiness, write rejection, mobile layout, and
 selected accessibility rules. It expects exactly one 17-by-72 Official matrix
 and fails if later runs exist until the release contract is deliberately

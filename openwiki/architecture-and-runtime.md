@@ -134,8 +134,10 @@ The submission route stores exact package bytes and required artifacts in
 private Storage before it queues an unverified inbox record. Queue receipt does
 not publish the run.
 
-The verifier claims a bounded lease, downloads only claim-bound artifacts,
-reconstructs submitted workspaces, and replays committed evaluators with the
+The verifier claims a bounded lease and downloads only claim-bound artifacts.
+It resolves and digest/size-checks every signed capability-probe artifact so
+publication retention can prove ownership of that run-level evidence, then
+reconstructs submitted workspaces and replays committed evaluators with the
 committed runtime. Production requires the `evaluator_replayed` disposition.
 
 The verification route performs three ordered database actions for Official
