@@ -8427,7 +8427,7 @@ begin
     when 'month' then latest_recorded_at - interval '31 days'
     else oldest_recorded_at
   end;
-  range_ended_at := latest_recorded_at + interval '1 microsecond';
+  range_ended_at := latest_recorded_at + interval '1 millisecond';
   bucket_seconds := greatest(
     1,
     ceil(extract(epoch from range_ended_at - range_started_at) / 20)::bigint
