@@ -2601,7 +2601,7 @@ fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::
 			)?,
 			CorpusValidationMode::Core => {
 				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
-					return Err("tasks do not match the immutable AIQ Core 1.0.4 catalog".into());
+					return Err("tasks do not match the immutable AIQ Core 1.0.5 catalog".into());
 				}
 
 				corpus_commitment::validate_core_corpus_commitment(

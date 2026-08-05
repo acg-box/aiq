@@ -2822,10 +2822,10 @@ mod tests {
 		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(envelope.payload["models"].as_array().map(Vec::len), Some(17));
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
-		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.4");
+		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.5");
 		assert_eq!(
 			AIQ_CORE_TASK_IDENTITY_SHA256,
-			"sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e"
+			"sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c"
 		);
 		assert!(tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION));
 		assert!(scoring::task_bindings_match_frozen_catalog(&tasks));

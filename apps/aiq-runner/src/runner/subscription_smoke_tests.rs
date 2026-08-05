@@ -44,11 +44,11 @@ use crate::{
 };
 
 const PUBLIC_TASK_BYTES_SHA256: &str =
-	"sha256:91a694e6d20907fde86870674ceac55693b95cda0d8a41bb6ca6520195ec8610";
+	"sha256:bb6920e6a14c65ae4800cea1b78cc707ef33b30eb38bee0cb3ffba1fce6f599d";
 const PUBLIC_TASK_ID: &str = "public-example-instruction-following-01";
 const PUBLIC_RUN_ID: &str = "subscription_smoke_fixed_public_example";
 const CONTROLLED_TASK_ID: &str = "documentation-communication-01";
-const CONTROLLED_TASK_VERSION: &str = "1.0.4";
+const CONTROLLED_TASK_VERSION: &str = "1.0.5";
 const CONTROLLED_RUN_ID: &str = "controlled_subscription_smoke_fixed_hidden_task";
 
 static SMOKE_TEMP_SEQUENCE: AtomicUsize = AtomicUsize::new(0);

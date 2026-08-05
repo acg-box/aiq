@@ -26,7 +26,7 @@
   "properties": {
     "schema_version": { "const": "aiq.calibration-score-report.v1" },
     "run_class": { "const": "calibration" },
-    "scoring_version": { "const": "1.0.4" },
+    "scoring_version": { "const": "1.0.5" },
     "model": { "$ref": "calibration-run-v3.schema.json#/$defs/model" },
     "descriptive_status": {
       "enum": ["complete_fixture", "conditional_observed", "coverage_only", "not_applicable"]
