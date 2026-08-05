@@ -415,6 +415,7 @@ void test('binds Official efficiency evidence to the exact payload matrix', () =
 void test('publishes narrow Official per-result efficiency without private payload fields', () => {
   const view = schema.match(/create view public\.public_run_results[\s\S]*?;\n/)?.[0] ?? '';
   for (const field of [
+    'task_id',
     'latency_evidence_level',
     'input_tokens',
     'cached_input_tokens',
@@ -426,6 +427,7 @@ void test('publishes narrow Official per-result efficiency without private paylo
     'standard_api_equivalent_usd_nanos',
     'cost_estimator_status',
     'cost_evidence_level',
+    'pricing_digest',
   ]) {
     assert.match(view, new RegExp(`result\\.${field}`));
   }
@@ -645,7 +647,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'/,
+    /task_set_identity_sha256 =\s*'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'/,
   );
   assert.match(
     schema,

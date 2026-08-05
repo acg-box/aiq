@@ -420,6 +420,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
     [
       'run_id',
       'id',
+      'task_id',
       'task',
       'domain',
       'outcome',
@@ -442,6 +443,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'standard_api_equivalent_usd_nanos',
       'cost_estimator_status',
       'cost_evidence_level',
+      'pricing_digest',
     ],
     {
       booleans: ['retryable'],

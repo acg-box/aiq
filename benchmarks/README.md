@@ -79,9 +79,9 @@ sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d
 The first digest binds the ordered task metadata. The second binds the catalog
 release identity. Model-free candidate validation passes all 72 tasks. The
 runtime `task_set_hash` is
-`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
 The distinct controlled generated-task tree identity is
-`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
 The separate six-task AIQ Core Contrast calibration has ordered metadata
 catalog identity
 `sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
@@ -126,9 +126,7 @@ workspaces, fixture bundles, and task definitions.
 The commitment is public-safe. It must not include private paths, secret values,
 task content, expected outputs, or signing material.
 
-The checked-in AIQ Core `1.0.2` catalog and generator remain only as archival
-and negative compatibility evidence. Do not use them for active generation,
-controlled validation, or a new production reference.
+The repository tracks only the current AIQ Core `1.0.3` catalog and generator.
 
 ## Validation
 

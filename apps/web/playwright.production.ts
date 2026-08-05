@@ -1,8 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
+import { resolveProductionExpectedIdentity } from './playwright-production-identity.ts';
 import { resolveProductionOrigin } from './playwright-production-origin.ts';
 
 const productionOrigin = resolveProductionOrigin(process.env.AIQ_PRODUCTION_ORIGIN);
+const productionExpectedIdentity = resolveProductionExpectedIdentity(process.env);
 
 export default defineConfig({
   testDir: './browser-tests-production',
@@ -11,6 +13,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: 'list',
+  metadata: { productionExpectedIdentity },
   outputDir: '/tmp/aiq-playwright-production-results',
   timeout: 180_000,
   expect: { timeout: 20_000 },

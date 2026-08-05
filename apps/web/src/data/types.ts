@@ -473,6 +473,7 @@ export interface AiqRepository {
   listLeaderboard(): Promise<readonly LeaderboardEntry[]>;
   listTrendPoints(range?: TrendRange): Promise<readonly TrendPoint[]>;
   listRunPage(request?: RunHistoryPageRequest): Promise<RunHistoryPage>;
+  listRunSummaries(runIds: readonly string[]): Promise<readonly BenchmarkRunSummary[]>;
   getNewestCompletedRun(): Promise<BenchmarkRunSummary | null>;
   getRun(id: string): Promise<BenchmarkRun | null>;
   listCalibrationRunPage(request?: CalibrationRunPageRequest): Promise<CalibrationRunPage>;

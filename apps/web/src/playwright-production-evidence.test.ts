@@ -300,4 +300,14 @@ void describe('production page evidence', () => {
       /Invalid production page evidence/,
     );
   });
+
+  void it('allows the separate calibration register to be explicitly empty', () => {
+    const expectation = productionPageEvidenceExpectation('/calibrations');
+    assert.doesNotThrow(() =>
+      validateProductionPageEvidence(
+        [emptyPageEvidence('Calibration register status')],
+        expectation,
+      ),
+    );
+  });
 });

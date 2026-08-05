@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
 import { sortLeaderboardByPointEstimate } from '../data/format.ts';
@@ -40,6 +40,15 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
   const [kind, setKind] = useState<ChartKind>('dots');
   const [family, setFamily] = useState<FamilyFilter>('All');
   const [isPending, startTransition] = useTransition();
+  useEffect(() => {
+    const narrowViewport = window.matchMedia('(max-width: 640px)');
+    const selectReadableNarrowView = ({ matches }: Pick<MediaQueryList, 'matches'>) => {
+      if (matches) setKind('ordered');
+    };
+    selectReadableNarrowView(narrowViewport);
+    narrowViewport.addEventListener('change', selectReadableNarrowView);
+    return () => narrowViewport.removeEventListener('change', selectReadableNarrowView);
+  }, []);
   const scored = useMemo(
     () =>
       sortLeaderboardByPointEstimate(entries).filter(
@@ -106,7 +115,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
     if (kind === 'ordered') {
       return {
         aria,
-        grid: { left: 96, right: 30, top: 20, bottom: 50 },
+        grid: { left: 78, right: 20, top: 20, bottom: 50 },
         tooltip,
         xAxis: {
           type: 'value',
@@ -125,7 +134,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
           inverse: true,
           data: labels,
           name: 'Configuration',
-          axisLabel: { color: 'var(--muted)', fontSize: 10 },
+          axisLabel: { color: 'var(--muted)', fontSize: 12, interval: 0 },
           nameTextStyle: { color: 'var(--muted)' },
           axisLine: { lineStyle: { color: 'var(--line-bright)' } },
         },
@@ -215,7 +224,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
 
   return (
     <section
-      className={`matrix-chart${isPending ? ' is-pending' : ''}`}
+      className={`matrix-chart matrix-chart-kind-${kind}${isPending ? ' is-pending' : ''}`}
       aria-labelledby="matrix-chart-heading"
     >
       <header className="chart-header">
@@ -258,12 +267,17 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
       <p className="sr-only" aria-live="polite">
         Showing {scored.length} {family === 'All' ? '' : family} configurations as {kind}.
       </p>
+      {kind === 'ordered' && family === 'All' ? (
+        <p className="matrix-encoding-note">
+          All 17 configurations shown · S Sol · T Terra · L Luna
+        </p>
+      ) : null}
       {scored.length === 0 ? (
         <p className="empty-note">No scored configurations are available for this filter.</p>
       ) : (
         <div className="matrix-chart-frame">
           <EChartsChart
-            className="matrix-chart-svg"
+            className={`matrix-chart-svg matrix-chart-svg-${kind}`}
             option={option}
             label={`${kind === 'dots' ? 'Dots' : kind === 'bars' ? 'Zero-baseline bars' : 'Ordered horizontal bars'} with task-sensitivity intervals compare AIQ for ${scored.length} configurations; scoring versions ${[...new Set(scored.map((entry) => entry.scoringVersion))].join(', ') || 'unavailable'}.`}
           />

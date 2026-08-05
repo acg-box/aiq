@@ -31,9 +31,9 @@ and its evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 Model-free candidate validation passes 72 of 72 tasks. The runtime
 `task_set_hash` is
-`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
 The distinct controlled generated-task tree identity is
-`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
 Earlier Core promotion and Contrast authoring candidates are not final corpus
 identities. Create-new regeneration from the final clean source will establish
 their canonical commitment digests. The shared Rust validator now fails closed
@@ -242,7 +242,8 @@ the one greenfield desired state.
 ## Storage boundary
 
 Submitted packages use the private `aiq-submission-packages` bucket. Runner
-artifacts use the private `aiq-runner-artifacts` bucket. Database
+artifacts use the private `aiq-runner-artifacts` bucket. The greenfield database
+schema creates both buckets and enforces their private setting. Database
 rows bind object type, digest, byte count, retention state, and active
 references. Reconciliation records database-only and Storage-only mismatches.
 Deletion is a separate bounded worker action and cannot remove referenced or
@@ -260,32 +261,44 @@ production evidence. Its scientific score context identifies the observation
 count, fixed-fixture task-sensitivity interval, coverage, missing cells, runtime
 status, scoring method, and provenance. Cost is an estimated Standard
 API-equivalent comparison, not an actual ChatGPT or Codex subscription bill. The
-overview leads with a chart of the scored
-17-configuration matrix and supports dot, bar, and ordered-horizontal
-presentations with task-sensitivity intervals. It fetches the complete run behind the
-highest point estimate and uses that run for a task-outcome card, a ten-domain
-breakdown, and a link to every task result. The full leaderboard, Official
-efficiency table, and latest verified calibration remain available through
-progressive disclosures rather than competing with the first-read matrix. These
-views preserve the scoring and evidence distinctions defined by
-[Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
-coverage is not correctness, and API-equivalent cost is not subscription spend.
-Semantic outcomes remain separate from runtime, invalid, and missing states.
-Charts use ECharts with SVG rendering. The chart wrapper exposes the generated
-ECharts description to assistive technology and each chart has a complete data
-table. Charts expose the fixed-fixture task-sensitivity interval and support
-explicit System, Light, and Dark themes. Synthetic fixtures remain confined to
-explicit development and test paths.
-Source anchors are `apps/web/src/app/page.tsx`,
+public-data repository validates each live public-view response before rendering:
+it requires canonical run and task identities, expected field sets, internally
+consistent task counts and status totals, valid timing and token evidence, and
+verifier-recomputed cost consistent with the published pricing digest. The
+readiness probe verifies the same expanded result-view contract.
+
+The overview leads with a chart of the scored 17-configuration matrix and
+supports dot, bar, and ordered-horizontal presentations with task-sensitivity
+intervals. Its score, run context, and efficiency displays resolve only after an
+exact run, configuration, scoring-version, and synthetic/provenance identity
+join. The run-detail, compare, and trends routes use the same rule; ambiguous or
+mismatched joins remain unavailable rather than borrowing nearby evidence. The
+overview fetches the complete run behind the highest point estimate and uses
+that run for a task-outcome card, a ten-domain breakdown, and a link to every
+task result; it reads the newest retained run independently rather than treating
+it as that highlighted run. Official efficiency reports unavailable and rejected
+rows explicitly when its exact evidence cannot be established. The full
+leaderboard, Official efficiency table, and latest verified calibration remain
+available through progressive disclosures rather than competing with the
+first-read matrix. These views preserve the scoring and evidence distinctions
+defined by [Benchmark Method](benchmark-method.md): the AIQ index is not an IQ
+estimate, coverage is not correctness, and API-equivalent cost is not
+subscription spend. Semantic outcomes remain separate from runtime, invalid,
+and missing states. Charts use ECharts with SVG rendering. The chart wrapper
+exposes the generated ECharts description to assistive technology and each chart
+has a complete data table. Charts expose the fixed-fixture task-sensitivity
+interval and support explicit System, Light, and Dark themes. Synthetic fixtures
+remain confined to explicit development and test paths. Source anchors are
+`apps/web/src/app/page.tsx`, `apps/web/src/components/scientific-evidence-resolution.ts`,
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.
 
 Primary navigation keeps Overview and Runs visible. Compare, Trends,
-Calibrations, Method, and Radar remain routable under the `Analyze` disclosure
-in `apps/web/src/components/site-header.tsx`. This keeps the header compact while
-preserving every analysis route. Browser tests exercise both the collapsed
-evidence sections and secondary-route discovery across synthetic, live-empty,
-live-published, and production fixtures.
+Calibrations, Method, and Runner provenance remain routable under the `Analyze`
+disclosure in `apps/web/src/components/site-header.tsx`; the route remains
+`/radar`. This keeps the header compact while preserving every analysis route.
+Browser tests exercise both the collapsed evidence sections and secondary-route
+discovery across synthetic, live-empty, live-published, and production fixtures.
 
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
@@ -325,7 +338,11 @@ and it fails closed when a required production dependency is absent.
 
 ## Distributed radar
 
-The radar protocol keeps registry identity, signed observations, receipts, and
-aggregation evidence distinct. Checked-in radar rows are synthetic. The
-repository defines the contracts and public aggregate read but does not operate
-a coordinator or remote nodes.
+The `/radar` Runner provenance view presents a retained-record registry and
+per-node evidence register: registry status and trust, record recency, latest
+capability and observation signature evidence, and provenance. It deliberately
+does not use distance, angle, or animation to imply topology or liveness, and no
+record is a live heartbeat. The underlying protocol keeps registry identity,
+signed observations, receipts, and aggregation evidence distinct. Checked-in
+radar rows are synthetic. The repository defines the contracts and public read
+but does not operate a coordinator or remote nodes.
