@@ -1,7 +1,7 @@
 ---
 type: 'Handoff'
 title: 'Deployment Handoff'
-description: 'Accepted Supabase, Vercel, native Official publication topology, production checks, and remaining schedule work.'
+description: 'Personal Supabase, Vercel, and Cloudflare handoff, native publication topology, and pending release work.'
 tags: ['deployment', 'handoff', 'supabase', 'vercel']
 ---
 
@@ -13,20 +13,24 @@ operational work. Do not infer future schedules, workers, or later publications
 from the first launch evidence.
 
 Live production remains the historical AIQ Core `1.0.2` matrix described below.
-Repository source now has the active public AIQ Core `1.0.4` candidate. Its
+Repository source now has the active public AIQ Core `1.0.5` candidate. Its
 public metadata digest is
-`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
+`sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`,
 and its public release digest is
-`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
-Controlled identities, full calibration, final native build verification, a
+`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
+Controlled identities, final calibration, final native build verification, a
 real Official run, publication, and final deployment are pending. Do not treat
 the source-head change as a deployment claim.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive
 ceiling failure. It is rejected, unpublished calibration evidence. No hidden
-responses or hidden task details were published. The `1.0.4` path requires one
-complete, falsification-first non-Official 17-by-72 calibration before any real
-Official publication path. A failed release gate has no operator override.
+responses or hidden task details were published. The first `1.0.4` calibration
+completed all 1,224 cells but failed the statistical release gate. It remains
+non-Official evidence and must not be described as 1,224 failed executions. The
+`1.0.5` path first runs a 17-by-4 pilot over the four revised tasks, then the full
+falsification-first non-Official 17-by-72 calibration. A failed release gate has
+no operator override. Real calibration remains permanently non-Official even
+after signed verifier admission and distinct publication to its public register.
 
 ## First-release topology
 
@@ -142,17 +146,17 @@ the receipt.
 ## Supabase setup
 
 The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6.
-Initialize AIQ Core `1.0.4` in this existing target project after its AIQ
+Initialize AIQ Core `1.0.5` in this existing target project after its AIQ
 namespace is empty. If residue exists, remove only `aiq_private`, the AIQ-owned
 roles, and the exact AIQ-owned public views and RPC overloads. Preserve all
 Supabase-managed and non-AIQ objects. This cleanup is a deployment prerequisite,
-not a migration or compatibility path. Do not load synthetic fixtures into this
-project.
+not a migration or compatibility path. There is no migration chain. Do not load
+synthetic fixtures into this project.
 
 1. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
 2. Prepare one private production-reference
-   document. Bind the 72-task AIQ Core `1.0.4` corpus, current catalog identities,
+   document. Bind the 72-task AIQ Core `1.0.5` corpus, current catalog identities,
    and distinct runner, verifier, and publisher
    public identities.
 3. Apply the desired state once through a direct PostgreSQL connection. The
@@ -166,7 +170,7 @@ cargo make init-database
 
 The initializer must be the first AIQ database action. It uses one transaction
 and rejects existing AIQ objects. Confirm that the receipt reports scoring
-`1.0.4`, 72 tasks, 17 model configurations, three distinct identities, and the
+`1.0.5`, 72 tasks, 17 model configurations, three distinct identities, and the
 expected public-view inventory.
 
 Run the database checks:
@@ -368,12 +372,14 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 - [x] The read-only production acceptance gate passed for the historical
       acceptance deployment recorded below. Rerun it after each future
       publication or deployment change.
-- [ ] Regenerate and audit the final AIQ Core `1.0.4` corpus from the final clean
+- [ ] Regenerate and audit the final AIQ Core `1.0.5` corpus from the final clean
       source commit, then build and hash the native runner and verifier.
 - [ ] Empty only the AIQ-owned namespace and initialize the new desired state
-      once from the final AIQ Core `1.0.4` `databases/schema.sql`.
-- [ ] Complete the required full non-Official calibration. Then run, replay,
-      verify, and publish one real 17-by-72 AIQ Core `1.0.4` matrix;
+      once from the final AIQ Core `1.0.5` `databases/schema.sql`; do not apply a
+      migration chain.
+- [ ] Complete the 17-by-4 targeted pilot and the required full non-Official
+      calibration. Then run, replay, verify, and publish one real 17-by-72 AIQ
+      Core `1.0.5` matrix;
       then deploy that exact source and pass the identity-bound production gate.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
       next run without changing the accepted execution contract.

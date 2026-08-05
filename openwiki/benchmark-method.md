@@ -9,8 +9,8 @@ tags: ['benchmark', 'method', 'scoring']
 
 ## Fixture
 
-Repository source targets the public AIQ Core `1.0.4` candidate, benchmark
-release `aiq-core@1.0.4`, and scoring implementation `1.0.4`. It contains 72 fixed
+Repository source targets the public AIQ Core `1.0.5` candidate, benchmark
+release `aiq-core@1.0.5`, and scoring implementation `1.0.5`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
+sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c
 ```
 
-The release-policy identity is `aiq-core/1.0.4`. Its public catalog
+The release-policy identity is `aiq-core/1.0.5`. Its public catalog
 release-identity digest is
-`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. Each final
@@ -59,7 +59,7 @@ this reproducibility evidence.
 ## Published Official evidence
 
 Production publishes one historical AIQ Core `1.0.2`, non-synthetic Official
-`72 × 17` matrix, or 1,224 results. The `1.0.4` release gate checks all
+`72 × 17` matrix, or 1,224 results. The `1.0.5` release gate checks all
 72 Core task definitions and 432 fixed evaluator bindings: gold,
 alternate-correct, partial, adversarial-format, empty, and timeout for every
 task. The separate six-task Contrast calibration checks 36 bindings. Both
@@ -80,17 +80,24 @@ its six tasks do not add cells to the 1,224-cell Official matrix.
 The `1.0.3` Official attempt was interrupted after its observed calibration
 cells already proved a ceiling-policy failure. It was rejected as unpublished
 calibration evidence. No hidden responses or hidden task details were
-published. The public `1.0.4` redesign retargets nine ceiling tasks, repairs one
-data-processing contract, and carries forward 62 task designs with new version,
-provenance, and commitment bindings.
+published. The first `1.0.4` calibration then completed the full 17-by-72
+matrix. Preserve those 1,224 cells as failed statistical release-gate evidence,
+not as 1,224 failed task executions. The run remains non-Official and does not
+authorize ranking or publication as Official evidence.
 
-Before any real `1.0.4` Official publication path, run one complete 17-by-72
-non-Official calibration. Its purpose is to falsify fixture discrimination. It
-must meet the release limits for universal semantic zeros and universal full
-scores, and it must show sufficient informative tasks, non-uniform tasks,
-domain spread, and model spread. The policy permits at most seven universal
-semantic-zero tasks and at most seven universal-full tasks. An operator cannot
-override a failed gate.
+The public `1.0.5` redesign retargets four calibration-sensitive tasks:
+`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`. It carries
+forward the other 68 task designs with new version, provenance, and commitment
+bindings. First run a 17-by-4, 68-cell non-Official pilot over only those revised
+tasks. Review the same statistical release evidence before paying for the full
+17-by-72 non-Official calibration. The full calibration must meet the release
+limits for universal semantic zeros and universal full scores, and it must show
+sufficient informative tasks, non-uniform tasks, domain spread, and model
+spread. The policy permits at most seven universal semantic-zero tasks and at
+most seven universal-full tasks. An operator cannot override a failed gate.
+Replay alone does not make real calibration Official: signed verifier admission
+and the distinct publisher transition must accept it, and calibration remains
+permanently non-Official.
 
 The native macOS runner completed the first real Official benchmark batch. Its
 17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
@@ -148,6 +155,11 @@ invocation starts after workspace preparation. Runner-observed wall time
 measures the Codex adapter invocation only; it excludes workspace setup,
 artifact sealing, and evaluator replay. The verifier cannot reproduce the
 clock value, so public data labels its authority as `runner_observed`.
+Provider token counters use source label `provider_reported` and evidence label
+`verifier_recomputed` after the verifier parses the retained provider event.
+Estimated Standard API-equivalent cost uses evidence label
+`verifier_recomputed`. An unavailable measurement keeps a null evidence label;
+the UI must not replace it with zero.
 
 Official publication keeps two different clocks. `matrix_batch_elapsed_ms` is
 the signed wall-clock for the complete matrix stage, shared across all 17 model
@@ -215,7 +227,7 @@ is a comparison method, not an actual ChatGPT or Codex subscription bill.
 
 ## Outcomes and scoring
 
-AIQ Core `1.0.4` corrects the public task-score description before any `1.0.4`
+AIQ Core `1.0.5` uses the public task-score description before any `1.0.5`
 model evidence is accepted. Each controlled evaluator contains at most 16
 binary checks. Its content-addressed configuration binds every check identifier,
 nonnegative integer weight, type, and hard-gate status. The task score is:

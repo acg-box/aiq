@@ -14,33 +14,39 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- an active public AIQ Core `aiq-core@1.0.4` candidate, with 72 private-task
-  identities, a public catalog, and scoring `1.0.4`;
+- an active public AIQ Core `aiq-core@1.0.5` candidate, with 72 private-task
+  identities, a public catalog, and scoring `1.0.5`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-The active public candidate, task, and scorer contract is `1.0.4`. It retargets
-nine ceiling tasks, repairs one data-processing contract, and carries forward
-62 task designs with new bindings. Controlled identities, full calibration,
-final native build verification, a real Official run, publication, and final
-deployment are pending. Production still publishes the one historical AIQ Core
-`1.0.2` Official matrix; no `1.0.4` run or deployment has been accepted.
+The active public candidate, task, and scorer contract is `1.0.5`. It retargets
+four calibration-sensitive tasks and carries forward 68 task designs with new
+bindings. Controlled identities, final calibration, native build verification,
+a real Official run, publication, and final deployment are pending. Production
+still publishes the one historical AIQ Core `1.0.2` Official matrix; no `1.0.5`
+Official run or deployment has been accepted.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive
 ceiling failure. It was rejected as unpublished calibration evidence. No hidden
-responses or hidden task details were published. A complete, falsification-first
-non-Official 17-by-72 calibration must pass before the `1.0.4` Official
-publication path can start. An operator cannot override a failed release gate.
+responses or hidden task details were published. The first `1.0.4` calibration
+completed all 1,224 cells but failed the statistical release gate. Preserve it
+as non-Official evidence; do not describe it as 1,224 failed executions. For
+`1.0.5`, run the four revised tasks across all 17 configurations as a 68-cell
+pilot before the complete 17-by-72 non-Official calibration. An operator cannot
+override a failed release gate. Real calibration stays non-Official until the
+signed verifier and distinct-publisher admission flow accepts it into the
+calibration register, and it remains non-Official after acceptance.
 
 ## Deployment status
 
 AIQ production is live at `https://aiq.wiki`. The personal Vercel scope
 `acgbox` hosts project `aiq`, and the personal Supabase organization `ACG Box`
 hosts project `aiq` on PostgreSQL 17.6 with reference
-`xxnszykaeapolqdnhalx`. The two production Storage buckets,
+`xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
+`aiq.wiki` zone owns DNS handoff. The two production Storage buckets,
 `aiq-submission-packages` and `aiq-runner-artifacts`, are private. The first
 Official launch publication was deployed from merge commit
 `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
@@ -81,6 +87,10 @@ benchmark or Storage schedule. The twice-daily benchmark schedule and its next
 run remain pending operations work; documentation must not authorize recurring
 automation. See [Deployment Handoff](deployment-handoff.md) for the remaining
 operational boundary.
+
+The native subscription runner copies `~/.codex/auth.json` into an isolated,
+mode-private `CODEX_HOME` and passes that directory to the Codex subprocess.
+The verifier never receives it.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
@@ -128,7 +138,8 @@ They are diagnostics, not benchmark results.
 
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` connects directly to the Supabase PostgreSQL database and
-applies the schema plus public reference data in one transaction. It rejects an
+applies the schema plus public reference data in one transaction. There is no
+migration chain. It rejects an
 existing AIQ namespace. Apply the repository's one greenfield desired state to
 the existing target project only after its AIQ namespace is empty. If residue
 exists, remove only the exact AIQ-owned schema, roles, public views, and RPC
@@ -145,18 +156,18 @@ cargo make init-database
 
 For an empty AIQ namespace, after the controlled corpus passes model-free
 validation and the operator verifies the final native build, the separately
-controlled reference must contain a non-synthetic AIQ Core `1.0.4` corpus
+controlled reference must contain a non-synthetic AIQ Core `1.0.5` corpus
 commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
 Initialization validates those fields and bindings. The expected initialization
-receipt must contain scoring `1.0.4`, 72 tasks, 17 model configurations, three nodes,
+receipt must contain scoring `1.0.5`, 72 tasks, 17 model configurations, three nodes,
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`;
-the release-policy identity is `aiq-core/1.0.4`, and its public catalog
+`sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`;
+the release-policy identity is `aiq-core/1.0.5`, and its public catalog
 release-identity digest is
-`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. The shared Rust

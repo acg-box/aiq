@@ -7,7 +7,8 @@ Core catalog, and one declarative PostgreSQL schema.
 AIQ production is live at [aiq.wiki](https://aiq.wiki). The personal Vercel
 scope `acgbox` hosts project `aiq`. The personal Supabase organization `ACG Box`
 hosts project `aiq` on PostgreSQL 17.6 with reference
-`xxnszykaeapolqdnhalx`. Production uses the private Storage buckets
+`xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
+`aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
 `aiq-submission-packages` and `aiq-runner-artifacts`. The first Official launch
 publication was deployed from merge commit
 `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
@@ -36,19 +37,23 @@ artifact bindings, including 19 capability artifacts.
 The `1.0.3` Official attempt was interrupted after the calibration evidence had
 already proved a ceiling-policy failure. It was rejected as unpublished
 calibration evidence. No hidden responses or hidden task details were
-published. Before any `1.0.4` Official publication path starts, one complete
-non-Official 17-by-72 calibration must try to falsify fixture discrimination and
-must pass the release policy without an operator override.
+published. The first AIQ Core `1.0.4` calibration then completed all 1,224
+cells. It is preserved as non-Official statistical evidence because it failed
+the release policy. This does not mean that all task executions failed. AIQ
+Core `1.0.5` retargets four calibration-sensitive tasks. Run those four tasks
+across all 17 configurations as a 68-cell pilot before a complete 17-by-72
+non-Official calibration. No operator can override a failed release gate. Real
+calibration evidence can enter the public calibration register only after signed
+verifier admission and distinct publication, and it remains non-Official.
 
 ## Product contract
 
-- Repository source targets the public AIQ Core `1.0.4` candidate and scoring
-  `1.0.4`, with 72
-  private controlled tasks in ten domains.
-- The active public candidate, task, and scorer contract is `1.0.4`. It retargets
-  nine ceiling tasks, repairs one data-processing contract, and carries forward
-  62 task designs with new version, provenance, and commitment bindings.
-- The controlled `1.0.4` Core and Contrast identities, runtime identity,
+- Repository source targets the public AIQ Core `1.0.5` candidate and scoring
+  `1.0.5`, with 72 private controlled tasks in ten domains.
+- The active public candidate, task, and scorer contract is `1.0.5`. It retargets
+  four calibration-sensitive tasks and carries forward 68 task designs with new
+  version, provenance, and commitment bindings.
+- The controlled `1.0.5` Core and Contrast identities, runtime identity,
   evaluator identity, generated-task tree identity, and database commitments are
   pending. Full calibration, a real Official run, publication, and final
   deployment are also pending. Production remains on the historical `1.0.2`
@@ -63,6 +68,9 @@ must pass the release policy without an operator override.
   creates signed `aiq.result-package.v3` envelopes.
 - Every result keeps runner-observed elapsed time and, when Codex reports it,
   token usage and a versioned Standard API-equivalent cost estimate.
+- Public evidence labels time as `runner_observed`, provider token source as
+  `provider_reported`, and verifier-checked token and cost evidence as
+  `verifier_recomputed`. Unavailable evidence remains null, not zero.
 - The verifier reconstructs submitted workspaces and replays deterministic
   evaluators before it signs `aiq.verifier-attestation.v3` evidence.
 - The verifier also provides an offline `diagnose-rescore` audit. It first
@@ -77,14 +85,14 @@ must pass the release policy without an operator override.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
+sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c
 ```
 
 Its public release digest is
-`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
-The release-policy identity is `aiq-core/1.0.4`. Do not infer any controlled
+`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
+The release-policy identity is `aiq-core/1.0.5`. Do not infer any controlled
 identity from these public digests. Create-new generation and review will
-establish the `1.0.4` scorer manifest, evaluator, runtime task set, generated
+establish the `1.0.5` scorer manifest, evaluator, runtime task set, generated
 task tree, Core corpus, and Contrast corpus identities. The checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
@@ -179,7 +187,8 @@ inputs. Neither smoke creates a benchmark result.
 ## Database initialization
 
 `databases/schema.sql` is the sole desired database state.
-`databases/init.ts` is the only production initialization entry point. It opens
+`databases/init.ts` is the only production initialization entry point. There is
+no migration chain. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
 data in one transaction. It accepts the direct host for personal Supabase
 project `xxnszykaeapolqdnhalx`. An explicit test/development override accepts
@@ -205,14 +214,14 @@ cargo make init-database
 ```
 
 For an empty AIQ namespace, the production reference must contain the real
-controlled, non-synthetic AIQ Core `1.0.4` corpus commitment, its real canonical
+controlled, non-synthetic AIQ Core `1.0.5` corpus commitment, its real canonical
 `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
 only after the controlled corpus passes model-free validation and the operator
 verifies the final native build; the repository contains no substitute
 production reference. Retain the private final-build audit receipt separately.
 Database initialization does not accept or validate that receipt.
-A successful initialization receipt must report scoring `1.0.4`, both public
+A successful initialization receipt must report scoring `1.0.5`, both public
 catalog identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and
@@ -278,6 +287,9 @@ The current production runner is native macOS. Linux and Docker remain future
 deployment targets. No cloud runner or verifier worker and no benchmark or
 Storage schedule currently exist. The twice-daily schedule and its next run are
 pending operations work, not part of the current production state.
+The subscription runner uses a protected copy of `~/.codex/auth.json` in an
+isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
+as its writable runtime directory.
 See [Operations and Validation](openwiki/operations.md) for the native command
 contract. Repository support does not prove that private inputs, credentials,
 or live model capabilities are configured.
