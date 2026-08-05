@@ -164,10 +164,10 @@ receipt must contain scoring `1.0.5`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`;
+`sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253`;
 the release-policy identity is `aiq-core/1.0.5`, and its public catalog
 release-identity digest is
-`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
+`sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. The shared Rust

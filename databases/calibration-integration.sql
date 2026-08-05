@@ -175,7 +175,7 @@ begin
     'corpus_release_id','corpus_integration_calibration',
     'corpus_commitment_sha256',(select metadata->>'corpus_commitment_sha256'
       from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.5'),
-    'catalog_digest','sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c',
+    'catalog_digest','sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253',
     'task_set_digest',task_set_hash,
     'evaluator_digest','sha256:'||repeat('3',64),
     'runtime_digest','sha256:'||repeat('4',64),

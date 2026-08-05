@@ -22,12 +22,14 @@ Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
 AIQ Core `1.0.5` with task-metadata digest
-`sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`,
+`sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253`,
 release-policy identity `aiq-core/1.0.5`, and public release digest
-`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
+`sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f`.
 This public candidate retargets four calibration-sensitive tasks and carries
-forward 68 task designs with new bindings. The controlled
-Core, Contrast, scorer-manifest, evaluator, runtime task-set, generated-task
+forward 68 task designs with new bindings. The latest catalog revision changes
+`coding-06` to a multi-module conditional-cache repair; its task-level semantics
+and calibration implications are canonicalized in [Benchmark Method](benchmark-method.md).
+The controlled Core, Contrast, scorer-manifest, evaluator, runtime task-set, generated-task
 tree, and database commitment identities are pending. Create-new generation and
 review must establish them. The shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
