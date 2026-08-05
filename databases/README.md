@@ -3,18 +3,19 @@
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization command.
 
-For the authorized pre-launch reset of the existing project, the operator must
-remove the exact historical AIQ-owned public views and RPC overloads in addition
-to `aiq_private`, `aiq_verifier`, and `aiq_publisher`. Preserve the Supabase
-built-in roles, all managed schemas, `extensions.pgcrypto`, and every non-AIQ
-object. Review the live dependency closure against the schema inventory before
-the reset. This is a one-time operator action, not a migration or repository
-reset script.
-
 The initializer opens one direct PostgreSQL connection, starts one transaction,
 applies the schema, inserts public reference data, checks readiness, and commits.
-It rejects a database that already contains the AIQ schema or AIQ roles. Only a
-new empty AIQ database is supported.
+It rejects a database that already contains the AIQ schema, AIQ roles, or either
+exact AIQ Storage bucket identity. Only a new empty AIQ namespace in the existing
+target Supabase project is supported.
+If AIQ residue exists, the operator must remove only `aiq_private`,
+`aiq_verifier`, `aiq_publisher`, and the exact AIQ-owned public views and RPC
+overloads. Preserve all Supabase-managed and non-AIQ objects. This cleanup is a
+deployment prerequisite, not a migration or compatibility path. The schema
+creates `aiq-submission-packages` and `aiq-runner-artifacts` in
+`storage.buckets` and sets both buckets to private. The greenfield preflight
+rejects either exact bucket ID or name if it already exists. Do not create either
+bucket before initialization.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -47,9 +48,9 @@ A successful receipt reports:
 - catalog release identity
   `sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`;
 - reviewed controlled generated-task tree identity
-  `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`;
+  `sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`;
 - native runtime task-set identity
-  `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
+  `sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`;
 - signed Official evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 
@@ -68,11 +69,10 @@ the score from normalized result evidence.
 
 `databases/aiq-core-1.0.3-task-commitments.json` is the reviewed public-safe
 72-task binding manifest. Its canonical JCS identity is
-`sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e`.
+`sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8`.
 
 AIQ Core `1.0.3` is the only supported task-set and benchmark version in this
-desired state. There is no migration, compatibility, dual-version, or data
-preservation path.
+desired state.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.

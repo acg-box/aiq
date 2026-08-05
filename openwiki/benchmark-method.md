@@ -45,9 +45,9 @@ and the evaluator identity is
 
 Model-free candidate validation passes all 72 tasks. The runtime
 `task_set_hash` is
-`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
 The distinct controlled generated-task tree identity is
-`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
 The separate six-task AIQ Core Contrast calibration ordered metadata catalog
 identity is
 `sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
@@ -200,9 +200,15 @@ accepts the signed package.
 
 Scientific reporting exposes the observation count, fixed-fixture
 task-sensitivity interval, coverage, missing cells, runtime state, scoring
-method, and provenance needed to interpret a score. These fields must remain
-explicit when evidence is partial. Estimated Standard API-equivalent cost is a
-comparison method, not an actual ChatGPT or Codex subscription bill.
+method, and provenance needed to interpret a score. Score and efficiency charts,
+tooltips, and accessible data tables retain this context; when an aggregate
+missing-state value is unavailable, the UI says so rather than inventing it.
+These fields must remain explicit when evidence is partial. Efficiency plots
+include only coverage-qualified measures. Their descriptive Pareto rings compare
+nondominated points only within matching matrix batch, scoring version,
+concurrency, and evidence-method bindings, plus matching pricing bindings for
+cost; they never create a combined rank. Estimated Standard API-equivalent cost
+is a comparison method, not an actual ChatGPT or Codex subscription bill.
 
 ## Outcomes and scoring
 
@@ -217,11 +223,11 @@ strictly between `0` and `1` is partial, and a scored zero is evaluator-incorrec
 unless its public explanation code is `timeout`, `budget_exceeded`,
 `unsupported_model`, `output_truncated`, or `missing_response`; those five codes
 are grouped as execution failures. Null scores and `invalid`, `missing`, or
-`not_applicable` statuses are unscored. “Full or partial credit” counts correct
-plus partial cells; it is a descriptive task-cell rate, not the domain-weighted
-AIQ index. The outcome and domain views in the
-[public application](architecture-and-runtime.md#public-application) keep these
-categories separate.
+`not_applicable` statuses are unscored. “Completed tasks earning any credit”
+counts correct plus partial cells; it is a descriptive task-cell rate, neither a
+score-weighted percentage nor the domain-weighted AIQ index. The outcome and
+domain views in the [public application](architecture-and-runtime.md#public-application)
+keep runtime, invalid, missing, and not-applicable states separate.
 
 AIQ v1 computes each domain mean and then gives each of the ten domains weight
 `0.1`. It does not multiply the score by coverage. The reported interval is a

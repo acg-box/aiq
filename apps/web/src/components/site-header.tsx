@@ -16,6 +16,12 @@ const secondaryNavigation = [
 
 export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
+  const statusClass =
+    configuration === 'live'
+      ? 'status-public'
+      : configuration === 'invalid'
+        ? 'status-invalid'
+        : 'status-seed';
 
   return (
     <header className="site-header">
@@ -64,7 +70,7 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
       </nav>
       <div className="header-tools">
         <ThemeControl />
-        <span className="live-pill">
+        <span className={`live-pill ${statusClass}`}>
           <span aria-hidden="true" />
           {configuration === 'live'
             ? 'public data'

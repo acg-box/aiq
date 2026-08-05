@@ -97,6 +97,7 @@ for (const route of routes) {
     await expect(
       page.getByText('Demo values are synthetic seed data', { exact: false }),
     ).toBeVisible();
+    await expect(page.locator('.live-pill')).toHaveClass(/status-seed/);
     const navigation = page.getByRole('navigation', { name: 'Main navigation' });
     if (secondaryNavigation.has(route.navigation)) {
       await navigation.locator('.site-more > summary').click();
@@ -156,6 +157,9 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   const inspectLinks = leaderboard.getByRole('link', { name: 'Inspect' });
   await expect(inspectLinks).toHaveCount(17);
   await expect(page.getByText('17 configurations · 1,224 task cells')).toBeVisible();
+  await expect(
+    page.getByText('Average coverage across 17/17 configurations:', { exact: false }),
+  ).toBeVisible();
 
   const runHref = await inspectLinks.first().getAttribute('href');
   expect(runHref).toMatch(/^\/runs\/run-2026-07-\d{2}-/);
@@ -192,6 +196,7 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
 test('the overview workspace exposes evidence and switches chart modes and family', async ({
   page,
 }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
   const bars = chart.getByRole('button', { name: 'Bars + interval', exact: true });
@@ -202,6 +207,13 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expect(
     chart.getByRole('img', { name: /Dots with task-sensitivity intervals/ }),
   ).toBeVisible();
+  await page.setViewportSize({ width: 620, height: 900 });
+  await expect(ordered).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    chart.getByRole('img', { name: /Ordered horizontal bars with task-sensitivity intervals/ }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await dots.click();
   await expect(chart.locator('.matrix-chart-svg svg')).toBeVisible();
   await bars.click();
   await expect(bars).toHaveAttribute('aria-pressed', 'true');
@@ -289,8 +301,9 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   ).toHaveCount(2);
   await expect(page.getByText('v1.0.3', { exact: true })).toBeVisible();
   await expect(
-    page.getByText('0 attempted · 0 adapter-invoked · 0 elapsed-observed'),
+    page.getByText('Adapter invocation: 0/0 attempted · elapsed observed 0'),
   ).toBeVisible();
+  await expect(page.getByText('Runtime issues: 0 · missing 0')).toBeVisible();
 });
 
 test('radar separates synthetic registry, observation, and aggregation evidence', async ({
@@ -356,6 +369,12 @@ test('a user can discover and inspect a missing-result run from history', async 
   const missingRun = history.getByRole('row').filter({ hasText: 'Coverage-only · not ranked' });
   await expect(missingRun).toHaveCount(1);
   await expect(missingRun).toContainText('14');
+  await expect(missingRun.getByText('AIQ', { exact: true })).toBeVisible();
+  await expect(missingRun.getByText('Coverage', { exact: true })).toBeVisible();
+  await expect(missingRun.getByText('Runtime issues', { exact: true })).toBeVisible();
+  await expect(missingRun.getByText('Missing', { exact: true })).toBeVisible();
+  await missingRun.getByText('Provenance, time, and cost', { exact: true }).click();
+  await expect(missingRun.getByText('Time / cost coverage', { exact: true })).toBeVisible();
   await missingRun.getByRole('link', { name: 'Inspect run' }).click();
 
   await expect(page).toHaveURL('/runs/run-2026-07-05-coverage-only-sol-ultra');
@@ -454,11 +473,24 @@ test('time range and comparison filters update the visible result', async ({ pag
   await page.getByText('Analyze', { exact: true }).click();
   await page.getByRole('link', { name: 'Compare', exact: true }).click();
   await expect(page).toHaveURL('/compare');
+  await expect(page.getByLabel('Selected run context status')).toHaveCount(0);
   const firstModel = page.getByLabel('First model and reasoning level');
   const difference = page.getByText('Descriptive point-estimate difference:', { exact: false });
   const initialDifference = await difference.textContent();
   await firstModel.selectOption({ index: 3 });
   await expect(difference).not.toHaveText(initialDifference ?? '');
+  const comparison = page.getByRole('table', { name: 'Selected comparison' });
+  await Promise.all(
+    [
+      'Summed adapter duration',
+      'Batch wall-clock',
+      'Duration coverage',
+      'API-equivalent cost',
+      'Cost coverage',
+    ].map((metric) =>
+      expect(comparison.getByRole('row').filter({ hasText: metric })).toContainText('Unavailable'),
+    ),
+  );
   const compatibility = page.getByRole('term').filter({ hasText: 'Scoring version' });
   await expect(compatibility).toBeVisible();
   await expect(page.getByRole('note')).toContainText(
@@ -586,6 +618,33 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
 
   await expect(page.getByRole('heading', { level: 1, name: 'Benchmark overview' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(
+    chart.getByRole('button', { name: 'Ordered + interval', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    chart.getByRole('img', {
+      name: /Ordered horizontal bars with task-sensitivity intervals compare AIQ for 17 configurations/,
+    }),
+  ).toBeVisible();
+  await expect(chart.getByText('All 17 configurations shown', { exact: false })).toBeVisible();
+  await expect(chart.getByText('Read 17 configuration values', { exact: true })).toBeVisible();
+  const chartBox = await chart.locator('.matrix-chart-svg').boundingBox();
+  expect(chartBox?.height ?? 0).toBeGreaterThanOrEqual(600);
+  const configurationLabels = await chart.locator('svg text').evaluateAll((labels) =>
+    labels
+      .filter((label) => /^[STL]·/.test(label.textContent ?? ''))
+      .map((label) => ({
+        text: label.textContent,
+        fontSize: Number.parseFloat(getComputedStyle(label).fontSize),
+      })),
+  );
+  expect(configurationLabels).toHaveLength(17);
+  expect(configurationLabels.every(({ fontSize }) => fontSize >= 12)).toBe(true);
   await expectNoDocumentOverflow(page, testInfo);
   expect(runtimeFailures).toEqual([]);
 });

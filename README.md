@@ -72,9 +72,9 @@ The release identity is `aiq-core/1.0.3`. The scorer-manifest identity is
 and the evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 The runtime `task_set_hash` is
-`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
+`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`;
 the distinct controlled generated-task tree identity is
-`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
 The separate six-task AIQ Core Contrast calibration ordered metadata catalog
 identity is
 `sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
@@ -176,13 +176,16 @@ inputs. Neither smoke creates a benchmark result.
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization entry point. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
-data in one transaction. It rejects a database that already contains AIQ schema
-or roles. This is the one greenfield desired state. For the current pre-launch
-project, verify the accepted backups and reset only the historical AIQ namespace
-before initialization. That one-time operator reset includes `aiq_private`, the
-two AIQ gateway roles, and the exact AIQ-owned public views and RPC overloads;
-it must preserve every Supabase-managed schema, role, extension, and non-AIQ
-object. Do not run a migration chain or keep a compatibility state.
+data in one transaction. It rejects a database that already contains the AIQ
+schema, gateway roles, or either exact AIQ Storage bucket identity. Apply this
+one greenfield desired state to the existing target project only after its AIQ
+namespace is empty. If AIQ residue exists, the operator must
+remove only `aiq_private`, the two AIQ gateway roles, and the exact AIQ-owned
+public views and RPC overloads. Preserve all Supabase-managed and non-AIQ
+objects. This cleanup is a deployment prerequisite, not a migration or
+compatibility path. The schema creates the `aiq-submission-packages` and
+`aiq-runner-artifacts` Storage buckets as private. The preflight rejects either
+existing bucket identity. Do not create the buckets in a separate operator step.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \

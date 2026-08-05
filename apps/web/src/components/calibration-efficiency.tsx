@@ -10,6 +10,10 @@ import { formatScientificScoreContextHtml } from './scientific-score-context.ts'
 
 type Metric = 'cost' | 'time';
 type CalibrationPoint = Readonly<{ score: PublicCalibrationScore; x: number; y: number }>;
+export type CalibrationExecutionContext = Readonly<{
+  runtimeIssues: number;
+  missing: number;
+}>;
 
 function valueFor(score: PublicCalibrationScore, metric: Metric): number | null {
   if (metric === 'cost') {
@@ -59,7 +63,13 @@ function readCalibrationDatum(value: unknown): readonly (number | string)[] | nu
     : null;
 }
 
-function calibrationDatum(point: CalibrationPoint): readonly (number | string)[] {
+function calibrationDatum(
+  point: CalibrationPoint,
+  executionContext: ReadonlyMap<string, CalibrationExecutionContext>,
+): readonly (number | string)[] {
+  const execution = executionContext.get(
+    `${point.score.modelFamily}:${point.score.reasoningEffort}`,
+  );
   return [
     point.x,
     point.y,
@@ -72,6 +82,8 @@ function calibrationDatum(point: CalibrationPoint): readonly (number | string)[]
     point.score.descriptiveStatus,
     point.score.attemptedResultCount,
     point.score.invokedResultCount,
+    execution?.runtimeIssues ?? 'Unavailable',
+    execution?.missing ?? 'Unavailable',
   ];
 }
 
@@ -79,10 +91,12 @@ function Scatter({
   scores,
   metric,
   scoringVersion,
+  executionContext,
 }: {
   scores: readonly PublicCalibrationScore[];
   metric: Metric;
   scoringVersion: string | null;
+  executionContext: ReadonlyMap<string, CalibrationExecutionContext>;
 }) {
   const points = scores.flatMap((score) => {
     const x = valueFor(score, metric);
@@ -135,13 +149,13 @@ function Scatter({
         const scientificContext = formatScientificScoreContextHtml({
           sampleSize: Number(data[3]),
           coverage: String(data[4]),
-          runtime: `adapter invoked ${data[10]}/${data[9]} attempted`,
-          missing: 'unavailable in aggregate',
+          runtime: `issues ${data[11]}`,
+          missing: String(data[12]),
           status: String(data[8]).replaceAll('_', ' '),
           scoringVersion: scoringVersion ?? 'unavailable',
           provenance: String(data[7]),
         });
-        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 0)}<br/>${scientificContext}`;
+        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 0)}<br/>adapter invocation ${data[10]}/${data[9]} attempted<br/>${scientificContext}`;
       },
     },
     xAxis: {
@@ -220,7 +234,9 @@ function Scatter({
           borderColor: 'var(--panel)',
           borderWidth: 1.5,
         },
-        data: points.filter((point) => point.score.modelFamily === family).map(calibrationDatum),
+        data: points
+          .filter((point) => point.score.modelFamily === family)
+          .map((point) => calibrationDatum(point, executionContext)),
       })),
       {
         type: 'scatter',
@@ -233,7 +249,7 @@ function Scatter({
           borderColor: 'var(--frontier)',
           borderWidth: 3,
         },
-        data: frontierPoints.map(calibrationDatum),
+        data: frontierPoints.map((point) => calibrationDatum(point, executionContext)),
       },
     ],
   };
@@ -259,9 +275,11 @@ function Scatter({
 export function CalibrationEfficiency({
   scores,
   scoringVersion,
+  executionContext = new Map(),
 }: {
   scores: readonly PublicCalibrationScore[];
   scoringVersion: string | null;
+  executionContext?: ReadonlyMap<string, CalibrationExecutionContext>;
 }) {
   const pricingBindings = [
     ...new Set(
@@ -295,8 +313,18 @@ export function CalibrationEfficiency({
         {scoringVersion ?? 'Unavailable'}
       </p>
       <div className="plot-grid">
-        <Scatter scores={scores} metric="cost" scoringVersion={scoringVersion} />
-        <Scatter scores={scores} metric="time" scoringVersion={scoringVersion} />
+        <Scatter
+          scores={scores}
+          metric="cost"
+          scoringVersion={scoringVersion}
+          executionContext={executionContext}
+        />
+        <Scatter
+          scores={scores}
+          metric="time"
+          scoringVersion={scoringVersion}
+          executionContext={executionContext}
+        />
       </div>
       <div
         className="table-scroll"
@@ -342,8 +370,16 @@ export function CalibrationEfficiency({
                 <td>
                   {score.sampleSize} / {score.coveragePercent.toFixed(1)}%
                   <small>
-                    {score.attemptedResultCount} attempted · {score.invokedResultCount}{' '}
-                    adapter-invoked · {score.adapterElapsedObservedResultCount} elapsed-observed
+                    Adapter invocation: {score.invokedResultCount}/{score.attemptedResultCount}{' '}
+                    attempted · elapsed observed {score.adapterElapsedObservedResultCount}
+                  </small>
+                  <small>
+                    Runtime issues:{' '}
+                    {executionContext.get(`${score.modelFamily}:${score.reasoningEffort}`)
+                      ?.runtimeIssues ?? 'Unavailable'}{' '}
+                    · missing{' '}
+                    {executionContext.get(`${score.modelFamily}:${score.reasoningEffort}`)
+                      ?.missing ?? 'Unavailable'}
                   </small>
                 </td>
                 <td>

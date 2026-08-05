@@ -470,7 +470,8 @@ function officialResultsForEntry(entry) {
 
     return results.map((result, taskIndex) =>
       Object.assign(result, {
-        id: `aiq-v1-${domain}-${String(taskIndex + 1).padStart(2, '0')}`,
+        id: `00000000-0000-4000-8000-${String(domainIndex * 10 + taskIndex + 1).padStart(12, '0')}`,
+        task_id: `${domain.replaceAll('_', '-')}-${String(taskIndex + 1).padStart(2, '0')}`,
         task: `${domain.replaceAll('_', ' ')} anonymous result ${taskIndex + 1}`,
         domain,
       }),
@@ -649,6 +650,7 @@ const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcome
 const calibrationRunId = `run_${'8'.repeat(64)}`;
 const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
 const pricingSource = 'https://developers.openai.com/api/docs/pricing';
+const pricingDigest = 'sha256:e1a28656f2918a14e86997b06bf9e29ec4db084ff89ee0319aafa0c05cc1f31d';
 const pricingLimitation =
   'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing';
 const costFormula =
@@ -919,6 +921,8 @@ const publishedModelEfficiency = modelEfficiency;
 const runResults = [];
 let publishedResultIndex = 0;
 for (const evidence of runEvidence) {
+  const modelRate = pricingRates.find((rate) => rate.model === evidence.entry.model_name);
+  if (!modelRate) throw new Error(`Missing pricing rate for ${evidence.entry.model_name}.`);
   let globalIndex = 0;
   for (const result of evidence.results) {
     globalIndex += 1;
@@ -927,9 +931,25 @@ for (const evidence of runEvidence) {
     const unavailableContextBand = !runtimeIssue && publishedResultIndex <= 10;
     const estimatedCost = !runtimeIssue && !unavailableContextBand;
     const tokensAvailable = estimatedCost || unavailableContextBand;
+    const inputTokens = tokensAvailable
+      ? unavailableContextBand
+        ? 272_001 + publishedResultIndex
+        : 1_000 + publishedResultIndex
+      : null;
+    const cachedInputTokens = tokensAvailable ? 200 : null;
+    const cacheWriteInputTokens = tokensAvailable ? 50 : null;
+    const outputTokens = tokensAvailable ? 500 : null;
+    const estimatedUsdNanos = estimatedCost
+      ? (inputTokens - cachedInputTokens - cacheWriteInputTokens) *
+          modelRate.input_usd_nanos_per_token +
+        cachedInputTokens * modelRate.cached_input_usd_nanos_per_token +
+        cacheWriteInputTokens * modelRate.cache_write_input_usd_nanos_per_token +
+        outputTokens * modelRate.output_usd_nanos_per_token
+      : null;
     runResults.push({
       run_id: evidence.runId,
       id: result.id,
+      task_id: result.task_id,
       task: result.task,
       domain: result.domain,
       outcome: result.outcome,
@@ -938,26 +958,25 @@ for (const evidence of runEvidence) {
       explanation_code: result.explanation_code,
       explanation_summary: result.explanation_summary,
       retryable: result.retryable,
-      tools: ['repository search', 'test runner'],
+      tools: ['repository_search', 'test_runner'],
       latency_ms: 7_500 + globalIndex * 137,
       latency_evidence_level: 'runner_observed',
-      input_tokens: tokensAvailable ? 1_000 + publishedResultIndex : null,
-      cached_input_tokens: tokensAvailable ? 200 : null,
-      cache_write_input_tokens: tokensAvailable ? 50 : null,
-      output_tokens: tokensAvailable ? 500 : null,
+      input_tokens: inputTokens,
+      cached_input_tokens: cachedInputTokens,
+      cache_write_input_tokens: cacheWriteInputTokens,
+      output_tokens: outputTokens,
       reasoning_output_tokens: tokensAvailable ? 250 : null,
       total_tokens: null,
       token_usage_source_level: tokensAvailable ? 'provider_reported' : null,
       token_usage_evidence_level: tokensAvailable ? 'verifier_recomputed' : null,
-      standard_api_equivalent_usd_nanos: estimatedCost
-        ? 650_000 + publishedResultIndex * 1_000
-        : null,
+      standard_api_equivalent_usd_nanos: estimatedUsdNanos,
       cost_estimator_status: estimatedCost
         ? 'estimated'
         : unavailableContextBand
           ? 'unavailable_context_band'
           : 'unavailable_missing_usage',
       cost_evidence_level: estimatedCost ? 'verifier_recomputed' : null,
+      pricing_digest: pricingDigest,
     });
   }
 }
@@ -1239,7 +1258,11 @@ const server = createServer((request, response) => {
     return;
   }
   if (url.pathname === '/rest/v1/public_runs') {
-    const exactId = url.searchParams.get('id')?.replace(/^eq\./, '');
+    const idFilter = url.searchParams.get('id') ?? '';
+    const exactId = idFilter.startsWith('eq.') ? idFilter.slice(3) : undefined;
+    const selectedIds = new Set(
+      idFilter.startsWith('in.(') ? idFilter.slice(4, -1).split(',').filter(Boolean) : [],
+    );
     const exactStartedAt = url.searchParams.get('started_at')?.replace(/^eq\./, '');
     const cursorExpression = url.searchParams.get('or') ?? '';
     const olderStartedAt = /started_at\.lt\.([^,)]+)/.exec(cursorExpression)?.[1];
@@ -1256,26 +1279,33 @@ const server = createServer((request, response) => {
           : right.started_at.localeCompare(left.started_at)) ||
         (ascending ? right.id.localeCompare(left.id) : left.id.localeCompare(right.id)),
     );
-    const rows = exactId
-      ? ordered.filter(
-          (run) => run.id === exactId && (!exactStartedAt || run.started_at === exactStartedAt),
-        )
-      : ordered.filter((run) => {
-          if (olderStartedAt) {
-            return (
-              run.started_at < olderStartedAt ||
-              (run.started_at === boundaryStartedAt && (!olderId || run.id > olderId))
-            );
-          }
-          if (newerStartedAt) {
-            return (
-              run.started_at > newerStartedAt ||
-              (run.started_at === boundaryStartedAt && (!newerId || run.id < newerId))
-            );
-          }
-          return true;
-        });
-    json(response, limited(url, rows));
+    const rows =
+      selectedIds.size > 0
+        ? ordered.filter((run) => selectedIds.has(run.id))
+        : exactId
+          ? ordered.filter(
+              (run) => run.id === exactId && (!exactStartedAt || run.started_at === exactStartedAt),
+            )
+          : ordered.filter((run) => {
+              if (olderStartedAt) {
+                return (
+                  run.started_at < olderStartedAt ||
+                  (run.started_at === boundaryStartedAt && (!olderId || run.id > olderId))
+                );
+              }
+              if (newerStartedAt) {
+                return (
+                  run.started_at > newerStartedAt ||
+                  (run.started_at === boundaryStartedAt && (!newerId || run.id < newerId))
+                );
+              }
+              return true;
+            });
+    const selectedRows =
+      url.searchParams.get('select') === 'id,started_at'
+        ? rows.map(({ id, started_at }) => ({ id, started_at }))
+        : rows;
+    json(response, limited(url, selectedRows));
     return;
   }
   if (url.pathname === '/rest/v1/public_run_results') {

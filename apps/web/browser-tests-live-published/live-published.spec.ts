@@ -330,6 +330,7 @@ for (const route of routes) {
     expect(response?.status()).toBe(200);
     expectNotPubliclyCacheable(response);
     await expect(page.locator('main h1')).toBeVisible();
+    await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
     await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
     await expect(
@@ -364,8 +365,12 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(efficiencyPlot.locator('.efficiency-chart svg')).toBeVisible();
   await expect(efficiencyPlot.locator('canvas')).toHaveCount(0);
   await expect(efficiencyPlot).toContainText('Rings mark nondominated points');
+  await expect(efficiencyPlot).toContainText('1/17 configurations plotted');
   await efficiencyPlot.getByRole('button', { name: 'Duration', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'AIQ versus duration' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'AIQ versus duration' })).toContainText(
+    '16/17 configurations plotted',
+  );
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
   await page.getByText('Open 1 × 5 calibration evidence', { exact: true }).click();
   await expect(
@@ -496,41 +501,21 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   expectNoStore(invalid);
 });
 
-test('Official compare efficiency is limited to current leaderboard run identities', async ({
+test('Official compare efficiency is limited to the two selected run identities', async ({
   page,
 }) => {
   await page.goto('/compare');
-  const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
-  await expect(efficiency.getByRole('row')).toHaveCount(18);
-  await expect(efficiency).toContainText(verifiedPublishedAggregate('sol-low').runId.slice(0, 18));
-  await expect(efficiency).not.toContainText(calibrationRunId);
-  const missingUsageEfficiency = efficiency.getByRole('row').filter({ hasText: 'sol · medium' });
-  await expect(missingUsageEfficiency).toContainText('Unavailable');
-  await expect(missingUsageEfficiency).toContainText('unavailable missing usage');
-  await expect(missingUsageEfficiency).toContainText('input unavailable (unavailable)');
-  await expect(efficiency).toContainText(
-    '72 results · 72 attempted · 72 adapter-invoked · concurrency 17',
-  );
-  await expect(efficiency).toContainText(
-    'Reasoning is a subset of output and is not charged twice.',
-  );
-  await expect(efficiency).toContainText(
-    'gpt-5.6-terra: input 2000, cached input 200, cache-write input 2500, output 12000 USD nanos/token',
-  );
-  await expect(efficiency).toContainText(
-    'gpt-5.6-luna: input 200, cached input 20, cache-write input 250, output 1200 USD nanos/token',
-  );
-  await expect(efficiency).toContainText('Signed matrix batch wall-clock');
-  await expect(efficiency).toContainText('1.6 h');
-  await expect(efficiency).toContainText('count once across all 17 configurations');
-  await expect(efficiency).toContainText('TTFT and TPS are unavailable');
-  await expect(efficiency).toContainText('They are not billed Codex or ChatGPT subscription cost.');
-  await expect(efficiency).toContainText('This is not actual subscription spend.');
-  await expect(efficiency).not.toContainText('$0');
-  await expect(efficiency.getByRole('link', { name: 'source' }).first()).toHaveAttribute(
-    'href',
-    'https://developers.openai.com/api/docs/pricing',
-  );
+  const comparison = page.getByRole('table', { name: 'Selected comparison' });
+  await expect(comparison.getByRole('row')).toHaveCount(14);
+  const cost = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
+  await expect(cost.getByRole('cell').first()).toHaveText('$12.3456');
+  await expect(cost.getByRole('cell').nth(1)).toHaveText('Unavailable');
+  const batch = comparison.getByRole('row').filter({ hasText: 'Batch wall-clock' });
+  await expect(batch.getByRole('cell')).toHaveText(['1.6 h', '1.6 h']);
+  const durationCoverage = comparison.getByRole('row').filter({ hasText: 'Duration coverage' });
+  await expect(durationCoverage.getByRole('cell')).toHaveText(['72/72 (100.0%)', '72/72 (100.0%)']);
+  await expect(comparison).not.toContainText(calibrationRunId);
+  await expect(comparison).not.toContainText('$0');
 });
 
 test('published leaderboard, trends, runs, and results share coherent score evidence', async ({
@@ -676,15 +661,17 @@ test('Official trends expose current time and cost evidence', async ({ page }) =
   await expect(
     page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
-  ).toHaveCount(18);
-  await expect(
-    page.getByText('Summed cell adapter durations can overlap', { exact: false }).first(),
-  ).toBeVisible();
-  const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
-  await expect(efficiency).toContainText('unavailable missing usage');
-  await expect(efficiency).not.toContainText('$0');
+  await page.getByText('Read visible trend values as a table', { exact: true }).click();
+  const values = page.getByRole('region', { name: 'Visible trend values' });
+  await expect(values.getByRole('row')).toHaveCount(7);
+  await expect(values.getByRole('columnheader', { name: 'Coverage' })).toBeVisible();
+  await expect(values.getByRole('columnheader', { name: 'Runtime' })).toBeVisible();
+  await expect(values.getByRole('columnheader', { name: 'Missing' })).toBeVisible();
+  await expect(values.getByRole('columnheader', { name: 'Summed adapter duration' })).toBeVisible();
+  await expect(values.getByRole('columnheader', { name: 'API-equivalent cost' })).toBeVisible();
+  await expect(values).toContainText('$12.3456');
+  await expect(values).toContainText('Unavailable');
+  await expect(values).not.toContainText('$0');
 });
 
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {
@@ -716,7 +703,7 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(taskResults.first()).toContainText('Tokens: input 1,361');
   await expect(taskResults.first()).toContainText('total unavailable');
   await expect(taskResults.first()).toContainText(
-    'Estimated Standard API-equivalent cost: $0.001011 · token evidence verifier-recomputed · cost evidence verifier-recomputed',
+    'Estimated Standard API-equivalent cost: $0.020968 · token evidence verifier-recomputed · cost evidence verifier-recomputed',
   );
   const evaluatorOutcomes = taskResults.filter({
     hasText: 'The evaluator rejected the response.',

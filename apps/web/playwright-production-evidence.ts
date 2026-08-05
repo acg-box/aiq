@@ -64,6 +64,12 @@ export function productionPageEvidenceExpectation(path: string): ProductionPageE
       allowedEmptyLabels: [],
     };
   }
+  if (pathname === '/calibrations') {
+    return {
+      requiredPublishedLabels: [],
+      allowedEmptyLabels: ['Calibration register status', 'Selected-run score matrix status'],
+    };
+  }
   if (/^\/runs\/[^/]+$/.test(pathname)) {
     return {
       requiredPublishedLabels: ['Data provenance', 'Official run efficiency provenance'],

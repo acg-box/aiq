@@ -1460,10 +1460,18 @@ select pg_temp.aiq_assert(
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'public_run_results'
       and column_name in (
-        'usage','provenance','failure_detail','result_package_sha256','pricing_digest'
+        'usage','provenance','failure_detail','result_package_sha256'
       )
   ),
-  'public Official result efficiency must omit private provider payloads and digests'
+  'public Official result efficiency must omit private provider payloads and result-package digests'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 2
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_run_results'
+     and column_name in ('task_id','pricing_digest')),
+  'public Official result efficiency must expose task identity and its exact pricing-record digest'
 );
 
 rollback;

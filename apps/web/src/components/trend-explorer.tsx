@@ -5,8 +5,21 @@ import Link from 'next/link';
 import { useMemo, useState, useTransition } from 'react';
 
 import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
-import type { LeaderboardEntry, ModelFamily, TrendPoint, TrendRange } from '../data/types.ts';
+import type {
+  BenchmarkRunSummary,
+  LeaderboardEntry,
+  ModelFamily,
+  PublicModelEfficiency,
+  TrendPoint,
+  TrendRange,
+} from '../data/types.ts';
+import { formatHumanDuration } from '../data/format-duration.ts';
 import { EChartsChart } from './echarts-chart.tsx';
+import { ReadStateNote } from './read-state-note.tsx';
+import {
+  EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
+  resolveExactScientificEvidence,
+} from './scientific-evidence-resolution.ts';
 import {
   TREND_BAR_MAX_WIDTH,
   trendIntervalData,
@@ -82,13 +95,83 @@ interface TrendRenderItemApi {
   }) => readonly TrendBarLayoutItem[] | null | undefined;
 }
 
+interface TrendScientificContext {
+  coverage: string;
+  runtime: string;
+  missing: string;
+  duration: string;
+  cost: string;
+  exactJoinUnavailable: boolean;
+}
+
+const unavailableTrendContext: TrendScientificContext = {
+  coverage: 'Unavailable',
+  runtime: 'Unavailable',
+  missing: 'Unavailable',
+  duration: 'Unavailable',
+  cost: 'Unavailable',
+  exactJoinUnavailable: false,
+};
+
+function resolveTrendScientificContext({
+  point,
+  entries,
+  runSummaries,
+  efficiency,
+}: {
+  point: TrendPoint;
+  entries: readonly LeaderboardEntry[];
+  runSummaries: readonly BenchmarkRunSummary[];
+  efficiency: readonly PublicModelEfficiency[];
+}): TrendScientificContext {
+  if (point.runId === null) return unavailableTrendContext;
+  const resolution = resolveExactScientificEvidence({
+    candidate: {
+      runId: point.runId,
+      entryId: point.entryId,
+      scoringVersion: point.scoringVersion,
+      synthetic: point.synthetic,
+    },
+    runs: runSummaries,
+    entries,
+    efficiencyRows: efficiency,
+  });
+  if (resolution.state === 'unavailable') {
+    return { ...unavailableTrendContext, exactJoinUnavailable: true };
+  }
+  const exactRun = resolution.run;
+  const exactEfficiency = resolution.evidence.efficiency;
+  return {
+    coverage:
+      exactRun.resultSummary.coveragePercent === null
+        ? 'Unavailable'
+        : `${exactRun.resultSummary.coveragePercent.toFixed(1)}%`,
+    runtime: String(exactRun.resultSummary.runtimeIssueCount),
+    missing: String(exactRun.resultSummary.missingCount),
+    duration:
+      exactEfficiency?.summedCellAdapterElapsedMs == null
+        ? 'Unavailable'
+        : formatHumanDuration(exactEfficiency.summedCellAdapterElapsedMs),
+    cost:
+      exactEfficiency?.costEstimatorStatus === 'estimated' &&
+      exactEfficiency.standardApiEquivalentUsdNanos !== null
+        ? `$${(exactEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`
+        : 'Unavailable',
+    exactJoinUnavailable: false,
+  };
+}
+
 export function TrendExplorer({
   entries,
   points,
+  runSummaries,
+  efficiency,
   range,
 }: {
   entries: readonly LeaderboardEntry[];
   points: readonly TrendPoint[];
+  runSummaries: readonly BenchmarkRunSummary[];
+  efficiency: readonly PublicModelEfficiency[];
   range: TrendRange;
 }) {
   const [mode, setMode] = useState<'line' | 'bar'>('line');
@@ -102,6 +185,19 @@ export function TrendExplorer({
   const visible = useMemo(
     () => points.filter((point) => selectedIds.includes(point.entryId)),
     [points, selectedIds],
+  );
+  const scientificContexts = useMemo(
+    () =>
+      new Map(
+        visible.map((point) => [
+          point,
+          resolveTrendScientificContext({ point, entries, runSummaries, efficiency }),
+        ]),
+      ),
+    [efficiency, entries, runSummaries, visible],
+  );
+  const exactJoinUnavailable = [...scientificContexts.values()].some(
+    (context) => context.exactJoinUnavailable,
   );
   const chartOption = useMemo<EChartsCoreOption>(() => {
     const allTimes = [
@@ -131,6 +227,7 @@ export function TrendExplorer({
         itemStyle: { color: TREND_SERIES_STYLES[index]?.color },
         data: allTimes.map((time) => {
           const point = byTime.get(time);
+          const context = point ? scientificContexts.get(point) : undefined;
           return point
             ? [
                 mode === 'bar' ? String(time) : time,
@@ -142,6 +239,11 @@ export function TrendExplorer({
                 point.synthetic ? 'synthetic' : 'published',
                 point.scoringVersion,
                 point.runId,
+                context?.coverage ?? 'Unavailable',
+                context?.runtime ?? 'Unavailable',
+                context?.missing ?? 'Unavailable',
+                context?.duration ?? 'Unavailable',
+                context?.cost ?? 'Unavailable',
               ]
             : [mode === 'bar' ? String(time) : time, null];
         }),
@@ -224,7 +326,7 @@ export function TrendExplorer({
             return item.seriesName;
           }
           if (data[1] === null) return `${item.seriesName}<br/>No observation in this bucket`;
-          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>AIQ ${Number(data[1]).toFixed(1)} · interval ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>n=${data[4]} tasks · latest of ${data[5]} run(s)<br/>scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'synthetic fixture'}`;
+          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>AIQ ${Number(data[1]).toFixed(1)} · interval ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
         },
       },
       dataZoom: allTimes.length > 12 ? [{ type: 'inside', xAxisIndex: 0 }] : undefined,
@@ -243,7 +345,7 @@ export function TrendExplorer({
       },
       series: [...series, ...intervalSeries],
     };
-  }, [mode, selectedEntries, visible]);
+  }, [mode, scientificContexts, selectedEntries, visible]);
 
   return (
     <>
@@ -292,10 +394,19 @@ export function TrendExplorer({
         observations only; absent buckets remain gaps. Bars use a zero baseline. Each grouped bar
         and its task-sensitivity interval use the same per-series category offset. The server
         returns at most 20 buckets per configuration and uses the latest exact Official run, not an
-        average. Runtime and missing counts are unavailable in this aggregate and are never inferred
-        as zero. Scoring versions:{' '}
+        average. Point context requires matching run, configuration, scoring version, and provenance
+        identity; absent evidence remains unavailable. Scoring versions:{' '}
         {[...new Set(visible.map((point) => point.scoringVersion))].join(', ') || 'unavailable'}.
       </p>
+      {exactJoinUnavailable ? (
+        <ReadStateNote
+          result={{
+            state: 'unavailable',
+            detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
+          }}
+          subject="Exact trend run context"
+        />
+      ) : null}
       <div className={`trend-layout${isPending ? ' is-pending' : ''}`}>
         <div className="chart-frame">
           {visible.length > 0 ? (
@@ -346,7 +457,11 @@ export function TrendExplorer({
                 <th scope="col">Task sensitivity</th>
                 <th scope="col">n</th>
                 <th scope="col">Run / bucket</th>
-                <th scope="col">Runtime / missing</th>
+                <th scope="col">Coverage</th>
+                <th scope="col">Runtime</th>
+                <th scope="col">Missing</th>
+                <th scope="col">Summed adapter duration</th>
+                <th scope="col">API-equivalent cost</th>
                 <th scope="col">Scoring</th>
                 <th scope="col">Evidence</th>
               </tr>
@@ -357,32 +472,39 @@ export function TrendExplorer({
                   (left, right) =>
                     new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime(),
                 )
-                .map((point) => (
-                  <tr key={`${point.entryId}-${point.recordedAt}`}>
-                    <td>{formatDate(point.recordedAt)}</td>
-                    <th scope="row">{point.entryId}</th>
-                    <td>{point.score.toFixed(1)}</td>
-                    <td>
-                      {point.ciLow.toFixed(1)}–{point.ciHigh.toFixed(1)}
-                    </td>
-                    <td>{point.sampleSize}</td>
-                    <td>
-                      {point.runId === null ? (
-                        'Synthetic fixture · no run detail'
-                      ) : (
-                        <>
-                          <Link href={`/runs/${point.runId}`}>{point.runId}</Link>
-                          <br />
-                          Latest of {point.representedRunCount} run
-                          {point.representedRunCount === 1 ? '' : 's'}
-                        </>
-                      )}
-                    </td>
-                    <td>Unavailable in trend view</td>
-                    <td>{point.scoringVersion}</td>
-                    <td>{pointProvenance(point)}</td>
-                  </tr>
-                ))}
+                .map((point) => {
+                  const context = scientificContexts.get(point) ?? unavailableTrendContext;
+                  return (
+                    <tr key={`${point.entryId}-${point.recordedAt}`}>
+                      <td>{formatDate(point.recordedAt)}</td>
+                      <th scope="row">{point.entryId}</th>
+                      <td>{point.score.toFixed(1)}</td>
+                      <td>
+                        {point.ciLow.toFixed(1)}–{point.ciHigh.toFixed(1)}
+                      </td>
+                      <td>{point.sampleSize}</td>
+                      <td>
+                        {point.runId === null ? (
+                          'Synthetic fixture · no run detail'
+                        ) : (
+                          <>
+                            <Link href={`/runs/${point.runId}`}>{point.runId}</Link>
+                            <br />
+                            Latest of {point.representedRunCount} run
+                            {point.representedRunCount === 1 ? '' : 's'}
+                          </>
+                        )}
+                      </td>
+                      <td>{context.coverage}</td>
+                      <td>{context.runtime}</td>
+                      <td>{context.missing}</td>
+                      <td>{context.duration}</td>
+                      <td>{context.cost}</td>
+                      <td>{point.scoringVersion}</td>
+                      <td>{pointProvenance(point)}</td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>

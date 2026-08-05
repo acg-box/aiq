@@ -5,6 +5,11 @@ create extension if not exists pgcrypto with schema extensions;
 
 set local check_function_bodies = false;
 
+insert into storage.buckets (id, name, public)
+values
+  ('aiq-submission-packages', 'aiq-submission-packages', false),
+  ('aiq-runner-artifacts', 'aiq-runner-artifacts', false);
+
 create role aiq_verifier
   nocreatedb nocreaterole noreplication nobypassrls nologin noinherit
   role authenticator;
@@ -1991,7 +1996,7 @@ begin
     or candidate ->> 'catalog_digest' <>
       'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1'
     or candidate ->> 'task_set_digest' <>
-      'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
+      'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'
     or candidate ->> 'evaluator_digest' <>
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
@@ -2452,7 +2457,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
         where catalog.task_set_id = task_set.task_set_id
           and catalog.task_set_version = task_set.task_set_version
           and catalog.fixture_commitment is not null
-      ) = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
+      ) = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -4389,7 +4394,7 @@ begin
     or jsonb_typeof(stage -> 'signer' -> 'node_id') is distinct from 'string'
     or candidate ->> 'run_class' is distinct from stage ->> 'run_class'
     or candidate ->> 'task_set_digest' is distinct from
-      'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
+      'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'
     or candidate ->> 'evaluator_digest' is distinct from
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from stage ->> 'task_set_hash'
@@ -7648,7 +7653,7 @@ begin
       and planning_execution_count = 7 and tool_use_count = 7
       and instruction_following_count = 6 and reliability_recovery_count = 7
       and task_set_identity_sha256 =
-        'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'
+        'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'
       and frozen_catalog_valid
       and evaluator_identity_sha256 =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
@@ -7680,7 +7685,7 @@ begin
     'catalog_identity_sha256', catalog_identity_sha256,
     'task_set_identity_sha256', task_set_identity_sha256,
     'task_set_identity_valid', task_set_identity_sha256 =
-      'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e',
+      'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261',
     'evaluator_identity_sha256', evaluator_identity_sha256,
     'evaluator_identity_valid', evaluator_identity_sha256 =
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
@@ -9718,6 +9723,7 @@ create view public.public_nodes with (security_invoker = true) as
 create view public.public_run_results with (security_invoker = true) as
  select result.run_id,
     result.result_id as id,
+    result.task_id,
     COALESCE(catalog.title, result.task_id) as task,
     result.domain,
     (result.outcome)::text as outcome,
@@ -9765,7 +9771,8 @@ create view public.public_run_results with (security_invoker = true) as
         end as token_usage_source_level,
     result.standard_api_equivalent_usd_nanos,
     result.cost_estimator_status,
-    result.cost_evidence_level
+    result.cost_evidence_level,
+    result.pricing_digest
    from ((aiq_private.aiq_task_results result
      join aiq_private.aiq_runs run on ((run.run_id = result.run_id)))
      left join aiq_private.aiq_task_catalog catalog on (((catalog.task_set_id = run.task_set_id) and (catalog.task_set_version = run.task_set_version) and (catalog.task_id = result.task_id) and (catalog.task_version = result.task_version))))

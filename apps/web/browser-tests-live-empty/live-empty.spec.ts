@@ -103,6 +103,9 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
     page.getByText('17 configurations · task cells unavailable', { exact: true }),
   ).toBeVisible();
   await expect(page.getByText('17 configurations · 0 task cells', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('Average coverage across 0/17 configurations:', { exact: false }),
+  ).toBeVisible();
   await expect(newestRetained).toContainText('Unavailable');
   await expect(newestRetained).toContainText('No published run evidence');
   await expect(snapshot).not.toContainText('trusted publication');

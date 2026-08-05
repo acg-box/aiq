@@ -4,15 +4,36 @@ import { useMemo, useState } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
 import {
-  isScoredLeaderboardEntry,
+  type BenchmarkRunSummary,
   type LeaderboardEntry,
   type PublicModelEfficiency,
 } from '../data/types.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { paretoEfficientKeys } from './efficiency-analysis.ts';
+import { resolveExactEfficiencyRows } from './scientific-evidence-resolution.ts';
 import { formatScientificScoreContextHtml } from './scientific-score-context.ts';
 
 type Metric = 'cost' | 'duration';
+const CANONICAL_CONFIGURATION_IDS = [
+  'sol-low',
+  'sol-medium',
+  'sol-high',
+  'sol-xhigh',
+  'sol-max',
+  'sol-ultra',
+  'terra-low',
+  'terra-medium',
+  'terra-high',
+  'terra-xhigh',
+  'terra-max',
+  'terra-ultra',
+  'luna-low',
+  'luna-medium',
+  'luna-high',
+  'luna-xhigh',
+  'luna-max',
+] as const;
+const CANONICAL_CONFIGURATION_COUNT = CANONICAL_CONFIGURATION_IDS.length;
 type EfficiencyDatum = readonly [
   number,
   number,
@@ -28,6 +49,77 @@ type EfficiencyDatum = readonly [
   number,
   string,
 ];
+
+export function resolveEfficiencyPlotEvidence({
+  entries,
+  runSummaries,
+  rows,
+  metric,
+}: {
+  entries: readonly LeaderboardEntry[];
+  runSummaries: readonly BenchmarkRunSummary[];
+  rows: readonly PublicModelEfficiency[];
+  metric: Metric;
+}) {
+  const exactRows = resolveExactEfficiencyRows({
+    runs: runSummaries,
+    entries,
+    efficiencyRows: rows,
+  });
+  const points: Array<{
+    entry: (typeof exactRows)[number]['entry'];
+    row: PublicModelEfficiency;
+    x: number;
+    y: number;
+  }> = [];
+  let metricUnavailable = 0;
+  let identityOrScoreRejected = 0;
+  let absent = 0;
+
+  for (const configurationId of CANONICAL_CONFIGURATION_IDS) {
+    const configurationRows = rows.filter(
+      (row) => `${row.modelFamily}-${row.reasoningEffort}` === configurationId,
+    );
+    if (configurationRows.length === 0) {
+      absent += 1;
+      continue;
+    }
+    const exactCandidates = exactRows.filter(({ entry }) => entry.id === configurationId);
+    if (configurationRows.length !== 1 || exactCandidates.length !== 1) {
+      identityOrScoreRejected += 1;
+      continue;
+    }
+    const exact = exactCandidates[0];
+    if (!exact) {
+      identityOrScoreRejected += 1;
+      continue;
+    }
+    const { entry, row } = exact;
+    const x =
+      metric === 'cost'
+        ? row.costEstimatorStatus === 'estimated' &&
+          row.tokenUsageCoveragePercent === 100 &&
+          row.standardApiEquivalentUsdNanos !== null
+          ? row.standardApiEquivalentUsdNanos / 1_000_000_000
+          : null
+        : row.observedTimeCoveragePercent === 100
+          ? row.summedCellAdapterElapsedMs
+          : null;
+    if (x === null) {
+      metricUnavailable += 1;
+      continue;
+    }
+    points.push({ row, entry, x, y: entry.score });
+  }
+
+  return {
+    points,
+    configurationCount: CANONICAL_CONFIGURATION_COUNT,
+    metricUnavailable,
+    identityOrScoreRejected,
+    absent,
+  };
+}
 
 function readEfficiencyDatum(value: unknown): EfficiencyDatum | null {
   if (typeof value !== 'object' || value === null || !('data' in value)) return null;
@@ -97,32 +189,19 @@ function efficiencyComparisonGroup(
 
 export function EfficiencyPlot({
   entries,
+  runSummaries,
   rows,
 }: {
   entries: readonly LeaderboardEntry[];
+  runSummaries: readonly BenchmarkRunSummary[];
   rows: readonly PublicModelEfficiency[];
 }) {
   const [metric, setMetric] = useState<Metric>('cost');
-  const points = useMemo(() => {
-    const entriesByRun = new Map(entries.map((entry) => [entry.runId, entry]));
-    return rows.flatMap((row) => {
-      const entry = entriesByRun.get(row.runId);
-      const x =
-        metric === 'cost'
-          ? row.costEstimatorStatus === 'estimated' &&
-            row.tokenUsageCoveragePercent === 100 &&
-            row.standardApiEquivalentUsdNanos !== null
-            ? row.standardApiEquivalentUsdNanos / 1_000_000_000
-            : null
-          : row.observedTimeCoveragePercent === 100
-            ? row.summedCellAdapterElapsedMs
-            : null;
-      return !entry || !isScoredLeaderboardEntry(entry) || x === null
-        ? []
-        : [{ row, entry, x, y: entry.score }];
-    });
-  }, [entries, metric, rows]);
-  const unavailable = rows.length - points.length;
+  const { points, configurationCount, metricUnavailable, identityOrScoreRejected, absent } =
+    useMemo(
+      () => resolveEfficiencyPlotEvidence({ entries, runSummaries, rows, metric }),
+      [entries, metric, rows, runSummaries],
+    );
   const frontierRunIds = useMemo(() => {
     const comparisonGroups = new Map<string, number>();
     for (const point of points) {
@@ -328,8 +407,10 @@ export function EfficiencyPlot({
         />
       )}
       <p className="efficiency-coverage">
-        {points.length}/{rows.length} configurations plotted · {unavailable} unavailable for the
-        selected metric · missing values are excluded, never encoded as zero
+        {points.length}/{configurationCount} configurations plotted in the canonical matrix ·{' '}
+        {metricUnavailable} metric unavailable · {identityOrScoreRejected} rejected because exact
+        identity or score evidence could not be verified · {absent} absent from efficiency evidence
+        · missing values are excluded, never encoded as zero
       </p>
       <details className="chart-data-disclosure">
         <summary>Read efficiency values</summary>
@@ -341,7 +422,9 @@ export function EfficiencyPlot({
         >
           <table>
             <caption>
-              AIQ is unchanged by the selected efficiency metric. Cost is a Standard API-equivalent
+              Only exact canonical configurations with coverage-qualified values appear below.
+              Excluded evidence is counted in the summary without using its unverified labels. AIQ
+              is unchanged by the selected efficiency metric. Cost is a Standard API-equivalent
               estimate, not billed subscription cost; duration is summed cell adapter time, not
               wall-clock time.
             </caption>

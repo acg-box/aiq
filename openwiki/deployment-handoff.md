@@ -18,7 +18,7 @@ regeneration, final native build verification, private final-build audit receipt
 first real run, and publication are still pending. Model-free candidate
 validation passes all 72 tasks; the runtime
 `task_set_hash` is
-`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
 Do not treat the source-head change as a deployment claim.
 
 ## First-release topology
@@ -29,6 +29,7 @@ The accepted first release uses these exact surfaces:
 | -------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Database and Storage | Personal Supabase organization `ACG Box`, project `aiq`, reference `xxnszykaeapolqdnhalx`, PostgreSQL 17.6 |
 | Web and gateway      | Personal Vercel scope `acgbox`, project `aiq`                                                              |
+| DNS                  | Personal Cloudflare account that owns the `aiq.wiki` zone; never a company team account                    |
 | Public origin        | `https://aiq.wiki`                                                                                         |
 | Runner               | Native Apple Silicon macOS `aiq-runner` release binary                                                     |
 | Verifier             | Native Apple Silicon macOS `aiq-verifier` release binary                                                   |
@@ -68,6 +69,44 @@ readback:
 vercel inspect aiq.wiki --scope acgbox --format=json
 ```
 
+Deploy only from the final clean source worktree. Use the personal scope and
+project flags on every command; do not rely on an ambient project link or a
+company-team selection. Create the production-target deployment without moving
+the domain, inspect it, and run the publication-bound browser gate against its
+deployment URL before promotion:
+
+```sh
+set -eu
+AIQ_SOURCE_ROOT='<absolute-final-clean-worktree>'
+test -z "$(git -C "$AIQ_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all)"
+AIQ_SOURCE_COMMIT="$(git -C "$AIQ_SOURCE_ROOT" rev-parse HEAD)"
+test "$(printf '%s' "$AIQ_SOURCE_COMMIT" | wc -c | tr -d ' ')" -eq 40
+
+vercel link --cwd "$AIQ_SOURCE_ROOT" --scope acgbox --project aiq --yes
+vercel deploy "$AIQ_SOURCE_ROOT" \
+  --prod \
+  --skip-domain \
+  --scope acgbox \
+  --project aiq \
+  --yes \
+  --meta "aiqSourceCommit=$AIQ_SOURCE_COMMIT" \
+  --format=json
+
+vercel inspect '<deployment-id-or-url>' --scope acgbox --format=json
+```
+
+Confirm that the readback identifies scope `acgbox`, project `aiq`, the expected
+deployment ID, a ready production target, and deployment metadata
+`aiqSourceCommit` equal to the clean source commit. Run the full production
+browser command from this page with `AIQ_PRODUCTION_ORIGIN` set to the inspected
+deployment URL. Promote only that accepted deployment, then inspect and test the
+canonical origin again:
+
+```sh
+vercel promote '<accepted-deployment-id-or-url>' --scope acgbox --yes
+vercel inspect aiq.wiki --scope acgbox --format=json
+```
+
 ## Immutable release evidence
 
 Record these values after each action succeeds:
@@ -78,7 +117,7 @@ Record these values after each action succeeds:
 | Runner      | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
 | Verifier    | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
 | Corpus      | Release ID, commitment SHA-256, 72 task count, and evaluator runtime identity |
-| Final build | Private receipt: commit, tree, runner, verifier, Node.js, and ripgrep hashes       |
+| Final build | Private receipt: commit, tree, runner, verifier, Node.js, and ripgrep hashes  |
 | Database    | Source commit, `databases/schema.sql` SHA-256, and initialization receipt     |
 | Vercel      | Deployment ID, source commit, project, scope, and production origin           |
 | Domain      | Vercel domain state, Cloudflare DNS records, TLS, and redirect behavior       |
@@ -96,21 +135,21 @@ the receipt.
 ## Supabase setup
 
 The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6.
-Historical AIQ Core `1.0.2` state remains live until the `1.0.3` cutover. Before
-that cutover, verify the accepted backups, remove only the historical AIQ schema
-and roles plus the exact AIQ-owned public views and RPC overloads, and initialize
-the empty AIQ namespace once. Review the live dependency closure first and
-preserve all Supabase-managed and non-AIQ objects. Do not load synthetic fixtures
-into this project.
+Initialize AIQ Core `1.0.3` in this existing target project after its AIQ
+namespace is empty. If residue exists, remove only `aiq_private`, the AIQ-owned
+roles, and the exact AIQ-owned public views and RPC overloads. Preserve all
+Supabase-managed and non-AIQ objects. This cleanup is a deployment prerequisite,
+not a migration or compatibility path. Do not load synthetic fixtures into this
+project.
 
 1. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
-2. Create private Storage buckets for submission packages and runner artifacts.
-3. Prepare one private production-reference
+2. Prepare one private production-reference
    document. Bind the 72-task AIQ Core `1.0.3` corpus, current catalog identities,
    and distinct runner, verifier, and publisher
    public identities.
-4. Apply the desired state once through a direct PostgreSQL connection:
+3. Apply the desired state once through a direct PostgreSQL connection. The
+   schema creates both AIQ Storage buckets and sets them to private:
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -127,7 +166,7 @@ Run the database checks:
 
 ```sh
 cargo make check-database
-cargo make smoke-database
+AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-database
 ```
 
 Do not load `databases/synthetic-demo.sql` into production.
@@ -199,8 +238,21 @@ private records.
 
 Make a separate copy of the current Codex authentication home. Set the copied
 `auth.json` to mode `0600` and owner immutable with `chflags uchg`. Do not change
-the active Codex profile. Keep each corpus runner subtree source-only with a null
-built-binary digest, and keep the Node.js and ripgrep identities in the corpus.
+the active Codex profile:
+
+```sh
+AIQ_RELEASE_CODEX_HOME='/absolute/private/aiq-codex-home'
+mkdir -m 0700 "$AIQ_RELEASE_CODEX_HOME"
+cp ~/.codex/auth.json "$AIQ_RELEASE_CODEX_HOME/auth.json"
+chmod 0600 "$AIQ_RELEASE_CODEX_HOME/auth.json"
+chflags uchg "$AIQ_RELEASE_CODEX_HOME/auth.json"
+```
+
+Pass `--codex-home "$AIQ_RELEASE_CODEX_HOME"` to `admit-permissions`, `preflight`,
+and `run`. The runner clears the inherited environment and injects that exact
+directory as the Codex subprocess `CODEX_HOME`. Keep each corpus runner subtree
+source-only with a null built-binary digest, and keep the Node.js and ripgrep
+identities in the corpus.
 After the final clean build, generate the private, unsigned audit receipt. Record
 the exact source commit and tree identity and SHA-256 values for the native
 runner, verifier, Node.js, and ripgrep executables. This receipt is private
@@ -266,6 +318,17 @@ branch aliases can be removed only transiently because a later deployment can
 recreate or reassign them. A deployment-specific URL is intrinsic to its
 retained deployment. The current generated Vercel surfaces emit `noindex`.
 
+Operate DNS only from the personal Cloudflare account that owns the `aiq.wiki`
+zone. Before a change, confirm the selected account is personal and record the
+public-safe account display name plus the private account and zone identifiers in
+the release receipt. Do not select a company team. For the apex and `www` records,
+copy the exact type and target that Vercel shows for project `acgbox/aiq` at
+deployment time. Keep both records **DNS only** in Cloudflare so Vercel owns TLS
+and redirect behavior. Remove or replace only an exact conflicting `aiq.wiki` or
+`www.aiq.wiki` record. Record the final type, target, TTL, proxy state, Vercel
+domain state, and DNS readback. Do not hard-code a Vercel DNS target in this
+runbook because Vercel can assign a project-specific target.
+
 ## Storage operations
 
 Run Storage reconciliation before deletion:
@@ -279,9 +342,12 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 
 ## Launch checklist
 
-- [x] Repository, controlled corpus, native binary, and capability evidence bind
-      the approved production source and AIQ Core `1.0.2` contract.
-- [x] Supabase project `ACG Box/aiq` is initialized from `databases/schema.sql`;
+- [x] Historical launch commit `725b88954359ab8f0950f896674b3e8684d3ae85`,
+      its controlled corpus, native binaries, and capability evidence bind the
+      published AIQ Core `1.0.2` contract.
+- [x] Historical production Supabase state was initialized from
+      `databases/schema.sql` at that immutable launch commit, with SHA-256
+      `a57ad5490f92391541c985cc0cc1551e5c960aa6c013cd68f4aea291a7f6c00c`;
       both production Storage buckets are private.
 - [x] Vercel project `acgbox/aiq` serves the accepted deployment without exposing
       server-only values to the browser.
@@ -295,6 +361,12 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 - [x] The read-only production acceptance gate passed for the historical
       acceptance deployment recorded below. Rerun it after each future
       publication or deployment change.
+- [ ] Regenerate and audit the final AIQ Core `1.0.3` corpus from the final clean
+      source commit, then build and hash the native runner and verifier.
+- [ ] Empty only the AIQ-owned namespace and initialize the new desired state
+      once from the final AIQ Core `1.0.3` `databases/schema.sql`.
+- [ ] Run, replay, verify, and publish one real 17-by-72 AIQ Core `1.0.3` matrix;
+      then deploy that exact source and pass the identity-bound production gate.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
       next run without changing the accepted execution contract.
 
@@ -303,16 +375,40 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 On 2026-08-04, the bounded, secret-free production acceptance gate passed all
 7 tests against Vercel deployment `dpl_CeNkm4rGR8UaRkqQBdPZAyBmWgg2`. That
 deployment used source commit
-`29f5fc8d8576d95b6fa00fc8f7c943cfc2e4290d`. The exact command was:
+`29f5fc8d8576d95b6fa00fc8f7c943cfc2e4290d`. That earlier release used the
+release-bound values that were current at that time. Every new acceptance run
+must supply the exact identity from the accepted result package and verifier
+attestation. The command shape is:
 
 ```sh
-AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production --workspace @aiq/web
+AIQ_PRODUCTION_ORIGIN='https://aiq.wiki' \
+AIQ_PRODUCTION_EXPECTED_BENCHMARK_VERSION='<benchmark-version>' \
+AIQ_PRODUCTION_EXPECTED_SCORING_VERSION='<scoring-version>' \
+AIQ_PRODUCTION_EXPECTED_MATRIX_BATCH_ID='<run_sha256-id>' \
+AIQ_PRODUCTION_EXPECTED_RUNNER_COMMIT='<git-commit>' \
+AIQ_PRODUCTION_EXPECTED_CORPUS_RELEASE_ID='<corpus-release-id>' \
+AIQ_PRODUCTION_EXPECTED_CORPUS_COMMITMENT='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_CATALOG_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_TASK_SET_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_PROMPT_SET_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_ESTIMATED_COST_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_UNAVAILABLE_CONTEXT_BAND_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_UNAVAILABLE_MISSING_USAGE_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_PRICED_COST_SUBTOTAL_USD_NANOS='<integer-nanodollars>' \
+npm run test:browser:production --workspace @aiq/web
 ```
 
 The result was 7 of 7 tests passed. This is historical acceptance evidence. It
 does not identify every later deployment and does not create a benchmark,
 Storage, or OpenWiki schedule. Rerun the command after each future publication
-or production deployment change.
+or production deployment change. The gate rejects missing, malformed, zero, or
+version-incoherent expected identities before it contacts production. It binds
+the accepted publication to the exact signed matrix batch and runner commit.
+It also binds the cost-status distribution and priced nanodollar subtotal.
+This prevents an old release expectation from silently accepting a new
+publication. Verify the Vercel deployment ID and deployed web source commit
+separately through the project-bound deployment readback; they are
+web-deployment evidence, not result-package fields.
 
 Page-initiated non-read requests are blocked. The gate also sends intentional
 unauthenticated POST probes to five write routes and requires uncached `401`
@@ -326,12 +422,12 @@ validate the accepted public surface described in
 [Operations and Validation](operations.md); they do not schedule future work.
 
 If greenfield initialization fails, confirm that its transaction rolled back and
-that the AIQ namespace is empty before retrying. If exact AIQ objects remain,
-remove only those objects after rechecking the accepted backups. Do not introduce
-a migration or compatibility path.
+that the AIQ namespace is empty before retrying. If AIQ objects remain, remove
+only the exact AIQ-owned objects and preserve all Supabase-managed and non-AIQ
+objects before retrying the existing target project.
 
-No command in this handoff performs deployment or recurring scheduling
-automatically. No cloud runner or verifier worker and no benchmark or Storage
-schedule currently exist. The twice-daily benchmark schedule and its next run
-remain pending operator work; this documentation does not authorize recurring
-automation.
+The project-bound Vercel commands above perform deployment only when an operator
+runs them. They do not create recurring automation. No cloud runner or verifier
+worker and no benchmark or Storage schedule currently exist. The twice-daily
+benchmark schedule and its next run remain pending operator work; this
+documentation does not authorize recurring automation.

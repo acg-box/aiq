@@ -1670,7 +1670,7 @@ body > footer > div:nth-child(2) {
 
 	.site-header nav {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		width: 100%;
 		overflow-x: visible;
 	}

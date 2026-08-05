@@ -9,6 +9,11 @@ import { OfficialEfficiencyTable } from '../components/official-efficiency-table
 import { ReadStateNote } from '../components/read-state-note.tsx';
 import { RunOutcomeCard } from '../components/run-outcome-card.tsx';
 import { ScoreReadout } from '../components/score-readout.tsx';
+import {
+  EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
+  resolveExactEfficiencyRowsWithAvailability,
+  resolveExactScientificEvidence,
+} from '../components/scientific-evidence-resolution.ts';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
 import {
@@ -63,7 +68,12 @@ export default async function OverviewPage() {
   const officialRunIds = leaderboard.flatMap((entry) =>
     entry.scoreStatus === 'official' && entry.runId ? [entry.runId] : [],
   );
-  const [selectedRunResult, officialEfficiencyResult, calibrationScoresResult] = await Promise.all([
+  const [
+    selectedRunResult,
+    officialRunSummariesResult,
+    officialEfficiencyResult,
+    calibrationScoresResult,
+  ] = await Promise.all([
     readPublicData<BenchmarkRun | null>(
       repository,
       () =>
@@ -73,6 +83,13 @@ export default async function OverviewPage() {
       null,
       (value) => value === null,
       (value) => (value ? [value.synthetic] : []),
+    ),
+    readPublicData(
+      repository,
+      () => repository.listRunSummaries(officialRunIds),
+      [],
+      (value) => value.length === 0,
+      (value) => value.map((run) => run.synthetic),
     ),
     readPublicData(
       repository,
@@ -107,9 +124,30 @@ export default async function OverviewPage() {
         coveredEntries.length;
   const selectedRun = selectedRunResult.data;
   const newestRetainedRun = newestRunResult.data;
-  const latestEfficiency = officialEfficiencyResult.data.find(
-    (row) => row.runId === highestPointEstimate?.runId,
-  );
+  const highestPointEvidence =
+    highestPointEstimate && selectedRun
+      ? resolveExactScientificEvidence({
+          candidate: {
+            runId: highestPointEstimate.runId,
+            entryId: highestPointEstimate.id,
+            scoringVersion: highestPointEstimate.scoringVersion,
+            synthetic: highestPointEstimate.synthetic,
+          },
+          runs: [selectedRun],
+          entries: leaderboard,
+          efficiencyRows: officialEfficiencyResult.data,
+        })
+      : undefined;
+  const latestEfficiency =
+    highestPointEvidence?.state === 'exact' ? highestPointEvidence.evidence.efficiency : undefined;
+  const exactOfficialEfficiency = resolveExactEfficiencyRowsWithAvailability({
+    runs: officialRunSummariesResult.data,
+    entries: leaderboard,
+    efficiencyRows: officialEfficiencyResult.data,
+    expectedRunIds: officialRunIds,
+  });
+  const highestPointIdentityUnavailable =
+    highestPointEstimate !== undefined && highestPointEvidence?.state !== 'exact';
   const overviewProvenance =
     leaderboardResult.state === 'synthetic'
       ? 'synthetic'
@@ -138,8 +176,7 @@ export default async function OverviewPage() {
             <h1>Benchmark overview</h1>
           </div>
           <p>
-            17 model and reasoning configurations, with score, uncertainty, coverage, runtime, cost,
-            and task evidence kept together.
+            Analyze 17 fixed configurations across score, uncertainty, coverage, runtime, and cost.
           </p>
         </header>
         <div className="benchmark-snapshot" aria-label="Latest matrix snapshot">
@@ -220,7 +257,8 @@ export default async function OverviewPage() {
             <div>
               <dt>API-equivalent cost</dt>
               <dd>
-                {latestEfficiency?.standardApiEquivalentUsdNanos == null
+                {latestEfficiency?.costEstimatorStatus !== 'estimated' ||
+                latestEfficiency.standardApiEquivalentUsdNanos == null
                   ? 'Unavailable'
                   : `$${(latestEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(2)}`}
               </dd>
@@ -234,6 +272,15 @@ export default async function OverviewPage() {
 
       <div className="page-shell overview-provenance">
         <DataNote provenance={overviewProvenance} />
+        {highestPointIdentityUnavailable ? (
+          <ReadStateNote
+            result={{
+              state: 'unavailable',
+              detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
+            }}
+            subject="Highest-point run context"
+          />
+        ) : null}
       </div>
 
       <section className="page-shell section-block overview-priority" id="leaderboard">
@@ -248,9 +295,9 @@ export default async function OverviewPage() {
             <h2>Current configuration matrix</h2>
           </div>
           <p>
-            Average coverage{' '}
-            {averageCoverage === null ? 'unavailable' : `${averageCoverage.toFixed(1)}%`}. Filter by
-            model family or change the visual encoding without changing the underlying evidence.
+            Average coverage across {coveredEntries.length}/17 configurations:{' '}
+            {averageCoverage === null ? 'unavailable' : `${averageCoverage.toFixed(1)}%`}. Compare
+            coverage-qualified scores by family or encoding.
           </p>
         </div>
         <ReadStateNote result={leaderboardResult} subject="Latest matrix" />
@@ -260,7 +307,14 @@ export default async function OverviewPage() {
         ) : (
           <ReadStateNote result={selectedRunResult} subject="Highlighted run outcomes" />
         )}
-        <EfficiencyPlot entries={leaderboard} rows={officialEfficiencyResult.data} />
+        {officialRunSummariesResult.state === 'unavailable' ? (
+          <ReadStateNote result={officialRunSummariesResult} subject="Efficiency run context" />
+        ) : null}
+        <EfficiencyPlot
+          entries={leaderboard}
+          runSummaries={officialRunSummariesResult.data}
+          rows={officialEfficiencyResult.data}
+        />
         <details className="leaderboard-disclosure">
           <summary>Show all {leaderboard.length} configurations and intervals</summary>
           <LeaderboardTable entries={leaderboard} />
@@ -277,15 +331,20 @@ export default async function OverviewPage() {
             <h2 id="efficiency-heading">Time and cost, kept separate</h2>
           </div>
           <p>
-            These measurements describe the run, not the AIQ index. API-equivalent cost is a
-            comparison estimate and is never presented as ChatGPT subscription spend.
+            Inspect runner-observed adapter time and verifier-recomputed API-equivalent cost as
+            separate measures.
           </p>
         </div>
         <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
         {officialEfficiencyResult.state === 'published' ? (
           <details className="evidence-disclosure">
             <summary>Open time, token, and cost details</summary>
-            <OfficialEfficiencyTable rows={officialEfficiencyResult.data} />
+            <OfficialEfficiencyTable
+              rows={exactOfficialEfficiency.rows}
+              expectedCount={exactOfficialEfficiency.expectedCount}
+              unavailableCount={exactOfficialEfficiency.unavailableCount}
+              rejectedCount={exactOfficialEfficiency.rejectedCount}
+            />
           </details>
         ) : null}
       </section>
@@ -300,8 +359,8 @@ export default async function OverviewPage() {
             <h2 id="calibration-heading">Latest verified calibration</h2>
           </div>
           <p>
-            Calibration replay is useful for checking the evaluator, but it is not Official and
-            never changes the public ranking.
+            Inspect replay-verified evaluator checks. Calibration remains non-Official and
+            non-ranking.
           </p>
         </div>
         <ReadStateNote result={calibrationRunsResult} subject="Latest calibration" />
@@ -358,16 +417,16 @@ export default async function OverviewPage() {
       <section className="page-shell split-cta">
         <div>
           <span className="eyebrow">Compare behavior</span>
-          <h2>Same matrix, different trade-offs.</h2>
-          <p>Select two exact configurations and keep their intervals and evidence together.</p>
+          <h2>Compare two configurations.</h2>
+          <p>Inspect score, interval, coverage, runtime, duration, and cost.</p>
           <Link className="text-link" href="/compare">
             Open comparison <span aria-hidden="true">→</span>
           </Link>
         </div>
         <div>
           <span className="eyebrow">Keep the history</span>
-          <h2>Watch the index over time.</h2>
-          <p>Switch between line and bar views without losing the retained run record.</p>
+          <h2>Inspect score history.</h2>
+          <p>Trace retained runs with coverage, missing cells, duration, and cost.</p>
           <Link className="text-link" href="/trends">
             Explore trends <span aria-hidden="true">→</span>
           </Link>
