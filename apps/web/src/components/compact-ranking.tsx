@@ -46,7 +46,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
           <table>
             <caption className="sr-only">
               {isOfficialRanking
-                ? 'Five Official configurations shown in descending fixed-fixture AIQ point-estimate order. Each row includes its exact task-resampling sensitivity bounds. The order is descriptive and does not identify a winner.'
+                ? `${visibleEntries.length} Official configuration${visibleEntries.length === 1 ? '' : 's'} shown in descending fixed-fixture AIQ point-estimate order. Each row includes its exact task-resampling sensitivity bounds. The order is descriptive and does not identify a winner.`
                 : 'Synthetic configurations shown in configuration identifier order. Synthetic fixtures are not ranking eligible.'}
             </caption>
             <thead>
