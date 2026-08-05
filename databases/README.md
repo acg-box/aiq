@@ -43,17 +43,18 @@ cargo make init-database
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
 controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.4`, its real `published_at` timestamp, and exactly three public identities:
+`1.0.5`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
-final native binaries pass validation. The controlled reference and reviewed
-database commitments are pending. The repository does not
-contain a substitute production commitment or benchmark results. Supply the
-controlled production reference separately.
+final native binaries pass validation. The controlled production reference is
+still pending. The reviewed 72-task database commitment is frozen in
+`aiq-core-1.0.5-task-commitments.json`. The repository does not contain a
+substitute production commitment or benchmark results. Supply the controlled
+production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.4` with benchmark identifier `aiq-core@1.0.4`;
-- scoring version `1.0.4`;
+- AIQ Core task release `1.0.5` with benchmark identifier `aiq-core@1.0.5`;
+- scoring version `1.0.5`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
@@ -62,12 +63,17 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`;
+  `sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`;
 - catalog release identity
-  `sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`;
-- reviewed controlled generated-task tree, runtime task-set, scorer-manifest,
-  evaluator, Core corpus, and Contrast corpus identities. These identities are
-  pending and must come from the final controlled build.
+  `sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`;
+- reviewed runtime task-set identity
+  `sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6`;
+- reviewed task-commitment manifest identity
+  `sha256:5b1d4849bfa9c31fbc309d27cfda431118e1f849e4a76c0179402784a757b8f3`;
+- reviewed evaluator identity
+  `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
+- reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
+  Contrast corpus identities from the final controlled production reference.
 
 The controlled tree identity is not a runtime task-set hash. The database does
 not write it to `task_set_hash` or `task_set_digest`. Those fields use the
@@ -77,16 +83,17 @@ protocol. The database binds the exact
 evaluator identity in signed `evaluator_digest` provenance and in the frozen
 task-set metadata that production readiness checks. It does not copy the
 scorer-manifest identity into an unrelated field.
-The native corpus commitment owns the pending scorer-manifest identity. The
-database binds its output through scoring version `1.0.4` and recomputes
+The native corpus commitment owns the scorer-manifest identity. The
+database binds its output through scoring version `1.0.5` and recomputes
 the score from normalized result evidence.
 
-The reviewed public-safe `1.0.4` 72-task database binding manifest and its
-canonical JCS identity are pending.
+The reviewed public-safe `1.0.5` 72-task database binding manifest is
+`aiq-core-1.0.5-task-commitments.json`. Its canonical JCS identity is
+`sha256:5b1d4849bfa9c31fbc309d27cfda431118e1f849e4a76c0179402784a757b8f3`.
 
-The pre-release desired state targets AIQ Core `1.0.4`. Production is still on
+The pre-release desired state targets AIQ Core `1.0.5`. Production is still on
 the historical published `1.0.2` state. Do not initialize production until the
-controlled `1.0.4` commitments are complete and reviewed.
+controlled `1.0.5` commitments are complete and reviewed.
 
 ## Greenfield replacement
 
