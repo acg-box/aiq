@@ -7,13 +7,13 @@ import {
 } from '../playwright-production-identity.ts';
 
 const identity = {
-  benchmarkVersion: 'aiq-core@1.0.4',
-  scoringVersion: '1.0.4',
+  benchmarkVersion: 'aiq-core@1.0.5',
+  scoringVersion: '1.0.5',
   matrixBatchId: `run_${'5'.repeat(64)}`,
   runnerCommit: 'a79a6616128eb3161069e4fd50657df0b88e6760',
-  corpusReleaseId: 'corpus_2026.08.04-aiq-core-1.0.4-final',
+  corpusReleaseId: 'corpus_2026.08.04-aiq-core-1.0.5-final',
   corpusCommitment: `sha256:${'1'.repeat(64)}`,
-  catalogDigest: 'sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e',
+  catalogDigest: 'sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c',
   taskSetDigest: `sha256:${'3'.repeat(64)}`,
   promptSetDigest: `sha256:${'4'.repeat(64)}`,
   estimatedCostResultCount: 1_208,
