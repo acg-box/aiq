@@ -215,10 +215,10 @@ await test('the four public calibration revisions state every requested non-secr
     strictEqual(revisions.get('debugging-04')?.includes(term), true);
   }
   for (const term of [
-    'multi-module',
-    'injected time',
-    'stale-if-error',
-    'generation-safe invalidation',
+    'keyed async executor',
+    'same-key FIFO',
+    'work-conserving',
+    'idle lifecycle',
   ]) {
     strictEqual(revisions.get('coding-06')?.includes(term), true);
   }
