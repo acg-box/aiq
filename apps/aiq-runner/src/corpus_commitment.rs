@@ -27,7 +27,7 @@ use crate::{
 
 /// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32";
+	"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2";
 
 const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json");
@@ -2412,13 +2412,25 @@ mod tests {
 
 		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
 		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
+		assert_eq!(contrast.catalog.task_set_version, "1.0.5");
 		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
-			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256
+			"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2"
+		);
+		assert_eq!(
+			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
+			contrast.catalog.identity_sha256
 		);
 		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG,).is_ok());
 		assert!(corpus_commitment::validate_header(&contrast, super::CORE_CATALOG).is_err());
+
+		contrast.catalog.identity_sha256 =
+			"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32".to_owned();
+
+		assert_eq!(contrast.catalog.task_set_version, "1.0.5");
+		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG).is_err());
+		assert!(super::catalog_contract(&contrast.catalog).is_err());
 
 		let mut synthetic = commitment();
 
