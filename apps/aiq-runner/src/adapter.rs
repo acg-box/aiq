@@ -144,6 +144,9 @@ const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
 #[cfg(unix)]
 static SCRATCH_QUARANTINE_SEQUENCE: std::sync::atomic::AtomicU64 =
 	std::sync::atomic::AtomicU64::new(0);
+#[cfg(unix)]
+static ARTIFACT_TEMPORARY_SEQUENCE: std::sync::atomic::AtomicU64 =
+	std::sync::atomic::AtomicU64::new(0);
 
 /// An injectable process execution seam.
 pub trait Executor {
@@ -386,13 +389,24 @@ impl LocalArtifactSink {
 		bytes: &[u8],
 		post_publish: impl FnOnce(),
 	) -> Result<ArtifactReference, ExecutorError> {
-		self.put_inner(kind, bytes, post_publish)
+		self.put_inner(kind, bytes, || {}, post_publish)
+	}
+
+	#[cfg(all(test, unix))]
+	fn put_with_install_hook(
+		&self,
+		kind: &str,
+		bytes: &[u8],
+		post_install: impl FnOnce(),
+	) -> Result<ArtifactReference, ExecutorError> {
+		self.put_inner(kind, bytes, post_install, || {})
 	}
 
 	fn put_inner(
 		&self,
 		kind: &str,
 		bytes: &[u8],
+		post_install: impl FnOnce(),
 		post_publish: impl FnOnce(),
 	) -> Result<ArtifactReference, ExecutorError> {
 		if kind.is_empty()
@@ -407,93 +421,9 @@ impl LocalArtifactSink {
 		let digest = content_hash.trim_start_matches("sha256:").to_owned();
 
 		#[cfg(unix)]
-		{
-			let directory = self
-				.pinned
-				.child_directory(OsStr::new(&digest), true)
-				.map_err(ExecutorError::new)?;
-			let temporary = format!(
-				".tmp-{}-{}-{kind}",
-				process::id(),
-				SystemTime::now()
-					.duration_since(UNIX_EPOCH)
-					.map_or(0, |duration| duration.as_nanos())
-			);
-			let mut file = self
-				.pinned
-				.create_child_file(&directory, OsStr::new(&temporary))
-				.map_err(ExecutorError::new)?;
-
-			file.write_all(bytes)
-				.and_then(|()| file.sync_all())
-				.map_err(|_| ExecutorError::new("artifact write failed"))?;
-
-			drop(file);
-
-			let published =
-				self.pinned.link_child_file(&directory, OsStr::new(&temporary), OsStr::new(kind));
-
-			self.pinned
-				.unlink_child_file(&directory, OsStr::new(&temporary))
-				.map_err(ExecutorError::new)?;
-
-			if let Err(error) = published
-				&& error.kind() != ErrorKind::AlreadyExists
-			{
-				return Err(ExecutorError::new("cannot publish artifact atomically"));
-			}
-
-			let mut existing = self
-				.pinned
-				.open_child_file(&directory, OsStr::new(kind))
-				.map_err(ExecutorError::new)?;
-
-			verify_existing_artifact_file(&mut existing, bytes, &content_hash)?;
-			post_publish();
-
-			directory
-				.sync_all()
-				.map_err(|_| ExecutorError::new("cannot synchronize artifact directory"))?;
-			self.pinned.sync().map_err(ExecutorError::new)?;
-			self.pinned
-				.verify_child_file(OsStr::new(&digest), &directory, OsStr::new(kind), &existing)
-				.map_err(ExecutorError::new)?;
-		}
+		self.publish_unix(kind, bytes, &content_hash, &digest, post_install, post_publish)?;
 		#[cfg(not(unix))]
-		{
-			let directory = self.root.join(&digest);
-
-			if fs::symlink_metadata(&directory)
-				.is_ok_and(|metadata| metadata.file_type().is_symlink())
-			{
-				return Err(ExecutorError::new("artifact digest directory is a symbolic link"));
-			}
-
-			fs::create_dir_all(&directory).map_err(|error| {
-				ExecutorError::new(format!("artifact directory unavailable: {error}"))
-			})?;
-
-			let path = directory.join(kind);
-
-			if path.exists() {
-				verify_existing_artifact(&path, bytes, &content_hash)?;
-			} else {
-				let mut options = OpenOptions::new();
-
-				options.write(true).create_new(true);
-
-				let mut file = options.open(&path).map_err(|error| {
-					ExecutorError::new(format!("cannot create artifact: {error}"))
-				})?;
-
-				file.write_all(bytes).and_then(|()| file.sync_all()).map_err(|error| {
-					ExecutorError::new(format!("artifact write failed: {error}"))
-				})?;
-			}
-
-			post_publish();
-		}
-
+		self.publish_portable(kind, bytes, &content_hash, &digest, post_install, post_publish)?;
 		self.verify_pinned()?;
 
 		Ok(ArtifactReference {
@@ -503,11 +433,145 @@ impl LocalArtifactSink {
 			bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
 		})
 	}
+
+	#[cfg(unix)]
+	fn publish_unix(
+		&self,
+		kind: &str,
+		bytes: &[u8],
+		content_hash: &str,
+		digest: &str,
+		post_install: impl FnOnce(),
+		post_publish: impl FnOnce(),
+	) -> Result<(), ExecutorError> {
+		let directory =
+			self.pinned.child_directory(OsStr::new(digest), true).map_err(ExecutorError::new)?;
+		let mut created = None;
+
+		for _ in 0..64 {
+			let temporary = Self::artifact_temporary_name(kind);
+
+			match self.pinned.create_child_file(&directory, OsStr::new(&temporary)) {
+				Ok(file) => {
+					created = Some((temporary, file));
+
+					break;
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+				Err(_) => return Err(ExecutorError::new("cannot create protected child file")),
+			}
+		}
+
+		let (temporary, mut file) = created.ok_or_else(|| {
+			ExecutorError::new("cannot create unique protected temporary artifact file")
+		})?;
+
+		file.write_all(bytes)
+			.and_then(|()| file.sync_all())
+			.map_err(|_| ExecutorError::new("artifact write failed"))?;
+
+		drop(file);
+
+		let published = self.pinned.rename_child_file_noreplace(
+			&directory,
+			OsStr::new(&temporary),
+			OsStr::new(kind),
+		);
+
+		post_install();
+
+		if let Err(error) = published {
+			self.pinned
+				.unlink_child_file(&directory, OsStr::new(&temporary))
+				.map_err(ExecutorError::new)?;
+
+			if error.kind() != ErrorKind::AlreadyExists {
+				return Err(ExecutorError::new("cannot publish artifact atomically"));
+			}
+		}
+
+		let mut existing = self
+			.pinned
+			.open_child_file(&directory, OsStr::new(kind))
+			.map_err(ExecutorError::new)?;
+
+		verify_existing_artifact_file(&mut existing, bytes, content_hash)?;
+		post_publish();
+
+		directory
+			.sync_all()
+			.map_err(|_| ExecutorError::new("cannot synchronize artifact directory"))?;
+		self.pinned.sync().map_err(ExecutorError::new)?;
+
+		self.pinned
+			.verify_child_file(OsStr::new(digest), &directory, OsStr::new(kind), &existing)
+			.map_err(ExecutorError::new)
+	}
+
+	#[cfg(not(unix))]
+	fn publish_portable(
+		&self,
+		kind: &str,
+		bytes: &[u8],
+		content_hash: &str,
+		digest: &str,
+		post_install: impl FnOnce(),
+		post_publish: impl FnOnce(),
+	) -> Result<(), ExecutorError> {
+		let directory = self.root.join(digest);
+
+		if fs::symlink_metadata(&directory).is_ok_and(|metadata| metadata.file_type().is_symlink())
+		{
+			return Err(ExecutorError::new("artifact digest directory is a symbolic link"));
+		}
+
+		fs::create_dir_all(&directory).map_err(|error| {
+			ExecutorError::new(format!("artifact directory unavailable: {error}"))
+		})?;
+
+		let path = directory.join(kind);
+
+		if path.exists() {
+			verify_existing_artifact(&path, bytes, content_hash)?;
+		} else {
+			let mut options = OpenOptions::new();
+
+			options.write(true).create_new(true);
+
+			let mut file = options
+				.open(&path)
+				.map_err(|error| ExecutorError::new(format!("cannot create artifact: {error}")))?;
+
+			file.write_all(bytes)
+				.and_then(|()| file.sync_all())
+				.map_err(|error| ExecutorError::new(format!("artifact write failed: {error}")))?;
+		}
+
+		post_install();
+		post_publish();
+
+		Ok(())
+	}
+
+	#[cfg(unix)]
+	fn artifact_temporary_name(kind: &str) -> String {
+		let observed_nanoseconds =
+			SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
+
+		Self::artifact_temporary_name_at(kind, observed_nanoseconds)
+	}
+
+	#[cfg(unix)]
+	fn artifact_temporary_name_at(kind: &str, observed_nanoseconds: u128) -> String {
+		let sequence = ARTIFACT_TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+
+		format!(".tmp-{}-{observed_nanoseconds}-{sequence}-{kind}", process::id())
+	}
 }
 
 impl ArtifactSink for LocalArtifactSink {
 	fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
-		self.put_inner(kind, bytes, || {})
+		self.put_inner(kind, bytes, || {}, || {})
 	}
 }
 
@@ -5221,6 +5285,8 @@ mod tests {
 	use std::os::{fd::AsRawFd as _, unix::fs::PermissionsExt as _};
 	#[cfg(unix)]
 	use std::process::{Command, Stdio};
+	#[cfg(unix)]
+	use std::sync::{Arc, Barrier};
 	use std::{
 		cell::{Cell, RefCell},
 		collections::{BTreeMap, BTreeSet},
@@ -8069,6 +8135,109 @@ mod tests {
 		assert!(sink.put("stdout.jsonl", b"original").is_err());
 
 		fs::remove_dir_all(&root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn artifact_temporary_names_are_unique_when_clock_samples_match() {
+		let barrier = Arc::new(Barrier::new(32));
+		let names = (0..32)
+			.map(|_| {
+				let barrier = Arc::clone(&barrier);
+
+				thread::spawn(move || {
+					barrier.wait();
+
+					(0..100)
+						.map(|_| {
+							LocalArtifactSink::artifact_temporary_name_at(
+								"workspace-snapshot.tar",
+								42,
+							)
+						})
+						.collect::<Vec<_>>()
+				})
+			})
+			.collect::<Vec<_>>()
+			.into_iter()
+			.flat_map(|publisher| publisher.join().expect("name publisher joins"))
+			.collect::<BTreeSet<_>>();
+
+		assert_eq!(names.len(), 3_200);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn local_artifact_sink_accepts_overlapping_identical_publication() {
+		let root = env::temp_dir().join(format!(
+			"aiq-artifact-overlap-{}-{}",
+			process::id(),
+			super::observation_time()
+		));
+		let sink = LocalArtifactSink::new(&root).expect("sink root");
+		let publisher = sink.clone();
+		let bytes = b"{\"same\":true}\n";
+		let (installed_tx, installed_rx) = mpsc::sync_channel(0);
+		let (release_tx, release_rx) = mpsc::sync_channel(0);
+		let first = thread::spawn(move || {
+			publisher.put_with_install_hook("workspace-manifest.json", bytes, || {
+				installed_tx.send(()).expect("signal installed artifact");
+				release_rx.recv().expect("release installed artifact");
+			})
+		});
+
+		installed_rx.recv().expect("first publisher reached install boundary");
+
+		let overlapping = sink.put("workspace-manifest.json", bytes);
+
+		release_tx.send(()).expect("release first publisher");
+
+		let first = first.join().expect("first publisher joins");
+
+		assert!(first.is_ok(), "first publication must succeed");
+		assert!(overlapping.is_ok(), "an overlapping identical publication must be idempotent");
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn local_artifact_sink_accepts_parallel_identical_publication() {
+		let root = env::temp_dir().join(format!(
+			"aiq-artifact-parallel-{}-{}",
+			process::id(),
+			super::observation_time()
+		));
+		let sink = Arc::new(LocalArtifactSink::new(&root).expect("sink root"));
+		let barrier = Arc::new(Barrier::new(32));
+		let publishers = (0..32)
+			.map(|_| {
+				let sink = Arc::clone(&sink);
+				let barrier = Arc::clone(&barrier);
+
+				thread::spawn(move || {
+					barrier.wait();
+
+					(0..32)
+						.map(|_| sink.put("workspace-manifest.json", b"{\"same\":true}\n"))
+						.collect::<Result<Vec<_>, _>>()
+				})
+			})
+			.collect::<Vec<_>>();
+		let references = publishers
+			.into_iter()
+			.flat_map(|publisher| {
+				publisher.join().expect("artifact publisher joins").expect("publication")
+			})
+			.collect::<Vec<_>>();
+		let expected = references.first().expect("at least one artifact reference");
+
+		assert_eq!(references.len(), 1_024);
+		assert!(references.iter().all(|reference| reference == expected));
+
+		drop(sink);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]
