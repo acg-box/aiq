@@ -344,7 +344,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
       ),
       /adapter-failure validator must accept workspace_integrity/,
     ],
-    [schema.replace('aiq-core@1.0.4', 'aiq-core@1.0.1'), /expected to not match/],
+    [schema.replace('aiq-core@1.0.5', 'aiq-core@1.0.1'), /expected to not match/],
     [
       schema.replaceAll(
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
@@ -354,7 +354,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
     ],
     [
       schema.replace(
-        'sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279',
+        'sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897',
         'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
       ),
       /expected to not match/,
@@ -422,7 +422,7 @@ await test('checker rejects initializer evaluator constants that are not enforce
 
 await test('checker derives the native identity from all reviewed task commitments', async () => {
   const fixture: unknown = JSON.parse(
-    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json'), 'utf8'),
+    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json'), 'utf8'),
   );
   checkDatabaseTaskCommitmentFixture(fixture);
   const changed = jsonObject(structuredClone(fixture));
