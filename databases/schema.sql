@@ -1998,7 +1998,7 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb'
+      'sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a'
     or candidate ->> 'task_set_digest' <>
       'sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6'
     or candidate ->> 'evaluator_digest' <>
@@ -2446,14 +2446,14 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        'c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb'
+        '050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
       and task_set.metadata ->> 'catalog_release_identity_sha256' =
-        'sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add'
+        'sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037'
       and task_set.metadata ->> 'evaluator_identity_sha256' =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
       and (
@@ -4373,7 +4373,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb';
+    'sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a';
 end;
 $_$;
 
