@@ -21,12 +21,12 @@ The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
-AIQ Core `1.0.4` with task-metadata digest
-`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
-release-policy identity `aiq-core/1.0.4`, and public release digest
-`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
-This public candidate retargets nine ceiling tasks, repairs one data-processing
-contract, and carries forward 62 task designs with new bindings. The controlled
+AIQ Core `1.0.5` with task-metadata digest
+`sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`,
+release-policy identity `aiq-core/1.0.5`, and public release digest
+`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
+This public candidate retargets four calibration-sensitive tasks and carries
+forward 68 task designs with new bindings. The controlled
 Core, Contrast, scorer-manifest, evaluator, runtime task-set, generated-task
 tree, and database commitment identities are pending. Create-new generation and
 review must establish them. The shared Rust validator fails closed
@@ -41,11 +41,17 @@ exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Node.js, and ripgrep executables. The repository does not validate or
 publish this reproducibility evidence. Full calibration, native build
 verification, real Official execution, publication, and final deployment of
-`1.0.4` are pending. The `1.0.3` Official attempt was interrupted after an
+`1.0.5` are pending. The `1.0.3` Official attempt was interrupted after an
 already-conclusive ceiling failure and was rejected as unpublished calibration
 evidence. No hidden responses or hidden task details were published. The first
-published real Official benchmark batch
-completed on the native macOS runner. The batch is non-synthetic. Its 1,224
+`1.0.4` calibration completed all 1,224 cells but failed the statistical release
+gate. It remains non-Official evidence; this does not mean every task execution
+failed. The `1.0.5` sequence is a 17-configuration by four-revised-task pilot,
+followed by the complete 17-by-72 non-Official calibration. Real calibration
+can enter the public calibration register only after signed verifier admission
+and distinct publication, and it remains non-Official after acceptance.
+The first published real Official benchmark batch completed on the native macOS
+runner. The batch is non-synthetic. Its 1,224
 task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
 The native verifier replayed the committed evaluators, and the distinct
 publisher completed the database transition. Production exposes the matrix as
@@ -78,6 +84,10 @@ authentication copy, and only the runner credential needed by the active
 command. The verifier receives the committed corpus, evaluator assets,
 submitted artifacts, and only its verifier credential. It never receives the
 Codex authentication copy.
+
+The runner copies `~/.codex/auth.json` into a mode-private, isolated release
+home and injects that directory as the Codex subprocess `CODEX_HOME`. It does
+not use the interactive Codex home as its writable execution home.
 
 The native runtime uses canonical non-overlapping paths, a clean source worktree
 at the declared commit, exact executable digests, mode-private writable roots,
@@ -223,8 +233,8 @@ signatures, raw provider events, artifacts, and private failure details.
 Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
-AIQ database. The pre-release desired state targets the public AIQ Core `1.0.4`
-catalog and scoring `1.0.4`.
+AIQ database. There is no migration chain. The pre-release desired state
+targets the public AIQ Core `1.0.5` catalog and scoring `1.0.5`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,

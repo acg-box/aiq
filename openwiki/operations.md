@@ -12,7 +12,8 @@ tags: ['operations', 'validation', 'runbook']
 AIQ production is live at `https://aiq.wiki` from the approved source. Vercel
 scope `acgbox` hosts project `aiq`; Supabase organization `ACG Box` hosts project
 `aiq` on PostgreSQL 17.6 with reference `xxnszykaeapolqdnhalx` and private
-`aiq-submission-packages` and `aiq-runner-artifacts` buckets. The first Official
+`aiq-submission-packages` and `aiq-runner-artifacts` buckets. DNS handoff remains
+in the personal Cloudflare account that owns `aiq.wiki`. The first Official
 launch publication was deployed from merge commit
 `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
 evidence, not the identity of every later production deployment. The apex is
@@ -42,13 +43,13 @@ model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
 
 Repository source now targets the public AIQ Core candidate and scoring
-`1.0.4`. Its public metadata digest is
-`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
+`1.0.5`. Its public metadata digest is
+`sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`,
 and its public release digest is
-`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
-Controlled identities, full calibration, a real Official run, publication, and
+`sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
+Controlled identities, final calibration, a real Official run, publication, and
 final deployment are pending. This pre-release state does not claim that
-`1.0.4` is live.
+`1.0.5` is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -116,10 +117,10 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
-   the release-policy identity is `aiq-core/1.0.4`, and the public catalog
+   `sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c`,
+   the release-policy identity is `aiq-core/1.0.5`, and the public catalog
    release-identity digest is
-   `sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+   `sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897`.
    Generate and review the pending controlled scorer-manifest, evaluator,
    runtime task-set, generated-task tree, Core corpus, and Contrast corpus
    identities. Do not substitute one identity for another.
@@ -135,8 +136,9 @@ Before a live run:
 5. Configure the exact native Codex executable, separate Codex home, capability
    manifest, and approved schedule.
 
-Use a separate private Codex home whose copied `auth.json` is owner immutable
-with `uchg`. Do not make the active Codex profile immutable. Build
+Use a separate private Codex home whose `auth.json` is copied from
+`~/.codex/auth.json`, set to mode `0600`, and owner immutable with `uchg`. Do not
+make the active Codex profile immutable. Build
 `aiq-runner` and `aiq-verifier` with `cargo build --locked --release`. After the
 final clean build, the operator generates a private, unsigned audit receipt.
 Record the exact source commit and tree identity and SHA-256 values for the
@@ -206,13 +208,18 @@ an Official admission receipt, can be replay-verified and published to its
 separate public register, but never classifies or publishes as Official or ranking
 eligible. Use `run --help` for the complete controlled input contract.
 
-For `1.0.4`, complete a non-Official 17-by-72 calibration before any real
-Official publication path. Use it to try to falsify fixture discrimination. It
-must pass the release limits and the informative-task, non-uniform-task, domain,
-and model-spread checks. An operator cannot override a failure. The interrupted
-`1.0.3` Official attempt is rejected, unpublished calibration evidence after an
-already-conclusive ceiling failure. Do not publish its hidden responses or
-hidden task details.
+The first `1.0.4` calibration completed all 1,224 cells but failed the
+statistical release gate. Preserve it as non-Official evidence; do not report it
+as 1,224 failed task executions. For `1.0.5`, first run the four revised tasks
+(`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
+configurations. Review this 68-cell pilot before the full non-Official 17-by-72
+calibration. The full calibration must pass the release limits and the
+informative-task, non-uniform-task, domain, and model-spread checks. An operator
+cannot override a failure. The interrupted `1.0.3` Official attempt remains
+rejected, unpublished calibration evidence after an already-conclusive ceiling
+failure. Do not publish hidden responses or hidden task details. Real
+calibration remains permanently non-Official even after signed verifier
+admission and distinct publication to the calibration register.
 
 ## Score, package, and submit
 
@@ -328,13 +335,13 @@ or attestation.
 
 ## Fresh database initialization
 
-AIQ Core `1.0.4` uses one greenfield desired state. Use this flow with the
-existing target Supabase project after its AIQ namespace is empty. If residue
-exists, remove only `aiq_private`, the AIQ-owned roles, and the exact AIQ-owned
-public views and RPC overloads. Preserve all Supabase-managed and non-AIQ
-objects. This cleanup is a deployment prerequisite, not a migration or
-compatibility path. Do not apply AIQ objects or create AIQ Storage buckets before
-initialization. Use a direct PostgreSQL URL, not the public Data API URL.
+AIQ Core `1.0.5` uses one greenfield desired state with no migration chain. Use
+this flow with the existing target Supabase project after its AIQ namespace is
+empty. If residue exists, remove only `aiq_private`, the AIQ-owned roles, and the
+exact AIQ-owned public views and RPC overloads. Preserve all Supabase-managed and
+non-AIQ objects. This cleanup is a deployment prerequisite, not a migration or
+compatibility path. Do not apply AIQ objects or create AIQ Storage buckets
+before initialization. Use a direct PostgreSQL URL, not the public Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -346,12 +353,12 @@ The command uses one connection and one transaction. It rejects existing AIQ
 schema or roles. After the controlled corpus passes the model-free checks and
 the operator verifies the final native build as specified in
 [Deployment Handoff](deployment-handoff.md), prepare a separately controlled
-production reference containing a non-synthetic AIQ Core `1.0.4` corpus
+production reference containing a non-synthetic AIQ Core `1.0.5` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Retain the private final-build audit receipt separately; database
 initialization does not consume or validate it. Initialization validates the
 production-reference fields and bindings. The repository defines one greenfield
-desired state. The initialization receipt must report scoring `1.0.4`,
+desired state. The initialization receipt must report scoring `1.0.5`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the
