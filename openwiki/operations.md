@@ -44,9 +44,9 @@ artifact bindings, including 19 capability artifacts.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.5`. Its public metadata digest is
-`sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253`,
+`sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb`,
 and its public release digest is
-`sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f`.
+`sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add`.
 Controlled identities, final calibration, a real Official run, publication, and
 final deployment are pending. This pre-release state does not claim that
 `1.0.5` is live.
@@ -117,10 +117,10 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253`,
+   `sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb`,
    the release-policy identity is `aiq-core/1.0.5`, and the public catalog
    release-identity digest is
-   `sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f`.
+   `sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add`.
    Generate and review the pending controlled scorer-manifest, evaluator,
    runtime task-set, generated-task tree, Core corpus, and Contrast corpus
    identities. Do not substitute one identity for another.
@@ -212,9 +212,9 @@ The first `1.0.4` calibration completed all 1,224 cells but failed the
 statistical release gate. Preserve it as non-Official evidence; do not report it
 as 1,224 failed task executions. For `1.0.5`, first run the four revised tasks
 (`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
-configurations. The current `coding-06` revision is a multi-module
-conditional-cache repair, so regenerate and review the controlled catalog and
-evaluator bindings before paying for this pilot. Review this 68-cell pilot before the full non-Official 17-by-72
+configurations. The current `coding-06` revision is a keyed async executor repair, so regenerate
+and review the controlled catalog and evaluator bindings before paying for this
+pilot. Review this 68-cell pilot before the full non-Official 17-by-72
 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
 cannot override a failure. The interrupted `1.0.3` Official attempt remains

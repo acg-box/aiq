@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253
+sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb
 ```
 
 The release-policy identity is `aiq-core/1.0.5`. Its public catalog
 release-identity digest is
-`sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f`.
+`sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. Each final
@@ -87,11 +87,12 @@ authorize ranking or publication as Official evidence.
 
 The public `1.0.5` redesign retargets four calibration-sensitive tasks:
 `coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`. The latest
-catalog revision changes `coding-06` from a client-scoped conditional-request
-coalescing task to a multi-module conditional-cache repair. Its checks now cover
-freshness and conditional revalidation, bounded stale-if-error recovery,
-per-key coalescing, and generation-safe invalidation. It carries forward the
-other 68 task designs with new version, provenance, and commitment bindings. First run a 17-by-4, 68-cell non-Official pilot over only those revised
+catalog revision changes `coding-06` from a conditional-cache repair to a keyed
+async executor repair. Its checks now cover same-key FIFO serialization,
+global-concurrency scheduling without head-of-line blocking, fulfillment and
+failure state release, strict validation, independent instances, and idle
+lifecycle epochs. It carries forward the other 68 task designs with new version,
+provenance, and commitment bindings. First run a 17-by-4, 68-cell non-Official pilot over only those revised
 tasks. Review the same statistical release evidence before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show

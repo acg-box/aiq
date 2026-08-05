@@ -34,7 +34,7 @@
         "task_set_id": { "const": "aiq-core" },
         "task_set_version": { "const": "1.0.5" },
         "identity_sha256": {
-          "const": "sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253"
+          "const": "sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb"
         },
         "identity_scope": { "const": "ordered_full_task_metadata" }
       }

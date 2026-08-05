@@ -14,15 +14,16 @@ const SCORER_VERSION = '1.0.5' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_5_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253';
+  'sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb';
 export const AIQ_CORE_1_0_5_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f';
+  'sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
 type PriorTask = PriorCatalog['tasks'][number];
 
 interface RevisionSpec {
+  readonly title?: string;
   readonly objective: string;
   readonly taskSpecificDelta: string;
   readonly summary: string;
@@ -111,18 +112,19 @@ export interface Catalog105 extends Omit<
 
 const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
   'coding-06': {
+    title: 'Repair a keyed async executor',
     objective:
-      'Retarget conditional HTTP fetching around a multi-module cache repair with injected time, bounded freshness, conditional revalidation, stale-if-error recovery, request coalescing, and generation-safe invalidation.',
+      'Retarget conditional HTTP fetching to a compact keyed async executor repair with bounded global concurrency, per-key FIFO serialization, work-conserving scheduling, failure recovery, and an explicit idle lifecycle.',
     taskSpecificDelta:
-      'Repair an existing client and cache integration instead of synthesizing one blank module. Fresh entries avoid transport work; expired entries revalidate conditionally; bounded stale entries can recover from transport failure; same-key refreshes coalesce; and invalidation prevents detached completions from publishing stale state. Different clients and identifiers remain independent.',
+      'Repair one existing executor module. Same-key operations serialize in submission order while eligible work for other keys uses available global capacity without head-of-line blocking. Fulfillment, rejection, and synchronous throws release scheduler state. Strict validation, exact result identity, independent instances, and idle epochs remain observable.',
     summary:
-      'Repair a multi-module cached API client with deterministic freshness, conditional revalidation, stale-if-error recovery, per-key coalescing, and generation-safe invalidation.',
-    inputKind: 'multi_module_conditional_cache_repository',
+      'Repair a keyed async executor with global concurrency, same-key FIFO, eligible-work scheduling, failure recovery, and a correct idle lifecycle.',
+    inputKind: 'single_module_keyed_async_executor_repository',
     passConditions: [
-      'Fresh cache entries avoid transport work, while expired entries use deterministic conditional revalidation and publish valid 200 or 304 state.',
-      'Only overlapping refreshes for the same client and identifier coalesce; different clients and identifiers make independent progress.',
-      'Transport failures use prior state only inside the declared stale-if-error window, and failed refreshes do not become persistent in-flight state.',
-      'Invalidation detaches the exact cache generation so an older fulfillment or rejection cannot overwrite or remove replacement state.',
+      'Operations for one key execute one at a time in submission order, while operations for different keys can overlap within the configured global limit.',
+      'Scheduling starts the earliest eligible queued operation without allowing an active-key entry to block independent work behind it.',
+      'Fulfillment, rejection, and synchronous throws preserve exact caller outcomes, release key and capacity state, and allow queued work to continue.',
+      'Strict validation, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs.',
     ],
   },
   'debugging-01': {
@@ -286,7 +288,7 @@ function reviseTask(priorTask: PriorTask): CatalogTask105 {
   return {
     task_id: priorTask.task_id,
     task_version: TASK_VERSION,
-    title: priorTask.title,
+    title: spec?.title ?? priorTask.title,
     domain: priorTask.domain,
     difficulty: priorTask.difficulty,
     summary: spec?.summary ?? priorTask.summary,

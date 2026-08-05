@@ -15,9 +15,9 @@ from the first launch evidence.
 Live production remains the historical AIQ Core `1.0.2` matrix described below.
 Repository source now has the active public AIQ Core `1.0.5` candidate. Its
 public metadata digest is
-`sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253`,
+`sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb`,
 and its public release digest is
-`sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f`.
+`sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add`.
 Controlled identities, final calibration, final native build verification, a
 real Official run, publication, and final deployment are pending. Do not treat
 the source-head change as a deployment claim.
