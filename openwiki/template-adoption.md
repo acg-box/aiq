@@ -35,9 +35,9 @@ automation only to remove a marker.
 The source-head public constants include AIQ Core and scoring version `1.0.5`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb`,
+`sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a`,
 release-policy identity `aiq-core/1.0.5`, and public release digest
-`sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add`.
+`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
 The controlled Core, Contrast, scorer-manifest, evaluator, runtime task-set,
 generated-task tree, and database commitment identities are pending. The first
 `1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical

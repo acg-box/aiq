@@ -9,7 +9,7 @@
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb",
+    "digest": "sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a",
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
@@ -18,12 +18,12 @@
     "task_metadata_identity": {
       "algorithm": "sha256",
       "canonicalization": "aiq.sorted-key-json.v1",
-      "digest": "sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb",
+      "digest": "sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a",
       "scope": "ordered_full_task_metadata"
     },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add",
+    "digest": "sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037",
     "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
@@ -734,12 +734,12 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
-        "max_steps": 32,
-        "max_tool_calls": 21
+        "wall_seconds": 600,
+        "max_steps": 40,
+        "max_tool_calls": 28
       },
       "evaluator": {
-        "kind": "mock_server_contract_tests",
+        "kind": "async_executor_contract_tests",
         "scorer_version": "1.0.5",
         "execution_protocol": "aiq.evaluator-protocol.v1",
         "binding_requirement": "controlled_hidden_task_required",
@@ -806,8 +806,8 @@
         }
       },
       "tags": [
-        "http",
-        "caching"
+        "concurrency",
+        "scheduling"
       ],
       "visibility": "hidden",
       "provenance": {
@@ -1094,9 +1094,9 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
-        "max_steps": 32,
-        "max_tool_calls": 21
+        "wall_seconds": 600,
+        "max_steps": 40,
+        "max_tool_calls": 28
       },
       "evaluator": {
         "kind": "regression_test_suite",
@@ -1214,9 +1214,9 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
-        "max_steps": 32,
-        "max_tool_calls": 21
+        "wall_seconds": 600,
+        "max_steps": 40,
+        "max_tool_calls": 28
       },
       "evaluator": {
         "kind": "configuration_matrix_tests",
@@ -1454,9 +1454,9 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
-        "max_steps": 32,
-        "max_tool_calls": 21
+        "wall_seconds": 600,
+        "max_steps": 40,
+        "max_tool_calls": 28
       },
       "evaluator": {
         "kind": "unicode_vector_tests",

@@ -199,11 +199,18 @@ await test('revised tasks use new public contracts without publishing private co
 });
 
 await test('the four public calibration revisions state every requested non-secret contract', () => {
-  const revisions = new Map(
-    buildCatalog()
-      .tasks.filter(({ task_id }) => EXPECTED_REVISED_TASK_IDS.includes(task_id))
-      .map((task) => [task.task_id, JSON.stringify(task)]),
+  const tasks = buildCatalog().tasks.filter(({ task_id }) =>
+    EXPECTED_REVISED_TASK_IDS.includes(task_id),
   );
+  const revisions = new Map(tasks.map((task) => [task.task_id, JSON.stringify(task)]));
+
+  for (const task of tasks) {
+    deepStrictEqual(task.budget, { wall_seconds: 600, max_steps: 40, max_tool_calls: 28 });
+  }
+  const coding = tasks.find(({ task_id }) => task_id === 'coding-06');
+  if (coding === undefined) throw new RangeError('Expected coding-06.');
+  strictEqual(coding.evaluator.kind, 'async_executor_contract_tests');
+  deepStrictEqual(coding.tags, ['concurrency', 'scheduling']);
 
   for (const term of ['raw UTF-16 input bound', 'decoded per-field', 'field-count limit']) {
     strictEqual(revisions.get('debugging-01')?.includes(term), true);
