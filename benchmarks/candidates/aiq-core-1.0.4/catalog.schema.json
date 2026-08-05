@@ -1,0 +1,695 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/aiq-core/1.0.4/catalog.v1.json",
+  "title": "AIQ public benchmark catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_set_id",
+    "task_set_version",
+    "scoring_version",
+    "title",
+    "status",
+    "generated_from",
+    "task_metadata_identity",
+    "catalog_release_identity",
+    "content_policy",
+    "distribution",
+    "tasks"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.catalog.v1"
+    },
+    "task_set_id": {
+      "const": "aiq-core"
+    },
+    "task_set_version": {
+      "const": "1.0.4"
+    },
+    "scoring_version": {
+      "const": "1.0.4"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "const": "active"
+    },
+    "generated_from": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_metadata_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "canonicalization",
+        "digest",
+        "scope"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "canonicalization": {
+          "const": "aiq.sorted-key-json.v1"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+        },
+        "scope": {
+          "const": "ordered_full_task_metadata"
+        }
+      }
+    },
+    "catalog_release_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release_identity",
+        "scoring_version",
+        "task_metadata_identity",
+        "algorithm",
+        "canonicalization",
+        "digest",
+        "scope"
+      ],
+      "properties": {
+        "release_identity": {
+          "const": "aiq-core/1.0.4"
+        },
+        "scoring_version": {
+          "const": "1.0.4"
+        },
+        "task_metadata_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "canonicalization",
+            "digest",
+            "scope"
+          ],
+          "properties": {
+            "algorithm": {
+              "const": "sha256"
+            },
+            "canonicalization": {
+              "const": "aiq.sorted-key-json.v1"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[0-9a-f]{64}(?![\\s\\S])"
+            },
+            "scope": {
+              "const": "ordered_full_task_metadata"
+            }
+          }
+        },
+        "algorithm": {
+          "const": "sha256"
+        },
+        "canonicalization": {
+          "const": "aiq.sorted-key-json.v1"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "scope": {
+          "const": "release_identity_scoring_version_and_ordered_task_metadata_identity"
+        }
+      }
+    },
+    "content_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_repository",
+        "controlled_source"
+      ],
+      "properties": {
+        "public_repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "controlled_source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "domains",
+        "difficulties",
+        "domain_difficulty",
+        "difficulty_role"
+      ],
+      "properties": {
+        "total": {
+          "const": 72
+        },
+        "domains": {
+          "type": "object"
+        },
+        "difficulties": {
+          "type": "object"
+        },
+        "domain_difficulty": {
+          "type": "object"
+        },
+        "difficulty_role": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 72,
+      "maxItems": 72,
+      "items": {
+        "$ref": "#/$defs/task"
+      }
+    }
+  },
+  "$defs": {
+    "scoringComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "weight_basis_points",
+        "criterion"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string"
+        },
+        "weight_basis_points": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "criterion": {
+          "type": "string",
+          "minLength": 8
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "task_version",
+        "title",
+        "domain",
+        "difficulty",
+        "summary",
+        "design_revision",
+        "input_contract",
+        "cluster_id",
+        "allowed_tools",
+        "budget",
+        "evaluator",
+        "tags",
+        "visibility",
+        "provenance",
+        "leakage_review"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
+        },
+        "task_version": {
+          "const": "1.0.4"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 12
+        },
+        "domain": {
+          "enum": [
+            "coding",
+            "debugging",
+            "repository_understanding",
+            "data_processing",
+            "retrieval_verification",
+            "documentation_communication",
+            "planning_execution",
+            "tool_use",
+            "instruction_following",
+            "reliability_recovery"
+          ]
+        },
+        "difficulty": {
+          "enum": [
+            "easy",
+            "medium",
+            "hard"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 30
+        },
+        "design_revision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "supersedes_task_version",
+            "kind",
+            "objective",
+            "task_specific_delta",
+            "controlled_corpus_requirements"
+          ],
+          "properties": {
+            "supersedes_task_version": {
+              "const": "1.0.3"
+            },
+            "kind": {
+              "enum": [
+                "ceiling_retargeted",
+                "contract_repaired",
+                "carry_forward"
+              ]
+            },
+            "objective": {
+              "type": "string",
+              "minLength": 80
+            },
+            "task_specific_delta": {
+              "type": "string",
+              "minLength": 160
+            },
+            "controlled_corpus_requirements": {
+              "type": "array",
+              "minItems": 4,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 40
+              }
+            }
+          }
+        },
+        "input_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "fixture_profile",
+            "content_handle"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(?![\\s\\S])"
+            },
+            "fixture_profile": {
+              "type": "string",
+              "pattern": "^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v1(?![\\s\\S])"
+            },
+            "content_handle": {
+              "type": "string",
+              "pattern": "^aiq-controlled-task://aiq-core/1\\.0\\.4/[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
+            }
+          }
+        },
+        "cluster_id": {
+          "type": "string",
+          "pattern": "^[a-z_]+-cluster-[0-9]{2}(?![\\s\\S])"
+        },
+        "allowed_tools": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "none",
+              "filesystem_read",
+              "filesystem_write",
+              "web_search",
+              "command_execution"
+            ]
+          },
+          "not": {
+            "allOf": [
+              {
+                "type": "array",
+                "contains": {
+                  "const": "none"
+                }
+              },
+              {
+                "type": "array",
+                "minItems": 2
+              }
+            ]
+          },
+          "allOf": [
+            {
+              "if": {
+                "type": "array",
+                "contains": {
+                  "const": "command_execution"
+                }
+              },
+              "then": {
+                "type": "array",
+                "contains": {
+                  "enum": [
+                    "filesystem_read",
+                    "filesystem_write"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "wall_seconds",
+            "max_steps",
+            "max_tool_calls"
+          ],
+          "properties": {
+            "wall_seconds": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "max_steps": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_tool_calls": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "evaluator": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "scorer_version",
+            "execution_protocol",
+            "binding_requirement",
+            "deterministic",
+            "partial_credit",
+            "pass_conditions",
+            "scoring_contract",
+            "acceptance_fixture_commitments"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(?![\\s\\S])"
+            },
+            "scorer_version": {
+              "const": "1.0.4"
+            },
+            "execution_protocol": {
+              "const": "aiq.evaluator-protocol.v1"
+            },
+            "binding_requirement": {
+              "const": "controlled_hidden_task_required"
+            },
+            "deterministic": {
+              "const": true
+            },
+            "partial_credit": {
+              "type": "boolean"
+            },
+            "pass_conditions": {
+              "type": "array",
+              "minItems": 3,
+              "items": {
+                "type": "string",
+                "minLength": 8
+              }
+            },
+            "scoring_contract": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "aggregation",
+                "assertion_scoring",
+                "missing_or_error_score",
+                "rounding",
+                "formula",
+                "score_range",
+                "minimum_assertions_per_component",
+                "components"
+              ],
+              "properties": {
+                "aggregation": {
+                  "const": "weighted_assertion_fraction"
+                },
+                "assertion_scoring": {
+                  "const": "binary_equal_weight_within_component"
+                },
+                "missing_or_error_score": {
+                  "const": 0
+                },
+                "rounding": {
+                  "const": "no_intermediate_rounding_final_six_decimals"
+                },
+                "formula": {
+                  "const": "sum(component_weight_basis_points / 10000 * passed_assertions / total_assertions)"
+                },
+                "score_range": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "const": 0
+                    },
+                    {
+                      "const": 1
+                    }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minimum_assertions_per_component": {
+                  "const": 3
+                },
+                "components": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "prefixItems": [
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/scoringComponent"
+                        },
+                        {
+                          "properties": {
+                            "component_id": {
+                              "const": "component_01"
+                            },
+                            "weight_basis_points": {
+                              "const": 3000
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/scoringComponent"
+                        },
+                        {
+                          "properties": {
+                            "component_id": {
+                              "const": "component_02"
+                            },
+                            "weight_basis_points": {
+                              "const": 2500
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/scoringComponent"
+                        },
+                        {
+                          "properties": {
+                            "component_id": {
+                              "const": "component_03"
+                            },
+                            "weight_basis_points": {
+                              "const": 2500
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/scoringComponent"
+                        },
+                        {
+                          "properties": {
+                            "component_id": {
+                              "const": "component_04"
+                            },
+                            "weight_basis_points": {
+                              "const": 2000
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "items": false
+                }
+              }
+            },
+            "acceptance_fixture_commitments": {
+              "$ref": "#/$defs/acceptanceFixtureCommitments"
+            }
+          }
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(?![\\s\\S])"
+          }
+        },
+        "visibility": {
+          "const": "hidden"
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "origin",
+            "owner",
+            "recorded_date",
+            "predecessor_task_version",
+            "source"
+          ],
+          "properties": {
+            "origin": {
+              "enum": [
+                "calibration_driven_revision",
+                "contract_repair",
+                "release_carry_forward"
+              ]
+            },
+            "owner": {
+              "const": "AIQ benchmark maintainers"
+            },
+            "recorded_date": {
+              "const": "2026-08-05"
+            },
+            "predecessor_task_version": {
+              "const": "1.0.3"
+            },
+            "source": {
+              "const": "scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.ts"
+            }
+          }
+        },
+        "leakage_review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "owner",
+            "review_requirement",
+            "notes"
+          ],
+          "properties": {
+            "status": {
+              "const": "public_design_versioned_private_content_required"
+            },
+            "owner": {
+              "const": "AIQ benchmark maintainers"
+            },
+            "review_requirement": {
+              "const": "private_corpus_tests_and_catalog_binding_required"
+            },
+            "notes": {
+              "type": "string",
+              "minLength": 80
+            }
+          }
+        }
+      }
+    },
+    "acceptanceFixtureCommitments": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gold",
+        "alternate_correct",
+        "partial",
+        "adversarial_format",
+        "empty",
+        "timeout"
+      ],
+      "properties": {
+        "gold": {
+          "$ref": "#/$defs/acceptanceFixtureCommitment"
+        },
+        "alternate_correct": {
+          "$ref": "#/$defs/acceptanceFixtureCommitment"
+        },
+        "partial": {
+          "$ref": "#/$defs/acceptanceFixtureCommitment"
+        },
+        "adversarial_format": {
+          "description": "Combined adversarial-content and output-format-attack fixture.",
+          "$ref": "#/$defs/acceptanceFixtureCommitment"
+        },
+        "empty": {
+          "$ref": "#/$defs/acceptanceFixtureCommitment"
+        },
+        "timeout": {
+          "$ref": "#/$defs/acceptanceFixtureCommitment"
+        }
+      }
+    },
+    "acceptanceFixtureCommitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handle",
+        "status"
+      ],
+      "properties": {
+        "handle": {
+          "type": "string",
+          "pattern": "^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v2/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])"
+        },
+        "status": {
+          "const": "required_in_controlled_source"
+        }
+      }
+    }
+  }
+}

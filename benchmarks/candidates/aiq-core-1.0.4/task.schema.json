@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/aiq-core/1.0.4/task.v2.json",
+  "title": "AIQ executable task definition",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "visibility": {
+            "const": "public_example"
+          }
+        },
+        "required": [
+          "visibility"
+        ]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "evaluator": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "const": "exact_match"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "visibility": {
+            "const": "hidden"
+          }
+        },
+        "required": [
+          "visibility"
+        ]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "evaluator": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "not": {
+                  "const": "exact_match"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "external"
+            ]
+          }
+        },
+        "required": [
+          "catalog_entry_digest"
+        ]
+      }
+    }
+  ],
+  "required": [
+    "schema_version",
+    "task_id",
+    "task_version",
+    "title",
+    "domain",
+    "difficulty",
+    "prompt",
+    "allowed_tools",
+    "budgets",
+    "tags",
+    "scorer_version",
+    "leakage_notes",
+    "fixture_refs",
+    "visibility",
+    "provenance",
+    "evaluator"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.task.v2"
+    },
+    "task_id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
+    },
+    "task_version": {
+      "const": "1.0.4"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "domain": {
+      "enum": [
+        "coding",
+        "debugging",
+        "repository_understanding",
+        "data_processing",
+        "retrieval_verification",
+        "documentation_communication",
+        "planning_execution",
+        "tool_use",
+        "instruction_following",
+        "reliability_recovery"
+      ]
+    },
+    "difficulty": {
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ]
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "allowed_tools": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "none",
+          "filesystem_read",
+          "filesystem_write",
+          "web_search",
+          "command_execution"
+        ]
+      },
+      "not": {
+        "allOf": [
+          {
+            "type": "array",
+            "contains": {
+              "const": "none"
+            }
+          },
+          {
+            "type": "array",
+            "minItems": 2
+          }
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "array",
+            "contains": {
+              "const": "command_execution"
+            }
+          },
+          "then": {
+            "type": "array",
+            "contains": {
+              "enum": [
+                "filesystem_read",
+                "filesystem_write"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wall_seconds",
+        "max_steps",
+        "max_tool_calls"
+      ],
+      "properties": {
+        "wall_seconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_steps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_tool_calls": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*(?![\\s\\S])"
+      }
+    },
+    "scorer_version": {
+      "const": "1.0.4"
+    },
+    "catalog_entry_digest": {
+      "type": "string",
+      "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "cluster_id": {
+      "type": "string",
+      "pattern": "^[a-z_]+-cluster-[0-9]{2}(?![\\s\\S])"
+    },
+    "leakage_notes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S"
+      }
+    },
+    "fixture_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "maxLength": 247,
+            "pattern": "^repo://(?=[\\s\\S]{1,240}(?![\\s\\S]))(?!/)(?!.*//)(?!\\.{1,2}(?:/|(?![\\s\\S])))(?!.*\\/\\.{1,2}(?:/|(?![\\s\\S])))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*(?![\\s\\S])"
+          },
+          {
+            "type": "string",
+            "pattern": "^aiq-controlled-(?:fixture|acceptance)://aiq-core/1\\.0\\.4/[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
+          }
+        ]
+      }
+    },
+    "visibility": {
+      "enum": [
+        "public_example",
+        "hidden"
+      ]
+    },
+    "provenance": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "evaluator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "expected"
+          ],
+          "properties": {
+            "kind": {
+              "const": "exact_match"
+            },
+            "expected": {
+              "type": "string"
+            },
+            "case_sensitive": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "external"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(?![\\s\\S])",
+              "not": {
+                "const": "exact_match"
+              }
+            },
+            "external": {
+              "$ref": "#/$defs/externalEvaluator"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "externalEvaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol_version",
+        "scorer_version",
+        "executable_ref",
+        "executable_digest",
+        "runtime_kind",
+        "runtime_executable_digest",
+        "configuration_digest",
+        "timeout_ms",
+        "max_input_bytes",
+        "max_output_bytes"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": "aiq.evaluator-input.v2"
+        },
+        "scorer_version": {
+          "const": "1.0.4"
+        },
+        "executable_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*(?![\\s\\S])"
+        },
+        "executable_digest": {
+          "type": "string",
+          "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "runtime_kind": {
+          "const": "node"
+        },
+        "runtime_executable_digest": {
+          "type": "string",
+          "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "configuration_digest": {
+          "type": "string",
+          "pattern": "^sha256:(?!0{64}(?![\\s\\S]))[a-f0-9]{64}(?![\\s\\S])"
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300000
+        },
+        "max_input_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1048576
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "checks": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
