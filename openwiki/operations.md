@@ -28,7 +28,7 @@ AIQ Core `1.0.2` matrix. The native Apple Silicon macOS runner completed its 17
 configurations and 72 tasks each, or 1,224
 task-level results. The native verifier replayed it, and the distinct publisher
 published it as `trusted_verified`. Of the results, 1,218 completed and 6
-failed. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
+runtime issues. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
 and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
 (`1:37:24.411`). Cost coverage is 1,208
 `estimated`, 10 `unavailable_context_band`, and 6
@@ -44,9 +44,9 @@ artifact bindings, including 19 capability artifacts.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.5`. Its public metadata digest is
-`sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a`,
+`sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`,
 and its public release digest is
-`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
+`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
 Controlled identities, final calibration, a real Official run, publication, and
 final deployment are pending. This pre-release state does not claim that
 `1.0.5` is live.
@@ -117,10 +117,10 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a`,
+   `sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`,
    the release-policy identity is `aiq-core/1.0.5`, and the public catalog
    release-identity digest is
-   `sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
+   `sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
    Generate and review the pending controlled scorer-manifest, evaluator,
    runtime task-set, generated-task tree, Core corpus, and Contrast corpus
    identities. Do not substitute one identity for another.
@@ -212,9 +212,11 @@ The first `1.0.4` calibration completed all 1,224 cells but failed the
 statistical release gate. Preserve it as non-Official evidence; do not report it
 as 1,224 failed task executions. For `1.0.5`, first run the four revised tasks
 (`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
-configurations. The current `coding-06` revision is a keyed async executor repair, so regenerate
-and review the controlled catalog and evaluator bindings before paying for this
-pilot. Review this 68-cell pilot before the full non-Official 17-by-72
+configurations. The current `coding-06` revision is a priority keyed async
+executor repair with stable eligible-head scheduling, dynamic concurrency, and
+queued exact-key cancellation. Regenerate and revalidate the controlled catalog
+and evaluator bindings before paying for this pilot. Review this 68-cell pilot
+before the full non-Official 17-by-72
 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
 cannot override a failure. The interrupted `1.0.3` Official attempt remains

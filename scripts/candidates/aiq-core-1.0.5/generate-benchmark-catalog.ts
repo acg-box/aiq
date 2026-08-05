@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.5' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_5_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a';
+  'sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1';
 export const AIQ_CORE_1_0_5_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037';
+  'sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -127,20 +127,20 @@ export interface Catalog105 extends Omit<
 
 const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
   'coding-06': {
-    title: 'Repair a keyed async executor',
+    title: 'Repair a priority keyed async executor',
     evaluatorKind: 'async_executor_contract_tests',
     objective:
-      'Retarget conditional HTTP fetching to a compact keyed async executor repair with bounded global concurrency, per-key FIFO serialization, work-conserving scheduling, failure recovery, and an explicit idle lifecycle.',
+      'Retarget conditional HTTP fetching to a compact priority keyed async executor repair with bounded and dynamically adjustable global concurrency, per-key FIFO serialization, stable eligible-head priority scheduling, queued-work cancellation, failure recovery, and an explicit idle lifecycle.',
     taskSpecificDelta:
-      'Repair one existing executor module. Same-key operations serialize in submission order while eligible work for other keys uses available global capacity without head-of-line blocking. Fulfillment, rejection, and synchronous throws release scheduler state. Strict validation, exact result identity, independent instances, and idle epochs remain observable.',
+      'Repair one existing executor module. Same-key operations serialize in submission order while priority orders only the eligible head of each idle key. Concurrency changes are non-preemptive, exact-key cancellation removes queued work without affecting active work, and fulfillment, rejection, and synchronous throws release scheduler state. Strict validation, exact value and reason identity, independent instances, and idle epochs remain observable.',
     summary:
-      'Repair a keyed async executor with global concurrency, same-key FIFO, eligible-work scheduling, failure recovery, and a correct idle lifecycle.',
-    inputKind: 'single_module_keyed_async_executor_repository',
+      'Repair a priority keyed async executor with same-key FIFO, stable eligible-head scheduling, dynamic concurrency, queued cancellation, failure recovery, and a correct idle lifecycle.',
+    inputKind: 'single_module_priority_keyed_async_executor_repository',
     passConditions: [
       'Operations for one key execute one at a time in submission order, while operations for different keys can overlap within the configured global limit.',
-      'Scheduling starts the earliest eligible queued operation without allowing an active-key entry to block independent work behind it.',
-      'Fulfillment, rejection, and synchronous throws preserve exact caller outcomes, release key and capacity state, and allow queued work to continue.',
-      'Strict validation, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs.',
+      'Stable priority scheduling compares only eligible per-key heads, and runtime concurrency changes do not preempt active work.',
+      'Exact-key cancellation removes queued work with the supplied reason while fulfillment, rejection, and synchronous throws release scheduler state.',
+      'Strict validation, exact caller outcomes, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs.',
     ],
     tags: ['concurrency', 'scheduling'],
   },
