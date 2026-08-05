@@ -481,7 +481,60 @@
             "version": { "type": "null" }
           }
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "model_toolchain": {
+              "properties": { "platform": { "const": "win32" } }
+            },
+            "operating_system": {
+              "properties": { "platform": { "const": "win32" } }
+            },
+            "locale_and_timezone": {
+              "properties": {
+                "environment": {
+                  "properties": { "OPENSSL_CONF": { "const": "NUL" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "model_toolchain": {
+              "properties": { "platform": { "const": "darwin" } }
+            },
+            "operating_system": {
+              "properties": { "platform": { "const": "darwin" } }
+            },
+            "locale_and_timezone": {
+              "properties": {
+                "environment": {
+                  "properties": { "OPENSSL_CONF": { "const": "/dev/null" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "model_toolchain": {
+              "properties": { "platform": { "const": "linux" } }
+            },
+            "operating_system": {
+              "properties": { "platform": { "const": "linux" } }
+            },
+            "locale_and_timezone": {
+              "properties": {
+                "environment": {
+                  "properties": { "OPENSSL_CONF": { "const": "/dev/null" } }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "task": {
       "type": "object",
