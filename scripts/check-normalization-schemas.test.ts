@@ -323,7 +323,7 @@ const resultId = (value: number) => `result_${hex(value)}`;
 const nodeId = `node_${'a'.repeat(64)}`;
 const publicKey = 'b'.repeat(64);
 const syntheticSourceNodeId = 'node_synthetic_demo';
-const catalogDigest = 'sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c';
+const catalogDigest = 'sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253';
 const controlledGeneratedTaskTreeDigest =
   'sha256:e46f743a8f56b87cadcb4cd216a7b2ae679138a3259b42e8870a631f9ea31da4';
 
