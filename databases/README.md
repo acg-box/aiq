@@ -2,12 +2,17 @@
 
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization command.
+`databases/reset.ts` is the production greenfield replacement command. It
+removes only the existing AIQ prelaunch namespace and then calls the production
+initializer. It is not a migration or an upgrade path.
 
 The initializer opens one direct PostgreSQL connection, starts one transaction,
 applies the schema, inserts public reference data, checks readiness, and commits.
-The connection host must be `db.xxnszykaeapolqdnhalx.supabase.co`, which binds
-initialization to the personal Supabase project documented by repository
-authority. Tests and local development can target only a loopback host when
+The production connection must use PostgreSQL, host
+`db.xxnszykaeapolqdnhalx.supabase.co`, database and user `postgres`, and the
+direct port `5432` or its omitted default. This binds initialization to the
+personal Supabase project documented by repository authority. Tests and local
+development can target only a loopback host when
 `NODE_ENV` is `test` or `development` and
 `AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true` is set explicitly. Production
 cannot use this override.
@@ -82,6 +87,71 @@ canonical JCS identity are pending.
 The pre-release desired state targets AIQ Core `1.0.4`. Production is still on
 the historical published `1.0.2` state. Do not initialize production until the
 controlled `1.0.4` commitments are complete and reviewed.
+
+## Greenfield replacement
+
+First, run a read-only inventory. The command lists the canonical database
+objects. For each private AIQ bucket, it reports only the object count and a
+deterministic SHA-256 commitment to the ordered object paths. It never writes
+private object paths to the dry-run result, reset receipt, or standard output.
+It rejects an unexpected AIQ schema, role, function, bucket, or bucket identity.
+It also rejects a non-canonical policy or role membership that depends on an
+AIQ role, a non-view relation that uses a canonical public view name, and any
+object outside the canonical AIQ surface that depends on `aiq_private`. Thus,
+the internal schema cascade cannot remove an external dependent.
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
+cargo make reset-database -- --dry-run
+```
+
+Review the inventory. Then run the one-step replacement with the exact project
+and namespace confirmation:
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
+AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
+cargo make reset-database -- \
+  --confirm xxnszykaeapolqdnhalx:aiq_private
+```
+
+Before it makes a Storage request or starts PostgreSQL cleanup, the destructive
+command reads, parses, and validates the production reference plus the
+checked-in schema, catalog, corpus schema, and reviewed task commitments. A
+missing, malformed, or inconsistent authority stops the reset without mutation.
+
+The command uses the supported Supabase Storage API to list and delete objects
+before it removes a bucket. Listing uses pages of 100 objects. Object deletion
+uses batches of 100 and at most four concurrent requests. The command reads the
+buckets again before it removes them. It does not delete rows directly from
+`storage.objects`.
+
+Storage deletion and database replacement cannot share one transaction. The
+command processes `aiq-runner-artifacts` and then `aiq-submission-packages`.
+All requests in a bounded object-deletion group settle before readback. If a
+request fails and objects remain, the command reports the remaining count and
+stops before it removes that bucket or changes PostgreSQL. Earlier object
+batches or the first bucket can already be deleted. If a failed response follows
+a successful object deletion, an empty readback permits the bucket removal.
+A bucket-removal failure can also mean that the bucket is present or already
+removed. In each Storage failure case, rerun the same command. The new inventory
+skips an absent bucket and resumes with an existing bucket.
+
+The command verifies that both buckets are absent before it changes PostgreSQL.
+It then removes the
+canonical public RPC overloads, the 12 canonical public views, `aiq_private`,
+`aiq_publisher`, and `aiq_verifier` in one PostgreSQL transaction. It reads the
+database boundary again inside that transaction after it acquires the reset
+advisory lock, dependency-catalog locks, role-membership locks, and exclusive
+locks on the AIQ relations. Concurrent DDL cannot add a dependent between the
+final boundary check and schema removal. It reads the database namespace again
+before it starts initialization. If Storage succeeds
+and the database transaction or initialization fails, the AIQ Storage objects
+are already deleted. Correct the reported database problem and run the same
+command again. The command preserves Supabase-managed and unrelated schemas,
+roles, functions, views, tables, users, and buckets.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.
