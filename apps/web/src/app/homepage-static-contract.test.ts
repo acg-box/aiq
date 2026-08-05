@@ -32,6 +32,8 @@ void describe('homepage evidence and loading contract', () => {
     assert.doesNotMatch(source, /Best configuration|Highest point estimate|Highest published/);
     assert.match(rankingSource, /presentation\.sensitivityInterval/);
     assert.match(rankingSource, /presentation\.runtimeIssues/);
+    assert.match(rankingSource, /visibleEntries\.length} Official configuration/);
+    assert.doesNotMatch(rankingSource, /Five Official configurations/);
     assert.doesNotMatch(rankingSource, /presentation\.(samples|scoringVersion|evidence)/);
     assert.match(outcomeSource, /one configuration in the 17-configuration matrix/);
     assert.match(outcomeSource, /not an aggregate of the batch/);
