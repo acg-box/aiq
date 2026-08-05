@@ -506,8 +506,9 @@ export function TrendExplorer({
       ) : null}
       <p className="trend-resolution" role="note">
         Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
-        order. The family is an explicit filter, not a point-estimate cutoff. Lines connect ordered
-        observations only; absent buckets remain gaps. Bars use a zero baseline. Each grouped bar
+        order. The family is an explicit filter, not a point-estimate cutoff. Line segments connect
+        recorded observations for visual continuity only; they do not interpolate or estimate values
+        between dates, and absent buckets remain gaps. Bars use a zero baseline. Each grouped bar
         and its task-sensitivity interval use the same per-series category offset. The server
         returns at most 20 buckets per configuration and uses the latest exact Official run, not an
         average. Point context requires matching run, configuration, scoring version, and provenance
@@ -557,6 +558,7 @@ export function TrendExplorer({
                 </strong>
                 <small>
                   {seriesProvenance(series)} · scoring {scoringVersions.join(', ') || '—'}
+                  {mode === 'line' ? ' · connected observations; no interpolation' : ''}
                 </small>
               </li>
             );

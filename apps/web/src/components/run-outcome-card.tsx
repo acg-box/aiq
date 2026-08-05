@@ -19,8 +19,8 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
     <section className="outcome-card" aria-labelledby="outcome-card-heading">
       <div className="outcome-card-heading">
         <div>
-          <span className="eyebrow">What the score contains</span>
-          <h2 id="outcome-card-heading">Task outcomes, not model IQ</h2>
+          <span className="eyebrow">Selected configuration only · not the batch</span>
+          <h2 id="outcome-card-heading">Task outcomes for one exact run</h2>
         </div>
         <strong className="outcome-rate">
           {formatAnyCreditRate(outcomes.anyCreditRate)}
@@ -28,9 +28,11 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
         </strong>
       </div>
       <p className="outcome-card-copy">
-        AIQ is the equal-weight average of ten task domains. The rate above counts completed tasks
-        marked correct or partial; it is not a score-weighted percentage or the AIQ index. Runtime,
-        invalid, missing, and not-applicable cells remain separate.
+        This card describes run {run.id}, one configuration in the 17-configuration matrix. It is
+        not an aggregate of the batch. AIQ is the equal-weight average of ten task domains. The rate
+        above counts completed tasks marked correct or partial; it is not a score-weighted
+        percentage or the AIQ index. Runtime, invalid, missing, and not-applicable cells remain
+        separate.
       </p>
       <dl
         className="outcome-grid"
@@ -85,7 +87,7 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
         </p>
       </section>
       <p className="fine-print">
-        {outcomes.total} task cells in this configuration ·{' '}
+        {outcomes.total} task cells in this configuration · scoring {run.scoringVersion} ·{' '}
         {run.synthetic ? 'synthetic seed data' : 'published evidence'} ·{' '}
         <Link href={`/runs/${run.id}`}>inspect every task</Link>
       </p>
