@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { CalibrationEfficiency } from '../components/calibration-efficiency.tsx';
+import { CompactRanking } from '../components/compact-ranking.tsx';
 import { DataNote } from '../components/data-note.tsx';
 import { EfficiencyPlot } from '../components/efficiency-plot.tsx';
 import { LeaderboardTable } from '../components/leaderboard-table.tsx';
@@ -176,9 +177,14 @@ export default async function OverviewPage() {
             <h1>Benchmark overview</h1>
           </div>
           <p>
-            Analyze 17 fixed configurations across score, uncertainty, coverage, runtime, and cost.
+            Analyze 17 fixed configurations across score, task-mix sensitivity, coverage, runtime,
+            and cost.
           </p>
         </header>
+        <CompactRanking entries={leaderboard} />
+      </section>
+
+      <section className="page-shell overview-secondary" aria-label="Secondary benchmark snapshot">
         <div className="benchmark-snapshot" aria-label="Latest matrix snapshot">
           <div className="snapshot-estimate">
             {highestPointEstimate ? (
@@ -216,7 +222,7 @@ export default async function OverviewPage() {
               <dt>Task-sensitivity interval</dt>
               <dd>
                 {highestPointEstimate
-                  ? `${highestPointEstimate.ciLow.toFixed(1)}–${highestPointEstimate.ciHigh.toFixed(1)}`
+                  ? `${highestPointEstimate.sensitivityLow.toFixed(1)}–${highestPointEstimate.sensitivityHigh.toFixed(1)}`
                   : '—'}
               </dd>
               <dd className="snapshot-note">task-resampling sensitivity</dd>

@@ -51,110 +51,110 @@ const matrix = [
  * Exact public aggregates from the hash-verified production public backup RSC payload.
  * These fields were already public and contain no private task material.
  *
- * @type {Readonly<Record<string, {runId: string; score: number; ciLow: number; ciHigh: number}>>}
+ * @type {Readonly<Record<string, {runId: string; score: number; sensitivityLow: number; sensitivityHigh: number}>>}
  */
 const verifiedPublishedAggregates = {
   'sol-low': {
     runId: 'run_441adf403347a1f32c3176e2ca837341e236a8db5ef5ee3059cdc7baa3cac1d7',
     score: 41.959,
-    ciLow: 31.377,
-    ciHigh: 52.066,
+    sensitivityLow: 31.377,
+    sensitivityHigh: 52.066,
   },
   'sol-medium': {
     runId: 'run_fa605028cfc2d6c94d2ee0769a75d0f5c7bfddfc3b32b0106f525cc328e68930',
     score: 42.801,
-    ciLow: 32.474,
-    ciHigh: 52.45,
+    sensitivityLow: 32.474,
+    sensitivityHigh: 52.45,
   },
   'sol-high': {
     runId: 'run_37c17d1683b14473966cfc9c4ac8fb97ea16b7f9a0bf2948bd8b234220f6240f',
     score: 42.26,
-    ciLow: 32.472,
-    ciHigh: 51.524,
+    sensitivityLow: 32.472,
+    sensitivityHigh: 51.524,
   },
   'sol-xhigh': {
     runId: 'run_17b245b7a4b7c46348864a100e70cb0ce47d8f961e4d762ef4b4610e620bee5c',
     score: 42.865,
-    ciLow: 31.708,
-    ciHigh: 53.996,
+    sensitivityLow: 31.708,
+    sensitivityHigh: 53.996,
   },
   'sol-max': {
     runId: 'run_87c706c0bdc9e7cdfd52eebc9f55661d3cb6c2f2606721dd68fd869df8723093',
     score: 42.397,
-    ciLow: 31.196,
-    ciHigh: 53.282,
+    sensitivityLow: 31.196,
+    sensitivityHigh: 53.282,
   },
   'sol-ultra': {
     runId: 'run_f43f06eefb714c86d413a802587ba303b16e9a0ddc3de9f4cc01b8ff9e8d3f14',
     score: 40.803,
-    ciLow: 28.825,
-    ciHigh: 52.294,
+    sensitivityLow: 28.825,
+    sensitivityHigh: 52.294,
   },
   'terra-low': {
     runId: 'run_a8358a9ea1ee1fb19edc9b2c0a3f8909764503d5f1d2c4f2a7161debaac610c4',
     score: 37.299,
-    ciLow: 27.509,
-    ciHigh: 47.286,
+    sensitivityLow: 27.509,
+    sensitivityHigh: 47.286,
   },
   'terra-medium': {
     runId: 'run_130c49d83c7816a4939cf9851d936e8fa578d2b1d3dcedff5a6c9bbbfae53684',
     score: 40.571,
-    ciLow: 29.572,
-    ciHigh: 51.103,
+    sensitivityLow: 29.572,
+    sensitivityHigh: 51.103,
   },
   'terra-high': {
     runId: 'run_0f873d71f76b85a0670444fec79be29fb0102e7435b1c1bcb3f0b2d8f50387b4',
     score: 39.117,
-    ciLow: 29.328,
-    ciHigh: 48.561,
+    sensitivityLow: 29.328,
+    sensitivityHigh: 48.561,
   },
   'terra-xhigh': {
     runId: 'run_834fdafb3146ead1d05f146388e68b99a0f2569a19d92bd2fb9f3de25f93fcc7',
     score: 39.67,
-    ciLow: 29.983,
-    ciHigh: 48.929,
+    sensitivityLow: 29.983,
+    sensitivityHigh: 48.929,
   },
   'terra-max': {
     runId: 'run_b7415ac6300414b294a668149710c4fecb7a7bec368d25361e4fcc961db7cac4',
     score: 42.432,
-    ciLow: 32,
-    ciHigh: 52.211,
+    sensitivityLow: 32,
+    sensitivityHigh: 52.211,
   },
   'terra-ultra': {
     runId: 'run_db0ba87f356c60ee87a93df4cf730c44b3d511ca65c3310d00acb193686fa685',
     score: 42.347,
-    ciLow: 32.279,
-    ciHigh: 51.96,
+    sensitivityLow: 32.279,
+    sensitivityHigh: 51.96,
   },
   'luna-low': {
     runId: 'run_ff1d6d7ac0b68f652e28a4437baa9417fbab23789dc60c2b0bb6c6fee4eac71c',
     score: 37.314,
-    ciLow: 26.628,
-    ciHigh: 47.616,
+    sensitivityLow: 26.628,
+    sensitivityHigh: 47.616,
   },
   'luna-medium': {
     runId: 'run_f4bfbadc40f66cfd7bdd279a9ac025c4fdf6951e61e2f58ccb90b0988090a363',
     score: 39.083,
-    ciLow: 29.548,
-    ciHigh: 48.834,
+    sensitivityLow: 29.548,
+    sensitivityHigh: 48.834,
   },
   'luna-high': {
     runId: 'run_34f3e4bdea2d80922c016d17f0fb8005ae4a4bfbd7724c0e841384466666dc82',
     score: 41.879,
-    ciLow: 31.824,
-    ciHigh: 51.618,
+    sensitivityLow: 31.824,
+    sensitivityHigh: 51.618,
   },
   'luna-xhigh': {
     runId: 'run_5b896428917c276cc7aec28f91f48a3572b2b62e1266a89fd568cf8ac3983c8b',
     score: 38.781,
-    ciLow: 29.728,
-    ciHigh: 48.172,
+    sensitivityLow: 29.728,
+    sensitivityHigh: 48.172,
   },
   'luna-max': {
     runId: 'run_03c1830225ab52b741137eb34847d4432b08f3f57c7e562df4288999f1b48f0d',
     score: 41.39,
-    ciLow: 31.042,
-    ciHigh: 51.324,
+    sensitivityLow: 31.042,
+    sensitivityHigh: 51.324,
   },
 };
 
@@ -540,8 +540,8 @@ const currentRunEvidence = matrix.map((entry, entryIndex) => {
   const recomputedScore = Number(equalDomainAiq(results).toFixed(3));
   if (
     recomputedScore !== published.score ||
-    published.ciLow > recomputedScore ||
-    published.ciHigh < recomputedScore
+    published.sensitivityLow > recomputedScore ||
+    published.sensitivityHigh < recomputedScore
   ) {
     throw new Error(`Published aggregates do not match ${entry.id} task evidence.`);
   }
@@ -555,8 +555,8 @@ const currentRunEvidence = matrix.map((entry, entryIndex) => {
     results,
     interval: {
       center: recomputedScore,
-      lower: published.ciLow,
-      upper: published.ciHigh,
+      lower: published.sensitivityLow,
+      upper: published.sensitivityHigh,
     },
   };
 });
@@ -598,8 +598,8 @@ const leaderboard = currentRunEvidence.map(({ entry, runId, outcomes, interval }
   matrix_id: entry.id,
   run_id: runId,
   score: interval.center,
-  ci_low: interval.lower,
-  ci_high: interval.upper,
+  sensitivity_low: interval.lower,
+  sensitivity_high: interval.upper,
   sample_size: 72,
   coverage_percent: 100,
   runtime_issues: outcomes.executionFailures,
@@ -1010,7 +1010,7 @@ const scoringVersion = {
   ],
   missing_policy: 'Missing and invalid results block Official publication.',
   failure_policy: 'A valid failed attempt scores zero and remains visible.',
-  confidence_policy:
+  sensitivity_policy:
     'The interval is a fixed-fixture task-resampling sensitivity interval, not a universal capability claim.',
   synthetic: false,
 };
@@ -1086,8 +1086,8 @@ const currentTrends = leaderboard.map((current) => {
     bucket_started_at: bucketStartedAt,
     bucket_ended_at: bucketEndedAt,
     score: current.score,
-    ci_low: current.ci_low,
-    ci_high: current.ci_high,
+    sensitivity_low: current.sensitivity_low,
+    sensitivity_high: current.sensitivity_high,
     sample_size: current.sample_size,
     represented_run_count: 1,
     resolution_seconds: 3_600,
@@ -1122,8 +1122,8 @@ for (const current of leaderboard) {
     !latest ||
     latest.run_id !== current.run_id ||
     latest.score !== current.score ||
-    latest.ci_low !== current.ci_low ||
-    latest.ci_high !== current.ci_high ||
+    latest.sensitivity_low !== current.sensitivity_low ||
+    latest.sensitivity_high !== current.sensitivity_high ||
     latest.sample_size !== current.sample_size
   ) {
     throw new Error('The latest retained trend point must equal its current leaderboard row.');
@@ -1136,10 +1136,10 @@ for (const evidence of currentRunEvidence) {
     !current ||
     current.score !== Number(equalDomainAiq(evidence.results).toFixed(3)) ||
     current.score !== evidence.interval.center ||
-    current.ci_low !== evidence.interval.lower ||
-    current.ci_high !== evidence.interval.upper ||
-    current.ci_low > current.score ||
-    current.ci_high < current.score
+    current.sensitivity_low !== evidence.interval.lower ||
+    current.sensitivity_high !== evidence.interval.upper ||
+    current.sensitivity_low > current.score ||
+    current.sensitivity_high < current.score
   ) {
     throw new Error('Current leaderboard values must derive from their exact task evidence.');
   }

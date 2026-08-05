@@ -70,7 +70,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
         if (index === null) return 'Configuration evidence unavailable';
         const entry = scored[index];
         if (!entry) return '';
-        return `${entry.modelFamily} · ${entry.reasoningTier}<br/>AIQ ${entry.score?.toFixed(1)} · interval ${entry.ciLow?.toFixed(1)}–${entry.ciHigh?.toFixed(1)}<br/>n=${entry.sampleSize ?? '—'} · coverage ${entry.coveragePercent?.toFixed(1) ?? '—'}%<br/>runtime ${entry.runtimeIssues ?? '—'} · missing ${entry.missing ?? '—'}<br/>scoring ${entry.scoringVersion ?? '—'} · ${entry.synthetic ? 'synthetic' : 'published'}`;
+        return `${entry.modelFamily} · ${entry.reasoningTier}<br/>AIQ ${entry.score?.toFixed(1)} · interval ${entry.sensitivityLow?.toFixed(1)}–${entry.sensitivityHigh?.toFixed(1)}<br/>n=${entry.sampleSize ?? '—'} · coverage ${entry.coveragePercent?.toFixed(1) ?? '—'}%<br/>runtime ${entry.runtimeIssues ?? '—'} · missing ${entry.missing ?? '—'}<br/>scoring ${entry.scoringVersion ?? '—'} · ${entry.synthetic ? 'synthetic' : 'published'}`;
       },
     };
     const aria = { enabled: true, decal: { show: true } };
@@ -79,7 +79,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
       name: 'Task-sensitivity interval',
       silent: true,
       z: 4,
-      data: scored.map((entry, index) => [index, entry.ciLow, entry.ciHigh]),
+      data: scored.map((entry, index) => [index, entry.sensitivityLow, entry.sensitivityHigh]),
       renderItem: (
         _params: unknown,
         api: {
@@ -145,7 +145,11 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
             name: 'Task-sensitivity interval',
             silent: true,
             z: 4,
-            data: scored.map((entry, index) => [entry.ciLow, index, entry.ciHigh]),
+            data: scored.map((entry, index) => [
+              entry.sensitivityLow,
+              index,
+              entry.sensitivityHigh,
+            ]),
             renderItem: (
               _params: unknown,
               api: {
@@ -314,7 +318,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
                   </th>
                   <td>{entry.score?.toFixed(1)}</td>
                   <td>
-                    {entry.ciLow?.toFixed(1)}–{entry.ciHigh?.toFixed(1)}
+                    {entry.sensitivityLow?.toFixed(1)}–{entry.sensitivityHigh?.toFixed(1)}
                   </td>
                   <td>{entry.sampleSize ?? '—'}</td>
                   <td>{entry.coveragePercent?.toFixed(1)}%</td>
