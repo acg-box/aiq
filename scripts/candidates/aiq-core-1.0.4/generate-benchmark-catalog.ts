@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.4' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_4_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:3c8ca814f8210a99dd26202b034c8e74137da57302bdaf25dc556c04efbae6d7';
+  'sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e';
 export const AIQ_CORE_1_0_4_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:8667118ddc9999de7857b255c4e33125c42290195a4ecb2de53de37c84f61b41';
+  'sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -29,6 +29,31 @@ interface RevisionSpec {
   readonly summary: string;
   readonly inputKind: string;
   readonly passConditions: readonly [string, string, string, string];
+}
+
+interface ScoringContract104 {
+  readonly aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates';
+  readonly check_scoring: 'binary';
+  readonly check_weighting: 'nonnegative_integer_weight_per_committed_check';
+  readonly weight_source: 'private_content_addressed_evaluator_configuration';
+  readonly formula: 'hard_gate_or_structural_failure ? 0 : sum(weight_i * passed_i) / sum(weight_i)';
+  readonly denominator_requirement: 'sum_of_positive_check_weights_greater_than_zero';
+  readonly hard_gate_definition: 'hard_gate_true_or_check_type_workspace_policy';
+  readonly hard_gate_rule: 'any_failed_committed_hard_gate_or_structural_failure_sets_score_to_zero';
+  readonly zero_weight_rule: 'only_committed_hard_gates_may_have_zero_weight';
+  readonly positive_weight_gate_rule: 'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass';
+  readonly evaluator_error_policy: 'unscored_invalid_evidence';
+  readonly attributable_runtime_failure_policy: 'score_zero_as_defined_by_public_runtime_failure_taxonomy';
+  readonly outcome_rule: {
+    readonly correct: 'score_equals_one';
+    readonly partial: 'score_strictly_between_zero_and_one';
+    readonly incorrect: 'score_equals_zero';
+  };
+  readonly rounding: 'no_evaluator_rounding_exact_replay';
+  readonly score_range: readonly [0, 1];
+  readonly maximum_checks_per_result: 16;
+  readonly public_criteria_role: 'coverage_summary_not_weight_partition';
+  readonly verification: 'committed_configuration_and_result_checks_are_content_addressed_and_replayed';
 }
 
 export type RevisionKind = 'ceiling_retargeted' | 'contract_repaired' | 'carry_forward';
@@ -55,13 +80,7 @@ export interface CatalogTask104 extends Omit<
   > & {
     readonly scorer_version: '1.0.4';
     readonly pass_conditions: readonly string[];
-    readonly scoring_contract: Omit<PriorTask['evaluator']['scoring_contract'], 'components'> & {
-      readonly components: readonly {
-        readonly component_id: string;
-        readonly weight_basis_points: number;
-        readonly criterion: string;
-      }[];
-    };
+    readonly scoring_contract: ScoringContract104;
   };
   readonly provenance: {
     readonly origin: 'calibration_driven_revision' | 'contract_repair' | 'release_carry_forward';
@@ -245,6 +264,39 @@ const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
   },
 };
 
+const SCORING_CONTRACT = Object.freeze({
+  aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
+  check_scoring: 'binary',
+  check_weighting: 'nonnegative_integer_weight_per_committed_check',
+  weight_source: 'private_content_addressed_evaluator_configuration',
+  formula: 'hard_gate_or_structural_failure ? 0 : sum(weight_i * passed_i) / sum(weight_i)',
+  denominator_requirement: 'sum_of_positive_check_weights_greater_than_zero',
+  hard_gate_definition: 'hard_gate_true_or_check_type_workspace_policy',
+  hard_gate_rule: 'any_failed_committed_hard_gate_or_structural_failure_sets_score_to_zero',
+  zero_weight_rule: 'only_committed_hard_gates_may_have_zero_weight',
+  positive_weight_gate_rule:
+    'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass',
+  evaluator_error_policy: 'unscored_invalid_evidence',
+  attributable_runtime_failure_policy: 'score_zero_as_defined_by_public_runtime_failure_taxonomy',
+  outcome_rule: {
+    correct: 'score_equals_one',
+    partial: 'score_strictly_between_zero_and_one',
+    incorrect: 'score_equals_zero',
+  },
+  rounding: 'no_evaluator_rounding_exact_replay',
+  score_range: [0, 1],
+  maximum_checks_per_result: 16,
+  public_criteria_role: 'coverage_summary_not_weight_partition',
+  verification: 'committed_configuration_and_result_checks_are_content_addressed_and_replayed',
+} as const satisfies ScoringContract104);
+
+const CONTROLLED_CORPUS_REQUIREMENTS = Object.freeze([
+  'Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.',
+  'Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.',
+  'Prove that hard-gate and structural failures force zero while other failed checks reduce the score by the committed positive-weight fraction.',
+  'Cover the public pass conditions with private checks without treating those criteria as mathematical weight partitions.',
+] as const);
+
 export const REVISED_TASK_IDS = Object.freeze(Object.keys(REVISION_SPECS).toSorted());
 
 function canonicalJson(value: unknown): string {
@@ -288,17 +340,13 @@ function replaceReleaseStrings(value: unknown): unknown {
 }
 
 function carriedForwardDelta(taskId: string): string {
-  return `${taskId} carries forward the accepted AIQ Core 1.0.3 public design without a substantive task change. Only the release, task, scorer, controlled-reference, provenance, and commitment bindings advance to 1.0.4; private content must remain byte-equivalent before release rebinding.`;
+  return `${taskId} carries forward the accepted AIQ Core 1.0.3 task design and byte-equivalent private content. AIQ Core 1.0.4 corrects the public scorer description to the executable committed weighted-check and hard-gate reduction, then advances the release, task, scorer, controlled-reference, provenance, and commitment bindings.`;
 }
 
 function reviseTask(priorTask: PriorTask): CatalogTask104 {
   const releaseTask = replaceReleaseStrings(priorTask) as unknown as CatalogTask104;
   const spec = REVISION_SPECS[priorTask.task_id];
   const passConditions = spec?.passConditions ?? releaseTask.evaluator.pass_conditions;
-  const components = releaseTask.evaluator.scoring_contract.components.map((component, index) => ({
-    ...component,
-    criterion: passConditions[index] ?? component.criterion,
-  }));
   const acceptanceFixtureCommitments = Object.fromEntries(
     Object.entries(releaseTask.evaluator.acceptance_fixture_commitments).map(
       ([fixtureClass, fixture]) => [
@@ -318,9 +366,9 @@ function reviseTask(priorTask: PriorTask): CatalogTask104 {
       kind: spec === undefined ? 'carry_forward' : (spec.kind ?? 'ceiling_retargeted'),
       objective:
         spec?.objective ??
-        'Carry forward the accepted AIQ Core 1.0.3 task design unchanged while advancing the complete release identity and controlled bindings to AIQ Core 1.0.4.',
+        'Carry forward the accepted AIQ Core 1.0.3 task design and private content while correcting the public scorer description and advancing the complete release identity and controlled bindings to AIQ Core 1.0.4.',
       task_specific_delta: spec?.taskSpecificDelta ?? carriedForwardDelta(priorTask.task_id),
-      controlled_corpus_requirements: releaseTask.design_revision.controlled_corpus_requirements,
+      controlled_corpus_requirements: CONTROLLED_CORPUS_REQUIREMENTS,
     },
     input_contract: {
       ...releaseTask.input_contract,
@@ -330,10 +378,7 @@ function reviseTask(priorTask: PriorTask): CatalogTask104 {
       ...releaseTask.evaluator,
       scorer_version: SCORER_VERSION,
       pass_conditions: passConditions,
-      scoring_contract: {
-        ...releaseTask.evaluator.scoring_contract,
-        components,
-      },
+      scoring_contract: SCORING_CONTRACT,
       acceptance_fixture_commitments: acceptanceFixtureCommitments,
     },
     provenance: {
@@ -424,12 +469,32 @@ function reviseCatalogSchema(priorSchema: unknown): unknown {
   };
   const provenance = jsonObject(taskProperties.provenance, 'provenance');
   const provenanceProperties = jsonObject(provenance.properties, 'provenance properties');
+  const evaluator = jsonObject(taskProperties.evaluator, 'evaluator');
+  const evaluatorProperties = jsonObject(evaluator.properties, 'evaluator properties');
   provenanceProperties.origin = {
     enum: ['calibration_driven_revision', 'contract_repair', 'release_carry_forward'],
   };
   provenanceProperties.recorded_date = { const: '2026-08-05' };
   provenanceProperties.predecessor_task_version = { const: '1.0.3' };
   provenanceProperties.source = { const: GENERATOR_PATH };
+  evaluatorProperties.scoring_contract = {
+    type: 'object',
+    additionalProperties: false,
+    required: Object.keys(SCORING_CONTRACT),
+    properties: Object.fromEntries(
+      Object.entries(SCORING_CONTRACT).map(([key, value]) => [
+        key,
+        Array.isArray(value)
+          ? {
+              type: 'array',
+              prefixItems: value.map((item) => ({ const: item })),
+              minItems: value.length,
+              maxItems: value.length,
+            }
+          : { const: value },
+      ]),
+    ),
+  };
   return schema;
 }
 
@@ -493,10 +558,12 @@ export function assertCatalogInvariants(catalog: Catalog104): void {
     if (
       !task.input_contract.content_handle.includes('/1.0.4/') ||
       task.evaluator.pass_conditions.length < 4 ||
-      task.evaluator.scoring_contract.components.length !== 4 ||
-      task.evaluator.scoring_contract.components.some(
-        (component, index) => component.criterion !== task.evaluator.pass_conditions[index],
-      )
+      task.evaluator.scoring_contract.aggregation !== SCORING_CONTRACT.aggregation ||
+      task.evaluator.scoring_contract.formula !== SCORING_CONTRACT.formula ||
+      task.evaluator.scoring_contract.public_criteria_role !==
+        'coverage_summary_not_weight_partition' ||
+      task.design_revision.controlled_corpus_requirements.join('\n') !==
+        CONTROLLED_CORPUS_REQUIREMENTS.join('\n')
     ) {
       throw new Error(`Task ${task.task_id} has inconsistent public scoring metadata.`);
     }
