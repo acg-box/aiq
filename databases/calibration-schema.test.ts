@@ -46,7 +46,7 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 });
 
 void test('runs calibration against the production initializer catalog authority', () => {
-  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.4'\)/);
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.5'\)/);
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
 });
@@ -684,7 +684,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584'/,
+    /task_set_identity_sha256 =\s*'sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6'/,
   );
   assert.match(
     schema,

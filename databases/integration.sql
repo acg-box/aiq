@@ -261,19 +261,19 @@ begin
     select 'sha256:' || catalog_task.fixture_commitment as task_hash
     from aiq_private.aiq_task_catalog catalog_task
     where catalog_task.task_set_id = 'aiq-core'
-      and catalog_task.task_set_version = '1.0.4'
+      and catalog_task.task_set_version = '1.0.5'
   ) hashes;
   run_id := 'run_' || substr(aiq_private.jcs_sha256(jsonb_build_object(
     'schema_version', 'aiq.run-identity.v1',
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.4'
+    'scoring_version', '1.0.5'
   )), 8);
 
   for task in
     select * from aiq_private.aiq_task_catalog
-    where task_set_id = 'aiq-core' and task_set_version = '1.0.4'
+    where task_set_id = 'aiq-core' and task_set_version = '1.0.5'
     order by task_id
   loop
     for model in select value from jsonb_array_elements(models) loop
@@ -323,7 +323,7 @@ begin
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.4',
+    'scoring_version', '1.0.5',
     'models', models,
     'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
@@ -438,7 +438,7 @@ begin
   from (
     select distinct task.domain
     from aiq_private.aiq_task_catalog task
-    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.4'
+    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.5'
   ) catalog;
 
   for model in
@@ -490,7 +490,7 @@ begin
     from jsonb_array_elements(payload -> 'results') source(value)
     join aiq_private.aiq_task_catalog task
       on task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.4'
+      and task.task_set_version = '1.0.5'
       and task.task_id = source.value ->> 'task_id'
       and task.task_version = source.value ->> 'task_version'
     where source.value -> 'model' = model_identity;
@@ -504,7 +504,7 @@ begin
       'results', normalized_results,
       'score', jsonb_build_object(
         'schema_version', 'aiq.score-report.v1',
-        'scoring_version', '1.0.4',
+        'scoring_version', '1.0.5',
         'model', model_identity,
         'tier', 'synthetic_complete',
         'rule', 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
@@ -554,14 +554,14 @@ begin
     'content_hash', envelope ->> 'content_hash',
     'signer', envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.4',
+    'task_set_version', '1.0.5',
     'task_set_hash', payload ->> 'task_set_hash',
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.4',
+    'benchmark_version', 'aiq-core@1.0.5',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.4',
+    'scoring_version', '1.0.5',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', payload -> 'started_unix_ms',
@@ -1158,7 +1158,7 @@ select pg_temp.aiq_assert(
         > pg_catalog.date_trunc('milliseconds', recorded_at)
       and bucket_ended_at = recorded_at + interval '1 millisecond'
       and resolution_seconds = 1
-      and scoring_version = '1.0.4'
+      and scoring_version = '1.0.5'
     )
     from aiq_single_batch_trend
   ),

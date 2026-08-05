@@ -18,7 +18,7 @@ import {
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.4/catalog.json');
+const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.5/catalog.json');
 const corpusSchemaPath = resolve(
   repositoryRoot,
   'benchmarks/schema/corpus-commitment-v2.schema.json',
@@ -27,9 +27,9 @@ const schemaPath = resolve(repositoryRoot, 'databases/schema.sql');
 const initPath = resolve(repositoryRoot, 'databases/init.ts');
 const taskCommitmentsPath = resolve(
   repositoryRoot,
-  'databases/aiq-core-1.0.4-task-commitments.json',
+  'databases/aiq-core-1.0.5-task-commitments.json',
 );
-const taskSetIdentity = 'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584';
+const taskSetIdentity = 'sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6';
 const evaluatorIdentity = 'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 
 function isObject(value: unknown): value is JsonObject {
@@ -272,7 +272,7 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.4',
+        task_set_version: '1.0.5',
         identity_sha256: object(catalog.task_metadata_identity).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
@@ -421,7 +421,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.4', '1\.0\.4'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.5', '1\.0\.5'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -460,14 +460,14 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .update(canonicalJson(object(reference.corpus_commitment)))
       .digest('hex')}`,
   );
-  strictEqual(prepared.receipt.scoring_version, '1.0.4');
+  strictEqual(prepared.receipt.scoring_version, '1.0.5');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,
-    'sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e',
+    'sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c',
   );
   strictEqual(
     prepared.receipt.catalog_release_identity_sha256,
-    'sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279',
+    'sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897',
   );
   strictEqual(prepared.receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(prepared.receipt.evaluator_identity_sha256, evaluatorIdentity);

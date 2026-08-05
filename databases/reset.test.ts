@@ -21,7 +21,7 @@ const environment = {
 const initializationReceipt = {
   schema_version: 'aiq.production-initialization-receipt.v1',
   initialized: true,
-  scoring_version: '1.0.4',
+  scoring_version: '1.0.5',
   catalog_identity_sha256: 'sha256:test',
   catalog_release_identity_sha256: 'sha256:test',
   corpus_commitment_sha256: 'sha256:test',
