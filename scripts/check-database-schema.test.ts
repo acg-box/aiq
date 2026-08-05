@@ -354,7 +354,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
     ],
     [
       schema.replace(
-        'sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add',
+        'sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037',
         'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
       ),
       /expected to not match/,

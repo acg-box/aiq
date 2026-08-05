@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.5' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_5_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb';
+  'sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a';
 export const AIQ_CORE_1_0_5_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add';
+  'sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -24,11 +24,13 @@ type PriorTask = PriorCatalog['tasks'][number];
 
 interface RevisionSpec {
   readonly title?: string;
+  readonly evaluatorKind?: string;
   readonly objective: string;
   readonly taskSpecificDelta: string;
   readonly summary: string;
   readonly inputKind: string;
   readonly passConditions: readonly [string, string, string, string];
+  readonly tags?: readonly string[];
 }
 
 interface ScoringContract105 {
@@ -60,7 +62,13 @@ export type RevisionKind = 'calibration_retargeted' | 'carry_forward';
 
 export interface CatalogTask105 extends Omit<
   PriorTask,
-  'task_version' | 'design_revision' | 'input_contract' | 'evaluator' | 'provenance'
+  | 'task_version'
+  | 'design_revision'
+  | 'input_contract'
+  | 'budget'
+  | 'evaluator'
+  | 'tags'
+  | 'provenance'
 > {
   readonly task_version: '1.0.5';
   readonly design_revision: {
@@ -74,14 +82,21 @@ export interface CatalogTask105 extends Omit<
     readonly kind: string;
     readonly content_handle: string;
   };
+  readonly budget: {
+    readonly wall_seconds: number;
+    readonly max_steps: number;
+    readonly max_tool_calls: number;
+  };
   readonly evaluator: Omit<
     PriorTask['evaluator'],
-    'scorer_version' | 'pass_conditions' | 'scoring_contract'
+    'kind' | 'scorer_version' | 'pass_conditions' | 'scoring_contract'
   > & {
+    readonly kind: string;
     readonly scorer_version: '1.0.5';
     readonly pass_conditions: readonly string[];
     readonly scoring_contract: ScoringContract105;
   };
+  readonly tags: readonly string[];
   readonly provenance: {
     readonly origin: 'calibration_driven_revision' | 'release_carry_forward';
     readonly owner: 'AIQ benchmark maintainers';
@@ -113,6 +128,7 @@ export interface Catalog105 extends Omit<
 const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
   'coding-06': {
     title: 'Repair a keyed async executor',
+    evaluatorKind: 'async_executor_contract_tests',
     objective:
       'Retarget conditional HTTP fetching to a compact keyed async executor repair with bounded global concurrency, per-key FIFO serialization, work-conserving scheduling, failure recovery, and an explicit idle lifecycle.',
     taskSpecificDelta:
@@ -126,6 +142,7 @@ const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
       'Fulfillment, rejection, and synchronous throws preserve exact caller outcomes, release key and capacity state, and allow queued work to continue.',
       'Strict validation, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs.',
     ],
+    tags: ['concurrency', 'scheduling'],
   },
   'debugging-01': {
     objective:
@@ -311,9 +328,9 @@ function reviseTask(priorTask: PriorTask): CatalogTask105 {
     },
     cluster_id: priorTask.cluster_id,
     allowed_tools: priorTask.allowed_tools,
-    budget: priorTask.budget,
+    budget: revised ? { wall_seconds: 600, max_steps: 40, max_tool_calls: 28 } : priorTask.budget,
     evaluator: {
-      kind: priorTask.evaluator.kind,
+      kind: spec?.evaluatorKind ?? priorTask.evaluator.kind,
       scorer_version: SCORER_VERSION,
       execution_protocol: priorTask.evaluator.execution_protocol,
       binding_requirement: priorTask.evaluator.binding_requirement,
@@ -323,7 +340,7 @@ function reviseTask(priorTask: PriorTask): CatalogTask105 {
       scoring_contract: SCORING_CONTRACT,
       acceptance_fixture_commitments: acceptanceFixtureCommitments,
     },
-    tags: priorTask.tags,
+    tags: spec?.tags ?? priorTask.tags,
     visibility: priorTask.visibility,
     provenance: {
       origin: spec === undefined ? 'release_carry_forward' : 'calibration_driven_revision',
@@ -504,6 +521,20 @@ export function assertCatalogInvariants(catalog: Catalog105): void {
         CONTROLLED_CORPUS_REQUIREMENTS.join('\n')
     ) {
       throw new Error(`Task ${task.task_id} has inconsistent public scoring metadata.`);
+    }
+    if (
+      isRevised &&
+      canonicalJson(task.budget) !==
+        canonicalJson({ wall_seconds: 600, max_steps: 40, max_tool_calls: 28 })
+    ) {
+      throw new Error(`Task ${task.task_id} has an inconsistent calibration budget.`);
+    }
+    if (
+      task.task_id === 'coding-06' &&
+      (task.evaluator.kind !== 'async_executor_contract_tests' ||
+        canonicalJson(task.tags) !== canonicalJson(['concurrency', 'scheduling']))
+    ) {
+      throw new Error('Task coding-06 has stale evaluator or taxonomy metadata.');
     }
     const acceptanceHandles = Object.values(task.evaluator.acceptance_fixture_commitments).map(
       ({ handle }) => handle,

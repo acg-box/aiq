@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:c575726d933ee4c0b47f7855f9d1aa820188109910e2a3b0288f10a4026b8edb
+sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a
 ```
 
 The release-policy identity is `aiq-core/1.0.5`. Its public catalog
 release-identity digest is
-`sha256:27106267689a62a351fd83266b8dcdfaa68f876202075dcde1387ae543804add`.
+`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. Each final
