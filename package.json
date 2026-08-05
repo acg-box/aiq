@@ -21,7 +21,7 @@
     "lint": "oxlint . --type-aware",
     "storage:lifecycle": "node scripts/storage-object-lifecycle.ts",
     "start": "npm run start --workspace @aiq/web",
-    "test": "node --test scripts/*.test.ts scripts/candidates/aiq-core-1.0.3/*.test.ts databases/*.test.ts && npm run test --workspace @aiq/web",
+    "test": "node --test scripts/*.test.ts scripts/candidates/aiq-core-1.0.3/*.test.ts scripts/candidates/aiq-core-1.0.4/*.test.ts databases/*.test.ts && npm run test --workspace @aiq/web",
     "test:browser:production": "npm run test:browser:production --workspace @aiq/web"
   },
   "devDependencies": {
