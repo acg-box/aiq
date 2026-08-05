@@ -135,6 +135,7 @@ const DISABLED_CODEX_FEATURES: &[&str] = &[
 	"workspace_dependencies",
 ];
 const BENCHMARK_PERMISSION_PROFILE: &str = "aiq_benchmark";
+const CONTROLLED_OPENSSL_CONF: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 const MAX_AUTH_JSON_BYTES: u64 = 1_024 * 1_024;
 const MAX_ID_TOKEN_PAYLOAD_BYTES: usize = 128 * 1_024;
 const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
@@ -574,6 +575,8 @@ impl CodexExecutionConfig {
 	#[must_use]
 	pub fn isolated(codex_home: impl Into<PathBuf>) -> Self {
 		let mut allowed_environment = BTreeMap::new();
+
+		allowed_environment.insert("OPENSSL_CONF".to_owned(), CONTROLLED_OPENSSL_CONF.to_owned());
 
 		for key in ["LANG", "LC_ALL"] {
 			if let Ok(value) = env::var(key) {
@@ -4556,6 +4559,11 @@ fn invocation_args(
 		"--config".to_owned(),
 		format!("shell_environment_policy.set.PATH={}", toml_basic_string(&toolchain.path_value())),
 		"--config".to_owned(),
+		format!(
+			"shell_environment_policy.set.OPENSSL_CONF={}",
+			toml_basic_string(CONTROLLED_OPENSSL_CONF)
+		),
+		"--config".to_owned(),
 		"approval_policy=\"never\"".to_owned(),
 		"--config".to_owned(),
 		format!("default_permissions=\"{BENCHMARK_PERMISSION_PROFILE}\""),
@@ -5959,6 +5967,10 @@ mod tests {
 			request.environment.get("CODEX_HOME"),
 			Some(&test_controlled_root().join("codex-home").display().to_string())
 		);
+		assert_eq!(
+			request.environment.get("OPENSSL_CONF").map(String::as_str),
+			Some(super::CONTROLLED_OPENSSL_CONF)
+		);
 		assert!(request.args.contains(&"--ignore-user-config".to_owned()));
 		assert!(request.args.contains(&"--ignore-rules".to_owned()));
 		assert!(request.args.contains(&"--strict-config".to_owned()));
@@ -6001,6 +6013,16 @@ mod tests {
 				.windows(2)
 				.any(|pair| { pair == ["--config", "shell_environment_policy.inherit=\"none\""] })
 		);
+		assert!(request.args.windows(2).any(|pair| {
+			pair == [
+				"--config",
+				format!(
+					"shell_environment_policy.set.OPENSSL_CONF={}",
+					super::toml_basic_string(super::CONTROLLED_OPENSSL_CONF)
+				)
+				.as_str(),
+			]
+		}));
 		assert!(!request.args.iter().any(|argument| argument.contains("HTTP_PROXY")));
 		assert!(!request.args.iter().any(|argument| argument.contains("http_proxy")));
 

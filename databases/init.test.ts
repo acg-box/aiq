@@ -152,6 +152,7 @@ async function referenceFixture(): Promise<JsonObject> {
       environment: {
         LANG: 'C.UTF-8',
         LC_ALL: null,
+        OPENSSL_CONF: '/dev/null',
         TZ: 'Etc/UTC',
       },
       resolved_locale: 'en-US',

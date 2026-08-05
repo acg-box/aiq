@@ -303,10 +303,11 @@
             "environment": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["LANG", "LC_ALL", "TZ"],
+              "required": ["LANG", "LC_ALL", "OPENSSL_CONF", "TZ"],
               "properties": {
                 "LANG": { "$ref": "#/$defs/nullableEnvironmentValue" },
                 "LC_ALL": { "$ref": "#/$defs/nullableEnvironmentValue" },
+                "OPENSSL_CONF": { "enum": ["/dev/null", "NUL"] },
                 "TZ": { "$ref": "#/$defs/nullableEnvironmentValue" }
               }
             },
