@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.5' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_5_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c';
+  'sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253';
 export const AIQ_CORE_1_0_5_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897';
+  'sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -112,17 +112,17 @@ export interface Catalog105 extends Omit<
 const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
   'coding-06': {
     objective:
-      'Retarget conditional HTTP fetching around client-scoped in-flight request coalescing, precise identity, independent progress, and complete lifecycle cleanup.',
+      'Retarget conditional HTTP fetching around a multi-module cache repair with injected time, bounded freshness, conditional revalidation, stale-if-error recovery, request coalescing, and generation-safe invalidation.',
     taskSpecificDelta:
-      'Require concurrent conditional requests to coalesce only within one client and only for the same identifier and ETag. Different clients or keys must remain independent, and the in-flight entry must be removed after every fulfilled or rejected settlement path so later requests can proceed.',
+      'Repair an existing client and cache integration instead of synthesizing one blank module. Fresh entries avoid transport work; expired entries revalidate conditionally; bounded stale entries can recover from transport failure; same-key refreshes coalesce; and invalidation prevents detached completions from publishing stale state. Different clients and identifiers remain independent.',
     summary:
-      'Repair conditional HTTP request handling with client-scoped in-flight coalescing keyed by identifier and ETag, independent progress, and settle-safe cleanup.',
-    inputKind: 'client_scoped_conditional_request_repository',
+      'Repair a multi-module cached API client with deterministic freshness, conditional revalidation, stale-if-error recovery, per-key coalescing, and generation-safe invalidation.',
+    inputKind: 'multi_module_conditional_cache_repository',
     passConditions: [
-      'Concurrent requests coalesce only when the client, identifier, and ETag identity match.',
-      'Different clients, identifiers, and ETags make independent progress.',
-      'Fulfilled and rejected requests remove their in-flight entries after settlement.',
-      'Deterministic lifecycle evidence distinguishes correct coalescing from global or persistent caching.',
+      'Fresh cache entries avoid transport work, while expired entries use deterministic conditional revalidation and publish valid 200 or 304 state.',
+      'Only overlapping refreshes for the same client and identifier coalesce; different clients and identifiers make independent progress.',
+      'Transport failures use prior state only inside the declared stale-if-error window, and failed refreshes do not become persistent in-flight state.',
+      'Invalidation detaches the exact cache generation so an older fulfillment or rejection cannot overwrite or remove replacement state.',
     ],
   },
   'debugging-01': {
