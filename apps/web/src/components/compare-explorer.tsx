@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { formatSensitivityInterval } from '../data/format.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
@@ -12,6 +12,11 @@ import {
 } from '../data/types.ts';
 import { ReadStateNote } from './read-state-note.tsx';
 import { ScoreReadout } from './score-readout.tsx';
+import {
+  pushAnalyticalUrl,
+  readDistinctIdPair,
+  useAnalyticalSearchParams,
+} from './analytical-url-state.ts';
 import {
   EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
   resolveExactScientificEvidence,
@@ -51,9 +56,18 @@ export function CompareExplorer({
   efficiency: readonly PublicModelEfficiency[];
 }) {
   const comparableEntries = useMemo(() => entries.filter(isScoredLeaderboardEntry), [entries]);
-  const [leftId, setLeftId] = useState(comparableEntries[0]?.id ?? '');
-  const [rightId, setRightId] = useState(
-    comparableEntries[6]?.id ?? comparableEntries[1]?.id ?? '',
+  const searchParams = useAnalyticalSearchParams();
+  const comparableIds = useMemo(
+    () => comparableEntries.map((entry) => entry.id),
+    [comparableEntries],
+  );
+  const [leftId, rightId] = readDistinctIdPair(
+    searchParams,
+    'compareFirst',
+    'compareSecond',
+    comparableIds,
+    comparableIds[0] ?? '',
+    comparableIds[6] ?? comparableIds[1] ?? '',
   );
   const left = useMemo(
     () => comparableEntries.find((entry) => entry.id === leftId),
@@ -133,7 +147,12 @@ export function CompareExplorer({
       <div className="compare-controls">
         <label>
           First model and reasoning level
-          <select value={leftId} onChange={(event) => setLeftId(event.target.value)}>
+          <select
+            value={leftId}
+            onChange={(event) =>
+              pushAnalyticalUrl({ compareFirst: event.target.value, compareSecond: rightId })
+            }
+          >
             {comparableEntries.map((entry) => (
               <option key={entry.id} value={entry.id} disabled={entry.id === rightId}>
                 {entry.modelFamily} · {entry.reasoningTier} ({entry.modelName})
@@ -144,7 +163,12 @@ export function CompareExplorer({
         <span aria-hidden="true">versus</span>
         <label>
           Second model and reasoning level
-          <select value={rightId} onChange={(event) => setRightId(event.target.value)}>
+          <select
+            value={rightId}
+            onChange={(event) =>
+              pushAnalyticalUrl({ compareFirst: leftId, compareSecond: event.target.value })
+            }
+          >
             {comparableEntries.map((entry) => (
               <option key={entry.id} value={entry.id} disabled={entry.id === leftId}>
                 {entry.modelFamily} · {entry.reasoningTier} ({entry.modelName})

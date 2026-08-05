@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
 import {
@@ -8,6 +8,12 @@ import {
   type LeaderboardEntry,
   type PublicModelEfficiency,
 } from '../data/types.ts';
+import {
+  pushAnalyticalUrl,
+  readEnumParam,
+  readIdParam,
+  useAnalyticalSearchParams,
+} from './analytical-url-state.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { paretoEfficientKeys } from './efficiency-analysis.ts';
 import { resolveExactEfficiencyRows } from './scientific-evidence-resolution.ts';
@@ -123,7 +129,14 @@ export function resolveEfficiencyPlotEvidence({
 
 function readEfficiencyDatum(value: unknown): EfficiencyDatum | null {
   if (typeof value !== 'object' || value === null || !('data' in value)) return null;
-  const data = value.data;
+  const candidate = value.data;
+  const data =
+    typeof candidate === 'object' &&
+    candidate !== null &&
+    'value' in candidate &&
+    Array.isArray(candidate.value)
+      ? candidate.value
+      : candidate;
   if (
     !Array.isArray(data) ||
     typeof data[0] !== 'number' ||
@@ -191,17 +204,26 @@ export function EfficiencyPlot({
   entries,
   runSummaries,
   rows,
+  onVisualizationPresenceChange,
 }: {
   entries: readonly LeaderboardEntry[];
   runSummaries: readonly BenchmarkRunSummary[];
   rows: readonly PublicModelEfficiency[];
+  onVisualizationPresenceChange?: (hasVisualization: boolean) => void;
 }) {
-  const [metric, setMetric] = useState<Metric>('cost');
+  const searchParams = useAnalyticalSearchParams();
+  const metric = readEnumParam(searchParams, 'efficiencyMetric', ['cost', 'duration'], 'cost');
   const { points, configurationCount, metricUnavailable, identityOrScoreRejected, absent } =
     useMemo(
       () => resolveEfficiencyPlotEvidence({ entries, runSummaries, rows, metric }),
       [entries, metric, rows, runSummaries],
     );
+  const pointIds = useMemo(() => points.map(({ entry }) => entry.id), [points]);
+  const selectedId = readIdParam(searchParams, 'efficiencySelection', pointIds, pointIds[0] ?? '');
+  const selectedPoint = points.find(({ entry }) => entry.id === selectedId);
+  useEffect(() => {
+    onVisualizationPresenceChange?.(points.length > 0);
+  }, [onVisualizationPresenceChange, points.length]);
   const frontierRunIds = useMemo(() => {
     const comparisonGroups = new Map<string, number>();
     for (const point of points) {
@@ -339,21 +361,34 @@ export function EfficiencyPlot({
           },
           data: points
             .filter(({ entry }) => entry.modelFamily === family)
-            .map(({ entry, row, x, y }) => [
-              x,
-              y,
-              `${entry.modelFamily} · ${entry.reasoningTier}`,
-              metric === 'duration' ? row.observedTimeSampleCount : row.estimatedCostSampleCount,
-              `${entry.coveragePercent?.toFixed(1) ?? '—'}%`,
-              entry.sensitivityLow ?? y,
-              entry.sensitivityHigh ?? y,
-              entry.scoringVersion ?? 'unavailable',
-              entry.synthetic ? 'synthetic' : 'published',
-              entry.sampleSize,
-              entry.runtimeIssues,
-              entry.missing,
-              entry.scoreStatus.replaceAll('_', ' '),
-            ]),
+            .map(({ entry, row, x, y }) => ({
+              value: [
+                x,
+                y,
+                `${entry.modelFamily} · ${entry.reasoningTier}`,
+                metric === 'duration' ? row.observedTimeSampleCount : row.estimatedCostSampleCount,
+                `${entry.coveragePercent?.toFixed(1) ?? '—'}%`,
+                entry.sensitivityLow ?? y,
+                entry.sensitivityHigh ?? y,
+                entry.scoringVersion ?? 'unavailable',
+                entry.synthetic ? 'synthetic' : 'published',
+                entry.sampleSize,
+                entry.runtimeIssues,
+                entry.missing,
+                entry.scoreStatus.replaceAll('_', ' '),
+              ],
+              symbolSize: entry.id === selectedId ? 19 : 13,
+              label:
+                entry.id === selectedId
+                  ? {
+                      show: true,
+                      position: 'top' as const,
+                      color: 'var(--ink)',
+                      fontWeight: 700,
+                      formatter: `${entry.modelFamily} · ${entry.reasoningTier}`,
+                    }
+                  : undefined,
+            })),
         })),
         {
           type: 'scatter',
@@ -370,7 +405,7 @@ export function EfficiencyPlot({
         },
       ],
     };
-  }, [frontierRunIds, metric, points]);
+  }, [frontierRunIds, metric, points, selectedId]);
 
   return (
     <section className="efficiency-plot" aria-labelledby="efficiency-plot-heading">
@@ -386,17 +421,48 @@ export function EfficiencyPlot({
             combined rank.
           </p>
         </div>
-        <div className="chart-switch" role="group" aria-label="Efficiency metric">
-          <button type="button" aria-pressed={metric === 'cost'} onClick={() => setMetric('cost')}>
-            Cost
-          </button>
-          <button
-            type="button"
-            aria-pressed={metric === 'duration'}
-            onClick={() => setMetric('duration')}
-          >
-            Duration
-          </button>
+        <div className="chart-controls">
+          <div className="chart-switch" role="group" aria-label="Efficiency metric">
+            <button
+              type="button"
+              aria-pressed={metric === 'cost'}
+              onClick={() =>
+                pushAnalyticalUrl(
+                  { efficiencyMetric: 'cost', efficiencySelection: null },
+                  { hasSemanticChange: metric !== 'cost' },
+                )
+              }
+            >
+              Cost
+            </button>
+            <button
+              type="button"
+              aria-pressed={metric === 'duration'}
+              onClick={() =>
+                pushAnalyticalUrl(
+                  { efficiencyMetric: 'duration', efficiencySelection: null },
+                  { hasSemanticChange: metric !== 'duration' },
+                )
+              }
+            >
+              Duration
+            </button>
+          </div>
+          {points.length > 0 ? (
+            <label>
+              Read configuration
+              <select
+                value={selectedId}
+                onChange={(event) => pushAnalyticalUrl({ efficiencySelection: event.target.value })}
+              >
+                {points.map(({ entry }) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.modelFamily} · {entry.reasoningTier}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
       </header>
       {points.length === 0 ? (
@@ -410,6 +476,18 @@ export function EfficiencyPlot({
           label={`Scatter plot of AIQ against ${metric} for ${points.length} configurations, with visible task-sensitivity intervals and descriptive Pareto frontier rings; upper-left is better`}
         />
       )}
+      {selectedPoint ? (
+        <p className="efficiency-coverage" aria-live="polite">
+          Selected: {selectedPoint.entry.modelFamily} · {selectedPoint.entry.reasoningTier} · AIQ{' '}
+          {selectedPoint.y.toFixed(1)} · task-sensitivity interval{' '}
+          {selectedPoint.entry.sensitivityLow?.toFixed(1)}–
+          {selectedPoint.entry.sensitivityHigh?.toFixed(1)} ·{' '}
+          {metric === 'cost'
+            ? `Standard API-equivalent estimate $${selectedPoint.x.toFixed(4)}`
+            : `summed cell adapter time ${(selectedPoint.x / 60_000).toFixed(2)} min`}{' '}
+          · {frontierRunIds.has(selectedPoint.row.runId) ? 'descriptive frontier' : 'not frontier'}
+        </p>
+      ) : null}
       <p className="efficiency-coverage">
         {points.length}/{configurationCount} configurations plotted in the canonical matrix ·{' '}
         {metricUnavailable} metric unavailable · {identityOrScoreRejected} rejected because exact

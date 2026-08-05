@@ -67,6 +67,16 @@ export default async function TrendsPage({
       (value) => value.map(() => false),
     ),
   ]);
+  const evidenceStates = [
+    entriesResult.state,
+    pointsResult.state,
+    runSummariesResult.state,
+    efficiencyResult.state,
+  ];
+  const evidenceNeedsAttention = evidenceStates.some((state) => state === 'unavailable');
+  const evidenceStateSummary = [...new Set(evidenceStates)]
+    .map((state) => (state === 'synthetic' ? 'synthetic / seed' : state))
+    .join(' + ');
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
@@ -77,12 +87,18 @@ export default async function TrendsPage({
           history. Each point carries its task count and task-resampling sensitivity interval.
         </p>
       </div>
-      <div className="evidence-status-grid" aria-label="Trend evidence availability">
-        <ReadStateNote result={entriesResult} subject="Matrix entries" />
-        <ReadStateNote result={pointsResult} subject="Trend points" />
-        <ReadStateNote result={runSummariesResult} subject="Historical run context" />
-        <ReadStateNote result={efficiencyResult} subject="Historical efficiency" />
-      </div>
+      <details className="evidence-status-disclosure" open={evidenceNeedsAttention}>
+        <summary>
+          <span>Evidence availability</span>
+          <span>{evidenceStateSummary} · 4 sources</span>
+        </summary>
+        <div className="evidence-status-grid" aria-label="Trend evidence availability">
+          <ReadStateNote result={entriesResult} subject="Matrix entries" />
+          <ReadStateNote result={pointsResult} subject="Trend points" />
+          <ReadStateNote result={runSummariesResult} subject="Historical run context" />
+          <ReadStateNote result={efficiencyResult} subject="Historical efficiency" />
+        </div>
+      </details>
       <div className="section-heading compact">
         <div>
           <span className="eyebrow">Exact run joins</span>
