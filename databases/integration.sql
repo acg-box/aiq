@@ -1419,6 +1419,44 @@ select pg_temp.aiq_assert(
   'public leaderboard must report runtime issues without semantic incorrect outcomes'
 );
 select pg_temp.aiq_assert(
+  (select count(*) = 2
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_leaderboard'
+     and column_name in ('sensitivity_low','sensitivity_high'))
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_leaderboard'
+      and column_name in ('ci_low','ci_high')
+  )
+  and (
+    select proc.proargnames @> array['sensitivity_low','sensitivity_high']::text[]
+      and not proc.proargnames && array['ci_low','ci_high']::text[]
+    from pg_catalog.pg_proc proc
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = proc.pronamespace
+    where namespace.nspname = 'public'
+      and proc.proname = 'public_trend_points'
+  ),
+  'public score ranges must use explicit sensitivity field names'
+);
+select pg_temp.aiq_assert(
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_scoring_versions'
+      and column_name = 'sensitivity_policy'
+  )
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_scoring_versions'
+      and column_name = 'confidence_policy'
+  ),
+  'public scoring metadata must name the fixed-fixture sensitivity policy explicitly'
+);
+select pg_temp.aiq_assert(
   (select count(*) = 6
    from information_schema.columns
    where table_schema = 'aiq_private'

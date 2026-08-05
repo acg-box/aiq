@@ -65,13 +65,13 @@ export function formatScore(score: number): string {
   return score.toFixed(1);
 }
 
-export function formatConfidenceInterval(
-  entry: Pick<LeaderboardEntry, 'ciLow' | 'ciHigh'>,
+export function formatSensitivityInterval(
+  entry: Pick<LeaderboardEntry, 'sensitivityLow' | 'sensitivityHigh'>,
 ): string {
-  if (entry.ciLow === null || entry.ciHigh === null) {
+  if (entry.sensitivityLow === null || entry.sensitivityHigh === null) {
     return '—';
   }
-  return `${formatScore(entry.ciLow)}–${formatScore(entry.ciHigh)}`;
+  return `${formatScore(entry.sensitivityLow)}–${formatScore(entry.sensitivityHigh)}`;
 }
 
 export function sortLeaderboardByPointEstimate(

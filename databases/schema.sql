@@ -8434,7 +8434,7 @@ $$;
 -- Name: public_trend_points(text); Type: function; Schema: public; Owner: -
 --
 
-create function public.public_trend_points(supplied_range text) returns table(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)
+create function public.public_trend_points(supplied_range text) returns table(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)
     language plpgsql stable
     SET search_path to ''
     as $$
@@ -8510,8 +8510,8 @@ begin
     buckets.bucket_start,
     buckets.bucket_end,
     observation.score,
-    observation.ci_low,
-    observation.ci_high,
+    observation.sensitivity_low,
+    observation.sensitivity_high,
     observation.sample_size,
     observation.represented_run_count,
     bucket_seconds,
@@ -8523,8 +8523,8 @@ begin
       score.scoring_version,
       run.scheduled_for as recorded_at,
       score.fixed_fixture_aiq as score,
-      score.task_resampling_low as ci_low,
-      score.task_resampling_high as ci_high,
+      score.task_resampling_low as sensitivity_low,
+      score.task_resampling_high as sensitivity_high,
       score.valid_task_count as sample_size,
       count(*) over () as represented_run_count,
       run.synthetic
@@ -8543,6 +8543,13 @@ begin
   limit 340;
 end;
 $$;
+
+
+--
+-- Name: function public_trend_points(supplied_range text); Type: COMMENT; Schema: public; Owner: -
+--
+
+comment on function public.public_trend_points(text) IS 'Published fixed-fixture task-mix sensitivity ranges. These deterministic ranges do not provide inferential confidence coverage for model capability.';
 
 
 --
@@ -9643,11 +9650,11 @@ create view public.public_leaderboard with (security_invoker = true) as
         case
             when (score_status = 'official'::aiq_private.score_status) then task_resampling_low
             else null::numeric
-        end as ci_low,
+        end as sensitivity_low,
         case
             when (score_status = 'official'::aiq_private.score_status) then task_resampling_high
             else null::numeric
-        end as ci_high,
+        end as sensitivity_high,
         case
             when (score_status = 'official'::aiq_private.score_status) then valid_task_count
             else null::integer
@@ -9672,6 +9679,13 @@ create view public.public_leaderboard with (security_invoker = true) as
         end as score_status,
     synthetic
    from latest_evidence;
+
+
+--
+-- Name: view public_leaderboard; Type: COMMENT; Schema: public; Owner: -
+--
+
+comment on view public.public_leaderboard IS 'Published Official scores with deterministic fixed-fixture task-mix sensitivity ranges, not inferential confidence intervals.';
 
 
 --
@@ -9859,10 +9873,17 @@ create view public.public_scoring_versions with (security_invoker = true) as
     principles,
     missing_policy,
     failure_policy_text as failure_policy,
-    confidence_policy,
+    confidence_policy as sensitivity_policy,
     synthetic
    from aiq_private.aiq_scoring_versions
   where is_published;
+
+
+--
+-- Name: view public_scoring_versions; Type: COMMENT; Schema: public; Owner: -
+--
+
+comment on view public.public_scoring_versions IS 'Published scoring metadata. The sensitivity policy describes deterministic fixed-fixture task-mix variation and does not claim inferential confidence coverage.';
 
 
 --

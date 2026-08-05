@@ -45,7 +45,7 @@ const scoringVersion = {
     'Missing and invalid tasks block Official. Provisional output uses observed domain means and fixed-fixture completion bounds.',
   failure_policy:
     'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
-  confidence_policy:
+  sensitivity_policy:
     'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
   synthetic: false,
 };

@@ -92,7 +92,7 @@ export const REQUIRED_RPC_CONTRACT = {
   public_trend_points: {
     arguments: 'supplied_range text',
     result:
-      'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
+      'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
     defaultCount: 0,
     modes: ['i', ...Array<string>(13).fill('t')],
     grants: ROLE_GRANTS.publicRead,
@@ -316,8 +316,8 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'matrix_id',
       'run_id',
       'score',
-      'ci_low',
-      'ci_high',
+      'sensitivity_low',
+      'sensitivity_high',
       'sample_size',
       'coverage_percent',
       'runtime_issues',
@@ -331,8 +331,8 @@ const PUBLIC_VIEW_PROBES: Readonly<
       nullable: [
         'run_id',
         'score',
-        'ci_low',
-        'ci_high',
+        'sensitivity_low',
+        'sensitivity_high',
         'sample_size',
         'coverage_percent',
         'runtime_issues',
@@ -343,8 +343,8 @@ const PUBLIC_VIEW_PROBES: Readonly<
       ],
       numbers: [
         'score',
-        'ci_low',
-        'ci_high',
+        'sensitivity_low',
+        'sensitivity_high',
         'sample_size',
         'coverage_percent',
         'runtime_issues',
@@ -587,7 +587,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'principles',
       'missing_policy',
       'failure_policy',
-      'confidence_policy',
+      'sensitivity_policy',
       'synthetic',
     ],
     { booleans: ['synthetic'], stringArrays: ['principles'] },
@@ -1005,8 +1005,8 @@ function isTrendPoint(candidate: unknown): boolean {
     typeof candidate.bucket_started_at === 'string' &&
     typeof candidate.bucket_ended_at === 'string' &&
     typeof candidate.score === 'number' &&
-    typeof candidate.ci_low === 'number' &&
-    typeof candidate.ci_high === 'number' &&
+    typeof candidate.sensitivity_low === 'number' &&
+    typeof candidate.sensitivity_high === 'number' &&
     typeof candidate.sample_size === 'number' &&
     typeof candidate.represented_run_count === 'number' &&
     typeof candidate.resolution_seconds === 'number' &&

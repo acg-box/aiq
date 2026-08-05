@@ -5,8 +5,8 @@ export const TREND_BAR_MAX_WIDTH = 14;
 export interface TrendIntervalPoint {
   readonly entryId: string;
   readonly recordedAt: string;
-  readonly ciLow: number;
-  readonly ciHigh: number;
+  readonly sensitivityLow: number;
+  readonly sensitivityHigh: number;
 }
 
 export interface TrendBarLayoutItem {
@@ -26,7 +26,14 @@ export function trendIntervalData(
 ): ReadonlyArray<readonly [number, number, number]> {
   return points
     .filter((point) => point.entryId === entryId)
-    .map((point) => [new Date(point.recordedAt).getTime(), point.ciLow, point.ciHigh] as const);
+    .map(
+      (point) =>
+        [
+          new Date(point.recordedAt).getTime(),
+          point.sensitivityLow,
+          point.sensitivityHigh,
+        ] as const,
+    );
 }
 
 export function trendIntervalXOffset(

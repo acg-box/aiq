@@ -58,6 +58,18 @@ async function getActualRunPath(page: Page): Promise<string> {
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
+  const ranking = page.getByRole('region', { name: 'Top configurations' });
+  const snapshot = page.getByRole('region', { name: 'Secondary benchmark snapshot' });
+  await expect(ranking).toBeVisible();
+  await expect(ranking.getByRole('row')).toHaveCount(6);
+  const rankingBox = await ranking.boundingBox();
+  expect(rankingBox).not.toBeNull();
+  expect((rankingBox?.y ?? 844) + (rankingBox?.height ?? 0)).toBeLessThanOrEqual(844);
+  const snapshotBox = await snapshot.boundingBox();
+  expect(snapshotBox).not.toBeNull();
+  expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
+    snapshotBox?.y ?? Number.NEGATIVE_INFINITY,
+  );
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',

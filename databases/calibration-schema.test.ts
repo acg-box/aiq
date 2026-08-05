@@ -150,6 +150,34 @@ void test('publishes leaderboard runtime issues without merging semantic incorre
   );
 });
 
+void test('names public task-mix ranges as sensitivity, not confidence intervals', () => {
+  const leaderboard = schema.match(/create view public\.public_leaderboard[\s\S]*?;\n/)?.[0] ?? '';
+  const trend =
+    schema.match(/create function public\.public_trend_points[\s\S]*?\n\$\$;/)?.[0] ?? '';
+  const scoringVersions =
+    schema.match(/create view public\.public_scoring_versions[\s\S]*?;\n/)?.[0] ?? '';
+
+  for (const publicContract of [leaderboard, trend]) {
+    assert.match(publicContract, /sensitivity_low/);
+    assert.match(publicContract, /sensitivity_high/);
+    assert.doesNotMatch(publicContract, /\bci_low\b|\bci_high\b/);
+  }
+  assert.match(scoringVersions, /confidence_policy as sensitivity_policy/);
+  assert.doesNotMatch(scoringVersions, /\n    confidence_policy,/);
+  assert.match(
+    schema,
+    /comment on function public\.public_trend_points\(text\) IS '[^']*do not provide inferential confidence coverage[^']*';/,
+  );
+  assert.match(
+    schema,
+    /comment on view public\.public_leaderboard IS '[^']*not inferential confidence intervals[^']*';/,
+  );
+  assert.match(
+    schema,
+    /comment on view public\.public_scoring_versions IS '[^']*does not claim inferential confidence coverage[^']*';/,
+  );
+});
+
 void test('separates verifier and publisher RPC authority', () => {
   for (const rpc of [
     'aiq_stage_calibration_verification(jsonb,uuid,uuid,integer)',

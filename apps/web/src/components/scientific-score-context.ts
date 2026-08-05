@@ -146,7 +146,9 @@ export function buildRunScientificSummary({
     exactEfficiency.standardApiEquivalentUsdNanos !== null;
   return {
     aiq: score ? score.score.toFixed(1) : UNAVAILABLE,
-    interval: score ? `${score.ciLow.toFixed(1)}–${score.ciHigh.toFixed(1)}` : UNAVAILABLE,
+    interval: score
+      ? `${score.sensitivityLow.toFixed(1)}–${score.sensitivityHigh.toFixed(1)}`
+      : UNAVAILABLE,
     sampleSize: score ? score.sampleSize.toLocaleString() : UNAVAILABLE,
     coverage:
       resultSummary.coveragePercent === null

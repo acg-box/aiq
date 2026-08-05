@@ -44,7 +44,7 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
                   </span>
                 </th>
                 <td className="score">{presentation.score}</td>
-                <td>{presentation.confidenceInterval}</td>
+                <td>{presentation.sensitivityInterval}</td>
                 <td>{presentation.samples}</td>
                 <td>{presentation.coverage}</td>
                 <td>{presentation.runtimeIssues ?? '—'}</td>

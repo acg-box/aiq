@@ -8,7 +8,8 @@ import { createPageMetadata } from '../site-metadata.ts';
 export const metadata: Metadata = createPageMetadata({
   title: 'Method',
   path: '/method',
-  description: 'Read the AIQ fixed-fixture benchmark, scoring, uncertainty, and provenance method.',
+  description:
+    'Read the AIQ fixed-fixture benchmark, scoring, task-mix sensitivity, and provenance method.',
 });
 export const dynamic = 'force-dynamic';
 
@@ -199,7 +200,7 @@ export default async function MethodPage() {
             <article>
               <span className="eyebrow">04 · Sensitivity, not generalization</span>
               <h2>What the interval can and cannot say</h2>
-              <p>{result.data.confidencePolicy}</p>
+              <p>{result.data.sensitivityPolicy}</p>
               <div className="formula">
                 <span>Fixed-fixture or conditional AIQ</span>
                 <strong>equal-weight mean of 10 frozen-fixture domain means</strong>

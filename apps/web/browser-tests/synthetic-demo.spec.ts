@@ -144,6 +144,18 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   expect(response?.headers()['cache-control']).toContain('no-store');
   await expect(page.getByRole('heading', { name: 'Current configuration matrix' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toBeVisible();
+  const compactPreview = page.getByRole('region', { name: 'Synthetic matrix preview' });
+  await expect(compactPreview).toBeVisible();
+  await expect(compactPreview.getByRole('row')).toHaveCount(6);
+  await Promise.all(
+    ['Evidence', 'Model / reasoning', 'AIQ demo', 'Coverage'].map((heading) =>
+      expect(compactPreview.getByRole('columnheader', { name: heading })).toBeVisible(),
+    ),
+  );
+  await expect(compactPreview.getByRole('columnheader', { name: 'Rank' })).toHaveCount(0);
+  await expect(compactPreview.getByRole('cell', { name: 'Seed', exact: true })).toHaveCount(5);
+  await expect(compactPreview.getByRole('row').nth(1)).toContainText('Luna');
+  await expect(compactPreview).toContainText('not Official · not ranking eligible');
   await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
 
   const leaderboard = page.getByRole('region', {
@@ -648,6 +660,35 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
   await expectNoDocumentOverflow(page, testInfo);
   expect(runtimeFailures).toEqual([]);
 });
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 320, height: 800 },
+] as const) {
+  test(`the ${viewport.width}-pixel first viewport leads with a visible matrix preview`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+
+    const ranking = page.getByRole('region', { name: 'Synthetic matrix preview' });
+    const snapshot = page.getByRole('region', { name: 'Secondary benchmark snapshot' });
+    await expect(ranking).toBeVisible();
+    await expect(ranking.getByRole('row')).toHaveCount(6);
+    await expect(ranking.getByRole('cell', { name: 'Seed', exact: true })).toHaveCount(5);
+    await expect(ranking.getByRole('columnheader', { name: 'Rank' })).toHaveCount(0);
+    const rankingBox = await ranking.boundingBox();
+    expect(rankingBox).not.toBeNull();
+    expect((rankingBox?.y ?? viewport.height) + (rankingBox?.height ?? 0)).toBeLessThanOrEqual(
+      viewport.height,
+    );
+    const snapshotBox = await snapshot.boundingBox();
+    expect(snapshotBox).not.toBeNull();
+    expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
+      snapshotBox?.y ?? Number.NEGATIVE_INFINITY,
+    );
+  });
+}
 
 for (const route of [
   '/compare',

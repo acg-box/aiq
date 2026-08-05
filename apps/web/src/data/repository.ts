@@ -150,8 +150,8 @@ export interface LeaderboardRow {
   matrix_id: string;
   run_id: string | null;
   score: number | null;
-  ci_low: number | null;
-  ci_high: number | null;
+  sensitivity_low: number | null;
+  sensitivity_high: number | null;
   sample_size: number | null;
   coverage_percent: number | null;
   runtime_issues: number | null;
@@ -169,8 +169,8 @@ export interface TrendRow {
   bucket_started_at: string;
   bucket_ended_at: string;
   score: number;
-  ci_low: number;
-  ci_high: number;
+  sensitivity_low: number;
+  sensitivity_high: number;
   sample_size: number;
   represented_run_count: number;
   resolution_seconds: number;
@@ -187,8 +187,8 @@ function isTrendRow(value: unknown): value is TrendRow {
   const bucketStartedAt = value.bucket_started_at;
   const bucketEndedAt = value.bucket_ended_at;
   const score = value.score;
-  const ciLow = value.ci_low;
-  const ciHigh = value.ci_high;
+  const sensitivityLow = value.sensitivity_low;
+  const sensitivityHigh = value.sensitivity_high;
   const sampleSize = value.sample_size;
   const representedRunCount = value.represented_run_count;
   const resolutionSeconds = value.resolution_seconds;
@@ -207,12 +207,12 @@ function isTrendRow(value: unknown): value is TrendRow {
     isFiniteNumber(score) &&
     score >= 0 &&
     score <= 100 &&
-    isFiniteNumber(ciLow) &&
-    isFiniteNumber(ciHigh) &&
-    ciLow >= 0 &&
-    ciLow <= score &&
-    score <= ciHigh &&
-    ciHigh <= 100 &&
+    isFiniteNumber(sensitivityLow) &&
+    isFiniteNumber(sensitivityHigh) &&
+    sensitivityLow >= 0 &&
+    sensitivityLow <= score &&
+    score <= sensitivityHigh &&
+    sensitivityHigh <= 100 &&
     sampleSize === 72 &&
     isPositiveCount(representedRunCount) &&
     isCount(resolutionSeconds) &&
@@ -1782,7 +1782,7 @@ interface ScoringVersionRow {
   principles: string[];
   missing_policy: string;
   failure_policy: string;
-  confidence_policy: string;
+  sensitivity_policy: string;
   synthetic: boolean;
 }
 
@@ -2180,12 +2180,12 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
       isFiniteNumber(value.score) &&
       value.score >= 0 &&
       value.score <= 100 &&
-      isFiniteNumber(value.ci_low) &&
-      isFiniteNumber(value.ci_high) &&
-      value.ci_low >= 0 &&
-      value.ci_low <= value.score &&
-      value.score <= value.ci_high &&
-      value.ci_high <= 100 &&
+      isFiniteNumber(value.sensitivity_low) &&
+      isFiniteNumber(value.sensitivity_high) &&
+      value.sensitivity_low >= 0 &&
+      value.sensitivity_low <= value.score &&
+      value.score <= value.sensitivity_high &&
+      value.sensitivity_high <= 100 &&
       value.sample_size === 72 &&
       value.coverage_percent === 100 &&
       isCount(value.runtime_issues) &&
@@ -2196,8 +2196,8 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
   return (
     (value.score_status === 'not_applicable' || value.score_status === 'missing') &&
     value.score === null &&
-    value.ci_low === null &&
-    value.ci_high === null &&
+    value.sensitivity_low === null &&
+    value.sensitivity_high === null &&
     value.sample_size === null &&
     value.coverage_percent === null &&
     value.runtime_issues === null &&
@@ -2231,8 +2231,8 @@ export function joinModelMatrixWithLeaderboard(
       modelName: identity.model_name,
       reasoningTier: identity.reasoning_tier,
       score: officialRow?.score ?? null,
-      ciLow: officialRow?.ci_low ?? null,
-      ciHigh: officialRow?.ci_high ?? null,
+      sensitivityLow: officialRow?.sensitivity_low ?? null,
+      sensitivityHigh: officialRow?.sensitivity_high ?? null,
       sampleSize: officialRow?.sample_size ?? null,
       coveragePercent: officialRow?.coverage_percent ?? null,
       runtimeIssues: officialRow?.runtime_issues ?? null,
@@ -2479,7 +2479,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       this.#client
         .from(PUBLIC_VIEW_NAMES.leaderboard)
         .select(
-          'matrix_id,run_id,score,ci_low,ci_high,sample_size,coverage_percent,runtime_issues,missing,scoring_version,score_status,synthetic',
+          'matrix_id,run_id,score,sensitivity_low,sensitivity_high,sample_size,coverage_percent,runtime_issues,missing,scoring_version,score_status,synthetic',
         )
         .overrideTypes<LeaderboardRow[], { merge: false }>(),
     ]);
@@ -2546,8 +2546,8 @@ export class SupabaseAiqRepository implements AiqRepository {
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
         score: row.score,
-        ciLow: row.ci_low,
-        ciHigh: row.ci_high,
+        sensitivityLow: row.sensitivity_low,
+        sensitivityHigh: row.sensitivity_high,
         sampleSize: row.sample_size,
         representedRunCount: row.represented_run_count,
         resolutionSeconds: row.resolution_seconds,
@@ -3142,7 +3142,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       this.#client
         .from(PUBLIC_VIEW_NAMES.scoringVersions)
         .select(
-          'benchmark_version,scoring_version,published_at,principles,missing_policy,failure_policy,confidence_policy,synthetic',
+          'benchmark_version,scoring_version,published_at,principles,missing_policy,failure_policy,sensitivity_policy,synthetic',
         )
         .order('published_at', { ascending: false })
         .limit(1)
@@ -3171,7 +3171,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       principles: version.principles,
       missingPolicy: version.missing_policy,
       failurePolicy: version.failure_policy,
-      confidencePolicy: version.confidence_policy,
+      sensitivityPolicy: version.sensitivity_policy,
       synthetic: version.synthetic,
       domainWeights: coverageResult.data
         .filter((coverage) => coverage.scoring_version === version.scoring_version)

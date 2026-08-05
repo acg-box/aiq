@@ -60,8 +60,8 @@ const seedLeaderboardBase = modelConfig
         modelName: model.modelName,
         reasoningTier,
         score: Number(score.toFixed(1)),
-        ciLow: Number((score - 2.1 - familyIndex * 0.1).toFixed(1)),
-        ciHigh: Number((score + 2.1 + familyIndex * 0.1).toFixed(1)),
+        sensitivityLow: Number((score - 2.1 - familyIndex * 0.1).toFixed(1)),
+        sensitivityHigh: Number((score + 2.1 + familyIndex * 0.1).toFixed(1)),
         sampleSize: 72,
         coveragePercent: 100,
         runtimeIssues,
@@ -101,8 +101,8 @@ export const seedTrendPoints: readonly TrendPoint[] = trendEntryIds.flatMap(
         bucketStartedAt: recordedAt.toISOString(),
         bucketEndedAt: new Date(recordedAt.getTime() + 1).toISOString(),
         score: Number((entry.score + drift).toFixed(1)),
-        ciLow: Number((entry.ciLow + drift).toFixed(1)),
-        ciHigh: Number((entry.ciHigh + drift).toFixed(1)),
+        sensitivityLow: Number((entry.sensitivityLow + drift).toFixed(1)),
+        sensitivityHigh: Number((entry.sensitivityHigh + drift).toFixed(1)),
         sampleSize: 72,
         representedRunCount: 1,
         resolutionSeconds: 0,
@@ -282,7 +282,7 @@ export const seedMethodology: Methodology = {
     'Missing and invalid results block Official and remain in completion accounting. A complete synthetic fixture is descriptive, never Official, and not ranked. A Provisional point estimate averages valid observed tasks within each domain; fixed-fixture completion bounds retain every planned task and assign unobserved tasks zero or one. Provisional requires at least 60 results and at least 4 in every domain, and is not ranked.',
   failurePolicy:
     'Agent, model, tool, timeout, budget, unsupported-runtime, and wrong-artifact failures during a valid attempt score zero. Invalid infrastructure attempts are audited and rerun. A whole configuration can be N/A only when preflight proves it unavailable; partial capability gaps score zero.',
-  confidencePolicy:
+  sensitivityPolicy:
     'The canonical fixed-fixture interval draws committed clusters with replacement inside each domain, includes all task scores in each drawn cluster, and recomputes the equal-weight ten-domain score. It expands each raw 95-percentile deviation from the observed fixture score by the versioned 1.3 correction and clamps the endpoints to 0 through 100. Development simulations selected the correction for this finite fixture during held-out calibration. It is not a universal confidence interval for model capability.',
   synthetic: true,
 };
