@@ -712,6 +712,39 @@ void test('rejects malformed, incomplete, duplicate, and mismatched references',
       },
     ],
     [
+      'missing controlled OpenSSL configuration',
+      (reference) => {
+        const execution = object(object(reference.corpus_commitment).execution);
+        const runtime = object(execution.runtime_provenance);
+        delete object(object(runtime.locale_and_timezone).environment).OPENSSL_CONF;
+        execution.environment_sha256 = `sha256:${createHash('sha256')
+          .update(canonicalJson(runtime))
+          .digest('hex')}`;
+      },
+    ],
+    [
+      'OpenSSL null device does not match the committed platform',
+      (reference) => {
+        const execution = object(object(reference.corpus_commitment).execution);
+        const runtime = object(execution.runtime_provenance);
+        object(object(runtime.locale_and_timezone).environment).OPENSSL_CONF = 'NUL';
+        execution.environment_sha256 = `sha256:${createHash('sha256')
+          .update(canonicalJson(runtime))
+          .digest('hex')}`;
+      },
+    ],
+    [
+      'operating-system platform does not match the model toolchain',
+      (reference) => {
+        const execution = object(object(reference.corpus_commitment).execution);
+        const runtime = object(execution.runtime_provenance);
+        object(runtime.operating_system).platform = 'win32';
+        execution.environment_sha256 = `sha256:${createHash('sha256')
+          .update(canonicalJson(runtime))
+          .digest('hex')}`;
+      },
+    ],
+    [
       'mismatched deterministic environment digest',
       (reference) => {
         object(object(reference.corpus_commitment).execution).environment_sha256 = digest(123_456);
