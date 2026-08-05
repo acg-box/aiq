@@ -214,7 +214,12 @@ await test('the four public calibration revisions state every requested non-secr
   for (const term of ['multi-grapheme', 'Start, middle, and end', 'display budget']) {
     strictEqual(revisions.get('debugging-04')?.includes(term), true);
   }
-  for (const term of ['client-scoped', 'identifier and ETag', 'Different clients', 'settlement']) {
+  for (const term of [
+    'multi-module',
+    'injected time',
+    'stale-if-error',
+    'generation-safe invalidation',
+  ]) {
     strictEqual(revisions.get('coding-06')?.includes(term), true);
   }
 });
