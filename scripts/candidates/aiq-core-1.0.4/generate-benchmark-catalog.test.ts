@@ -106,6 +106,45 @@ await test('revised tasks use new public contracts without publishing private co
     strictEqual(task.input_contract.content_handle.includes('/1.0.4/'), true);
     strictEqual(task.evaluator.scorer_version, '1.0.4');
     strictEqual(task.leakage_review.notes.includes('outside Git'), true);
+    strictEqual(
+      task.design_revision.controlled_corpus_requirements.some((requirement) =>
+        /component|0\.20|at least three deterministic assertions/iu.test(requirement),
+      ),
+      false,
+    );
+    strictEqual(
+      task.design_revision.controlled_corpus_requirements.some((requirement) =>
+        requirement.includes('hard-gate and structural failures'),
+      ),
+      true,
+    );
+    strictEqual(task.design_revision.controlled_corpus_requirements.length, 4);
+    deepStrictEqual(task.evaluator.scoring_contract, {
+      aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
+      check_scoring: 'binary',
+      check_weighting: 'nonnegative_integer_weight_per_committed_check',
+      weight_source: 'private_content_addressed_evaluator_configuration',
+      formula: 'hard_gate_or_structural_failure ? 0 : sum(weight_i * passed_i) / sum(weight_i)',
+      denominator_requirement: 'sum_of_positive_check_weights_greater_than_zero',
+      hard_gate_definition: 'hard_gate_true_or_check_type_workspace_policy',
+      hard_gate_rule: 'any_failed_committed_hard_gate_or_structural_failure_sets_score_to_zero',
+      zero_weight_rule: 'only_committed_hard_gates_may_have_zero_weight',
+      positive_weight_gate_rule:
+        'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass',
+      evaluator_error_policy: 'unscored_invalid_evidence',
+      attributable_runtime_failure_policy:
+        'score_zero_as_defined_by_public_runtime_failure_taxonomy',
+      outcome_rule: {
+        correct: 'score_equals_one',
+        partial: 'score_strictly_between_zero_and_one',
+        incorrect: 'score_equals_zero',
+      },
+      rounding: 'no_evaluator_rounding_exact_replay',
+      score_range: [0, 1],
+      maximum_checks_per_result: 16,
+      public_criteria_role: 'coverage_summary_not_weight_partition',
+      verification: 'committed_configuration_and_result_checks_are_content_addressed_and_replayed',
+    });
     for (const fixture of Object.values(task.evaluator.acceptance_fixture_commitments)) {
       strictEqual(fixture.handle.includes(retargeted ? '/v3/' : '/v2/'), true);
       strictEqual(fixture.status, 'required_in_controlled_source');
@@ -125,6 +164,13 @@ await test('the closed schemas bind the 1.0.4 release and revision provenance', 
   const designProperties = jsonObject(designRevision.properties, 'design properties');
   const provenance = jsonObject(taskProperties.provenance, 'provenance');
   const provenanceProperties = jsonObject(provenance.properties, 'provenance properties');
+  const evaluator = jsonObject(taskProperties.evaluator, 'evaluator');
+  const evaluatorProperties = jsonObject(evaluator.properties, 'evaluator properties');
+  const scoringContract = jsonObject(
+    evaluatorProperties.scoring_contract,
+    'scoring contract schema',
+  );
+  const scoringProperties = jsonObject(scoringContract.properties, 'scoring properties');
   const source = await readFile(taskSchemaPath, 'utf8');
 
   deepStrictEqual(designProperties.supersedes_task_version, { const: '1.0.3' });
@@ -138,6 +184,14 @@ await test('the closed schemas bind the 1.0.4 release and revision provenance', 
   deepStrictEqual(provenanceProperties.source, {
     const: 'scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.ts',
   });
+  deepStrictEqual(scoringProperties.aggregation, {
+    const: 'configured_weighted_binary_check_fraction_with_hard_gates',
+  });
+  deepStrictEqual(scoringProperties.public_criteria_role, {
+    const: 'coverage_summary_not_weight_partition',
+  });
+  strictEqual('components' in scoringProperties, false);
+  strictEqual('minimum_assertions_per_component' in scoringProperties, false);
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.4/'), true);
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.3/'), false);
 });
