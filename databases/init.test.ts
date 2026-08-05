@@ -7,7 +7,13 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
-import { canonicalJson, initializeDatabase, prepareInitialization } from './init.ts';
+import {
+  assertDatabaseTarget,
+  canonicalJson,
+  initializeDatabase,
+  prepareInitialization,
+  prepareInitializationFromFiles,
+} from './init.ts';
 
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
@@ -571,7 +577,7 @@ void test('one CLI command invokes fake psql once without disclosing its URL', a
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
   const secretUrl =
-    'postgresql://operator:secret-value@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres';
+    'postgresql://postgres:secret-value@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres';
   const environment = {
     ...process.env,
     AIQ_DATABASE_URL: secretUrl,
@@ -594,7 +600,7 @@ void test('one CLI command invokes fake psql once without disclosing its URL', a
   strictEqual(childEnvironment.PGHOST, 'db.xxnszykaeapolqdnhalx.supabase.co');
   strictEqual(childEnvironment.PGPORT, '5432');
   strictEqual(childEnvironment.PGDATABASE, 'postgres');
-  strictEqual(childEnvironment.PGUSER, 'operator');
+  strictEqual(childEnvironment.PGUSER, 'postgres');
   strictEqual(childEnvironment.PGPASSWORD, 'secret-value');
   strictEqual(childEnvironment.AIQ_DATABASE_URL, undefined);
   strictEqual(childEnvironment.AIQ_PRODUCTION_REFERENCE, undefined);
@@ -618,7 +624,7 @@ void test('initializer parses readiness from a fake psql executable', async () =
     environment: {
       ...process.env,
       AIQ_DATABASE_URL:
-        'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+        'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
     },
   });
 
@@ -636,40 +642,38 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(Object.keys(receipt.node_ids).length, 3);
 });
 
-void test('initializer binds production to the personal Supabase project ref', async () => {
-  await rejects(
-    initializeDatabase({
-      referencePath: '/does/not/matter.json',
-      repositoryRoot,
-      environment: {
-        AIQ_DATABASE_URL: 'postgresql://operator:private@db.otherproject.supabase.co/postgres',
-      },
-    }),
-    /must target Supabase project xxnszykaeapolqdnhalx/,
+void test('database target guard binds the exact direct production tuple', () => {
+  const productionEnvironment = { NODE_ENV: 'production' };
+  assert.doesNotThrow(() =>
+    assertDatabaseTarget(
+      'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres',
+      productionEnvironment,
+    ),
   );
-  await rejects(
-    initializeDatabase({
-      referencePath: '/does/not/matter.json',
-      repositoryRoot,
-      environment: {
+  for (const target of [
+    'postgresql://postgres:private@db.otherproject.supabase.co/postgres',
+    'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/other_database',
+    'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:6543/postgres',
+    'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+  ]) {
+    assert.throws(
+      () => assertDatabaseTarget(target, productionEnvironment),
+      /must target Supabase project xxnszykaeapolqdnhalx/,
+    );
+  }
+  assert.throws(
+    () =>
+      assertDatabaseTarget('postgresql://postgres:private@127.0.0.1:54322/postgres', {
         NODE_ENV: 'production',
         AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
-        AIQ_DATABASE_URL: 'postgresql://operator:private@127.0.0.1:54322/postgres',
-      },
-    }),
+      }),
     /must target Supabase project xxnszykaeapolqdnhalx/,
   );
-  await rejects(
-    initializeDatabase({
-      referencePath: '/does/not/matter.json',
-      repositoryRoot,
-      environment: {
-        NODE_ENV: 'test',
-        AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
-        AIQ_DATABASE_URL: 'postgresql://operator:private@127.0.0.1:54322/postgres',
-      },
+  assert.doesNotThrow(() =>
+    assertDatabaseTarget('postgresql://operator:private@127.0.0.1:54322/aiq_reset_fixture', {
+      NODE_ENV: 'test',
+      AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
     }),
-    (error: unknown) => error instanceof Error && /does\/not\/matter/.test(error.message),
   );
 });
 
@@ -710,12 +714,82 @@ void test('rejects malformed corpus provenance before psql starts', async () => 
       psqlCommand: fake.command,
       environment: {
         AIQ_DATABASE_URL:
-          'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+          'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
       },
     }),
     /corpus/,
   );
   await rejects(readFile(fake.countPath));
+});
+
+void test('file preparation rejects missing, malformed, and invalid references before psql', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aiq-database-init-reference-preflight-'));
+  const fake = await fakePsql(root);
+  const malformedPath = join(root, 'malformed.json');
+  const invalidPath = join(root, 'invalid.json');
+  await writeFile(malformedPath, '{not-json');
+  await writeFile(invalidPath, '{}');
+  const options = {
+    repositoryRoot,
+    psqlCommand: fake.command,
+    environment: {
+      ...process.env,
+      AIQ_DATABASE_URL:
+        'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+    },
+  };
+  await rejects(
+    initializeDatabase({ ...options, referencePath: join(root, 'missing.json') }),
+    /production reference file could not be read/,
+  );
+  await rejects(
+    initializeDatabase({ ...options, referencePath: malformedPath }),
+    /production reference file is not valid JSON/,
+  );
+  await rejects(initializeDatabase({ ...options, referencePath: invalidPath }), /reference/);
+  await rejects(readFile(fake.countPath));
+});
+
+void test('file preparation is transitively immutable and can be reused by initialization', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'aiq-database-init-prepared-'));
+  const fake = await fakePsql(root);
+  const referencePath = join(root, 'reference.json');
+  await writeFile(referencePath, JSON.stringify(await referenceFixture()));
+  const preparedInitialization = await prepareInitializationFromFiles({
+    referencePath,
+    repositoryRoot,
+  });
+  const preparedSnapshot = structuredClone(preparedInitialization);
+  const reachableObjects: readonly object[] = [
+    preparedInitialization,
+    preparedInitialization.receipt,
+    preparedInitialization.receipt.node_ids,
+  ];
+  for (const target of reachableObjects) {
+    strictEqual(Object.isFrozen(target), true);
+    for (const key of Object.keys(target)) {
+      strictEqual(Reflect.set(target, key, 'tampered'), false);
+      strictEqual(Reflect.deleteProperty(target, key), false);
+    }
+    strictEqual(Reflect.set(target, 'unexpected', 'tampered'), false);
+  }
+  deepStrictEqual(preparedInitialization, preparedSnapshot);
+  await writeFile(referencePath, '{changed-after-preparation');
+  const receipt = await initializeDatabase({
+    referencePath,
+    repositoryRoot,
+    preparedInitialization,
+    psqlCommand: fake.command,
+    environment: {
+      ...process.env,
+      AIQ_DATABASE_URL:
+        'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+    },
+  });
+  deepStrictEqual(receipt, preparedSnapshot.receipt);
+  deepStrictEqual(preparedInitialization, preparedSnapshot);
+  strictEqual(await readFile(fake.stdinPath, 'utf8'), preparedSnapshot.sql);
+  strictEqual((await readFile(fake.countPath, 'utf8')).trim(), '1');
 });
 
 void test('CLI accepts the reference path environment fallback without disclosing it', async () => {
@@ -727,7 +801,7 @@ void test('CLI accepts the reference path environment fallback without disclosin
     cwd: repositoryRoot,
     env: {
       ...process.env,
-      AIQ_DATABASE_URL: 'postgresql://operator:secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+      AIQ_DATABASE_URL: 'postgresql://postgres:secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
       AIQ_PRODUCTION_REFERENCE: referencePath,
       PATH: `${root}:${process.env.PATH ?? ''}`,
     },
@@ -956,7 +1030,7 @@ void test('failed psql gives fail-closed greenfield retry guidance without URL d
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
   const secretUrl =
-    'postgresql://operator:failure-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
+    'postgresql://postgres:failure-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
 
   await rejects(
     initializeDatabase({
@@ -984,7 +1058,7 @@ void test('the controlled preflight marker reports rejected reuse without URL di
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
   const secretUrl =
-    'postgresql://operator:reuse-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
+    'postgresql://postgres:reuse-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
 
   await rejects(
     initializeDatabase({
@@ -1019,7 +1093,7 @@ void test('an incidental reuse marker in a connection error stays a generic fail
       psqlCommand: command,
       environment: {
         AIQ_DATABASE_URL:
-          'postgresql://operator:collision-secret@db.xxnszykaeapolqdnhalx.supabase.co/AIQ_GREENFIELD_REUSE_REJECTED',
+          'postgresql://postgres:collision-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
       },
     }),
     (error: unknown) =>

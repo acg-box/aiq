@@ -104,9 +104,17 @@ export interface InitializationReceipt {
 }
 
 export interface PreparedInitialization {
+  readonly schema: string;
   readonly sql: string;
   readonly receipt: InitializationReceipt;
 }
+
+export interface InitializationPreparationOptions {
+  readonly referencePath: string;
+  readonly repositoryRoot?: string;
+}
+
+const validatedPreparations = new WeakSet<PreparedInitialization>();
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1159,7 +1167,8 @@ $aiq_greenfield_preflight$;
     publisher: '',
   };
   for (const node of reference.nodes) nodeIds[node.role] = node.node_id;
-  return {
+  const prepared: PreparedInitialization = {
+    schema,
     sql: `\\set ON_ERROR_STOP on
 \\set VERBOSITY verbose
 begin;
@@ -1189,6 +1198,50 @@ commit;
       node_ids: nodeIds,
     },
   };
+  Object.freeze(prepared.receipt.node_ids);
+  Object.freeze(prepared.receipt);
+  Object.freeze(prepared);
+  validatedPreparations.add(prepared);
+  return prepared;
+}
+
+function parseJsonDocument(bytes: Buffer | string, label: string): unknown {
+  try {
+    return JSON.parse(bytes.toString()) as unknown;
+  } catch {
+    throw new Error(`${label} is not valid JSON`);
+  }
+}
+
+export async function prepareInitializationFromFiles(
+  options: InitializationPreparationOptions,
+): Promise<PreparedInitialization> {
+  const repositoryRoot = options.repositoryRoot ?? resolve(import.meta.dirname, '..');
+  let referenceBytes: Buffer;
+  try {
+    referenceBytes = await readFile(options.referencePath);
+  } catch {
+    throw new Error('production reference file could not be read');
+  }
+  if (referenceBytes.length === 0 || referenceBytes.length > MAX_REFERENCE_BYTES) {
+    throw new Error('production reference file size is invalid');
+  }
+  const reference = parseJsonDocument(referenceBytes, 'production reference file');
+  const [schema, catalogBytes, corpusSchemaBytes, reviewedTaskCommitmentsBytes] = await Promise.all(
+    [
+      readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
+      readFile(resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.4/catalog.json')),
+      readFile(resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v2.schema.json')),
+      readFile(resolve(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json')),
+    ],
+  );
+  return prepareInitialization(
+    schema,
+    parseJsonDocument(catalogBytes, 'checked-in catalog authority'),
+    reference,
+    parseJsonDocument(corpusSchemaBytes, 'checked-in corpus schema authority'),
+    parseJsonDocument(reviewedTaskCommitmentsBytes, 'checked-in task commitment authority'),
+  );
 }
 
 async function runPsql(
@@ -1299,16 +1352,29 @@ export function databaseConnectionEnvironment(databaseUrl: string): NodeJS.Proce
   return result;
 }
 
-function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.ProcessEnv): void {
+export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.ProcessEnv): void {
   let parsed: URL;
   try {
+    if (databaseUrl.length > 2048 || /\s/.test(databaseUrl)) throw new Error('invalid URL');
     parsed = new URL(databaseUrl);
   } catch {
     throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
   }
-  if (parsed.hostname === PRODUCTION_DATABASE_HOST) return;
+  const postgresProtocol = parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:';
+  const productionTarget =
+    postgresProtocol &&
+    parsed.hostname === PRODUCTION_DATABASE_HOST &&
+    parsed.pathname === '/postgres' &&
+    (parsed.port === '' || parsed.port === '5432') &&
+    parsed.username === 'postgres' &&
+    parsed.hash === '';
+  if (productionTarget) return;
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
   const localOverride =
+    postgresProtocol &&
+    parsed.pathname !== '' &&
+    parsed.pathname !== '/' &&
+    parsed.hash === '' &&
     environment.AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET === 'true' &&
     (environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') &&
     loopback;
@@ -1343,51 +1409,26 @@ function readinessPassed(output: string, expected: InitializationReceipt): boole
 export async function initializeDatabase(options: {
   readonly referencePath: string;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly preparedInitialization?: PreparedInitialization;
   readonly psqlCommand?: string;
   readonly repositoryRoot?: string;
 }): Promise<InitializationReceipt> {
   const environment = options.environment ?? process.env;
   const databaseUrl = environment.AIQ_DATABASE_URL;
-  if (
-    databaseUrl === undefined ||
-    !/^postgres(?:ql)?:\/\/[^\s]{1,2048}(?![\s\S])/.test(databaseUrl)
-  ) {
+  if (databaseUrl === undefined) {
     throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
   }
   assertDatabaseTarget(databaseUrl, environment);
   const repositoryRoot = options.repositoryRoot ?? resolve(import.meta.dirname, '..');
-  const referenceBytes = await readFile(options.referencePath);
-  if (referenceBytes.length === 0 || referenceBytes.length > MAX_REFERENCE_BYTES) {
-    throw new Error('production reference file size is invalid');
+  const prepared =
+    options.preparedInitialization ??
+    (await prepareInitializationFromFiles({
+      referencePath: options.referencePath,
+      repositoryRoot,
+    }));
+  if (!validatedPreparations.has(prepared)) {
+    throw new Error('Prepared initialization did not come from validated repository authority');
   }
-  let reference: unknown;
-  try {
-    reference = JSON.parse(referenceBytes.toString('utf8'));
-  } catch {
-    throw new Error('production reference file is not valid JSON');
-  }
-  const [schema, catalog, corpusSchema, reviewedTaskCommitments] = await Promise.all([
-    readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
-    readFile(
-      resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.4/catalog.json'),
-      'utf8',
-    ).then((bytes) => JSON.parse(bytes) as unknown),
-    readFile(
-      resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v2.schema.json'),
-      'utf8',
-    ).then((bytes) => JSON.parse(bytes) as unknown),
-    readFile(
-      resolve(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json'),
-      'utf8',
-    ).then((bytes) => JSON.parse(bytes) as unknown),
-  ]);
-  const prepared = prepareInitialization(
-    schema,
-    catalog,
-    reference,
-    corpusSchema,
-    reviewedTaskCommitments,
-  );
   const output = await runPsql(
     options.psqlCommand ?? 'psql',
     databaseUrl,

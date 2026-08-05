@@ -222,12 +222,18 @@ args = ["scripts/list-template-markers.ts"]
 # Initialize
 # | task                  | type    | cwd |
 # | --------------------- | ------- | --- |
-# | init-database | command |     |
+# | init-database  | command |     |
+# | reset-database | command |     |
 
 [tasks.init-database]
 workspace = false
 command = "node"
 args = ["databases/init.ts"]
+
+[tasks.reset-database]
+workspace = false
+command = "node"
+args = ["databases/reset.ts", "${@}"]
 
 # Smoke
 # | task                      | type    | cwd |
