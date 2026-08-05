@@ -20,9 +20,6 @@ const candidateRoot = new URL('../../../benchmarks/candidates/aiq-core-1.0.4/', 
 const catalogPath = fileURLToPath(new URL('catalog.json', candidateRoot));
 const catalogSchemaPath = fileURLToPath(new URL('catalog.schema.json', candidateRoot));
 const taskSchemaPath = fileURLToPath(new URL('task.schema.json', candidateRoot));
-const activeTaskSchemaPath = fileURLToPath(
-  new URL('../../../benchmarks/schema/task.schema.json', import.meta.url),
-);
 
 const EXPECTED_REVISED_TASK_IDS = [
   'coding-01',
@@ -203,19 +200,19 @@ await test('the closed schemas bind the 1.0.4 release and revision provenance', 
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.3/'), false);
 });
 
-await test('the active task schema accepts only AIQ Core 1.0.4 controlled references', async () => {
-  const source = await readFile(activeTaskSchemaPath, 'utf8');
-  const schema = jsonObject(JSON.parse(source) as unknown, 'active task schema');
-  const properties = jsonObject(schema.properties, 'active task properties');
-  const fixtureRefs = jsonObject(properties.fixture_refs, 'active fixture references');
-  const items = jsonObject(fixtureRefs.items, 'active fixture reference items');
+await test('the 1.0.4 task schema accepts only its controlled references', async () => {
+  const source = await readFile(taskSchemaPath, 'utf8');
+  const schema = jsonObject(JSON.parse(source) as unknown, '1.0.4 task schema');
+  const properties = jsonObject(schema.properties, '1.0.4 task properties');
+  const fixtureRefs = jsonObject(properties.fixture_refs, '1.0.4 fixture references');
+  const items = jsonObject(fixtureRefs.items, '1.0.4 fixture reference items');
 
   if (!Array.isArray(items.oneOf)) throw new TypeError('active fixture references need oneOf');
   const controlledPattern = items.oneOf
-    .map((candidate) => jsonObject(candidate, 'active fixture reference alternative').pattern)
+    .map((candidate) => jsonObject(candidate, '1.0.4 fixture reference alternative').pattern)
     .find((pattern) => typeof pattern === 'string' && pattern.includes('aiq-controlled'));
   if (typeof controlledPattern !== 'string') {
-    throw new TypeError('active controlled-reference pattern is missing');
+    throw new TypeError('1.0.4 controlled-reference pattern is missing');
   }
   const controlledReference = new RegExp(controlledPattern, 'u');
 
