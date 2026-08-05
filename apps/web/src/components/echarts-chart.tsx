@@ -56,9 +56,14 @@ export function EChartsChart({
       );
     };
     const render = () => {
+      const motionEnabled = !reducedMotion.matches;
       const themedOption: EChartsCoreOption = {
         ...option,
-        animation: !reducedMotion.matches,
+        animation: motionEnabled,
+        animationDuration: motionEnabled ? 260 : 0,
+        animationDurationUpdate: motionEnabled ? 180 : 0,
+        animationEasing: 'cubicOut',
+        animationEasingUpdate: 'cubicOut',
       };
       chart.setOption(themedOption, { notMerge: true });
       syncDescription();

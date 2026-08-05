@@ -20,6 +20,7 @@ import { resolveExactEfficiencyRows } from './scientific-evidence-resolution.ts'
 import { formatScientificScoreContextHtml } from './scientific-score-context.ts';
 
 type Metric = 'cost' | 'duration';
+const DESCRIPTIVE_FRONTIER_LEGEND = 'Frontier · descriptive within matching bindings';
 const CANONICAL_CONFIGURATION_IDS = [
   'sol-low',
   'sol-medium',
@@ -251,12 +252,13 @@ export function EfficiencyPlot({
     const duration = metric === 'duration';
     return {
       aria: { enabled: true, decal: { show: true } },
-      grid: { left: 62, right: 28, top: 24, bottom: 54 },
+      grid: { left: 62, right: 28, top: 48, bottom: 54 },
       legend: {
         top: 0,
         right: 12,
+        selectedMode: false,
         textStyle: { color: 'var(--muted)' },
-        data: ['Sol', 'Terra', 'Luna'],
+        data: ['Sol', 'Terra', 'Luna', DESCRIPTIVE_FRONTIER_LEGEND],
       },
       tooltip: {
         trigger: 'item',
@@ -392,7 +394,7 @@ export function EfficiencyPlot({
         })),
         {
           type: 'scatter',
-          name: 'Descriptive Pareto frontier',
+          name: DESCRIPTIVE_FRONTIER_LEGEND,
           silent: true,
           z: 5,
           symbolSize: 21,
@@ -416,9 +418,9 @@ export function EfficiencyPlot({
             AIQ versus {metric === 'cost' ? 'estimated cost' : 'duration'}
           </h3>
           <p>
-            Upper-left is better. Rings mark nondominated points only inside matching matrix batch,
-            scoring, concurrency, evidence-method, and pricing bindings; they do not create a
-            combined rank.
+            Upper-left is better. Rings mark nondominated points and do not create a combined rank.
+            Matching matrix batch, scoring, concurrency, evidence-method, and pricing bindings are
+            required.
           </p>
         </div>
         <div className="chart-controls">

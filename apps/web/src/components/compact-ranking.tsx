@@ -19,7 +19,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
   const isSyntheticPreview = !isOfficialRanking && syntheticPreview.length > 0;
   const visibleEntries = isOfficialRanking ? officialRanking : syntheticPreview;
   const heading = isOfficialRanking
-    ? 'Top configurations'
+    ? 'Published descriptive estimates'
     : isSyntheticPreview
       ? 'Synthetic matrix preview'
       : 'Published ranking unavailable';
@@ -30,7 +30,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
         <div>
           <span className="eyebrow">
             {isOfficialRanking
-              ? 'Descriptive point-estimate order'
+              ? 'Fixed-task evidence · ordered for inspection'
               : isSyntheticPreview
                 ? 'Non-ranking example'
                 : 'Published evidence'}
@@ -46,15 +46,18 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
           <table>
             <caption className="sr-only">
               {isOfficialRanking
-                ? 'Top Official configurations ordered by fixed-fixture AIQ point estimate, high to low. This descriptive order does not identify a statistical winner.'
+                ? 'Five Official configurations shown in descending fixed-fixture AIQ point-estimate order. Each row includes its exact task-resampling sensitivity bounds. The order is descriptive and does not identify a winner.'
                 : 'Synthetic configurations shown in configuration identifier order. Synthetic fixtures are not ranking eligible.'}
             </caption>
             <thead>
               <tr>
-                <th scope="col">{isOfficialRanking ? 'Rank' : 'Evidence'}</th>
+                <th scope="col">{isOfficialRanking ? 'Order' : 'Evidence'}</th>
                 <th scope="col">Model / reasoning</th>
-                <th scope="col">{isOfficialRanking ? 'AIQ' : 'AIQ demo'}</th>
+                <th scope="col">
+                  {isOfficialRanking ? 'AIQ point / bounds' : 'AIQ demo / bounds'}
+                </th>
                 <th scope="col">Coverage</th>
+                <th scope="col">Runtime issues</th>
               </tr>
             </thead>
             <tbody>
@@ -76,8 +79,24 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
                         </span>
                       )}
                     </th>
-                    <td className="compact-score">{presentation.score}</td>
-                    <td>{presentation.coverage}</td>
+                    <td className="compact-score">
+                      <span className="compact-score-point">{presentation.score}</span>
+                      <span className="compact-score-bounds">
+                        sensitivity {presentation.sensitivityInterval}
+                      </span>
+                    </td>
+                    <td className="compact-coverage">
+                      <span className="compact-cell-label" aria-hidden="true">
+                        Coverage
+                      </span>
+                      {presentation.coverage}
+                    </td>
+                    <td className="compact-runtime">
+                      <span className="compact-cell-label" aria-hidden="true">
+                        Runtime issues
+                      </span>
+                      {presentation.runtimeIssues ?? '—'}
+                    </td>
                   </tr>
                 );
               })}
@@ -87,7 +106,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
       )}
       <p>
         {isOfficialRanking
-          ? 'Task-sensitivity intervals remain visible in the full matrix and do not establish a statistical winner.'
+          ? 'AIQ is a fixed-task point estimate; bounds show task-resampling sensitivity. Inspect all 17 configurations before drawing conclusions.'
           : isSyntheticPreview
             ? 'Synthetic fixture · not Official · not ranking eligible.'
             : 'Awaiting a complete Official matrix.'}
