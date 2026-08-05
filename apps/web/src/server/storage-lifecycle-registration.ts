@@ -1,8 +1,8 @@
 import { ARTIFACT_KIND_MAX_BYTES, type ArtifactKind } from './artifact-handler.ts';
+import { AIQ_RUNNER_ARTIFACT_BUCKET, AIQ_SUBMISSION_PACKAGE_BUCKET } from './storage-buckets.ts';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
 const MAX_STORAGE_OBJECT_BYTES = 4 * 1024 * 1024;
-const bucketPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?![\s\S])/;
 const digestPattern = /^[a-f0-9]{64}(?![\s\S])/;
 const uuidPattern =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?![\s\S])/;
@@ -51,7 +51,6 @@ export type StorageRegistrationRpc = (
 
 function isValidObject(object: StorageLifecycleObject): boolean {
   if (
-    !bucketPattern.test(object.bucket) ||
     !digestPattern.test(object.digest) ||
     !Number.isSafeInteger(object.bytes) ||
     object.bytes < 1 ||
@@ -60,10 +59,15 @@ function isValidObject(object: StorageLifecycleObject): boolean {
     return false;
   }
   if (object.objectType === 'submission_package') {
-    return object.artifactKind === null && object.path === `sha256/${object.digest}`;
+    return (
+      object.bucket === AIQ_SUBMISSION_PACKAGE_BUCKET &&
+      object.artifactKind === null &&
+      object.path === `sha256/${object.digest}`
+    );
   }
   return (
     object.objectType === 'runner_artifact' &&
+    object.bucket === AIQ_RUNNER_ARTIFACT_BUCKET &&
     artifactKinds.has(object.artifactKind) &&
     object.bytes <= ARTIFACT_KIND_MAX_BYTES[object.artifactKind] &&
     object.path === `sha256/${object.digest}/${object.artifactKind}`
