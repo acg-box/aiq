@@ -47,8 +47,8 @@ export interface LeaderboardEntry {
   modelName: string;
   reasoningTier: ReasoningTier;
   score: number | null;
-  ciLow: number | null;
-  ciHigh: number | null;
+  sensitivityLow: number | null;
+  sensitivityHigh: number | null;
   sampleSize: number | null;
   coveragePercent: number | null;
   runtimeIssues: number | null;
@@ -61,8 +61,8 @@ export interface LeaderboardEntry {
 
 type ScoredLeaderboardValues = LeaderboardEntry & {
   score: number;
-  ciLow: number;
-  ciHigh: number;
+  sensitivityLow: number;
+  sensitivityHigh: number;
   sampleSize: number;
   coveragePercent: number;
   runtimeIssues: number;
@@ -81,8 +81,8 @@ export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is Scor
   return (
     (entry.scoreStatus === 'official' || entry.scoreStatus === 'synthetic_complete') &&
     entry.score !== null &&
-    entry.ciLow !== null &&
-    entry.ciHigh !== null &&
+    entry.sensitivityLow !== null &&
+    entry.sensitivityHigh !== null &&
     entry.sampleSize !== null &&
     entry.coveragePercent !== null &&
     entry.runtimeIssues !== null &&
@@ -102,8 +102,8 @@ export interface TrendPoint {
   bucketStartedAt: string;
   bucketEndedAt: string;
   score: number;
-  ciLow: number;
-  ciHigh: number;
+  sensitivityLow: number;
+  sensitivityHigh: number;
   sampleSize: number;
   representedRunCount: number;
   resolutionSeconds: number;
@@ -413,7 +413,7 @@ export interface Methodology {
   principles: readonly string[];
   missingPolicy: string;
   failurePolicy: string;
-  confidencePolicy: string;
+  sensitivityPolicy: string;
   synthetic: boolean;
 }
 

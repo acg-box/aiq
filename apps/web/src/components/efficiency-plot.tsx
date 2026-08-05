@@ -283,7 +283,11 @@ export function EfficiencyPlot({
           name: 'Task-sensitivity interval',
           silent: true,
           z: 4,
-          data: points.map(({ entry, x, y }) => [x, entry.ciLow ?? y, entry.ciHigh ?? y]),
+          data: points.map(({ entry, x, y }) => [
+            x,
+            entry.sensitivityLow ?? y,
+            entry.sensitivityHigh ?? y,
+          ]),
           renderItem: (
             _params: unknown,
             api: {
@@ -341,8 +345,8 @@ export function EfficiencyPlot({
               `${entry.modelFamily} · ${entry.reasoningTier}`,
               metric === 'duration' ? row.observedTimeSampleCount : row.estimatedCostSampleCount,
               `${entry.coveragePercent?.toFixed(1) ?? '—'}%`,
-              entry.ciLow ?? y,
-              entry.ciHigh ?? y,
+              entry.sensitivityLow ?? y,
+              entry.sensitivityHigh ?? y,
               entry.scoringVersion ?? 'unavailable',
               entry.synthetic ? 'synthetic' : 'published',
               entry.sampleSize,
@@ -447,7 +451,8 @@ export function EfficiencyPlot({
                     {entry.modelFamily} · {entry.reasoningTier}
                   </th>
                   <td>
-                    {y.toFixed(1)} ({entry.ciLow?.toFixed(1)}–{entry.ciHigh?.toFixed(1)})
+                    {y.toFixed(1)} ({entry.sensitivityLow?.toFixed(1)}–
+                    {entry.sensitivityHigh?.toFixed(1)})
                   </td>
                   <td>
                     {metric === 'cost' ? `$${x.toFixed(4)}` : `${(x / 60_000).toFixed(2)} min`}

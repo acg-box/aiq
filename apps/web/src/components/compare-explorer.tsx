@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 
-import { formatConfidenceInterval } from '../data/format.ts';
+import { formatSensitivityInterval } from '../data/format.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
 import {
   type BenchmarkRunSummary,
@@ -102,7 +102,7 @@ export function CompareExplorer({
     leftResolution.state === 'unavailable' || rightResolution.state === 'unavailable';
   const metrics = [
     ['Point estimate', left.score.toFixed(1), right.score.toFixed(1)],
-    ['Task sensitivity', formatConfidenceInterval(left), formatConfidenceInterval(right)],
+    ['Task sensitivity', formatSensitivityInterval(left), formatSensitivityInterval(right)],
     ['Samples', String(left.sampleSize), String(right.sampleSize)],
     ['Coverage', `${left.coveragePercent.toFixed(1)}%`, `${right.coveragePercent.toFixed(1)}%`],
     ['Scoring version', left.scoringVersion, right.scoringVersion],

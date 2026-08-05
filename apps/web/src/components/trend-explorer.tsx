@@ -232,8 +232,8 @@ export function TrendExplorer({
             ? [
                 mode === 'bar' ? String(time) : time,
                 point.score,
-                point.ciLow,
-                point.ciHigh,
+                point.sensitivityLow,
+                point.sensitivityHigh,
                 point.sampleSize,
                 point.representedRunCount,
                 point.synthetic ? 'synthetic' : 'published',
@@ -480,7 +480,7 @@ export function TrendExplorer({
                       <th scope="row">{point.entryId}</th>
                       <td>{point.score.toFixed(1)}</td>
                       <td>
-                        {point.ciLow.toFixed(1)}–{point.ciHigh.toFixed(1)}
+                        {point.sensitivityLow.toFixed(1)}–{point.sensitivityHigh.toFixed(1)}
                       </td>
                       <td>{point.sampleSize}</td>
                       <td>

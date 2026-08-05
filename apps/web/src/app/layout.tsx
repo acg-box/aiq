@@ -57,7 +57,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <footer>
           <div>
             <strong>AIQ</strong>
-            <p>Evidence before order. Uncertainty beside every score.</p>
+            <p>Evidence before order. Task-mix sensitivity beside every score.</p>
           </div>
           <div>
             <Link href="/method">Scoring method</Link>
