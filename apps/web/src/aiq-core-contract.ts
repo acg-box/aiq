@@ -3,9 +3,9 @@ export const AIQ_CORE_BENCHMARK_VERSION = `aiq-core@${AIQ_CORE_TASK_SET_VERSION}
 export const AIQ_CORE_SCORING_VERSION = '1.0.5';
 export const AIQ_CORE_RELEASE_IDENTITY = `aiq-core/${AIQ_CORE_TASK_SET_VERSION}`;
 export const AIQ_CORE_TASK_METADATA_IDENTITY =
-  'sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a';
+  'sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1';
 export const AIQ_CORE_CATALOG_RELEASE_IDENTITY =
-  'sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037';
+  'sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529';
 
 export const AIQ_CORE_TASK_SCORING_CONTRACT = {
   aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
