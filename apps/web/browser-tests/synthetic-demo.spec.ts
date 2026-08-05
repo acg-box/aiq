@@ -210,6 +210,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
   const bars = chart.getByRole('button', { name: 'Bars + interval', exact: true });
   const dots = chart.getByRole('button', { name: 'Dot + interval', exact: true });
@@ -240,13 +241,15 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   ).toBeVisible();
   await chart.getByRole('button', { name: 'Sol', exact: true }).click();
   await expect(chart.getByText('Showing 6 Sol configurations as ordered.')).toBeAttached();
-  const snapshot = page.getByLabel('Latest matrix snapshot');
+  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
   await expect(snapshot).toContainText('Task-sensitivity interval');
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(snapshot).toContainText('Coverage');
   await expect(snapshot).toContainText('runtime 3 · missing 0');
-  await expect(snapshot).toContainText('scoring 1.0.5 · synthetic');
-  await expect(snapshot).toContainText('Newest retained run');
+  await expect(snapshot).toContainText(
+    'scoring 1.0.5 · synthetic · configuration sol-ultra · exact run run-2026-07-22-sol-ultra',
+  );
+  await expect(snapshot).toContainText('Exact run completed');
   await expect(snapshot).toContainText('Jul 22, 2026');
   await expect(snapshot).toContainText('Duration');
   await expect(snapshot).toContainText('API-equivalent cost');

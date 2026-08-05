@@ -9,6 +9,12 @@ import {
   type LeaderboardEntry,
   type ModelFamily,
 } from '../data/types.ts';
+import {
+  pushAnalyticalUrl,
+  readEnumParam,
+  readIdParam,
+  useAnalyticalSearchParams,
+} from './analytical-url-state.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 
 type ChartKind = 'bars' | 'dots' | 'ordered';
@@ -36,14 +42,27 @@ function readTooltipDataIndex(value: unknown): number | null {
   return typeof item.dataIndex === 'number' ? item.dataIndex : null;
 }
 
-export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEntry[] }) {
-  const [kind, setKind] = useState<ChartKind>('dots');
-  const [family, setFamily] = useState<FamilyFilter>('All');
+export function ModelMatrixChart({
+  entries,
+  onVisualizationPresenceChange,
+}: {
+  entries: readonly LeaderboardEntry[];
+  onVisualizationPresenceChange?: (hasVisualization: boolean) => void;
+}) {
+  const searchParams = useAnalyticalSearchParams();
+  const [responsiveDefaultKind, setResponsiveDefaultKind] = useState<ChartKind>('dots');
+  const kind = readEnumParam(
+    searchParams,
+    'matrixEncoding',
+    ['dots', 'bars', 'ordered'],
+    responsiveDefaultKind,
+  );
+  const family = readEnumParam(searchParams, 'matrixFamily', families, 'All');
   const [isPending, startTransition] = useTransition();
   useEffect(() => {
     const narrowViewport = window.matchMedia('(max-width: 640px)');
     const selectReadableNarrowView = ({ matches }: Pick<MediaQueryList, 'matches'>) => {
-      if (matches) setKind('ordered');
+      setResponsiveDefaultKind(matches ? 'ordered' : 'dots');
     };
     selectReadableNarrowView(narrowViewport);
     narrowViewport.addEventListener('change', selectReadableNarrowView);
@@ -57,11 +76,27 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
       ),
     [entries, family],
   );
+  const scoredIds = useMemo(() => scored.map((entry) => entry.id), [scored]);
+  const selectedId = readIdParam(searchParams, 'matrixSelection', scoredIds, scoredIds[0] ?? '');
+  const selected = scored.find((entry) => entry.id === selectedId);
+  useEffect(() => {
+    onVisualizationPresenceChange?.(scored.length > 0);
+  }, [onVisualizationPresenceChange, scored.length]);
   const option = useMemo<EChartsCoreOption>(() => {
     const labels = scored.map(shortLabel);
     const values = scored.map((entry) => ({
       value: entry.score ?? 0,
       itemStyle: { color: familyColor(entry) },
+      label:
+        entry.id === selectedId
+          ? {
+              show: true,
+              color: 'var(--ink)',
+              fontWeight: 700,
+              position: kind === 'ordered' ? ('right' as const) : ('top' as const),
+              formatter: entry.score?.toFixed(1) ?? '—',
+            }
+          : undefined,
     }));
     const tooltip = {
       trigger: 'axis' as const,
@@ -224,7 +259,7 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
               verticalIntervalSeries,
             ],
     };
-  }, [kind, scored]);
+  }, [kind, scored, selectedId]);
 
   return (
     <section
@@ -244,7 +279,14 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
                 key={candidate}
                 type="button"
                 aria-pressed={family === candidate}
-                onClick={() => startTransition(() => setFamily(candidate))}
+                onClick={() =>
+                  startTransition(() =>
+                    pushAnalyticalUrl(
+                      { matrixFamily: candidate, matrixSelection: null },
+                      { hasSemanticChange: candidate !== family },
+                    ),
+                  )
+                }
               >
                 {candidate}
               </button>
@@ -256,7 +298,14 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
                 key={candidate}
                 type="button"
                 aria-pressed={kind === candidate}
-                onClick={() => startTransition(() => setKind(candidate))}
+                onClick={() =>
+                  startTransition(() =>
+                    pushAnalyticalUrl(
+                      { matrixEncoding: candidate },
+                      { hasSemanticChange: candidate !== kind },
+                    ),
+                  )
+                }
               >
                 {candidate === 'bars'
                   ? 'Bars + interval'
@@ -266,14 +315,40 @@ export function ModelMatrixChart({ entries }: { entries: readonly LeaderboardEnt
               </button>
             ))}
           </div>
+          {scored.length > 0 ? (
+            <label>
+              Read configuration
+              <select
+                value={selectedId}
+                onChange={(event) => pushAnalyticalUrl({ matrixSelection: event.target.value })}
+              >
+                {scored.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.modelFamily} · {entry.reasoningTier}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
       </header>
       <p className="sr-only" aria-live="polite">
         Showing {scored.length} {family === 'All' ? '' : family} configurations as {kind}.
       </p>
-      {kind === 'ordered' && family === 'All' ? (
+      {kind === 'ordered' && family === 'All' && scored.length > 0 ? (
         <p className="matrix-encoding-note">
-          All 17 configurations shown · S Sol · T Terra · L Luna
+          {scored.length === 17 ? 'All 17' : scored.length} scored configurations shown · S Sol · T
+          Terra · L Luna
+        </p>
+      ) : null}
+      {selected ? (
+        <p className="matrix-encoding-note" aria-live="polite">
+          Selected: {selected.modelFamily} · {selected.reasoningTier} · AIQ{' '}
+          {selected.score?.toFixed(1)} · task-sensitivity interval{' '}
+          {selected.sensitivityLow?.toFixed(1)}–{selected.sensitivityHigh?.toFixed(1)} · n=
+          {selected.sampleSize ?? '—'} · coverage {selected.coveragePercent?.toFixed(1) ?? '—'}% ·
+          scoring {selected.scoringVersion ?? '—'} ·{' '}
+          {selected.synthetic ? 'synthetic' : 'published'}
         </p>
       ) : null}
       {scored.length === 0 ? (

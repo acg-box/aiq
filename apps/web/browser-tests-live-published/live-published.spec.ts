@@ -346,11 +346,12 @@ test('the live overview exposes all 17 published configurations without seed sub
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Current configuration matrix' })).toBeVisible();
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
   await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
-  const snapshot = page.getByLabel('Latest matrix snapshot');
+  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
   await expect(
-    snapshot.getByText('Newest retained run', { exact: true }).locator('..'),
+    snapshot.getByText('Exact run completed', { exact: true }).locator('..'),
   ).toContainText('Aug 3, 2026');
   await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
   const leaderboardRegion = page.getByRole('region', {
@@ -359,6 +360,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(leaderboardRegion.getByRole('row')).toHaveCount(18);
   await expect(leaderboardRegion.getByRole('link', { name: 'Inspect' })).toHaveCount(17);
   await expect(page.getByText('17 configurations · 1,224 task cells')).toBeVisible();
+  await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
   const efficiencyPlot = page.getByRole('region', { name: 'AIQ versus estimated cost' });
   await expect(efficiencyPlot).toBeVisible();
   await expect(efficiencyPlot).toContainText('Upper-left is better');
