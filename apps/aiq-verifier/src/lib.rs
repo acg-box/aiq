@@ -25,7 +25,10 @@ use clap::Parser;
 use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
-use ureq::{self, Body, http::Response};
+use ureq::{
+	self, Body,
+	http::{Response, Uri, uri::PathAndQuery},
+};
 
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
@@ -906,10 +909,7 @@ impl UreqTransport {
 	}
 
 	fn validate_url(&self, url: &str) -> Result<(), WorkerError> {
-		if url.starts_with("https://")
-			|| (self.allow_loopback_http
-				&& (url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:")))
-		{
+		if transport_url_is_allowed(url, self.allow_loopback_http) {
 			Ok(())
 		} else {
 			Err(WorkerError::configuration("URLs must use HTTPS; test HTTP is limited to loopback"))
@@ -3108,7 +3108,6 @@ fn validate_diagnostic_source_run(
 
 	let failure_count =
 		run.results.iter().filter(|result| result.status == ResultStatus::Failed).count();
-
 	let capability_validation = run.capability_validation.as_ref().ok_or_else(|| {
 		WorkerError::terminal(
 			ReasonCode::InvalidReplayEvidence,
@@ -3513,15 +3512,50 @@ fn recompute_scores(
 fn validate_endpoint(endpoint: &str, allow_loopback_http: bool) -> Result<String, WorkerError> {
 	let endpoint = endpoint.trim_end_matches('/');
 
-	if endpoint.starts_with("https://")
-		|| (allow_loopback_http
-			&& (endpoint.starts_with("http://127.0.0.1:")
-				|| endpoint.starts_with("http://localhost:")))
-	{
+	if endpoint_origin_is_allowed(endpoint, allow_loopback_http) {
 		Ok(endpoint.to_owned())
 	} else {
-		Err(WorkerError::configuration("endpoint must use HTTPS; test HTTP is limited to loopback"))
+		Err(WorkerError::configuration(
+			"endpoint must be an HTTPS origin; test HTTP is limited to a loopback origin",
+		))
 	}
+}
+
+fn parsed_uri_is_allowed(uri: &Uri, allow_loopback_http: bool) -> bool {
+	let Some(authority) = uri.authority() else {
+		return false;
+	};
+
+	if authority.as_str().contains('@') {
+		return false;
+	}
+
+	let loopback = matches!(uri.host(), Some("localhost" | "127.0.0.1" | "::1" | "[::1]"));
+
+	uri.scheme_str() == Some("https")
+		|| (allow_loopback_http && uri.scheme_str() == Some("http") && loopback)
+}
+
+fn transport_url_is_allowed(url: &str, allow_loopback_http: bool) -> bool {
+	if url.contains('#') {
+		return false;
+	}
+
+	url.parse::<Uri>().is_ok_and(|uri| parsed_uri_is_allowed(&uri, allow_loopback_http))
+}
+
+fn endpoint_origin_is_allowed(endpoint: &str, allow_loopback_http: bool) -> bool {
+	if endpoint.contains('#') {
+		return false;
+	}
+
+	let Ok(uri) = endpoint.parse::<Uri>() else {
+		return false;
+	};
+	let path_and_query = uri.path_and_query().map(PathAndQuery::as_str);
+
+	parsed_uri_is_allowed(&uri, allow_loopback_http)
+		&& matches!(path_and_query, None | Some("") | Some("/"))
 }
 
 fn parse_replay_jobs(value: &str) -> Result<usize, String> {
@@ -3609,12 +3643,11 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 		|| environment.runner_commit.len() > 40
 		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 		|| !valid_identifier(&environment.region, 64)
-		|| environment.artifact_resolver_endpoint.as_ref().is_some_and(|url| {
-			!url.starts_with("https://")
-				|| url.ends_with('/')
-				|| url.contains('?')
-				|| url.contains('#')
-		}) {
+		|| environment
+			.artifact_resolver_endpoint
+			.as_ref()
+			.is_some_and(|url| url.ends_with('/') || !endpoint_origin_is_allowed(url, false))
+	{
 		return Err(WorkerError::configuration("verifier environment is invalid"));
 	}
 
@@ -5522,6 +5555,52 @@ mod tests {
 		assert!(
 			ValidateEnvironmentCli::try_parse_from(["aiq-verifier validate-environment"]).is_err()
 		);
+	}
+
+	#[test]
+	fn verifier_url_policy_parses_the_authority_before_allowing_loopback_http() {
+		for allowed in [
+			"http://127.0.0.1:3100/api/claims",
+			"http://localhost:3100/api/claims?lease=1",
+			"http://[::1]:3100/api/claims",
+			"https://gateway.invalid/api/claims",
+		] {
+			assert!(crate::transport_url_is_allowed(allowed, true), "{allowed}");
+		}
+		for rejected in [
+			"http://localhost:3100@remote.invalid/api/claims",
+			"http://127.0.0.1:3100@remote.invalid/api/claims",
+			"http://localhost.invalid:3100/api/claims",
+			"http://remote.invalid/api/claims",
+			"https://user@gateway.invalid/api/claims",
+			"not-a-url",
+		] {
+			assert!(!crate::transport_url_is_allowed(rejected, true), "{rejected}");
+		}
+
+		assert!(!crate::transport_url_is_allowed("http://localhost:3100/api/claims", false));
+	}
+
+	#[test]
+	fn verifier_endpoint_policy_requires_one_exact_origin() {
+		assert_eq!(
+			crate::validate_endpoint("http://localhost:3100/", true).expect("loopback origin"),
+			"http://localhost:3100"
+		);
+		assert_eq!(
+			crate::validate_endpoint("https://gateway.invalid/", false).expect("HTTPS origin"),
+			"https://gateway.invalid"
+		);
+
+		for rejected in [
+			"http://localhost:3100@remote.invalid",
+			"https://user@gateway.invalid",
+			"https://gateway.invalid/api",
+			"https://gateway.invalid?query=1",
+			"https://gateway.invalid#fragment",
+		] {
+			assert!(crate::validate_endpoint(rejected, true).is_err(), "{rejected}");
+		}
 	}
 
 	#[test]

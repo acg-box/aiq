@@ -9,9 +9,9 @@ type JsonObject = Record<string, unknown>;
 const CATALOG_IDENTITY = 'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1';
 const CATALOG_RELEASE_IDENTITY =
   'sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d';
-const TASK_SET_IDENTITY = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e';
+const TASK_SET_IDENTITY = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
 const REVIEWED_TASK_COMMITMENTS_IDENTITY =
-  'sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e';
+  'sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8';
 const EVALUATOR_IDENTITY =
   'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 const DIGEST_PATTERN = /^sha256:(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
@@ -1002,6 +1002,22 @@ begin
 end
 $aiq_reference_check$;
 
+do $aiq_storage_bucket_check$
+begin
+  if (
+    select count(*)
+    from storage.buckets
+    where id = name
+      and id in ('aiq-submission-packages', 'aiq-runner-artifacts')
+      and public is false
+  ) <> 2
+  then
+    raise exception 'AIQ private Storage bucket initialization did not validate'
+      using errcode = '23514';
+  end if;
+end
+$aiq_storage_bucket_check$;
+
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
@@ -1009,7 +1025,8 @@ do $aiq_readiness_check$
 begin
   if coalesce((
     public.aiq_production_reference_status('${publisherNodeId}') ->> 'initialized'
-  )::boolean, false) is distinct from true then
+  )::boolean, false) is distinct from true
+  then
     raise exception 'AIQ production reference readiness did not validate'
       using errcode = '23514';
   end if;
@@ -1082,6 +1099,11 @@ begin
     or exists (
       select 1 from pg_catalog.pg_roles
       where rolname in ('aiq_verifier', 'aiq_publisher')
+    )
+    or exists (
+      select 1 from storage.buckets
+      where id in ('aiq-submission-packages', 'aiq-runner-artifacts')
+        or name in ('aiq-submission-packages', 'aiq-runner-artifacts')
     )
   then
     raise exception 'AIQ_GREENFIELD_REUSE_REJECTED'
@@ -1167,7 +1189,7 @@ async function runPsql(
         ) {
           rejectPromise(
             new Error(
-              'Initialization rejected because AIQ objects already exist. The rejected attempt made no changes. Verify the accepted backups, reset only the exact AIQ namespace, and retry greenfield initialization.',
+              'Initialization rejected because AIQ objects already exist. The rejected attempt made no changes. Remove only the exact AIQ-owned objects from the existing target project, preserve all Supabase-managed and non-AIQ objects, and retry after the AIQ namespace is empty.',
             ),
           );
           return;
@@ -1312,7 +1334,7 @@ export async function initializeDatabase(options: {
   );
   if (!readinessPassed(output, prepared.receipt)) {
     throw new Error(
-      'Fresh initialization did not return a valid readiness result. Do not retry against the uncertain state. Inspect protected PostgreSQL logs and readiness, verify the accepted backups, and reset only the exact AIQ namespace before a greenfield retry.',
+      'Fresh initialization did not return a valid readiness result. Do not retry against the uncertain state. Inspect protected PostgreSQL logs and readiness, confirm that the transaction rolled back, and retry the existing target project only after its AIQ namespace is empty.',
     );
   }
   return prepared.receipt;

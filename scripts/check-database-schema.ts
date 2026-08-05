@@ -156,7 +156,7 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
   const catalogReleaseDigest = '0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d';
   const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
   const controlledTaskTreeDigest =
-    'cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145';
+    '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
   const predecessorCatalogDigest =
     'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
   const staleCatalogDigest = 'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
@@ -275,7 +275,7 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
 }
 
 function checkReviewedTaskSetIdentity(schema: string): void {
-  const taskSetIdentity = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e';
+  const taskSetIdentity = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -329,9 +329,9 @@ function checkReviewedTaskSetIdentity(schema: string): void {
 }
 
 export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
-  const taskSetIdentity = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e';
+  const taskSetIdentity = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
   const reviewedCommitmentsIdentity =
-    'sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e';
+    'sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8';
   const fixture = jsonObject(value);
   assert.deepEqual(Object.keys(fixture).toSorted(), [
     'schema_version',
@@ -389,6 +389,8 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   const referenceRowBuilder =
     initializer.match(/function referenceRows[\s\S]*?\nfunction insertSql/)?.[0] ?? '';
+  const initializationSql =
+    initializer.match(/function insertSql[\s\S]*?\nfunction schemaTransactionBody/)?.[0] ?? '';
   const preparation =
     initializer.match(
       /export function prepareInitialization[\s\S]*?\nasync function runPsql/,
@@ -399,12 +401,12 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   assert.match(
     initializer,
-    /const TASK_SET_IDENTITY =\s*'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'/,
+    /const TASK_SET_IDENTITY =\s*'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'/,
     'The initializer must declare the native task-set identity.',
   );
   assert.match(
     initializer,
-    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:8db63304fee2483f48d70af7581589438432a3455945238ae90527c32a83df1e'/,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8'/,
     'The initializer must declare the reviewed task commitment manifest identity.',
   );
   assert.match(
@@ -463,6 +465,16 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     'The initialization receipt must attest the validated evaluator identity.',
   );
   assert.match(
+    preparation,
+    /select 1 from storage\.buckets[\s\S]{0,160}id in \('aiq-submission-packages', 'aiq-runner-artifacts'\)[\s\S]{0,160}name in \('aiq-submission-packages', 'aiq-runner-artifacts'\)/,
+    'The greenfield preflight must reject either existing AIQ Storage bucket identity.',
+  );
+  assert.match(
+    initializationSql,
+    /from storage\.buckets[\s\S]{0,160}id in \('aiq-submission-packages', 'aiq-runner-artifacts'\)[\s\S]{0,80}public is false/,
+    'Initialization readiness must require both private AIQ Storage buckets.',
+  );
+  assert.match(
     readinessParser,
     /value\.task_set_identity_sha256 === expected\.task_set_identity_sha256/,
     'The initializer must compare readiness output with the receipt task-set identity.',
@@ -488,7 +500,29 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /^begin;\n/);
   assert.match(schema, /\ncommit;\s*$/);
   assert.doesNotMatch(schema, /^\s*drop\s/im, 'The fresh schema must not drop database objects.');
-  assert.doesNotMatch(schema, /^insert\s+into\s/im, 'The schema must not contain demo data.');
+  assert.doesNotMatch(
+    schema,
+    /^insert\s+into\s+aiq_private\./im,
+    'The schema must not contain AIQ demo data.',
+  );
+  assert.equal(
+    (schema.match(/^insert\s+into\s+/gim) ?? []).length,
+    1,
+    'The schema must contain only the private Storage bucket initialization insert.',
+  );
+  assert.match(
+    schema,
+    /insert into storage\.buckets \(id, name, public\)\s+values\s+\('aiq-submission-packages', 'aiq-submission-packages', false\),\s+\('aiq-runner-artifacts', 'aiq-runner-artifacts', false\);/i,
+    'Fresh initialization must create both AIQ Storage buckets as private.',
+  );
+  const storageInitialization =
+    schema.match(/insert into storage\.buckets[\s\S]*?;(?=\s*create role aiq_verifier)/i)?.[0] ??
+    '';
+  assert.doesNotMatch(
+    storageInitialization,
+    /on conflict/i,
+    'The greenfield Storage initialization must not reuse or update existing buckets.',
+  );
   assert.equal(
     (schema.match(/^create role aiq_(?:verifier|publisher)$/gm) ?? []).length,
     hardenedGatewayRoleCount,
@@ -1013,7 +1047,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(syntheticDemo, /'schema_version', 'aiq\.result-package\.v3'/);
   assert.doesNotMatch(syntheticDemo, /'unverified',\s*'queued'/);
   assert.match(syntheticDemo, /'unverified',\s*'processed'/);
-  assert.doesNotMatch(`${schema}\n${syntheticDemo}`, /create\s+(?:storage\s+)?bucket/i);
+  assert.doesNotMatch(syntheticDemo, /storage\.buckets|create\s+(?:storage\s+)?bucket/i);
   assert.doesNotMatch(`${schema}\n${syntheticDemo}`, /cron\.schedule|pg_cron/i);
 }
 

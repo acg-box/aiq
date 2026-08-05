@@ -82,6 +82,18 @@ export default async function CalibrationDetailPage({
         score.reasoningEffort === configuration.reasoningEffort,
     ),
   );
+  const selectedExecutionContext = run
+    ? new Map([
+        [
+          selectedKey,
+          {
+            runtimeIssues: run.results.filter((item) => item.executionStatus === 'runtime_issue')
+              .length,
+            missing: run.results.filter((item) => item.executionStatus === 'missing').length,
+          },
+        ],
+      ])
+    : new Map();
 
   return (
     <section className="page-shell inner-page">
@@ -224,6 +236,7 @@ export default async function CalibrationDetailPage({
             <CalibrationEfficiency
               scores={scores.data}
               scoringVersion={run.scoringVersion || null}
+              executionContext={selectedExecutionContext}
             />
           )}
         </>

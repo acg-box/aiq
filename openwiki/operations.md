@@ -121,9 +121,9 @@ Before a live run:
    and evaluator identity
    `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
    Verify runtime `task_set_hash`
-   `sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`.
+   `sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
    Do not substitute controlled generated-task tree identity
-   `sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+   `sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
    Create new source-only Core and Contrast corpus commitments from the final
    clean source. Keep `runner.identity_kind` as `source_only` and
    `runner.built_binary_sha256` as null. Keep the Node.js and ripgrep identities
@@ -145,6 +145,12 @@ native runner, verifier, Node.js, and ripgrep executables. Retain the receipt wi
 private release records. The repository does not validate or publish it, and it
 is not a database input. Bind the actual runner and Codex executables in the run
 plan and signed per-run provenance.
+
+Pass the isolated home to every paid runner boundary with
+`--codex-home "$AIQ_RELEASE_CODEX_HOME"`. The runner clears the inherited
+environment and injects this directory as the Codex subprocess `CODEX_HOME`.
+Do not set the shell's global `CODEX_HOME`, and do not give this directory to the
+verifier.
 
 Use CLI help as the exact command authority:
 
@@ -315,15 +321,13 @@ or attestation.
 
 ## Fresh database initialization
 
-AIQ Core `1.0.3` uses one greenfield desired state. For the current pre-launch
-Supabase project, first verify the accepted private and public backups, remove
-the historical AIQ schema and AIQ-owned roles in one operator-controlled reset,
-remove the exact AIQ-owned public views and RPC overloads after reviewing the
-live dependency closure, and then use this flow against that empty AIQ namespace.
-Preserve Supabase-managed schemas, roles, extensions, and every non-AIQ object.
-Do not run a migration chain or preserve a second compatibility state. Do not
-apply any AIQ objects before initialization. Use a direct PostgreSQL URL, not the
-public Data API URL.
+AIQ Core `1.0.3` uses one greenfield desired state. Use this flow with the
+existing target Supabase project after its AIQ namespace is empty. If residue
+exists, remove only `aiq_private`, the AIQ-owned roles, and the exact AIQ-owned
+public views and RPC overloads. Preserve all Supabase-managed and non-AIQ
+objects. This cleanup is a deployment prerequisite, not a migration or
+compatibility path. Do not apply AIQ objects or create AIQ Storage buckets before
+initialization. Use a direct PostgreSQL URL, not the public Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -451,15 +455,30 @@ After publishing an Official matrix or changing the production deployment, run
 the bounded, secret-free production browser acceptance gate:
 
 ```sh
-AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production
+AIQ_PRODUCTION_ORIGIN='https://aiq.wiki' \
+AIQ_PRODUCTION_EXPECTED_BENCHMARK_VERSION='<benchmark-version>' \
+AIQ_PRODUCTION_EXPECTED_SCORING_VERSION='<scoring-version>' \
+AIQ_PRODUCTION_EXPECTED_MATRIX_BATCH_ID='<run_sha256-id>' \
+AIQ_PRODUCTION_EXPECTED_RUNNER_COMMIT='<git-commit>' \
+AIQ_PRODUCTION_EXPECTED_CORPUS_RELEASE_ID='<corpus-release-id>' \
+AIQ_PRODUCTION_EXPECTED_CORPUS_COMMITMENT='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_CATALOG_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_TASK_SET_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_PROMPT_SET_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_ESTIMATED_COST_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_UNAVAILABLE_CONTEXT_BAND_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_UNAVAILABLE_MISSING_USAGE_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_PRICED_COST_SUBTOTAL_USD_NANOS='<integer-nanodollars>' \
+npm run test:browser:production --workspace @aiq/web
 ```
 
 Page traffic is read-only. The gate also sends intentional unauthenticated POST
 probes to five write routes and requires uncached `401` responses with no public
 side effects. It checks the exact 17-run and 1,224-result public inventory,
-efficiency semantics, readiness response, mobile layout, and selected
-accessibility rules. It deliberately fails when later runs appear until the
-release contract is revised. Use
+efficiency semantics, readiness response, mobile layout, selected accessibility
+rules, exact accepted matrix-batch and runner identity, cost-status distribution,
+and priced nanodollar subtotal. It deliberately fails when
+later runs appear until the release contract is revised. Use
 `npm run test:browser:production-contract --workspace @aiq/web` for the local
 published-data mock. These commands validate the public surface accepted in
 [Deployment Handoff](deployment-handoff.md); they do not start a server, deploy
@@ -487,8 +506,9 @@ references and legal holds block deletion.
   confirm that the transaction rolled back. Retry only after the AIQ namespace
   is empty.
 - If initialization rejects existing AIQ objects, the rejected attempt made no
-  changes. Verify the backups, remove only the exact historical AIQ objects, and
-  retry the one greenfield initialization. Do not add a migration chain.
+  changes. Remove only the exact AIQ-owned objects, preserve all
+  Supabase-managed and non-AIQ objects, and retry the existing target after its
+  AIQ namespace is empty.
 - If submission fails after Storage upload, preserve the object and run
   reconciliation.
 - If a verifier lease expires, let the bounded claim protocol retry it.

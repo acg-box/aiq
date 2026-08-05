@@ -1,5 +1,6 @@
 import { formatHumanDuration, formatTaskDuration } from '../data/format-duration.ts';
-import type { PublicModelEfficiency, TokenCategoryCoverage } from '../data/types.ts';
+import type { TokenCategoryCoverage } from '../data/types.ts';
+import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
 
 function formatCoverage(coverage: TokenCategoryCoverage, resultCount: number): string {
   return coverage.count === null || coverage.percent === null
@@ -7,12 +8,42 @@ function formatCoverage(coverage: TokenCategoryCoverage, resultCount: number): s
     : `${coverage.count}/${resultCount} (${coverage.percent.toFixed(1)}%)`;
 }
 
-export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEfficiency[] }) {
-  if (rows.length === 0) return <p className="empty-note">Official efficiency is unavailable.</p>;
+export function OfficialEfficiencyTable({
+  rows,
+  expectedCount = rows.length,
+  unavailableCount = 0,
+  rejectedCount = 0,
+}: {
+  rows: readonly ExactEfficiencyRow[];
+  expectedCount?: number;
+  unavailableCount?: number;
+  rejectedCount?: number;
+}) {
+  const unavailableNotice =
+    unavailableCount > 0 || rejectedCount > 0 ? (
+      <p className="empty-note" role="status" aria-label="Unavailable Official efficiency evidence">
+        {unavailableCount > 0
+          ? `${unavailableCount} of ${expectedCount} expected Official efficiency ${expectedCount === 1 ? 'row is' : 'rows are'} Unavailable. `
+          : ''}
+        {rejectedCount > 0
+          ? `${rejectedCount} returned ${rejectedCount === 1 ? 'row was' : 'rows were'} rejected. `
+          : ''}
+        Exact run, configuration, scoring-version, and provenance identity are required.
+      </p>
+    ) : null;
+  if (rows.length === 0) {
+    return (
+      <div>
+        <p className="empty-note">Official efficiency is unavailable.</p>
+        {unavailableNotice}
+      </div>
+    );
+  }
   const batches = new Map<string, number>();
-  for (const row of rows) batches.set(row.matrixBatchId, row.matrixBatchElapsedMs);
+  for (const { row } of rows) batches.set(row.matrixBatchId, row.matrixBatchElapsedMs);
   return (
     <div role="region" aria-label="Official model efficiency">
+      {unavailableNotice}
       <div className="formula-note">
         <strong>Signed matrix batch wall-clock</strong>
         {[...batches].map(([batchId, elapsedMs]) => (
@@ -39,7 +70,7 @@ export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEf
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map(({ entry, row }) => (
               <tr
                 key={`${row.runId}-${row.modelFamily}-${row.reasoningEffort}`}
                 data-run-id={row.runId}
@@ -55,7 +86,7 @@ export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEf
                 data-priced-result-count={row.pricedResultCount}
               >
                 <th scope="row" title={row.runId}>
-                  {row.modelFamily} · {row.reasoningEffort}
+                  {entry.modelFamily} · {entry.reasoningTier}
                   <small>{row.runId.slice(0, 18)}…</small>
                 </th>
                 <td>
@@ -107,6 +138,10 @@ export function OfficialEfficiencyTable({ rows }: { rows: readonly PublicModelEf
                 <td>
                   {row.resultCount} results · {row.attemptedResultCount} attempted ·{' '}
                   {row.invokedResultCount} adapter-invoked · concurrency {row.executionConcurrency}
+                  <small>
+                    Scoring {entry.scoringVersion} ·{' '}
+                    {entry.synthetic ? 'synthetic seed' : 'published evidence'}
+                  </small>
                   <small>
                     Pricing: {row.pricingVersion ?? 'unavailable'} ·{' '}
                     {row.pricingAsOf ?? 'date unavailable'} ·{' '}

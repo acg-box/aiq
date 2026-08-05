@@ -123,13 +123,13 @@ They are diagnostics, not benchmark results.
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` connects directly to the Supabase PostgreSQL database and
 applies the schema plus public reference data in one transaction. It rejects an
-existing AIQ namespace. The repository has one greenfield desired state. For
-the current pre-launch project, verify the accepted backups, remove only the
-historical AIQ schema and AIQ-owned roles, and then initialize the empty AIQ
-namespace. The exact reset also removes the AIQ-owned public views and RPC
-overloads after a live dependency-closure review. It preserves Supabase-managed
-schemas, roles, extensions, and all non-AIQ objects. Do not run a migration chain
-or retain dual-version logic.
+existing AIQ namespace. Apply the repository's one greenfield desired state to
+the existing target project only after its AIQ namespace is empty. If residue
+exists, remove only the exact AIQ-owned schema, roles, public views, and RPC
+overloads. Preserve all Supabase-managed and non-AIQ objects. This cleanup is a
+deployment prerequisite, not a migration or compatibility path. The schema
+creates both AIQ Storage buckets as private and rejects either existing bucket
+identity. Do not create the buckets in a separate operator step.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -157,9 +157,9 @@ the evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 Model-free candidate validation passes all 72 tasks. The runtime
 `task_set_hash` is
-`sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e`;
+`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`;
 the distinct controlled generated-task tree identity is
-`sha256:cb5c72fc4ce31c40afd078ddc644177148000ee4792303312b58df7054881145`.
+`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
 Earlier candidate commitment digests are not final corpus identities. Create-new
 Core and Contrast regeneration from the final clean source will establish their
 canonical digests. The shared Rust validator now fails closed unless

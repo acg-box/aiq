@@ -5,6 +5,12 @@ import { notFound } from 'next/navigation';
 import { DataNote } from '../../../components/data-note.tsx';
 import { OfficialEfficiencyTable } from '../../../components/official-efficiency-table.tsx';
 import { ReadStateNote } from '../../../components/read-state-note.tsx';
+import { RunScientificSummaryPanel } from '../../../components/run-scientific-summary.tsx';
+import {
+  resolveExactEfficiencyRows,
+  resolveExactScientificEvidence,
+} from '../../../components/scientific-evidence-resolution.ts';
+import { buildRunScientificSummary } from '../../../components/scientific-score-context.ts';
 import {
   classifyRunCompleteness,
   summarizeRun,
@@ -74,6 +80,45 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     (value) => value.length === 0,
     (value) => value.map(() => false),
   );
+  const observedTasks = run.tasks.filter(
+    (task) => task.executionStatus === 'completed' || task.executionStatus === 'runtime_issue',
+  );
+  const observedDomains = new Map<string, number>();
+  for (const task of observedTasks) {
+    observedDomains.set(task.domain, (observedDomains.get(task.domain) ?? 0) + 1);
+  }
+  const resultSummary = {
+    resultCount: run.tasks.length,
+    observedCount: observedTasks.length,
+    coveragePercent:
+      run.tasks.length === 0 ? null : (observedTasks.length / run.tasks.length) * 100,
+    coveredDomainCount: [...observedDomains.values()].filter((count) => count > 0).length,
+    provisionalDomainCount: [...observedDomains.values()].filter((count) => count >= 4).length,
+    correctCount: summary.correct,
+    partialCount: summary.partial,
+    incorrectCount: summary.incorrect,
+    runtimeIssueCount: summary.runtimeIssues,
+    invalidCount: summary.invalid,
+    missingCount: summary.missing,
+    notApplicableCount: summary.notApplicable,
+    completedCount: run.tasks.filter((task) => task.executionStatus === 'completed').length,
+  };
+  const scientificEvidence = resolveExactScientificEvidence({
+    candidate: {
+      runId: run.id,
+      entryId: run.entryId,
+      scoringVersion: run.scoringVersion,
+      synthetic: run.synthetic,
+    },
+    runs: [run],
+    entries: leaderboard,
+    efficiencyRows: efficiencyResult.data,
+  });
+  const exactEfficiencyRows = resolveExactEfficiencyRows({
+    runs: [run],
+    entries: leaderboard,
+    efficiencyRows: efficiencyResult.data,
+  });
   return (
     <section className="page-shell inner-page">
       <div className="run-heading">
@@ -106,6 +151,18 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           ? 'The configuration was observed as unsupported before task execution.'
           : `${completeness.validResults}/72 valid results. Missing and invalid results block Official; any Provisional estimate is conditional and includes fixed-fixture completion bounds.`}
       </p>
+      <RunScientificSummaryPanel
+        summary={buildRunScientificSummary({
+          run,
+          resultSummary,
+          leaderboardEntry:
+            scientificEvidence.state === 'exact' ? scientificEvidence.evidence.score : undefined,
+          efficiency:
+            scientificEvidence.state === 'exact'
+              ? scientificEvidence.evidence.efficiency
+              : undefined,
+        })}
+      />
       <div className="run-stats">
         <div>
           <span>Correct</span>
@@ -157,7 +214,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         </div>
         <ReadStateNote result={efficiencyResult} subject="Official run efficiency" />
         {efficiencyResult.state === 'published' ? (
-          <OfficialEfficiencyTable rows={efficiencyResult.data} />
+          <OfficialEfficiencyTable rows={exactEfficiencyRows} />
         ) : null}
       </section>
       <section className="run-section">

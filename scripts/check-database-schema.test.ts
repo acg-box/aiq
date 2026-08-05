@@ -59,9 +59,31 @@ await test('schema and synthetic demo data have separate final-state owners', as
   const [schema, syntheticDemo] = await sources();
   assert.match(schema, /^begin;\n/);
   assert.match(schema, /\ncommit;\s*$/);
-  assert.doesNotMatch(schema, /^insert\s+into\s/im);
+  assert.match(schema, /^insert\s+into\s+storage\.buckets/im);
+  assert.doesNotMatch(schema, /^insert\s+into\s+aiq_private\./im);
   assert.match(syntheticDemo, /^-- Deterministic local demonstration data\./);
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
+});
+
+await test('checker requires both AIQ Storage buckets to be private and create-new', async () => {
+  const [schema, syntheticDemo] = await sources();
+  for (const changed of [
+    schema.replace("('aiq-runner-artifacts', 'aiq-runner-artifacts', false)", ''),
+    schema.replace(
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', false)",
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', true)",
+    ),
+    schema.replace(
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', false);",
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', false) on conflict (id) do nothing;",
+    ),
+  ]) {
+    assert.notEqual(changed, schema);
+    assert.throws(
+      () => checkDatabaseSchemaSources(changed, syntheticDemo),
+      /Storage bucket initialization|Storage buckets as private|greenfield Storage/,
+    );
+  }
 });
 
 await test('checker rejects an exposed base table or missing forced RLS', async () => {
@@ -137,6 +159,29 @@ await test('checker rejects conditional reuse of an existing AIQ role', async ()
   assert.throws(
     () => checkDatabaseSchemaSources(changed, syntheticDemo),
     /create both AIQ roles directly|must not preserve pre-existing AIQ roles/,
+  );
+});
+
+await test('checker rejects initializer readiness without private Storage buckets', async () => {
+  const initializer = await readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8');
+  const changed = initializer.replace('and public is false', 'and public is true');
+  assert.notEqual(changed, initializer);
+  assert.throws(
+    () => checkDatabaseInitializerSource(changed),
+    /readiness must require both private AIQ Storage buckets/,
+  );
+});
+
+await test('checker rejects an initializer that reuses existing AIQ Storage buckets', async () => {
+  const initializer = await readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8');
+  const changed = initializer.replace(
+    'select 1 from storage.buckets',
+    'select 1 from storage.other',
+  );
+  assert.notEqual(changed, initializer);
+  assert.throws(
+    () => checkDatabaseInitializerSource(changed),
+    /greenfield preflight must reject either existing AIQ Storage bucket identity/,
   );
 });
 
@@ -287,7 +332,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
   for (const [changed, expected] of [
     [
       schema.replaceAll(
-        'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e',
+        'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261',
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
       /Official provenance must compare the task-set digest/,
@@ -408,7 +453,7 @@ await test('checker rejects readiness that reports but does not enforce evaluato
 await test('checker rejects readiness that reports but does not enforce task-set identity', async () => {
   const [schema, syntheticDemo] = await sources();
   const changed = schema.replace(
-    "      and task_set_identity_sha256 =\n        'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e'\n",
+    "      and task_set_identity_sha256 =\n        'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'\n",
     '',
   );
   assert.notEqual(changed, schema);

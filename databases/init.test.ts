@@ -23,7 +23,7 @@ const taskCommitmentsPath = resolve(
   repositoryRoot,
   'databases/aiq-core-1.0.3-task-commitments.json',
 );
-const taskSetIdentity = 'sha256:1a7a8e5f37efeb03cf3a2a92a94370ef67ec3b7a6eb385bd5ec3c844713afb0e';
+const taskSetIdentity = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
 const evaluatorIdentity = 'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 
 function isObject(value: unknown): value is JsonObject {
@@ -390,6 +390,15 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   assert.match(prepared.sql, /catalog_ordinal smallint, full_public_metadata json,/);
   assert.match(prepared.sql, /pg_catalog\.pg_namespace where nspname = 'aiq_private'/);
   assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
+  assert.match(
+    prepared.sql,
+    /select 1 from storage\.buckets[\s\S]{0,160}id in \('aiq-submission-packages', 'aiq-runner-artifacts'\)[\s\S]{0,160}name in \('aiq-submission-packages', 'aiq-runner-artifacts'\)/,
+  );
+  assert.match(prepared.sql, /insert into storage\.buckets \(id, name, public\)/);
+  assert.match(
+    prepared.sql,
+    /id in \('aiq-submission-packages', 'aiq-runner-artifacts'\)[\s\S]{0,80}public is false/,
+  );
   assert.match(
     prepared.sql,
     /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.3', '1\.0\.3'\)/,
@@ -1000,7 +1009,13 @@ void test(
         '--set',
         'ON_ERROR_STOP=1',
         '--command',
-        `create role authenticator nologin;
+        `create schema storage;
+create table storage.buckets (
+  id text primary key,
+  name text not null unique,
+  public boolean not null default false
+);
+create role authenticator nologin;
 create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin;`,
@@ -1014,6 +1029,68 @@ create role service_role nologin;`,
     const referencePath = join(root, 'reference.json');
 
     await writeFile(referencePath, JSON.stringify(await referenceFixture()));
+
+    await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--command',
+        "insert into storage.buckets (id, name, public) values ('aiq-submission-packages', 'aiq-submission-packages', false);",
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
+    await rejects(
+      () =>
+        initializeDatabase({
+          referencePath,
+          repositoryRoot,
+          psqlCommand: integrationPsql,
+          environment: {
+            ...process.env,
+            AIQ_DATABASE_URL: integrationDatabaseUrl,
+          },
+        }),
+      /AIQ objects already exist/,
+    );
+    const { stdout: preexistingBucketOutput } = await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--quiet',
+        '--tuples-only',
+        '--no-align',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--command',
+        `select jsonb_build_object(
+  'bucket_count', (select count(*) from storage.buckets),
+  'schema_count', (select count(*) from pg_catalog.pg_namespace where nspname = 'aiq_private'),
+  'role_count', (select count(*) from pg_catalog.pg_roles where rolname in ('aiq_verifier', 'aiq_publisher'))
+)::text;`,
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
+    deepStrictEqual(JSON.parse(preexistingBucketOutput.trim()), {
+      bucket_count: 1,
+      role_count: 0,
+      schema_count: 0,
+    });
+    await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--command',
+        "delete from storage.buckets where id = 'aiq-submission-packages';",
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
 
     const receipt = await initializeDatabase({
       referencePath,
@@ -1070,6 +1147,28 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(readiness.task_set_identity_valid, true);
     strictEqual(readiness.evaluator_identity_sha256, evaluatorIdentity);
     strictEqual(readiness.evaluator_identity_valid, true);
+
+    const { stdout: bucketOutput } = await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--quiet',
+        '--tuples-only',
+        '--no-align',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--command',
+        `select jsonb_object_agg(id, public order by id)::text
+from storage.buckets
+where id in ('aiq-submission-packages', 'aiq-runner-artifacts');`,
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
+    deepStrictEqual(JSON.parse(bucketOutput.trim()), {
+      'aiq-runner-artifacts': false,
+      'aiq-submission-packages': false,
+    });
 
     const { stdout: residueOutput } = await execFileAsync(
       integrationPsql,
