@@ -22,7 +22,9 @@ use sha2::{Digest as _, Sha256};
 use crate::{
 	protocol,
 	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
-	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
+	task::{
+		EvaluatorRuntime, EvaluatorRuntimeKind, TaskBudgets, TaskDefinition, Visibility, evaluator,
+	},
 };
 
 /// Ordered full-task-metadata identity for the six controlled contrast variants.
@@ -394,6 +396,7 @@ struct FrozenTask {
 	task_id: String,
 	task_version: String,
 	allowed_tools: Vec<String>,
+	budget: TaskBudgets,
 }
 
 #[derive(Deserialize)]
@@ -953,6 +956,7 @@ fn validate_corpus_commitment_inner(
 
 	validate_header(&commitment, catalog_contract)?;
 	validate_catalog_tasks(&commitment.tasks, catalog_contract)?;
+	validate_selected_catalog_budgets(tasks, catalog_contract)?;
 
 	let baseline_workspace_digests = validate_selected_tasks(&commitment.tasks, tasks)?;
 	let runner_provenance =
@@ -1536,6 +1540,31 @@ fn validate_selected_tasks(
 	Ok(baseline_workspace_digests)
 }
 
+fn validate_selected_catalog_budgets(
+	selected: &[TaskDefinition],
+	catalog_contract: CatalogContract,
+) -> Result<(), CorpusCommitmentError> {
+	let CatalogTaskAuthority::Embedded(catalog_json) = catalog_contract.tasks else {
+		return Ok(());
+	};
+	let catalog: FrozenCatalog = serde_json::from_str(catalog_json).map_err(|error| {
+		CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
+	})?;
+	let expected = catalog
+		.tasks
+		.into_iter()
+		.map(|task| (task.task_id, task.budget))
+		.collect::<BTreeMap<_, _>>();
+
+	if selected.iter().any(|task| expected.get(&task.task_id) != Some(&task.budgets)) {
+		return Err(CorpusCommitmentError::new(
+			"selected Core task budget does not match the frozen public catalog",
+		));
+	}
+
+	Ok(())
+}
+
 fn string_at<'a>(
 	value: &'a Value,
 	pointer: &str,
@@ -1675,6 +1704,8 @@ mod tests {
 				task.catalog_entry_digest = Some(format!("sha256:{}", "c".repeat(64)));
 			}
 
+			Self::apply_core_catalog_budgets(&mut core_tasks);
+
 			let core_commitment =
 				Self::commitment(super::CORE_CATALOG, &core_tasks, &source_root, &runtime, &policy);
 			let contrast_commitment = Self::commitment(
@@ -1726,6 +1757,20 @@ mod tests {
 						configuration,
 					}),
 				});
+			}
+		}
+
+		fn apply_core_catalog_budgets(tasks: &mut [crate::task::TaskDefinition]) {
+			let catalog: super::FrozenCatalog =
+				serde_json::from_str(super::CORE_CATALOG_JSON).expect("embedded Core catalog");
+			let budgets = catalog
+				.tasks
+				.into_iter()
+				.map(|task| (task.task_id, task.budget))
+				.collect::<std::collections::BTreeMap<_, _>>();
+
+			for task in tasks {
+				task.budgets = budgets.get(&task.task_id).expect("Core task budget").clone();
 			}
 		}
 
@@ -1857,6 +1902,81 @@ mod tests {
 				.expect("actual Node.js version"),
 			"v24.18.0"
 		);
+	}
+
+	#[test]
+	fn core_task_budgets_must_match_the_frozen_public_catalog() {
+		let mut tasks = runner::synthetic_demo_tasks();
+		let catalog: super::FrozenCatalog =
+			serde_json::from_str(super::CORE_CATALOG_JSON).expect("embedded Core catalog");
+		let budgets = catalog
+			.tasks
+			.into_iter()
+			.map(|task| (task.task_id, task.budget))
+			.collect::<std::collections::BTreeMap<_, _>>();
+
+		for task in &mut tasks {
+			task.budgets = budgets.get(&task.task_id).expect("Core task budget").clone();
+		}
+
+		super::validate_selected_catalog_budgets(&tasks, super::CORE_CATALOG)
+			.expect("exact Core budgets");
+
+		for field in ["wall_seconds", "max_steps", "max_tool_calls"] {
+			let mut mismatched = tasks.clone();
+
+			match field {
+				"wall_seconds" => mismatched[0].budgets.wall_seconds += 1,
+				"max_steps" => mismatched[0].budgets.max_steps += 1,
+				"max_tool_calls" => mismatched[0].budgets.max_tool_calls += 1,
+				_ => unreachable!("unknown budget field"),
+			}
+
+			let error = super::validate_selected_catalog_budgets(&mismatched, super::CORE_CATALOG)
+				.expect_err("mismatched Core budget");
+
+			assert_eq!(
+				error.to_string(),
+				"selected Core task budget does not match the frozen public catalog",
+				"{field} reached the wrong gate"
+			);
+		}
+
+		super::validate_selected_catalog_budgets(&tasks, super::CONTRAST_CATALOG)
+			.expect("Contrast budgets remain corpus-controlled");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn core_validation_rejects_each_public_catalog_budget_mismatch() {
+		let fixture = RunnerProvenancePathFixture::new("core-budget");
+		let path = fixture.write("valid-core", &fixture.core_commitment);
+
+		super::validate_core_corpus_commitment(&path, &fixture.core_tasks, &fixture.source_root)
+			.expect("exact Core budgets");
+
+		for field in ["wall_seconds", "max_steps", "max_tool_calls"] {
+			let mut mismatched = fixture.core_tasks.clone();
+
+			match field {
+				"wall_seconds" => mismatched[0].budgets.wall_seconds += 1,
+				"max_steps" => mismatched[0].budgets.max_steps += 1,
+				"max_tool_calls" => mismatched[0].budgets.max_tool_calls += 1,
+				_ => unreachable!("unknown budget field"),
+			}
+
+			let error =
+				super::validate_core_corpus_commitment(&path, &mismatched, &fixture.source_root)
+					.expect_err("mismatched Core budget");
+
+			assert_eq!(
+				error.to_string(),
+				"selected Core task budget does not match the frozen public catalog",
+				"{field} reached the wrong gate"
+			);
+		}
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
 	}
 
 	#[test]
