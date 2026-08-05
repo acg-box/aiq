@@ -1,11 +1,13 @@
 import Link from 'next/link';
 
-import { CalibrationEfficiency } from '../components/calibration-efficiency.tsx';
 import { CompactRanking } from '../components/compact-ranking.tsx';
 import { DataNote } from '../components/data-note.tsx';
-import { EfficiencyPlot } from '../components/efficiency-plot.tsx';
+import {
+  DeferredCalibrationEfficiency,
+  DeferredEfficiencyPlot,
+  DeferredModelMatrixChart,
+} from '../components/homepage-analytics.tsx';
 import { LeaderboardTable } from '../components/leaderboard-table.tsx';
-import { ModelMatrixChart } from '../components/model-matrix-chart.tsx';
 import { OfficialEfficiencyTable } from '../components/official-efficiency-table.tsx';
 import { ReadStateNote } from '../components/read-state-note.tsx';
 import { RunOutcomeCard } from '../components/run-outcome-card.tsx';
@@ -17,11 +19,7 @@ import {
 } from '../components/scientific-evidence-resolution.ts';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
-import {
-  isScoredLeaderboardEntry,
-  type BenchmarkRun,
-  type BenchmarkRunSummary,
-} from '../data/types.ts';
+import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +36,7 @@ function formatDate(value: string | undefined): string {
 
 export default async function OverviewPage() {
   const repository = createAiqRepository();
-  const [leaderboardResult, calibrationRunsResult, newestRunResult] = await Promise.all([
+  const [leaderboardResult, calibrationRunsResult] = await Promise.all([
     readPublicData(
       repository,
       () => repository.listLeaderboard(),
@@ -52,13 +50,6 @@ export default async function OverviewPage() {
       { runs: [], newerCursor: null, olderCursor: null },
       (value) => value.runs.length === 0,
       (value) => value.runs.map((run) => run.synthetic),
-    ),
-    readPublicData<BenchmarkRunSummary | null>(
-      repository,
-      () => repository.getNewestCompletedRun(),
-      null,
-      (value) => value === null,
-      (value) => (value ? [value.synthetic] : []),
     ),
   ]);
 
@@ -124,7 +115,6 @@ export default async function OverviewPage() {
       : coveredEntries.reduce((sum, entry) => sum + (entry.coveragePercent ?? 0), 0) /
         coveredEntries.length;
   const selectedRun = selectedRunResult.data;
-  const newestRetainedRun = newestRunResult.data;
   const highestPointEvidence =
     highestPointEstimate && selectedRun
       ? resolveExactScientificEvidence({
@@ -139,7 +129,11 @@ export default async function OverviewPage() {
           efficiencyRows: officialEfficiencyResult.data,
         })
       : undefined;
-  const latestEfficiency =
+  const highlightedRun =
+    highestPointEvidence?.state === 'exact' ? highestPointEvidence.run : undefined;
+  const highlightedScore =
+    highestPointEvidence?.state === 'exact' ? highestPointEvidence.evidence.score : undefined;
+  const highlightedEfficiency =
     highestPointEvidence?.state === 'exact' ? highestPointEvidence.evidence.efficiency : undefined;
   const exactOfficialEfficiency = resolveExactEfficiencyRowsWithAvailability({
     runs: officialRunSummariesResult.data,
@@ -148,7 +142,8 @@ export default async function OverviewPage() {
     expectedRunIds: officialRunIds,
   });
   const highestPointIdentityUnavailable =
-    highestPointEstimate !== undefined && highestPointEvidence?.state !== 'exact';
+    highestPointEstimate !== undefined &&
+    (highestPointEvidence?.state !== 'exact' || highlightedScore === undefined);
   const overviewProvenance =
     leaderboardResult.state === 'synthetic'
       ? 'synthetic'
@@ -164,7 +159,7 @@ export default async function OverviewPage() {
         ? 'AIQ v1 · latest published matrix'
         : 'AIQ v1 · matrix status';
   const scoreLabel =
-    highestPointEstimate?.synthetic === true
+    highlightedScore?.synthetic === true
       ? 'Highest synthetic AIQ index'
       : 'Highest published AIQ index';
 
@@ -185,19 +180,19 @@ export default async function OverviewPage() {
       </section>
 
       <section className="page-shell overview-secondary" aria-label="Secondary benchmark snapshot">
-        <div className="benchmark-snapshot" aria-label="Latest matrix snapshot">
+        <div className="benchmark-snapshot" aria-label="Best configuration exact-run snapshot">
           <div className="snapshot-estimate">
-            {highestPointEstimate ? (
-              <ScoreReadout
-                score={highestPointEstimate.score}
-                label={scoreLabel}
-                unit="AIQ index"
-              />
+            {highlightedScore ? (
+              <ScoreReadout score={highlightedScore.score} label={scoreLabel} unit="AIQ index" />
             ) : (
               <div
                 className="score-readout score-readout-empty"
                 role="img"
-                aria-label="No published score yet"
+                aria-label={
+                  highestPointEstimate
+                    ? 'Exact score evidence unavailable'
+                    : 'No published score yet'
+                }
               >
                 <span>—</span>
                 <small>AIQ index · 0–100</small>
@@ -206,67 +201,71 @@ export default async function OverviewPage() {
             <div>
               <span className="snapshot-label">Highest point estimate</span>
               <strong>
-                {highestPointEstimate
-                  ? `${highestPointEstimate.modelFamily} / ${highestPointEstimate.reasoningTier}`
-                  : 'No published score yet'}
+                {highlightedScore
+                  ? `${highlightedScore.modelFamily} / ${highlightedScore.reasoningTier}`
+                  : highestPointEstimate
+                    ? 'Exact score evidence unavailable'
+                    : 'No published score yet'}
               </strong>
               <small>
-                {highestPointEstimate
-                  ? `${highestPointEstimate.modelName} · scoring ${highestPointEstimate.scoringVersion} · ${highestPointEstimate.synthetic ? 'synthetic' : 'published'}`
-                  : 'Awaiting a complete matrix'}
+                {highlightedScore && highlightedRun
+                  ? `${highlightedScore.modelName} · scoring ${highlightedScore.scoringVersion} · ${highlightedScore.synthetic ? 'synthetic' : 'published'} · configuration ${highlightedScore.id} · exact run ${highlightedRun.id}`
+                  : 'Exact run identity unavailable'}
               </small>
             </div>
           </div>
-          <dl className="snapshot-metrics" tabIndex={0} aria-label="Benchmark evidence metrics">
+          <dl className="snapshot-metrics" aria-label="Exact-run benchmark evidence metrics">
             <div>
               <dt>Task-sensitivity interval</dt>
               <dd>
-                {highestPointEstimate
-                  ? `${highestPointEstimate.sensitivityLow.toFixed(1)}–${highestPointEstimate.sensitivityHigh.toFixed(1)}`
+                {highlightedScore
+                  ? `${highlightedScore.sensitivityLow.toFixed(1)}–${highlightedScore.sensitivityHigh.toFixed(1)}`
                   : '—'}
               </dd>
               <dd className="snapshot-note">task-resampling sensitivity</dd>
             </div>
             <div>
               <dt>Coverage</dt>
-              <dd>
-                {highestPointEstimate ? `${highestPointEstimate.coveragePercent.toFixed(1)}%` : '—'}
-              </dd>
+              <dd>{highlightedScore ? `${highlightedScore.coveragePercent.toFixed(1)}%` : '—'}</dd>
               <dd className="snapshot-note">
-                {highestPointEstimate?.sampleSize == null
+                {highlightedScore?.sampleSize == null
                   ? 'Sample size unavailable'
-                  : `${highestPointEstimate.sampleSize} fixed task cells · runtime ${highestPointEstimate.runtimeIssues} · missing ${highestPointEstimate.missing}`}
+                  : `${highlightedScore.sampleSize} fixed task cells · runtime ${highlightedScore.runtimeIssues} · missing ${highlightedScore.missing}`}
               </dd>
             </div>
             <div>
-              <dt>Newest retained run</dt>
+              <dt>Exact run completed</dt>
               <dd>
-                {newestRetainedRun ? formatDate(newestRetainedRun.completedAt) : 'Unavailable'}
+                {highlightedRun ? (
+                  <time dateTime={highlightedRun.completedAt}>
+                    {formatDate(highlightedRun.completedAt)}
+                  </time>
+                ) : (
+                  'Unavailable'
+                )}
               </dd>
               <dd className="snapshot-note">
-                {newestRetainedRun
-                  ? newestRetainedRun.synthetic
-                    ? 'synthetic seed'
-                    : 'published run evidence'
-                  : 'No published run evidence'}
+                {highlightedRun
+                  ? `${highlightedRun.synthetic ? 'synthetic seed' : 'published evidence'} · ${highlightedRun.id}`
+                  : 'Exact run identity unavailable'}
               </dd>
             </div>
             <div>
               <dt>Duration</dt>
               <dd>
-                {latestEfficiency?.summedCellAdapterElapsedMs == null
+                {highlightedEfficiency?.summedCellAdapterElapsedMs == null
                   ? 'Unavailable'
-                  : formatHumanDuration(latestEfficiency.summedCellAdapterElapsedMs)}
+                  : formatHumanDuration(highlightedEfficiency.summedCellAdapterElapsedMs)}
               </dd>
               <dd className="snapshot-note">summed cell adapter time</dd>
             </div>
             <div>
               <dt>API-equivalent cost</dt>
               <dd>
-                {latestEfficiency?.costEstimatorStatus !== 'estimated' ||
-                latestEfficiency.standardApiEquivalentUsdNanos == null
+                {highlightedEfficiency?.costEstimatorStatus !== 'estimated' ||
+                highlightedEfficiency.standardApiEquivalentUsdNanos == null
                   ? 'Unavailable'
-                  : `$${(latestEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(2)}`}
+                  : `$${(highlightedEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(2)}`}
               </dd>
               <dd className="snapshot-note">
                 Standard API estimate · not billed subscription cost
@@ -307,20 +306,17 @@ export default async function OverviewPage() {
           </p>
         </div>
         <ReadStateNote result={leaderboardResult} subject="Latest matrix" />
-        <ModelMatrixChart entries={leaderboard} />
-        {selectedRun ? (
-          <RunOutcomeCard run={selectedRun} />
+        <DeferredModelMatrixChart entries={leaderboard} />
+        {highlightedRun ? (
+          <RunOutcomeCard run={highlightedRun} />
+        ) : highestPointIdentityUnavailable ? (
+          <ReadStateNote
+            result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
+            subject="Highlighted run outcomes"
+          />
         ) : (
           <ReadStateNote result={selectedRunResult} subject="Highlighted run outcomes" />
         )}
-        {officialRunSummariesResult.state === 'unavailable' ? (
-          <ReadStateNote result={officialRunSummariesResult} subject="Efficiency run context" />
-        ) : null}
-        <EfficiencyPlot
-          entries={leaderboard}
-          runSummaries={officialRunSummariesResult.data}
-          rows={officialEfficiencyResult.data}
-        />
         <details className="leaderboard-disclosure">
           <summary>Show all {leaderboard.length} configurations and intervals</summary>
           <LeaderboardTable entries={leaderboard} />
@@ -342,6 +338,14 @@ export default async function OverviewPage() {
           </p>
         </div>
         <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
+        {officialRunSummariesResult.state === 'unavailable' ? (
+          <ReadStateNote result={officialRunSummariesResult} subject="Efficiency run context" />
+        ) : null}
+        <DeferredEfficiencyPlot
+          entries={leaderboard}
+          runSummaries={officialRunSummariesResult.data}
+          rows={officialEfficiencyResult.data}
+        />
         {officialEfficiencyResult.state === 'published' ? (
           <details className="evidence-disclosure">
             <summary>Open time, token, and cost details</summary>
@@ -408,7 +412,7 @@ export default async function OverviewPage() {
             <ReadStateNote result={calibrationScoresResult} subject="Calibration score matrix" />
             {calibrationScoresResult.state === 'unavailable' ||
             calibrationScoresResult.state === 'empty' ? null : (
-              <CalibrationEfficiency
+              <DeferredCalibrationEfficiency
                 scores={calibrationScoresResult.data}
                 scoringVersion={latestCalibration.scoringVersion || null}
               />

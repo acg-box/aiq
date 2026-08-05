@@ -94,9 +94,9 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   });
   await expect(table.getByRole('row')).toHaveCount(18);
   await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
-  const snapshot = page.getByLabel('Latest matrix snapshot');
+  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
   const coverage = snapshot.getByText('Coverage', { exact: true }).locator('..');
-  const newestRetained = snapshot.getByText('Newest retained run', { exact: true }).locator('..');
+  const exactRun = snapshot.getByText('Exact run completed', { exact: true }).locator('..');
   await expect(coverage).toContainText('Sample size unavailable');
   await expect(coverage).not.toContainText('0 fixed task cells');
   await expect(
@@ -106,8 +106,16 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   await expect(
     page.getByText('Average coverage across 0/17 configurations:', { exact: false }),
   ).toBeVisible();
-  await expect(newestRetained).toContainText('Unavailable');
-  await expect(newestRetained).toContainText('No published run evidence');
+  const deferredMatrix = page.locator('[data-homepage-analytics="matrix"]');
+  await expect(deferredMatrix).toHaveClass(/homepage-analytics-empty/);
+  await deferredMatrix.scrollIntoViewIfNeeded();
+  await expect(page.getByRole('heading', { name: 'AIQ index by configuration' })).toBeVisible();
+  await expect(deferredMatrix.locator('.matrix-chart-frame')).toHaveCount(0);
+  await expect(page.getByText(/scored configurations shown/)).toHaveCount(0);
+  const emptyMatrixBox = await deferredMatrix.boundingBox();
+  expect(emptyMatrixBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(700);
+  await expect(exactRun).toContainText('Unavailable');
+  await expect(exactRun).toContainText('Exact run identity unavailable');
   await expect(snapshot).not.toContainText('trusted publication');
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
   await expect(page.getByRole('status', { name: 'Latest calibration status' })).toContainText(

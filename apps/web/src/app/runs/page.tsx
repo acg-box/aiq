@@ -108,18 +108,18 @@ export default async function RunsPage({
                 });
                 return (
                   <tr key={run.id}>
-                    <td>
+                    <td data-label="Started">
                       <time dateTime={run.startedAt}>
                         {new Date(run.startedAt).toLocaleDateString()}
                       </time>
                     </td>
-                    <td>
+                    <td data-label="Configuration">
                       <strong>
                         {entry ? `${entry.modelFamily} · ${entry.reasoningTier}` : run.entryId}
                       </strong>
                       <small>{entry?.modelName ?? 'Public matrix identity'}</small>
                     </td>
-                    <td>
+                    <td data-label="Scientific summary">
                       <strong>{completeness.label}</strong>
                       <RunScientificSummaryPanel
                         compact
@@ -133,7 +133,7 @@ export default async function RunsPage({
                         })}
                       />
                     </td>
-                    <td>
+                    <td data-label="Evidence">
                       <Link href={`/runs/${run.id}`}>Inspect run</Link>
                       <small>{run.synthetic ? 'Synthetic seed' : 'Published'}</small>
                     </td>

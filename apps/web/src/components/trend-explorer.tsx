@@ -2,7 +2,7 @@
 
 import type { EChartsCoreOption } from 'echarts/core';
 import Link from 'next/link';
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useTransition } from 'react';
 
 import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
 import type {
@@ -14,6 +14,13 @@ import type {
   TrendRange,
 } from '../data/types.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
+import {
+  hrefWithParams,
+  pushAnalyticalUrl,
+  readBoundedIntegerParam,
+  readEnumParam,
+  useAnalyticalSearchParams,
+} from './analytical-url-state.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { ReadStateNote } from './read-state-note.tsx';
 import {
@@ -36,6 +43,7 @@ const ranges: ReadonlyArray<{ value: TrendRange; label: string }> = [
 ];
 type SeriesFilter = ModelFamily;
 const seriesFilters: readonly SeriesFilter[] = ['Sol', 'Terra', 'Luna'];
+const TREND_ZOOM_DATE_COUNT = 12;
 const formatDate = (value: string) => value.slice(0, 10);
 const pointProvenance = (point: TrendPoint) => (point.synthetic ? 'Synthetic' : 'Published');
 
@@ -174,38 +182,73 @@ export function TrendExplorer({
   efficiency: readonly PublicModelEfficiency[];
   range: TrendRange;
 }) {
-  const [mode, setMode] = useState<'line' | 'bar'>('line');
-  const [seriesFilter, setSeriesFilter] = useState<SeriesFilter>('Sol');
+  const searchParams = useAnalyticalSearchParams();
+  const mode = readEnumParam(searchParams, 'trendEncoding', ['line', 'bar'], 'line');
+  const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'Sol');
   const [isPending, startTransition] = useTransition();
   const selectedEntries = useMemo(
     () => entries.filter((entry) => entry.modelFamily === seriesFilter),
     [entries, seriesFilter],
   );
   const selectedIds = useMemo(() => selectedEntries.map((entry) => entry.id), [selectedEntries]);
-  const visible = useMemo(
+  const familyPoints = useMemo(
     () => points.filter((point) => selectedIds.includes(point.entryId)),
     [points, selectedIds],
   );
+  const allTimes = useMemo(
+    () =>
+      [...new Set(familyPoints.map((point) => new Date(point.recordedAt).getTime()))].toSorted(
+        (left, right) => left - right,
+      ),
+    [familyPoints],
+  );
+  const maximumZoomStart = Math.max(0, allTimes.length - TREND_ZOOM_DATE_COUNT);
+  const zoomStart =
+    allTimes.length > TREND_ZOOM_DATE_COUNT
+      ? readBoundedIntegerParam(searchParams, 'trendZoom', 0, maximumZoomStart)
+      : null;
+  const zoomEnd =
+    zoomStart === null
+      ? allTimes.length - 1
+      : Math.min(allTimes.length - 1, zoomStart + TREND_ZOOM_DATE_COUNT - 1);
+  const zoomWindowTimes = useMemo(
+    () => (zoomStart === null ? allTimes : allTimes.slice(zoomStart, zoomEnd + 1)),
+    [allTimes, zoomEnd, zoomStart],
+  );
+  const zoomWindowTimeSet = useMemo(() => new Set(zoomWindowTimes), [zoomWindowTimes]);
+  const zoomWindowPoints = useMemo(
+    () =>
+      familyPoints.filter((point) => zoomWindowTimeSet.has(new Date(point.recordedAt).getTime())),
+    [familyPoints, zoomWindowTimeSet],
+  );
+  const latestVisibleTime = zoomWindowTimes.at(-1);
+  const latestVisiblePoints = zoomWindowPoints.filter(
+    (point) => new Date(point.recordedAt).getTime() === latestVisibleTime,
+  );
+  const latestVisiblePoint = latestVisiblePoints.toSorted(
+    (left, right) => right.score - left.score,
+  )[0];
+  const latestVisibleMinimumScore = Math.min(...latestVisiblePoints.map((point) => point.score));
   const scientificContexts = useMemo(
     () =>
       new Map(
-        visible.map((point) => [
+        zoomWindowPoints.map((point) => [
           point,
           resolveTrendScientificContext({ point, entries, runSummaries, efficiency }),
         ]),
       ),
-    [efficiency, entries, runSummaries, visible],
+    [efficiency, entries, runSummaries, zoomWindowPoints],
   );
+  const latestScientificContext = latestVisiblePoint
+    ? (scientificContexts.get(latestVisiblePoint) ?? unavailableTrendContext)
+    : null;
   const exactJoinUnavailable = [...scientificContexts.values()].some(
     (context) => context.exactJoinUnavailable,
   );
   const chartOption = useMemo<EChartsCoreOption>(() => {
-    const allTimes = [
-      ...new Set(visible.map((point) => new Date(point.recordedAt).getTime())),
-    ].toSorted((left, right) => left - right);
     const series = selectedEntries.map((entry, index) => {
       const byTime = new Map(
-        visible
+        zoomWindowPoints
           .filter((point) => point.entryId === entry.id)
           .map((point) => [new Date(point.recordedAt).getTime(), point]),
       );
@@ -225,7 +268,7 @@ export function TrendExplorer({
           type: index % 3 === 1 ? 'dashed' : index % 3 === 2 ? 'dotted' : 'solid',
         },
         itemStyle: { color: TREND_SERIES_STYLES[index]?.color },
-        data: allTimes.map((time) => {
+        data: zoomWindowTimes.map((time) => {
           const point = byTime.get(time);
           const context = point ? scientificContexts.get(point) : undefined;
           return point
@@ -258,7 +301,7 @@ export function TrendExplorer({
         silent: true,
         z: 4,
         encode: { x: 0, y: [1, 2] },
-        data: trendIntervalData(visible, entry.id).map(([time, low, high]) => [
+        data: trendIntervalData(zoomWindowPoints, entry.id).map(([time, low, high]) => [
           mode === 'bar' ? String(time) : time,
           low,
           high,
@@ -292,7 +335,7 @@ export function TrendExplorer({
       mode === 'bar'
         ? {
             type: 'category',
-            data: allTimes.map(String),
+            data: zoomWindowTimes.map(String),
             name: 'Observation date (UTC)',
             nameLocation: 'middle',
             nameGap: 38,
@@ -329,7 +372,6 @@ export function TrendExplorer({
           return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>AIQ ${Number(data[1]).toFixed(1)} · interval ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
         },
       },
-      dataZoom: allTimes.length > 12 ? [{ type: 'inside', xAxisIndex: 0 }] : undefined,
       xAxis,
       yAxis: {
         type: 'value',
@@ -345,7 +387,7 @@ export function TrendExplorer({
       },
       series: [...series, ...intervalSeries],
     };
-  }, [mode, scientificContexts, selectedEntries, visible]);
+  }, [mode, scientificContexts, selectedEntries, zoomWindowPoints, zoomWindowTimes]);
 
   return (
     <>
@@ -354,7 +396,10 @@ export function TrendExplorer({
           <Link
             key={candidate.value}
             aria-current={range === candidate.value ? 'page' : undefined}
-            href={`/trends?range=${candidate.value}`}
+            href={hrefWithParams('/trends', searchParams, {
+              range: candidate.value,
+              trendZoom: null,
+            })}
           >
             {candidate.label}
           </Link>
@@ -368,7 +413,14 @@ export function TrendExplorer({
               key={candidate}
               type="button"
               aria-pressed={seriesFilter === candidate}
-              onClick={() => startTransition(() => setSeriesFilter(candidate))}
+              onClick={() =>
+                startTransition(() =>
+                  pushAnalyticalUrl(
+                    { trendFamily: candidate, trendZoom: null },
+                    { hasSemanticChange: candidate !== seriesFilter },
+                  ),
+                )
+              }
             >
               {candidate}
             </button>
@@ -381,13 +433,77 @@ export function TrendExplorer({
               key={candidate}
               type="button"
               aria-pressed={mode === candidate}
-              onClick={() => startTransition(() => setMode(candidate))}
+              onClick={() =>
+                startTransition(() =>
+                  pushAnalyticalUrl(
+                    { trendEncoding: candidate },
+                    { hasSemanticChange: candidate !== mode },
+                  ),
+                )
+              }
             >
               {candidate === 'line' ? 'Line' : 'Bar'}
             </button>
           ))}
         </div>
       </div>
+      {allTimes.length > TREND_ZOOM_DATE_COUNT ? (
+        <div className="trend-window-control" aria-label="Visible trend date range">
+          <span>
+            {zoomStart === null
+              ? `All ${allTimes.length} dates`
+              : `Dates ${zoomStart + 1}–${zoomEnd + 1} of ${allTimes.length}`}
+          </span>
+          <div className="chart-switch" role="group" aria-label="Trend date window">
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              onClick={() =>
+                pushAnalyticalUrl(
+                  { trendZoom: String(maximumZoomStart) },
+                  { hasSemanticChange: zoomStart !== maximumZoomStart },
+                )
+              }
+            >
+              Latest 12
+            </button>
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              disabled={zoomStart === null || zoomStart === 0}
+              onClick={() =>
+                pushAnalyticalUrl({
+                  trendZoom: String(Math.max(0, (zoomStart ?? 0) - TREND_ZOOM_DATE_COUNT)),
+                })
+              }
+            >
+              Earlier 12
+            </button>
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              disabled={zoomStart === null || zoomStart === maximumZoomStart}
+              onClick={() =>
+                pushAnalyticalUrl({
+                  trendZoom: String(
+                    Math.min(maximumZoomStart, (zoomStart ?? 0) + TREND_ZOOM_DATE_COUNT),
+                  ),
+                })
+              }
+            >
+              Later 12
+            </button>
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              disabled={zoomStart === null}
+              onClick={() => pushAnalyticalUrl({ trendZoom: null })}
+            >
+              Reset: all dates
+            </button>
+          </div>
+        </div>
+      ) : null}
       <p className="trend-resolution" role="note">
         Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
         order. The family is an explicit filter, not a point-estimate cutoff. Lines connect ordered
@@ -396,7 +512,9 @@ export function TrendExplorer({
         returns at most 20 buckets per configuration and uses the latest exact Official run, not an
         average. Point context requires matching run, configuration, scoring version, and provenance
         identity; absent evidence remains unavailable. Scoring versions:{' '}
-        {[...new Set(visible.map((point) => point.scoringVersion))].join(', ') || 'unavailable'}.
+        {[...new Set(zoomWindowPoints.map((point) => point.scoringVersion))].join(', ') ||
+          'unavailable'}
+        .
       </p>
       {exactJoinUnavailable ? (
         <ReadStateNote
@@ -409,7 +527,7 @@ export function TrendExplorer({
       ) : null}
       <div className={`trend-layout${isPending ? ' is-pending' : ''}`}>
         <div className="chart-frame">
-          {visible.length > 0 ? (
+          {zoomWindowPoints.length > 0 ? (
             <EChartsChart
               className="trend-chart-echarts"
               option={chartOption}
@@ -425,7 +543,7 @@ export function TrendExplorer({
         </div>
         <ul className="chart-legend" aria-label="Visible trend series">
           {selectedEntries.map((entry, index) => {
-            const series = visible.filter((point) => point.entryId === entry.id);
+            const series = zoomWindowPoints.filter((point) => point.entryId === entry.id);
             const scoringVersions = [...new Set(series.map((point) => point.scoringVersion))];
             return (
               <li key={entry.id}>
@@ -445,6 +563,18 @@ export function TrendExplorer({
           })}
         </ul>
       </div>
+      {latestVisiblePoint && latestScientificContext ? (
+        <p className="trend-resolution" aria-live="polite">
+          Latest visible date: {formatDate(latestVisiblePoint.recordedAt)} UTC ·{' '}
+          {latestVisiblePoints.length} observations · AIQ range{' '}
+          {latestVisibleMinimumScore.toFixed(1)}–{latestVisiblePoint.score.toFixed(1)}. Highest
+          point estimate: {latestVisiblePoint.entryId} · task-sensitivity interval{' '}
+          {latestVisiblePoint.sensitivityLow.toFixed(1)}–
+          {latestVisiblePoint.sensitivityHigh.toFixed(1)} · n={latestVisiblePoint.sampleSize} ·
+          coverage {latestScientificContext.coverage} · scoring {latestVisiblePoint.scoringVersion}{' '}
+          · {pointProvenance(latestVisiblePoint).toLowerCase()}
+        </p>
+      ) : null}
       <details className="data-disclosure">
         <summary>Read visible trend values as a table</summary>
         <div className="table-scroll" role="region" aria-label="Visible trend values" tabIndex={0}>
@@ -467,7 +597,7 @@ export function TrendExplorer({
               </tr>
             </thead>
             <tbody>
-              {visible
+              {zoomWindowPoints
                 .toSorted(
                   (left, right) =>
                     new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime(),
