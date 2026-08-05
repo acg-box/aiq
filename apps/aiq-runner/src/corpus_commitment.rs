@@ -1136,6 +1136,48 @@ fn catalog_tool_policy_tasks(
 	}
 }
 
+fn validate_controlled_openssl_environment(
+	runtime_provenance: &Value,
+	model_toolchain_policy: &ExecutionToolPolicy,
+) -> Result<(), CorpusCommitmentError> {
+	let operating_system_platform = runtime_provenance
+		.pointer("/operating_system/platform")
+		.and_then(Value::as_str)
+		.ok_or_else(|| {
+			CorpusCommitmentError::new("corpus commitment omits operating-system platform")
+		})?;
+	let openssl_conf = runtime_provenance
+		.pointer("/locale_and_timezone/environment/OPENSSL_CONF")
+		.and_then(Value::as_str)
+		.ok_or_else(|| {
+			CorpusCommitmentError::new("corpus commitment omits controlled OpenSSL configuration")
+		})?;
+
+	if operating_system_platform != model_toolchain_policy.platform {
+		return Err(CorpusCommitmentError::new(
+			"corpus operating-system platform does not match the model toolchain",
+		));
+	}
+
+	let expected = match model_toolchain_policy.platform.as_str() {
+		"darwin" | "linux" => "/dev/null",
+		"win32" => "NUL",
+		_ => {
+			return Err(CorpusCommitmentError::new(
+				"corpus commitment has an unsupported OpenSSL platform",
+			));
+		},
+	};
+
+	if openssl_conf != expected {
+		return Err(CorpusCommitmentError::new(
+			"corpus OpenSSL configuration does not match the model toolchain platform",
+		));
+	}
+
+	Ok(())
+}
+
 fn validate_deterministic_execution_digests(
 	execution: &CorpusExecution,
 	source_manifest: &Value,
@@ -1143,6 +1185,8 @@ fn validate_deterministic_execution_digests(
 	catalog_contract: CatalogContract,
 	selected_tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), CorpusCommitmentError> {
+	validate_controlled_openssl_environment(&execution.runtime_provenance, model_toolchain_policy)?;
+
 	let tool_policy_tasks = catalog_tool_policy_tasks(catalog_contract, selected_tasks)?;
 	let observed_environment = protocol::canonical_hash(&execution.runtime_provenance)
 		.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
@@ -1709,6 +1753,14 @@ mod tests {
 			let source_manifest_digest =
 				protocol::canonical_hash(&source_manifest).expect("source manifest digest");
 			let runtime_provenance = serde_json::json!({
+				"operating_system": {
+					"platform": policy.platform.as_str(),
+				},
+				"locale_and_timezone": {
+					"environment": {
+						"OPENSSL_CONF": if policy.platform == "win32" { "NUL" } else { "/dev/null" },
+					},
+				},
 				"node_runtime": {
 					"executable_sha256": runtime.executable_digest(),
 					"version": runtime.version(),
@@ -1805,6 +1857,35 @@ mod tests {
 				.expect("actual Node.js version"),
 			"v24.18.0"
 		);
+	}
+
+	#[test]
+	fn controlled_openssl_environment_has_one_platform_mapping() {
+		let mut policy =
+			super::fixture_model_toolchain(std::path::PathBuf::from("/toolchain")).policy().clone();
+
+		for (platform, openssl_conf) in
+			[("darwin", "/dev/null"), ("linux", "/dev/null"), ("win32", "NUL")]
+		{
+			policy.platform = platform.to_owned();
+
+			let runtime = serde_json::json!({
+				"operating_system": { "platform": platform },
+				"locale_and_timezone": {
+					"environment": { "OPENSSL_CONF": openssl_conf },
+				},
+			});
+
+			super::validate_controlled_openssl_environment(&runtime, &policy)
+				.expect("platform-bound OpenSSL configuration");
+
+			let mut wrong = runtime;
+
+			wrong["locale_and_timezone"]["environment"]["OPENSSL_CONF"] =
+				serde_json::json!(if openssl_conf == "NUL" { "/dev/null" } else { "NUL" });
+
+			assert!(super::validate_controlled_openssl_environment(&wrong, &policy).is_err());
+		}
 	}
 
 	#[test]
@@ -1977,6 +2058,73 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
+	fn shared_corpus_validation_enforces_platform_bound_openssl_configuration() {
+		let fixture = RunnerProvenancePathFixture::new("openssl-environment");
+
+		for catalog in ["core", "contrast"] {
+			for mutation in ["missing", "wrong null device", "platform mismatch"] {
+				let mut commitment = if catalog == "core" {
+					fixture.core_commitment.clone()
+				} else {
+					fixture.contrast_commitment.clone()
+				};
+				let runtime = &mut commitment["execution"]["runtime_provenance"];
+
+				match mutation {
+					"missing" => {
+						runtime["locale_and_timezone"]["environment"]
+							.as_object_mut()
+							.expect("environment object")
+							.remove("OPENSSL_CONF");
+					},
+					"wrong null device" => {
+						runtime["locale_and_timezone"]["environment"]["OPENSSL_CONF"] =
+							serde_json::json!("NUL");
+					},
+					"platform mismatch" => {
+						runtime["operating_system"]["platform"] = serde_json::json!("win32");
+					},
+					_ => unreachable!("unknown OpenSSL mutation"),
+				}
+
+				commitment["execution"]["environment_sha256"] = serde_json::json!(
+					protocol::canonical_hash(runtime).expect("mutated environment digest")
+				);
+
+				let path = fixture.write(&format!("{catalog}-openssl-{mutation}"), &commitment);
+				let error = if catalog == "core" {
+					super::validate_core_corpus_commitment(
+						&path,
+						&fixture.core_tasks,
+						&fixture.source_root,
+					)
+					.expect_err("mutated Core OpenSSL provenance")
+				} else {
+					let digest =
+						protocol::canonical_hash(&commitment).expect("mutated contrast digest");
+
+					super::validate_contrast_corpus_commitment(
+						&path,
+						&fixture.contrast_tasks,
+						&fixture.source_root,
+						&digest,
+					)
+					.expect_err("mutated Contrast OpenSSL provenance")
+				};
+
+				assert!(
+					error.to_string().contains("OpenSSL")
+						|| error.to_string().contains("operating-system platform"),
+					"{catalog} {mutation} reached the wrong gate: {error}"
+				);
+			}
+		}
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
 	fn evaluator_runtime_validation_reuses_runner_provenance_gate() {
 		let fixture = RunnerProvenancePathFixture::new("evaluator-runtime");
 		let valid_path = fixture.write("valid", &fixture.core_commitment);
@@ -2043,6 +2191,14 @@ mod tests {
 		let source_manifest_sha256 =
 			protocol::canonical_hash(&source_manifest).expect("source manifest digest");
 		let runtime_provenance = serde_json::json!({
+			"operating_system": {
+				"platform": policy.platform.as_str(),
+			},
+			"locale_and_timezone": {
+				"environment": {
+					"OPENSSL_CONF": if policy.platform == "win32" { "NUL" } else { "/dev/null" },
+				},
+			},
 			"runner": {
 				"identity_kind": "source_only",
 				"source_manifest": source_manifest,
