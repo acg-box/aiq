@@ -152,17 +152,23 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e';
-  const catalogReleaseDigest = 'f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279';
+  const catalogDigest = 'c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c';
+  const catalogReleaseDigest = '28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897';
   const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
   const controlledTaskTreeDigest =
     '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
   const predecessorCatalogDigest =
     'b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc';
+  const immediatePredecessorCatalogDigest =
+    '2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e';
+  const immediatePredecessorCatalogReleaseDigest =
+    'f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279';
   const staleCatalogDigest = 'b518145026b498050e8810b4544674dea13a2d1b8f63d02b0b0e78025ea25ce3';
   const databaseSources = `${schema}\n${syntheticDemo}`;
 
   assert.doesNotMatch(databaseSources, new RegExp(predecessorCatalogDigest));
+  assert.doesNotMatch(databaseSources, new RegExp(immediatePredecessorCatalogDigest));
+  assert.doesNotMatch(databaseSources, new RegExp(immediatePredecessorCatalogReleaseDigest));
   assert.doesNotMatch(databaseSources, new RegExp(staleCatalogDigest));
   assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.0/);
   assert.doesNotMatch(databaseSources, /aiq-core@1\.0\.1/);
@@ -177,14 +183,14 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     schema,
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
-  assert.match(schema, /task_set\.task_set_version = '1\.0\.4'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.4'/);
-  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.4'/);
+  assert.match(schema, /task_set\.task_set_version = '1\.0\.5'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.5'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.5'/);
   assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
-  assert.match(syntheticDemo, /'aiq-core@1\.0\.4'/);
+  assert.match(syntheticDemo, /'aiq-core@1\.0\.5'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.4', '1\.0\.4'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.5', '1\.0\.5'/,
   );
 
   const pricingValidator =
@@ -342,7 +348,7 @@ export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
   ]);
   assert.equal(fixture.schema_version, 'aiq.production-task-commitments.v1');
   assert.equal(fixture.task_set_id, 'aiq-core');
-  assert.equal(fixture.task_set_version, '1.0.4');
+  assert.equal(fixture.task_set_version, '1.0.5');
   assert.equal(fixture.task_set_identity_sha256, taskSetIdentity);
   const tasks = unknownArray(fixture.tasks);
   assert.equal(tasks.length, 72);
@@ -1068,7 +1074,7 @@ export async function checkDatabaseSchema(
     readFile(join(repositoryRoot, 'databases/schema.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/synthetic-demo.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8'),
-    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json'), 'utf8').then(
+    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json'), 'utf8').then(
       (bytes) => JSON.parse(bytes) as unknown,
     ),
   ]);
