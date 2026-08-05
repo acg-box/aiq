@@ -9,7 +9,7 @@
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c",
+    "digest": "sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253",
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
@@ -18,12 +18,12 @@
     "task_metadata_identity": {
       "algorithm": "sha256",
       "canonicalization": "aiq.sorted-key-json.v1",
-      "digest": "sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c",
+      "digest": "sha256:cc17c6dd38947b943e549551d4fdb6702e9c2ebb421f0d597bce41a839c56253",
       "scope": "ordered_full_task_metadata"
     },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897",
+    "digest": "sha256:3dc9e4e34b03147967f65f793f9e0cadeb9688810adaa505325d8a855ce9e44f",
     "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
@@ -710,12 +710,12 @@
       "title": "Extend an API client with conditional requests",
       "domain": "coding",
       "difficulty": "medium",
-      "summary": "Repair conditional HTTP request handling with client-scoped in-flight coalescing keyed by identifier and ETag, independent progress, and settle-safe cleanup.",
+      "summary": "Repair a multi-module cached API client with deterministic freshness, conditional revalidation, stale-if-error recovery, per-key coalescing, and generation-safe invalidation.",
       "design_revision": {
         "supersedes_task_version": "1.0.4",
         "kind": "calibration_retargeted",
-        "objective": "Retarget conditional HTTP fetching around client-scoped in-flight request coalescing, precise identity, independent progress, and complete lifecycle cleanup.",
-        "task_specific_delta": "Require concurrent conditional requests to coalesce only within one client and only for the same identifier and ETag. Different clients or keys must remain independent, and the in-flight entry must be removed after every fulfilled or rejected settlement path so later requests can proceed.",
+        "objective": "Retarget conditional HTTP fetching around a multi-module cache repair with injected time, bounded freshness, conditional revalidation, stale-if-error recovery, request coalescing, and generation-safe invalidation.",
+        "task_specific_delta": "Repair an existing client and cache integration instead of synthesizing one blank module. Fresh entries avoid transport work; expired entries revalidate conditionally; bounded stale entries can recover from transport failure; same-key refreshes coalesce; and invalidation prevents detached completions from publishing stale state. Different clients and identifiers remain independent.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -724,7 +724,7 @@
         ]
       },
       "input_contract": {
-        "kind": "client_scoped_conditional_request_repository",
+        "kind": "multi_module_conditional_cache_repository",
         "fixture_profile": "aiq-fixture://coding-06/v1",
         "content_handle": "aiq-controlled-task://aiq-core/1.0.5/coding-06"
       },
@@ -746,10 +746,10 @@
         "deterministic": true,
         "partial_credit": true,
         "pass_conditions": [
-          "Concurrent requests coalesce only when the client, identifier, and ETag identity match.",
-          "Different clients, identifiers, and ETags make independent progress.",
-          "Fulfilled and rejected requests remove their in-flight entries after settlement.",
-          "Deterministic lifecycle evidence distinguishes correct coalescing from global or persistent caching."
+          "Fresh cache entries avoid transport work, while expired entries use deterministic conditional revalidation and publish valid 200 or 304 state.",
+          "Only overlapping refreshes for the same client and identifier coalesce; different clients and identifiers make independent progress.",
+          "Transport failures use prior state only inside the declared stale-if-error window, and failed refreshes do not become persistent in-flight state.",
+          "Invalidation detaches the exact cache generation so an older fulfillment or rejection cannot overwrite or remove replacement state."
         ],
         "scoring_contract": {
           "aggregation": "configured_weighted_binary_check_fraction_with_hard_gates",
