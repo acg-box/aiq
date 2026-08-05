@@ -245,7 +245,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(snapshot).toContainText('Coverage');
   await expect(snapshot).toContainText('runtime 3 · missing 0');
-  await expect(snapshot).toContainText('scoring 1.0.4 · synthetic');
+  await expect(snapshot).toContainText('scoring 1.0.5 · synthetic');
   await expect(snapshot).toContainText('Newest retained run');
   await expect(snapshot).toContainText('Jul 22, 2026');
   await expect(snapshot).toContainText('Duration');
@@ -311,7 +311,7 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(2);
-  await expect(page.getByText('v1.0.4', { exact: true })).toBeVisible();
+  await expect(page.getByText('v1.0.5', { exact: true })).toBeVisible();
   await expect(
     page.getByText('Adapter invocation: 0/0 attempted · elapsed observed 0'),
   ).toBeVisible();

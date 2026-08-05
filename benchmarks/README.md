@@ -1,15 +1,15 @@
 # AIQ Core benchmark contract
 
-Repository source targets the public AIQ Core `1.0.4` candidate and scoring
-`1.0.4`. It is a fixed
+Repository source targets the public AIQ Core `1.0.5` candidate and scoring
+`1.0.5`. It is a fixed
 72-task benchmark across ten domains. The public catalog defines task identity,
 domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
-The active public candidate, task, and scorer contract is `1.0.4`. It retargets
-nine ceiling tasks, repairs one data-processing contract, and carries forward
-62 task designs with new version, provenance, and commitment bindings. The
+The active public candidate, task, and scorer contract is `1.0.5`. It revises
+four calibration-sensitive tasks and carries forward 68 task designs with new
+version, provenance, and commitment bindings. The
 controlled Core, Contrast, runtime, evaluator, generated-task tree, and database
 commitment identities are pending. Full calibration, final native build
 verification, a real Official run, publication, and final deployment are
@@ -31,15 +31,15 @@ has 4,395 artifact bindings, including 19 capability artifacts.
 The `1.0.3` Official attempt was interrupted after its calibration evidence had
 already proved a ceiling-policy failure. It was rejected and remains
 unpublished calibration evidence. No hidden responses or hidden task details
-were published. The `1.0.4` release path requires one complete, non-Official
+were published. The `1.0.5` release path requires one complete, non-Official
 17-by-72 falsification-first calibration before any real Official publication
 path. The calibration must pass the release policy without an operator override.
 
 ## Public authority
 
-- `candidates/aiq-core-1.0.4/catalog.json` is the active generated public
+- `candidates/aiq-core-1.0.5/catalog.json` is the active generated public
   catalog for repository source.
-- `candidates/aiq-core-1.0.4/catalog.schema.json` validates the active source
+- `candidates/aiq-core-1.0.5/catalog.schema.json` validates the active source
   catalog.
 - `schema/corpus-commitment-v2.schema.json` validates the controlled AIQ Core
   corpus commitment document.
@@ -52,16 +52,16 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
+sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c
 ```
 
 Its release identity is:
 
 ```text
-sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279
+sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897
 ```
 
-The release-policy identity is `aiq-core/1.0.4`. The controlled scorer-manifest
+The release-policy identity is `aiq-core/1.0.5`. The controlled scorer-manifest
 and evaluator identities are pending.
 
 Each task score uses the executable weighted-check contract. A private,
@@ -74,25 +74,25 @@ to the fraction when all hard gates pass. The verifier replays the exact checks
 without evaluator rounding. Public pass conditions summarize coverage; they are
 not mathematical weight partitions.
 
-## AIQ Core 1.0.4 public authority
+## AIQ Core 1.0.5 public authority
 
 These files own the active catalog authority:
 
-- `candidates/aiq-core-1.0.4/catalog.json`;
-- `candidates/aiq-core-1.0.4/catalog.schema.json`;
-- `candidates/aiq-core-1.0.4/task.schema.json`; and
+- `candidates/aiq-core-1.0.5/catalog.json`;
+- `candidates/aiq-core-1.0.5/catalog.schema.json`;
+- `candidates/aiq-core-1.0.5/task.schema.json`; and
 - `schema/corpus-commitment-v2.schema.json`.
 
 The task-metadata identity is:
 
 ```text
-sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
+sha256:c8e00a4812394d0ebf5474f4cbad2169bcc2a2db9e2b85db74dfe3885cb9e76c
 ```
 
 The release identity is:
 
 ```text
-sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279
+sha256:28c55e9366cf2531ebea414c331bf2fc9f8381a771c76b42e74bff8b2744e897
 ```
 
 The first digest binds the ordered public task metadata. The second binds the
@@ -123,14 +123,14 @@ results, 17 leaderboard rows, 17 model-efficiency rows, and 17 model-matrix rows
 Regenerate and test the active source catalog with:
 
 ```sh
-node scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.ts
+node scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts
 node --test --experimental-strip-types \
-  scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.test.ts
+  scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.test.ts
 ```
 
 ## Private corpus boundary
 
-The final `aiq.corpus-commitment.v2` document will bind the `1.0.4` private
+The final `aiq.corpus-commitment.v2` document will bind the `1.0.5` private
 corpus to the ordered public catalog. It also binds the runner source, harness,
 evaluator, runtime, tool policy, network policy, environment, baseline
 workspaces, fixture bundles, and task definitions.
@@ -138,7 +138,7 @@ workspaces, fixture bundles, and task definitions.
 The commitment is public-safe. It must not include private paths, secret values,
 task content, expected outputs, or signing material.
 
-The repository tracks the active AIQ Core `1.0.4` public catalog and generator.
+The repository tracks the active AIQ Core `1.0.5` public catalog and generator.
 
 ## Validation
 

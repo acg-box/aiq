@@ -4,7 +4,7 @@ mod replay;
 
 use std::collections::BTreeMap;
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Builder};
@@ -16,7 +16,7 @@ use std::{
 	fs::{self, OpenOptions},
 	io::{Read, Write},
 	path::{Path, PathBuf},
-	process,
+	process::{self, Command},
 	sync::{Condvar, Mutex},
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -33,7 +33,8 @@ use ureq::{
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
 	calibration_verification::{
-		self, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
+		CalibrationAdmissionBundleV1, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::{MODEL_MATRIX, ModelConfig},
@@ -42,8 +43,8 @@ use aiq_runner::{
 		ReplayStatus, VerifiedPackageIdentity, VerifierAttestationV2, VerifierSigningIdentity,
 	},
 	protocol::{
-		self, CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, SubmissionEnvelope, TrustTier,
-		VerifiedSubmission,
+		self, CALIBRATION_RUN_PAYLOAD_TYPE, NodeIdentity, RUN_PAYLOAD_TYPE, SubmissionEnvelope,
+		TrustTier, VerifiedSubmission,
 	},
 	run_validation,
 	runner::{
@@ -414,6 +415,82 @@ struct VerifyLocalCli {
 	/// New output path for the signed `aiq.verifier-attestation.v3`.
 	#[arg(long)]
 	attestation_output: PathBuf,
+	/// New private verifier-signed admission output for an exact full 72-by-17 calibration.
+	#[arg(
+		long,
+		requires_all = [
+			"source_root",
+			"frozen_runner_binary",
+			"codex_binary",
+			"production_reference",
+			"expected_production_reference_sha256",
+			"build_receipt",
+			"expected_build_receipt_sha256"
+		]
+	)]
+	admission_output: Option<PathBuf>,
+	/// Detached frozen source tree validated by the Core corpus commitment.
+	#[arg(long, requires = "admission_output")]
+	source_root: Option<PathBuf>,
+	/// Exact retained runner binary that created the signed calibration package.
+	#[arg(long, requires = "admission_output")]
+	frozen_runner_binary: Option<PathBuf>,
+	/// Exact retained Codex binary used by the signed calibration run.
+	#[arg(long, requires = "admission_output")]
+	codex_binary: Option<PathBuf>,
+	/// Protected production reference approving distinct runner and verifier identities.
+	#[arg(long, requires = "admission_output")]
+	production_reference: Option<PathBuf>,
+	/// Independently supplied exact SHA-256 of the protected production reference.
+	#[arg(long, requires = "admission_output")]
+	expected_production_reference_sha256: Option<String>,
+	/// Private final-build receipt that binds the retained binaries to source identity.
+	#[arg(long, requires = "admission_output")]
+	build_receipt: Option<PathBuf>,
+	/// Independently supplied exact SHA-256 of the private final-build receipt.
+	#[arg(long, requires = "admission_output")]
+	expected_build_receipt_sha256: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperationalProductionReference {
+	schema_version: String,
+	published_at: String,
+	corpus_commitment: serde_json::Value,
+	nodes: Vec<OperationalReferenceNode>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OperationalReferenceNode {
+	schema_version: String,
+	role: String,
+	node_id: String,
+	display_name: String,
+	key_fingerprint: String,
+	public_key: String,
+	signature_algorithm: String,
+	status: String,
+	trust_tier: String,
+	operator_class: String,
+	capabilities: Vec<String>,
+	source: String,
+	signature_status: String,
+	provenance: String,
+	synthetic: bool,
+	public_visible: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FinalBuildReceipt {
+	schema_version: String,
+	source_commit: String,
+	source_tree: String,
+	runner_executable_sha256: String,
+	verifier_executable_sha256: String,
+	codex_executable_sha256: String,
 }
 
 /// Offline source-verification and candidate-evaluator diagnostic settings.
@@ -1818,6 +1895,10 @@ struct DiagnosticSourcePackage {
 	sha256: String,
 }
 
+struct OperationalAdmissionContext {
+	bindings: CalibrationAdmissionBindings,
+}
+
 /// Stable rejection reason understood by operators and automation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -2366,6 +2447,107 @@ fn verify_and_write_local(
 	Ok(prepared)
 }
 
+fn verify_and_write_local_with_admission(
+	request: PreparationRequest<'_>,
+	stage_output: &Path,
+	attestation_output: &Path,
+	admission_output: &Path,
+	context: &OperationalAdmissionContext,
+) -> Result<(), WorkerError> {
+	let stage_target = OutputTarget::new(stage_output, "stage output")?;
+	let attestation_target = OutputTarget::new(attestation_output, "attestation output")?;
+	let admission_target = OutputTarget::new(admission_output, "calibration admission output")?;
+
+	if stage_target.path == attestation_target.path
+		|| stage_target.path == admission_target.path
+		|| attestation_target.path == admission_target.path
+	{
+		return Err(WorkerError::configuration(
+			"stage, attestation, and calibration admission outputs must use different paths",
+		));
+	}
+
+	let package_bytes = request.package_bytes;
+	let tasks = request.tasks;
+	let signing_identity = request.signing_identity;
+	let prepared = prepare_package_verification(request)?;
+
+	if prepared.replay_scope != PRODUCTION_REPLAY_SCOPE {
+		return Err(WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"offline production replay did not derive evaluator_replayed",
+		));
+	}
+
+	let PreparedEvidence::Calibration { stage, attestation } = &prepared.evidence else {
+		return Err(WorkerError::configuration(
+			"calibration admission requires a signed calibration package",
+		));
+	};
+	let envelope: SubmissionEnvelope = serde_json::from_slice(package_bytes).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"calibration admission package is invalid",
+		)
+	})?;
+	let verified = envelope.verify(&BTreeSet::new()).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageSignature,
+			"calibration admission package signature is invalid",
+		)
+	})?;
+
+	if verified.payload_type != CALIBRATION_RUN_PAYLOAD_TYPE {
+		return Err(WorkerError::configuration(
+			"calibration admission requires a calibration payload",
+		));
+	}
+
+	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"calibration admission payload is invalid",
+		)
+	})?;
+	let admission = calibration_verification::sign_full_calibration_admission(
+		signing_identity,
+		stage,
+		attestation,
+		tasks,
+		&run.results,
+		context.bindings.clone(),
+	)
+	.map_err(|error| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			format!("calibration admission failed: {error}"),
+		)
+	})?;
+
+	let bundle = CalibrationAdmissionBundleV1 {
+		schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
+		stage: stage.clone(),
+		attestation: attestation.clone(),
+		admission,
+	};
+
+	bundle.verify(&context.bindings, tasks, &run.results).map_err(|error| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			format!("calibration admission bundle failed: {error}"),
+		)
+	})?;
+
+	write_admission_outputs_atomically(
+		&stage_target,
+		&attestation_target,
+		&admission_target,
+		stage,
+		attestation,
+		&bundle,
+	)
+}
+
 fn metadata_for(
 	run: &RunRecord,
 	environment: &VerifierEnvironment,
@@ -2473,36 +2655,113 @@ where
 		));
 	}
 
-	let mut stage_bytes = serde_json::to_vec_pretty(stage).map_err(|error| {
-		WorkerError::configuration(format!("stage serialization failed: {error}"))
+	let stage_bytes = serialize_json_output(stage, "stage")?;
+	let attestation_bytes = serialize_json_output(attestation, "attestation")?;
+
+	publish_outputs_atomically(
+		&[
+			(&stage_target, "stage", stage_bytes.as_slice()),
+			(&attestation_target, "attestation", attestation_bytes.as_slice()),
+		],
+		|_| Ok(()),
+	)
+}
+
+fn write_admission_outputs_atomically<S, A, B>(
+	stage_target: &OutputTarget,
+	attestation_target: &OutputTarget,
+	admission_target: &OutputTarget,
+	stage: &S,
+	attestation: &A,
+	admission: &B,
+) -> Result<(), WorkerError>
+where
+	S: Serialize,
+	A: Serialize,
+	B: Serialize,
+{
+	let stage_bytes = serialize_json_output(stage, "stage")?;
+	let attestation_bytes = serialize_json_output(attestation, "attestation")?;
+	let admission_bytes = serialize_json_output(admission, "calibration admission")?;
+
+	publish_outputs_atomically(
+		&[
+			(stage_target, "stage", stage_bytes.as_slice()),
+			(attestation_target, "attestation", attestation_bytes.as_slice()),
+			(admission_target, "calibration admission", admission_bytes.as_slice()),
+		],
+		|_| Ok(()),
+	)
+}
+
+fn serialize_json_output<T>(value: &T, label: &str) -> Result<Vec<u8>, WorkerError>
+where
+	T: Serialize,
+{
+	let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| {
+		WorkerError::configuration(format!("{label} serialization failed: {error}"))
 	})?;
-	let mut attestation_bytes = serde_json::to_vec_pretty(attestation).map_err(|error| {
-		WorkerError::configuration(format!("attestation serialization failed: {error}"))
-	})?;
 
-	stage_bytes.push(b'\n');
-	attestation_bytes.push(b'\n');
+	bytes.push(b'\n');
 
-	let stage_temporary = create_temporary_output(&stage_target, "stage", &stage_bytes)?;
-	let attestation_temporary =
-		create_temporary_output(&attestation_target, "attestation", &attestation_bytes)?;
+	Ok(bytes)
+}
 
-	fs::hard_link(&stage_temporary.path, &stage_target.path).map_err(|error| {
-		WorkerError::configuration(format!(
-			"cannot install stage output without overwrite: {error}"
-		))
-	})?;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PublicationPoint {
+	Install(usize),
+	Rollback(usize),
+}
 
-	if let Err(error) = fs::hard_link(&attestation_temporary.path, &attestation_target.path) {
-		if let Err(cleanup) = fs::remove_file(&stage_target.path) {
+fn publish_outputs_atomically<F>(
+	outputs: &[(&OutputTarget, &str, &[u8])],
+	mut fault: F,
+) -> Result<(), WorkerError>
+where
+	F: FnMut(PublicationPoint) -> std::io::Result<()>,
+{
+	let temporaries = outputs
+		.iter()
+		.map(|(target, label, bytes)| create_temporary_output(target, label, bytes))
+		.collect::<Result<Vec<_>, _>>()?;
+	let mut installed = Vec::with_capacity(outputs.len());
+
+	for (index, ((target, label, _), temporary)) in
+		outputs.iter().zip(temporaries.iter()).enumerate()
+	{
+		let install = fault(PublicationPoint::Install(index))
+			.and_then(|()| fs::hard_link(&temporary.path, &target.path));
+
+		if let Err(error) = install {
+			let mut rollback_errors = Vec::new();
+
+			for installed_index in installed.iter().rev().copied() {
+				let (installed_target, installed_label, _) = outputs[installed_index];
+
+				if let Err(rollback_error) = fault(PublicationPoint::Rollback(installed_index)) {
+					rollback_errors.push(format!(
+						"{installed_label} rollback injection failed: {rollback_error}"
+					));
+				}
+				if let Err(rollback_error) = fs::remove_file(&installed_target.path) {
+					rollback_errors.push(format!(
+						"cannot roll back {installed_label} output: {rollback_error}"
+					));
+				}
+			}
+
+			let rollback = if rollback_errors.is_empty() {
+				String::new()
+			} else {
+				format!("; rollback failures: {}", rollback_errors.join("; "))
+			};
+
 			return Err(WorkerError::configuration(format!(
-				"cannot install attestation output: {error}; cannot roll back stage output: {cleanup}"
+				"cannot install {label} output without overwrite: {error}{rollback}"
 			)));
 		}
 
-		return Err(WorkerError::configuration(format!(
-			"cannot install attestation output without overwrite: {error}"
-		)));
+		installed.push(index);
 	}
 
 	Ok(())
@@ -2512,11 +2771,7 @@ fn write_create_new_json<T>(target: &OutputTarget, value: &T) -> Result<(), Work
 where
 	T: Serialize,
 {
-	let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| {
-		WorkerError::configuration(format!("diagnostic serialization failed: {error}"))
-	})?;
-
-	bytes.push(b'\n');
+	let bytes = serialize_json_output(value, "diagnostic")?;
 
 	let temporary = create_temporary_output(target, "diagnostic", &bytes)?;
 
@@ -2628,6 +2883,250 @@ fn read_owned_regular_input(
 	}
 
 	Ok(RegularInput { bytes, canonical_path })
+}
+
+fn protected_executable_digest(path: &Path, label: &str) -> Result<String, WorkerError> {
+	if !path.is_absolute() {
+		return Err(WorkerError::configuration(format!("{label} must use an absolute path")));
+	}
+
+	let input = read_owned_regular_input(path, label, 256 * 1_024 * 1_024)?;
+	let metadata = fs::metadata(&input.canonical_path)
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+
+	#[cfg(unix)]
+	if metadata.permissions().mode() & 0o111 == 0 {
+		return Err(WorkerError::configuration(format!("{label} must be executable")));
+	}
+
+	Ok(format!("sha256:{}", hex::encode(Sha256::digest(&input.bytes))))
+}
+
+fn git_output(root: &Path, arguments: &[&str], label: &str) -> Result<String, WorkerError> {
+	let output = Command::new("git")
+		.arg("-C")
+		.arg(root)
+		.args(arguments)
+		.env_clear()
+		.env("PATH", "/usr/bin:/bin:/usr/local/bin")
+		.output()
+		.map_err(|error| WorkerError::configuration(format!("{label}: {error}")))?;
+
+	if !output.status.success() {
+		return Err(WorkerError::configuration(format!("{label} failed")));
+	}
+
+	String::from_utf8(output.stdout)
+		.map(|value| value.trim().to_owned())
+		.map_err(|_| WorkerError::configuration(format!("{label} returned non-UTF-8 output")))
+}
+
+fn validate_detached_source_identity(
+	root: &Path,
+	expected_commit: &str,
+) -> Result<String, WorkerError> {
+	if !valid_git_oid(expected_commit) {
+		return Err(WorkerError::configuration("expected source commit is invalid"));
+	}
+
+	let symbolic = Command::new("git")
+		.arg("-C")
+		.arg(root)
+		.args(["symbolic-ref", "-q", "HEAD"])
+		.env_clear()
+		.env("PATH", "/usr/bin:/bin:/usr/local/bin")
+		.status()
+		.map_err(|error| WorkerError::configuration(format!("source Git HEAD: {error}")))?;
+
+	if symbolic.success() {
+		return Err(WorkerError::configuration("admission source root must use detached HEAD"));
+	}
+
+	let commit = git_output(root, &["rev-parse", "--verify", "HEAD"], "source Git commit")?;
+	let tree = git_output(root, &["rev-parse", "--verify", "HEAD^{tree}"], "source Git tree")?;
+	let status = git_output(
+		root,
+		&["status", "--porcelain=v1", "--untracked-files=all"],
+		"source Git status",
+	)?;
+
+	if commit != expected_commit || !status.is_empty() || !valid_git_oid(&tree) {
+		return Err(WorkerError::configuration(
+			"admission source root does not match the exact clean detached source identity",
+		));
+	}
+
+	Ok(tree)
+}
+
+fn validated_build_receipt(
+	path: &Path,
+	expected_digest: &str,
+) -> Result<(FinalBuildReceipt, String), WorkerError> {
+	let input = read_owned_regular_input(path, "final-build receipt", MAX_SUBMISSION_BYTES)?;
+	let digest = format!("sha256:{}", hex::encode(Sha256::digest(&input.bytes)));
+
+	if !valid_sha256_digest(expected_digest) || digest != expected_digest {
+		return Err(WorkerError::configuration(
+			"final-build receipt does not match the independently expected digest",
+		));
+	}
+
+	let receipt: FinalBuildReceipt = serde_json::from_slice(&input.bytes)
+		.map_err(|error| WorkerError::configuration(format!("final-build receipt: {error}")))?;
+
+	if receipt.schema_version != "aiq.final-build-receipt.v1"
+		|| !valid_git_oid(&receipt.source_commit)
+		|| !valid_git_oid(&receipt.source_tree)
+		|| !valid_sha256_digest(&receipt.runner_executable_sha256)
+		|| !valid_sha256_digest(&receipt.verifier_executable_sha256)
+		|| !valid_sha256_digest(&receipt.codex_executable_sha256)
+	{
+		return Err(WorkerError::configuration("final-build receipt is invalid"));
+	}
+
+	Ok((receipt, digest))
+}
+
+fn is_canonical_millisecond_utc(value: &str) -> bool {
+	let bytes = value.as_bytes();
+	let separators =
+		[(4, b'-'), (7, b'-'), (10, b'T'), (13, b':'), (16, b':'), (19, b'.'), (23, b'Z')];
+
+	if !(bytes.len() == 24
+		&& separators.iter().all(|(index, expected)| bytes[*index] == *expected)
+		&& bytes.iter().enumerate().all(|(index, byte)| {
+			separators.iter().any(|(separator, _)| *separator == index) || byte.is_ascii_digit()
+		})) {
+		return false;
+	}
+
+	let number = |range: std::ops::Range<usize>| {
+		std::str::from_utf8(&bytes[range]).ok().and_then(|part| part.parse::<u32>().ok())
+	};
+	let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) =
+		(number(0..4), number(5..7), number(8..10), number(11..13), number(14..16), number(17..19))
+	else {
+		return false;
+	};
+	let leap = year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+	let days = match month {
+		1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+		4 | 6 | 9 | 11 => 30,
+		2 if leap => 29,
+		2 => 28,
+		_ => return false,
+	};
+
+	year != 0 && (1..=days).contains(&day) && hour < 24 && minute < 60 && second < 60
+}
+
+fn valid_sha256_digest(value: &str) -> bool {
+	value.strip_prefix("sha256:").is_some_and(|hex| {
+		hex.len() == 64
+			&& hex.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+	})
+}
+
+fn valid_git_oid(value: &str) -> bool {
+	value.len() == 40
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn approved_operational_nodes(
+	path: &Path,
+	expected_reference_sha256: &str,
+) -> Result<(NodeIdentity, NodeIdentity, String, String), WorkerError> {
+	let input = read_owned_regular_input(path, "production reference", MAX_SUBMISSION_BYTES)?;
+	let production_reference_sha256 =
+		format!("sha256:{}", hex::encode(Sha256::digest(&input.bytes)));
+
+	if !valid_sha256_digest(expected_reference_sha256)
+		|| production_reference_sha256 != expected_reference_sha256
+	{
+		return Err(WorkerError::configuration(
+			"production reference does not match the independently expected digest",
+		));
+	}
+	let reference: OperationalProductionReference = serde_json::from_slice(&input.bytes)
+		.map_err(|error| WorkerError::configuration(format!("production reference: {error}")))?;
+
+	if reference.schema_version != "aiq.production-reference.v1"
+		|| reference.nodes.len() != 3
+		|| !is_canonical_millisecond_utc(&reference.published_at)
+	{
+		return Err(WorkerError::configuration("production reference is invalid"));
+	}
+	let corpus_commitment_sha256 = protocol::canonical_hash(&reference.corpus_commitment)
+		.map_err(|error| WorkerError::configuration(format!("production reference: {error}")))?;
+
+	let mut identities = BTreeMap::new();
+
+	for node in reference.nodes {
+		let expected_operator_class = if node.role == "verifier" { "verifier" } else { "official" };
+		let expected_trust_tier =
+			if node.role == "verifier" { "independently_reproduced" } else { "trusted_verified" };
+
+		if node.schema_version != "aiq.public-node-identity.v1"
+			|| !matches!(node.role.as_str(), "runner" | "verifier" | "publisher")
+			|| node.signature_algorithm != "ed25519"
+			|| node.status != "active"
+			|| node.trust_tier != expected_trust_tier
+			|| node.operator_class != expected_operator_class
+			|| node.capabilities.as_slice() != [node.role.as_str()]
+			|| node.signature_status != "verified"
+			|| node.display_name.is_empty()
+			|| node.source.is_empty()
+			|| node.provenance.is_empty()
+			|| node.synthetic
+			|| !node.public_visible
+			|| !node.node_id.strip_prefix("node_").is_some_and(|value| {
+				value.len() == 64
+					&& value
+						.bytes()
+						.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+			}) || node.public_key.len() != 64
+			|| !node
+				.public_key
+				.bytes()
+				.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+		{
+			return Err(WorkerError::configuration("production reference node is invalid"));
+		}
+
+		let public = hex::decode(&node.public_key)
+			.map_err(|_| WorkerError::configuration("production reference node is invalid"))?;
+		let expected = format!("node_{}", hex::encode(Sha256::digest(public)));
+		let expected_fingerprint = expected.replacen("node_", "sha256:", 1);
+
+		if node.node_id != expected
+			|| node.key_fingerprint != expected_fingerprint
+			|| identities
+				.insert(
+					node.role,
+					NodeIdentity { node_id: node.node_id, public_key: node.public_key },
+				)
+				.is_some()
+		{
+			return Err(WorkerError::configuration("production reference node is invalid"));
+		}
+	}
+
+	let runner = identities
+		.remove("runner")
+		.ok_or_else(|| WorkerError::configuration("production reference omits runner"))?;
+	let verifier = identities
+		.remove("verifier")
+		.ok_or_else(|| WorkerError::configuration("production reference omits verifier"))?;
+	let publisher = identities
+		.remove("publisher")
+		.ok_or_else(|| WorkerError::configuration("production reference omits publisher"))?;
+
+	if runner == verifier || runner == publisher || verifier == publisher {
+		return Err(WorkerError::configuration("production reference identities must be distinct"));
+	}
+
+	Ok((runner, verifier, production_reference_sha256, corpus_commitment_sha256))
 }
 
 fn read_regular_json<T>(path: &Path, label: &str) -> Result<T, WorkerError>
@@ -2799,6 +3298,121 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 	worker.run(cli.max_claims, cli.max_idle_polls)
 }
 
+fn operational_admission_context(
+	cli: &VerifyLocalCli,
+	tasks: &[TaskDefinition],
+	environment: &VerifierEnvironment,
+	evaluator_runtime: &EvaluatorRuntime,
+	toolchain_root: &Path,
+	signing_identity: &VerifierSigningIdentity,
+) -> Result<OperationalAdmissionContext, WorkerError> {
+	let source_root = controlled_root(
+		cli.source_root
+			.as_deref()
+			.ok_or_else(|| WorkerError::configuration("admission source root is missing"))?,
+		"admission source root",
+	)?;
+	let source_tree = validate_detached_source_identity(&source_root, &environment.runner_commit)?;
+	let corpus = corpus_commitment::validate_core_corpus_commitment(
+		&cli.corpus_commitment,
+		tasks,
+		&source_root,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	corpus
+		.validate_evaluator_runtime(evaluator_runtime)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let model_toolchain = corpus
+		.validate_model_toolchain(toolchain_root, evaluator_runtime)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let task_set_digest = task::task_set_hash(tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let evaluator_digest = corpus_commitment::evaluator_digest(tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let runner_executable_digest = protected_executable_digest(
+		cli.frozen_runner_binary
+			.as_deref()
+			.ok_or_else(|| WorkerError::configuration("frozen runner binary is missing"))?,
+		"frozen runner binary",
+	)?;
+	let codex_executable_digest = protected_executable_digest(
+		cli.codex_binary
+			.as_deref()
+			.ok_or_else(|| WorkerError::configuration("Codex binary is missing"))?,
+		"Codex binary",
+	)?;
+	let verifier_executable_digest =
+		corpus_commitment::current_executable_digest("verifier executable")
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let (
+		approved_runner,
+		approved_verifier,
+		production_reference_sha256,
+		reference_corpus_commitment_sha256,
+	) = approved_operational_nodes(
+		cli.production_reference
+			.as_deref()
+			.ok_or_else(|| WorkerError::configuration("production reference is missing"))?,
+		cli.expected_production_reference_sha256.as_deref().ok_or_else(|| {
+			WorkerError::configuration("expected production reference digest is missing")
+		})?,
+	)?;
+	let (build_receipt, build_receipt_sha256) = validated_build_receipt(
+		cli.build_receipt
+			.as_deref()
+			.ok_or_else(|| WorkerError::configuration("final-build receipt is missing"))?,
+		cli.expected_build_receipt_sha256.as_deref().ok_or_else(|| {
+			WorkerError::configuration("expected final-build receipt digest is missing")
+		})?,
+	)?;
+	let expected = environment.expected_provenance.as_ref().ok_or_else(|| {
+		WorkerError::configuration("production verifier environment lacks expected provenance")
+	})?;
+
+	if !valid_git_oid(&environment.runner_commit)
+		|| reference_corpus_commitment_sha256 != corpus.canonical_sha256()
+		|| corpus.canonical_sha256() != expected.corpus_commitment_sha256
+		|| corpus.release_id() != expected.corpus_release_id
+		|| corpus.catalog_digest() != expected.catalog_digest
+		|| corpus.source_manifest_digest() != expected.source_manifest_digest
+		|| task_set_digest != expected.task_set_digest
+		|| evaluator_digest != expected.evaluator_digest
+		|| runner_executable_digest != expected.runner_executable_digest
+		|| codex_executable_digest != expected.codex_executable_digest
+		|| signing_identity.node() != &approved_verifier
+		|| build_receipt.source_commit != environment.runner_commit
+		|| build_receipt.source_tree != source_tree
+		|| build_receipt.runner_executable_sha256 != runner_executable_digest
+		|| build_receipt.verifier_executable_sha256 != verifier_executable_digest
+		|| build_receipt.codex_executable_sha256 != codex_executable_digest
+	{
+		return Err(WorkerError::configuration(
+			"operational admission inputs do not match frozen signed provenance",
+		));
+	}
+
+	Ok(OperationalAdmissionContext {
+		bindings: CalibrationAdmissionBindings {
+			production_reference_sha256,
+			build_receipt_sha256,
+			approved_runner,
+			approved_verifier,
+			corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
+			source_manifest_digest: corpus.source_manifest_digest().to_owned(),
+			runner_commit: environment.runner_commit.clone(),
+			runner_source_tree: source_tree,
+			task_set_digest,
+			evaluator_digest,
+			model_toolchain_digest: model_toolchain.digest().to_owned(),
+			evaluator_runtime_digest: evaluator_runtime.executable_digest().to_owned(),
+			runner_executable_digest,
+			codex_executable_digest,
+			verifier_executable_digest,
+		},
+	})
+}
+
 fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 	let stage_target = OutputTarget::new(&cli.stage_output, "stage output")?;
 	let attestation_target = OutputTarget::new(&cli.attestation_output, "attestation output")?;
@@ -2873,28 +3487,49 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 
 	let signing_identity =
 		VerifierSigningIdentity::from_secret(signing_key_from_environment(&cli.signing_key_env)?);
+	let admission = cli
+		.admission_output
+		.as_ref()
+		.map(|_| {
+			operational_admission_context(
+				&cli,
+				&tasks,
+				&environment,
+				&evaluator_runtime,
+				&toolchain_root,
+				&signing_identity,
+			)
+		})
+		.transpose()?;
 
-	verify_and_write_local(
-		PreparationRequest {
-			package_bytes: &package_bytes,
-			package_sha256: &package_sha256,
-			expected_idempotency_key: None,
-			replay_identity: &format!("local-{package_sha256}"),
-			resolver: &artifact_resolver,
-			tasks: &tasks,
-			environment: &environment,
-			evaluator_root: &evaluator_root,
-			evaluator_runtime: Some(&evaluator_runtime),
-			replay_root: &replay_root,
-			signing_identity: &signing_identity,
-			observed_unix_ms: cli.observed_unix_ms,
-			require_production: true,
-			replay_jobs: cli.replay_jobs,
-		},
-		&cli.stage_output,
-		&cli.attestation_output,
-	)
-	.map(|_| ())
+	let request = PreparationRequest {
+		package_bytes: &package_bytes,
+		package_sha256: &package_sha256,
+		expected_idempotency_key: None,
+		replay_identity: &format!("local-{package_sha256}"),
+		resolver: &artifact_resolver,
+		tasks: &tasks,
+		environment: &environment,
+		evaluator_root: &evaluator_root,
+		evaluator_runtime: Some(&evaluator_runtime),
+		replay_root: &replay_root,
+		signing_identity: &signing_identity,
+		observed_unix_ms: cli.observed_unix_ms,
+		require_production: true,
+		replay_jobs: cli.replay_jobs,
+	};
+
+	if let (Some(output), Some(context)) = (cli.admission_output.as_deref(), admission.as_ref()) {
+		verify_and_write_local_with_admission(
+			request,
+			&cli.stage_output,
+			&cli.attestation_output,
+			output,
+			context,
+		)
+	} else {
+		verify_and_write_local(request, &cli.stage_output, &cli.attestation_output).map(|_| ())
+	}
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3890,6 +4525,7 @@ mod tests {
 		VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
+		self, CalibrationAdmissionBindings, CalibrationAdmissionBundleV1, CalibrationAdmissionV1,
 		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	};
 	use aiq_runner::{
@@ -3904,13 +4540,13 @@ mod tests {
 		normalization::{
 			NormalizedBatchStage, ReplayStatus, VerifierAttestationV2, VerifierSigningIdentity,
 		},
-		protocol::{self, SigningIdentity, TrustTier},
+		protocol::{self, NodeIdentity, SigningIdentity, TrustTier},
 		resume, run_validation,
 		runner::{self, CalibrationRunRecord, WorkspaceManifest, WorkspaceSnapshot},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
-		scoring::{self, OfficialCalibrationPolicy},
+		scoring::{self, FalseOnly, OfficialCalibrationPolicy},
 		submission,
-		task::EvaluatorRuntime,
+		task::{self, EvaluatorRuntime},
 	};
 
 	static LOCAL_REPLAY_FIXTURE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -4481,6 +5117,10 @@ mod tests {
 		}
 
 		fn convert_to_calibration(&mut self) {
+			self.convert_to_calibration_task_count(self.tasks.len());
+		}
+
+		fn convert_to_calibration_task_count(&mut self, task_count: usize) {
 			let envelope: protocol::SubmissionEnvelope =
 				serde_json::from_slice(&self.package).expect("official envelope");
 			let official: runner::RunRecord =
@@ -4489,15 +5129,58 @@ mod tests {
 
 			provenance.run_class = RunClass::Calibration;
 
+			let task_ids = self
+				.tasks
+				.iter()
+				.take(task_count)
+				.map(|task| task.task_id.clone())
+				.collect::<Vec<_>>();
+			let selected_task_ids = task_ids.iter().cloned().collect::<BTreeSet<_>>();
+			let evaluator_results_path = self
+				.artifact_root
+				.join(
+					official.evaluator_results_artifact.content_hash.trim_start_matches("sha256:"),
+				)
+				.join(&official.evaluator_results_artifact.kind);
+			let evaluator_results: runner::EvaluatorResultsBundle = serde_json::from_slice(
+				&fs::read(evaluator_results_path).expect("evaluator-results bytes"),
+			)
+			.expect("evaluator-results bundle");
+			let (mut results, evaluator_results): (Vec<_>, Vec<_>) = official
+				.results
+				.into_iter()
+				.zip(evaluator_results.results)
+				.filter(|(result, _)| selected_task_ids.contains(&result.task_id))
+				.unzip();
+			let evaluator_results = runner::EvaluatorResultsBundle {
+				schema_version: runner::EVALUATOR_RESULTS_SCHEMA_VERSION.to_owned(),
+				results: evaluator_results,
+			};
+			let evaluator_results_bytes = protocol::canonical_json(&evaluator_results)
+				.expect("subset evaluator-results JSON");
+			let (evaluator_results_artifact, _) = Self::write_artifact(
+				&self.artifact_root,
+				"evaluator-results.json",
+				&evaluator_results_bytes,
+			);
+			let task_set_hash =
+				task::task_set_hash(&self.tasks[..task_count]).expect("task-set hash");
+
+			provenance.task_set_digest.clone_from(&task_set_hash);
+			self.environment
+				.expected_provenance
+				.as_mut()
+				.expect("expected provenance")
+				.task_set_digest
+				.clone_from(&task_set_hash);
 			let run_id = resume::classified_run_id(
 				&official.schedule_slot,
-				&official.task_set_hash,
+				&task_set_hash,
 				&provenance.corpus_commitment_sha256,
 				&official.models,
 				RunClass::Calibration,
 			)
 			.expect("calibration run id");
-			let mut results = official.results;
 
 			for result in &mut results {
 				result.run_id.clone_from(&run_id);
@@ -4517,16 +5200,16 @@ mod tests {
 				classification: "local_calibration_non_official".to_owned(),
 				run_id: run_id.clone(),
 				schedule_slot: official.schedule_slot,
-				task_set_hash: official.task_set_hash,
+				task_set_hash,
 				scoring_version: official.scoring_version,
 				execution_concurrency: Some(17),
 				models: official.models,
-				task_ids: self.tasks.iter().map(|task| task.task_id.clone()).collect(),
+				task_ids,
 				started_unix_ms: official.started_unix_ms,
 				finished_unix_ms: official.finished_unix_ms,
 				capability_validation: official.capability_validation.expect("preflight"),
 				provenance,
-				evaluator_results_artifact: official.evaluator_results_artifact,
+				evaluator_results_artifact,
 				results,
 			};
 			let identity = SigningIdentity::from_secret([7; 32]);
@@ -4607,6 +5290,65 @@ mod tests {
 				attestation_output,
 			)
 		}
+
+		fn admission_context(&self) -> super::OperationalAdmissionContext {
+			let provenance = self.environment.expected_provenance.as_ref().expect("provenance");
+			let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
+
+			super::OperationalAdmissionContext {
+				bindings: CalibrationAdmissionBindings {
+					production_reference_sha256: digest('1'),
+					build_receipt_sha256: digest('5'),
+					approved_runner: SigningIdentity::from_secret([7; 32]).node().clone(),
+					approved_verifier: VerifierSigningIdentity::from_secret([8; 32]).node().clone(),
+					corpus_commitment_sha256: provenance.corpus_commitment_sha256.clone(),
+					source_manifest_digest: provenance.source_manifest_digest.clone(),
+					runner_commit: self.environment.runner_commit.clone(),
+					runner_source_tree: "e".repeat(40),
+					task_set_digest: provenance.task_set_digest.clone(),
+					evaluator_digest: provenance.evaluator_digest.clone(),
+					model_toolchain_digest: digest('2'),
+					evaluator_runtime_digest: digest('3'),
+					runner_executable_digest: provenance.runner_executable_digest.clone(),
+					codex_executable_digest: provenance.codex_executable_digest.clone(),
+					verifier_executable_digest: digest('4'),
+				},
+			}
+		}
+
+		fn prepare_admission(
+			&self,
+			stage_output: &Path,
+			attestation_output: &Path,
+			admission_output: &Path,
+			context: &super::OperationalAdmissionContext,
+		) -> Result<(), WorkerError> {
+			let resolver = LocalArtifactResolver::new(&self.artifact_root)?;
+			let signing_identity = VerifierSigningIdentity::from_secret([8; 32]);
+
+			crate::verify_and_write_local_with_admission(
+				PreparationRequest {
+					package_bytes: &self.package,
+					package_sha256: &self.package_sha256,
+					expected_idempotency_key: None,
+					replay_identity: &format!("local-{}", self.package_sha256),
+					resolver: &resolver,
+					tasks: &self.tasks,
+					environment: &self.environment,
+					evaluator_root: &self.evaluator_root,
+					evaluator_runtime: Some(&self.evaluator_runtime),
+					replay_root: &self.replay_root,
+					signing_identity: &signing_identity,
+					observed_unix_ms: 1_000,
+					require_production: true,
+					replay_jobs: DEFAULT_REPLAY_JOBS,
+				},
+				stage_output,
+				attestation_output,
+				admission_output,
+				context,
+			)
+		}
 	}
 
 	impl Drop for LocalReplayFixture {
@@ -4621,6 +5363,31 @@ mod tests {
 		match &prepared.evidence {
 			PreparedEvidence::Official { stage, attestation } => (stage, attestation),
 			PreparedEvidence::Calibration { .. } => panic!("expected Official evidence"),
+		}
+	}
+
+	fn admission_bindings(
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
+	) -> CalibrationAdmissionBindings {
+		let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
+
+		CalibrationAdmissionBindings {
+			production_reference_sha256: digest('1'),
+			build_receipt_sha256: digest('5'),
+			approved_runner: stage.runner.clone(),
+			approved_verifier: attestation.verifier.clone(),
+			corpus_commitment_sha256: stage.provenance.corpus_commitment_sha256.clone(),
+			source_manifest_digest: stage.provenance.source_manifest_digest.clone(),
+			runner_commit: stage.runner_commit.clone(),
+			runner_source_tree: "e".repeat(40),
+			task_set_digest: stage.provenance.task_set_digest.clone(),
+			evaluator_digest: stage.provenance.evaluator_digest.clone(),
+			model_toolchain_digest: digest('2'),
+			evaluator_runtime_digest: digest('3'),
+			runner_executable_digest: stage.provenance.runner_executable_digest.clone(),
+			codex_executable_digest: stage.provenance.codex_executable_digest.clone(),
+			verifier_executable_digest: digest('4'),
 		}
 	}
 
@@ -4790,6 +5557,197 @@ mod tests {
 		overridden.extend(["--replay-status", "evaluator-replayed"]);
 
 		assert!(VerifyLocalCli::try_parse_from(overridden).is_err());
+
+		let mut admitted = arguments.to_vec();
+
+		admitted.extend([
+			"--admission-output",
+			"admission.json",
+			"--source-root",
+			"/frozen/source",
+			"--frozen-runner-binary",
+			"/frozen/aiq-runner",
+			"--codex-binary",
+			"/frozen/codex",
+			"--production-reference",
+			"/controlled/production-reference.json",
+			"--expected-production-reference-sha256",
+			"sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			"--build-receipt",
+			"/controlled/final-build-receipt.json",
+			"--expected-build-receipt-sha256",
+			"sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		]);
+
+		assert!(VerifyLocalCli::try_parse_from(&admitted).is_ok());
+		assert!(VerifyLocalCli::try_parse_from(&admitted[..admitted.len() - 2]).is_err());
+
+		let mut incomplete = arguments.to_vec();
+
+		incomplete.extend(["--admission-output", "admission.json"]);
+
+		assert!(VerifyLocalCli::try_parse_from(incomplete).is_err());
+	}
+
+	#[test]
+	fn operational_reference_approves_exact_distinct_nodes_and_rejects_tampering() {
+		let root = env::temp_dir().join(format!(
+			"aiq-verifier-reference-{}-{}",
+			process::id(),
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_nanos()
+		));
+
+		fs::create_dir(&root).expect("reference root");
+
+		let path = root.join("production-reference.json");
+		let runner = SigningIdentity::from_secret([7; 32]).node().clone();
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]).node().clone();
+		let publisher = SigningIdentity::from_secret([9; 32]).node().clone();
+		let node = |role: &str, identity: &NodeIdentity| {
+			serde_json::json!({
+				"schema_version": "aiq.public-node-identity.v1",
+				"role": role,
+				"node_id": identity.node_id,
+				"display_name": format!("test {role}"),
+				"key_fingerprint": identity.node_id.replacen("node_", "sha256:", 1),
+				"public_key": identity.public_key,
+				"signature_algorithm": "ed25519",
+				"status": "active",
+				"trust_tier": if role == "verifier" { "independently_reproduced" } else { "trusted_verified" },
+				"operator_class": if role == "verifier" { "verifier" } else { "official" },
+				"capabilities": [role],
+				"source": "test fixture",
+				"signature_status": "verified",
+				"provenance": "test fixture",
+				"synthetic": false,
+				"public_visible": true
+			})
+		};
+		let corpus_commitment = serde_json::json!({
+			"schema_version": "aiq.corpus-commitment.v2",
+			"release_id": "test"
+		});
+		let mut reference = serde_json::json!({
+			"schema_version": "aiq.production-reference.v1",
+			"published_at": "2026-08-05T12:00:00.000Z",
+			"corpus_commitment": corpus_commitment,
+			"nodes": [
+				node("runner", &runner),
+				node("verifier", &verifier),
+				node("publisher", &publisher)
+			]
+		});
+
+		let reference_bytes = serde_json::to_vec(&reference).expect("reference JSON");
+		let expected_reference_sha256 =
+			format!("sha256:{}", hex::encode(Sha256::digest(&reference_bytes)));
+
+		fs::write(&path, &reference_bytes).expect("reference file");
+
+		let (approved_runner, approved_verifier, digest, corpus_digest) =
+			super::approved_operational_nodes(&path, &expected_reference_sha256)
+				.expect("approved nodes");
+
+		assert_eq!(approved_runner, runner);
+		assert_eq!(approved_verifier, verifier);
+		assert!(digest.starts_with("sha256:"));
+		assert_eq!(
+			corpus_digest,
+			protocol::canonical_hash(&corpus_commitment).expect("corpus digest")
+		);
+
+		reference["nodes"][0]["node_id"] = serde_json::json!(publisher.node_id);
+
+		fs::write(&path, serde_json::to_vec(&reference).expect("tampered JSON"))
+			.expect("tampered reference");
+		assert!(super::approved_operational_nodes(&path, &expected_reference_sha256).is_err());
+
+		fs::remove_dir_all(root).expect("remove reference root");
+	}
+
+	#[test]
+	fn production_reference_timestamp_requires_a_real_utc_calendar_instant() {
+		assert!(super::is_canonical_millisecond_utc("2024-02-29T23:59:59.999Z"));
+		for invalid in [
+			"2023-02-29T12:00:00.000Z",
+			"2026-04-31T12:00:00.000Z",
+			"2026-13-01T12:00:00.000Z",
+			"2026-01-01T24:00:00.000Z",
+			"2026-01-01T12:60:00.000Z",
+			"2026-01-01T12:00:60.000Z",
+		] {
+			assert!(!super::is_canonical_millisecond_utc(invalid), "accepted {invalid}");
+		}
+	}
+
+	#[test]
+	fn detached_source_identity_rejects_a_branch_dirty_tree_and_arbitrary_commit() {
+		let root = temporary_test_root("detached-source");
+		let git = |arguments: &[&str]| {
+			let status = process::Command::new("git")
+				.arg("-C")
+				.arg(&root)
+				.args(arguments)
+				.env("GIT_AUTHOR_NAME", "AIQ Test")
+				.env("GIT_AUTHOR_EMAIL", "aiq@example.invalid")
+				.env("GIT_COMMITTER_NAME", "AIQ Test")
+				.env("GIT_COMMITTER_EMAIL", "aiq@example.invalid")
+				.status()
+				.expect("git command");
+
+			assert!(status.success(), "git command failed: {arguments:?}");
+		};
+
+		git(&["init", "-q"]);
+		fs::write(root.join("source.rs"), "fn main() {}\n").expect("source");
+		git(&["add", "source.rs"]);
+		git(&["-c", "core.hooksPath=/dev/null", "commit", "-qm", "test: fixture"]);
+		let commit =
+			super::git_output(&root, &["rev-parse", "HEAD"], "fixture commit").expect("commit");
+
+		assert!(super::validate_detached_source_identity(&root, &commit).is_err());
+		git(&["checkout", "-q", "--detach", "HEAD"]);
+		let tree = super::validate_detached_source_identity(&root, &commit).expect("detached tree");
+
+		assert_eq!(tree.len(), 40);
+		assert!(super::validate_detached_source_identity(&root, &"f".repeat(40)).is_err());
+		fs::write(root.join("source.rs"), "changed\n").expect("dirty source");
+		assert!(super::validate_detached_source_identity(&root, &commit).is_err());
+
+		fs::remove_dir_all(root).expect("remove source fixture");
+	}
+
+	#[test]
+	fn final_build_receipt_requires_external_digest_and_semantic_source_ids() {
+		let root = temporary_test_root("build-receipt");
+		let path = root.join("final-build-receipt.json");
+		let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
+		let mut receipt = serde_json::json!({
+			"schema_version": "aiq.final-build-receipt.v1",
+			"source_commit": "a".repeat(40),
+			"source_tree": "b".repeat(40),
+			"runner_executable_sha256": digest('1'),
+			"verifier_executable_sha256": digest('2'),
+			"codex_executable_sha256": digest('3')
+		});
+		let write_receipt = |value: &serde_json::Value| {
+			let bytes = serde_json::to_vec(value).expect("receipt JSON");
+			let expected = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
+
+			fs::write(&path, bytes).expect("receipt file");
+
+			expected
+		};
+		let expected = write_receipt(&receipt);
+
+		super::validated_build_receipt(&path, &expected).expect("digest-pinned build receipt");
+		assert!(super::validated_build_receipt(&path, &digest('f')).is_err());
+
+		receipt["source_commit"] = serde_json::json!("A".repeat(40));
+		let invalid_expected = write_receipt(&receipt);
+
+		assert!(super::validated_build_receipt(&path, &invalid_expected).is_err());
+		fs::remove_dir_all(root).expect("remove build receipt fixture");
 	}
 
 	#[test]
@@ -5007,6 +5965,327 @@ mod tests {
 		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
 
 		assert_calibration_attestation_mutations_rejected(&stage, &attestation);
+	}
+
+	#[test]
+	fn legacy_calibration_subset_remains_valid_but_admission_rejects_it() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_calibration_task_count(71);
+
+		let stage_path = fixture.root.join("subset-stage.json");
+		let attestation_path = fixture.root.join("subset-attestation.json");
+		let prepared =
+			fixture.prepare(&stage_path, &attestation_path).expect("legacy subset replay");
+		let PreparedEvidence::Calibration { stage, attestation } = prepared.evidence else {
+			panic!("expected calibration evidence");
+		};
+
+		assert_eq!(stage.task_ids.len(), 71);
+		stage.verify().expect("legacy subset stage contract");
+		attestation
+			.verify(&stage, &attestation.verifier)
+			.expect("legacy subset attestation contract");
+
+		let envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("subset envelope");
+		let run: CalibrationRunRecord =
+			serde_json::from_value(envelope.payload).expect("subset calibration run");
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+
+		assert!(
+			calibration_verification::sign_full_calibration_admission(
+				&verifier,
+				&stage,
+				&attestation,
+				&fixture.tasks,
+				&run.results,
+				admission_bindings(&stage, &attestation),
+			)
+			.is_err(),
+			"admission must reject a legacy-valid subset"
+		);
+	}
+
+	#[test]
+	fn full_calibration_admission_is_signed_hashed_and_tamper_evident() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_calibration();
+
+		let prepared = fixture
+			.prepare(
+				&fixture.root.join("admission-stage.json"),
+				&fixture.root.join("admission-attestation.json"),
+			)
+			.expect("calibration replay");
+		let PreparedEvidence::Calibration { stage, attestation } = prepared.evidence else {
+			panic!("expected calibration evidence");
+		};
+		let envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("calibration envelope");
+		let run: CalibrationRunRecord =
+			serde_json::from_value(envelope.payload).expect("calibration run");
+		let diagnostic = scoring::diagnose_official_calibration(&fixture.tasks, &run.results)
+			.expect("full diagnostic");
+
+		assert!(diagnostic.passed(), "fixture must pass: {:?}", diagnostic.violations);
+
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+		let bindings = admission_bindings(&stage, &attestation);
+		let expected_bindings = bindings.clone();
+		let admission = calibration_verification::sign_full_calibration_admission(
+			&verifier,
+			&stage,
+			&attestation,
+			&fixture.tasks,
+			&run.results,
+			bindings,
+		)
+		.expect("signed admission");
+
+		admission
+			.verify(&expected_bindings, &fixture.tasks, &run.results)
+			.expect("externally anchored admission");
+		assert_eq!(admission.claims.task_count, 72);
+		assert_eq!(admission.claims.model_configuration_count, 17);
+		assert_eq!(admission.claims.official_eligible, FalseOnly);
+		assert_eq!(admission.claims.ranking_eligible, FalseOnly);
+		assert_eq!(admission.claims.trust, TrustTier::Untrusted);
+
+		for mutation in 0..6 {
+			let mut changed: CalibrationAdmissionV1 = admission.clone();
+
+			match mutation {
+				0 => {
+					let replacement =
+						if changed.claims.package_sha256.starts_with('f') { "e" } else { "f" };
+
+					changed.claims.package_sha256.replace_range(0..1, replacement);
+				},
+				1 => {
+					changed.claims.bindings.runner_executable_digest =
+						format!("sha256:{}", "a".repeat(64))
+				},
+				2 => {
+					changed.claims.bindings.source_manifest_digest =
+						format!("sha256:{}", "b".repeat(64))
+				},
+				3 => {
+					changed.claims.bindings.verifier_executable_digest =
+						format!("sha256:{}", "c".repeat(64))
+				},
+				4 => changed.claims.diagnostic.violations.push("forced failure".to_owned()),
+				_ => changed.claims.diagnostic.policy.min_informative_task_rate = 0.0,
+			}
+
+			assert!(
+				changed.verify(&expected_bindings, &fixture.tasks, &run.results).is_err(),
+				"mutation {mutation} must fail"
+			);
+		}
+
+		let attacker = VerifierSigningIdentity::from_secret([10; 32]);
+		let attacker_attestation = calibration_verification::attest_calibration_stage(
+			&attacker,
+			&stage,
+			attestation.observed_unix_ms,
+		)
+		.expect("attacker-owned attestation");
+		let mut attacker_bindings = expected_bindings.clone();
+
+		attacker_bindings.approved_verifier = attacker.node().clone();
+		let attacker_admission = calibration_verification::sign_full_calibration_admission(
+			&attacker,
+			&stage,
+			&attacker_attestation,
+			&fixture.tasks,
+			&run.results,
+			attacker_bindings,
+		)
+		.expect("attacker-owned re-signed admission");
+
+		assert!(
+			attacker_admission.verify(&expected_bindings, &fixture.tasks, &run.results).is_err(),
+			"external verifier and production-reference bindings reject an attacker-owned admission"
+		);
+		assert!(
+			admission
+				.verify(
+					&CalibrationAdmissionBindings {
+						approved_verifier: attacker.node().clone(),
+						..expected_bindings.clone()
+					},
+					&fixture.tasks,
+					&run.results
+				)
+				.is_err()
+		);
+		assert!(
+			admission
+				.verify(
+					&CalibrationAdmissionBindings {
+						production_reference_sha256: format!("sha256:{}", "f".repeat(64)),
+						..expected_bindings.clone()
+					},
+					&fixture.tasks,
+					&run.results
+				)
+				.is_err()
+		);
+
+		let mut incomplete_results = run.results.clone();
+		incomplete_results.pop();
+		assert!(
+			calibration_verification::sign_full_calibration_admission(
+				&verifier,
+				&stage,
+				&attestation,
+				&fixture.tasks,
+				&incomplete_results,
+				admission_bindings(&stage, &attestation),
+			)
+			.is_err()
+		);
+	}
+
+	#[test]
+	fn admission_outputs_are_atomic_and_identity_mismatch_leaves_no_files() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_calibration();
+
+		let stage = fixture.root.join("atomic-stage.json");
+		let attestation = fixture.root.join("atomic-attestation.json");
+		let admission = fixture.root.join("atomic-admission.json");
+		let context = fixture.admission_context();
+
+		fixture
+			.prepare_admission(&stage, &attestation, &admission, &context)
+			.expect("atomic admitted replay");
+
+		let value: CalibrationAdmissionBundleV1 =
+			serde_json::from_slice(&fs::read(&admission).expect("admission bytes"))
+				.expect("admission JSON");
+		let envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("calibration envelope");
+		let run: CalibrationRunRecord =
+			serde_json::from_value(envelope.payload).expect("calibration run");
+
+		value
+			.verify(&context.bindings, &fixture.tasks, &run.results)
+			.expect("persisted admission signature");
+		assert_eq!(
+			serde_json::from_slice::<CalibrationVerifiedStageV1>(
+				&fs::read(&stage).expect("stage bytes")
+			)
+			.expect("stage JSON"),
+			value.stage
+		);
+		assert_eq!(
+			serde_json::from_slice::<CalibrationVerifierAttestationV1>(
+				&fs::read(&attestation).expect("attestation bytes")
+			)
+			.expect("attestation JSON"),
+			value.attestation
+		);
+
+		let failed_stage = fixture.root.join("failed-stage.json");
+		let failed_attestation = fixture.root.join("failed-attestation.json");
+		let failed_admission = fixture.root.join("failed-admission.json");
+		let mut mismatched = fixture.admission_context();
+
+		mismatched.bindings.runner_executable_digest = format!("sha256:{}", "a".repeat(64));
+
+		fixture
+			.prepare_admission(&failed_stage, &failed_attestation, &failed_admission, &mismatched)
+			.expect_err("binary mismatch must reject admission");
+
+		assert!(!failed_stage.exists());
+		assert!(!failed_attestation.exists());
+		assert!(!failed_admission.exists());
+
+		let preserved = fixture.root.join("preserved-admission.json");
+		fs::write(&preserved, b"preserve").expect("pre-existing admission");
+		let race_stage = fixture.root.join("race-stage.json");
+		let race_attestation = fixture.root.join("race-attestation.json");
+
+		fixture
+			.prepare_admission(&race_stage, &race_attestation, &preserved, &context)
+			.expect_err("existing bundle must reject without partial publication");
+		assert_eq!(fs::read(&preserved).expect("preserved bundle"), b"preserve");
+		assert!(!race_stage.exists());
+		assert!(!race_attestation.exists());
+	}
+
+	#[test]
+	fn three_output_publication_rolls_back_every_install_and_reports_rollback_failures() {
+		for failed_install in 0..3 {
+			let root = temporary_test_root(&format!("publication-install-{failed_install}"));
+			let paths = [
+				root.join("stage.json"),
+				root.join("attestation.json"),
+				root.join("admission.json"),
+			];
+			let targets = paths
+				.iter()
+				.map(|path| super::OutputTarget::new(path, "test output").expect("output target"))
+				.collect::<Vec<_>>();
+			let error = super::publish_outputs_atomically(
+				&[
+					(&targets[0], "stage", b"stage"),
+					(&targets[1], "attestation", b"attestation"),
+					(&targets[2], "calibration admission", b"admission"),
+				],
+				|point| {
+					if point == super::PublicationPoint::Install(failed_install) {
+						Err(std::io::Error::other("injected install failure"))
+					} else {
+						Ok(())
+					}
+				},
+			)
+			.expect_err("injected install failure");
+
+			assert!(error.to_string().contains("injected install failure"));
+			assert!(paths.iter().all(|path| !path.exists()));
+			fs::remove_dir_all(root).expect("remove install-failure fixture");
+		}
+
+		for failed_rollback in 0..2 {
+			let root = temporary_test_root(&format!("publication-rollback-{failed_rollback}"));
+			let paths = [
+				root.join("stage.json"),
+				root.join("attestation.json"),
+				root.join("admission.json"),
+			];
+			let targets = paths
+				.iter()
+				.map(|path| super::OutputTarget::new(path, "test output").expect("output target"))
+				.collect::<Vec<_>>();
+			let error = super::publish_outputs_atomically(
+				&[
+					(&targets[0], "stage", b"stage"),
+					(&targets[1], "attestation", b"attestation"),
+					(&targets[2], "calibration admission", b"admission"),
+				],
+				|point| match point {
+					super::PublicationPoint::Install(2) => {
+						Err(std::io::Error::other("injected final install failure"))
+					},
+					super::PublicationPoint::Rollback(index) if index == failed_rollback => {
+						Err(std::io::Error::other("injected rollback failure"))
+					},
+					_ => Ok(()),
+				},
+			)
+			.expect_err("injected rollback failure");
+
+			assert!(error.to_string().contains("rollback failures"));
+			assert!(error.to_string().contains("injected rollback failure"));
+			assert!(paths.iter().all(|path| !path.exists()));
+			fs::remove_dir_all(root).expect("remove rollback-failure fixture");
+		}
 	}
 
 	#[test]

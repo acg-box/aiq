@@ -122,7 +122,7 @@ function trendRow(matrixId: string, recordedAt: string): TrendRow {
   return {
     matrix_id: matrixId,
     run_id: canonicalRunId(`${matrixId}:${recordedAt}`),
-    scoring_version: '1.0.4',
+    scoring_version: '1.0.5',
     recorded_at: recordedAt,
     bucket_started_at: recordedAt,
     bucket_ended_at: new Date(Date.parse(recordedAt) + 1).toISOString(),
@@ -158,8 +158,8 @@ function runSummaryRow(index = 0): RunRow {
     matrix_id: 'sol-low',
     started_at: '2026-08-04T12:00:00.000Z',
     completed_at: '2026-08-04T12:30:00.000Z',
-    benchmark_version: 'aiq-core@1.0.4',
-    scoring_version: '1.0.4',
+    benchmark_version: 'aiq-core@1.0.5',
+    scoring_version: '1.0.5',
     prompt_set_digest: `sha256:${'1'.repeat(64)}`,
     runner_commit: 'abcdef0',
     region: 'us-east-1',
@@ -296,7 +296,7 @@ void describe('seed repository', () => {
           entry.sampleSize === 72 &&
           entry.coveragePercent === 100 &&
           entry.missing === 0 &&
-          entry.scoringVersion === '1.0.4',
+          entry.scoringVersion === '1.0.5',
       ),
     );
   });
@@ -473,7 +473,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.4',
+        scoring_version: '1.0.5',
         score_status: 'not_applicable',
         synthetic: false,
       },
@@ -487,7 +487,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.4',
+        scoring_version: '1.0.5',
         score_status: 'missing',
         synthetic: false,
       },
@@ -561,7 +561,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       runtime_issues: 0,
       missing: 0,
-      scoring_version: '1.0.4',
+      scoring_version: '1.0.5',
       score_status: null,
       synthetic: false,
     };
@@ -642,7 +642,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       runtime_issues: 1,
       missing: 0,
-      scoring_version: '1.0.4',
+      scoring_version: '1.0.5',
       score_status: 'official',
       synthetic: false,
     };
@@ -707,8 +707,8 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.4');
-    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.4');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.5');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.5');
     assert.ok(
       seedRuns
         .flatMap((run) => run.tasks)
@@ -1005,7 +1005,7 @@ void describe('presentation aggregates', () => {
       modelFamily: 'sol',
       reasoningEffort: 'low',
     });
-    assert.equal(detail?.results[0]?.taskVersion, '1.0.4');
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.5');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -1519,7 +1519,7 @@ void describe('presentation aggregates', () => {
     const run = {
       run_id: runId,
       classification: 'local_calibration_non_official',
-      scoring_version: '1.0.4',
+      scoring_version: '1.0.5',
       selected_task_count: 72,
       selected_model_count: 17,
       result_count: 1_224,
@@ -1547,7 +1547,7 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.4',
+          task_version: '1.0.5',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
@@ -1971,7 +1971,7 @@ void describe('presentation aggregates', () => {
     const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
       id: `calibration-${String(index).padStart(4, '0')}`,
       classification: 'local_calibration_non_official',
-      scoringVersion: '1.0.4',
+      scoringVersion: '1.0.5',
       selectedTaskCount: 72,
       selectedModelCount: 17,
       resultCount: 1_224,
@@ -2419,8 +2419,8 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.4',
-      scoring_version: '1.0.4',
+      benchmark_version: 'aiq-core@1.0.5',
+      scoring_version: '1.0.5',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
       region: 'us-east-1',

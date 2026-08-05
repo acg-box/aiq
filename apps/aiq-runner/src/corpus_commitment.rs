@@ -30,7 +30,7 @@ pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
 	"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32";
 
 const CORE_CATALOG_JSON: &str =
-	include_str!("../../../benchmarks/candidates/aiq-core-1.0.4/catalog.json");
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -675,7 +675,7 @@ pub fn validate_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads and validates the immutable 72-task AIQ Core 1.0.4 corpus.
+/// Loads and validates the immutable 72-task AIQ Core 1.0.5 corpus.
 pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -684,7 +684,7 @@ pub fn validate_core_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads the six controlled AIQ Core 1.0.4 contrast variants.
+/// Loads the six controlled AIQ Core 1.0.5 contrast variants.
 ///
 /// The caller supplies the expected canonical commitment digest. Contrast tasks
 /// are calibration-only and are not part of the 72-task core catalog.
@@ -2208,7 +2208,7 @@ mod tests {
 			"model_toolchain": policy,
 		});
 		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.4/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json"
 		))
 		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
@@ -2387,12 +2387,20 @@ mod tests {
 
 		let mut predecessor = commitment();
 
-		predecessor.catalog.task_set_version = "1.0.2".to_owned();
+		predecessor.catalog.task_set_version = "1.0.4".to_owned();
 		predecessor.catalog.identity_sha256 =
-			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
+			"sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e".to_owned();
 
 		assert!(corpus_commitment::validate_header(&predecessor, super::CORE_CATALOG).is_err());
 		assert!(super::catalog_contract(&predecessor.catalog).is_err());
+
+		let mut historical = commitment();
+		historical.catalog.task_set_version = "1.0.2".to_owned();
+		historical.catalog.identity_sha256 =
+			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
+
+		assert!(corpus_commitment::validate_header(&historical, super::CORE_CATALOG).is_err());
+		assert!(super::catalog_contract(&historical.catalog).is_err());
 
 		let mut contrast = commitment();
 
