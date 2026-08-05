@@ -55,7 +55,9 @@ export default async function OverviewPage() {
 
   const leaderboard = leaderboardResult.data;
   const scoredEntries = leaderboard.filter(isScoredLeaderboardEntry);
-  const highestPointEstimate = scoredEntries.toSorted((left, right) => right.score - left.score)[0];
+  const selectedDescriptiveEstimate = scoredEntries.toSorted(
+    (left, right) => right.score - left.score,
+  )[0];
   const latestCalibration = calibrationRunsResult.data.runs[0];
   const officialRunIds = leaderboard.flatMap((entry) =>
     entry.scoreStatus === 'official' && entry.runId ? [entry.runId] : [],
@@ -69,8 +71,8 @@ export default async function OverviewPage() {
     readPublicData<BenchmarkRun | null>(
       repository,
       () =>
-        highestPointEstimate?.runId
-          ? repository.getRun(highestPointEstimate.runId)
+        selectedDescriptiveEstimate?.runId
+          ? repository.getRun(selectedDescriptiveEstimate.runId)
           : Promise.resolve(null),
       null,
       (value) => value === null,
@@ -115,14 +117,14 @@ export default async function OverviewPage() {
       : coveredEntries.reduce((sum, entry) => sum + (entry.coveragePercent ?? 0), 0) /
         coveredEntries.length;
   const selectedRun = selectedRunResult.data;
-  const highestPointEvidence =
-    highestPointEstimate && selectedRun
+  const selectedEstimateEvidence =
+    selectedDescriptiveEstimate && selectedRun
       ? resolveExactScientificEvidence({
           candidate: {
-            runId: highestPointEstimate.runId,
-            entryId: highestPointEstimate.id,
-            scoringVersion: highestPointEstimate.scoringVersion,
-            synthetic: highestPointEstimate.synthetic,
+            runId: selectedDescriptiveEstimate.runId,
+            entryId: selectedDescriptiveEstimate.id,
+            scoringVersion: selectedDescriptiveEstimate.scoringVersion,
+            synthetic: selectedDescriptiveEstimate.synthetic,
           },
           runs: [selectedRun],
           entries: leaderboard,
@@ -130,20 +132,24 @@ export default async function OverviewPage() {
         })
       : undefined;
   const highlightedRun =
-    highestPointEvidence?.state === 'exact' ? highestPointEvidence.run : undefined;
+    selectedEstimateEvidence?.state === 'exact' ? selectedEstimateEvidence.run : undefined;
   const highlightedScore =
-    highestPointEvidence?.state === 'exact' ? highestPointEvidence.evidence.score : undefined;
+    selectedEstimateEvidence?.state === 'exact'
+      ? selectedEstimateEvidence.evidence.score
+      : undefined;
   const highlightedEfficiency =
-    highestPointEvidence?.state === 'exact' ? highestPointEvidence.evidence.efficiency : undefined;
+    selectedEstimateEvidence?.state === 'exact'
+      ? selectedEstimateEvidence.evidence.efficiency
+      : undefined;
   const exactOfficialEfficiency = resolveExactEfficiencyRowsWithAvailability({
     runs: officialRunSummariesResult.data,
     entries: leaderboard,
     efficiencyRows: officialEfficiencyResult.data,
     expectedRunIds: officialRunIds,
   });
-  const highestPointIdentityUnavailable =
-    highestPointEstimate !== undefined &&
-    (highestPointEvidence?.state !== 'exact' || highlightedScore === undefined);
+  const selectedEstimateIdentityUnavailable =
+    selectedDescriptiveEstimate !== undefined &&
+    (selectedEstimateEvidence?.state !== 'exact' || highlightedScore === undefined);
   const overviewProvenance =
     leaderboardResult.state === 'synthetic'
       ? 'synthetic'
@@ -160,8 +166,8 @@ export default async function OverviewPage() {
         : 'AIQ v1 · matrix status';
   const scoreLabel =
     highlightedScore?.synthetic === true
-      ? 'Highest synthetic AIQ index'
-      : 'Highest published AIQ index';
+      ? 'Selected synthetic AIQ estimate'
+      : 'Selected published AIQ estimate';
 
   return (
     <>
@@ -169,18 +175,19 @@ export default async function OverviewPage() {
         <header className="workspace-intro">
           <div>
             <span className="eyebrow">{overviewEyebrow}</span>
-            <h1>Benchmark overview</h1>
+            <h1>Fixed-task AI capability analysis</h1>
           </div>
           <p>
-            Analyze 17 fixed configurations across score, task-mix sensitivity, coverage, runtime,
-            and cost.
+            Compare 17 AI configurations on the same fixed tasks. AIQ keeps point estimates,
+            task-resampling sensitivity, coverage, runtime, cost, scoring version, and provenance
+            visible so the evidence can be inspected.
           </p>
         </header>
         <CompactRanking entries={leaderboard} />
       </section>
 
       <section className="page-shell overview-secondary" aria-label="Secondary benchmark snapshot">
-        <div className="benchmark-snapshot" aria-label="Best configuration exact-run snapshot">
+        <div className="benchmark-snapshot" aria-label="Selected configuration exact-run snapshot">
           <div className="snapshot-estimate">
             {highlightedScore ? (
               <ScoreReadout score={highlightedScore.score} label={scoreLabel} unit="AIQ index" />
@@ -189,7 +196,7 @@ export default async function OverviewPage() {
                 className="score-readout score-readout-empty"
                 role="img"
                 aria-label={
-                  highestPointEstimate
+                  selectedDescriptiveEstimate
                     ? 'Exact score evidence unavailable'
                     : 'No published score yet'
                 }
@@ -199,11 +206,11 @@ export default async function OverviewPage() {
               </div>
             )}
             <div>
-              <span className="snapshot-label">Highest point estimate</span>
+              <span className="snapshot-label">Selected descriptive estimate</span>
               <strong>
                 {highlightedScore
                   ? `${highlightedScore.modelFamily} / ${highlightedScore.reasoningTier}`
-                  : highestPointEstimate
+                  : selectedDescriptiveEstimate
                     ? 'Exact score evidence unavailable'
                     : 'No published score yet'}
               </strong>
@@ -211,6 +218,10 @@ export default async function OverviewPage() {
                 {highlightedScore && highlightedRun
                   ? `${highlightedScore.modelName} · scoring ${highlightedScore.scoringVersion} · ${highlightedScore.synthetic ? 'synthetic' : 'published'} · configuration ${highlightedScore.id} · exact run ${highlightedRun.id}`
                   : 'Exact run identity unavailable'}
+              </small>
+              <small>
+                Selected by the largest fixed-fixture point estimate for inspection; this is not a
+                winner claim.
               </small>
             </div>
           </div>
@@ -277,13 +288,13 @@ export default async function OverviewPage() {
 
       <div className="page-shell overview-provenance">
         <DataNote provenance={overviewProvenance} />
-        {highestPointIdentityUnavailable ? (
+        {selectedEstimateIdentityUnavailable ? (
           <ReadStateNote
             result={{
               state: 'unavailable',
               detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
             }}
-            subject="Highest-point run context"
+            subject="Selected-estimate run context"
           />
         ) : null}
       </div>
@@ -309,7 +320,7 @@ export default async function OverviewPage() {
         <DeferredModelMatrixChart entries={leaderboard} />
         {highlightedRun ? (
           <RunOutcomeCard run={highlightedRun} />
-        ) : highestPointIdentityUnavailable ? (
+        ) : selectedEstimateIdentityUnavailable ? (
           <ReadStateNote
             result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
             subject="Highlighted run outcomes"

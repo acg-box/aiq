@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 
 import type { AiqRepository } from '../data/types.ts';
 import { ThemeControl } from './theme-control.tsx';
@@ -16,12 +17,43 @@ const secondaryNavigation = [
 
 export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
+  const analyzeMenuRef = useRef<HTMLDetailsElement>(null);
   const statusClass =
     configuration === 'live'
       ? 'status-public'
       : configuration === 'invalid'
         ? 'status-invalid'
         : 'status-seed';
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const analyzeMenu = analyzeMenuRef.current;
+      if (!analyzeMenu || event.key !== 'Escape' || !analyzeMenu.open) return;
+
+      event.preventDefault();
+      analyzeMenu.open = false;
+      analyzeMenu.querySelector('summary')?.focus();
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const analyzeMenu = analyzeMenuRef.current;
+      if (analyzeMenu && event.target instanceof Node && !analyzeMenu.contains(event.target)) {
+        analyzeMenu.open = false;
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('pointerdown', handlePointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (analyzeMenuRef.current) analyzeMenuRef.current.open = false;
+  }, [pathname]);
 
   return (
     <header className="site-header">
@@ -32,7 +64,7 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
         <Link href="/" aria-current={pathname === '/' ? 'page' : undefined} prefetch={false}>
           Overview
         </Link>
-        <details className="site-more">
+        <details ref={analyzeMenuRef} className="site-more">
           <summary
             className={
               secondaryNavigation.some(
@@ -53,6 +85,9 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
                   href={href}
                   aria-current={current ? 'page' : undefined}
                   prefetch={false}
+                  onNavigate={() => {
+                    if (analyzeMenuRef.current) analyzeMenuRef.current.open = false;
+                  }}
                 >
                   {label}
                 </Link>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
 import type { PublicCalibrationScore } from '../data/types.ts';
@@ -15,6 +16,12 @@ export type CalibrationExecutionContext = Readonly<{
   runtimeIssues: number;
   missing: number;
 }>;
+
+function calibrationMetricLabel(metric: Metric): string {
+  return metric === 'cost'
+    ? 'estimated Standard API-equivalent token cost'
+    : 'median observed cell adapter elapsed time';
+}
 
 function pointKey(score: PublicCalibrationScore): string {
   return `${score.runId}-${score.modelFamily}-${score.reasoningEffort}`;
@@ -92,10 +99,7 @@ function Scatter({
     const x = calibrationMetricValue(score, metric);
     return score.aiq === null || x === null ? [] : [{ score, x, y: score.aiq }];
   });
-  const label =
-    metric === 'cost'
-      ? 'estimated Standard API equivalent token cost (USD)'
-      : 'median observed cell adapter elapsed time (seconds)';
+  const label = `${calibrationMetricLabel(metric)} (${metric === 'cost' ? 'USD' : 'seconds'})`;
   if (points.length === 0)
     return (
       <p className="empty-note">
@@ -127,6 +131,7 @@ function Scatter({
     legend: {
       top: 0,
       right: 12,
+      selectedMode: false,
       data: ['sol', 'terra', 'luna'],
       textStyle: { color: 'var(--muted)' },
     },
@@ -271,6 +276,7 @@ export function CalibrationEfficiency({
   scoringVersion: string | null;
   executionContext?: ReadonlyMap<string, CalibrationExecutionContext>;
 }) {
+  const [metric, setMetric] = useState<Metric>('cost');
   const pricingBindings = [
     ...new Set(
       scores.flatMap((score) =>
@@ -287,7 +293,7 @@ export function CalibrationEfficiency({
       <div className="section-heading">
         <span className="eyebrow">Transparent efficiency context</span>
         <h2 id="calibration-efficiency-heading">
-          Observed Codex adapter elapsed time vs estimated Standard API equivalent token cost
+          Descriptive AIQ versus {calibrationMetricLabel(metric)}
         </h2>
       </div>
       <p className="calibration-warning">
@@ -302,16 +308,24 @@ export function CalibrationEfficiency({
         · <a href="https://developers.openai.com/api/docs/pricing">official source</a> · scoring{' '}
         {scoringVersion ?? 'Unavailable'}
       </p>
-      <div className="plot-grid">
+      <div className="chart-controls calibration-metric-control">
+        <span id="calibration-metric-label">Horizontal metric</span>
+        <div className="chart-switch" role="group" aria-labelledby="calibration-metric-label">
+          <button type="button" aria-pressed={metric === 'cost'} onClick={() => setMetric('cost')}>
+            Estimated cost
+          </button>
+          <button type="button" aria-pressed={metric === 'time'} onClick={() => setMetric('time')}>
+            Observed time
+          </button>
+        </div>
+      </div>
+      <p className="sr-only" aria-live="polite">
+        Showing descriptive AIQ against {metric === 'cost' ? 'estimated cost' : 'observed time'}.
+      </p>
+      <div className="plot-grid calibration-plot-grid">
         <Scatter
           scores={scores}
-          metric="cost"
-          scoringVersion={scoringVersion}
-          executionContext={executionContext}
-        />
-        <Scatter
-          scores={scores}
-          metric="time"
+          metric={metric}
           scoringVersion={scoringVersion}
           executionContext={executionContext}
         />

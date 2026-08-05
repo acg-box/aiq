@@ -11,9 +11,31 @@ void describe('homepage evidence and loading contract', () => {
     const source = await readFile(pageSourceUrl, 'utf8');
 
     assert.doesNotMatch(source, /getNewestCompletedRun|Newest retained run/);
-    assert.match(source, /highestPointEvidence\?\.state === 'exact'/);
+    assert.match(source, /selectedEstimateEvidence\?\.state === 'exact'/);
     assert.match(source, /Exact run completed/);
     assert.doesNotMatch(source, /snapshot-metrics" tabIndex/);
+  });
+
+  void it('presents fixed-task analysis without winner or batch-aggregate implications', async () => {
+    const source = await readFile(pageSourceUrl, 'utf8');
+    const rankingSource = await readFile(
+      new URL('../components/compact-ranking.tsx', import.meta.url),
+      'utf8',
+    );
+    const outcomeSource = await readFile(
+      new URL('../components/run-outcome-card.tsx', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(source, /Fixed-task AI capability analysis/);
+    assert.match(source, /Selected descriptive estimate/);
+    assert.doesNotMatch(source, /Best configuration|Highest point estimate|Highest published/);
+    assert.match(rankingSource, /presentation\.sensitivityInterval/);
+    assert.match(rankingSource, /presentation\.runtimeIssues/);
+    assert.doesNotMatch(rankingSource, /presentation\.(samples|scoringVersion|evidence)/);
+    assert.match(outcomeSource, /one configuration in the 17-configuration matrix/);
+    assert.match(outcomeSource, /not an aggregate of the batch/);
+    assert.match(outcomeSource, /run\.scoringVersion/);
   });
 
   void it('keeps ECharts consumers behind a viewport-deferred client boundary', async () => {
@@ -33,7 +55,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(analyticsSource, /aria-live="polite"/);
     assert.match(workspaceStyles, /\.homepage-analytics-matrix \{\s+min-height: 680px;/);
     assert.match(workspaceStyles, /\.homepage-analytics-efficiency \{\s+min-height: 720px;/);
-    assert.match(workspaceStyles, /\.homepage-analytics-calibration \{\s+min-height: 1100px;/);
+    assert.match(workspaceStyles, /\.homepage-analytics-calibration \{\s+min-height: 820px;/);
     assert.match(workspaceStyles, /@media \(max-width: 760px\)[\s\S]+min-height: 1080px;/);
     assert.match(
       workspaceStyles,
@@ -57,15 +79,18 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workspaceStyles, /\.snapshot-estimate small,[\s\S]+overflow-wrap: anywhere;/);
   });
 
-  void it('keeps the compact matrix headers separated on a narrow viewport', async () => {
+  void it('uses labeled compact-row cards on a narrow viewport', async () => {
     const workspaceStyles = await readFile(workspaceStylesUrl, 'utf8');
 
-    assert.match(workspaceStyles, /\.compact-ranking-table th:first-child,[\s\S]+width: 64px;/);
     assert.match(
       workspaceStyles,
-      /\.compact-ranking-table thead th:first-child \{\s+white-space: nowrap;/,
+      /\.compact-ranking-table tbody tr \{[\s\S]+grid-template-areas:[\s\S]+'order model score'[\s\S]+'order coverage runtime';/,
     );
-    assert.match(workspaceStyles, /\.compact-ranking > header > a \{\s+max-width: 18ch;/);
+    assert.match(workspaceStyles, /\.compact-cell-label \{[\s\S]+display: inline;/);
+    assert.doesNotMatch(
+      workspaceStyles,
+      /\.compact-ranking-table th:nth-child\(3\),[\s\S]{0,120}width: 58px;/,
+    );
   });
 
   void it('places the efficiency visualization under its own evidence heading', async () => {
