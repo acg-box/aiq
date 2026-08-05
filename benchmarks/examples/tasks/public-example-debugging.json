@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-debugging-01",
-  "task_version": "1.0.3",
+  "task_version": "1.0.4",
   "title": "Name the seeded boundary defect",
   "domain": "debugging",
   "difficulty": "easy",
@@ -9,7 +9,7 @@
   "allowed_tools": ["none"],
   "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
   "tags": ["synthetic", "boundary"],
-  "scorer_version": "1.0.3",
+  "scorer_version": "1.0.4",
   "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
   "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-debugging.json"],
   "visibility": "public_example",

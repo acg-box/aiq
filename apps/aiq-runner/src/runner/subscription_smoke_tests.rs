@@ -44,11 +44,11 @@ use crate::{
 };
 
 const PUBLIC_TASK_BYTES_SHA256: &str =
-	"sha256:931567fe066e8bc72494f4c6562bbe0916cc4d37ef096c58362ea955b0b410b5";
+	"sha256:91a694e6d20907fde86870674ceac55693b95cda0d8a41bb6ca6520195ec8610";
 const PUBLIC_TASK_ID: &str = "public-example-instruction-following-01";
 const PUBLIC_RUN_ID: &str = "subscription_smoke_fixed_public_example";
 const CONTROLLED_TASK_ID: &str = "documentation-communication-01";
-const CONTROLLED_TASK_VERSION: &str = "1.0.3";
+const CONTROLLED_TASK_VERSION: &str = "1.0.4";
 const CONTROLLED_RUN_ID: &str = "controlled_subscription_smoke_fixed_hidden_task";
 
 static SMOKE_TEMP_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -1272,6 +1272,16 @@ fn fixed_public_task(repository_root: &Path) -> TaskDefinition {
 	assert_fixed_model();
 
 	task
+}
+
+#[test]
+fn fixed_public_subscription_smoke_task_is_hash_bound() {
+	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
+		.expect("repository root");
+
+	let task = fixed_public_task(&repository_root);
+
+	assert_eq!(task.task_id, PUBLIC_TASK_ID);
 }
 
 fn assert_fixed_model() {

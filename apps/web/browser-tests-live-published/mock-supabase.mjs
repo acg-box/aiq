@@ -1215,8 +1215,8 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === '/storage/v1/bucket') {
     json(response, [
-      { name: 'private-packages', public: false },
-      { name: 'private-artifacts', public: false },
+      { name: 'aiq-submission-packages', public: false },
+      { name: 'aiq-runner-artifacts', public: false },
     ]);
     return;
   }

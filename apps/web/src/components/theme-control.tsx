@@ -2,14 +2,11 @@
 
 import { useEffect, useState } from 'react';
 
-type ThemeSetting = 'system' | 'light' | 'dark';
+import { persistThemeSetting, readThemeSetting, type ThemeSetting } from './theme-setting.ts';
+
 type ResolvedTheme = Exclude<ThemeSetting, 'system'>;
 
 const settings: readonly ThemeSetting[] = ['system', 'light', 'dark'];
-
-function isThemeSetting(value: string | null): value is ThemeSetting {
-  return value === 'system' || value === 'light' || value === 'dark';
-}
 
 function applyTheme(setting: ThemeSetting): ResolvedTheme {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -26,8 +23,7 @@ export function ThemeControl() {
   const [resolved, setResolved] = useState<ResolvedTheme>('light');
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('aiq-theme');
-    const initial = isThemeSetting(stored) ? stored : 'system';
+    const initial = readThemeSetting(() => window.localStorage);
     setSetting(initial);
     setResolved(applyTheme(initial));
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -49,7 +45,7 @@ export function ThemeControl() {
           aria-pressed={setting === candidate}
           title={`${candidate[0]?.toUpperCase()}${candidate.slice(1)} theme`}
           onClick={() => {
-            window.localStorage.setItem('aiq-theme', candidate);
+            persistThemeSetting(() => window.localStorage, candidate);
             setSetting(candidate);
             setResolved(applyTheme(candidate));
           }}

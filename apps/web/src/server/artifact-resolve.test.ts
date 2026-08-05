@@ -49,7 +49,7 @@ function requestWithRawContentLength(value: string): Request {
 function resolved(overrides: Readonly<Record<string, unknown>> = {}) {
   return [
     {
-      object_bucket: 'private-artifacts',
+      object_bucket: 'aiq-runner-artifacts',
       object_key: `sha256/${digest}/${kind}`,
       artifact_kind: kind,
       content_sha256: digest,
@@ -120,7 +120,7 @@ void describe('verifier artifact resolution', () => {
       assert.equal(response.status, 200);
       assert.deepEqual(observedResolve, [inboxId, leaseToken, capabilityKind, digest]);
       assert.deepEqual(observedArtifact, {
-        bucket: 'private-artifacts',
+        bucket: 'aiq-runner-artifacts',
         key: `sha256/${digest}/${capabilityKind}`,
         kind: capabilityKind,
         digest,

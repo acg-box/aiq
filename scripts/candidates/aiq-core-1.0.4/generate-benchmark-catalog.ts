@@ -343,24 +343,46 @@ function carriedForwardDelta(taskId: string): string {
   return `${taskId} carries forward the accepted AIQ Core 1.0.3 task design and byte-equivalent private content. AIQ Core 1.0.4 corrects the public scorer description to the executable committed weighted-check and hard-gate reduction, then advances the release, task, scorer, controlled-reference, provenance, and commitment bindings.`;
 }
 
+type AcceptanceFixtureCommitment = PriorTask['evaluator']['acceptance_fixture_commitments']['gold'];
+
+function reviseAcceptanceFixtureCommitment(
+  fixture: AcceptanceFixtureCommitment,
+  revised: boolean,
+): AcceptanceFixtureCommitment {
+  const currentHandle = fixture.handle.replace('aiq-core/1.0.3', 'aiq-core/1.0.4');
+  return {
+    ...fixture,
+    handle: revised ? currentHandle.replace('/v2/', '/v3/') : currentHandle,
+  };
+}
+
 function reviseTask(priorTask: PriorTask): CatalogTask104 {
-  const releaseTask = replaceReleaseStrings(priorTask) as unknown as CatalogTask104;
   const spec = REVISION_SPECS[priorTask.task_id];
-  const passConditions = spec?.passConditions ?? releaseTask.evaluator.pass_conditions;
-  const acceptanceFixtureCommitments = Object.fromEntries(
-    Object.entries(releaseTask.evaluator.acceptance_fixture_commitments).map(
-      ([fixtureClass, fixture]) => [
-        fixtureClass,
-        spec === undefined
-          ? fixture
-          : { ...fixture, handle: fixture.handle.replace('/v2/', '/v3/') },
-      ],
+  const revised = spec !== undefined;
+  const passConditions = spec?.passConditions ?? priorTask.evaluator.pass_conditions;
+  const priorCommitments = priorTask.evaluator.acceptance_fixture_commitments;
+  const acceptanceFixtureCommitments = {
+    gold: reviseAcceptanceFixtureCommitment(priorCommitments.gold, revised),
+    alternate_correct: reviseAcceptanceFixtureCommitment(
+      priorCommitments.alternate_correct,
+      revised,
     ),
-  ) as CatalogTask104['evaluator']['acceptance_fixture_commitments'];
+    partial: reviseAcceptanceFixtureCommitment(priorCommitments.partial, revised),
+    adversarial_format: reviseAcceptanceFixtureCommitment(
+      priorCommitments.adversarial_format,
+      revised,
+    ),
+    empty: reviseAcceptanceFixtureCommitment(priorCommitments.empty, revised),
+    timeout: reviseAcceptanceFixtureCommitment(priorCommitments.timeout, revised),
+  } satisfies CatalogTask104['evaluator']['acceptance_fixture_commitments'];
 
   return {
-    ...releaseTask,
-    summary: spec?.summary ?? releaseTask.summary,
+    task_id: priorTask.task_id,
+    task_version: TASK_VERSION,
+    title: priorTask.title,
+    domain: priorTask.domain,
+    difficulty: priorTask.difficulty,
+    summary: spec?.summary ?? priorTask.summary,
     design_revision: {
       supersedes_task_version: '1.0.3',
       kind: spec === undefined ? 'carry_forward' : (spec.kind ?? 'ceiling_retargeted'),
@@ -371,16 +393,29 @@ function reviseTask(priorTask: PriorTask): CatalogTask104 {
       controlled_corpus_requirements: CONTROLLED_CORPUS_REQUIREMENTS,
     },
     input_contract: {
-      ...releaseTask.input_contract,
-      kind: spec?.inputKind ?? releaseTask.input_contract.kind,
+      ...priorTask.input_contract,
+      kind: spec?.inputKind ?? priorTask.input_contract.kind,
+      content_handle: priorTask.input_contract.content_handle.replace(
+        'aiq-core/1.0.3',
+        'aiq-core/1.0.4',
+      ),
     },
+    cluster_id: priorTask.cluster_id,
+    allowed_tools: priorTask.allowed_tools,
+    budget: priorTask.budget,
     evaluator: {
-      ...releaseTask.evaluator,
+      kind: priorTask.evaluator.kind,
       scorer_version: SCORER_VERSION,
+      execution_protocol: priorTask.evaluator.execution_protocol,
+      binding_requirement: priorTask.evaluator.binding_requirement,
+      deterministic: priorTask.evaluator.deterministic,
+      partial_credit: priorTask.evaluator.partial_credit,
       pass_conditions: passConditions,
       scoring_contract: SCORING_CONTRACT,
       acceptance_fixture_commitments: acceptanceFixtureCommitments,
     },
+    tags: priorTask.tags,
+    visibility: priorTask.visibility,
     provenance: {
       origin:
         spec === undefined
@@ -394,7 +429,7 @@ function reviseTask(priorTask: PriorTask): CatalogTask104 {
       source: GENERATOR_PATH,
     },
     leakage_review: {
-      ...releaseTask.leakage_review,
+      ...priorTask.leakage_review,
       notes: `${priorTask.task_id} publishes only its versioned public design and scorer contract. Its private prompt, fixture, expected outputs, executable checks, and leakage evidence must bind this exact AIQ Core 1.0.4 catalog entry outside Git.`,
     },
   };
@@ -449,10 +484,14 @@ export function buildCatalog(): Catalog104 {
 }
 
 function jsonObject(value: unknown, label: string): JsonObject {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isJsonObject(value)) {
     throw new TypeError(`${label} must be an object.`);
   }
-  return value as JsonObject;
+  return value;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function reviseCatalogSchema(priorSchema: unknown): unknown {
@@ -487,7 +526,7 @@ function reviseCatalogSchema(priorSchema: unknown): unknown {
         Array.isArray(value)
           ? {
               type: 'array',
-              prefixItems: value.map((item) => ({ const: item })),
+              prefixItems: value.map((item: unknown) => ({ const: item })),
               minItems: value.length,
               maxItems: value.length,
             }

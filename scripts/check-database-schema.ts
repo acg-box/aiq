@@ -152,8 +152,8 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1';
-  const catalogReleaseDigest = '0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d';
+  const catalogDigest = '2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e';
+  const catalogReleaseDigest = 'f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279';
   const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
   const controlledTaskTreeDigest =
     '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
@@ -177,14 +177,14 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     schema,
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
-  assert.match(schema, /task_set\.task_set_version = '1\.0\.3'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.3'/);
-  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.3'/);
+  assert.match(schema, /task_set\.task_set_version = '1\.0\.4'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.4'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.4'/);
   assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
-  assert.match(syntheticDemo, /'aiq-core@1\.0\.3'/);
+  assert.match(syntheticDemo, /'aiq-core@1\.0\.4'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.3', '1\.0\.3'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.4', '1\.0\.4'/,
   );
 
   const pricingValidator =
@@ -275,7 +275,7 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
 }
 
 function checkReviewedTaskSetIdentity(schema: string): void {
-  const taskSetIdentity = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
+  const taskSetIdentity = 'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -329,9 +329,9 @@ function checkReviewedTaskSetIdentity(schema: string): void {
 }
 
 export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
-  const taskSetIdentity = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
+  const taskSetIdentity = 'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584';
   const reviewedCommitmentsIdentity =
-    'sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8';
+    'sha256:e8f4fc5cadef264bb321ca91557658775410c39123fb24e63433e2e0d848578a';
   const fixture = jsonObject(value);
   assert.deepEqual(Object.keys(fixture).toSorted(), [
     'schema_version',
@@ -342,7 +342,7 @@ export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
   ]);
   assert.equal(fixture.schema_version, 'aiq.production-task-commitments.v1');
   assert.equal(fixture.task_set_id, 'aiq-core');
-  assert.equal(fixture.task_set_version, '1.0.3');
+  assert.equal(fixture.task_set_version, '1.0.4');
   assert.equal(fixture.task_set_identity_sha256, taskSetIdentity);
   const tasks = unknownArray(fixture.tasks);
   assert.equal(tasks.length, 72);
@@ -401,12 +401,12 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   assert.match(
     initializer,
-    /const TASK_SET_IDENTITY =\s*'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'/,
+    /const TASK_SET_IDENTITY =\s*'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584'/,
     'The initializer must declare the native task-set identity.',
   );
   assert.match(
     initializer,
-    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8'/,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:e8f4fc5cadef264bb321ca91557658775410c39123fb24e63433e2e0d848578a'/,
     'The initializer must declare the reviewed task commitment manifest identity.',
   );
   assert.match(
@@ -514,6 +514,16 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
     schema,
     /insert into storage\.buckets \(id, name, public\)\s+values\s+\('aiq-submission-packages', 'aiq-submission-packages', false\),\s+\('aiq-runner-artifacts', 'aiq-runner-artifacts', false\);/i,
     'Fresh initialization must create both AIQ Storage buckets as private.',
+  );
+  assert.match(
+    schema,
+    /supplied_object_type = 'submission_package'[\s\S]{0,120}supplied_bucket = 'aiq-submission-packages'[\s\S]{0,160}supplied_object_type = 'runner_artifact'[\s\S]{0,120}supplied_bucket = 'aiq-runner-artifacts'/i,
+    'The Storage registry must accept only the two object-type-specific AIQ buckets.',
+  );
+  assert.match(
+    schema,
+    /object\.object_type = 'submission_package'[\s\S]{0,120}object\.bucket_name = 'aiq-submission-packages'[\s\S]{0,160}object\.object_type = 'runner_artifact'[\s\S]{0,120}object\.bucket_name = 'aiq-runner-artifacts'[\s\S]{0,180}object\.retention_class <> 'preserve'/i,
+    'Lifecycle deletion claims must remain inside the two canonical AIQ buckets.',
   );
   const storageInitialization =
     schema.match(/insert into storage\.buckets[\s\S]*?;(?=\s*create role aiq_verifier)/i)?.[0] ??
@@ -1058,7 +1068,7 @@ export async function checkDatabaseSchema(
     readFile(join(repositoryRoot, 'databases/schema.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/synthetic-demo.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8'),
-    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.3-task-commitments.json'), 'utf8').then(
+    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json'), 'utf8').then(
       (bytes) => JSON.parse(bytes) as unknown,
     ),
   ]);

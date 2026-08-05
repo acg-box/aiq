@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { AIQ_CORE_TASK_SCORING_CONTRACT } from '../../aiq-core-contract.ts';
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { readPublicValue } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
 function EfficiencyMethod() {
   return (
     <article>
-      <span className="eyebrow">05 · Calibration efficiency estimates</span>
+      <span className="eyebrow">06 · Calibration efficiency estimates</span>
       <h2>Observed Codex adapter elapsed time and estimated token cost stay distinct</h2>
       <p>
         Time is observed Codex adapter elapsed time. Cost is a versioned estimate from covered token
@@ -78,6 +79,54 @@ function EfficiencyMethod() {
           <dd>
             AIQ, observed adapter elapsed time, and estimated API-equivalent USD remain separate.
             Scatter and Pareto context do not create a combined ranking.
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
+function TaskScoreMethod() {
+  return (
+    <article>
+      <span className="eyebrow">04 · Task-level score</span>
+      <h2>Committed weighted checks with explicit hard gates</h2>
+      <p>
+        Each task uses at most {AIQ_CORE_TASK_SCORING_CONTRACT.maximum_checks_per_result} binary
+        checks from a content-addressed private evaluator configuration. Check names and weights
+        remain hidden with the task payload, but their exact identities are committed and the
+        verifier replays them.
+      </p>
+      <div className="formula">
+        <span>Valid evaluator result</span>
+        <strong>hard gate or structural failure ? 0 : Σ(weight × passed) ÷ Σ(weight)</strong>
+      </div>
+      <dl className="policy-list">
+        <div>
+          <dt>Partial credit</dt>
+          <dd>
+            A passing check contributes its committed nonnegative integer weight. A valid positive
+            denominator is required. The evaluator does not round before exact replay.
+          </dd>
+        </div>
+        <div>
+          <dt>Hard gates</dt>
+          <dd>
+            An explicit hard gate or workspace-policy check can force zero. A positive-weight hard
+            gate also participates in the weighted fraction when every gate passes. Only a hard gate
+            may have zero weight.
+          </dd>
+        </div>
+        <div>
+          <dt>Outcome labels</dt>
+          <dd>1 is Correct; a score between 0 and 1 is Partial; 0 is Incorrect.</dd>
+        </div>
+        <div>
+          <dt>Execution evidence</dt>
+          <dd>
+            Attributable runtime failures score zero with an explicit runtime status. Evaluator or
+            infrastructure-invalid evidence stays unscored and blocks Official publication; it is
+            never converted into semantic Incorrect.
           </dd>
         </div>
       </dl>
@@ -197,8 +246,9 @@ export default async function MethodPage() {
                 </div>
               </dl>
             </article>
+            <TaskScoreMethod />
             <article>
-              <span className="eyebrow">04 · Sensitivity, not generalization</span>
+              <span className="eyebrow">05 · Sensitivity, not generalization</span>
               <h2>What the interval can and cannot say</h2>
               <p>{result.data.sensitivityPolicy}</p>
               <div className="formula">

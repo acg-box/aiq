@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-tool-use-01",
-  "task_version": "1.0.3",
+  "task_version": "1.0.4",
   "title": "Choose the repository search tool",
   "domain": "tool_use",
   "difficulty": "easy",
@@ -9,7 +9,7 @@
   "allowed_tools": ["none"],
   "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
   "tags": ["synthetic", "search"],
-  "scorer_version": "1.0.3",
+  "scorer_version": "1.0.4",
   "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
   "fixture_refs": ["repo://AGENTS.md"],
   "visibility": "public_example",

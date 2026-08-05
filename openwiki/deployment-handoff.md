@@ -13,13 +13,20 @@ operational work. Do not infer future schedules, workers, or later publications
 from the first launch evidence.
 
 Live production remains the historical AIQ Core `1.0.2` matrix described below.
-Repository source now accepts AIQ Core `1.0.3`, but its final controlled corpus
-regeneration, final native build verification, private final-build audit receipt,
-first real run, and publication are still pending. Model-free candidate
-validation passes all 72 tasks; the runtime
-`task_set_hash` is
-`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
-Do not treat the source-head change as a deployment claim.
+Repository source now has the active public AIQ Core `1.0.4` candidate. Its
+public metadata digest is
+`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
+and its public release digest is
+`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+Controlled identities, full calibration, final native build verification, a
+real Official run, publication, and final deployment are pending. Do not treat
+the source-head change as a deployment claim.
+
+The `1.0.3` Official attempt was interrupted after an already-conclusive
+ceiling failure. It is rejected, unpublished calibration evidence. No hidden
+responses or hidden task details were published. The `1.0.4` path requires one
+complete, falsification-first non-Official 17-by-72 calibration before any real
+Official publication path. A failed release gate has no operator override.
 
 ## First-release topology
 
@@ -135,7 +142,7 @@ the receipt.
 ## Supabase setup
 
 The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6.
-Initialize AIQ Core `1.0.3` in this existing target project after its AIQ
+Initialize AIQ Core `1.0.4` in this existing target project after its AIQ
 namespace is empty. If residue exists, remove only `aiq_private`, the AIQ-owned
 roles, and the exact AIQ-owned public views and RPC overloads. Preserve all
 Supabase-managed and non-AIQ objects. This cleanup is a deployment prerequisite,
@@ -145,7 +152,7 @@ project.
 1. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
 2. Prepare one private production-reference
-   document. Bind the 72-task AIQ Core `1.0.3` corpus, current catalog identities,
+   document. Bind the 72-task AIQ Core `1.0.4` corpus, current catalog identities,
    and distinct runner, verifier, and publisher
    public identities.
 3. Apply the desired state once through a direct PostgreSQL connection. The
@@ -159,7 +166,7 @@ cargo make init-database
 
 The initializer must be the first AIQ database action. It uses one transaction
 and rejects existing AIQ objects. Confirm that the receipt reports scoring
-`1.0.3`, 72 tasks, 17 model configurations, three distinct identities, and the
+`1.0.4`, 72 tasks, 17 model configurations, three distinct identities, and the
 expected public-view inventory.
 
 Run the database checks:
@@ -361,11 +368,12 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 - [x] The read-only production acceptance gate passed for the historical
       acceptance deployment recorded below. Rerun it after each future
       publication or deployment change.
-- [ ] Regenerate and audit the final AIQ Core `1.0.3` corpus from the final clean
+- [ ] Regenerate and audit the final AIQ Core `1.0.4` corpus from the final clean
       source commit, then build and hash the native runner and verifier.
 - [ ] Empty only the AIQ-owned namespace and initialize the new desired state
-      once from the final AIQ Core `1.0.3` `databases/schema.sql`.
-- [ ] Run, replay, verify, and publish one real 17-by-72 AIQ Core `1.0.3` matrix;
+      once from the final AIQ Core `1.0.4` `databases/schema.sql`.
+- [ ] Complete the required full non-Official calibration. Then run, replay,
+      verify, and publish one real 17-by-72 AIQ Core `1.0.4` matrix;
       then deploy that exact source and pass the identity-bound production gate.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
       next run without changing the accepted execution contract.

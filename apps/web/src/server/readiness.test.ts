@@ -27,8 +27,8 @@ const validEnvironment = {
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_SECRET_KEY: 'sb_secret_service_example',
   AIQ_RUNNER_SUBMISSION_TOKEN: 'runner-secret-value',
-  AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
-  AIQ_RUNNER_ARTIFACT_BUCKET: 'private-artifacts',
+  AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
+  AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',
   AIQ_VERIFIER_INGRESS_TOKEN: 'verifier-secret-value',
   AIQ_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_gateway_example',
   AIQ_SUPABASE_JWT_PRIVATE_JWK: JSON.stringify(privateJwk),
@@ -110,8 +110,8 @@ async function withDependencyFetch(
       assert.equal(request.headers.get('apikey'), validEnvironment.SUPABASE_SECRET_KEY);
       assert.equal(request.headers.get('authorization'), null);
       const buckets = [
-        { name: 'private-packages', public: false },
-        { name: 'private-artifacts', public: false },
+        { name: 'aiq-submission-packages', public: false },
+        { name: 'aiq-runner-artifacts', public: false },
       ];
       mutateBuckets?.(buckets);
       return Response.json(buckets);
@@ -477,7 +477,7 @@ void describe('bounded readiness probe', () => {
     })();
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
-    assert.equal(probedValues?.packageBucket, 'private-packages');
+    assert.equal(probedValues?.packageBucket, 'aiq-submission-packages');
     assert.equal(probedValues?.publisherNodeId, validEnvironment.AIQ_PUBLISHER_NODE_ID);
     const body: unknown = await response.json();
     assert.ok(isRecord(body));
@@ -537,7 +537,7 @@ void describe('bounded readiness probe', () => {
         view === 'public_task_coverage'
           ? Response.json([
               {
-                scoring_version: '1.0.3',
+                scoring_version: '1.0.4',
                 domain: 'coding',
                 weight: 'not-a-number',
                 task_count: 8,
@@ -873,7 +873,7 @@ void describe('bounded readiness probe', () => {
   void it('rejects configured Storage buckets that are public', async () => {
     await assert.rejects(
       withDependencyFetch(undefined, (buckets) => {
-        const packageBucket = buckets.find((bucket) => bucket.name === 'private-packages');
+        const packageBucket = buckets.find((bucket) => bucket.name === 'aiq-submission-packages');
         assert.ok(packageBucket);
         packageBucket.public = true;
       }),

@@ -6,12 +6,14 @@ import { pathToFileURL } from 'node:url';
 
 type JsonObject = Record<string, unknown>;
 
-const CATALOG_IDENTITY = 'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1';
+const CATALOG_IDENTITY = 'sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e';
 const CATALOG_RELEASE_IDENTITY =
-  'sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d';
-const TASK_SET_IDENTITY = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
+  'sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279';
+const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
+const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
+const TASK_SET_IDENTITY = 'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584';
 const REVIEWED_TASK_COMMITMENTS_IDENTITY =
-  'sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8';
+  'sha256:e8f4fc5cadef264bb321ca91557658775410c39123fb24e63433e2e0d848578a';
 const EVALUATOR_IDENTITY =
   'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 const DIGEST_PATTERN = /^sha256:(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
@@ -83,7 +85,7 @@ interface ValidatedReference {
 export interface InitializationReceipt {
   readonly schema_version: 'aiq.production-initialization-receipt.v1';
   readonly initialized: true;
-  readonly scoring_version: '1.0.3';
+  readonly scoring_version: '1.0.4';
   readonly catalog_identity_sha256: string;
   readonly catalog_release_identity_sha256: string;
   readonly corpus_commitment_sha256: string;
@@ -363,7 +365,7 @@ function validateCommitment(
   if (
     bindingCatalog.schema_version !== 'aiq.catalog.v1' ||
     bindingCatalog.task_set_id !== 'aiq-core' ||
-    bindingCatalog.task_set_version !== '1.0.3' ||
+    bindingCatalog.task_set_version !== '1.0.4' ||
     bindingCatalog.identity_sha256 !== CATALOG_IDENTITY ||
     bindingCatalog.identity_scope !== 'ordered_full_task_metadata'
   ) {
@@ -500,7 +502,7 @@ function validateReviewedTaskCommitments(
   if (
     manifest.schema_version !== 'aiq.production-task-commitments.v1' ||
     manifest.task_set_id !== 'aiq-core' ||
-    manifest.task_set_version !== '1.0.3' ||
+    manifest.task_set_version !== '1.0.4' ||
     digest(manifest.task_set_identity_sha256, 'reviewed task-set identity') !== TASK_SET_IDENTITY ||
     documentDigest(manifest) !== REVIEWED_TASK_COMMITMENTS_IDENTITY
   ) {
@@ -741,10 +743,10 @@ function orderedJsonLiteral(value: unknown): string {
 function scoringRows(reviewedAt: string): JsonObject[] {
   return [
     {
-      scoring_version: '1.0.3',
+      scoring_version: '1.0.4',
       schema_version: 'aiq.score-snapshot.v1',
-      benchmark_version: 'aiq-core@1.0.3',
-      name: 'AIQ fixed-fixture score 1.0.3',
+      benchmark_version: 'aiq-core@1.0.4',
+      name: 'AIQ fixed-fixture score 1.0.4',
       fixed_fixture_estimand:
         'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
       principles: [
@@ -816,7 +818,7 @@ function referenceRows(
     taskSets: [
       {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.3',
+        task_set_version: '1.0.4',
         title: 'AIQ Core 72',
         task_count: 72,
         domain_count: 10,
@@ -845,7 +847,7 @@ function referenceRows(
       if (binding === undefined) throw new Error('task binding is missing');
       return {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.3',
+        task_set_version: '1.0.4',
         task_id: task.task_id,
         task_version: task.task_version,
         title: task.title,
@@ -994,7 +996,7 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.3', '1.0.3')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.4', '1.0.4')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
@@ -1076,7 +1078,7 @@ export function prepareInitialization(
   if (
     catalog.schema_version !== 'aiq.catalog.v1' ||
     catalog.task_set_id !== 'aiq-core' ||
-    catalog.task_set_version !== '1.0.3' ||
+    catalog.task_set_version !== '1.0.4' ||
     object(catalog.task_metadata_identity, 'catalog.task_metadata_identity').digest !==
       CATALOG_IDENTITY ||
     object(catalog.catalog_release_identity, 'catalog.catalog_release_identity').digest !==
@@ -1105,6 +1107,45 @@ begin
       where id in ('aiq-submission-packages', 'aiq-runner-artifacts')
         or name in ('aiq-submission-packages', 'aiq-runner-artifacts')
     )
+    or exists (
+      select 1
+      from pg_catalog.pg_class relation
+      join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+      where namespace.nspname = 'public'
+        and relation.relkind in ('v', 'm')
+        and relation.relname in (
+          'public_distributed_radar', 'public_leaderboard', 'public_model_matrix',
+          'public_nodes', 'public_run_results', 'public_runs',
+          'public_scoring_versions', 'public_task_coverage',
+          'public_calibration_runs', 'public_model_efficiency',
+          'public_calibration_results', 'public_calibration_scores'
+        )
+    )
+    or exists (
+      select 1
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'public'
+        and procedure.proname in (
+          'aiq_ack_storage_deletion', 'aiq_ack_submission_claim',
+          'aiq_attach_storage_reference', 'aiq_claim_storage_deletions',
+          'aiq_claim_submission', 'aiq_deactivate_storage_reference',
+          'aiq_describe_web_rpc_contract', 'aiq_enqueue_submission',
+          'aiq_gateway_role_probe', 'aiq_list_storage_reconciliation',
+          'aiq_list_storage_registry', 'aiq_production_reference_status',
+          'aiq_promote_storage_orphan', 'aiq_publish_calibration_evidence',
+          'aiq_purge_expired_artifact_ingress', 'aiq_purge_expired_submissions',
+          'aiq_record_artifact_ingress', 'aiq_record_calibration_attestation',
+          'aiq_record_storage_inventory_epoch', 'aiq_record_storage_reconciliation',
+          'aiq_record_verification_rejection', 'aiq_record_verifier_attestation',
+          'aiq_register_storage_object', 'aiq_renew_submission_claim',
+          'aiq_resolve_claim_artifact', 'aiq_resolve_storage_reconciliation',
+          'aiq_retry_storage_deletion', 'aiq_set_storage_legal_hold',
+          'aiq_stage_calibration_verification', 'aiq_stage_verifier_result',
+          'aiq_storage_lifecycle_status', 'aiq_verify_and_publish',
+          'public_trend_points'
+        )
+    )
   then
     raise exception 'AIQ_GREENFIELD_REUSE_REJECTED'
       using errcode = '55000';
@@ -1130,7 +1171,7 @@ commit;
     receipt: {
       schema_version: 'aiq.production-initialization-receipt.v1',
       initialized: true,
-      scoring_version: '1.0.3',
+      scoring_version: '1.0.4',
       catalog_identity_sha256: CATALOG_IDENTITY,
       catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,
       corpus_commitment_sha256: reference.corpusCommitmentSha256,
@@ -1258,6 +1299,26 @@ export function databaseConnectionEnvironment(databaseUrl: string): NodeJS.Proce
   return result;
 }
 
+function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.ProcessEnv): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
+  }
+  if (parsed.hostname === PRODUCTION_DATABASE_HOST) return;
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  const localOverride =
+    environment.AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET === 'true' &&
+    (environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') &&
+    loopback;
+  if (!localOverride) {
+    throw new Error(
+      `AIQ_DATABASE_URL must target Supabase project ${PRODUCTION_SUPABASE_PROJECT_REF}`,
+    );
+  }
+}
+
 function readinessPassed(output: string, expected: InitializationReceipt): boolean {
   for (const line of output.trim().split(/\r?\n/).toReversed()) {
     try {
@@ -1293,6 +1354,7 @@ export async function initializeDatabase(options: {
   ) {
     throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
   }
+  assertDatabaseTarget(databaseUrl, environment);
   const repositoryRoot = options.repositoryRoot ?? resolve(import.meta.dirname, '..');
   const referenceBytes = await readFile(options.referencePath);
   if (referenceBytes.length === 0 || referenceBytes.length > MAX_REFERENCE_BYTES) {
@@ -1307,7 +1369,7 @@ export async function initializeDatabase(options: {
   const [schema, catalog, corpusSchema, reviewedTaskCommitments] = await Promise.all([
     readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
     readFile(
-      resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.3/catalog.json'),
+      resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.4/catalog.json'),
       'utf8',
     ).then((bytes) => JSON.parse(bytes) as unknown),
     readFile(
@@ -1315,7 +1377,7 @@ export async function initializeDatabase(options: {
       'utf8',
     ).then((bytes) => JSON.parse(bytes) as unknown),
     readFile(
-      resolve(repositoryRoot, 'databases/aiq-core-1.0.3-task-commitments.json'),
+      resolve(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json'),
       'utf8',
     ).then((bytes) => JSON.parse(bytes) as unknown),
   ]);

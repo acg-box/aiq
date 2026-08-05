@@ -41,10 +41,14 @@ Public views contain 17 runs, 1,224 results, 17 leaderboard rows, 17
 model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
 
-Repository source now accepts AIQ Core and scoring `1.0.3`. Final native build
-verification, operator acceptance of that build, the first `1.0.3` run, and
-publication are pending; this source-head change does not claim that `1.0.3` is
-live.
+Repository source now targets the public AIQ Core candidate and scoring
+`1.0.4`. Its public metadata digest is
+`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
+and its public release digest is
+`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+Controlled identities, full calibration, a real Official run, publication, and
+final deployment are pending. This pre-release state does not claim that
+`1.0.4` is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -112,18 +116,13 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`,
-   the release-policy identity is `aiq-core/1.0.3`, and the catalog
+   `sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
+   the release-policy identity is `aiq-core/1.0.4`, and the public catalog
    release-identity digest is
-   `sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
-   Verify scorer-manifest identity
-   `sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`
-   and evaluator identity
-   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-   Verify runtime `task_set_hash`
-   `sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
-   Do not substitute controlled generated-task tree identity
-   `sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
+   `sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+   Generate and review the pending controlled scorer-manifest, evaluator,
+   runtime task-set, generated-task tree, Core corpus, and Contrast corpus
+   identities. Do not substitute one identity for another.
    Create new source-only Core and Contrast corpus commitments from the final
    clean source. Keep `runner.identity_kind` as `source_only` and
    `runner.built_binary_sha256` as null. Keep the Node.js and ripgrep identities
@@ -206,6 +205,14 @@ bounded subset. Calibration rejects
 an Official admission receipt, can be replay-verified and published to its
 separate public register, but never classifies or publishes as Official or ranking
 eligible. Use `run --help` for the complete controlled input contract.
+
+For `1.0.4`, complete a non-Official 17-by-72 calibration before any real
+Official publication path. Use it to try to falsify fixture discrimination. It
+must pass the release limits and the informative-task, non-uniform-task, domain,
+and model-spread checks. An operator cannot override a failure. The interrupted
+`1.0.3` Official attempt is rejected, unpublished calibration evidence after an
+already-conclusive ceiling failure. Do not publish its hidden responses or
+hidden task details.
 
 ## Score, package, and submit
 
@@ -321,7 +328,7 @@ or attestation.
 
 ## Fresh database initialization
 
-AIQ Core `1.0.3` uses one greenfield desired state. Use this flow with the
+AIQ Core `1.0.4` uses one greenfield desired state. Use this flow with the
 existing target Supabase project after its AIQ namespace is empty. If residue
 exists, remove only `aiq_private`, the AIQ-owned roles, and the exact AIQ-owned
 public views and RPC overloads. Preserve all Supabase-managed and non-AIQ
@@ -339,12 +346,12 @@ The command uses one connection and one transaction. It rejects existing AIQ
 schema or roles. After the controlled corpus passes the model-free checks and
 the operator verifies the final native build as specified in
 [Deployment Handoff](deployment-handoff.md), prepare a separately controlled
-production reference containing a non-synthetic AIQ Core `1.0.3` corpus
+production reference containing a non-synthetic AIQ Core `1.0.4` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Retain the private final-build audit receipt separately; database
 initialization does not consume or validate it. Initialization validates the
 production-reference fields and bindings. The repository defines one greenfield
-desired state. The initialization receipt must report scoring `1.0.3`,
+desired state. The initialization receipt must report scoring `1.0.4`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the

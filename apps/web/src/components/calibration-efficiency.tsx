@@ -6,6 +6,7 @@ import type { PublicCalibrationScore } from '../data/types.ts';
 import { formatHumanDuration, formatTaskDuration } from '../data/format-duration.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { paretoEfficientKeys } from './efficiency-analysis.ts';
+import { calibrationMetricValue } from './calibration-metric.ts';
 import { formatScientificScoreContextHtml } from './scientific-score-context.ts';
 
 type Metric = 'cost' | 'time';
@@ -14,17 +15,6 @@ export type CalibrationExecutionContext = Readonly<{
   runtimeIssues: number;
   missing: number;
 }>;
-
-function valueFor(score: PublicCalibrationScore, metric: Metric): number | null {
-  if (metric === 'cost') {
-    return score.costEstimatorStatus === 'estimated' && score.tokenUsageCoveragePercent === 100
-      ? score.standardApiEquivalentUsdNanos === null
-        ? null
-        : score.standardApiEquivalentUsdNanos / 1_000_000_000
-      : null;
-  }
-  return score.observedTimeCoveragePercent === 100 ? score.observedMedianWallMs : null;
-}
 
 function pointKey(score: PublicCalibrationScore): string {
   return `${score.runId}-${score.modelFamily}-${score.reasoningEffort}`;
@@ -99,13 +89,13 @@ function Scatter({
   executionContext: ReadonlyMap<string, CalibrationExecutionContext>;
 }) {
   const points = scores.flatMap((score) => {
-    const x = valueFor(score, metric);
+    const x = calibrationMetricValue(score, metric);
     return score.aiq === null || x === null ? [] : [{ score, x, y: score.aiq }];
   });
   const label =
     metric === 'cost'
       ? 'estimated Standard API equivalent token cost (USD)'
-      : 'observed Codex adapter elapsed time (median)';
+      : 'median observed cell adapter elapsed time (seconds)';
   if (points.length === 0)
     return (
       <p className="empty-note">
@@ -155,7 +145,7 @@ function Scatter({
           scoringVersion: scoringVersion ?? 'unavailable',
           provenance: String(data[7]),
         });
-        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 0)}<br/>adapter invocation ${data[10]}/${data[9]} attempted<br/>${scientificContext}`;
+        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 2)}${metric === 'time' ? ' s' : ''}<br/>adapter invocation ${data[10]}/${data[9]} attempted<br/>${scientificContext}`;
       },
     },
     xAxis: {

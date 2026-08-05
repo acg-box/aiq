@@ -245,7 +245,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(snapshot).toContainText('Coverage');
   await expect(snapshot).toContainText('runtime 3 · missing 0');
-  await expect(snapshot).toContainText('scoring 1.0.3 · synthetic');
+  await expect(snapshot).toContainText('scoring 1.0.4 · synthetic');
   await expect(snapshot).toContainText('Newest retained run');
   await expect(snapshot).toContainText('Jul 22, 2026');
   await expect(snapshot).toContainText('Duration');
@@ -311,7 +311,7 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(2);
-  await expect(page.getByText('v1.0.3', { exact: true })).toBeVisible();
+  await expect(page.getByText('v1.0.4', { exact: true })).toBeVisible();
   await expect(
     page.getByText('Adapter invocation: 0/0 attempted · elapsed observed 0'),
   ).toBeVisible();
@@ -340,10 +340,15 @@ test('radar separates synthetic registry, observation, and aggregation evidence'
   expect(runtimeFailures).toEqual([]);
 });
 
-test('methodology describes equal weighting while preserving domain task counts', async ({
-  page,
-}) => {
+test('methodology exposes task scoring and equal domain weighting', async ({ page }) => {
   await page.goto('/method');
+  await expect(
+    page.getByRole('heading', { name: 'Committed weighted checks with explicit hard gates' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('hard gate or structural failure ? 0 : Σ(weight × passed) ÷ Σ(weight)'),
+  ).toBeVisible();
+  await expect(page.getByText('unscored and blocks Official publication')).toBeVisible();
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();

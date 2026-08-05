@@ -5,6 +5,12 @@
 
 The initializer opens one direct PostgreSQL connection, starts one transaction,
 applies the schema, inserts public reference data, checks readiness, and commits.
+The connection host must be `db.xxnszykaeapolqdnhalx.supabase.co`, which binds
+initialization to the personal Supabase project documented by repository
+authority. Tests and local development can target only a loopback host when
+`NODE_ENV` is `test` or `development` and
+`AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true` is set explicitly. Production
+cannot use this override.
 It rejects a database that already contains the AIQ schema, AIQ roles, or either
 exact AIQ Storage bucket identity. Only a new empty AIQ namespace in the existing
 target Supabase project is supported.
@@ -17,6 +23,12 @@ creates `aiq-submission-packages` and `aiq-runner-artifacts` in
 rejects either exact bucket ID or name if it already exists. Do not create either
 bucket before initialization.
 
+The model-free preflight checks every one of the 12 canonical AIQ public view
+names and every public RPC name created by `databases/schema.sql`. Any overload
+with one of those exact names rejects initialization. It does not use a broad
+`public`-schema or prefix match, so unrelated views and functions remain
+outside the cleanup boundary.
+
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
@@ -26,16 +38,17 @@ cargo make init-database
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
 controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.3`, its real `published_at` timestamp, and exactly three public identities:
+`1.0.4`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
-final native binaries pass model-free validation. The repository does not
+final native binaries pass validation. The controlled reference and reviewed
+database commitments are pending. The repository does not
 contain a substitute production commitment or benchmark results. Supply the
 controlled production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.3` with benchmark identifier `aiq-core@1.0.3`;
-- scoring version `1.0.3`;
+- AIQ Core task release `1.0.4` with benchmark identifier `aiq-core@1.0.4`;
+- scoring version `1.0.4`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
@@ -44,15 +57,12 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`;
+  `sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`;
 - catalog release identity
-  `sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`;
-- reviewed controlled generated-task tree identity
-  `sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`;
-- native runtime task-set identity
-  `sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`;
-- signed Official evaluator identity
-  `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+  `sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`;
+- reviewed controlled generated-task tree, runtime task-set, scorer-manifest,
+  evaluator, Core corpus, and Contrast corpus identities. These identities are
+  pending and must come from the final controlled build.
 
 The controlled tree identity is not a runtime task-set hash. The database does
 not write it to `task_set_hash` or `task_set_digest`. Those fields use the
@@ -62,17 +72,16 @@ protocol. The database binds the exact
 evaluator identity in signed `evaluator_digest` provenance and in the frozen
 task-set metadata that production readiness checks. It does not copy the
 scorer-manifest identity into an unrelated field.
-The native corpus commitment owns scorer-manifest identity
-`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`;
-the database binds its output through scoring version `1.0.3` and recomputes
+The native corpus commitment owns the pending scorer-manifest identity. The
+database binds its output through scoring version `1.0.4` and recomputes
 the score from normalized result evidence.
 
-`databases/aiq-core-1.0.3-task-commitments.json` is the reviewed public-safe
-72-task binding manifest. Its canonical JCS identity is
-`sha256:925ba3aa18b40031477264b56fd6a7bca325e6505d39e7ee1097686858e02dd8`.
+The reviewed public-safe `1.0.4` 72-task database binding manifest and its
+canonical JCS identity are pending.
 
-AIQ Core `1.0.3` is the only supported task-set and benchmark version in this
-desired state.
+The pre-release desired state targets AIQ Core `1.0.4`. Production is still on
+the historical published `1.0.2` state. Do not initialize production until the
+controlled `1.0.4` commitments are complete and reviewed.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.

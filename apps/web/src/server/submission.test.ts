@@ -530,7 +530,7 @@ function dependencies(
       _rawBytes: Uint8Array,
       receipt: SubmissionReceipt,
     ): Promise<SubmissionObjectIdentity> => ({
-      bucket: 'private-packages',
+      bucket: 'aiq-submission-packages',
       key: `sha256/${receipt.packageSha256}`,
       contentSha256: receipt.packageSha256,
       bytes: receipt.bodyBytes,
@@ -1363,7 +1363,7 @@ void describe('shared result-package contract', () => {
     };
     assert.deepEqual(
       createEnqueueRpcArguments(validation.submission, receipt, {
-        bucket: 'private-packages',
+        bucket: 'aiq-submission-packages',
         key: `sha256/${receipt.packageSha256}`,
         contentSha256: receipt.packageSha256,
         bytes: receipt.bodyBytes,
@@ -1378,7 +1378,7 @@ void describe('shared result-package contract', () => {
           body_bytes: receipt.bodyBytes,
         },
         object_identity: {
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           key: `sha256/${receipt.packageSha256}`,
           content_sha256: receipt.packageSha256,
           bytes: receipt.bodyBytes,
@@ -1683,7 +1683,7 @@ void describe('submission handler', () => {
         calls.push('store');
         storedBytes = rawBytes;
         return {
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           key: `sha256/${receipt.packageSha256}`,
           contentSha256: receipt.packageSha256,
           bytes: receipt.bodyBytes,
@@ -1720,7 +1720,7 @@ void describe('submission handler', () => {
       async storePackage(_rawBytes, receipt) {
         calls.push('store');
         return {
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           key: `sha256/${receipt.packageSha256}`,
           contentSha256: receipt.packageSha256,
           bytes: receipt.bodyBytes,
@@ -1756,7 +1756,7 @@ void describe('submission handler', () => {
     const identityMismatch = await handleSubmission(request(), {
       ...dependencies(),
       storePackage: async (_rawBytes, receipt) => ({
-        bucket: 'private-packages',
+        bucket: 'aiq-submission-packages',
         key: `sha256/${receipt.packageSha256}`,
         contentSha256: '0'.repeat(64),
         bytes: receipt.bodyBytes,

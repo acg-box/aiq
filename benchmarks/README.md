@@ -1,15 +1,19 @@
 # AIQ Core benchmark contract
 
-Repository source targets AIQ Core `1.0.3` and scoring `1.0.3`. It is a fixed
+Repository source targets the public AIQ Core `1.0.4` candidate and scoring
+`1.0.4`. It is a fixed
 72-task benchmark across ten domains. The public catalog defines task identity,
 domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
-AIQ Core `1.0.3` is the current accepted code contract. Model-free candidate
-validation passes. The final clean source commit, create-new corpus
-regeneration, final native build verification, its private audit receipt,
-operator acceptance of that build, and publication are pending. Live
+The active public candidate, task, and scorer contract is `1.0.4`. It retargets
+nine ceiling tasks, repairs one data-processing contract, and carries forward
+62 task designs with new version, provenance, and commitment bindings. The
+controlled Core, Contrast, runtime, evaluator, generated-task tree, and database
+commitment identities are pending. Full calibration, final native build
+verification, a real Official run, publication, and final deployment are
+pending. Live
 production remains the historical `1.0.2` contract: the native macOS runner
 completed its real, non-synthetic Official benchmark matrix with 17
 configurations by 72 tasks, or 1,224 task-level results. The verifier replayed
@@ -24,11 +28,18 @@ Standard API-equivalent estimate for the 1,208 priced results. It is not actual
 ChatGPT subscription spend and is not a complete batch total. The publication
 has 4,395 artifact bindings, including 19 capability artifacts.
 
+The `1.0.3` Official attempt was interrupted after its calibration evidence had
+already proved a ceiling-policy failure. It was rejected and remains
+unpublished calibration evidence. No hidden responses or hidden task details
+were published. The `1.0.4` release path requires one complete, non-Official
+17-by-72 falsification-first calibration before any real Official publication
+path. The calibration must pass the release policy without an operator override.
+
 ## Public authority
 
-- `candidates/aiq-core-1.0.3/catalog.json` is the active generated public
+- `candidates/aiq-core-1.0.4/catalog.json` is the active generated public
   catalog for repository source.
-- `candidates/aiq-core-1.0.3/catalog.schema.json` validates the active source
+- `candidates/aiq-core-1.0.4/catalog.schema.json` validates the active source
   catalog.
 - `schema/corpus-commitment-v2.schema.json` validates the controlled AIQ Core
   corpus commitment document.
@@ -41,53 +52,54 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1
+sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
 ```
 
 Its release identity is:
 
 ```text
-sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d
+sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279
 ```
 
-The release identity is `aiq-core/1.0.3`. The scorer-manifest identity is
-`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`.
-The evaluator identity is
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+The release-policy identity is `aiq-core/1.0.4`. The controlled scorer-manifest
+and evaluator identities are pending.
 
-## AIQ Core 1.0.3 authority
+Each task score uses the executable weighted-check contract. A private,
+content-addressed evaluator configuration binds each binary check, its
+nonnegative integer weight, and its hard-gate status. A failed hard gate or a
+structural failure sets the task score to zero. Otherwise, the score is the sum
+of passed check weights divided by the sum of all positive check weights. Only
+a hard gate can have zero weight. A positive-weight hard gate also contributes
+to the fraction when all hard gates pass. The verifier replays the exact checks
+without evaluator rounding. Public pass conditions summarize coverage; they are
+not mathematical weight partitions.
+
+## AIQ Core 1.0.4 public authority
 
 These files own the active catalog authority:
 
-- `candidates/aiq-core-1.0.3/catalog.json`;
-- `candidates/aiq-core-1.0.3/catalog.schema.json`;
-- `candidates/aiq-core-1.0.3/task.schema.json`; and
+- `candidates/aiq-core-1.0.4/catalog.json`;
+- `candidates/aiq-core-1.0.4/catalog.schema.json`;
+- `candidates/aiq-core-1.0.4/task.schema.json`; and
 - `schema/corpus-commitment-v2.schema.json`.
 
 The task-metadata identity is:
 
 ```text
-sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1
+sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
 ```
 
 The release identity is:
 
 ```text
-sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d
+sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279
 ```
 
-The first digest binds the ordered task metadata. The second binds the catalog
-release identity. Model-free candidate validation passes all 72 tasks. The
-runtime `task_set_hash` is
-`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
-The distinct controlled generated-task tree identity is
-`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
-The separate six-task AIQ Core Contrast calibration has ordered metadata
-catalog identity
-`sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
-Earlier Core promotion and Contrast authoring candidates are not final corpus
-identities. Create-new regeneration from the final clean source will establish
-the canonical commitment digests. The shared Rust validator now fails closed
+The first digest binds the ordered public task metadata. The second binds the
+public catalog release. They do not define controlled identities. Create-new
+generation and review will establish the runtime task-set, generated-task tree,
+Core corpus, Contrast corpus, scorer-manifest, and evaluator identities. The
+shared Rust validator fails closed
 unless `runner.identity_kind` is `source_only` and
 `runner.built_binary_sha256` is null. The Core JSON schema enforces the same
 rule. Contrast has equivalent shared typed enforcement even though it does not
@@ -111,14 +123,14 @@ results, 17 leaderboard rows, 17 model-efficiency rows, and 17 model-matrix rows
 Regenerate and test the active source catalog with:
 
 ```sh
-node scripts/candidates/aiq-core-1.0.3/generate-benchmark-catalog.ts
+node scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.ts
 node --test --experimental-strip-types \
-  scripts/candidates/aiq-core-1.0.3/generate-benchmark-catalog.test.ts
+  scripts/candidates/aiq-core-1.0.4/generate-benchmark-catalog.test.ts
 ```
 
 ## Private corpus boundary
 
-The final `aiq.corpus-commitment.v2` document will bind the `1.0.3` private
+The final `aiq.corpus-commitment.v2` document will bind the `1.0.4` private
 corpus to the ordered public catalog. It also binds the runner source, harness,
 evaluator, runtime, tool policy, network policy, environment, baseline
 workspaces, fixture bundles, and task definitions.
@@ -126,7 +138,7 @@ workspaces, fixture bundles, and task definitions.
 The commitment is public-safe. It must not include private paths, secret values,
 task content, expected outputs, or signing material.
 
-The repository tracks only the current AIQ Core `1.0.3` catalog and generator.
+The repository tracks the active AIQ Core `1.0.4` public catalog and generator.
 
 ## Validation
 

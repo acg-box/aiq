@@ -58,7 +58,8 @@ interface ObservedObject {
   bytes: number;
 }
 
-const bucketPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?![\s\S])/;
+const AIQ_SUBMISSION_PACKAGE_BUCKET = 'aiq-submission-packages';
+const AIQ_RUNNER_ARTIFACT_BUCKET = 'aiq-runner-artifacts';
 const digestPattern = /^[0-9a-f]{64}(?![\s\S])/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![\s\S])/;
@@ -112,9 +113,16 @@ export function readLifecycleConfiguration(
     !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash,
     'SUPABASE_URL must be an origin',
   );
-  assert.match(packageBucket, bucketPattern, 'AIQ_SUBMISSION_PACKAGE_BUCKET is invalid');
-  assert.match(artifactBucket, bucketPattern, 'AIQ_RUNNER_ARTIFACT_BUCKET is invalid');
-  assert.notEqual(packageBucket, artifactBucket, 'private Storage buckets must be distinct');
+  assert.equal(
+    packageBucket,
+    AIQ_SUBMISSION_PACKAGE_BUCKET,
+    `AIQ_SUBMISSION_PACKAGE_BUCKET must be ${AIQ_SUBMISSION_PACKAGE_BUCKET}`,
+  );
+  assert.equal(
+    artifactBucket,
+    AIQ_RUNNER_ARTIFACT_BUCKET,
+    `AIQ_RUNNER_ARTIFACT_BUCKET must be ${AIQ_RUNNER_ARTIFACT_BUCKET}`,
+  );
   assert.equal(
     secretKey,
     secretKey.trim(),
@@ -225,7 +233,8 @@ function claimedObject(value: Record<string, unknown>): ClaimedObject {
       (value.object_type === 'submission_package' || value.object_type === 'runner_artifact') &&
       (value.artifact_kind === null || typeof value.artifact_kind === 'string') &&
       typeof value.bucket_name === 'string' &&
-      bucketPattern.test(value.bucket_name) &&
+      (value.bucket_name === AIQ_SUBMISSION_PACKAGE_BUCKET ||
+        value.bucket_name === AIQ_RUNNER_ARTIFACT_BUCKET) &&
       typeof value.object_path === 'string' &&
       typeof value.content_sha256 === 'string' &&
       digestPattern.test(value.content_sha256) &&

@@ -67,7 +67,7 @@ function identity(): ArtifactObjectIdentity {
     kind: 'stdout.jsonl',
     digest,
     bytes: bytes.byteLength,
-    bucket: 'private-artifacts',
+    bucket: 'aiq-runner-artifacts',
     key: `sha256/${digest}/stdout.jsonl`,
   };
 }
@@ -148,7 +148,7 @@ void describe('runner artifact upload', () => {
       kind: snapshotKind,
       digest,
       bytes: bytes.byteLength,
-      bucket: 'private-artifacts',
+      bucket: 'aiq-runner-artifacts',
       key: `sha256/${digest}/${snapshotKind}`,
     };
     const response = await handleArtifactUpload(
@@ -171,7 +171,7 @@ void describe('runner artifact upload', () => {
       kind: bundleKind,
       digest: bundleDigest,
       bytes: body.byteLength,
-      bucket: 'private-artifacts',
+      bucket: 'aiq-runner-artifacts',
       key: `sha256/${bundleDigest}/${bundleKind}`,
     };
     const response = await handleArtifactUpload(
@@ -310,7 +310,7 @@ void describe('runner artifact upload', () => {
     const value = await response.text();
     assert.match(value, /"status":"duplicate"/);
     assert.match(value, new RegExp(`aiq-artifact://sha256/${digest}/stdout.jsonl`));
-    assert.doesNotMatch(value, /private-artifacts|object_path|bucket/);
+    assert.doesNotMatch(value, /aiq-runner-artifacts|object_path|bucket/);
   });
 
   void it('fails closed after Storage registration failure without metadata or secret disclosure', async () => {
