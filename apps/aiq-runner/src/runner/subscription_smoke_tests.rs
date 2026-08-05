@@ -1278,7 +1278,6 @@ fn fixed_public_task(repository_root: &Path) -> TaskDefinition {
 fn fixed_public_subscription_smoke_task_is_hash_bound() {
 	let repository_root = fs::canonicalize(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."))
 		.expect("repository root");
-
 	let task = fixed_public_task(&repository_root);
 
 	assert_eq!(task.task_id, PUBLIC_TASK_ID);
