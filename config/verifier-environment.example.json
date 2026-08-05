@@ -9,7 +9,7 @@
     "run_class": "official",
     "corpus_release_id": "REPLACE_WITH_CURRENT_CORPUS_RELEASE_ID",
     "corpus_commitment_sha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
-    "catalog_digest": "sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a",
+    "catalog_digest": "sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1",
     "task_set_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
     "evaluator_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
     "runtime_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",

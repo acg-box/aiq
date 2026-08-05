@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a
+sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
 ```
 
 The release-policy identity is `aiq-core/1.0.5`. Its public catalog
 release-identity digest is
-`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
+`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. Each final
@@ -87,13 +87,15 @@ authorize ranking or publication as Official evidence.
 
 The public `1.0.5` redesign retargets four calibration-sensitive tasks:
 `coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`. The latest
-catalog revision changes `coding-06` from a conditional-cache repair to a keyed
-async executor repair. Its checks now cover same-key FIFO serialization,
-global-concurrency scheduling without head-of-line blocking, fulfillment and
-failure state release, strict validation, independent instances, and idle
-lifecycle epochs. It carries forward the other 68 task designs with new version,
-provenance, and commitment bindings. First run a 17-by-4, 68-cell non-Official pilot over only those revised
-tasks. Review the same statistical release evidence before paying for the full
+catalog revision changes `coding-06` from a conditional-cache repair to a
+priority keyed async executor repair. Its checks cover same-key FIFO
+serialization, stable priority among eligible key heads, dynamic
+non-preemptive global concurrency, queued exact-key cancellation, exact value
+and reason identity, failure-state release, strict validation, independent
+instances, and idle lifecycle epochs. It carries forward the other 68 task
+designs with new version, provenance, and commitment bindings. First run a
+17-by-4, 68-cell non-Official pilot over only those revised tasks. Review the
+same statistical release evidence before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model
@@ -105,7 +107,7 @@ permanently non-Official.
 
 The native macOS runner completed the first real Official benchmark batch. Its
 17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
-results: 1,218 completed and 6 failed. The native verifier replayed the
+results: 1,218 completed and 6 runtime issues. The native verifier replayed the
 committed evaluators, and the distinct publisher published the matrix as
 `trusted_verified` through the [Architecture and Runtime](architecture-and-runtime.md)
 verification flow. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`,

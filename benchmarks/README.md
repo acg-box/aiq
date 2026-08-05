@@ -18,7 +18,7 @@ production remains the historical `1.0.2` contract: the native macOS runner
 completed its real, non-synthetic Official benchmark matrix with 17
 configurations by 72 tasks, or 1,224 task-level results. The verifier replayed
 and accepted its evidence. The distinct publisher published the matrix as
-`trusted_verified`. Of the 1,224 results, 1,218 completed and 6 failed. Outcomes
+`trusted_verified`. Of the 1,224 results, 1,218 completed and 6 runtime issues. Outcomes
 are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
 `budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
 
@@ -52,13 +52,13 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a
+sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
 ```
 
 Its release identity is:
 
 ```text
-sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037
+sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529
 ```
 
 The release-policy identity is `aiq-core/1.0.5`. The controlled scorer-manifest
@@ -86,13 +86,13 @@ These files own the active catalog authority:
 The task-metadata identity is:
 
 ```text
-sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a
+sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
 ```
 
 The release identity is:
 
 ```text
-sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037
+sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529
 ```
 
 The first digest binds the ordered public task metadata. The second binds the

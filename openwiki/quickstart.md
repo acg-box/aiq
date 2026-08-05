@@ -63,7 +63,7 @@ matrix, not 1,224 separate benchmark runs. The native verifier replayed the dete
 evaluators, and the distinct publisher published the matrix as
 `trusted_verified` through the flow described in
 [Architecture and Runtime](architecture-and-runtime.md). Of the results, 1,218
-completed and 6 failed: 329 `correct`, 259 `partial`, 630 `incorrect`, 5
+completed and 6 runtime issues: 329 `correct`, 259 `partial`, 630 `incorrect`, 5
 `timeout`, and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
 (`1:37:24.411`).
 
@@ -164,10 +164,10 @@ receipt must contain scoring `1.0.5`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a`;
+`sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`;
 the release-policy identity is `aiq-core/1.0.5`, and its public catalog
 release-identity digest is
-`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
+`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. The shared Rust

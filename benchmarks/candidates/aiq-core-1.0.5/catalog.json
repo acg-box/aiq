@@ -9,7 +9,7 @@
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a",
+    "digest": "sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1",
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
@@ -18,12 +18,12 @@
     "task_metadata_identity": {
       "algorithm": "sha256",
       "canonicalization": "aiq.sorted-key-json.v1",
-      "digest": "sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a",
+      "digest": "sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1",
       "scope": "ordered_full_task_metadata"
     },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037",
+    "digest": "sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529",
     "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
@@ -707,15 +707,15 @@
     {
       "task_id": "coding-06",
       "task_version": "1.0.5",
-      "title": "Repair a keyed async executor",
+      "title": "Repair a priority keyed async executor",
       "domain": "coding",
       "difficulty": "medium",
-      "summary": "Repair a keyed async executor with global concurrency, same-key FIFO, eligible-work scheduling, failure recovery, and a correct idle lifecycle.",
+      "summary": "Repair a priority keyed async executor with same-key FIFO, stable eligible-head scheduling, dynamic concurrency, queued cancellation, failure recovery, and a correct idle lifecycle.",
       "design_revision": {
         "supersedes_task_version": "1.0.4",
         "kind": "calibration_retargeted",
-        "objective": "Retarget conditional HTTP fetching to a compact keyed async executor repair with bounded global concurrency, per-key FIFO serialization, work-conserving scheduling, failure recovery, and an explicit idle lifecycle.",
-        "task_specific_delta": "Repair one existing executor module. Same-key operations serialize in submission order while eligible work for other keys uses available global capacity without head-of-line blocking. Fulfillment, rejection, and synchronous throws release scheduler state. Strict validation, exact result identity, independent instances, and idle epochs remain observable.",
+        "objective": "Retarget conditional HTTP fetching to a compact priority keyed async executor repair with bounded and dynamically adjustable global concurrency, per-key FIFO serialization, stable eligible-head priority scheduling, queued-work cancellation, failure recovery, and an explicit idle lifecycle.",
+        "task_specific_delta": "Repair one existing executor module. Same-key operations serialize in submission order while priority orders only the eligible head of each idle key. Concurrency changes are non-preemptive, exact-key cancellation removes queued work without affecting active work, and fulfillment, rejection, and synchronous throws release scheduler state. Strict validation, exact value and reason identity, independent instances, and idle epochs remain observable.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -724,7 +724,7 @@
         ]
       },
       "input_contract": {
-        "kind": "single_module_keyed_async_executor_repository",
+        "kind": "single_module_priority_keyed_async_executor_repository",
         "fixture_profile": "aiq-fixture://coding-06/v1",
         "content_handle": "aiq-controlled-task://aiq-core/1.0.5/coding-06"
       },
@@ -747,9 +747,9 @@
         "partial_credit": true,
         "pass_conditions": [
           "Operations for one key execute one at a time in submission order, while operations for different keys can overlap within the configured global limit.",
-          "Scheduling starts the earliest eligible queued operation without allowing an active-key entry to block independent work behind it.",
-          "Fulfillment, rejection, and synchronous throws preserve exact caller outcomes, release key and capacity state, and allow queued work to continue.",
-          "Strict validation, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs."
+          "Stable priority scheduling compares only eligible per-key heads, and runtime concurrency changes do not preempt active work.",
+          "Exact-key cancellation removes queued work with the supplied reason while fulfillment, rejection, and synchronous throws release scheduler state.",
+          "Strict validation, exact caller outcomes, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs."
         ],
         "scoring_contract": {
           "aggregation": "configured_weighted_binary_check_fraction_with_hard_gates",

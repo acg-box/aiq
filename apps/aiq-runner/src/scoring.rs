@@ -34,7 +34,7 @@ pub const AIQ_TASK_SET_VERSION: &str = "1.0.5";
 pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.5";
 /// Frozen full-metadata commitment for the current AIQ Core release.
 pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
-	"sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a";
+	"sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.

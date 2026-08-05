@@ -15,9 +15,9 @@ from the first launch evidence.
 Live production remains the historical AIQ Core `1.0.2` matrix described below.
 Repository source now has the active public AIQ Core `1.0.5` candidate. Its
 public metadata digest is
-`sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a`,
+`sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`,
 and its public release digest is
-`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
+`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
 Controlled identities, final calibration, final native build verification, a
 real Official run, publication, and final deployment are pending. Do not treat
 the source-head change as a deployment claim.
@@ -55,7 +55,7 @@ This is one greenfield AIQ Core `1.0.2` state. The first publication is one
 complete `17 × 72 = 1,224` task-level result Official matrix, not 1,224 separate
 benchmark runs. The native macOS runner completed it, the native verifier
 replayed it, and the distinct publisher published it as `trusted_verified`.
-Of the results, 1,218 completed and 6 failed: 329 `correct`, 259 `partial`, 630
+Of the results, 1,218 completed and 6 runtime issues: 329 `correct`, 259 `partial`, 630
 `incorrect`, 5 `timeout`, and 1 `budget_exhausted`. Signed wall time is
 5,844,411 ms (`1:37:24.411`).
 
@@ -364,7 +364,7 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       server-only values to the browser.
 - [x] Runner, verifier, and publisher identities are distinct.
 - [x] One complete non-synthetic 17-by-72 matrix contains 1,224 terminal results,
-      including 1,218 completed and 6 failed results.
+      including 1,218 completed and 6 runtime-issue results.
 - [x] The native verifier reconstructed and replayed the matrix, and the distinct
       publisher published it as `trusted_verified`.
 - [x] `aiq.wiki` resolves with valid TLS; `www.aiq.wiki` redirects permanently

@@ -20,7 +20,7 @@ batch. It contains 17 configuration runs and 72 tasks per run,
 or 1,224 task-level results. This is one Official matrix, not 1,224 benchmark
 runs. The verifier replayed and accepted the evidence. A distinct publisher
 published the matrix as `trusted_verified`. Of the 1,224 results, 1,218
-completed and 6 failed. The outcomes are 329
+completed and 6 runtime issues. The outcomes are 329
 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
 `budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
 
@@ -85,11 +85,11 @@ verifier admission and distinct publication, and it remains non-Official.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:050ab6937b4e84aad0fc72a3d4489bd2d8dfe70d2bc35d196bd47b5a2cc80d4a
+sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
 ```
 
 Its public release digest is
-`sha256:6991fb8e25d18d3ac89e946483c87c9cb24af7f59acdef2bed21f8b8090c4037`.
+`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
 The release-policy identity is `aiq-core/1.0.5`. Do not infer any controlled
 identity from these public digests. Create-new generation and review will
 establish the `1.0.5` scorer manifest, evaluator, runtime task set, generated
