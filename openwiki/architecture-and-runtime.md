@@ -20,23 +20,16 @@ tags: ['architecture', 'runtime', 'security']
 The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
-Repository source has one current accepted full-catalog code contract: AIQ Core
-`1.0.3` with scoring `1.0.3`, task-metadata digest
-`sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`,
-release-policy identity `aiq-core/1.0.3`, and catalog release-identity digest
-`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
-Its scorer-manifest identity is
-`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
-and its evaluator identity is
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-Model-free candidate validation passes 72 of 72 tasks. The runtime
-`task_set_hash` is
-`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
-The distinct controlled generated-task tree identity is
-`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
-Earlier Core promotion and Contrast authoring candidates are not final corpus
-identities. Create-new regeneration from the final clean source will establish
-their canonical commitment digests. The shared Rust validator now fails closed
+Repository source has one active public candidate, task, and scorer contract:
+AIQ Core `1.0.4` with task-metadata digest
+`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`,
+release-policy identity `aiq-core/1.0.4`, and public release digest
+`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+This public candidate retargets nine ceiling tasks, repairs one data-processing
+contract, and carries forward 62 task designs with new bindings. The controlled
+Core, Contrast, scorer-manifest, evaluator, runtime task-set, generated-task
+tree, and database commitment identities are pending. Create-new generation and
+review must establish them. The shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
 has equivalent shared typed enforcement even though it has no separate
@@ -46,9 +39,12 @@ executable provenance are the executable product contracts. After the final
 clean build, the operator retains a private, unsigned audit receipt with the
 exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Node.js, and ripgrep executables. The repository does not validate or
-publish this reproducibility evidence. The final clean source commit,
-regeneration, native build verification, real execution, and publication of
-`1.0.3` are pending. The first real Official benchmark batch
+publish this reproducibility evidence. Full calibration, native build
+verification, real Official execution, publication, and final deployment of
+`1.0.4` are pending. The `1.0.3` Official attempt was interrupted after an
+already-conclusive ceiling failure and was rejected as unpublished calibration
+evidence. No hidden responses or hidden task details were published. The first
+published real Official benchmark batch
 completed on the native macOS runner. The batch is non-synthetic. Its 1,224
 task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
 The native verifier replayed the committed evaluators, and the distinct
@@ -227,8 +223,8 @@ signatures, raw provider events, artifacts, and private failure details.
 Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
-AIQ database. It accepts only the source-head AIQ Core `1.0.3` catalog and
-scoring `1.0.3`.
+AIQ database. The pre-release desired state targets the public AIQ Core `1.0.4`
+catalog and scoring `1.0.4`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,

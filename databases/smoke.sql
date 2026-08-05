@@ -119,26 +119,26 @@ begin
   select count(*) into current_task_set_count
   from aiq_private.aiq_task_sets task_set
   where task_set.task_set_id = 'aiq-core'
-    and task_set.task_set_version = '1.0.3';
+    and task_set.task_set_version = '1.0.4';
 
   select count(*) into current_task_count
   from aiq_private.aiq_task_catalog task
   where task.task_set_id = 'aiq-core'
-    and task.task_set_version = '1.0.3'
-    and task.task_version = '1.0.3'
-    and task.scorer_version = '1.0.3';
+    and task.task_set_version = '1.0.4'
+    and task.task_version = '1.0.4'
+    and task.scorer_version = '1.0.4';
 
   select count(*) into current_scoring_count
   from aiq_private.aiq_scoring_versions scoring
-  where scoring.scoring_version = '1.0.3'
-    and scoring.benchmark_version = 'aiq-core@1.0.3';
+  where scoring.scoring_version = '1.0.4'
+    and scoring.benchmark_version = 'aiq-core@1.0.4';
 
   if current_task_set_count <> 1
     or current_task_count <> 72
     or current_scoring_count <> 1
   then
     raise exception
-      'expected AIQ Core 1.0.3 with 72 task 1.0.3 rows and scorer 1.0.3';
+      'expected AIQ Core 1.0.4 with 72 task 1.0.4 rows and scorer 1.0.4';
   end if;
 
   if not pg_catalog.has_function_privilege(

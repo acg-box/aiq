@@ -8,6 +8,7 @@ const calibrationIntegration = await readFile(
   resolve(import.meta.dirname, 'calibration-integration.sql'),
   'utf8',
 );
+const stateIntegration = await readFile(resolve(import.meta.dirname, 'integration.sql'), 'utf8');
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,9 +46,17 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 });
 
 void test('runs calibration against the production initializer catalog authority', () => {
-  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.3'\)/);
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.4'\)/);
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
+});
+
+void test('uses the canonical private Storage identities in every SQL integration fixture', () => {
+  for (const fixture of [calibrationIntegration, stateIntegration]) {
+    assert.doesNotMatch(fixture, /integration-private-(?:submissions|artifacts)/);
+    assert.match(fixture, /aiq-submission-packages/);
+    assert.match(fixture, /aiq-runner-artifacts/);
+  }
 });
 
 void test('keeps calibration evidence separate from Official publication tables', () => {
@@ -675,7 +684,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'/,
+    /task_set_identity_sha256 =\s*'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584'/,
   );
   assert.match(
     schema,

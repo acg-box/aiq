@@ -10,10 +10,10 @@ insert into aiq_private.aiq_scoring_versions (
   is_published, published_at
 )
 values (
-  '1.0.3',
+  '1.0.4',
   'aiq.score-snapshot.v1',
-  'aiq-core@1.0.3',
-  'AIQ fixed-fixture score 1.0.3',
+  'aiq-core@1.0.4',
+  'AIQ fixed-fixture score 1.0.4',
   'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
   array[
     'Give each of the ten domains weight 0.1.',
@@ -59,19 +59,19 @@ insert into aiq_private.aiq_task_sets (
 )
 values (
   'aiq-core',
-  '1.0.3',
+  '1.0.4',
   'AIQ Core 72',
   72,
   10,
-  encode(extensions.digest('aiq-core-catalog-1.0.3', 'sha256'), 'hex'),
-  encode(extensions.digest('aiq-core-hidden-payload-1.0.3', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core-catalog-1.0.4', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core-hidden-payload-1.0.4', 'sha256'), 'hex'),
   'committed',
   true,
   '2026-07-22T16:00:00Z',
   '{
     "synthetic":true,
     "quota_policy":"frozen_domain_by_difficulty",
-    "private_bucket_env":"AIQ_PRIVATE_STORAGE_BUCKET",
+    "private_bucket_env":"AIQ_RUNNER_ARTIFACT_BUCKET",
     "storage_lifecycle_required_at_deployment":true
   }'::jsonb
 );
@@ -121,20 +121,20 @@ insert into aiq_private.aiq_task_catalog (
 )
 select
   'aiq-core',
-  '1.0.3',
+  '1.0.4',
   replace(domain, '_', '-') || '-' || lpad(domain_number::text, 2, '0'),
-  '1.0.3',
+  '1.0.4',
   initcap(replace(domain, '_', ' ')) || ' task ' || domain_number,
   domain,
   difficulty,
   'Synthetic public metadata for deterministic local contract validation.',
   'deterministic_fixture',
-  '1.0.3',
+  '1.0.4',
   '["filesystem_read","filesystem_write","web_search"]'::jsonb,
   '{"wall_time_seconds":300,"tool_calls":40}'::jsonb,
   array['synthetic', domain, difficulty],
   encode(extensions.digest(domain || ':' || domain_number || ':fixture', 'sha256'), 'hex'),
-  'supabase-private://benchmark-tasks/aiq-core/1.0.3/'
+  'supabase-private://benchmark-tasks/aiq-core/1.0.4/'
     || replace(domain, '_', '-') || '-' || lpad(domain_number::text, 2, '0') || '.json',
   'The hidden fixture is commitment-addressed and is not in a public view.',
   true
@@ -277,9 +277,9 @@ select
   run.scheduled_for,
   'UTC',
   'aiq-core',
-  '1.0.3',
-  'aiq-core@1.0.3',
-  '1.0.3',
+  '1.0.4',
+  'aiq-core@1.0.4',
+  '1.0.4',
   run.model_config_id,
   node.node_id,
   encode(extensions.digest(node.node_id || ':capability:v1', 'sha256'), 'hex'),
@@ -289,7 +289,7 @@ select
   false,
   run.scheduled_for,
   run.scheduled_for + interval '18 minutes',
-  encode(extensions.digest('aiq-core:prompt-set:1.0.3', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core:prompt-set:1.0.4', 'sha256'), 'hex'),
   'a7d91f4',
   'us-east-1',
   '{"synthetic":true,"trust_layer":"unverified","source":"deterministic_seed"}'::jsonb
@@ -301,7 +301,7 @@ with ordered_tasks as (
     catalog.*,
     row_number() over (order by catalog.domain, catalog.task_id) as task_number
   from aiq_private.aiq_task_catalog catalog
-  where catalog.task_set_id = 'aiq-core' and catalog.task_set_version = '1.0.3'
+  where catalog.task_set_id = 'aiq-core' and catalog.task_set_version = '1.0.4'
 )
 insert into aiq_private.aiq_task_results (
   result_id, source_result_id, run_id, task_id, task_version, domain,
@@ -338,7 +338,7 @@ select
     when (task.task_number + model.matrix_order) % 7 = 0 then 0.6
     else 1
   end,
-  '1.0.3',
+  '1.0.4',
   case when (task.task_number + model.matrix_order) % 19 = 0
     then 'SYNTHETIC_TIMEOUT' end,
   case when (task.task_number + model.matrix_order) % 19 = 0
@@ -533,7 +533,7 @@ select
         'timezone', 'UTC'
       ),
       'task_set_hash', 'sha256:' || task_set.catalog_sha256,
-      'scoring_version', '1.0.3',
+      'scoring_version', '1.0.4',
       'models', signed_models.value,
       'execution_concurrency', 1,
       'started_unix_ms', 1784894400000,
@@ -569,7 +569,7 @@ cross join signed_models
 cross join signed_results
 cross join evaluator_bundle_identity
 cross join aiq_private.aiq_task_sets task_set
-where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.3';
+where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.4';
 
 with artifact as (
   select
@@ -584,7 +584,7 @@ insert into aiq_private.aiq_artifact_ingress_objects (
 select
   'evaluator-results.json',
   replace(artifact.reference ->> 'content_hash', 'sha256:', ''),
-  'synthetic-private-artifacts',
+  'aiq-runner-artifacts',
   'sha256/' || replace(artifact.reference ->> 'content_hash', 'sha256:', '')
     || '/evaluator-results.json',
   (artifact.reference ->> 'bytes')::bigint
@@ -614,17 +614,17 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   package.matrix_batch_id, package.package_sha256, package.content_hash,
-  package.normalization_digest, package.node_id, 'aiq-core', '1.0.3', '1.0.3',
+  package.normalization_digest, package.node_id, 'aiq-core', '1.0.4', '1.0.4',
   true, null, null,
-  'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.3',
+  'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.4',
   'sha256:' || encode(
-    extensions.digest('aiq-core:prompt-set:1.0.3', 'sha256'), 'hex'
+    extensions.digest('aiq-core:prompt-set:1.0.4', 'sha256'), 'hex'
   ),
-  '1.0.3', 'a7d91f4', 'us-east-1',
+  '1.0.4', 'a7d91f4', 'us-east-1',
   1784894400000, 1784894400000, 1784895480000, 1
 from aiq_private.aiq_result_packages package
 cross join aiq_private.aiq_task_sets task_set
-where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.3';
+where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.4';
 
 insert into aiq_private.aiq_package_runs (
   package_sha256, run_id, model_config_id, matrix_order
@@ -703,7 +703,7 @@ select
     || substr(md5(run.run_id || ':score'), 21, 12)
   )::uuid,
   run.run_id,
-  '1.0.3',
+  '1.0.4',
   'synthetic_complete',
   round(score.fixed_score, 3),
   greatest(0, round(score.fixed_score - 2, 3)),
@@ -837,7 +837,7 @@ begin
     created_at, expires_at
   ) values (
     package_id, 1, 'aiq.distributed-task-package.v1', package_id || ':1',
-    package_hash, atlas_node, 'aiq-core', '1.0.3', 4, 2048,
+    package_hash, atlas_node, 'aiq-core', '1.0.4', 4, 2048,
     'ed25519', repeat('9', 128), 'unverified', true,
     '2026-07-24T14:00:00Z', '2026-07-25T14:00:00Z'
   );

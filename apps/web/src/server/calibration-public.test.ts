@@ -33,7 +33,12 @@ void describe('public calibration evidence boundary', () => {
     );
     assert.equal(fixture.payload_type, 'aiq.calibration-run.v3');
     assert.equal(fixture.claimed_trust, 'untrusted');
-    assert.equal((fixture.payload as Record<string, unknown>).official_eligible, false);
+    const payload = fixture.payload as Record<string, unknown>;
+    assert.equal(payload.official_eligible, false);
+    assert.equal(
+      (payload.provenance as Record<string, unknown>).catalog_digest,
+      'sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e',
+    );
   });
 
   void it('keeps calibration public reads separate and excludes private material', async () => {

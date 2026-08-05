@@ -9,8 +9,8 @@ tags: ['benchmark', 'method', 'scoring']
 
 ## Fixture
 
-Repository source targets AIQ Core `1.0.3`, benchmark release
-`aiq-core@1.0.3`, and scoring implementation `1.0.3`. It contains 72 fixed
+Repository source targets the public AIQ Core `1.0.4` candidate, benchmark
+release `aiq-core@1.0.4`, and scoring implementation `1.0.4`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -32,28 +32,16 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1
+sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
 ```
 
-The release-policy identity is `aiq-core/1.0.3`. Its catalog
+The release-policy identity is `aiq-core/1.0.4`. Its public catalog
 release-identity digest is
-`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
-The scorer-manifest identity is
-`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`,
-and the evaluator identity is
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-
-Model-free candidate validation passes all 72 tasks. The runtime
-`task_set_hash` is
-`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`.
-The distinct controlled generated-task tree identity is
-`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
-The separate six-task AIQ Core Contrast calibration ordered metadata catalog
-identity is
-`sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578`.
-Earlier Core promotion and Contrast authoring candidates are not final corpus
-identities. Create-new regeneration from the final clean source will establish
-their canonical commitment digests. Each final corpus keeps
+`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+The controlled scorer-manifest, evaluator, runtime task-set, generated-task
+tree, Core corpus, Contrast corpus, and database commitment identities are
+pending. Create-new generation and review must establish them. Each final
+corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The
 checked Core schema enforces the same rule. Contrast has equivalent shared typed
@@ -71,7 +59,7 @@ this reproducibility evidence.
 ## Published Official evidence
 
 Production publishes one historical AIQ Core `1.0.2`, non-synthetic Official
-`72 × 17` matrix, or 1,224 results. The current `1.0.3` release gate checks all
+`72 × 17` matrix, or 1,224 results. The `1.0.4` release gate checks all
 72 Core task definitions and 432 fixed evaluator bindings: gold,
 alternate-correct, partial, adversarial-format, empty, and timeout for every
 task. The separate six-task Contrast calibration checks 36 bindings. Both
@@ -88,6 +76,21 @@ cargo run -p aiq-runner -- validate-contrast-corpus --help
 Contrast is an operator-enforced release gate before Official permission
 admission. Its commitment is not an input to the 17-by-72 admission plan, and
 its six tasks do not add cells to the 1,224-cell Official matrix.
+
+The `1.0.3` Official attempt was interrupted after its observed calibration
+cells already proved a ceiling-policy failure. It was rejected as unpublished
+calibration evidence. No hidden responses or hidden task details were
+published. The public `1.0.4` redesign retargets nine ceiling tasks, repairs one
+data-processing contract, and carries forward 62 task designs with new version,
+provenance, and commitment bindings.
+
+Before any real `1.0.4` Official publication path, run one complete 17-by-72
+non-Official calibration. Its purpose is to falsify fixture discrimination. It
+must meet the release limits for universal semantic zeros and universal full
+scores, and it must show sufficient informative tasks, non-uniform tasks,
+domain spread, and model spread. The policy permits at most seven universal
+semantic-zero tasks and at most seven universal-full tasks. An operator cannot
+override a failed gate.
 
 The native macOS runner completed the first real Official benchmark batch. Its
 17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
@@ -211,6 +214,22 @@ cost; they never create a combined rank. Estimated Standard API-equivalent cost
 is a comparison method, not an actual ChatGPT or Codex subscription bill.
 
 ## Outcomes and scoring
+
+AIQ Core `1.0.4` corrects the public task-score description before any `1.0.4`
+model evidence is accepted. Each controlled evaluator contains at most 16
+binary checks. Its content-addressed configuration binds every check identifier,
+nonnegative integer weight, type, and hard-gate status. The task score is:
+
+```text
+hard gate or structural failure ? 0 : sum(weight × passed) / sum(weight)
+```
+
+The denominator must contain a positive check weight. Only a hard gate can have
+zero weight. A positive-weight hard gate also contributes to the fraction when
+all gates pass. A score of `1` is `correct`, a score strictly between `0` and `1`
+is `partial`, and `0` is `incorrect`. The evaluator does not round before exact
+runner and verifier replay. The public pass conditions summarize what the
+private checks cover. They are not separately weighted score components.
 
 Correct and partial outcomes contribute their evaluator score. Attributable
 incorrect, timeout, budget, tool, policy, and wrong-artifact outcomes contribute

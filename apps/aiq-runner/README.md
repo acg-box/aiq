@@ -92,14 +92,26 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1
+sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e
 ```
+
+This is the active public `1.0.4` metadata identity. Its public release digest
+is `sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+The controlled Core, Contrast, runtime, evaluator, generated-task tree, and
+database commitment identities are pending.
 
 ## Execution and evidence
 
 The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
+
+For the `1.0.4` release, run one complete 17-by-72 calibration before any real
+Official publication path. This non-Official calibration must try to falsify
+fixture discrimination and must pass the release policy without an operator
+override. The interrupted `1.0.3` Official attempt was rejected as unpublished
+calibration evidence after an already-conclusive ceiling failure. No hidden
+responses or hidden task details were published.
 
 Capability preflight records the exact local model support state. The run binds
 the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,

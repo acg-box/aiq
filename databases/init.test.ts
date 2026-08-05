@@ -12,7 +12,7 @@ import { canonicalJson, initializeDatabase, prepareInitialization } from './init
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.3/catalog.json');
+const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.4/catalog.json');
 const corpusSchemaPath = resolve(
   repositoryRoot,
   'benchmarks/schema/corpus-commitment-v2.schema.json',
@@ -21,9 +21,9 @@ const schemaPath = resolve(repositoryRoot, 'databases/schema.sql');
 const initPath = resolve(repositoryRoot, 'databases/init.ts');
 const taskCommitmentsPath = resolve(
   repositoryRoot,
-  'databases/aiq-core-1.0.3-task-commitments.json',
+  'databases/aiq-core-1.0.4-task-commitments.json',
 );
-const taskSetIdentity = 'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261';
+const taskSetIdentity = 'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584';
 const evaluatorIdentity = 'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 
 function isObject(value: unknown): value is JsonObject {
@@ -47,6 +47,10 @@ function mutableArray(value: JsonObject, key: string): unknown[] {
 
 function digest(index: number): string {
   return `sha256:${index.toString(16).padStart(64, '0')}`;
+}
+
+function capturedNames(source: string, pattern: RegExp): string[] {
+  return [...source.matchAll(pattern)].map((match) => match[1] ?? '').toSorted();
 }
 
 function publicNode(role: string, byte: number): JsonObject {
@@ -262,7 +266,7 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.3',
+        task_set_version: '1.0.4',
         identity_sha256: object(catalog.task_metadata_identity).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
@@ -390,6 +394,15 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   assert.match(prepared.sql, /from json_to_recordset\('[\s\S]*?'::json\) as row\(/);
   assert.match(prepared.sql, /catalog_ordinal smallint, full_public_metadata json,/);
   assert.match(prepared.sql, /pg_catalog\.pg_namespace where nspname = 'aiq_private'/);
+  assert.match(
+    prepared.sql,
+    /relation\.relname in \([\s\S]*?'public_distributed_radar'[\s\S]*?'public_calibration_scores'/,
+  );
+  assert.match(
+    prepared.sql,
+    /procedure\.proname in \([\s\S]*?'aiq_register_storage_object'[\s\S]*?'public_trend_points'/,
+  );
+  assert.doesNotMatch(prepared.sql, /relation\.relname like|procedure\.proname like/);
   assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
   assert.match(
     prepared.sql,
@@ -402,7 +415,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.3', '1\.0\.3'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.4', '1\.0\.4'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -441,14 +454,14 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .update(canonicalJson(object(reference.corpus_commitment)))
       .digest('hex')}`,
   );
-  strictEqual(prepared.receipt.scoring_version, '1.0.3');
+  strictEqual(prepared.receipt.scoring_version, '1.0.4');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,
-    'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1',
+    'sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e',
   );
   strictEqual(
     prepared.receipt.catalog_release_identity_sha256,
-    'sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d',
+    'sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279',
   );
   strictEqual(prepared.receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(prepared.receipt.evaluator_identity_sha256, evaluatorIdentity);
@@ -557,7 +570,8 @@ void test('one CLI command invokes fake psql once without disclosing its URL', a
   const fake = await fakePsql(root);
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
-  const secretUrl = 'postgresql://operator:secret-value@database.invalid:5432/postgres';
+  const secretUrl =
+    'postgresql://operator:secret-value@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres';
   const environment = {
     ...process.env,
     AIQ_DATABASE_URL: secretUrl,
@@ -577,7 +591,7 @@ void test('one CLI command invokes fake psql once without disclosing its URL', a
   assert.equal(Array.isArray(invokedArguments), true);
   assert.doesNotMatch(JSON.stringify(invokedArguments), /operator|secret-value|database\.invalid/);
   const childEnvironment = object(JSON.parse(await readFile(fake.environmentPath, 'utf8')));
-  strictEqual(childEnvironment.PGHOST, 'database.invalid');
+  strictEqual(childEnvironment.PGHOST, 'db.xxnszykaeapolqdnhalx.supabase.co');
   strictEqual(childEnvironment.PGPORT, '5432');
   strictEqual(childEnvironment.PGDATABASE, 'postgres');
   strictEqual(childEnvironment.PGUSER, 'operator');
@@ -603,7 +617,8 @@ void test('initializer parses readiness from a fake psql executable', async () =
     psqlCommand: fake.command,
     environment: {
       ...process.env,
-      AIQ_DATABASE_URL: 'postgresql://operator:private@database.invalid/postgres',
+      AIQ_DATABASE_URL:
+        'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
     },
   });
 
@@ -619,6 +634,62 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(receipt.evaluator_identity_sha256, evaluatorIdentity);
   strictEqual(Object.keys(receipt.node_ids).length, 3);
+});
+
+void test('initializer binds production to the personal Supabase project ref', async () => {
+  await rejects(
+    initializeDatabase({
+      referencePath: '/does/not/matter.json',
+      repositoryRoot,
+      environment: {
+        AIQ_DATABASE_URL: 'postgresql://operator:private@db.otherproject.supabase.co/postgres',
+      },
+    }),
+    /must target Supabase project xxnszykaeapolqdnhalx/,
+  );
+  await rejects(
+    initializeDatabase({
+      referencePath: '/does/not/matter.json',
+      repositoryRoot,
+      environment: {
+        NODE_ENV: 'production',
+        AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
+        AIQ_DATABASE_URL: 'postgresql://operator:private@127.0.0.1:54322/postgres',
+      },
+    }),
+    /must target Supabase project xxnszykaeapolqdnhalx/,
+  );
+  await rejects(
+    initializeDatabase({
+      referencePath: '/does/not/matter.json',
+      repositoryRoot,
+      environment: {
+        NODE_ENV: 'test',
+        AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
+        AIQ_DATABASE_URL: 'postgresql://operator:private@127.0.0.1:54322/postgres',
+      },
+    }),
+    (error: unknown) => error instanceof Error && /does\/not\/matter/.test(error.message),
+  );
+});
+
+void test('greenfield preflight enumerates every AIQ public view and RPC name exactly', async () => {
+  const [initializer, desiredSchema] = await Promise.all([
+    readFile(initPath, 'utf8'),
+    readFile(schemaPath, 'utf8'),
+  ]);
+  const preflight = initializer.slice(
+    initializer.indexOf('const preflight = `do $aiq_greenfield_preflight$'),
+    initializer.indexOf('const nodeIds:', initializer.indexOf('const preflight = `')),
+  );
+  const expectedViews = capturedNames(desiredSchema, /create view public\.([a-z0-9_]+)/gi);
+  const expectedRpcs = capturedNames(desiredSchema, /create function public\.([a-z0-9_]+)/gi);
+  assert.equal(expectedViews.length, 12);
+  assert.equal(expectedRpcs.length, 33);
+  for (const name of [...expectedViews, ...expectedRpcs]) {
+    assert.match(preflight, new RegExp(`'${name}'`));
+  }
+  assert.doesNotMatch(preflight, /relname\s+(?:like|~)|proname\s+(?:like|~)/i);
 });
 
 void test('rejects malformed corpus provenance before psql starts', async () => {
@@ -638,7 +709,8 @@ void test('rejects malformed corpus provenance before psql starts', async () => 
       repositoryRoot,
       psqlCommand: fake.command,
       environment: {
-        AIQ_DATABASE_URL: 'postgresql://operator:private@database.invalid/postgres',
+        AIQ_DATABASE_URL:
+          'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
       },
     }),
     /corpus/,
@@ -655,7 +727,7 @@ void test('CLI accepts the reference path environment fallback without disclosin
     cwd: repositoryRoot,
     env: {
       ...process.env,
-      AIQ_DATABASE_URL: 'postgresql://operator:secret@database.invalid/postgres',
+      AIQ_DATABASE_URL: 'postgresql://operator:secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
       AIQ_PRODUCTION_REFERENCE: referencePath,
       PATH: `${root}:${process.env.PATH ?? ''}`,
     },
@@ -883,7 +955,8 @@ void test('failed psql gives fail-closed greenfield retry guidance without URL d
   await chmod(command, 0o700);
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
-  const secretUrl = 'postgresql://operator:failure-secret@database.invalid/postgres';
+  const secretUrl =
+    'postgresql://operator:failure-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
 
   await rejects(
     initializeDatabase({
@@ -910,7 +983,8 @@ void test('the controlled preflight marker reports rejected reuse without URL di
   await chmod(command, 0o700);
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
-  const secretUrl = 'postgresql://operator:reuse-secret@database.invalid/postgres';
+  const secretUrl =
+    'postgresql://operator:reuse-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
 
   await rejects(
     initializeDatabase({
@@ -945,7 +1019,7 @@ void test('an incidental reuse marker in a connection error stays a generic fail
       psqlCommand: command,
       environment: {
         AIQ_DATABASE_URL:
-          'postgresql://operator:collision-secret@database.invalid/AIQ_GREENFIELD_REUSE_REJECTED',
+          'postgresql://operator:collision-secret@db.xxnszykaeapolqdnhalx.supabase.co/AIQ_GREENFIELD_REUSE_REJECTED',
       },
     }),
     (error: unknown) =>
@@ -1085,6 +1159,8 @@ create role service_role nologin;`,
           environment: {
             ...process.env,
             AIQ_DATABASE_URL: integrationDatabaseUrl,
+            AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
+            NODE_ENV: 'test',
           },
         }),
       /AIQ objects already exist/,
@@ -1133,6 +1209,8 @@ create role service_role nologin;`,
       environment: {
         ...process.env,
         AIQ_DATABASE_URL: integrationDatabaseUrl,
+        AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
+        NODE_ENV: 'test',
       },
     });
     const readinessSql = `set role service_role;
@@ -1265,6 +1343,8 @@ rollback;`,
           environment: {
             ...process.env,
             AIQ_DATABASE_URL: integrationDatabaseUrl,
+            AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
+            NODE_ENV: 'test',
           },
         }),
       (error: unknown) => {

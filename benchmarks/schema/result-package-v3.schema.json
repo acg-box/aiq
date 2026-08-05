@@ -79,7 +79,7 @@
           "$ref": "#/$defs/sha256"
         },
         "scoring_version": {
-          "const": "1.0.3"
+          "const": "1.0.4"
         },
         "execution_concurrency": {
           "type": "integer",
@@ -1346,7 +1346,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1"
+          "const": "sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
@@ -1429,7 +1429,7 @@
           "$ref": "#/$defs/taskId"
         },
         "task_version": {
-          "const": "1.0.3"
+          "const": "1.0.4"
         },
         "task_hash": {
           "$ref": "#/$defs/sha256"

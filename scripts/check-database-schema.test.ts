@@ -332,7 +332,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
   for (const [changed, expected] of [
     [
       schema.replaceAll(
-        'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261',
+        'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584',
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
       /Official provenance must compare the task-set digest/,
@@ -344,7 +344,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
       ),
       /adapter-failure validator must accept workspace_integrity/,
     ],
-    [schema.replace('aiq-core@1.0.3', 'aiq-core@1.0.1'), /expected to not match/],
+    [schema.replace('aiq-core@1.0.4', 'aiq-core@1.0.1'), /expected to not match/],
     [
       schema.replaceAll(
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
@@ -354,7 +354,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
     ],
     [
       schema.replace(
-        'sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d',
+        'sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279',
         'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
       ),
       /expected to not match/,
@@ -422,7 +422,7 @@ await test('checker rejects initializer evaluator constants that are not enforce
 
 await test('checker derives the native identity from all reviewed task commitments', async () => {
   const fixture: unknown = JSON.parse(
-    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.3-task-commitments.json'), 'utf8'),
+    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.4-task-commitments.json'), 'utf8'),
   );
   checkDatabaseTaskCommitmentFixture(fixture);
   const changed = jsonObject(structuredClone(fixture));
@@ -453,7 +453,7 @@ await test('checker rejects readiness that reports but does not enforce evaluato
 await test('checker rejects readiness that reports but does not enforce task-set identity', async () => {
   const [schema, syntheticDemo] = await sources();
   const changed = schema.replace(
-    "      and task_set_identity_sha256 =\n        'sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261'\n",
+    "      and task_set_identity_sha256 =\n        'sha256:3b56d142a83fb884490cb0d6f80e0cf0fdbc37f844b45b293cd457a3f727d584'\n",
     '',
   );
   assert.notEqual(changed, schema);

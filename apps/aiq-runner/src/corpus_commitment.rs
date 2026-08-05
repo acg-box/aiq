@@ -27,10 +27,10 @@ use crate::{
 
 /// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:5dd1dc515cbcbe46815828d45da3e97cd2e0f106dc743e8c37da33459419c578";
+	"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32";
 
 const CORE_CATALOG_JSON: &str =
-	include_str!("../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json");
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.4/catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -675,7 +675,7 @@ pub fn validate_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads and validates the immutable 72-task AIQ Core 1.0.3 corpus.
+/// Loads and validates the immutable 72-task AIQ Core 1.0.4 corpus.
 pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -684,7 +684,7 @@ pub fn validate_core_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads the six controlled AIQ Core 1.0.3 contrast variants.
+/// Loads the six controlled AIQ Core 1.0.4 contrast variants.
 ///
 /// The caller supplies the expected canonical commitment digest. Contrast tasks
 /// are calibration-only and are not part of the 72-task core catalog.
@@ -2208,7 +2208,7 @@ mod tests {
 			"model_toolchain": policy,
 		});
 		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.0.4/catalog.json"
 		))
 		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({

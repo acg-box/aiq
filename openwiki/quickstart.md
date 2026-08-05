@@ -14,20 +14,26 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- a source-head AIQ Core `aiq-core@1.0.3` target, with 72 private tasks, a
-  public catalog, and scoring `1.0.3`;
+- an active public AIQ Core `aiq-core@1.0.4` candidate, with 72 private-task
+  identities, a public catalog, and scoring `1.0.4`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-Repository source makes AIQ Core `1.0.3` and scorer `1.0.3` the current code
-contract. Model-free candidate validation passes. The final clean source commit,
-create-new corpus regeneration, final native build verification, its private
-audit receipt, real execution, and publication are pending. Production still
-publishes the one historical AIQ Core `1.0.2` Official matrix; no `1.0.3` run or
-deployment has been accepted.
+The active public candidate, task, and scorer contract is `1.0.4`. It retargets
+nine ceiling tasks, repairs one data-processing contract, and carries forward
+62 task designs with new bindings. Controlled identities, full calibration,
+final native build verification, a real Official run, publication, and final
+deployment are pending. Production still publishes the one historical AIQ Core
+`1.0.2` Official matrix; no `1.0.4` run or deployment has been accepted.
+
+The `1.0.3` Official attempt was interrupted after an already-conclusive
+ceiling failure. It was rejected as unpublished calibration evidence. No hidden
+responses or hidden task details were published. A complete, falsification-first
+non-Official 17-by-72 calibration must pass before the `1.0.4` Official
+publication path can start. An operator cannot override a failed release gate.
 
 ## Deployment status
 
@@ -139,30 +145,22 @@ cargo make init-database
 
 For an empty AIQ namespace, after the controlled corpus passes model-free
 validation and the operator verifies the final native build, the separately
-controlled reference must contain a non-synthetic AIQ Core `1.0.3` corpus
+controlled reference must contain a non-synthetic AIQ Core `1.0.4` corpus
 commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
 Initialization validates those fields and bindings. The expected initialization
-receipt contains scoring `1.0.3`, 72 tasks, 17 model configurations, three nodes,
+receipt must contain scoring `1.0.4`, 72 tasks, 17 model configurations, three nodes,
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1`;
-the release-policy identity is `aiq-core/1.0.3`, and its catalog
+`sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e`;
+the release-policy identity is `aiq-core/1.0.4`, and its public catalog
 release-identity digest is
-`sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d`.
-The scorer-manifest identity is
-`sha256:c898902ef5a604ce2db735819c98d7ebb127733b069bb69bd9a32e26cca8ba4d`;
-the evaluator identity is
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-Model-free candidate validation passes all 72 tasks. The runtime
-`task_set_hash` is
-`sha256:3416f9714331e1f6e6c0ecb7e09d8f84fd8e31669151ea7107a29cb6b32c4261`;
-the distinct controlled generated-task tree identity is
-`sha256:94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15`.
-Earlier candidate commitment digests are not final corpus identities. Create-new
-Core and Contrast regeneration from the final clean source will establish their
-canonical digests. The shared Rust validator now fails closed unless
+`sha256:f529aa9c7431f17e7b51ad8cc3524eea063edb154853b8ee49702cb0e9462279`.
+The controlled scorer-manifest, evaluator, runtime task-set, generated-task
+tree, Core corpus, Contrast corpus, and database commitment identities are
+pending. Create-new generation and review must establish them. The shared Rust
+validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent
 shared typed enforcement even though it has no separate checked-in JSON schema.
