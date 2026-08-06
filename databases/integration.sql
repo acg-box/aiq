@@ -23,6 +23,63 @@ begin
 end;
 $$;
 
+-- Published history retains the scoring definition that produced each source
+-- package. A registered historical version must remain valid without weakening
+-- the current scoring-version foreign key.
+savepoint historical_source_scoring_version;
+insert into aiq_private.aiq_scoring_versions (
+  scoring_version, schema_version, benchmark_version, name,
+  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
+  confidence_policy, formula, interval_method, failure_policy,
+  synthetic, is_published, published_at
+)
+select
+  '1.0.2', schema_version, 'aiq-core@1.0.2', name || ' historical fixture',
+  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
+  confidence_policy, formula, interval_method, failure_policy,
+  true, false, null
+from aiq_private.aiq_scoring_versions
+where scoring_version = '1.0.5';
+
+insert into aiq_private.aiq_matrix_batches (
+  matrix_batch_id, package_sha256, content_hash, normalization_digest,
+  source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
+  child_count, result_count, task_set_hash, capability_validation_digest,
+  source_scoring_version, execution_concurrency
+)
+select
+  'run_' || repeat('1', 64), repeat('1', 64),
+  'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64),
+  source_node_id, task_set_id, task_set_version, scoring_version, true,
+  17, 1224, task_set_hash, null, '1.0.2', 1
+from aiq_private.aiq_matrix_batches
+order by matrix_batch_id
+limit 1;
+
+select pg_temp.aiq_assert(
+  exists (
+    select 1
+    from aiq_private.aiq_matrix_batches
+    where matrix_batch_id = 'run_' || repeat('1', 64)
+      and source_scoring_version = '1.0.2'
+  ),
+  'a registered historical source scoring version must remain admissible'
+);
+
+do $$
+begin
+  begin
+    delete from aiq_private.aiq_scoring_versions
+    where scoring_version = '1.0.2';
+    raise exception 'historical source scoring version deletion unexpectedly succeeded';
+  exception
+    when foreign_key_violation then null;
+  end;
+end;
+$$;
+rollback to savepoint historical_source_scoring_version;
+release savepoint historical_source_scoring_version;
+
 select pg_temp.aiq_assert(
   (
     select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]

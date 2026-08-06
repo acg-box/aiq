@@ -6335,7 +6335,7 @@ create table aiq_private.aiq_matrix_batches (
     run_provenance jsonb,
     normalized_stage jsonb,
     constraint aiq_batch_capability_evidence_policy check (((synthetic and (capability_validation_digest IS null)) or ((not synthetic) and (capability_validation_digest IS not null) and (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)))),
-    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version = '1.0.5'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
+    constraint aiq_batch_source_commitments check ((((task_set_hash IS null) or (task_set_hash ~ '^sha256:[0-9a-f]{64}$'::text)) and ((capability_validation_digest IS null) or (capability_validation_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((prompt_set_digest IS null) or (prompt_set_digest ~ '^sha256:[0-9a-f]{64}$'::text)) and ((source_scoring_version IS null) or (source_scoring_version ~ '^[0-9]+\.[0-9]+\.[0-9]+$'::text)) and ((runner_commit IS null) or (runner_commit ~ '^[0-9a-f]{7,40}$'::text)) and (execution_concurrency between 1 and 32) and ((scheduled_unix_ms IS null) or (((scheduled_unix_ms >= 0) and (scheduled_unix_ms <= '9007199254740991'::bigint)) and ((started_unix_ms >= scheduled_unix_ms) and (started_unix_ms <= '9007199254740991'::bigint)) and ((finished_unix_ms >= started_unix_ms) and (finished_unix_ms <= '9007199254740991'::bigint)))))),
     constraint aiq_matrix_batches_check check (((published_at IS null) or (verified_at IS not null))),
     constraint aiq_matrix_batches_child_count_check check ((child_count = 17)),
     constraint aiq_matrix_batches_content_hash_check check ((content_hash ~ '^sha256:[0-9a-f]{64}$'::text)),
@@ -11215,6 +11215,14 @@ alter table ONLY aiq_private.aiq_matrix_batches
 
 
 --
+-- Name: aiq_matrix_batches aiq_matrix_batches_source_scoring_version_fkey; Type: FK constraint; Schema: aiq_private; Owner: -
+--
+
+alter table ONLY aiq_private.aiq_matrix_batches
+    ADD constraint aiq_matrix_batches_source_scoring_version_fkey FOREIGN key (source_scoring_version) references aiq_private.aiq_scoring_versions(scoring_version) on delete restrict;
+
+
+--
 -- Name: aiq_matrix_batches aiq_matrix_batches_source_node_id_fkey; Type: FK constraint; Schema: aiq_private; Owner: -
 --
 
@@ -15773,6 +15781,8 @@ create index aiq_matrix_batches_task_set_fk_idx
   on aiq_private.aiq_matrix_batches (task_set_id, task_set_version);
 create index aiq_matrix_batches_scoring_version_fk_idx
   on aiq_private.aiq_matrix_batches (scoring_version);
+create index aiq_matrix_batches_source_scoring_version_fk_idx
+  on aiq_private.aiq_matrix_batches (source_scoring_version);
 create index aiq_matrix_batches_source_node_fk_idx
   on aiq_private.aiq_matrix_batches (source_node_id);
 create index aiq_result_packages_node_fk_idx
