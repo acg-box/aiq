@@ -192,7 +192,7 @@ await test('revised tasks use new public contracts without publishing private co
       verification: 'committed_configuration_and_result_checks_are_content_addressed_and_replayed',
     });
     for (const fixture of Object.values(task.evaluator.acceptance_fixture_commitments)) {
-      strictEqual(fixture.handle.includes('/v4/'), retargeted);
+      strictEqual(fixture.handle.includes('/v5/'), retargeted);
       strictEqual(fixture.status, 'required_in_controlled_source');
     }
   }
@@ -205,29 +205,35 @@ await test('the four public calibration revisions state every requested non-secr
   const revisions = new Map(tasks.map((task) => [task.task_id, JSON.stringify(task)]));
 
   for (const task of tasks) {
-    deepStrictEqual(task.budget, { wall_seconds: 600, max_steps: 40, max_tool_calls: 28 });
+    deepStrictEqual(task.budget, { wall_seconds: 900, max_steps: 40, max_tool_calls: 28 });
   }
   const coding = tasks.find(({ task_id }) => task_id === 'coding-06');
   if (coding === undefined) throw new RangeError('Expected coding-06.');
   strictEqual(coding.evaluator.kind, 'async_executor_contract_tests');
   deepStrictEqual(coding.tags, ['concurrency', 'scheduling']);
 
-  for (const term of ['raw UTF-16 input bound', 'decoded per-field', 'field-count limit']) {
+  for (const term of ['quoted-record parser', 'decoded-total', 'syntax code', 'input index']) {
     strictEqual(revisions.get('debugging-01')?.includes(term), true);
   }
-  for (const term of ['own-property', 'null-prototype', 'Own empty', 'own undefined']) {
+  for (const term of ['six-field', 'own-property', 'protocol-derived', 'atomic disable']) {
     strictEqual(revisions.get('debugging-02')?.includes(term), true);
   }
-  for (const term of ['multi-grapheme', 'Start, middle, and end', 'display budget']) {
+  for (const term of [
+    'line-ending normalization',
+    'head and tail',
+    'grapheme',
+    'omission metadata',
+  ]) {
     strictEqual(revisions.get('debugging-04')?.includes(term), true);
   }
   for (const term of [
-    'priority keyed async executor',
-    'same-key FIFO',
+    'bounded keyed async executor',
+    'per-key FIFO',
     'eligible-head priority',
-    'Concurrency changes',
-    'cancellation',
-    'idle lifecycle',
+    'queue capacity',
+    'AbortSignal',
+    'close',
+    'idle epochs',
   ]) {
     strictEqual(revisions.get('coding-06')?.includes(term), true);
   }
@@ -284,7 +290,7 @@ await test('the closed schemas bind the 1.0.5 release and revision provenance', 
   strictEqual('minimum_assertions_per_component' in scoringProperties, false);
   strictEqual(
     acceptanceHandle.pattern,
-    '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
+    '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
   );
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.5/'), true);
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.4/'), false);

@@ -653,7 +653,7 @@
       "properties": {
         "handle": {
           "type": "string",
-          "pattern": "^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])"
+          "pattern": "^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])"
         },
         "status": {
           "const": "required_in_controlled_source"

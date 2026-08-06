@@ -46,6 +46,14 @@ non-Official calibration. No operator can override a failed release gate. Real
 calibration evidence can enter the public calibration register only after signed
 verifier admission and distinct publication, and it remains non-Official.
 
+The first `1.0.5` 68-cell pilot completed 63 cells and timed out on 5. It was
+rejected because the completed task means were 0.933–0.992 and therefore did
+not distinguish the model configurations. The current create-new candidate
+replaces the four single-dimension repairs with bounded executor, quoted-record
+parser, six-field configuration, and Unicode log-preview interactions. Their
+public wall-time budget is 900 seconds; this is a timeout correction, not a
+score adjustment. The rejected pilot remains immutable evidence.
+
 ## Product contract
 
 - Repository source targets the public AIQ Core `1.0.5` candidate and scoring
@@ -85,11 +93,11 @@ verifier admission and distinct publication, and it remains non-Official.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
+sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 ```
 
 Its public release digest is
-`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
 The release-policy identity is `aiq-core/1.0.5`. Do not infer any controlled
 identity from these public digests. Create-new generation and review will
 establish the `1.0.5` scorer manifest, evaluator, runtime task set, generated

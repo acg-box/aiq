@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
+sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 ```
 
 The release-policy identity is `aiq-core/1.0.5`. Its public catalog
 release-identity digest is
-`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. Each final
@@ -86,16 +86,25 @@ not as 1,224 failed task executions. The run remains non-Official and does not
 authorize ranking or publication as Official evidence.
 
 The public `1.0.5` redesign retargets four calibration-sensitive tasks:
-`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`. The latest
-catalog revision changes `coding-06` from a conditional-cache repair to a
-priority keyed async executor repair. Its checks cover same-key FIFO
-serialization, stable priority among eligible key heads, dynamic
-non-preemptive global concurrency, queued exact-key cancellation, exact value
-and reason identity, failure-state release, strict validation, independent
-instances, and idle lifecycle epochs. It carries forward the other 68 task
-designs with new version, provenance, and commitment bindings. First run a
-17-by-4, 68-cell non-Official pilot over only those revised tasks. Review the
-same statistical release evidence before paying for the full
+`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`. The first
+68-cell `1.0.5` pilot completed 63 cells and timed out on 5. It was rejected:
+completed task means ranged from 0.933 to 0.992, all four task means exceeded
+their release ceilings, and projected debugging facility was 0.9369. The five
+timeouts remain missing evaluations, never semantic zeros.
+
+The active create-new revision replaces the saturated single-dimension repairs
+with interacting daily-work contracts. `coding-06` combines a bounded keyed
+executor with priority, dynamic concurrency, AbortSignal, close, cancellation,
+and idle epochs. `debugging-01` combines quoted records, constrained escapes,
+independent UTF-16 limits, and indexed syntax errors. `debugging-02` resolves a
+six-field layered service configuration with normalization, typed bounds,
+built-ins, an atomic disable sentinel, and exact provenance. `debugging-04`
+combines line-ending normalization, head and tail windows, grapheme-safe line
+budgets, complete ellipses, and omission metadata. The revised tasks use a
+900-second wall budget with the existing 40-step and 28-tool-call limits. This
+budget responds to observed wall-time exhaustion; it does not alter scoring.
+The other 68 task designs carry forward with new release bindings. Run a new
+17-by-4, 68-cell non-Official pilot before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model
