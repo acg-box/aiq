@@ -11,23 +11,32 @@ insert into aiq_private.aiq_scoring_versions (
 )
 values (
   '1.0.5',
-  'aiq.score-snapshot.v1',
+  'aiq.score-snapshot.v2',
   'aiq-core@1.0.5',
-  'AIQ fixed-fixture score 1.0.5',
-  'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
+  'AIQ calibrated latent score 2.0',
+  'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is a diagnostic and is not the Official ranking score.',
   array[
-    'Give each of the ten domains weight 0.1.',
-    'Keep the frozen domain and difficulty quotas.',
+    'Jointly estimate one Rasch item difficulty per task and one model location per configuration from the complete 17-configuration by 72-task calibration matrix, with a centered item scale.',
+    'Estimate each model theta with fractional task credit and a weak N(0, 3²) MAP prior; report conditional Wald uncertainty given the released item bank.',
+    'Publish 100 × logistic(theta) as predicted success on an average calibrated task; do not call it an IQ norm or a 150-point scale.',
+    'Retain the equal-domain criterion score, item information, theta, and standard error as separate evidence.',
+    'Keep the frozen domain and difficulty quotas until a new calibration pilot proves a task-set replacement is needed.',
     'Keep missing and invalid tasks in completion accounting and block Official publication.',
     'Classify complete synthetic fixtures as descriptive Synthetic Complete, never Official or ranking eligible.',
     'Treat attributable agent, model, tool, timeout, budget, and wrong-artifact failures as valid zero scores.',
-    'Treat benchmark infrastructure failures as invalid and audit a rerun.'
+    'Treat benchmark infrastructure failures as invalid and audit a rerun.',
+    'Define strict pass rate as strict successes divided by all attributable tasks with a semantic task score; partial scores remain in the denominator and Wilson bounds use the same sample.'
   ],
-  'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use descriptive observed domain means and fixed-fixture completion bounds without ranking eligibility.',
+  'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use the raw criterion diagnostic and fixed-fixture completion bounds without ranking eligibility.',
   'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
-  'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+  'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank and is not a population confidence interval.',
   '{
-    "aggregate":"mean_of_domain_means",
+    "aggregate":"rasch_fractional_joint_map",
+    "measurement_version":"2.0.0",
+    "measurement_method":"rasch_fractional_joint_map_v1",
+    "official_score":"100 * logistic(theta)",
+    "calibration_matrix":"17_model_configurations_by_72_tasks",
+    "criterion_diagnostic":"100 * mean_of_equal_domain_means",
     "coverage_multiplier":false,
     "domain_weight":0.1,
     "official_valid_task_count":72,
@@ -35,7 +44,7 @@ values (
     "synthetic_complete":{
       "valid_task_count":72,
       "covered_domain_count":10,
-      "official_aiq":null,
+      "score":null,
       "ranking_eligible":false
     }
   }'::jsonb,
@@ -654,11 +663,11 @@ run_scores as (
 binary_inputs as (
   select
     result.run_id,
-    count(*) filter (where result.task_score in (0, 1))::numeric as sample_size,
+    count(*) filter (where result.task_score is not null)::numeric as sample_size,
     count(*) filter (where result.task_score = 1)::numeric as successes,
     count(*) filter (where result.task_score = 1)::numeric
       / nullif(
-        count(*) filter (where result.task_score in (0, 1))::numeric,
+        count(*) filter (where result.task_score is not null)::numeric,
         0
       ) as proportion,
     1.959963984540054::numeric as z
@@ -686,7 +695,7 @@ binary_diagnostics as (
   from binary_inputs
 )
 insert into aiq_private.aiq_score_snapshots (
-  score_snapshot_id, run_id, scoring_version, score_status, fixed_fixture_aiq,
+  score_snapshot_id, run_id, scoring_version, score_status, quality_score,
   task_resampling_low, task_resampling_high, completion_bound_low,
   completion_bound_high, micro_accuracy, micro_wilson_low, micro_wilson_high,
   valid_task_count, expected_task_count, covered_domain_count,

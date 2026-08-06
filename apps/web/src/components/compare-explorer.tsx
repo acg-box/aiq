@@ -2,8 +2,8 @@
 
 import { useMemo } from 'react';
 
-import { formatSensitivityInterval } from '../data/format.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import {
   type BenchmarkRunSummary,
   isScoredLeaderboardEntry,
@@ -55,7 +55,11 @@ export function CompareExplorer({
   runSummaries: readonly BenchmarkRunSummary[];
   efficiency: readonly PublicModelEfficiency[];
 }) {
-  const comparableEntries = useMemo(() => entries.filter(isScoredLeaderboardEntry), [entries]);
+  const comparableEntries = useMemo(() => {
+    const candidates = entries.filter(isScoredLeaderboardEntry);
+    const official = candidates.filter((entry) => presentScoreMetric(entry).official);
+    return official.length > 0 ? official : candidates;
+  }, [entries]);
   const searchParams = useAnalyticalSearchParams();
   const comparableIds = useMemo(
     () => comparableEntries.map((entry) => entry.id),
@@ -85,7 +89,13 @@ export function CompareExplorer({
   const sameSampleSize = left.sampleSize === right.sampleSize;
   const sameCoverage = left.coveragePercent === right.coveragePercent;
   const sameScoringVersion = left.scoringVersion === right.scoringVersion;
-  const difference = Math.abs(left.score - right.score).toFixed(1);
+  const leftMetric = presentScoreMetric(left);
+  const rightMetric = presentScoreMetric(right);
+  const leftPresentation = presentLeaderboardEntry(left);
+  const rightPresentation = presentLeaderboardEntry(right);
+  const difference = Math.abs(
+    (leftMetric.score ?? left.score) - (rightMetric.score ?? right.score),
+  ).toFixed(1);
   const leftResolution = resolveExactScientificEvidence({
     candidate: {
       runId: left.runId,
@@ -115,8 +125,21 @@ export function CompareExplorer({
   const exactJoinUnavailable =
     leftResolution.state === 'unavailable' || rightResolution.state === 'unavailable';
   const primaryMetrics = [
-    ['AIQ score', left.score.toFixed(1), right.score.toFixed(1)],
-    ['Task sensitivity', formatSensitivityInterval(left), formatSensitivityInterval(right)],
+    [
+      'Primary metric',
+      `${leftMetric.scoreText} · ${leftMetric.scoreLabel}`,
+      `${rightMetric.scoreText} · ${rightMetric.scoreLabel}`,
+    ],
+    [
+      'Primary interval',
+      `${leftMetric.interval} · ${leftMetric.intervalLabel}`,
+      `${rightMetric.interval} · ${rightMetric.intervalLabel}`,
+    ],
+    [
+      'Strict pass',
+      `${leftPresentation.strictPassRate} · Wilson 95% ${leftPresentation.strictPassInterval}`,
+      `${rightPresentation.strictPassRate} · Wilson 95% ${rightPresentation.strictPassInterval}`,
+    ],
     ['Coverage', `${left.coveragePercent.toFixed(1)}%`, `${right.coveragePercent.toFixed(1)}%`],
     ['Runtime issues', String(left.runtimeIssues), String(right.runtimeIssues)],
     [
@@ -127,6 +150,13 @@ export function CompareExplorer({
     ['API-equivalent cost', costValue(leftEfficiency), costValue(rightEfficiency)],
   ] as const;
   const evidenceMetrics = [
+    ['Quality score', leftPresentation.qualityScore, rightPresentation.qualityScore],
+    [
+      'Task-mix sensitivity',
+      leftPresentation.sensitivityInterval,
+      rightPresentation.sensitivityInterval,
+    ],
+    ['Calibration', leftPresentation.calibration, rightPresentation.calibration],
     ['Samples', String(left.sampleSize), String(right.sampleSize)],
     ['Scoring version', left.scoringVersion, right.scoringVersion],
     ['Missing', String(left.missing), String(right.missing)],
@@ -183,8 +213,9 @@ export function CompareExplorer({
         {[left, right].map((entry) => (
           <article className="compare-model" key={entry.id}>
             <ScoreReadout
-              score={entry.score}
+              score={presentScoreMetric(entry).score ?? entry.score}
               label={`${entry.modelFamily} ${entry.reasoningTier}`}
+              unit={presentScoreMetric(entry).scoreLabel}
             />
             <div>
               <span className="eyebrow">{entry.modelFamily}</span>
@@ -206,10 +237,11 @@ export function CompareExplorer({
       <section className="comparison-interpretation" aria-labelledby="comparison-reading">
         <div>
           <span className="eyebrow">Observed difference</span>
-          <h2 id="comparison-reading">{difference} AIQ points apart</h2>
+          <h2 id="comparison-reading">{difference} points apart</h2>
           <p>
-            This is a descriptive difference on the fixed task set. It does not by itself show that
-            either configuration is generally better.
+            {leftMetric.official && rightMetric.official
+              ? 'This is a difference between calibrated ability estimates. Read it with both conditional intervals; it does not by itself establish a winner.'
+              : 'This is a descriptive quality difference in synthetic fixtures. It is not an Official comparison.'}
           </p>
         </div>
         <dl className="compatibility-list" aria-label="Comparison compatibility checks">

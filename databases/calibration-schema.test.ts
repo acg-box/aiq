@@ -151,7 +151,13 @@ void test('publishes leaderboard runtime issues without merging semantic incorre
   );
   assert.doesNotMatch(leaderboard, /'incorrect'::aiq_private\.result_outcome/);
   assert.doesNotMatch(leaderboard, /failure_count|as failures/);
-  assert.match(leaderboard, /then fixed_fixture_aiq[\s\S]{0,80}as score/);
+  assert.match(leaderboard, /then score[\s\S]{0,80}as score/);
+  assert.match(leaderboard, /as quality_score/);
+  assert.match(leaderboard, /as strict_pass_rate/);
+  assert.match(leaderboard, /task_score is not null\) as strict_pass_sample_size/);
+  assert.match(leaderboard, /task_score = 1\) as strict_pass_successes/);
+  assert.match(leaderboard, /as calibration_status/);
+  assert.match(leaderboard, /as public_score_status/);
   assert.match(leaderboard, /then valid_task_count[\s\S]{0,80}as sample_size/);
   assert.match(
     leaderboard,
@@ -169,8 +175,12 @@ void test('names public task-mix ranges as sensitivity, not confidence intervals
   for (const publicContract of [leaderboard, trend]) {
     assert.match(publicContract, /sensitivity_low/);
     assert.match(publicContract, /sensitivity_high/);
-    assert.doesNotMatch(publicContract, /\bci_low\b|\bci_high\b/);
+    assert.match(publicContract, /theta_ci_low/);
+    assert.match(publicContract, /theta_ci_high/);
+    assert.match(publicContract, /score_ci_low/);
+    assert.match(publicContract, /score_ci_high/);
   }
+  assert.match(schema, /Sensitivity ranges are not inferential confidence intervals/);
   assert.match(scoringVersions, /confidence_policy as sensitivity_policy/);
   assert.doesNotMatch(scoringVersions, /\n    confidence_policy,/);
   assert.match(
@@ -278,7 +288,7 @@ void test('keeps efficiency evidence nullable, bounded, and non-Official', () =>
   assert.match(schema, /scored_result_count between 0 and result_count/);
   assert.match(
     schema,
-    /\(\(descriptive_status in \('coverage_only','not_applicable'\)\) = \(score is null\)\)/,
+    /\(\(descriptive_status in \('coverage_only','not_applicable'\)\) = \(quality_score is null\)\)/,
   );
   assert.match(
     schema,
@@ -286,7 +296,7 @@ void test('keeps efficiency evidence nullable, bounded, and non-Official', () =>
   );
   assert.match(schema, /candidate->>'provider_tokens_evidence_level'='verifier_recomputed'/);
   assert.match(schema, /task_resampling_sensitivity_method/);
-  assert.match(schema, /score is null or score between 0 and 100/);
+  assert.match(schema, /quality_score is null or quality_score between 0 and 100/);
   assert.match(schema, /processing_tier text not null/);
   assert.match(schema, /processing_tier = 'standard'/);
   assert.match(schema, /pricing\.currency as pricing_currency/);

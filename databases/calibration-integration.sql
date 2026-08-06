@@ -374,10 +374,10 @@ with source as (
   select source.run_id,jsonb_agg(jsonb_build_object(
     'model',model,
     'score',jsonb_build_object(
-      'schema_version','aiq.calibration-score-report.v1','run_class','calibration',
-      'scoring_version','1.0.5','model',model,'descriptive_status','coverage_only',
+      'schema_version','aiq.calibration-score-report.v2','run_class','calibration',
+      'scoring_version','1.0.5','measurement_version','2.0.0','model',model,'descriptive_status','coverage_only',
       'official_eligible',false,'ranking_eligible',false,
-      'fixed_fixture_aiq',null,'conditional_observed_aiq',null,'completion_bounds',null,
+      'quality_score',null,'latent_ability',null,'completion_bounds',null,
       'task_resampling_sensitivity_interval',null,
       'binary_micro_diagnostic',jsonb_build_object(
         'sample_size',0,'successes',0,'proportion',null,'wilson_lower',null,'wilson_upper',null

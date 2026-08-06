@@ -323,7 +323,7 @@
       "required": ["model", "score", "efficiency"],
       "properties": {
         "model": { "$ref": "#/$defs/model" },
-        "score": { "$ref": "calibration-score-report-v1.schema.json" },
+        "score": { "$ref": "calibration-score-report-v2.schema.json" },
         "efficiency": { "$ref": "#/$defs/efficiency" }
       }
     },

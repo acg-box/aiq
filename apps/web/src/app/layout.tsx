@@ -60,16 +60,16 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <p>Practical AI capability, measured in public.</p>
           </div>
           <div>
-            <Link href="/runs">Run archive</Link>
-            <Link href="/method">Method</Link>
-            <Link href="/radar">Radar</Link>
+            <Link href="/#runs">Run archive</Link>
+            <Link href="/#method">Method</Link>
+            <Link href="/#radar">Radar</Link>
           </div>
           <p className="footer-note">
             {publicDataConfiguration === 'live'
-              ? 'RLS-protected public views · AIQ v1 · inspect each scoring version'
+              ? 'RLS-protected public views · AIQ 2.0 · inspect each scoring version'
               : publicDataConfiguration === 'invalid'
                 ? 'Invalid public data configuration · review both browser-safe Supabase variables'
-                : `Demo values are synthetic seed data · AIQ v1 · scoring ${AIQ_CORE_SCORING_VERSION}`}
+                : `Demo values are synthetic seed data · AIQ 2.0 · scoring ${AIQ_CORE_SCORING_VERSION}`}
           </p>
         </footer>
       </body>

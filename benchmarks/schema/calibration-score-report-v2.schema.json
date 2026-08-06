@@ -1,19 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aiq.wiki/schema/calibration-score-report-v1.schema.json",
-  "title": "AIQ calibration descriptive score report v1",
+  "$id": "https://aiq.wiki/schema/calibration-score-report-v2.schema.json",
+  "title": "AIQ calibration descriptive score report v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "run_class",
     "scoring_version",
+    "measurement_version",
     "model",
     "descriptive_status",
     "official_eligible",
     "ranking_eligible",
-    "fixed_fixture_aiq",
-    "conditional_observed_aiq",
+    "quality_score",
+    "latent_ability",
     "completion_bounds",
     "task_resampling_sensitivity_interval",
     "binary_micro_diagnostic",
@@ -24,18 +25,24 @@
     "rule"
   ],
   "properties": {
-    "schema_version": { "const": "aiq.calibration-score-report.v1" },
+    "schema_version": { "const": "aiq.calibration-score-report.v2" },
     "run_class": { "const": "calibration" },
     "scoring_version": { "const": "1.0.5" },
+    "measurement_version": { "const": "2.0.0" },
     "model": { "$ref": "calibration-run-v3.schema.json#/$defs/model" },
     "descriptive_status": {
       "enum": ["complete_fixture", "conditional_observed", "coverage_only", "not_applicable"]
     },
     "official_eligible": { "const": false },
     "ranking_eligible": { "const": false },
-    "fixed_fixture_aiq": { "$ref": "normalized-batch-v3.schema.json#/$defs/nullableAiqScore" },
-    "conditional_observed_aiq": {
+    "quality_score": {
       "$ref": "normalized-batch-v3.schema.json#/$defs/nullableAiqScore"
+    },
+    "latent_ability": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "normalized-batch-v3.schema.json#/$defs/latentAbility" }
+      ]
     },
     "completion_bounds": {
       "oneOf": [

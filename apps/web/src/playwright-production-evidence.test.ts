@@ -200,15 +200,18 @@ void describe('production efficiency evidence', () => {
 });
 
 void describe('production page evidence', () => {
-  void it('allows only the named separate Calibration empty states on the overview', () => {
+  void it('requires every embedded one-page evidence section and allows only Calibration empty', () => {
     const expectation = productionPageEvidenceExpectation('/');
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [
           publishedPageEvidence('Data provenance'),
-          emptyPageEvidence('Latest calibration status'),
-          emptyPageEvidence('Calibration score matrix status'),
           publishedPageEvidence('Official efficiency provenance'),
+          publishedPageEvidence('Run archive provenance'),
+          publishedPageEvidence('Comparison matrix provenance'),
+          publishedPageEvidence('Benchmark method provenance'),
+          publishedPageEvidence('Runner network provenance'),
+          emptyPageEvidence('Calibration status'),
         ],
         expectation,
       ),
@@ -218,7 +221,11 @@ void describe('production page evidence', () => {
         validateProductionPageEvidence(
           [
             publishedPageEvidence('Data provenance'),
-            emptyPageEvidence('Latest calibration status'),
+            publishedPageEvidence('Official efficiency provenance'),
+            publishedPageEvidence('Run archive provenance'),
+            publishedPageEvidence('Comparison matrix provenance'),
+            publishedPageEvidence('Benchmark method provenance'),
+            publishedPageEvidence('Runner network provenance'),
             emptyPageEvidence('Official efficiency status'),
           ],
           expectation,
@@ -230,9 +237,9 @@ void describe('production page evidence', () => {
   void it('rejects unavailable, synthetic, or mixed secondary evidence', () => {
     const expectation = productionPageEvidenceExpectation('/');
     for (const note of [
-      { label: 'Latest calibration status', state: 'Published evidence unavailable' },
-      { label: 'Latest calibration provenance', state: 'Synthetic / seed data' },
-      { label: 'Latest calibration provenance', state: 'Mixed evidence' },
+      { label: 'Calibration status', state: 'Published evidence unavailable' },
+      { label: 'Calibration provenance', state: 'Synthetic / seed data' },
+      { label: 'Calibration provenance', state: 'Mixed evidence' },
     ]) {
       assert.throws(
         () =>
@@ -240,6 +247,10 @@ void describe('production page evidence', () => {
             [
               publishedPageEvidence('Data provenance'),
               publishedPageEvidence('Official efficiency provenance'),
+              publishedPageEvidence('Run archive provenance'),
+              publishedPageEvidence('Comparison matrix provenance'),
+              publishedPageEvidence('Benchmark method provenance'),
+              publishedPageEvidence('Runner network provenance'),
               note,
             ],
             expectation,

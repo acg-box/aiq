@@ -145,7 +145,7 @@ void describe('calibration efficiency interaction', () => {
 
     assert.equal(
       textContent(costHeading),
-      'Descriptive AIQ versus estimated Standard API-equivalent token cost',
+      'Descriptive quality versus estimated Standard API-equivalent token cost',
     );
     assert.equal(observedTimeButton?.props['aria-pressed'], false);
     assert.equal(costScatter?.props.metric, 'cost');
@@ -165,7 +165,7 @@ void describe('calibration efficiency interaction', () => {
 
     assert.equal(
       textContent(timeHeading),
-      'Descriptive AIQ versus median observed cell adapter elapsed time',
+      'Descriptive quality versus median observed cell adapter elapsed time',
     );
     assert.equal(selectedTimeButton?.props['aria-pressed'], true);
     assert.equal(timeScatter?.props.metric, 'time');

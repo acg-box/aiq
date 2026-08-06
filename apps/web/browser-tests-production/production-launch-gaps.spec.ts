@@ -31,7 +31,7 @@ function expectNoStore(response: APIResponse) {
 async function expectPublishedNonSyntheticPage(page: Page, path: string) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
-  await expect(page.locator('main h1')).toBeVisible();
+  await expect(page.locator('main h1').first()).toBeVisible();
   await expectProductionPageEvidence(page, path);
 }
 
@@ -71,7 +71,7 @@ async function expectMobileMatrixLegibility(page: Page) {
     analyticsBox?.y ?? Number.NEGATIVE_INFINITY,
   );
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const chart = page.getByRole('region', { name: 'Calibrated ability by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',

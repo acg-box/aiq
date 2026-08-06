@@ -2,9 +2,11 @@
 
 import type { EChartsCoreOption } from 'echarts/core';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useMemo, useTransition } from 'react';
 
 import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
+import { presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import type {
   BenchmarkRunSummary,
   LeaderboardEntry,
@@ -183,6 +185,7 @@ export function TrendExplorer({
   range: TrendRange;
 }) {
   const searchParams = useAnalyticalSearchParams();
+  const pathname = usePathname();
   const mode = readEnumParam(searchParams, 'trendEncoding', ['line', 'bar'], 'line');
   const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'Sol');
   const [isPending, startTransition] = useTransition();
@@ -191,10 +194,11 @@ export function TrendExplorer({
     [entries, seriesFilter],
   );
   const selectedIds = useMemo(() => selectedEntries.map((entry) => entry.id), [selectedEntries]);
-  const familyPoints = useMemo(
-    () => points.filter((point) => selectedIds.includes(point.entryId)),
-    [points, selectedIds],
-  );
+  const familyPoints = useMemo(() => {
+    const candidates = points.filter((point) => selectedIds.includes(point.entryId));
+    const official = candidates.filter((point) => presentScoreMetric(point).official);
+    return official.length > 0 ? official : candidates;
+  }, [points, selectedIds]);
   const allTimes = useMemo(
     () =>
       [...new Set(familyPoints.map((point) => new Date(point.recordedAt).getTime()))].toSorted(
@@ -229,6 +233,24 @@ export function TrendExplorer({
     (left, right) => right.score - left.score,
   )[0];
   const latestVisibleMinimumScore = Math.min(...latestVisiblePoints.map((point) => point.score));
+  const visibleMetricExample = zoomWindowPoints[0] ? presentScoreMetric(zoomWindowPoints[0]) : null;
+  const intervalPoints = useMemo(
+    () =>
+      zoomWindowPoints.flatMap((point) => {
+        const metric = presentScoreMetric(point);
+        return metric.intervalLow === null || metric.intervalHigh === null
+          ? []
+          : [
+              {
+                entryId: point.entryId,
+                recordedAt: point.recordedAt,
+                intervalLow: metric.intervalLow,
+                intervalHigh: metric.intervalHigh,
+              },
+            ];
+      }),
+    [zoomWindowPoints],
+  );
   const scientificContexts = useMemo(
     () =>
       new Map(
@@ -242,6 +264,7 @@ export function TrendExplorer({
   const latestScientificContext = latestVisiblePoint
     ? (scientificContexts.get(latestVisiblePoint) ?? unavailableTrendContext)
     : null;
+  const latestVisibleMetric = latestVisiblePoint ? presentScoreMetric(latestVisiblePoint) : null;
   const exactJoinUnavailable = [...scientificContexts.values()].some(
     (context) => context.exactJoinUnavailable,
   );
@@ -271,12 +294,17 @@ export function TrendExplorer({
         data: zoomWindowTimes.map((time) => {
           const point = byTime.get(time);
           const context = point ? scientificContexts.get(point) : undefined;
+          const metric = point ? presentScoreMetric(point) : null;
+          const strictPass =
+            !point || point.strictPassRate === null || point.strictPassSampleSize === null
+              ? 'Unavailable'
+              : `${(point.strictPassRate * 100).toFixed(1)}% (n=${point.strictPassSampleSize})`;
           return point
             ? [
                 mode === 'bar' ? String(time) : time,
-                point.score,
-                point.sensitivityLow,
-                point.sensitivityHigh,
+                metric?.score ?? point.score,
+                metric?.intervalLow ?? point.score,
+                metric?.intervalHigh ?? point.score,
                 point.sampleSize,
                 point.representedRunCount,
                 point.synthetic ? 'synthetic' : 'published',
@@ -287,6 +315,9 @@ export function TrendExplorer({
                 context?.missing ?? 'Unavailable',
                 context?.duration ?? 'Unavailable',
                 context?.cost ?? 'Unavailable',
+                metric?.scoreLabel ?? 'Primary score',
+                metric?.intervalLabel ?? 'Primary interval',
+                strictPass,
               ]
             : [mode === 'bar' ? String(time) : time, null];
         }),
@@ -297,11 +328,11 @@ export function TrendExplorer({
       return {
         type: 'custom',
         id: `trend-interval-${entry.id}`,
-        name: `${entry.modelFamily} · ${entry.reasoningTier} task-sensitivity interval`,
+        name: `${entry.modelFamily} · ${entry.reasoningTier} primary interval`,
         silent: true,
         z: 4,
         encode: { x: 0, y: [1, 2] },
-        data: trendIntervalData(zoomWindowPoints, entry.id).map(([time, low, high]) => [
+        data: trendIntervalData(intervalPoints, entry.id).map(([time, low, high]) => [
           mode === 'bar' ? String(time) : time,
           low,
           high,
@@ -365,11 +396,11 @@ export function TrendExplorer({
           const item = readTrendTooltipItem(value);
           if (!item) return 'Trend evidence unavailable';
           const data = item.data;
-          if (item.seriesName.endsWith('task-sensitivity interval')) {
+          if (item.seriesName.endsWith('primary interval')) {
             return item.seriesName;
           }
           if (data[1] === null) return `${item.seriesName}<br/>No observation in this bucket`;
-          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>AIQ ${Number(data[1]).toFixed(1)} · interval ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
+          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>${data[14]} ${Number(data[1]).toFixed(1)} · ${String(data[15]).toLowerCase()} ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>strict pass ${data[16]}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
         },
       },
       xAxis,
@@ -377,7 +408,7 @@ export function TrendExplorer({
         type: 'value',
         min: 0,
         max: 100,
-        name: 'AIQ index (0–100)',
+        name: `${visibleMetricExample?.scoreLabel ?? 'Primary score'} (0–100)`,
         nameLocation: 'middle',
         nameGap: 40,
         axisLabel: { color: 'var(--muted)' },
@@ -387,7 +418,15 @@ export function TrendExplorer({
       },
       series: [...series, ...intervalSeries],
     };
-  }, [mode, scientificContexts, selectedEntries, zoomWindowPoints, zoomWindowTimes]);
+  }, [
+    intervalPoints,
+    mode,
+    scientificContexts,
+    selectedEntries,
+    visibleMetricExample?.scoreLabel,
+    zoomWindowPoints,
+    zoomWindowTimes,
+  ]);
 
   return (
     <>
@@ -396,10 +435,10 @@ export function TrendExplorer({
           <Link
             key={candidate.value}
             aria-current={range === candidate.value ? 'page' : undefined}
-            href={hrefWithParams('/trends', searchParams, {
+            href={`${hrefWithParams(pathname === '/' ? '/' : '/trends', searchParams, {
               range: candidate.value,
               trendZoom: null,
-            })}
+            })}${pathname === '/' ? '#trends' : ''}`}
           >
             {candidate.label}
           </Link>
@@ -512,8 +551,8 @@ export function TrendExplorer({
               option={chartOption}
               label={
                 mode === 'bar'
-                  ? 'AIQ score history. Grouped bars with per-series aligned task-sensitivity intervals.'
-                  : 'AIQ score history. Lines with task-sensitivity intervals.'
+                  ? `${visibleMetricExample?.scoreLabel ?? 'Score'} history. Grouped bars with provenance-matched intervals.`
+                  : `${visibleMetricExample?.scoreLabel ?? 'Score'} history. Lines with provenance-matched intervals.`
               }
             />
           ) : (
@@ -543,16 +582,20 @@ export function TrendExplorer({
           })}
         </ul>
       </div>
-      {latestVisiblePoint && latestScientificContext ? (
+      {latestVisiblePoint && latestScientificContext && latestVisibleMetric ? (
         <p className="trend-resolution" aria-live="polite">
           Latest visible date: {formatDate(latestVisiblePoint.recordedAt)} UTC ·{' '}
-          {latestVisiblePoints.length} observations · AIQ range{' '}
-          {latestVisibleMinimumScore.toFixed(1)}–{latestVisiblePoint.score.toFixed(1)}. Highest
-          point estimate: {latestVisiblePoint.entryId} · task-sensitivity interval{' '}
-          {latestVisiblePoint.sensitivityLow.toFixed(1)}–
-          {latestVisiblePoint.sensitivityHigh.toFixed(1)} · n={latestVisiblePoint.sampleSize} ·
-          coverage {latestScientificContext.coverage} · scoring {latestVisiblePoint.scoringVersion}{' '}
-          · {pointProvenance(latestVisiblePoint).toLowerCase()}
+          {latestVisiblePoints.length} observations · {latestVisibleMetric.scoreLabel.toLowerCase()}{' '}
+          range {latestVisibleMinimumScore.toFixed(1)}–{latestVisiblePoint.score.toFixed(1)}.
+          Highest point estimate: {latestVisiblePoint.entryId} ·{' '}
+          {latestVisibleMetric.intervalLabel.toLowerCase()} {latestVisibleMetric.interval} · strict
+          pass{' '}
+          {latestVisiblePoint.strictPassRate === null
+            ? 'Unavailable'
+            : `${(latestVisiblePoint.strictPassRate * 100).toFixed(1)}% (n=${latestVisiblePoint.strictPassSampleSize})`}{' '}
+          · n={latestVisiblePoint.sampleSize} · coverage {latestScientificContext.coverage} ·
+          scoring {latestVisiblePoint.scoringVersion} ·{' '}
+          {pointProvenance(latestVisiblePoint).toLowerCase()}
         </p>
       ) : null}
       <details className="data-disclosure">
@@ -581,8 +624,9 @@ export function TrendExplorer({
               <tr>
                 <th scope="col">Recorded</th>
                 <th scope="col">Series</th>
-                <th scope="col">AIQ</th>
-                <th scope="col">Task sensitivity</th>
+                <th scope="col">Primary metric</th>
+                <th scope="col">Primary interval</th>
+                <th scope="col">Strict pass</th>
                 <th scope="col">n</th>
                 <th scope="col">Run / bucket</th>
                 <th scope="col">Coverage</th>
@@ -602,13 +646,21 @@ export function TrendExplorer({
                 )
                 .map((point) => {
                   const context = scientificContexts.get(point) ?? unavailableTrendContext;
+                  const metric = presentScoreMetric(point);
                   return (
                     <tr key={`${point.entryId}-${point.recordedAt}`}>
                       <td>{formatDate(point.recordedAt)}</td>
                       <th scope="row">{point.entryId}</th>
-                      <td>{point.score.toFixed(1)}</td>
                       <td>
-                        {point.sensitivityLow.toFixed(1)}–{point.sensitivityHigh.toFixed(1)}
+                        {metric.scoreText} · {metric.scoreLabel}
+                      </td>
+                      <td>
+                        {metric.interval} · {metric.intervalLabel}
+                      </td>
+                      <td>
+                        {point.strictPassRate === null
+                          ? 'Unavailable'
+                          : `${(point.strictPassRate * 100).toFixed(1)}% (n=${point.strictPassSampleSize})`}
                       </td>
                       <td>{point.sampleSize}</td>
                       <td>

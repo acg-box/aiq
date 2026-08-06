@@ -1,4 +1,5 @@
 import { formatHumanDuration } from '../data/format-duration.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import {
   isScoredLeaderboardEntry,
   type LeaderboardEntry,
@@ -20,8 +21,13 @@ export interface ScientificScoreContext {
 }
 
 export interface RunScientificSummary {
-  aiq: string;
+  score: string;
+  scoreLabel: string;
   interval: string;
+  intervalLabel: string;
+  qualityScore: string;
+  sensitivityInterval: string;
+  strictPass: string;
   sampleSize: string;
   coverage: string;
   runtime: string;
@@ -72,9 +78,16 @@ export function joinExactRunScientificEvidence({
   entries: readonly LeaderboardEntry[];
   efficiencyRows: readonly PublicModelEfficiency[];
 }): ExactRunScientificEvidence {
-  const scoreCandidates = entries.filter(
-    (entry): entry is ScoredLeaderboardEntry =>
-      isScoredLeaderboardEntry(entry) && entry.runId === run.id,
+  const identityCandidates = entries.filter((entry) => entry.runId === run.id);
+  if (identityCandidates.length > 1) {
+    throw new Error(`Ambiguous leaderboard evidence for run ${run.id}.`);
+  }
+  const identityCandidate = identityCandidates[0];
+  if (identityCandidate && !isScoredLeaderboardEntry(identityCandidate)) {
+    throw new Error(`Mismatched leaderboard evidence for run ${run.id}.`);
+  }
+  const scoreCandidates = identityCandidates.filter((entry): entry is ScoredLeaderboardEntry =>
+    isScoredLeaderboardEntry(entry),
   );
   if (scoreCandidates.length > 1) {
     throw new Error(`Ambiguous leaderboard evidence for run ${run.id}.`);
@@ -141,13 +154,22 @@ export function buildRunScientificSummary({
     // Public pages must fail closed when joined evidence drifts from the run identity.
   }
   const { score, efficiency: exactEfficiency } = evidence;
+  const metric = score ? presentScoreMetric(score) : null;
+  const presentation = score ? presentLeaderboardEntry(score) : null;
   const costAvailable =
     exactEfficiency?.costEstimatorStatus === 'estimated' &&
     exactEfficiency.standardApiEquivalentUsdNanos !== null;
   return {
-    aiq: score ? score.score.toFixed(1) : UNAVAILABLE,
-    interval: score
-      ? `${score.sensitivityLow.toFixed(1)}–${score.sensitivityHigh.toFixed(1)}`
+    score: metric?.scoreText ?? UNAVAILABLE,
+    scoreLabel: metric?.scoreLabel ?? (run.synthetic ? 'Quality score' : 'Calibrated ability'),
+    interval: metric?.interval ?? UNAVAILABLE,
+    intervalLabel:
+      metric?.intervalLabel ??
+      (run.synthetic ? 'Task-mix sensitivity' : 'Conditional 95% interval'),
+    qualityScore: presentation?.qualityScore ?? UNAVAILABLE,
+    sensitivityInterval: presentation?.sensitivityInterval ?? UNAVAILABLE,
+    strictPass: presentation
+      ? `${presentation.strictPassRate} · Wilson 95% ${presentation.strictPassInterval}`
       : UNAVAILABLE,
     sampleSize: score ? score.sampleSize.toLocaleString() : UNAVAILABLE,
     coverage:

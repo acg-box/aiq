@@ -48,6 +48,8 @@ path. The calibration must pass the release policy without an operator override.
 - `schema/result-package-v3.schema.json` validates signed runner packages.
 - `schema/normalized-batch-v3.schema.json` validates the database stage.
 - `schema/verifier-attestation-v3.schema.json` validates verifier evidence.
+- `schema/test-generated-public-fixture-v1.schema.json` validates the
+  browser-only public projection fixture. It is not a submission schema.
 - `examples/tasks/` contains synthetic public task examples.
 
 The catalog contains 17 model configurations and 72 ordered tasks. Its identity
@@ -181,3 +183,27 @@ checked-in generator and review the resulting catalog and digest together.
 
 Synthetic examples test contracts only. They do not disclose or replace the
 private benchmark corpus.
+
+## Browser public-projection fixture
+
+`fixtures/aiq-2.0-test-generated-public.json` is a deterministic browser
+fixture, not benchmark evidence. The runner builds its 17-by-72 matrix from
+the frozen 1.0.5 public task shape and derives every latent field, Wilson
+bound, quality score, and task-mix sensitivity value through the normal Rust
+scorer. Its outer object has `test_generated: true`, `synthetic: true`, and
+`production_publishable: false`; production and Official cutover must reject
+this schema. Its nested leaderboard and trend rows are deliberately
+Official-shaped (`score_status: official`, `synthetic: false`) so live UI
+contract tests exercise the published response shape without weakening the
+fail-closed parser.
+
+Regenerate it with:
+
+```sh
+cargo run -p aiq-runner -- generate-test-public-fixture \
+  --output benchmarks/fixtures/aiq-2.0-test-generated-public.json
+```
+
+The command refuses to overwrite an existing protected output. Use a new
+temporary output path when checking determinism; do not submit or publish the
+result.

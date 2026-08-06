@@ -364,12 +364,14 @@ const domainCounts = [8, 8, 7, 8, 7, 7, 7, 7, 6, 7] as const;
 
 function score(model: { family: string; reasoning_effort: string }): JsonObject {
   return {
-    schema_version: 'aiq.score-report.v1',
+    schema_version: 'aiq.score-report.v2',
     scoring_version: '1.0.5',
+    measurement_version: '2.0.0',
     model,
     tier: 'synthetic_complete',
-    official_aiq: null,
-    conditional_observed_aiq: 100,
+    score: null,
+    quality_score: 100,
+    latent_ability: null,
     ranking_eligible: false,
     completion_bounds: { lower: 100, upper: 100 },
     task_resampling_sensitivity_interval: {
@@ -412,7 +414,7 @@ function score(model: { family: string; reasoning_effort: string }): JsonObject 
       zero_failure_tasks: 0,
       score: 1,
     })),
-    rule: 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+    rule: "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Official requires non-synthetic 72/72 coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.",
   };
 }
 
@@ -658,7 +660,7 @@ function productionBatch(): JsonObject {
     const run = requireObject(runValue, 'run');
     const report = requireObjectProperty(run, 'score');
     report.tier = 'official';
-    report.official_aiq = report.conditional_observed_aiq;
+    report.score = report.quality_score;
     for (const resultValue of requireArrayProperty(run, 'results')) {
       const result = requireObject(resultValue, 'result');
       requireObjectProperty(result, 'provenance').synthetic = false;
@@ -743,14 +745,14 @@ await test('synthetic-complete scores are descriptive and never Official', async
   const report = requireObjectProperty(firstRun, 'score');
 
   strictEqual(report.tier, 'synthetic_complete');
-  strictEqual(report.official_aiq, null);
-  strictEqual(report.conditional_observed_aiq, 100);
+  strictEqual(report.score, null);
+  strictEqual(report.quality_score, 100);
   strictEqual(report.ranking_eligible, false);
   strictEqual(matchesSchema(batch, schema, schema), true);
 
   const falseOfficial = structuredClone(batch);
   const falseOfficialRun = requireObjectAt(requireArrayProperty(falseOfficial, 'runs'), 0, 'runs');
-  requireObjectProperty(falseOfficialRun, 'score').official_aiq = 100;
+  requireObjectProperty(falseOfficialRun, 'score').score = 100;
   strictEqual(matchesSchema(falseOfficial, schema, schema), false);
 
   const missingDescriptive = structuredClone(batch);
@@ -759,7 +761,7 @@ await test('synthetic-complete scores are descriptive and never Official', async
     0,
     'runs',
   );
-  requireObjectProperty(missingDescriptiveRun, 'score').conditional_observed_aiq = null;
+  requireObjectProperty(missingDescriptiveRun, 'score').quality_score = null;
   strictEqual(matchesSchema(missingDescriptive, schema, schema), false);
 
   const incompleteMutations: ReadonlyArray<readonly [string, (report: JsonObject) => void]> = [
@@ -850,7 +852,7 @@ await test('batch provenance rejects contradictory score tiers and permits parti
   );
   const syntheticOfficialReport = requireObjectProperty(syntheticOfficialRun, 'score');
   syntheticOfficialReport.tier = 'official';
-  syntheticOfficialReport.official_aiq = syntheticOfficialReport.conditional_observed_aiq;
+  syntheticOfficialReport.score = syntheticOfficialReport.quality_score;
   strictEqual(matchesSchema(syntheticOfficial, schema, schema), false);
 
   const productionSyntheticComplete = productionBatch();
@@ -864,7 +866,7 @@ await test('batch provenance rejects contradictory score tiers and permits parti
     'score',
   );
   productionSyntheticCompleteReport.tier = 'synthetic_complete';
-  productionSyntheticCompleteReport.official_aiq = null;
+  productionSyntheticCompleteReport.score = null;
   strictEqual(matchesSchema(productionSyntheticComplete, schema, schema), false);
 
   for (const tier of ['provisional', 'coverage_only', 'not_applicable']) {
@@ -877,7 +879,7 @@ await test('batch provenance rejects contradictory score tiers and permits parti
     const partialSyntheticReport = requireObjectProperty(partialSyntheticRun, 'score');
     partialSyntheticReport.tier = tier;
     if (tier !== 'provisional') {
-      partialSyntheticReport.conditional_observed_aiq = null;
+      partialSyntheticReport.quality_score = null;
       partialSyntheticReport.completion_bounds = null;
       partialSyntheticReport.task_resampling_sensitivity_interval = null;
     }
@@ -2182,8 +2184,8 @@ await test('score payload permits non-frozen task domain and difficulty coverage
     const run = requireObject(runValue, 'run');
     const report = requireObjectProperty(run, 'score');
     report.tier = 'coverage_only';
-    report.official_aiq = null;
-    report.conditional_observed_aiq = null;
+    report.score = null;
+    report.quality_score = null;
     report.completion_bounds = null;
     report.task_resampling_sensitivity_interval = null;
     report.coverage = {

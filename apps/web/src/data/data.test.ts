@@ -19,7 +19,7 @@ import {
   summarizeRunOutcomes,
   TRUST_LEVELS,
 } from './format.ts';
-import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from './leaderboard-presentation.ts';
 import {
   CALIBRATION_MODEL_CONFIGURATIONS,
   CALIBRATION_RUN_PAGE_SIZE,
@@ -118,6 +118,60 @@ function canonicalRunId(seed: string): string {
   return `run_${createHash('sha256').update(seed).digest('hex')}`;
 }
 
+const officialLeaderboardRowEvidence = {
+  theta: 0.4,
+  standard_error: 0.2,
+  theta_ci_low: 0.01,
+  theta_ci_high: 0.79,
+  score_ci_low: 50,
+  score_ci_high: 100,
+  information: 24,
+  quality_score: 70,
+  strict_pass_rate: 0.5,
+  strict_pass_low: 0.39,
+  strict_pass_high: 0.61,
+  strict_pass_sample_size: 72,
+  strict_pass_successes: 36,
+  reliability_status: 'single_matrix_information_only' as const,
+  calibration_status: 'calibrated' as const,
+};
+
+const unscoredLeaderboardRowEvidence = {
+  theta: null,
+  standard_error: null,
+  theta_ci_low: null,
+  theta_ci_high: null,
+  score_ci_low: null,
+  score_ci_high: null,
+  information: null,
+  quality_score: null,
+  strict_pass_rate: null,
+  strict_pass_low: null,
+  strict_pass_high: null,
+  strict_pass_sample_size: null,
+  strict_pass_successes: null,
+  reliability_status: null,
+  calibration_status: 'pending' as const,
+};
+
+const officialTrendRowEvidence = {
+  theta: 0.4,
+  standard_error: 0.2,
+  theta_ci_low: 0.01,
+  theta_ci_high: 0.79,
+  score_ci_low: 50,
+  score_ci_high: 80,
+  information: 24,
+  quality_score: 70,
+  strict_pass_rate: 0.5,
+  strict_pass_low: 0.39,
+  strict_pass_high: 0.61,
+  strict_pass_sample_size: 72,
+  strict_pass_successes: 36,
+  reliability_status: 'single_matrix_information_only' as const,
+  calibration_status: 'calibrated' as const,
+};
+
 function trendRow(matrixId: string, recordedAt: string): TrendRow {
   return {
     matrix_id: matrixId,
@@ -127,6 +181,7 @@ function trendRow(matrixId: string, recordedAt: string): TrendRow {
     bucket_started_at: recordedAt,
     bucket_ended_at: new Date(Date.parse(recordedAt) + 1).toISOString(),
     score: 70,
+    ...officialTrendRowEvidence,
     sensitivity_low: 68,
     sensitivity_high: 72,
     sample_size: 72,
@@ -452,6 +507,8 @@ void describe('seed repository', () => {
       {
         matrix_id: official.id,
         run_id: canonicalRunId(official.id),
+        ...officialLeaderboardRowEvidence,
+        quality_score: official.qualityScore,
         score: official.score,
         sensitivity_low: official.sensitivityLow,
         sensitivity_high: official.sensitivityHigh,
@@ -466,6 +523,7 @@ void describe('seed repository', () => {
       {
         matrix_id: notApplicable.id,
         run_id: canonicalRunId(notApplicable.id),
+        ...unscoredLeaderboardRowEvidence,
         score: null,
         sensitivity_low: null,
         sensitivity_high: null,
@@ -480,6 +538,7 @@ void describe('seed repository', () => {
       {
         matrix_id: missing.id,
         run_id: canonicalRunId(missing.id),
+        ...unscoredLeaderboardRowEvidence,
         score: null,
         sensitivity_low: null,
         sensitivity_high: null,
@@ -554,6 +613,7 @@ void describe('seed repository', () => {
     const baseRow: LeaderboardRow = {
       matrix_id: 'sol-low',
       run_id: 'run_untrusted_status',
+      ...officialLeaderboardRowEvidence,
       score: 99,
       sensitivity_low: 98,
       sensitivity_high: 100,
@@ -578,6 +638,7 @@ void describe('seed repository', () => {
 
     const unscoredRow = {
       ...baseRow,
+      ...unscoredLeaderboardRowEvidence,
       score: null,
       sensitivity_low: null,
       sensitivity_high: null,
@@ -635,6 +696,7 @@ void describe('seed repository', () => {
     const row: LeaderboardRow = {
       matrix_id: 'sol-low',
       run_id: canonicalRunId('sol-low'),
+      ...officialLeaderboardRowEvidence,
       score: 70,
       sensitivity_low: 68,
       sensitivity_high: 72,
@@ -646,6 +708,13 @@ void describe('seed repository', () => {
       score_status: 'official',
       synthetic: false,
     };
+    const separatedScales = joinModelMatrixWithLeaderboard(matrix, [
+      { ...row, score: 90, score_ci_low: 80, score_ci_high: 100 },
+    ])[0];
+    assert.equal(separatedScales?.score, 90);
+    assert.equal(separatedScales?.qualityScore, 70);
+    assert.equal(separatedScales?.sensitivityLow, 68);
+    assert.equal(separatedScales?.sensitivityHigh, 72);
     for (const rows of [
       [row, row],
       [{ ...row, matrix_id: 'future-low' }],
@@ -684,14 +753,43 @@ void describe('presentation aggregates', () => {
       },
       { status: 'Complete synthetic fixture · not Official', evidence: 'Synthetic' },
     );
+    assert.deepEqual(presentScoreMetric(syntheticEntry), {
+      official: false,
+      score: syntheticEntry.qualityScore,
+      scoreText: syntheticEntry.qualityScore?.toFixed(1),
+      scoreLabel: 'Quality score',
+      intervalLow: syntheticEntry.sensitivityLow,
+      intervalHigh: syntheticEntry.sensitivityHigh,
+      interval: formatSensitivityInterval(syntheticEntry),
+      intervalLabel: 'Task-mix sensitivity',
+    });
 
     const officialEntry = {
       ...syntheticEntry,
       scoreStatus: 'official' as const,
       synthetic: false as const,
+      theta: 0.4,
+      standardError: 0.2,
+      thetaCiLow: 0.01,
+      thetaCiHigh: 0.79,
+      scoreCiLow: 70,
+      scoreCiHigh: 90,
+      information: 24,
+      reliabilityStatus: 'single_matrix_information_only' as const,
+      calibrationStatus: 'calibrated' as const,
     };
     assert.equal(isScoredLeaderboardEntry(officialEntry), true);
     assert.equal(presentLeaderboardEntry(officialEntry).runtimeIssues, officialEntry.runtimeIssues);
+    assert.deepEqual(presentScoreMetric(officialEntry), {
+      official: true,
+      score: officialEntry.score,
+      scoreText: officialEntry.score.toFixed(1),
+      scoreLabel: 'Calibrated ability',
+      intervalLow: officialEntry.scoreCiLow,
+      intervalHigh: officialEntry.scoreCiHigh,
+      interval: '70.0–90.0',
+      intervalLabel: 'Conditional 95% interval',
+    });
     assert.deepEqual(
       {
         status: presentLeaderboardEntry(officialEntry).status,
@@ -709,6 +807,20 @@ void describe('presentation aggregates', () => {
     assert.equal(firstRun.tasks.length, 72);
     assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.5');
     assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.5');
+    for (const run of seedRuns.filter(
+      (candidate) =>
+        candidate.synthetic &&
+        candidate.tasks.length === 72 &&
+        !candidate.id.includes('coverage-only'),
+    )) {
+      const entry = seedLeaderboard.find((candidate) => candidate.runId === run.id);
+      assert.ok(entry, `synthetic run ${run.id} must have a leaderboard entry`);
+      const validTasks = run.tasks.filter((task) => task.score !== null);
+      const strictPasses = validTasks.filter((task) => task.score === 1).length;
+      assert.equal(validTasks.length, entry.strictPassSampleSize);
+      assert.equal(strictPasses, entry.strictPassSuccesses);
+      assert.equal(entry.strictPassRate, strictPasses / validTasks.length);
+    }
     assert.ok(
       seedRuns
         .flatMap((run) => run.tasks)
@@ -1098,6 +1210,21 @@ void describe('presentation aggregates', () => {
       bucket_started_at: '2026-07-23T12:00:00.000Z',
       bucket_ended_at: '2026-07-24T00:00:00.001Z',
       score: 82.4,
+      theta: 0.8,
+      standard_error: 0.2,
+      theta_ci_low: 0.41,
+      theta_ci_high: 1.19,
+      score_ci_low: 70,
+      score_ci_high: 90,
+      information: 24,
+      quality_score: 82.4,
+      strict_pass_rate: 0.5,
+      strict_pass_low: 0.39,
+      strict_pass_high: 0.61,
+      strict_pass_sample_size: 72,
+      strict_pass_successes: 36,
+      reliability_status: 'single_matrix_information_only',
+      calibration_status: 'calibrated',
       sensitivity_low: 80.1,
       sensitivity_high: 84.7,
       sample_size: 72,
@@ -1123,6 +1250,21 @@ void describe('presentation aggregates', () => {
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
         score: row.score,
+        theta: row.theta,
+        standardError: row.standard_error,
+        thetaCiLow: row.theta_ci_low,
+        thetaCiHigh: row.theta_ci_high,
+        scoreCiLow: row.score_ci_low,
+        scoreCiHigh: row.score_ci_high,
+        information: row.information,
+        qualityScore: row.quality_score,
+        strictPassRate: row.strict_pass_rate,
+        strictPassLow: row.strict_pass_low,
+        strictPassHigh: row.strict_pass_high,
+        strictPassSampleSize: row.strict_pass_sample_size,
+        strictPassSuccesses: row.strict_pass_successes,
+        reliabilityStatus: row.reliability_status,
+        calibrationStatus: row.calibration_status,
         sensitivityLow: row.sensitivity_low,
         sensitivityHigh: row.sensitivity_high,
         sampleSize: row.sample_size,
@@ -1762,7 +1904,7 @@ void describe('presentation aggregates', () => {
       model_family: 'terra',
       reasoning_effort: 'medium',
       descriptive_status: 'conditional_observed',
-      aiq: 57.5,
+      quality_score: 57.5,
       task_resampling_sensitivity_lower: 45,
       task_resampling_sensitivity_upper: 68,
       task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',

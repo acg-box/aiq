@@ -333,15 +333,16 @@ function signedCalibrationVerification(
     ? Array.from({ length: 72 }, (_, index) => `task-${index}`)
     : ['task-0'];
   const scoreReports = models.map((model) => ({
-    schema_version: 'aiq.calibration-score-report.v1',
+    schema_version: 'aiq.calibration-score-report.v2',
     run_class: 'calibration',
     scoring_version: '1.0.5',
+    measurement_version: '2.0.0',
     model,
     descriptive_status: 'coverage_only',
     official_eligible: false,
     ranking_eligible: false,
-    fixed_fixture_aiq: null,
-    conditional_observed_aiq: null,
+    quality_score: null,
+    latent_ability: null,
     completion_bounds: null,
     task_resampling_sensitivity_interval: null,
     binary_micro_diagnostic: {},

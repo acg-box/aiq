@@ -343,7 +343,7 @@ impl NormalizedBatchStage {
 				|| task_keys.len() != NORMALIZED_TASK_COUNT
 				|| task_keys != expected_task_keys
 				|| child.score.model != *expected_model
-				|| child.score.schema_version != "aiq.score-report.v1"
+				|| child.score.schema_version != "aiq.score-report.v2"
 				|| child.score.scoring_version != self.scoring_version
 				|| child.score.coverage.expected_tasks != NORMALIZED_TASK_COUNT
 				|| !ids.insert(child.run_id.clone())
@@ -1113,22 +1113,22 @@ fn validate_score_report(
 	match supplied.tier {
 		ScoreTier::Official
 			if supplied.coverage.valid_tasks != NORMALIZED_TASK_COUNT
-				|| supplied.official_aiq.is_none() =>
+				|| supplied.score.is_none() =>
 		{
 			Err(NormalizationError::new("official score tier is inconsistent"))
 		},
 		ScoreTier::SyntheticComplete
 			if supplied.coverage.valid_tasks != NORMALIZED_TASK_COUNT
-				|| supplied.official_aiq.is_some()
-				|| supplied.conditional_observed_aiq.is_none()
+				|| supplied.score.is_some()
+				|| supplied.quality_score.is_none()
 				|| supplied.ranking_eligible =>
 		{
 			Err(NormalizationError::new("synthetic-complete score tier is inconsistent"))
 		},
 		ScoreTier::NotApplicable
 			if supplied.coverage.not_applicable_tasks != NORMALIZED_TASK_COUNT
-				|| supplied.official_aiq.is_some()
-				|| supplied.conditional_observed_aiq.is_some() =>
+				|| supplied.score.is_some()
+				|| supplied.quality_score.is_some() =>
 		{
 			Err(NormalizationError::new("not-applicable score tier is inconsistent"))
 		},
@@ -1939,7 +1939,7 @@ mod tests {
 
 		let (run, tasks, mut scores, package, metadata) = fixture();
 
-		scores[0].official_aiq = Some(99.0);
+		scores[0].score = Some(99.0);
 
 		assert!(
 			normalization::normalize_verified_batch(&run, &tasks, &scores, &package, &metadata)
@@ -1961,8 +1961,8 @@ mod tests {
 		let (_, _, scores, _, _) = fixture();
 
 		assert_eq!(scores[0].tier, ScoreTier::SyntheticComplete);
-		assert!(scores[0].official_aiq.is_none());
-		assert!(scores[0].conditional_observed_aiq.is_some());
+		assert!(scores[0].score.is_none());
+		assert!(scores[0].quality_score.is_some());
 
 		let mut result = crate::runner::TaskResult {
 			schema_version: String::new(),

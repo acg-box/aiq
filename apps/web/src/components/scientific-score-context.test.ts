@@ -20,6 +20,21 @@ function scoredEntry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntr
     modelName: 'model',
     reasoningTier: 'low',
     score: 50,
+    theta: 0.4,
+    standardError: 0.2,
+    thetaCiLow: 0.01,
+    thetaCiHigh: 0.79,
+    scoreCiLow: 40,
+    scoreCiHigh: 60,
+    information: 24,
+    qualityScore: 50,
+    strictPassRate: 0.5,
+    strictPassLow: 0.39,
+    strictPassHigh: 0.61,
+    strictPassSampleSize: 72,
+    strictPassSuccesses: 36,
+    reliabilityStatus: 'single_matrix_information_only',
+    calibrationStatus: 'calibrated',
     sensitivityLow: 40,
     sensitivityHigh: 60,
     sampleSize: 72,
@@ -149,6 +164,21 @@ void describe('scientific score context', () => {
         modelName: 'model',
         reasoningTier: 'low',
         score: 50,
+        theta: 0.4,
+        standardError: 0.2,
+        thetaCiLow: 0.01,
+        thetaCiHigh: 0.79,
+        scoreCiLow: 40,
+        scoreCiHigh: 60,
+        information: 24,
+        qualityScore: 50,
+        strictPassRate: 0.5,
+        strictPassLow: 0.39,
+        strictPassHigh: 0.61,
+        strictPassSampleSize: 72,
+        strictPassSuccesses: 36,
+        reliabilityStatus: 'single_matrix_information_only',
+        calibrationStatus: 'calibrated',
         sensitivityLow: 40,
         sensitivityHigh: 60,
         sampleSize: 72,
@@ -162,7 +192,7 @@ void describe('scientific score context', () => {
       },
     });
 
-    assert.equal(summary.aiq, 'Unavailable');
+    assert.equal(summary.score, 'Unavailable');
     assert.equal(summary.interval, 'Unavailable');
     assert.equal(summary.sampleSize, 'Unavailable');
     assert.equal(summary.coverage, '97.2%');
@@ -199,7 +229,7 @@ void describe('scientific score context', () => {
       efficiency: efficiencyIdentity({ modelFamily: 'terra' }),
     });
 
-    assert.equal(summary.aiq, 'Unavailable');
+    assert.equal(summary.score, 'Unavailable');
     assert.equal(summary.interval, 'Unavailable');
     assert.equal(summary.sampleSize, 'Unavailable');
     assert.equal(summary.adapterDuration, 'Unavailable');

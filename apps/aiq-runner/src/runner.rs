@@ -4258,14 +4258,13 @@ mod tests {
 			let serialized =
 				serde_json::to_string(&analysis).expect("calibration analysis serialization");
 
-			assert_eq!(analysis.schema_version, "aiq.calibration-score-report.v1");
+			assert_eq!(analysis.schema_version, "aiq.calibration-score-report.v2");
 			assert_eq!(analysis.run_class, "calibration");
 			assert_eq!(analysis.descriptive_status, CalibrationDescriptiveStatus::CompleteFixture);
 			assert_eq!(analysis.official_eligible, FalseOnly);
 			assert_eq!(analysis.ranking_eligible, FalseOnly);
-			assert!(analysis.fixed_fixture_aiq.is_some());
+			assert!(analysis.quality_score.is_some());
 			assert!(!serialized.contains("\"tier\""));
-			assert!(!serialized.contains("official_aiq"));
 			assert!(!serialized.contains("Official"));
 			assert!(!serialized.contains("Provisional"));
 		}
@@ -4335,8 +4334,8 @@ mod tests {
 		.expect("synthetic fixed-fixture score");
 
 		assert_eq!(score.tier, ScoreTier::SyntheticComplete);
-		assert!(score.official_aiq.is_none());
-		assert!(score.conditional_observed_aiq.is_some());
+		assert!(score.score.is_none());
+		assert!(score.quality_score.is_some());
 		assert!(!score.ranking_eligible);
 	}
 

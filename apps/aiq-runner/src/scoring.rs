@@ -26,6 +26,12 @@ type CalibrationStatisticsEvidence<'a> =
 
 /// Current scoring implementation version.
 pub const AIQ_SCORING_VERSION: &str = "1.0.5";
+/// Current measurement model version. This is deliberately separate from the
+/// task evaluator release: item scoring and ability estimation are different
+/// measurement layers.
+pub const AIQ_MEASUREMENT_VERSION: &str = "2.0.0";
+/// Calibrated latent-trait estimator used for Official ranking.
+pub const LATENT_ABILITY_METHOD: &str = "rasch_fractional_joint_map_v1";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
@@ -38,7 +44,7 @@ pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
-pub const DEFAULT_BOOTSTRAP_SEED: u64 = 0x41_49_51_5f_56_31;
+pub const DEFAULT_BOOTSTRAP_SEED: u64 = 0x41_49_51_5f_56_32;
 /// Fixed empirical publication-calibration policy identity.
 pub const OFFICIAL_CALIBRATION_POLICY_VERSION: &str = "aiq.official-calibration-policy.v1";
 /// Complete fixed-fixture task count required by the calibration policy.
@@ -63,12 +69,21 @@ pub const OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MIN: f64 = 0.10;
 pub const OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MAX: f64 = 0.90;
 /// Minimum range, on the 0-100 scale, across model macro-domain scores.
 pub const OFFICIAL_CALIBRATION_MIN_MODEL_SCORE_RANGE: f64 = 3.0;
+/// Minimum range, on the 0-100 calibrated average-item scale, across models.
+pub const OFFICIAL_CALIBRATION_MIN_LATENT_SCORE_RANGE: f64 = 3.0;
 
 const TASK_RESAMPLING_SENSITIVITY_METHOD: &str =
 	"finite_cluster_calibrated_percentile_sensitivity_v1";
 const CALIBRATION_COMPARISON_TOLERANCE: f64 = 1e-12;
-const SCORE_RULE: &str = "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
-const CALIBRATION_SCORE_RULE: &str = "Calibration analysis only. Values are transparent descriptive aggregates for the selected evidence. This report has no publication classification and is not ranking eligible. When present, the task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.";
+const RASCH_WALD_Z_95: f64 = 1.959_963_984_540_054;
+const RASCH_PRIOR_PRECISION: f64 = 1.0 / 9.0;
+const RASCH_MAX_ITERATIONS: usize = 128;
+const RASCH_MAX_INNER_ITERATIONS: usize = 24;
+const RASCH_MAX_ABS_PARAMETER: f64 = 8.0;
+const RASCH_CONVERGENCE: f64 = 1e-10;
+const LATENT_RELIABILITY_STATUS: &str = "single_matrix_information_only";
+const SCORE_RULE: &str = "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Official requires non-synthetic 72/72 coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.";
+const CALIBRATION_SCORE_RULE: &str = "Calibration analysis only. Values are transparent descriptive aggregates for the selected evidence. The joint Rasch fractional MAP estimate is emitted only when a complete 17-configuration by 72-task calibration matrix is available. Its uncertainty is conditional on the fitted item bank and excludes item-bank calibration uncertainty. This report has no publication classification and is not ranking eligible. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability.";
 
 /// Score classification tier.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -160,6 +175,8 @@ pub struct OfficialCalibrationPolicy {
 	pub domain_facility_max: f64,
 	/// Minimum range across 0-100 macro-domain model scores.
 	pub min_model_score_range: f64,
+	/// Minimum range across 0-100 latent average-item scores.
+	pub min_latent_score_range: f64,
 }
 impl Default for OfficialCalibrationPolicy {
 	fn default() -> Self {
@@ -177,6 +194,7 @@ impl Default for OfficialCalibrationPolicy {
 			domain_facility_min: OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MIN,
 			domain_facility_max: OFFICIAL_CALIBRATION_DOMAIN_FACILITY_MAX,
 			min_model_score_range: OFFICIAL_CALIBRATION_MIN_MODEL_SCORE_RANGE,
+			min_latent_score_range: OFFICIAL_CALIBRATION_MIN_LATENT_SCORE_RANGE,
 		}
 	}
 }
@@ -233,6 +251,14 @@ pub struct OfficialCalibrationSummary {
 	pub max_model_score: f64,
 	/// Highest minus lowest macro-domain model score.
 	pub model_score_range: f64,
+	/// Lowest 0-100 latent average-item model score.
+	pub min_latent_score: f64,
+	/// Highest 0-100 latent average-item model score.
+	pub max_latent_score: f64,
+	/// Highest minus lowest latent average-item model score.
+	pub latent_score_range: f64,
+	/// Largest model standard error in the calibrated latent estimate.
+	pub max_latent_standard_error: f64,
 }
 
 /// Transparent result of applying the fixed calibration policy.
@@ -320,20 +346,58 @@ pub struct DifficultyCoverage {
 	pub valid_tasks: usize,
 }
 
-/// Diagnostic binary micro average and Wilson interval.
+/// Strict-pass diagnostic and Wilson interval.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct BinaryMicroDiagnostic {
-	/// Binary task-score sample size. Partial scores are excluded.
+	/// Valid semantic task-score sample size. Partial scores remain in the denominator.
 	pub sample_size: usize,
-	/// Binary successes.
+	/// Strict successes with a task score of exactly one.
 	pub successes: usize,
-	/// Micro-average binary correctness.
+	/// Strict successes divided by the valid semantic task-score sample size.
 	pub proportion: Option<f64>,
 	/// Wilson 95% lower bound.
 	pub wilson_lower: Option<f64>,
 	/// Wilson 95% upper bound.
 	pub wilson_upper: Option<f64>,
+}
+
+/// A calibrated one-dimensional latent ability estimate.
+///
+/// `score` is the predicted probability of success on an average calibrated
+/// task, expressed as 0--100. It is a convenient bounded display value, not an
+/// IQ norm, a population percentile, or an unbounded claim about intelligence.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct LatentAbilityEstimate {
+	/// Measurement method identity.
+	pub method: String,
+	/// Calibration-bank identity that fixes the item scale.
+	pub calibration_digest: String,
+	/// Model location on the anchored logit scale.
+	pub theta: f64,
+	/// Conditional standard error from observed Fisher information plus the ability prior, given the released item bank.
+	pub standard_error: f64,
+	/// Conditional Wald 95% lower bound on the latent logit scale, given the item bank.
+	pub theta_ci_low: f64,
+	/// Conditional Wald 95% upper bound on the latent logit scale, given the item bank.
+	pub theta_ci_high: f64,
+	/// Observed Fisher information before the prior contribution.
+	pub observed_information: f64,
+	/// Predicted success probability on an average calibrated task, 0--100.
+	pub score: f64,
+	/// Conditional Wald 95% lower bound after mapping the latent interval to 0--100.
+	pub score_ci_low: f64,
+	/// Conditional Wald 95% upper bound after mapping the latent interval to 0--100.
+	pub score_ci_high: f64,
+	/// Reliability statement for a single matrix estimate.
+	pub reliability_status: String,
+	/// Number of valid task observations used for this estimate.
+	pub items_used: usize,
+	/// Number of tasks in the frozen calibration bank.
+	pub calibration_task_count: usize,
+	/// Number of model configurations used to fit the bank.
+	pub calibration_model_count: usize,
 }
 
 /// Coverage and disposition counts.
@@ -378,7 +442,7 @@ pub struct DomainScore {
 	pub score: Option<f64>,
 }
 
-/// A transparent AIQ v1 score report.
+/// A transparent AIQ 2.0 score report.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScoreReport {
@@ -386,14 +450,18 @@ pub struct ScoreReport {
 	pub schema_version: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Measurement-model version.
+	pub measurement_version: String,
 	/// Scored model configuration.
 	pub model: ModelConfig,
 	/// Publication tier.
 	pub tier: ScoreTier,
-	/// Official ranking score. It is present only for the Official tier.
-	pub official_aiq: Option<f64>,
-	/// Conditional observed estimate. Synthetic and Provisional estimates are not ranking eligible.
-	pub conditional_observed_aiq: Option<f64>,
+	/// Calibrated latent score. It is present only for the Official tier.
+	pub score: Option<f64>,
+	/// Raw equal-domain criterion score. It is a diagnostic, not the ranking score.
+	pub quality_score: Option<f64>,
+	/// Calibrated latent ability evidence. Official reports require this field.
+	pub latent_ability: Option<LatentAbilityEstimate>,
 	/// Whether this report can participate in an official ranking.
 	pub ranking_eligible: bool,
 	/// Fixed-fixture completion bounds.
@@ -425,6 +493,8 @@ pub struct CalibrationScoreReport {
 	pub run_class: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Measurement-model version.
+	pub measurement_version: String,
 	/// Analyzed model configuration.
 	pub model: ModelConfig,
 	/// Descriptive coverage state, not a publication tier.
@@ -433,10 +503,10 @@ pub struct CalibrationScoreReport {
 	pub official_eligible: FalseOnly,
 	/// Whether this analysis can participate in ranking. This is always false.
 	pub ranking_eligible: FalseOnly,
-	/// Equal-domain fixed-fixture value for exact complete coverage.
-	pub fixed_fixture_aiq: Option<f64>,
-	/// Equal-domain conditional value when the existing coverage threshold is met.
-	pub conditional_observed_aiq: Option<f64>,
+	/// Equal-domain criterion score when the coverage threshold is met.
+	pub quality_score: Option<f64>,
+	/// Calibrated latent ability evidence when the complete bank is available.
+	pub latent_ability: Option<LatentAbilityEstimate>,
 	/// Fixed-fixture completion bounds.
 	pub completion_bounds: Option<CompletionBounds>,
 	/// Fixed-fixture calibrated task-resampling sensitivity analysis.
@@ -497,6 +567,32 @@ struct DomainAccumulator {
 struct Observation {
 	score: f64,
 	cluster: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CalibrationTaskParameter {
+	task_id: String,
+	task_version: String,
+	domain: Domain,
+	facility: f64,
+	difficulty: f64,
+	mean_item_information: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct CalibrationBankIdentity {
+	measurement_version: &'static str,
+	method: &'static str,
+	task_set_id: &'static str,
+	task_set_version: &'static str,
+	tasks: Vec<CalibrationTaskParameter>,
+}
+
+#[derive(Clone, Debug)]
+struct CalibrationBank {
+	digest: String,
+	items: BTreeMap<String, CalibrationTaskParameter>,
+	model_count: usize,
 }
 
 #[derive(Deserialize)]
@@ -588,6 +684,20 @@ pub fn diagnose_official_calibration(
 	let domains = calibration_domain_summaries(tasks, &task_statistics, expected_domains, &policy);
 	let (min_model_score, max_model_score, model_score_range) =
 		calibration_model_score_range(tasks, &matrix, &domains);
+	let bank = calibration_bank_from_matrix(tasks, &matrix)?;
+	let model_abilities = MODEL_MATRIX
+		.iter()
+		.map(|model| estimate_model_ability(tasks, &matrix, *model, &bank))
+		.collect::<Result<Vec<_>, _>>()?;
+	let (min_latent_score, max_latent_score) = model_abilities
+		.iter()
+		.map(|estimate| estimate.score)
+		.fold((f64::INFINITY, f64::NEG_INFINITY), |(minimum, maximum), score| {
+			(minimum.min(score), maximum.max(score))
+		});
+	let latent_score_range = max_latent_score - min_latent_score;
+	let max_latent_standard_error =
+		model_abilities.iter().map(|estimate| estimate.standard_error).fold(0.0, f64::max);
 	let observed = OfficialCalibrationSummary {
 		policy_version: policy.version.clone(),
 		tasks: tasks.len(),
@@ -605,13 +715,17 @@ pub fn diagnose_official_calibration(
 		min_model_score,
 		max_model_score,
 		model_score_range,
+		min_latent_score,
+		max_latent_score,
+		latent_score_range,
+		max_latent_standard_error,
 	};
 	let violations = calibration_violations(&policy, &observed);
 
 	Ok(OfficialCalibrationDiagnostic { policy, observed, violations })
 }
 
-/// Scores one model with production AIQ v1 bootstrap settings.
+/// Scores one model with production AIQ 2.0 bootstrap settings.
 pub fn score_model(
 	tasks: &[TaskDefinition],
 	results: &[TaskResult],
@@ -622,9 +736,9 @@ pub fn score_model(
 
 /// Scores one model with explicit deterministic bootstrap settings.
 ///
-/// AIQ v1 is 100 times the equal-weight mean of 10 domain scores. Each domain
-/// score is the equal-weight mean of valid task scores from 0 through 1. Coverage
-/// does not multiply or otherwise alter the AIQ point estimate.
+/// AIQ 2.0 is a Rasch fractional MAP estimate mapped to 0--100. The raw
+/// equal-domain mean remains a criterion-referenced diagnostic. Coverage does
+/// not multiply or otherwise alter either point estimate.
 pub fn score_model_with_options(
 	tasks: &[TaskDefinition],
 	results: &[TaskResult],
@@ -718,7 +832,7 @@ pub fn score_model_with_context(
 		coverage_tier
 	};
 	let domain_scores = domain_scores(&accumulators);
-	let conditional_observed_aiq = if matches!(
+	let quality_score = if matches!(
 		tier,
 		ScoreTier::Official | ScoreTier::SyntheticComplete | ScoreTier::Provisional
 	) {
@@ -726,25 +840,47 @@ pub fn score_model_with_context(
 	} else {
 		None
 	};
-	let official_aiq =
-		(tier == ScoreTier::Official).then_some(conditional_observed_aiq.unwrap_or_default());
-	let task_resampling_sensitivity_interval = if conditional_observed_aiq.is_some() {
+	let latent_ability = if tier == ScoreTier::Official && !has_synthetic_results {
+		let matrix = calibration_matrix(tasks, results, &OfficialCalibrationPolicy::default())?.0;
+		let bank = calibration_bank_from_matrix(tasks, &matrix)?;
+
+		Some(estimate_model_ability(tasks, &matrix, model, &bank)?)
+	} else {
+		None
+	};
+	let score = if tier == ScoreTier::Official {
+		Some(
+			latent_ability
+				.as_ref()
+				.ok_or_else(|| {
+					ScoreError::new("Official score requires a complete calibration matrix")
+				})?
+				.score,
+		)
+	} else {
+		None
+	};
+	let has_latent_ability = latent_ability.is_some();
+	let task_resampling_sensitivity_interval = if quality_score.is_some() {
 		Some(cluster_bootstrap(&accumulators, options)?)
 	} else {
 		None
 	};
-	let completion_bounds = conditional_observed_aiq
+	let completion_bounds = quality_score
 		.map(|observed_aiq| completion_bounds(&accumulators, observed_aiq))
 		.transpose()?;
 
 	Ok(ScoreReport {
-		schema_version: "aiq.score-report.v1".to_owned(),
+		schema_version: "aiq.score-report.v2".to_owned(),
 		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		measurement_version: AIQ_MEASUREMENT_VERSION.to_owned(),
 		model,
 		tier,
-		official_aiq,
-		conditional_observed_aiq,
+		score,
+		quality_score,
+		latent_ability,
 		ranking_eligible: tier == ScoreTier::Official
+			&& has_latent_ability
 			&& context.receiver_authorized_publication
 			&& trusted_non_synthetic_results,
 		completion_bounds,
@@ -775,23 +911,24 @@ pub fn score_calibration_model_with_context(
 		ScoreTier::CoverageOnly => CalibrationDescriptiveStatus::CoverageOnly,
 		ScoreTier::NotApplicable => CalibrationDescriptiveStatus::NotApplicable,
 	};
-	let fixed_fixture_aiq =
-		matches!(report.tier, ScoreTier::Official | ScoreTier::SyntheticComplete)
-			.then_some(report.conditional_observed_aiq)
-			.flatten();
+	let quality_score = matches!(
+		report.tier,
+		ScoreTier::Official | ScoreTier::SyntheticComplete | ScoreTier::Provisional
+	)
+	.then_some(report.quality_score)
+	.flatten();
 
 	Ok(CalibrationScoreReport {
-		schema_version: "aiq.calibration-score-report.v1".to_owned(),
+		schema_version: "aiq.calibration-score-report.v2".to_owned(),
 		run_class: "calibration".to_owned(),
 		scoring_version: report.scoring_version,
+		measurement_version: report.measurement_version,
 		model: report.model,
 		descriptive_status,
 		official_eligible: FalseOnly,
 		ranking_eligible: FalseOnly,
-		fixed_fixture_aiq,
-		conditional_observed_aiq: (report.tier == ScoreTier::Provisional)
-			.then_some(report.conditional_observed_aiq)
-			.flatten(),
+		quality_score,
+		latent_ability: report.latent_ability,
 		completion_bounds: report.completion_bounds,
 		task_resampling_sensitivity_interval: report.task_resampling_sensitivity_interval,
 		binary_micro_diagnostic: report.binary_micro_diagnostic,
@@ -1032,6 +1169,394 @@ fn calibration_model_score_range(
 	(minimum, maximum, maximum - minimum)
 }
 
+fn calibration_bank_from_matrix(
+	tasks: &[TaskDefinition],
+	matrix: &CalibrationMatrix<'_>,
+) -> Result<CalibrationBank, ScoreError> {
+	let (model_locations, difficulties) = fit_joint_rasch_parameters(tasks, matrix)?;
+	let mut parameters = Vec::with_capacity(tasks.len());
+
+	for (task_index, task) in tasks.iter().enumerate() {
+		let scores = MODEL_MATRIX
+			.iter()
+			.map(|model| {
+				matrix
+					.get(&(task.task_id.as_str(), *model))
+					.and_then(|result| result.task_score)
+					.filter(|score| score.is_finite() && (0.0..=1.0).contains(score))
+					.ok_or_else(|| {
+						ScoreError::new("calibration requires a finite task score in every cell")
+					})
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+		let facility = scores.iter().sum::<f64>() / scores.len() as f64;
+		let mean_item_information = model_locations
+			.iter()
+			.map(|location| {
+				let probability = logistic(*location - difficulties[task_index]);
+				probability * (1.0 - probability)
+			})
+			.sum::<f64>()
+			/ model_locations.len() as f64;
+
+		parameters.push(CalibrationTaskParameter {
+			task_id: task.task_id.clone(),
+			task_version: task.task_version.clone(),
+			domain: task.domain,
+			facility,
+			difficulty: difficulties[task_index],
+			mean_item_information,
+		});
+	}
+
+	let identity = CalibrationBankIdentity {
+		measurement_version: AIQ_MEASUREMENT_VERSION,
+		method: LATENT_ABILITY_METHOD,
+		task_set_id: AIQ_TASK_SET_ID,
+		task_set_version: AIQ_TASK_SET_VERSION,
+		tasks: parameters.clone(),
+	};
+	let digest = protocol::canonical_hash(&identity)
+		.map_err(|error| ScoreError::new(format!("calibration identity failed: {error}")))?;
+	let items = parameters
+		.into_iter()
+		.map(|parameter| (parameter.task_id.clone(), parameter))
+		.collect::<BTreeMap<_, _>>();
+
+	Ok(CalibrationBank { digest, items, model_count: MODEL_MATRIX.len() })
+}
+
+/// Fits a one-dimensional fractional Rasch model to the complete calibration
+/// matrix. Model locations and item difficulties are updated alternately with
+/// weak normal priors. Item difficulties are centered after every outer step;
+/// model locations receive the same translation so that theta minus difficulty
+/// remains unchanged.
+fn fit_joint_rasch_parameters(
+	tasks: &[TaskDefinition],
+	matrix: &CalibrationMatrix<'_>,
+) -> Result<(Vec<f64>, Vec<f64>), ScoreError> {
+	fit_joint_rasch_parameters_with_limit(tasks, matrix, RASCH_MAX_ITERATIONS)
+}
+
+fn fit_joint_rasch_parameters_with_limit(
+	tasks: &[TaskDefinition],
+	matrix: &CalibrationMatrix<'_>,
+	max_iterations: usize,
+) -> Result<(Vec<f64>, Vec<f64>), ScoreError> {
+	if tasks.is_empty() {
+		return Err(ScoreError::new("Rasch calibration requires at least one task"));
+	}
+	if max_iterations == 0 {
+		return Err(ScoreError::new("Rasch calibration requires a positive iteration limit"));
+	}
+
+	let mut scores = vec![vec![0.0; tasks.len()]; MODEL_MATRIX.len()];
+	for (model_index, model) in MODEL_MATRIX.iter().enumerate() {
+		for (task_index, task) in tasks.iter().enumerate() {
+			scores[model_index][task_index] = matrix
+				.get(&(task.task_id.as_str(), *model))
+				.and_then(|result| result.task_score)
+				.filter(|score| score.is_finite() && (0.0..=1.0).contains(score))
+				.ok_or_else(|| {
+					ScoreError::new("calibration requires a finite task score in every cell")
+				})?;
+		}
+	}
+
+	let mut difficulties = tasks
+		.iter()
+		.enumerate()
+		.map(|(task_index, _)| {
+			let mean_score = scores.iter().map(|model| model[task_index]).sum::<f64>()
+				/ MODEL_MATRIX.len() as f64;
+			-logit(mean_score)
+		})
+		.collect::<Vec<_>>();
+	let mut model_locations = vec![0.0; MODEL_MATRIX.len()];
+	center_rasch_scale(&mut model_locations, &mut difficulties);
+
+	let mut converged = false;
+	for _ in 0..max_iterations {
+		let previous_locations = model_locations.clone();
+		let previous_difficulties = difficulties.clone();
+
+		for model_index in 0..MODEL_MATRIX.len() {
+			model_locations[model_index] = fit_theta_given_items(
+				&scores[model_index],
+				&difficulties,
+				model_locations[model_index],
+			)?
+			.0;
+		}
+		fit_item_difficulties_given_models(&scores, &model_locations, &mut difficulties)?;
+
+		center_rasch_scale(&mut model_locations, &mut difficulties);
+
+		let max_change = model_locations
+			.iter()
+			.zip(previous_locations)
+			.map(|(current, previous)| (current - previous).abs())
+			.chain(
+				difficulties
+					.iter()
+					.zip(previous_difficulties)
+					.map(|(current, previous)| (current - previous).abs()),
+			)
+			.fold(0.0, f64::max);
+
+		if max_change < RASCH_CONVERGENCE
+			&& rasch_score_equation_residual(&scores, &model_locations, &difficulties)?
+				< RASCH_CONVERGENCE
+		{
+			converged = true;
+			break;
+		}
+	}
+
+	if !converged {
+		return Err(ScoreError::new(format!(
+			"Rasch calibration did not converge within {max_iterations} outer iterations"
+		)));
+	}
+	center_rasch_scale(&mut model_locations, &mut difficulties);
+	let residual = rasch_score_equation_residual(&scores, &model_locations, &difficulties)?;
+	if residual >= RASCH_CONVERGENCE {
+		return Err(ScoreError::new(format!(
+			"Rasch calibration score-equation residual {residual:.3e} exceeds tolerance"
+		)));
+	}
+	Ok((model_locations, difficulties))
+}
+
+fn center_rasch_scale(model_locations: &mut [f64], difficulties: &mut [f64]) {
+	let difficulty_center = difficulties.iter().sum::<f64>() / difficulties.len() as f64;
+	for difficulty in difficulties {
+		*difficulty -= difficulty_center;
+	}
+	for location in model_locations {
+		*location -= difficulty_center;
+	}
+}
+
+fn fit_theta_given_items(
+	scores: &[f64],
+	difficulties: &[f64],
+	initial: f64,
+) -> Result<(f64, f64), ScoreError> {
+	let mut theta = initial.clamp(-RASCH_MAX_ABS_PARAMETER, RASCH_MAX_ABS_PARAMETER);
+	let mut converged = false;
+	for _ in 0..RASCH_MAX_INNER_ITERATIONS {
+		let (gradient, information) = scores.iter().zip(difficulties).fold(
+			(-theta * RASCH_PRIOR_PRECISION, RASCH_PRIOR_PRECISION),
+			|(gradient, information), (score, difficulty)| {
+				let probability = logistic(theta - difficulty);
+				(gradient + score - probability, information + probability * (1.0 - probability))
+			},
+		);
+		if !gradient.is_finite() || !information.is_finite() || information <= 0.0 {
+			return Err(ScoreError::new("Rasch ability update produced a non-finite equation"));
+		}
+		let step = gradient / information;
+		if !step.is_finite() {
+			return Err(ScoreError::new("Rasch ability update produced a non-finite step"));
+		}
+		theta = (theta + step).clamp(-RASCH_MAX_ABS_PARAMETER, RASCH_MAX_ABS_PARAMETER);
+		if step.abs() < RASCH_CONVERGENCE {
+			converged = true;
+			break;
+		}
+	}
+	if !converged {
+		return Err(ScoreError::new(
+			"Rasch ability update did not converge within its inner iteration limit",
+		));
+	}
+
+	let observed_information = difficulties
+		.iter()
+		.map(|difficulty| {
+			let probability = logistic(theta - difficulty);
+			probability * (1.0 - probability)
+		})
+		.sum::<f64>();
+	if !theta.is_finite() || !observed_information.is_finite() {
+		return Err(ScoreError::new("Rasch ability update produced a non-finite parameter"));
+	}
+	Ok((theta, observed_information))
+}
+
+fn fit_item_difficulties_given_models(
+	scores: &[Vec<f64>],
+	model_locations: &[f64],
+	difficulties: &mut [f64],
+) -> Result<(), ScoreError> {
+	for _ in 0..RASCH_MAX_INNER_ITERATIONS {
+		let mut gradients = Vec::with_capacity(difficulties.len());
+		let mut informations = Vec::with_capacity(difficulties.len());
+		for (task_index, difficulty) in difficulties.iter().enumerate() {
+			let (gradient, information) = scores.iter().zip(model_locations).fold(
+				(-difficulty * RASCH_PRIOR_PRECISION, RASCH_PRIOR_PRECISION),
+				|(gradient, information), (model_scores, location)| {
+					let probability = logistic(location - difficulty);
+					(
+						gradient + probability - model_scores[task_index],
+						information + probability * (1.0 - probability),
+					)
+				},
+			);
+			if !gradient.is_finite() || !information.is_finite() || information <= 0.0 {
+				return Err(ScoreError::new("Rasch item update produced a non-finite equation"));
+			}
+			gradients.push(gradient);
+			informations.push(information);
+		}
+
+		let multiplier = -gradients
+			.iter()
+			.zip(&informations)
+			.map(|(gradient, information)| gradient / information)
+			.sum::<f64>()
+			/ informations.iter().map(|information| 1.0 / information).sum::<f64>();
+		if !multiplier.is_finite() {
+			return Err(ScoreError::new(
+				"Rasch item update produced a non-finite constraint multiplier",
+			));
+		}
+
+		let mut max_step: f64 = 0.0;
+		for (index, difficulty) in difficulties.iter_mut().enumerate() {
+			let step = (gradients[index] + multiplier) / informations[index];
+			if !step.is_finite() {
+				return Err(ScoreError::new("Rasch item update produced a non-finite step"));
+			}
+			*difficulty =
+				(*difficulty + step).clamp(-RASCH_MAX_ABS_PARAMETER, RASCH_MAX_ABS_PARAMETER);
+			max_step = max_step.max(step.abs());
+		}
+		if max_step < RASCH_CONVERGENCE {
+			return Ok(());
+		}
+	}
+
+	Err(ScoreError::new("Rasch item update did not converge within its inner iteration limit"))
+}
+
+fn rasch_score_equation_residual(
+	scores: &[Vec<f64>],
+	model_locations: &[f64],
+	difficulties: &[f64],
+) -> Result<f64, ScoreError> {
+	let mut maximum = 0.0_f64;
+	for (model_scores, location) in scores.iter().zip(model_locations) {
+		let residual = model_scores
+			.iter()
+			.zip(difficulties)
+			.map(|(score, difficulty)| score - logistic(location - difficulty))
+			.sum::<f64>()
+			- location * RASCH_PRIOR_PRECISION;
+		if !residual.is_finite() {
+			return Err(ScoreError::new("Rasch score equation produced a non-finite residual"));
+		}
+		maximum = maximum.max(residual.abs());
+	}
+
+	let item_residuals = difficulties
+		.iter()
+		.enumerate()
+		.map(|(task_index, difficulty)| {
+			let residual = scores
+				.iter()
+				.zip(model_locations)
+				.map(|(model_scores, location)| {
+					logistic(location - difficulty) - model_scores[task_index]
+				})
+				.sum::<f64>()
+				- difficulty * RASCH_PRIOR_PRECISION;
+			if !residual.is_finite() {
+				return Err(ScoreError::new("Rasch item equation produced a non-finite residual"));
+			}
+			Ok(residual)
+		})
+		.collect::<Result<Vec<_>, ScoreError>>()?;
+	let item_mean = item_residuals.iter().sum::<f64>() / item_residuals.len() as f64;
+	maximum = maximum.max(
+		item_residuals.iter().map(|residual| (residual - item_mean).abs()).fold(0.0, f64::max),
+	);
+
+	if !maximum.is_finite() {
+		return Err(ScoreError::new("Rasch score-equation residual is non-finite"));
+	}
+	Ok(maximum)
+}
+
+fn estimate_model_ability(
+	tasks: &[TaskDefinition],
+	matrix: &CalibrationMatrix<'_>,
+	model: ModelConfig,
+	bank: &CalibrationBank,
+) -> Result<LatentAbilityEstimate, ScoreError> {
+	let observations = tasks
+		.iter()
+		.map(|task| {
+			let item = bank
+				.items
+				.get(&task.task_id)
+				.ok_or_else(|| ScoreError::new("calibration bank is missing a task parameter"))?;
+			let score = matrix
+				.get(&(task.task_id.as_str(), model))
+				.and_then(|result| result.task_score)
+				.filter(|score| score.is_finite() && (0.0..=1.0).contains(score))
+				.ok_or_else(|| {
+					ScoreError::new("latent ability requires valid task observations")
+				})?;
+			Ok((score, item.difficulty))
+		})
+		.collect::<Result<Vec<_>, ScoreError>>()?;
+	let (scores, difficulties): (Vec<_>, Vec<_>) = observations.into_iter().unzip();
+
+	if scores.is_empty() {
+		return Err(ScoreError::new("latent ability requires at least one task"));
+	}
+
+	let (theta, observed_information) = fit_theta_given_items(&scores, &difficulties, 0.0)?;
+	let standard_error = (observed_information + RASCH_PRIOR_PRECISION).sqrt().recip();
+	let theta_ci_low = theta - RASCH_WALD_Z_95 * standard_error;
+	let theta_ci_high = theta + RASCH_WALD_Z_95 * standard_error;
+	let score_ci_low = logistic(theta_ci_low) * 100.0;
+	let score_ci_high = logistic(theta_ci_high) * 100.0;
+
+	Ok(LatentAbilityEstimate {
+		method: LATENT_ABILITY_METHOD.to_owned(),
+		calibration_digest: bank.digest.clone(),
+		theta,
+		standard_error,
+		theta_ci_low,
+		theta_ci_high,
+		observed_information,
+		score: logistic(theta) * 100.0,
+		score_ci_low,
+		score_ci_high,
+		reliability_status: LATENT_RELIABILITY_STATUS.to_owned(),
+		items_used: scores.len(),
+		calibration_task_count: bank.items.len(),
+		calibration_model_count: bank.model_count,
+	})
+}
+
+fn logistic(value: f64) -> f64 {
+	if value >= 0.0 {
+		1.0 / (1.0 + (-value).exp())
+	} else {
+		let exponential = value.exp();
+		exponential / (1.0 + exponential)
+	}
+}
+
+fn logit(probability: f64) -> f64 {
+	let probability = probability.clamp(0.001, 0.999);
+	(probability / (1.0 - probability)).ln()
+}
+
 fn calibration_violations(
 	policy: &OfficialCalibrationPolicy,
 	observed: &OfficialCalibrationSummary,
@@ -1096,6 +1621,14 @@ fn calibration_violations(
 		violations.push(format!(
 			"macro-domain model-score range {:.6} is below {:.6}",
 			observed.model_score_range, policy.min_model_score_range
+		));
+	}
+	if observed.latent_score_range + CALIBRATION_COMPARISON_TOLERANCE
+		< policy.min_latent_score_range
+	{
+		violations.push(format!(
+			"latent average-item score range {:.6} is below {:.6}",
+			observed.latent_score_range, policy.min_latent_score_range
 		));
 	}
 
@@ -1325,7 +1858,7 @@ fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
 
 fn completion_bounds(
 	accumulators: &BTreeMap<Domain, DomainAccumulator>,
-	conditional_observed_aiq: f64,
+	quality_score: f64,
 ) -> Result<CompletionBounds, ScoreError> {
 	if accumulators.len() != 10 {
 		return Err(ScoreError::new("completion bounds require 10 planned domains"));
@@ -1334,10 +1867,7 @@ fn completion_bounds(
 		return Err(ScoreError::new("completion bounds require planned tasks in every domain"));
 	}
 	if accumulators.values().all(|domain| domain.observations.len() == domain.expected) {
-		return Ok(CompletionBounds {
-			lower: conditional_observed_aiq,
-			upper: conditional_observed_aiq,
-		});
+		return Ok(CompletionBounds { lower: quality_score, upper: quality_score });
 	}
 
 	let mut lower = 0.0;
@@ -1355,8 +1885,8 @@ fn completion_bounds(
 	// The 0/1 missing-task construction contains the conditional score
 	// mathematically. Clamp only a floating-point boundary crossing back to that
 	// independently computed score.
-	let lower = (10.0 * lower).min(conditional_observed_aiq);
-	let upper = (10.0 * upper).max(conditional_observed_aiq);
+	let lower = (10.0 * lower).min(quality_score);
+	let upper = (10.0 * upper).max(quality_score);
 
 	Ok(CompletionBounds { lower, upper })
 }
@@ -1516,13 +2046,11 @@ fn cluster_bootstrap(
 fn binary_micro_diagnostic(
 	accumulators: &BTreeMap<Domain, DomainAccumulator>,
 ) -> BinaryMicroDiagnostic {
-	let binary = accumulators
-		.values()
-		.flat_map(|domain| &domain.observations)
-		.filter(|observation| observation.score == 0.0 || observation.score == 1.0)
-		.collect::<Vec<_>>();
-	let sample_size = binary.len();
-	let successes = binary.iter().filter(|observation| observation.score == 1.0).count();
+	let valid_semantic_tasks =
+		accumulators.values().flat_map(|domain| &domain.observations).collect::<Vec<_>>();
+	let sample_size = valid_semantic_tasks.len();
+	let successes =
+		valid_semantic_tasks.iter().filter(|observation| observation.score == 1.0).count();
 	let (proportion, wilson_lower, wilson_upper) = if sample_size == 0 {
 		(None, None, None)
 	} else {
@@ -1561,7 +2089,7 @@ mod tests {
 	};
 
 	use crate::{
-		model::MODEL_MATRIX,
+		model::{MODEL_MATRIX, ModelConfig},
 		protocol::{self, ResultProvenance, TrustTier},
 		runner::{
 			self, EvaluationOutcome, FailureKind, Latency, RESULT_SCHEMA_VERSION, ResultFailure,
@@ -1657,6 +2185,43 @@ mod tests {
 				})
 			})
 			.collect()
+	}
+
+	fn known_rasch_results(
+		tasks: &[TaskDefinition],
+		shift: f64,
+	) -> (Vec<f64>, Vec<f64>, Vec<TaskResult>) {
+		let model_locations = MODEL_MATRIX
+			.iter()
+			.enumerate()
+			.map(|(index, _)| -1.2 + index as f64 * 0.15 + shift)
+			.collect::<Vec<_>>();
+		let difficulties = tasks
+			.iter()
+			.enumerate()
+			.map(|(index, _)| (index as f64 - 35.5) * 0.025 + shift)
+			.collect::<Vec<_>>();
+		let results = MODEL_MATRIX
+			.iter()
+			.enumerate()
+			.flat_map(|(model_index, model)| {
+				let model_location = model_locations[model_index];
+				let difficulty_values = &difficulties;
+				tasks.iter().enumerate().map(move |(task_index, task)| {
+					let score = super::logistic(model_location - difficulty_values[task_index]);
+					let mut result = result(task, score);
+					result.model = *model;
+					result.evaluation = EvaluationOutcome::Partial;
+					result
+				})
+			})
+			.collect();
+
+		(model_locations, difficulties, results)
+	}
+
+	fn calibration_matrix(results: &[TaskResult]) -> BTreeMap<(&str, ModelConfig), &TaskResult> {
+		results.iter().map(|result| ((result.task_id.as_str(), result.model), result)).collect()
 	}
 
 	#[test]
@@ -1939,10 +2504,9 @@ mod tests {
 		assert_eq!(first.tier, ScoreTier::SyntheticComplete);
 		assert_eq!(first.coverage.valid_tasks, 72);
 		assert_eq!(first.coverage.covered_domains, 10);
-		assert!(first.official_aiq.is_none());
+		assert!(first.score.is_none());
 		assert!(
-			(first.conditional_observed_aiq.expect("synthetic descriptive score")
-				- 54.285_714_285_714_285)
+			(first.quality_score.expect("synthetic descriptive score") - 54.285_714_285_714_285)
 				.abs() < 1e-10
 		);
 		assert_eq!(first.binary_micro_diagnostic.successes, 39);
@@ -2021,7 +2585,7 @@ mod tests {
 		.expect("coverage remains reportable");
 
 		assert_eq!(report.tier, ScoreTier::CoverageOnly);
-		assert!(report.conditional_observed_aiq.is_none());
+		assert!(report.quality_score.is_none());
 	}
 
 	#[test]
@@ -2106,7 +2670,7 @@ mod tests {
 		let serialized =
 			serde_json::to_string(&analysis).expect("calibration analysis must serialize");
 
-		assert_eq!(analysis.schema_version, "aiq.calibration-score-report.v1");
+		assert_eq!(analysis.schema_version, "aiq.calibration-score-report.v2");
 		assert_eq!(analysis.run_class, "calibration");
 		assert_eq!(
 			analysis.descriptive_status,
@@ -2116,10 +2680,8 @@ mod tests {
 		assert_eq!(analysis.ranking_eligible, scoring::FalseOnly);
 		assert_eq!(analysis.coverage.expected_tasks, 8);
 		assert_eq!(analysis.coverage.valid_tasks, 8);
-		assert!(analysis.fixed_fixture_aiq.is_none());
-		assert!(analysis.conditional_observed_aiq.is_none());
+		assert!(analysis.quality_score.is_none());
 		assert!(!serialized.contains("\"tier\""));
-		assert!(!serialized.contains("official_aiq"));
 		assert!(!serialized.contains("Official"));
 		assert!(!serialized.contains("Provisional"));
 	}
@@ -2208,8 +2770,7 @@ mod tests {
 		);
 		assert_eq!(analysis.official_eligible, scoring::FalseOnly);
 		assert_eq!(analysis.ranking_eligible, scoring::FalseOnly);
-		assert!(analysis.fixed_fixture_aiq.is_none());
-		assert_eq!(analysis.conditional_observed_aiq, Some(50.0));
+		assert_eq!(analysis.quality_score, Some(50.0));
 		assert!(analysis.completion_bounds.is_some());
 		assert!(analysis.task_resampling_sensitivity_interval.is_some());
 	}
@@ -2254,8 +2815,7 @@ mod tests {
 		);
 		assert_eq!(analysis.official_eligible, scoring::FalseOnly);
 		assert_eq!(analysis.ranking_eligible, scoring::FalseOnly);
-		assert!(analysis.fixed_fixture_aiq.is_none());
-		assert!(analysis.conditional_observed_aiq.is_none());
+		assert!(analysis.quality_score.is_none());
 		assert!(analysis.completion_bounds.is_none());
 		assert!(analysis.task_resampling_sensitivity_interval.is_none());
 		assert_eq!(analysis.coverage.not_applicable_tasks, 72);
@@ -2318,7 +2878,7 @@ mod tests {
 	#[test]
 	fn ranking_requires_receiver_authorization_and_trusted_non_synthetic_results() {
 		let tasks = official_tasks();
-		let mut results = tasks.iter().map(|task| result(task, 1.0)).collect::<Vec<_>>();
+		let mut results = matrix_results(&tasks);
 
 		for result in &mut results {
 			result.provenance.local_trust = TrustTier::Trusted;
@@ -2338,8 +2898,8 @@ mod tests {
 		.expect("synthetic fixture must remain mathematically scoreable");
 
 		assert_eq!(synthetic.tier, ScoreTier::SyntheticComplete);
-		assert!(synthetic.official_aiq.is_none());
-		assert_eq!(synthetic.conditional_observed_aiq, Some(100.0));
+		assert!(synthetic.score.is_none());
+		assert_eq!(synthetic.quality_score, Some(0.0));
 		assert!(!synthetic.ranking_eligible);
 		assert_eq!(
 			serde_json::to_value(&synthetic).expect("synthetic report serialization")["tier"],
@@ -2378,7 +2938,39 @@ mod tests {
 		.expect("trusted authorized fixture must score");
 
 		assert_eq!(report.tier, ScoreTier::Official);
+		assert!(report.score.is_some());
+		assert!(report.latent_ability.is_some());
 		assert!(report.ranking_eligible);
+	}
+
+	#[test]
+	fn latent_ability_is_deterministic_separated_and_reports_uncertainty() {
+		let tasks = official_tasks();
+		let results = matrix_results(&tasks);
+		let (matrix, _) = scoring::calibration_matrix(
+			&tasks,
+			&results,
+			&scoring::OfficialCalibrationPolicy::default(),
+		)
+		.expect("complete calibration matrix");
+		let bank =
+			scoring::calibration_bank_from_matrix(&tasks, &matrix).expect("calibration bank");
+		let low = scoring::estimate_model_ability(&tasks, &matrix, MODEL_MATRIX[0], &bank)
+			.expect("low model estimate");
+		let high = scoring::estimate_model_ability(&tasks, &matrix, MODEL_MATRIX[16], &bank)
+			.expect("high model estimate");
+
+		assert_eq!(low.calibration_digest, high.calibration_digest);
+		assert_eq!(low.items_used, 72);
+		assert_eq!(low.calibration_task_count, 72);
+		assert_eq!(low.calibration_model_count, 17);
+		assert_eq!(low.reliability_status, "single_matrix_information_only");
+		assert!(high.theta > low.theta);
+		assert!(high.score > low.score);
+		assert!(low.standard_error.is_finite() && low.standard_error > 0.0);
+		assert!(low.theta_ci_low < low.theta_ci_high);
+		assert!(low.score_ci_low < low.score_ci_high);
+		assert!(low.score_ci_low <= low.score && low.score <= low.score_ci_high);
 	}
 
 	#[test]
@@ -2410,8 +3002,8 @@ mod tests {
 
 		assert_eq!(report.tier, ScoreTier::CoverageOnly);
 		assert_eq!(report.coverage.valid_tasks, 59);
-		assert!(report.official_aiq.is_none());
-		assert!(report.conditional_observed_aiq.is_none());
+		assert!(report.score.is_none());
+		assert!(report.quality_score.is_none());
 		assert!(report.task_resampling_sensitivity_interval.is_none());
 	}
 
@@ -2445,8 +3037,8 @@ mod tests {
 
 		assert_eq!(report.tier, ScoreTier::Provisional);
 		assert!(!report.ranking_eligible);
-		assert!(report.official_aiq.is_none());
-		assert_eq!(report.conditional_observed_aiq, Some(50.0));
+		assert!(report.score.is_none());
+		assert_eq!(report.quality_score, Some(50.0));
 
 		let bounds = report.completion_bounds.expect("provisional completion bounds");
 
@@ -2498,7 +3090,7 @@ mod tests {
 				ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
 			)
 			.expect("provisional fixture must score");
-			let aiq = report.conditional_observed_aiq.expect("conditional AIQ");
+			let aiq = report.quality_score.expect("conditional AIQ");
 			let bounds = report.completion_bounds.expect("provisional completion bounds");
 
 			assert_eq!(report.tier, ScoreTier::Provisional);
@@ -2535,7 +3127,7 @@ mod tests {
 				ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
 			)
 			.expect("complete fixture must score");
-			let aiq = report.conditional_observed_aiq.expect("complete fixture AIQ");
+			let aiq = report.quality_score.expect("complete fixture AIQ");
 			let bounds = report.completion_bounds.expect("complete fixture completion bounds");
 
 			assert_eq!(report.tier, ScoreTier::SyntheticComplete);
@@ -2563,6 +3155,159 @@ mod tests {
 			report.task_resampling_sensitivity_interval.as_ref().expect("main interval").method,
 			TASK_RESAMPLING_SENSITIVITY_METHOD
 		);
+	}
+
+	#[test]
+	fn strict_pass_denominator_includes_partial_semantic_scores() {
+		let tasks = official_tasks();
+		let results = tasks
+			.iter()
+			.enumerate()
+			.map(|(index, task)| {
+				let score = if index < 10 {
+					1.0
+				} else if index < 60 {
+					0.5
+				} else {
+					0.0
+				};
+				result(task, score)
+			})
+			.collect::<Vec<_>>();
+		let report = scoring::score_model_with_options(
+			&tasks,
+			&results,
+			MODEL_MATRIX[0],
+			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+		)
+		.expect("fixture must score");
+
+		assert_eq!(report.binary_micro_diagnostic.sample_size, 72);
+		assert_eq!(report.binary_micro_diagnostic.successes, 10);
+		assert_eq!(report.binary_micro_diagnostic.proportion, Some(10.0 / 72.0));
+		assert!(report.binary_micro_diagnostic.wilson_lower.unwrap() < 10.0 / 72.0);
+		assert!(report.binary_micro_diagnostic.wilson_upper.unwrap() > 10.0 / 72.0);
+	}
+
+	#[test]
+	fn joint_rasch_recovers_known_item_order_and_model_order_deterministically() {
+		let tasks = official_tasks();
+		let (_known_locations, known_difficulties, results) = known_rasch_results(&tasks, 0.0);
+		let matrix = calibration_matrix(&results);
+		let first =
+			super::calibration_bank_from_matrix(&tasks, &matrix).expect("bank must converge");
+		let second =
+			super::calibration_bank_from_matrix(&tasks, &matrix).expect("bank must converge");
+
+		assert_eq!(first.digest, second.digest);
+		for task in &tasks {
+			let first_item = first.items.get(&task.task_id).expect("first item");
+			let second_item = second.items.get(&task.task_id).expect("second item");
+			assert_eq!(first_item.difficulty, second_item.difficulty);
+		}
+
+		let max_difficulty_error = tasks
+			.iter()
+			.enumerate()
+			.map(|(index, task)| {
+				(first.items.get(&task.task_id).expect("item").difficulty
+					- known_difficulties[index])
+					.abs()
+			})
+			.fold(0.0, f64::max);
+		assert!(max_difficulty_error < 0.08, "max item error: {max_difficulty_error}");
+
+		let estimates = MODEL_MATRIX
+			.iter()
+			.map(|model| {
+				super::estimate_model_ability(&tasks, &matrix, *model, &first)
+					.expect("known model must estimate")
+			})
+			.collect::<Vec<_>>();
+		assert!(estimates.windows(2).all(|window| window[0].theta < window[1].theta));
+		assert!(estimates.iter().all(|estimate| {
+			estimate.theta.is_finite()
+				&& estimate.standard_error.is_finite()
+				&& estimate.score.is_finite()
+		}));
+	}
+
+	#[test]
+	fn joint_rasch_is_invariant_to_common_parameter_translation() {
+		let tasks = official_tasks();
+		let (_, _, base_results) = known_rasch_results(&tasks, 0.0);
+		let (_, _, shifted_results) = known_rasch_results(&tasks, 3.25);
+		let base = super::calibration_bank_from_matrix(&tasks, &calibration_matrix(&base_results))
+			.expect("base bank must converge");
+		let shifted =
+			super::calibration_bank_from_matrix(&tasks, &calibration_matrix(&shifted_results))
+				.expect("shifted bank must converge");
+
+		for task in &tasks {
+			let base_item = base.items.get(&task.task_id).expect("base item");
+			let shifted_item = shifted.items.get(&task.task_id).expect("shifted item");
+			assert!((base_item.difficulty - shifted_item.difficulty).abs() < 1e-10);
+		}
+	}
+
+	#[test]
+	fn joint_rasch_rejects_a_nonconverged_iteration_limit() {
+		let tasks = official_tasks();
+		let (_, _, results) = known_rasch_results(&tasks, 0.0);
+		let matrix = calibration_matrix(&results);
+		let error = super::fit_joint_rasch_parameters_with_limit(&tasks, &matrix, 1)
+			.expect_err("one outer iteration must not be publishable");
+
+		assert!(error.to_string().contains("did not converge"));
+	}
+
+	#[test]
+	fn conditional_map_is_finite_and_prior_shrinks_extreme_responses() {
+		let tasks = official_tasks();
+		let (_, _, baseline_results) = known_rasch_results(&tasks, 0.0);
+		let baseline_matrix = calibration_matrix(&baseline_results);
+		let bank = super::calibration_bank_from_matrix(&tasks, &baseline_matrix)
+			.expect("baseline bank must converge");
+
+		for (extreme_score, expected_sign) in [(0.0, -1.0), (1.0, 1.0)] {
+			let mut results = baseline_results.clone();
+			for result in &mut results {
+				if result.model == MODEL_MATRIX[0] {
+					result.task_score = Some(extreme_score);
+					result.evaluation = if extreme_score == 0.0 {
+						EvaluationOutcome::Incorrect
+					} else {
+						EvaluationOutcome::Correct
+					};
+				}
+			}
+			let matrix = calibration_matrix(&results);
+			let estimate = super::estimate_model_ability(&tasks, &matrix, MODEL_MATRIX[0], &bank)
+				.expect("extreme responses must still estimate");
+
+			assert!(estimate.theta.is_finite());
+			assert!(estimate.standard_error.is_finite());
+			assert!(estimate.theta.abs() < super::RASCH_MAX_ABS_PARAMETER);
+			assert!(estimate.theta * expected_sign > 0.0);
+			let data_gradient = if extreme_score == 0.0 {
+				-tasks
+					.iter()
+					.map(|task| {
+						let difficulty = bank.items.get(&task.task_id).expect("item").difficulty;
+						super::logistic(estimate.theta - difficulty)
+					})
+					.sum::<f64>()
+			} else {
+				tasks
+					.iter()
+					.map(|task| {
+						let difficulty = bank.items.get(&task.task_id).expect("item").difficulty;
+						1.0 - super::logistic(estimate.theta - difficulty)
+					})
+					.sum::<f64>()
+			};
+			assert!((data_gradient - estimate.theta * super::RASCH_PRIOR_PRECISION).abs() < 1e-8);
+		}
 	}
 
 	#[test]
@@ -2602,7 +3347,7 @@ mod tests {
 		assert_eq!(report.tier, ScoreTier::NotApplicable);
 		assert_eq!(report.coverage.not_applicable_tasks, 72);
 		assert!(!report.ranking_eligible);
-		assert!(report.official_aiq.is_none());
+		assert!(report.score.is_none());
 	}
 
 	#[test]
@@ -2636,7 +3381,7 @@ mod tests {
 		.expect("invalid capability evidence must remain reportable");
 
 		assert_eq!(report.tier, ScoreTier::CoverageOnly);
-		assert_eq!(report.official_aiq, None);
+		assert_eq!(report.score, None);
 		assert_eq!(report.coverage.valid_tasks, 0);
 		assert_eq!(report.coverage.invalid_tasks, 72);
 		assert_eq!(report.coverage.not_applicable_tasks, 0);
@@ -2668,7 +3413,7 @@ mod tests {
 		.expect("invalid capability evidence must remain reportable");
 
 		assert_eq!(report.tier, ScoreTier::Provisional);
-		assert_eq!(report.official_aiq, None);
+		assert_eq!(report.score, None);
 		assert_eq!(report.coverage.valid_tasks, 71);
 		assert_eq!(report.coverage.invalid_tasks, 1);
 		assert_eq!(report.domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(), 0);
@@ -2704,7 +3449,7 @@ mod tests {
 		.expect("invalid capability evidence must remain reportable");
 
 		assert_eq!(report.tier, ScoreTier::Provisional);
-		assert_eq!(report.official_aiq, None);
+		assert_eq!(report.score, None);
 		assert_eq!(report.coverage.valid_tasks, 71);
 		assert_eq!(report.coverage.invalid_tasks, 1);
 		assert_eq!(report.domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(), 0);
@@ -2778,8 +3523,8 @@ mod tests {
 		.expect("zero-score failures must score");
 
 		assert_eq!(report.tier, ScoreTier::SyntheticComplete);
-		assert_eq!(report.official_aiq, None);
-		assert_eq!(report.conditional_observed_aiq, Some(0.0));
+		assert_eq!(report.score, None);
+		assert_eq!(report.quality_score, Some(0.0));
 		assert_eq!(
 			report.domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(),
 			72
@@ -2815,7 +3560,7 @@ mod tests {
 		assert_eq!(report.coverage.valid_tasks, 72);
 		assert_eq!(report.coverage.invalid_tasks, 0);
 		assert_eq!(report.domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(), 1);
-		assert!(report.official_aiq.is_none());
-		assert!(report.conditional_observed_aiq.expect("synthetic descriptive score") < 100.0);
+		assert!(report.score.is_none());
+		assert!(report.quality_score.expect("synthetic descriptive score") < 100.0);
 	}
 }

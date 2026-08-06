@@ -8,6 +8,7 @@ import {
   type TestInfo,
 } from '@playwright/test';
 
+import scorerGeneratedFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
 import { resolvePlaywrightCompanionPort } from '../playwright-port.ts';
 
 interface LivePublishedFixtures {
@@ -18,6 +19,16 @@ interface PublishedLeaderboardEvidence {
   matrix_id: string;
   run_id: string;
   score: number;
+  score_ci_low: number;
+  score_ci_high: number;
+  quality_score: number;
+  strict_pass_rate: number;
+  strict_pass_low: number;
+  strict_pass_high: number;
+  strict_pass_sample_size: number;
+  strict_pass_successes: number;
+  reliability_status: string;
+  calibration_status: string;
   sensitivity_low: number;
   sensitivity_high: number;
   sample_size: number;
@@ -70,7 +81,7 @@ const test = base.extend<LivePublishedFixtures>({
 const calibrationRunId = `run_${'8'.repeat(64)}`;
 const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
 
-const verifiedPublishedAggregates: Readonly<
+const historicalPublishedAggregates: Readonly<
   Record<string, { runId: string; score: number; sensitivityLow: number; sensitivityHigh: number }>
 > = {
   'sol-low': {
@@ -177,16 +188,35 @@ const verifiedPublishedAggregates: Readonly<
   },
 };
 
-function verifiedPublishedAggregate(matrixId: string) {
-  const aggregate = verifiedPublishedAggregates[matrixId];
-  if (!aggregate) throw new Error(`Missing verified public aggregate for ${matrixId}.`);
+const scorerGeneratedAggregates = new Map(
+  scorerGeneratedFixture.leaderboard.map((aggregate) => [aggregate.matrix_id, aggregate]),
+);
+const historicalRunIds = new Set(
+  Object.values(historicalPublishedAggregates).map((aggregate) => aggregate.runId),
+);
+if (
+  scorerGeneratedFixture.schema_version !== 'aiq.test-generated-public-fixture.v1' ||
+  !scorerGeneratedFixture.test_generated ||
+  scorerGeneratedFixture.production_publishable ||
+  scorerGeneratedFixture.official_eligible ||
+  scorerGeneratedFixture.ranking_eligible ||
+  !scorerGeneratedFixture.synthetic ||
+  scorerGeneratedAggregates.size !== 17 ||
+  scorerGeneratedFixture.leaderboard.some((aggregate) => historicalRunIds.has(aggregate.run_id))
+) {
+  throw new Error('The browser scorer fixture is not isolated from historical production data.');
+}
+
+function scorerGeneratedAggregate(matrixId: string) {
+  const aggregate = scorerGeneratedAggregates.get(matrixId);
+  if (!aggregate) throw new Error(`Missing scorer-generated public aggregate for ${matrixId}.`);
   return aggregate;
 }
 
 const routes = [
   '/',
   '/runs',
-  `/runs/${verifiedPublishedAggregate('sol-ultra').runId}`,
+  `/runs/${scorerGeneratedAggregate('sol-ultra').run_id}`,
   '/calibrations',
   `/calibrations/${calibrationRunId}`,
   `/calibrations/${subsetCalibrationRunId}`,
@@ -237,6 +267,16 @@ function isPublishedLeaderboardEvidence(value: unknown): value is PublishedLeade
     typeof value.matrix_id === 'string' &&
     typeof value.run_id === 'string' &&
     typeof value.score === 'number' &&
+    typeof value.score_ci_low === 'number' &&
+    typeof value.score_ci_high === 'number' &&
+    typeof value.quality_score === 'number' &&
+    typeof value.strict_pass_rate === 'number' &&
+    typeof value.strict_pass_low === 'number' &&
+    typeof value.strict_pass_high === 'number' &&
+    typeof value.strict_pass_sample_size === 'number' &&
+    typeof value.strict_pass_successes === 'number' &&
+    typeof value.reliability_status === 'string' &&
+    typeof value.calibration_status === 'string' &&
     typeof value.sensitivity_low === 'number' &&
     typeof value.sensitivity_high === 'number' &&
     typeof value.sample_size === 'number' &&
@@ -291,8 +331,8 @@ const officialDomainTaskCounts = [
   ['reliability_recovery', 7],
 ] as const;
 
-function recomputeEqualDomainAiq(results: readonly PublishedResultEvidence[]): number {
-  if (results.length !== 72) throw new Error('Official result evidence must contain 72 rows.');
+function recomputeQualityScore(results: readonly PublishedResultEvidence[]): number {
+  if (results.length !== 72) throw new Error('Quality-score evidence must contain 72 rows.');
   const domainMeans = officialDomainTaskCounts.map(([domain, expectedTaskCount]) => {
     const scores = results.filter((result) => result.domain === domain).map(({ score }) => score);
     if (
@@ -329,7 +369,7 @@ for (const route of routes) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
     expectNotPubliclyCacheable(response);
-    await expect(page.locator('main h1')).toBeVisible();
+    await expect(page.locator('main h1').first()).toBeVisible();
     await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
     if (route.startsWith('/trends')) {
       const evidenceDisclosure = page.locator('details.evidence-status-disclosure');
@@ -356,9 +396,11 @@ test('the live overview exposes all 17 published configurations without seed sub
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1, name: 'Latest benchmark' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
-  await expect(page.getByText('Published Aug 3, 2026', { exact: false })).toBeVisible();
+  await expect(page.getByText('Published Dec 31, 2025', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  await expect(page.getByRole('heading', { name: 'AIQ index by configuration' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Calibrated ability by configuration' }),
+  ).toBeVisible();
   await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
   await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
   await page.getByText('Read all configuration values as a table', { exact: true }).click();
@@ -370,7 +412,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(page.getByText('1,224 task cells', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
   const efficiencyPlot = page.getByRole('region', {
-    name: 'AIQ score vs total run time',
+    name: 'Calibrated ability vs total run time',
   });
   await expect(efficiencyPlot).toBeVisible();
   await expect(efficiencyPlot).toContainText('Lower and left is more efficient');
@@ -381,12 +423,12 @@ test('the live overview exposes all 17 published configurations without seed sub
   );
   await efficiencyPlot.getByRole('button', { name: 'Cost', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'AIQ score vs API-equivalent cost' }),
+    page.getByRole('heading', { name: 'Calibrated ability vs API-equivalent cost' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('region', { name: 'AIQ score vs API-equivalent cost' }),
+    page.getByRole('region', { name: 'Calibrated ability vs API-equivalent cost' }),
   ).toContainText('1/17 configurations plotted in the canonical matrix');
-  await page.locator('details.evidence-notes > summary').click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
   await expect(
     page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
@@ -425,8 +467,8 @@ test('the public index reports runtime issues without conflating evaluator outco
     name: 'Descriptively ordered public index table',
   });
   await expect(publicIndex.getByRole('row')).toHaveCount(18);
-  const runtimeIssues = await publicIndex.locator('tbody tr td:nth-child(6)').allTextContents();
-  expect(runtimeIssues.reduce((sum, value) => sum + Number(value.trim()), 0)).toBe(6);
+  const runtimeIssues = await publicIndex.locator('tbody tr td:nth-child(7)').allTextContents();
+  expect(runtimeIssues.reduce((sum, value) => sum + Number(value.trim()), 0)).toBe(0);
   await expect(publicIndex.getByRole('columnheader', { name: 'Runtime issues' })).toBeVisible();
 });
 
@@ -521,13 +563,13 @@ test('Official compare efficiency is limited to the two selected run identities'
 }) => {
   await page.goto('/compare');
   const comparison = page.getByRole('table', { name: 'Selected comparison' });
-  await expect(comparison.getByRole('row')).toHaveCount(7);
+  await expect(comparison.getByRole('row')).toHaveCount(8);
   const cost = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
   await expect(cost.getByRole('cell').first()).toHaveText('$12.3456');
   await expect(cost.getByRole('cell').nth(1)).toHaveText('Unavailable');
   await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
   const evidence = page.getByRole('table', { name: 'Comparison evidence details' });
-  await expect(evidence.getByRole('row')).toHaveCount(8);
+  await expect(evidence.getByRole('row')).toHaveCount(11);
   const batch = evidence.getByRole('row').filter({ hasText: 'Batch wall-clock' });
   await expect(batch.getByRole('cell')).toHaveText(['1.6 h', '1.6 h']);
   const durationCoverage = evidence.getByRole('row').filter({ hasText: 'Duration coverage' });
@@ -580,12 +622,18 @@ test('published leaderboard, trends, runs, and results share coherent score evid
   expect(new Set(runs.map((row) => row.id)).size).toBe(runs.length);
 
   for (const current of leaderboard) {
-    const verified = verifiedPublishedAggregate(current.matrix_id);
+    const generated = scorerGeneratedAggregate(current.matrix_id);
     expect(current).toMatchObject({
-      run_id: verified.runId,
-      score: verified.score,
-      sensitivity_low: verified.sensitivityLow,
-      sensitivity_high: verified.sensitivityHigh,
+      run_id: generated.run_id,
+      score: generated.score,
+      score_ci_low: generated.score_ci_low,
+      score_ci_high: generated.score_ci_high,
+      quality_score: generated.quality_score,
+      strict_pass_rate: generated.strict_pass_rate,
+      sensitivity_low: generated.sensitivity_low,
+      sensitivity_high: generated.sensitivity_high,
+      calibration_status: 'calibrated',
+      scoring_version: '1.0.5',
     });
   }
 
@@ -621,15 +669,25 @@ test('published leaderboard, trends, runs, and results share coherent score evid
     const runResults = resultsByRunId.get(current.run_id);
     expect(runResults, `missing task results for ${current.run_id}`).toBeDefined();
     if (!runResults) continue;
-    const recomputedAiq = Number(recomputeEqualDomainAiq(runResults).toFixed(3));
-    expect(recomputedAiq).toBe(current.score);
-    expect(recomputedAiq).toBe(trend.score);
-    expect(current.sensitivity_low).toBeLessThanOrEqual(recomputedAiq);
-    expect(current.sensitivity_high).toBeGreaterThanOrEqual(recomputedAiq);
+    const recomputedQuality = recomputeQualityScore(runResults);
+    const strictPassSuccesses = runResults.filter((result) => result.score === 1).length;
+    expect(recomputedQuality).toBeCloseTo(current.quality_score, 10);
+    expect(recomputedQuality).toBeCloseTo(trend.quality_score, 10);
+    expect(current.strict_pass_sample_size).toBe(runResults.length);
+    expect(current.strict_pass_successes).toBe(strictPassSuccesses);
+    expect(current.strict_pass_rate).toBeCloseTo(strictPassSuccesses / runResults.length, 12);
+    expect(current.sensitivity_low).toBeLessThanOrEqual(recomputedQuality);
+    expect(current.sensitivity_high).toBeGreaterThanOrEqual(recomputedQuality);
+    expect(current.score_ci_low).toBeLessThanOrEqual(current.score);
+    expect(current.score_ci_high).toBeGreaterThanOrEqual(current.score);
     expect(trend).toMatchObject({
       matrix_id: current.matrix_id,
       run_id: current.run_id,
       score: current.score,
+      score_ci_low: current.score_ci_low,
+      score_ci_high: current.score_ci_high,
+      quality_score: current.quality_score,
+      strict_pass_rate: current.strict_pass_rate,
       sensitivity_low: current.sensitivity_low,
       sensitivity_high: current.sensitivity_high,
       sample_size: current.sample_size,
@@ -645,6 +703,10 @@ test('published leaderboard, trends, runs, and results share coherent score evid
     expect(retained[0]).toMatchObject({
       run_id: current.run_id,
       score: current.score,
+      score_ci_low: current.score_ci_low,
+      score_ci_high: current.score_ci_high,
+      quality_score: current.quality_score,
+      strict_pass_rate: current.strict_pass_rate,
       sensitivity_low: current.sensitivity_low,
       sensitivity_high: current.sensitivity_high,
       sample_size: current.sample_size,
@@ -652,19 +714,14 @@ test('published leaderboard, trends, runs, and results share coherent score evid
     });
   }
 
-  expect(results.filter((result) => result.outcome === 'correct')).toHaveLength(329);
-  expect(results.filter((result) => result.outcome === 'partial')).toHaveLength(259);
-  expect(results.filter((result) => result.outcome === 'incorrect')).toHaveLength(630);
-  expect(results.filter((result) => result.outcome === 'timeout')).toHaveLength(5);
-  expect(results.filter((result) => result.outcome === 'budget_exhausted')).toHaveLength(1);
+  expect(results.filter((result) => result.outcome === 'correct')).toHaveLength(10);
+  expect(results.filter((result) => result.outcome === 'partial')).toHaveLength(1_207);
+  expect(results.filter((result) => result.outcome === 'incorrect')).toHaveLength(7);
   expect(new Set(results.map((result) => result.outcome))).toEqual(
-    new Set(['correct', 'partial', 'incorrect', 'timeout', 'budget_exhausted']),
+    new Set(['correct', 'partial', 'incorrect']),
   );
-  expect(results.filter((result) => result.execution_status === 'completed')).toHaveLength(1_218);
-  expect(results.filter((result) => result.execution_status === 'runtime_issue')).toHaveLength(6);
-  expect(new Set(results.map((result) => result.execution_status))).toEqual(
-    new Set(['completed', 'runtime_issue']),
-  );
+  expect(results.filter((result) => result.execution_status === 'completed')).toHaveLength(1_224);
+  expect(new Set(results.map((result) => result.execution_status))).toEqual(new Set(['completed']));
   expect(
     results.every((result) => {
       if (result.outcome === 'correct') return result.score === 1;
@@ -690,18 +747,18 @@ test('Official trends expose current time and cost evidence', async ({ page }) =
 });
 
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {
-  await page.goto(`/runs/${verifiedPublishedAggregate('sol-ultra').runId}`);
+  await page.goto(`/runs/${scorerGeneratedAggregate('sol-ultra').run_id}`);
   await expect(page.locator('.task-list > article')).toHaveCount(72);
   await page.locator('details.run-evidence-notes > summary').click();
   await expect(page.getByText('Official', { exact: true })).toBeVisible();
-  await expect(page.getByText('Correct', { exact: true }).locator('..')).toContainText('19');
-  await expect(page.getByText('Partial', { exact: true }).locator('..')).toContainText('16');
-  await expect(page.getByText('Incorrect', { exact: true }).locator('..')).toContainText('35');
+  await expect(page.getByText('Correct', { exact: true }).locator('..')).toContainText('0');
+  await expect(page.getByText('Partial', { exact: true }).locator('..')).toContainText('71');
+  await expect(page.getByText('Incorrect', { exact: true }).locator('..')).toContainText('1');
   await expect(
     page.locator('.run-stats').getByText('Runtime issue', { exact: true }).locator('..'),
-  ).toContainText('2');
+  ).toContainText('0');
   const provenance = page.getByRole('heading', { name: 'Run provenance' }).locator('..');
-  await expect(provenance).toContainText('corpus_2026.08.02-aiq-core-1.0.2-controlled.1');
+  await expect(provenance).toContainText('corpus_test-generated-aiq-core-1.0.5');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
   await expect(provenance.getByText('Not published', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Time, token coverage, and cost' })).toBeVisible();
@@ -722,29 +779,23 @@ test('the published run exposes complete task and provenance evidence', async ({
   const evaluatorOutcomes = taskResults.filter({
     hasText: 'The evaluator rejected the response.',
   });
-  await expect(evaluatorOutcomes).toHaveCount(35);
+  await expect(evaluatorOutcomes).toHaveCount(1);
   await expect(evaluatorOutcomes.first()).toContainText('Published outcome');
   await expect(evaluatorOutcomes.first()).toContainText('incorrect · completed');
   await expect(evaluatorOutcomes.first()).not.toContainText('EXPLANATION_NOT_PUBLISHED');
-  await page.goto(`/runs/${verifiedPublishedAggregate('sol-max').runId}`);
-  const timeout = page.locator('.task-list > article').filter({ hasText: 'timeout' });
-  await expect(timeout).toHaveCount(1);
-  await expect(timeout).toContainText('The task exceeded its time limit.');
-  await expect(timeout).toContainText('Retryable: yes');
+  await expect(taskResults.filter({ hasText: 'runtime_issue' })).toHaveCount(0);
 
-  await page.goto(`/runs/${verifiedPublishedAggregate('luna-max').runId}`);
-  const budgetExceeded = page.locator('.task-list > article').filter({
-    hasText: 'budget_exceeded',
-  });
-  await expect(budgetExceeded).toHaveCount(1);
-  await expect(budgetExceeded).toContainText('The task exceeded a resource budget.');
-  await expect(budgetExceeded).toContainText('Retryable: no');
+  await page.goto(`/runs/${scorerGeneratedAggregate('luna-max').run_id}`);
+  await page.locator('details.run-evidence-notes > summary').click();
+  await expect(page.getByText('Correct', { exact: true }).locator('..')).toContainText('2');
+  await expect(page.getByText('Partial', { exact: true }).locator('..')).toContainText('70');
+  await expect(page.getByText('Incorrect', { exact: true }).locator('..')).toContainText('0');
 });
 
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {
   await page.goto('/method');
-  await expect(page.getByText('aiq-core@1.0.2', { exact: true })).toBeVisible();
-  await expect(page.getByText('1.0.2', { exact: true })).toBeVisible();
+  await expect(page.getByText('aiq-core@1.0.5', { exact: true })).toBeVisible();
+  await expect(page.getByText('1.0.5', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');

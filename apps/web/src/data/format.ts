@@ -74,9 +74,30 @@ export function formatSensitivityInterval(
   return `${formatScore(entry.sensitivityLow)}–${formatScore(entry.sensitivityHigh)}`;
 }
 
-export function sortLeaderboardByPointEstimate(
-  entries: readonly LeaderboardEntry[],
-): readonly LeaderboardEntry[] {
+export function formatScoreConfidenceInterval(
+  entry: Pick<LeaderboardEntry, 'scoreCiLow' | 'scoreCiHigh'>,
+): string {
+  if (entry.scoreCiLow === null || entry.scoreCiHigh === null) return '—';
+  return `${formatScore(entry.scoreCiLow)}–${formatScore(entry.scoreCiHigh)}`;
+}
+
+export function formatStrictPassRate(
+  entry: Pick<LeaderboardEntry, 'strictPassRate' | 'strictPassSampleSize'>,
+): string {
+  if (entry.strictPassRate === null || entry.strictPassSampleSize === null) return '—';
+  return `${(entry.strictPassRate * 100).toFixed(1)}% (n=${entry.strictPassSampleSize})`;
+}
+
+export function formatStrictPassConfidenceInterval(
+  entry: Pick<LeaderboardEntry, 'strictPassLow' | 'strictPassHigh'>,
+): string {
+  if (entry.strictPassLow === null || entry.strictPassHigh === null) return '—';
+  return `${(entry.strictPassLow * 100).toFixed(1)}%–${(entry.strictPassHigh * 100).toFixed(1)}%`;
+}
+
+export function sortLeaderboardByPointEstimate<T extends LeaderboardEntry>(
+  entries: readonly T[],
+): readonly T[] {
   return entries.toSorted((left, right) => {
     if (left.score !== null && right.score !== null) {
       return right.score - left.score || left.id.localeCompare(right.id);
