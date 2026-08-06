@@ -56,7 +56,7 @@ export default async function CalibrationsPage({
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Calibration register</span>
-        <h1>Verified provenance · untrusted calibration · not Official · not ranking eligible</h1>
+        <h1>Calibration register</h1>
         <p>
           Chronological, replay-verified diagnostic evidence stays separate from the Official
           leaderboard, compare, and trends surfaces. Each page contains at most 20 retained runs.
@@ -75,6 +75,7 @@ export default async function CalibrationsPage({
               <tr>
                 <th>Started</th>
                 <th>Selection</th>
+                <th>Scoring</th>
                 <th>Replay</th>
                 <th>Classification</th>
                 <th>Evidence</th>
@@ -90,6 +91,7 @@ export default async function CalibrationsPage({
                     {run.selectedModelCount} models × {run.selectedTaskCount} tasks
                     <small>{run.resultCount.toLocaleString()} retained result cells</small>
                   </td>
+                  <td>{run.scoringVersion || 'Unavailable'}</td>
                   <td>{run.replayStatus.replaceAll('_', ' ')}</td>
                   <td>
                     Untrusted · not Official · not ranking eligible
@@ -128,7 +130,10 @@ export default async function CalibrationsPage({
             Efficiency and scatter evidence below is bounded to the first run on this page:{' '}
             <code>{selectedRun.id}</code>.
           </p>
-          <CalibrationEfficiency scores={scores.data} />
+          <CalibrationEfficiency
+            scores={scores.data}
+            scoringVersion={selectedRun.scoringVersion || null}
+          />
         </>
       ) : hasRuns ? (
         <>

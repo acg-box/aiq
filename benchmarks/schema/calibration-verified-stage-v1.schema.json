@@ -62,7 +62,7 @@
     "evaluator_results_artifact": {
       "$ref": "result-package-v3.schema.json#/$defs/evaluatorResultsArtifact"
     },
-    "scoring_version": { "const": "1.0.2" },
+    "scoring_version": { "const": "1.0.5" },
     "execution_concurrency": { "type": "integer", "minimum": 1, "maximum": 32 },
     "task_ids": {
       "type": "array",
@@ -92,8 +92,8 @@
     },
     "pricing": { "$ref": "#/$defs/pricing" },
     "task_set_id": { "const": "aiq-core" },
-    "task_set_version": { "const": "1.0.2" },
-    "benchmark_version": { "const": "aiq-core@1.0.2" },
+    "task_set_version": { "const": "1.0.5" },
+    "benchmark_version": { "const": "aiq-core@1.0.5" },
     "prompt_set_digest": { "$ref": "#/$defs/hash" },
     "runner_commit": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
     "region": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },

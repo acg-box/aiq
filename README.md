@@ -7,18 +7,20 @@ Core catalog, and one declarative PostgreSQL schema.
 AIQ production is live at [aiq.wiki](https://aiq.wiki). The personal Vercel
 scope `acgbox` hosts project `aiq`. The personal Supabase organization `ACG Box`
 hosts project `aiq` on PostgreSQL 17.6 with reference
-`xxnszykaeapolqdnhalx`. Production uses the private Storage buckets
+`xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
+`aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
 `aiq-submission-packages` and `aiq-runner-artifacts`. The first Official launch
 publication was deployed from merge commit
 `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
 evidence, not the identity of every later production deployment.
 
-The native Apple Silicon macOS runner completed one real, non-synthetic Official
-`aiq-core@1.0.2` batch. It contains 17 configuration runs and 72 tasks per run,
+The live production data is the historical AIQ Core `1.0.2` matrix. The native
+Apple Silicon macOS runner completed this one real, non-synthetic Official
+batch. It contains 17 configuration runs and 72 tasks per run,
 or 1,224 task-level results. This is one Official matrix, not 1,224 benchmark
 runs. The verifier replayed and accepted the evidence. A distinct publisher
 published the matrix as `trusted_verified`. Of the 1,224 results, 1,218
-completed and 6 failed. The outcomes are 329
+completed and 6 runtime issues. The outcomes are 329
 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
 `budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
 
@@ -32,19 +34,60 @@ The public database exposes 17 runs, 1,224 results, 17 leaderboard rows, 17
 model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
 
+The `1.0.3` Official attempt was interrupted after the calibration evidence had
+already proved a ceiling-policy failure. It was rejected as unpublished
+calibration evidence. No hidden responses or hidden task details were
+published. The first AIQ Core `1.0.4` calibration then completed all 1,224
+cells. It is preserved as non-Official statistical evidence because it failed
+the release policy. This does not mean that all task executions failed. AIQ
+Core `1.0.5` retargets four calibration-sensitive tasks. Run those four tasks
+across all 17 configurations as a 68-cell pilot before a complete 17-by-72
+non-Official calibration. No operator can override a failed release gate. Real
+calibration evidence can enter the public calibration register only after signed
+verifier admission and distinct publication, and it remains non-Official.
+
+The first `1.0.5` 68-cell pilot completed 63 cells and timed out on 5. It was
+rejected because the completed task means were 0.933–0.992 and therefore did
+not distinguish the model configurations. The current create-new candidate
+replaces the four single-dimension repairs with bounded executor, quoted-record
+parser, six-field configuration, and Unicode log-preview interactions. Their
+public wall-time budget is 900 seconds; this is a timeout correction, not a
+score adjustment. The rejected pilot remains immutable evidence.
+
 ## Product contract
 
-- Repository source targets AIQ Core `1.0.2` and scoring `1.0.2`, with 72
-  private controlled tasks in ten domains.
-- AIQ Core `1.0.2` is the only accepted launch contract.
+- Repository source targets the public AIQ Core `1.0.5` candidate and scoring
+  `1.0.5`, with 72 private controlled tasks in ten domains.
+- The active public candidate, task, and scorer contract is `1.0.5`. It retargets
+  four calibration-sensitive tasks and carries forward 68 task designs with new
+  version, provenance, and commitment bindings.
+- The create-new `1.0.5` interaction candidate passed two-candidate
+  reproducibility generation, independent authoring validation, and the Rust
+  72-task corpus validator. Its controlled identities remain calibration
+  candidates, not accepted release or Official identities. The new 68-cell
+  pilot, full calibration, Contrast generation, final native build, real
+  Official run, publication, and deployment are pending. Production remains on
+  the historical `1.0.2` matrix.
 - The public catalog contains metadata and commitments, not private task content.
+- Task scores use committed weighted binary checks. A failed hard gate or
+  structural check sets the score to zero; otherwise the evaluator divides
+  passed positive weight by total positive weight. The verifier replays the
+  exact committed check identities and weights without rounding.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v3` envelopes.
 - Every result keeps runner-observed elapsed time and, when Codex reports it,
   token usage and a versioned Standard API-equivalent cost estimate.
+- Public evidence labels time as `runner_observed`, provider token source as
+  `provider_reported`, and verifier-checked token and cost evidence as
+  `verifier_recomputed`. Unavailable evidence remains null, not zero.
 - The verifier reconstructs submitted workspaces and replays deterministic
   evaluators before it signs `aiq.verifier-attestation.v3` evidence.
+- The verifier also provides an offline `diagnose-rescore` audit. It first
+  verifies and replays one source package, then scores the preserved cells with
+  a candidate source, task, evaluator, runtime, and toolchain set. Its
+  create-new report is permanently non-Official and non-ranking. It cannot
+  publish or create an attestation.
 - Production uses three distinct identities: runner, verifier, and publisher.
 - The Web application reads public database views and sends controlled writes
   through server routes.
@@ -52,15 +95,49 @@ artifact bindings, including 19 capability artifacts.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
+sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 ```
 
-Its catalog release identity is
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-Production accepts only `1.0.2`. The published Official `72 × 17` matrix is
-one batch of 17 configuration runs and 1,224 task-level executions.
+Its public release digest is
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
+The release-policy identity is `aiq-core/1.0.5`. Do not infer any controlled
+identity from these public digests. The current create-new interaction candidate
+has evaluator identity
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
+scorer-manifest identity
+`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
+generated-task tree identity
+`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
+Core commitment identity
+`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`,
+and public-safe database task-set identity
+`sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`.
+These identities remain provisional until calibration accepts this candidate;
+Contrast generation is still pending. The checked Core schema
+requires `runner.identity_kind` to remain `source_only` and
+`runner.built_binary_sha256` to remain null. The shared Rust validator now fails
+closed on this runner subtree for both Core and Contrast. Contrast does not have
+a separate checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
+identities. The source-only corpus rule and signed per-run runner and Codex
+executable provenance are the executable product contracts. After the final
+clean build, the operator retains a private, unsigned audit receipt with the
+exact source commit and tree identity and SHA-256 values for the native runner,
+verifier, Node.js, and ripgrep executables. This receipt is reproducibility
+evidence, not a product protocol, database input, or published artifact. The
+repository does not validate it. Do not infer a runtime hash from a generated-task
+tree digest. The published historical `1.0.2` Official `72 × 17` matrix is one
+batch of 17 configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
+
+The Web application is a professional analysis workbench. Scientific score
+context reports the sample count, fixed-fixture task-sensitivity interval, coverage,
+missing cells, runtime state, scoring method, and provenance. It keeps semantic
+task outcomes separate from runtime, invalid, and missing cells. Cost remains an
+estimated Standard API-equivalent comparison, not an actual ChatGPT or Codex
+subscription bill. Charts use ECharts with SVG rendering and ARIA descriptions.
+Users can select system, light, or dark color themes. The production views use
+the real historical matrix, not synthetic data.
 
 ## Repository map
 
@@ -100,6 +177,7 @@ cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo run -p aiq-runner -- --help
 cargo run -p aiq-verifier -- --help
+cargo run -p aiq-verifier -- diagnose-rescore --help
 ```
 
 ## Validation
@@ -129,11 +207,25 @@ inputs. Neither smoke creates a benchmark result.
 ## Database initialization
 
 `databases/schema.sql` is the sole desired database state.
-`databases/init.ts` is the only production initialization entry point. It opens
+`databases/init.ts` is the only production initialization entry point. There is
+no migration chain. It opens
 one direct PostgreSQL connection and applies the schema plus public reference
-data in one transaction. It rejects a database that already contains AIQ schema
-or roles. This is the one greenfield desired state. Create another empty project
-after a failed initialization.
+data in one transaction. It accepts the direct host for personal Supabase
+project `xxnszykaeapolqdnhalx`. An explicit test/development override accepts
+only a loopback target and cannot apply in production. It rejects a database
+that already contains the AIQ schema, gateway roles, or either exact AIQ
+Storage bucket identity. Apply this one greenfield desired state to the existing
+target project only after its AIQ namespace is empty. If AIQ residue exists, the
+operator must
+remove only `aiq_private`, the two AIQ gateway roles, and the exact AIQ-owned
+public views and RPC overloads. Preserve all Supabase-managed and non-AIQ
+objects. This cleanup is a deployment prerequisite, not a migration or
+compatibility path. The schema creates the `aiq-submission-packages` and
+`aiq-runner-artifacts` Storage buckets as private. The preflight rejects either
+existing bucket identity. Do not create the buckets in a separate operator step.
+The preflight enumerates the 12 canonical public view names and all public RPC
+names from the desired state. It rejects every overload of those exact RPC
+names without matching unrelated public objects.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -141,13 +233,16 @@ AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
 
-The production reference must contain the real controlled, non-synthetic AIQ
-Core `1.0.2` corpus commitment, its real canonical `published_at` timestamp, and
+For an empty AIQ namespace, the production reference must contain the real
+controlled, non-synthetic AIQ Core `1.0.5` corpus commitment, its real canonical
+`published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
-only after the controlled corpus and final native binaries pass model-free
-validation; the repository contains no substitute production reference.
-A successful receipt reports scoring `1.0.2`, both source-head catalog
-identities, 72 tasks, 17 model configurations, and three nodes.
+only after the controlled corpus passes model-free validation and the operator
+verifies the final native build; the repository contains no substitute
+production reference. Retain the private final-build audit receipt separately.
+Database initialization does not accept or validate that receipt.
+A successful initialization receipt must report scoring `1.0.5`, both public
+catalog identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and
 calibration publication checks:
@@ -212,6 +307,9 @@ The current production runner is native macOS. Linux and Docker remain future
 deployment targets. No cloud runner or verifier worker and no benchmark or
 Storage schedule currently exist. The twice-daily schedule and its next run are
 pending operations work, not part of the current production state.
+The subscription runner uses a protected copy of `~/.codex/auth.json` in an
+isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
+as its writable runtime directory.
 See [Operations and Validation](openwiki/operations.md) for the native command
 contract. Repository support does not prove that private inputs, credentials,
 or live model capabilities are configured.

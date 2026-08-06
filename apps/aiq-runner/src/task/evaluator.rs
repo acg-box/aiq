@@ -882,6 +882,143 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
+	fn configured_zero_weight_hard_gate_failure_forces_zero() {
+		let result: EvaluationResult = serde_json::from_value(serde_json::json!({
+			"schema_version": "aiq.evaluator-result.v3",
+			"outcome": "incorrect",
+			"score": 0.0,
+			"checks": [
+				{
+					"check_id": "behavior",
+					"weight": 3,
+					"passed": true,
+					"failure_class": "none",
+					"evidence_digest":
+						"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+				},
+				{
+					"check_id": "policy",
+					"weight": 0,
+					"passed": false,
+					"failure_class": "value",
+					"evidence_digest":
+						"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				}
+			]
+		}))
+		.expect("result must deserialize");
+		let configuration = serde_json::from_value(serde_json::json!({
+			"checks": [
+				{"check_id": "behavior", "type": "text", "weight": 3},
+				{"check_id": "policy", "type": "text", "hard_gate": true, "weight": 0}
+			]
+		}))
+		.expect("configuration must deserialize");
+
+		result
+			.validate_against_configuration(&configuration)
+			.expect("a failed zero-weight hard gate must force score zero");
+	}
+
+	#[test]
+	fn configured_positive_weight_hard_gate_participates_and_can_force_zero() {
+		let configuration = serde_json::from_value(serde_json::json!({
+			"checks": [
+				{"check_id": "gate", "type": "text", "hard_gate": true, "weight": 3},
+				{"check_id": "detail", "type": "text", "weight": 1}
+			]
+		}))
+		.expect("configuration must deserialize");
+		let passed_gate: EvaluationResult = serde_json::from_value(serde_json::json!({
+			"schema_version": "aiq.evaluator-result.v3",
+			"outcome": "partial",
+			"score": 0.75,
+			"checks": [
+				{
+					"check_id": "gate",
+					"weight": 3,
+					"passed": true,
+					"failure_class": "none",
+					"evidence_digest":
+						"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+				},
+				{
+					"check_id": "detail",
+					"weight": 1,
+					"passed": false,
+					"failure_class": "value",
+					"evidence_digest":
+						"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				}
+			]
+		}))
+		.expect("passed-gate result must deserialize");
+		let failed_gate: EvaluationResult = serde_json::from_value(serde_json::json!({
+			"schema_version": "aiq.evaluator-result.v3",
+			"outcome": "incorrect",
+			"score": 0.0,
+			"checks": [
+				{
+					"check_id": "gate",
+					"weight": 3,
+					"passed": false,
+					"failure_class": "value",
+					"evidence_digest":
+						"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+				},
+				{
+					"check_id": "detail",
+					"weight": 1,
+					"passed": true,
+					"failure_class": "none",
+					"evidence_digest":
+						"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				}
+			]
+		}))
+		.expect("failed-gate result must deserialize");
+
+		passed_gate
+			.validate_against_configuration(&configuration)
+			.expect("a passing positive-weight gate must participate in the weighted fraction");
+		failed_gate
+			.validate_against_configuration(&configuration)
+			.expect("a failed positive-weight gate must force score zero");
+	}
+
+	#[test]
+	fn configured_checks_require_a_positive_weight_denominator() {
+		let result: EvaluationResult = serde_json::from_value(serde_json::json!({
+			"schema_version": "aiq.evaluator-result.v3",
+			"outcome": "incorrect",
+			"score": 0.0,
+			"checks": [{
+				"check_id": "policy",
+				"weight": 0,
+				"passed": true,
+				"failure_class": "none",
+				"evidence_digest":
+					"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			}]
+		}))
+		.expect("result must deserialize");
+		let configuration = serde_json::from_value(serde_json::json!({
+			"checks": [
+				{"check_id": "policy", "type": "workspace_policy", "weight": 0}
+			]
+		}))
+		.expect("configuration must deserialize");
+
+		assert_eq!(
+			result
+				.validate_against_configuration(&configuration)
+				.expect_err("all-zero configured weights must fail")
+				.to_string(),
+			"evaluator result must contain at least one scored check"
+		);
+	}
+
+	#[test]
 	fn configured_workspace_policy_failure_is_a_hard_gate() {
 		let result: EvaluationResult = serde_json::from_value(serde_json::json!({
 			"schema_version": "aiq.evaluator-result.v3",

@@ -33,7 +33,12 @@ void describe('public calibration evidence boundary', () => {
     );
     assert.equal(fixture.payload_type, 'aiq.calibration-run.v3');
     assert.equal(fixture.claimed_trust, 'untrusted');
-    assert.equal((fixture.payload as Record<string, unknown>).official_eligible, false);
+    const payload = fixture.payload as Record<string, unknown>;
+    assert.equal(payload.official_eligible, false);
+    assert.equal(
+      (payload.provenance as Record<string, unknown>).catalog_digest,
+      'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7',
+    );
   });
 
   void it('keeps calibration public reads separate and excludes private material', async () => {
@@ -58,7 +63,7 @@ void describe('public calibration evidence boundary', () => {
     });
     const serialized = JSON.stringify(detail);
     assert.equal(detail?.results[0]?.outcome, 'correct');
-    assert.equal(detail?.results[0]?.status, 'passed');
+    assert.equal(detail?.results[0]?.executionStatus, 'completed');
     for (const forbidden of [
       'signature',
       'package_sha256',

@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Canonical generator for the active AIQ Core 1.0.2 catalog.
+// Canonical generator for the active AIQ Core 1.0.3 catalog.
 
 export const DOMAINS = [
   'coding',
@@ -102,7 +102,7 @@ export interface CatalogTask {
     readonly owner: 'AIQ benchmark maintainers';
     readonly recorded_date: '2026-08-02';
     readonly predecessor_task_version: '1.0.1';
-    readonly source: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts';
+    readonly source: 'scripts/candidates/aiq-core-1.0.3/generate-benchmark-catalog.ts';
   };
   readonly leakage_review: {
     readonly status: 'public_design_versioned_private_content_required';
@@ -115,10 +115,7 @@ export interface CatalogTask {
 type AcceptanceFixtureClass =
   | 'gold'
   | 'alternate_correct'
-  | 'partial_low'
-  | 'partial_high'
-  | 'near_miss'
-  | 'paired_contrast'
+  | 'partial'
   // This combined class covers adversarial content and output-format attacks.
   | 'adversarial_format'
   | 'empty'
@@ -130,13 +127,13 @@ interface AcceptanceFixtureCommitment {
 }
 
 export const AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
+  'sha256:0e315fe2bbcf0efe59ddcd69173addf89ef0fb281ec3ef523234bdc01b3d66a1';
 export const AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6';
+  'sha256:0dd4f11c49a1e295a75e6ca1e3b7b4f9c38e0160b9eda75ca75a47703e47f80d';
 
-const TASK_SET_VERSION = '1.0.2';
-const TASK_VERSION = '1.0.2';
-const SCORER_VERSION = '1.0.2';
+const TASK_SET_VERSION = '1.0.3';
+const TASK_VERSION = '1.0.3';
+const SCORER_VERSION = '1.0.3';
 
 export const COMMAND_EXECUTION_DISCLOSURE =
   'Runner/verifier telemetry records at least one command_execution event; this proves presence, not causality, while independently checked artifacts and, where present, receipts prove final-state correctness.';
@@ -178,8 +175,8 @@ export interface Catalog {
     readonly scope: 'ordered_full_task_metadata';
   };
   readonly catalog_release_identity: {
-    readonly release_identity: 'aiq-core/1.0.2';
-    readonly scoring_version: '1.0.2';
+    readonly release_identity: 'aiq-core/1.0.3';
+    readonly scoring_version: '1.0.3';
     readonly task_metadata_identity: Catalog['task_metadata_identity'];
     readonly algorithm: 'sha256';
     readonly canonicalization: 'aiq.sorted-key-json.v1';
@@ -201,8 +198,8 @@ export interface Catalog {
 }
 
 export interface CatalogReleaseIdentityInput {
-  readonly release_identity: 'aiq-core/1.0.2';
-  readonly scoring_version: '1.0.2';
+  readonly release_identity: 'aiq-core/1.0.3';
+  readonly scoring_version: '1.0.3';
   readonly task_metadata_identity: Catalog['task_metadata_identity'];
 }
 
@@ -276,7 +273,7 @@ const PRIOR_CEILING_TASKS = new Set([
 
 const DISCRIMINATION_CHECK: Readonly<Record<Domain, string>> = {
   coding:
-    'Seeded near-miss implementations separate core correctness, boundary behavior, and regression preservation.',
+    'Seeded partial implementations separate core correctness, boundary behavior, and regression preservation.',
   debugging:
     'Seeded plausible fixes separate symptom suppression, root-cause repair, and preservation of adjacent behavior.',
   repository_understanding:
@@ -1397,10 +1394,7 @@ function acceptanceFixtureCommitments(
   return {
     gold: commitment('gold'),
     alternate_correct: commitment('alternate_correct'),
-    partial_low: commitment('partial_low'),
-    partial_high: commitment('partial_high'),
-    near_miss: commitment('near_miss'),
-    paired_contrast: commitment('paired_contrast'),
+    partial: commitment('partial'),
     adversarial_format: commitment('adversarial_format'),
     empty: commitment('empty'),
     timeout: commitment('timeout'),
@@ -1479,17 +1473,17 @@ export function buildCatalog(): Catalog {
           revisionKind === 'replacement'
             ? 'Replace the predecessor floor behavior with bounded entry points, staged partial outcomes, and independently measurable checks.'
             : revisionKind === 'retargeted'
-              ? 'Retarget the predecessor ceiling behavior with coupled constraints, seeded near misses, and independently measurable checks.'
+              ? 'Retarget the predecessor ceiling behavior with coupled constraints, a controlled partial candidate, and independently measurable checks.'
               : 'Rebalance the predecessor design around staged partial outcomes and a deterministic middle-discrimination rubric.',
         task_specific_delta:
           revisionKind === 'replacement'
             ? `Replace the prior controlled scenario with two independently attainable stages: first "${draft.checks[0]}", then "${draft.checks[1]}"; reserve full credit for also satisfying "${draft.checks[2]}" and the domain discrimination check.`
             : revisionKind === 'retargeted'
-              ? `Add matched near-miss variants where "${draft.checks[0]}" holds while either "${draft.checks[1]}" or "${draft.checks[2]}" fails; score each outcome independently before the domain discrimination check.`
+              ? `Retain a deterministic partial candidate where "${draft.checks[0]}" holds while at least one of "${draft.checks[1]}" or "${draft.checks[2]}" fails; score the observed outcome independently before the domain discrimination check.`
               : `Split the controlled scenario into task-specific evidence for "${draft.checks[0]}", "${draft.checks[1]}", and "${draft.checks[2]}" before applying the domain discrimination check.`,
         controlled_corpus_requirements: [
           'Provide at least three deterministic assertions for each published scoring component.',
-          'Include low-partial, high-partial, near-miss, alternate-correct, empty, timeout, and paired-contrast cases.',
+          'Include exactly one gold, alternate-correct, partial, adversarial-format, empty, and timeout case.',
           'Ensure no single assertion or output-format check contributes more than 0.20 to the task score.',
           'Document exact expected score vectors for every acceptance case before model execution.',
         ],
@@ -1539,7 +1533,7 @@ export function buildCatalog(): Catalog {
         owner: 'AIQ benchmark maintainers',
         recorded_date: '2026-08-02',
         predecessor_task_version: '1.0.1',
-        source: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts',
+        source: 'scripts/candidates/aiq-core-1.0.3/generate-benchmark-catalog.ts',
       },
       leakage_review: {
         status: 'public_design_versioned_private_content_required',
@@ -1560,7 +1554,7 @@ export function buildCatalog(): Catalog {
     scope: 'ordered_full_task_metadata',
   };
   const releaseIdentityInput: CatalogReleaseIdentityInput = {
-    release_identity: 'aiq-core/1.0.2',
+    release_identity: 'aiq-core/1.0.3',
     scoring_version: SCORER_VERSION,
     task_metadata_identity: taskMetadataIdentity,
   };
@@ -1572,7 +1566,7 @@ export function buildCatalog(): Catalog {
     scoring_version: SCORER_VERSION,
     title: 'AIQ Core Daily Work Benchmark',
     status: 'active',
-    generated_from: 'scripts/candidates/aiq-core-1.0.2/generate-benchmark-catalog.ts',
+    generated_from: 'scripts/candidates/aiq-core-1.0.3/generate-benchmark-catalog.ts',
     task_metadata_identity: taskMetadataIdentity,
     catalog_release_identity: {
       ...releaseIdentityInput,
@@ -1584,7 +1578,7 @@ export function buildCatalog(): Catalog {
     content_policy: {
       public_repository: 'Metadata, schemas, public examples, and synthetic scoring fixtures only.',
       controlled_source:
-        'Current benchmark prompts, expected outputs, executable hidden fixtures, and secrets must be loaded from private Supabase Storage or a runner-local controlled directory.',
+        'Current benchmark prompts, expected outputs, executable hidden fixtures, and secrets must be loaded from private Supabase Storage or a runner-local controlled directory. Core per-task acceptance binds exactly gold, alternate-correct, partial, adversarial-format, empty, and timeout. Near-miss and paired-contrast calibration belongs to the separate AIQ Core Contrast suite and is not a 72-task Core fixture commitment.',
     },
     distribution: {
       total: TASKS.length,
@@ -1615,7 +1609,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     )
   ) {
     throw new Error(
-      'The current AIQ Core catalog requires task-set, task, content-handle, and scorer version 1.0.2.',
+      'The current AIQ Core catalog requires task-set, task, content-handle, and scorer version 1.0.3.',
     );
   }
 
@@ -1624,7 +1618,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     throw new Error('Every benchmark task ID must be unique.');
   }
   if (catalog.status !== 'active') {
-    throw new Error('AIQ Core 1.0.2 must be active.');
+    throw new Error('AIQ Core 1.0.3 must be active.');
   }
   for (const domain of DOMAINS) {
     const count = catalog.tasks.filter((catalogTask) => catalogTask.domain === domain).length;
@@ -1669,10 +1663,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   const acceptanceClasses: readonly AcceptanceFixtureClass[] = [
     'gold',
     'alternate_correct',
-    'partial_low',
-    'partial_high',
-    'near_miss',
-    'paired_contrast',
+    'partial',
     'adversarial_format',
     'empty',
     'timeout',
@@ -1702,7 +1693,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
         0,
       ) !== 10_000
     ) {
-      throw new Error(`Task ${catalogTask.task_id} does not have the required 1.0.2 redesign.`);
+      throw new Error(`Task ${catalogTask.task_id} does not have the required 1.0.3 redesign.`);
     }
     taskSpecificDeltas.add(catalogTask.design_revision.task_specific_delta);
     const allowedToolTokens = new Set([
@@ -1741,7 +1732,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
     }
   }
   if (taskSpecificDeltas.size !== catalog.tasks.length) {
-    throw new Error('Every AIQ Core 1.0.2 task requires a distinct task-specific design delta.');
+    throw new Error('Every AIQ Core 1.0.3 task requires a distinct task-specific design delta.');
   }
 
   const clusterCounts = DOMAINS.map((domain) => {
@@ -1789,7 +1780,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   }
   if (observedTaskIdentity !== AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256) {
     throw new Error(
-      `AIQ Core 1.0.2 task metadata identity changed without a versioned commitment update: ${observedTaskIdentity}.`,
+      `AIQ Core 1.0.3 task metadata identity changed without a versioned commitment update: ${observedTaskIdentity}.`,
     );
   }
   const observedReleaseIdentity = catalogReleaseIdentityDigest({
@@ -1804,7 +1795,7 @@ export function assertCatalogInvariants(catalog: ReturnType<typeof buildCatalog>
   }
   if (observedReleaseIdentity !== AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256) {
     throw new Error(
-      `AIQ Core 1.0.2 catalog release identity changed without a versioned commitment update: ${observedReleaseIdentity}.`,
+      `AIQ Core 1.0.3 catalog release identity changed without a versioned commitment update: ${observedReleaseIdentity}.`,
     );
   }
 }
@@ -1826,7 +1817,7 @@ export async function writeCatalog(outputPath: string): Promise<void> {
 
 if (import.meta.main) {
   const outputPath = fileURLToPath(
-    new URL('../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json', import.meta.url),
+    new URL('../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json', import.meta.url),
   );
   await writeCatalog(outputPath);
 }

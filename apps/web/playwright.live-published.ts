@@ -41,9 +41,9 @@ export default defineConfig({
       command: `npm run build && npm run start -- --hostname 127.0.0.1 --port ${applicationPort}`,
       env: {
         AIQ_PUBLISHER_NODE_ID: `node_${'f'.repeat(64)}`,
-        AIQ_RUNNER_ARTIFACT_BUCKET: 'private-artifacts',
+        AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',
         AIQ_RUNNER_SUBMISSION_TOKEN: 'live-published-runner-fixture',
-        AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
+        AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
         AIQ_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_live_published_fixture',
         AIQ_SUPABASE_JWT_PRIVATE_JWK: privateJwkJson,
         AIQ_VERIFIER_INGRESS_TOKEN: 'live-published-verifier-fixture',

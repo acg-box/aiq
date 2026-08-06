@@ -57,39 +57,75 @@ async function getActualRunPath(page: Page): Promise<string> {
   return path ?? '';
 }
 
+async function expectMobileMatrixLegibility(page: Page) {
+  const ranking = page.getByRole('region', { name: 'Published descriptive estimates' });
+  const snapshot = page.getByRole('region', { name: 'Secondary benchmark snapshot' });
+  await expect(ranking).toBeVisible();
+  await expect(ranking.getByRole('row')).toHaveCount(6);
+  const rankingBox = await ranking.boundingBox();
+  expect(rankingBox).not.toBeNull();
+  expect((rankingBox?.y ?? 844) + (rankingBox?.height ?? 0)).toBeLessThanOrEqual(844);
+  const snapshotBox = await snapshot.boundingBox();
+  expect(snapshotBox).not.toBeNull();
+  expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
+    snapshotBox?.y ?? Number.NEGATIVE_INFINITY,
+  );
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
+  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(
+    chart.getByRole('button', { name: 'Ordered + interval', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(chart.getByText('All 17 configurations shown', { exact: false })).toBeVisible();
+  await expect(chart.getByText('Read 17 configuration values', { exact: true })).toBeVisible();
+  const labels = await chart
+    .locator('svg text')
+    .evaluateAll((elements) =>
+      elements
+        .filter((element) => /^[STL]·/.test(element.textContent ?? ''))
+        .map((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    );
+  expect(labels).toHaveLength(17);
+  expect(labels.every((fontSize) => fontSize >= 12)).toBe(true);
+}
+
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expectPublishedNonSyntheticPage(page, '/compare');
-  const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
-  const rows = efficiency.locator('tbody tr');
-  await expect(rows).toHaveCount(17);
-  await expect(
-    efficiency.getByText('Signed matrix batch wall-clock', { exact: true }),
-  ).toBeVisible();
-  const batchWallTime = efficiency.locator('.formula-note > p[title]');
-  await expect(batchWallTime).toHaveCount(1);
-  await expect(batchWallTime).toContainText(/\d+(?:\.\d+)? (?:s|min|h)/);
-
+  const comparison = page.getByRole('table', { name: 'Selected comparison' });
+  const first = page.getByLabel('First model and reasoning level');
+  const second = page.getByLabel('Second model and reasoning level');
+  const secondValue = await second.inputValue();
+  const optionValues = await first
+    .locator('option')
+    .evaluateAll((options) =>
+      options.map((option) => (option instanceof HTMLOptionElement ? option.value : '')),
+    );
   const snapshots: string[] = [];
-  let unavailableCostRows = 0;
-  for (const row of await rows.all()) {
-    const runId = await row.getAttribute('data-run-id');
-    expect(runId).toMatch(/^run[-_][A-Za-z0-9._:-]+$/);
-    const cost = (await row.getByRole('cell').nth(1).innerText()).trim();
-    if (cost.startsWith('Unavailable')) {
-      unavailableCostRows += 1;
-      expect(cost).not.toContain('$0');
-    }
-    snapshots.push(`${runId}\n${await row.innerText()}`);
+  let hasUnavailableCost = false;
+  for (const value of optionValues) {
+    if (value === secondValue) continue;
+    await first.selectOption(value);
+    const snapshot = await comparison.innerText();
+    snapshots.push(snapshot);
+    const costRow = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
+    const cost = (await costRow.getByRole('cell').first().innerText()).trim();
+    if (cost === 'Unavailable') hasUnavailableCost = true;
+    expect(cost).not.toBe('$0');
   }
-  expect(new Set(snapshots.map((row) => row.split('\n', 1)[0])).size).toBe(17);
-  expect(
-    unavailableCostRows,
-    'at least one Official cost must be explicitly unavailable',
-  ).toBeGreaterThan(0);
+  await expect(
+    comparison.getByRole('row').filter({ hasText: 'Summed adapter duration' }),
+  ).toBeVisible();
+  await expect(comparison.getByRole('row').filter({ hasText: 'Batch wall-clock' })).toBeVisible();
+  await expect(comparison.getByRole('row').filter({ hasText: 'Duration coverage' })).toBeVisible();
+  await expect(comparison.getByRole('row').filter({ hasText: 'Cost coverage' })).toBeVisible();
+  expect(hasUnavailableCost, 'at least one selected Official cost must be unavailable').toBe(true);
   return snapshots;
 }
 
-test('production compare exposes published Official efficiency and honest unavailable cost', async ({
+test('production compare exposes selected-run efficiency and honest unavailable cost', async ({
   page,
 }) => {
   await compareEvidenceSnapshot(page);
@@ -140,10 +176,20 @@ test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     expect(runPath).toMatch(/^\/runs\/run_[0-9a-f]{64}$/);
   }
-  const paths = ['/', '/compare', '/runs', runPath, '/trends?range=all', '/method', '/radar'];
+  const paths = [
+    '/',
+    '/compare',
+    '/runs',
+    runPath,
+    '/trends?range=all',
+    '/calibrations',
+    '/method',
+    '/radar',
+  ];
 
   for (const path of paths) {
     await expectPublishedNonSyntheticPage(page, path);
+    if (path === '/') await expectMobileMatrixLegibility(page);
     await expectNoHorizontalOverflow(page, path);
   }
 });

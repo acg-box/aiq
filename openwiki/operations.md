@@ -12,7 +12,8 @@ tags: ['operations', 'validation', 'runbook']
 AIQ production is live at `https://aiq.wiki` from the approved source. Vercel
 scope `acgbox` hosts project `aiq`; Supabase organization `ACG Box` hosts project
 `aiq` on PostgreSQL 17.6 with reference `xxnszykaeapolqdnhalx` and private
-`aiq-submission-packages` and `aiq-runner-artifacts` buckets. The first Official
+`aiq-submission-packages` and `aiq-runner-artifacts` buckets. DNS handoff remains
+in the personal Cloudflare account that owns `aiq.wiki`. The first Official
 launch publication was deployed from merge commit
 `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
 evidence, not the identity of every later production deployment. The apex is
@@ -22,11 +23,12 @@ transiently because a later deployment can recreate or reassign them. A
 deployment-specific URL is intrinsic to its retained deployment. The current
 generated Vercel surfaces emit `noindex`.
 
-The native Apple Silicon macOS runner completed one real, non-synthetic Official
-AIQ Core `1.0.2` matrix with 17 configurations and 72 tasks each, or 1,224
+The live production data remains one real, non-synthetic historical Official
+AIQ Core `1.0.2` matrix. The native Apple Silicon macOS runner completed its 17
+configurations and 72 tasks each, or 1,224
 task-level results. The native verifier replayed it, and the distinct publisher
 published it as `trusted_verified`. Of the results, 1,218 completed and 6
-failed. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
+runtime issues. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
 and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
 (`1:37:24.411`). Cost coverage is 1,208
 `estimated`, 10 `unavailable_context_band`, and 6
@@ -39,6 +41,17 @@ spend or a complete matrix total. Missing values are not zero. See
 Public views contain 17 runs, 1,224 results, 17 leaderboard rows, 17
 model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
+
+Repository source now targets the public AIQ Core candidate and scoring
+`1.0.5`. Its public metadata digest is
+`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
+and its public release digest is
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
+The interaction candidate passed model-free controlled generation and
+validation. Its identities remain calibration candidates. The new targeted
+pilot, Contrast generation, full calibration, a real Official run, publication,
+and final deployment are pending. This pre-release state does not claim that
+`1.0.5` is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -106,10 +119,19 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
-   the release-policy identity is `aiq-core/1.0.2`, and the catalog
+   `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
+   the release-policy identity is `aiq-core/1.0.5`, and the public catalog
    release-identity digest is
-   `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+   `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
+   Use the model-free-validated interaction candidate for the targeted pilot.
+   Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
+   and Core corpus identities distinct. Generate the separate Contrast corpus
+   before release admission. Do not substitute one identity for another.
+   Create new source-only Core and Contrast corpus commitments from the final
+   clean source. Keep `runner.identity_kind` as `source_only` and
+   `runner.built_binary_sha256` as null. Keep the Node.js and ripgrep identities
+   in each corpus. This source-only rule and the signed per-run runner and Codex
+   executable provenance are the executable product contracts.
 3. Create distinct runner, verifier, and publisher Ed25519 identities.
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
@@ -117,10 +139,22 @@ Before a live run:
 5. Configure the exact native Codex executable, separate Codex home, capability
    manifest, and approved schedule.
 
-Use a separate private Codex home whose copied `auth.json` is owner immutable
-with `uchg`. Do not make the active Codex profile immutable. Build
-`aiq-runner` and `aiq-verifier` with `cargo build --locked --release`; bind the
-exact Mach-O arm64 executable digests in the controlled corpus and run plan.
+Use a separate private Codex home whose `auth.json` is copied from
+`~/.codex/auth.json`, set to mode `0600`, and owner immutable with `uchg`. Do not
+make the active Codex profile immutable. Build
+`aiq-runner` and `aiq-verifier` with `cargo build --locked --release`. After the
+final clean build, the operator generates a private, unsigned audit receipt.
+Record the exact source commit and tree identity and SHA-256 values for the
+native runner, verifier, Node.js, and ripgrep executables. Retain the receipt with
+private release records. The repository does not validate or publish it, and it
+is not a database input. Bind the actual runner and Codex executables in the run
+plan and signed per-run provenance.
+
+Pass the isolated home to every paid runner boundary with
+`--codex-home "$AIQ_RELEASE_CODEX_HOME"`. The runner clears the inherited
+environment and injects this directory as the Codex subprocess `CODEX_HOME`.
+Do not set the shell's global `CODEX_HOME`, and do not give this directory to the
+verifier.
 
 Use CLI help as the exact command authority:
 
@@ -133,7 +167,13 @@ cargo run -p aiq-runner -- run --help
 ```
 
 Run both model-free corpus validators before `admit-permissions`. They validate
-the controlled 72-task AIQ Core corpus and the separate six-unit contrast corpus.
+the controlled 72-task AIQ Core corpus and the separate six-unit Contrast
+corpus. Their shared Rust validator now fails closed unless each runner subtree uses
+`identity_kind: source_only` with a null `built_binary_sha256`. The checked Core
+JSON schema enforces the same rule. Contrast has equivalent shared typed
+enforcement even though it has no separate checked-in JSON schema. Contrast is
+an operator-enforced release gate before admission. It is not an input to the
+Official admission receipt and does not add cells to the 1,224-cell matrix.
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
 exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, and planned
@@ -152,7 +192,17 @@ outputs are create-new. Keep every future-output parent owner-controlled and
 single-writer because the runner takes nonblocking advisory locks before paid
 probing and holds them through finalization.
 
+Permission-canary evidence v2 retains the read-only, write-denial, and network
+denial boundaries. It also directly executes the committed Node.js and ripgrep
+absolute paths. A corpus, toolchain, or permission-evidence digest change
+invalidates the complete downstream chain. Create a new admission, preflight,
+checkpoint, run, score, package, verifier environment, replay stage, and
+attestation. Do not reuse evidence from the changed plan.
+
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
+This is one run with 1,224 task-model cells, not 1,224 runs. Use `--jobs 32` only
+when the admission capacity check accepts that exact value, and pass the same
+value through the admitted plan.
 Repository support for admission does not prove that the production permission
 canaries pass on the selected host. The `run` command defaults to calibration
 and accepts repeated `--task` and `--model` arguments for a deterministic
@@ -160,6 +210,28 @@ bounded subset. Calibration rejects
 an Official admission receipt, can be replay-verified and published to its
 separate public register, but never classifies or publishes as Official or ranking
 eligible. Use `run --help` for the complete controlled input contract.
+
+The first `1.0.4` calibration completed all 1,224 cells but failed the
+statistical release gate. Preserve it as non-Official evidence; do not report it
+as 1,224 failed task executions. For `1.0.5`, first run the four revised tasks
+(`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
+configurations. The current `coding-06` revision is a priority keyed async
+executor repair with stable eligible-head scheduling, dynamic concurrency,
+bounded waiting work, AbortSignal, cancellation, close, and idle epochs. The
+other three targets are a quoted-record parser, a six-field layered service
+configuration loader, and a bounded Unicode log preview. All four use a
+900-second wall budget, 40 steps, and 28 tool calls. The prior pilot completed
+63 cells, timed out on 5, and was rejected because its completed task means were
+0.933–0.992. Regenerate and revalidate the controlled catalog and evaluator
+bindings before paying for a new pilot. Review the new 68-cell pilot
+before the full non-Official 17-by-72
+calibration. The full calibration must pass the release limits and the
+informative-task, non-uniform-task, domain, and model-spread checks. An operator
+cannot override a failure. The interrupted `1.0.3` Official attempt remains
+rejected, unpublished calibration evidence after an already-conclusive ceiling
+failure. Do not publish hidden responses or hidden task details. Real
+calibration remains permanently non-Official even after signed verifier
+admission and distinct publication to the calibration register.
 
 ## Score, package, and submit
 
@@ -252,7 +324,7 @@ can retry it.
 
 After a real package has been submitted and an operator authorizes a claim, run
 the native verifier for one bounded lease. The worker emits one compact
-`aiq.verifier-record.v1` JSON object to standard output after each claimed
+`aiq.verifier-record.v2` JSON object to standard output after each claimed
 package. If the operator retains these objects in a create-once private JSONL
 file, the operator shell owns that redirection and file creation. Offline
 `verify-local` stage and attestation files are separate create-new outputs and
@@ -265,12 +337,23 @@ package and artifact evidence and publish only the non-Official calibration
 marker. Public pages appear at `/calibrations` and `/calibrations/[id]`; absence
 of rows is valid until a verified calibration has completed this transition.
 
+Use `aiq-verifier diagnose-rescore --help` for offline candidate-evaluator
+diagnosis. This mode first verifies the signed source package, artifacts,
+provenance, and complete source evaluator replay. It then replays the preserved
+matrix cells with the candidate source, tasks, evaluators, runtime, and
+toolchain. Its output is one create-new, permanently non-Official and
+non-ranking diagnostic. The command cannot publish and does not create a stage
+or attestation.
+
 ## Fresh database initialization
 
-Production initialization is complete. Use this flow only for a replacement
-empty Supabase project, never for the current production project. Do not apply
-any AIQ objects before initialization. Use a direct PostgreSQL URL, not the
-public Data API URL.
+AIQ Core `1.0.5` uses one greenfield desired state with no migration chain. Use
+this flow with the existing target Supabase project after its AIQ namespace is
+empty. If residue exists, remove only `aiq_private`, the AIQ-owned roles, and the
+exact AIQ-owned public views and RPC overloads. Preserve all Supabase-managed and
+non-AIQ objects. This cleanup is a deployment prerequisite, not a migration or
+compatibility path. Do not apply AIQ objects or create AIQ Storage buckets
+before initialization. Use a direct PostgreSQL URL, not the public Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -279,12 +362,15 @@ cargo make init-database
 ```
 
 The command uses one connection and one transaction. It rejects existing AIQ
-schema or roles. After the controlled corpus and final native binaries pass the
-model-free checks in [Deployment Handoff](deployment-handoff.md), prepare a
-separately controlled production reference containing a non-synthetic AIQ Core `1.0.2` corpus
+schema or roles. After the controlled corpus passes the model-free checks and
+the operator verifies the final native build as specified in
+[Deployment Handoff](deployment-handoff.md), prepare a separately controlled
+production reference containing a non-synthetic AIQ Core `1.0.5` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
-identities. Initialization validates those fields and bindings. The repository
-defines one greenfield desired state. The receipt must report scoring `1.0.2`,
+identities. Retain the private final-build audit receipt separately; database
+initialization does not consume or validate it. Initialization validates the
+production-reference fields and bindings. The repository defines one greenfield
+desired state. The initialization receipt must report scoring `1.0.5`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the
@@ -395,15 +481,30 @@ After publishing an Official matrix or changing the production deployment, run
 the bounded, secret-free production browser acceptance gate:
 
 ```sh
-AIQ_PRODUCTION_ORIGIN=https://aiq.wiki npm run test:browser:production
+AIQ_PRODUCTION_ORIGIN='https://aiq.wiki' \
+AIQ_PRODUCTION_EXPECTED_BENCHMARK_VERSION='<benchmark-version>' \
+AIQ_PRODUCTION_EXPECTED_SCORING_VERSION='<scoring-version>' \
+AIQ_PRODUCTION_EXPECTED_MATRIX_BATCH_ID='<run_sha256-id>' \
+AIQ_PRODUCTION_EXPECTED_RUNNER_COMMIT='<git-commit>' \
+AIQ_PRODUCTION_EXPECTED_CORPUS_RELEASE_ID='<corpus-release-id>' \
+AIQ_PRODUCTION_EXPECTED_CORPUS_COMMITMENT='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_CATALOG_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_TASK_SET_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_PROMPT_SET_DIGEST='<sha256-digest>' \
+AIQ_PRODUCTION_EXPECTED_ESTIMATED_COST_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_UNAVAILABLE_CONTEXT_BAND_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_UNAVAILABLE_MISSING_USAGE_RESULT_COUNT='<count>' \
+AIQ_PRODUCTION_EXPECTED_PRICED_COST_SUBTOTAL_USD_NANOS='<integer-nanodollars>' \
+npm run test:browser:production --workspace @aiq/web
 ```
 
 Page traffic is read-only. The gate also sends intentional unauthenticated POST
 probes to five write routes and requires uncached `401` responses with no public
 side effects. It checks the exact 17-run and 1,224-result public inventory,
-efficiency semantics, readiness response, mobile layout, and selected
-accessibility rules. It deliberately fails when later runs appear until the
-release contract is revised. Use
+efficiency semantics, readiness response, mobile layout, selected accessibility
+rules, exact accepted matrix-batch and runner identity, cost-status distribution,
+and priced nanodollar subtotal. It deliberately fails when
+later runs appear until the release contract is revised. Use
 `npm run test:browser:production-contract --workspace @aiq/web` for the local
 published-data mock. These commands validate the public surface accepted in
 [Deployment Handoff](deployment-handoff.md); they do not start a server, deploy
@@ -427,11 +528,13 @@ references and legal holds block deletion.
 
 ## Failure handling
 
-- If fresh database initialization fails after work starts, do not reuse the
-  target. Inspect protected PostgreSQL logs, correct the input, and create a new
-  empty project.
+- If fresh database initialization fails, inspect protected PostgreSQL logs and
+  confirm that the transaction rolled back. Retry only after the AIQ namespace
+  is empty.
 - If initialization rejects existing AIQ objects, the rejected attempt made no
-  changes. Use a new project for the greenfield launch.
+  changes. Remove only the exact AIQ-owned objects, preserve all
+  Supabase-managed and non-AIQ objects, and retry the existing target after its
+  AIQ namespace is empty.
 - If submission fails after Storage upload, preserve the object and run
   reconciliation.
 - If a verifier lease expires, let the bounded claim protocol retry it.

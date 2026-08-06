@@ -1640,7 +1640,7 @@ pub fn synthetic_tasks() -> Vec<TaskDefinition> {
 #[must_use]
 pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 	let catalog = serde_json::from_str::<SyntheticCatalog>(include_str!(
-		"../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"
+		"../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json"
 	))
 	.expect("checked-in benchmark catalog must deserialize");
 	let catalog_entry_digests = scoring::frozen_catalog_entry_digests()

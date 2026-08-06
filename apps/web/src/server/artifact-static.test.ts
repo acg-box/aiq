@@ -11,7 +11,11 @@ await test('artifact transport keeps private metadata and narrow role RPCs', asy
   assert.match(schema, /create table aiq_private\.aiq_artifact_ingress_claims/);
   assert.match(schema, /create table aiq_private\.aiq_artifact_claim_bindings/);
   assert.doesNotMatch(schema, /create table public\.aiq_artifact/);
-  assert.doesNotMatch(schema, /insert into storage\.buckets|create bucket/i);
+  assert.match(
+    schema,
+    /insert into storage\.buckets \(id, name, public\)\s+values\s+\('aiq-submission-packages', 'aiq-submission-packages', false\),\s+\('aiq-runner-artifacts', 'aiq-runner-artifacts', false\);/i,
+  );
+  assert.doesNotMatch(schema, /create bucket/i);
   assert.match(
     schema,
     /grant all on function public\.aiq_record_artifact_ingress\(target_run_id text, supplied_kind text, supplied_sha256 text, supplied_byte_size bigint, object_identity jsonb\) to service_role;/,

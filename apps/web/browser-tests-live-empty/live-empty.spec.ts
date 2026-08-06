@@ -94,10 +94,29 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   });
   await expect(table.getByRole('row')).toHaveCount(18);
   await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
-  const resultCoverage = page.getByText('Result coverage', { exact: true }).locator('..');
-  await expect(resultCoverage.getByText('Unknown', { exact: true })).toBeVisible();
-  await expect(resultCoverage).toContainText('coverage is not correctness');
-  await expect(resultCoverage.getByText('0.0%', { exact: true })).toHaveCount(0);
+  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
+  const coverage = snapshot.getByText('Coverage', { exact: true }).locator('..');
+  const exactRun = snapshot.getByText('Exact run completed', { exact: true }).locator('..');
+  await expect(coverage).toContainText('Sample size unavailable');
+  await expect(coverage).not.toContainText('0 fixed task cells');
+  await expect(
+    page.getByText('17 configurations · task cells unavailable', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('17 configurations · 0 task cells', { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText('Average coverage across 0/17 configurations:', { exact: false }),
+  ).toBeVisible();
+  const deferredMatrix = page.locator('[data-homepage-analytics="matrix"]');
+  await expect(deferredMatrix).toHaveClass(/homepage-analytics-empty/);
+  await deferredMatrix.scrollIntoViewIfNeeded();
+  await expect(page.getByRole('heading', { name: 'AIQ index by configuration' })).toBeVisible();
+  await expect(deferredMatrix.locator('.matrix-chart-frame')).toHaveCount(0);
+  await expect(page.getByText(/scored configurations shown/)).toHaveCount(0);
+  const emptyMatrixBox = await deferredMatrix.boundingBox();
+  expect(emptyMatrixBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(700);
+  await expect(exactRun).toContainText('Unavailable');
+  await expect(exactRun).toContainText('Exact run identity unavailable');
+  await expect(snapshot).not.toContainText('trusted publication');
   await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
   await expect(page.getByRole('status', { name: 'Latest calibration status' })).toContainText(
     'The live public read is available, but it has no evidence to display.',

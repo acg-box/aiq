@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { ReadStateNote } from '../../components/read-state-note.tsx';
+import { RunScientificSummaryPanel } from '../../components/run-scientific-summary.tsx';
+import { resolveExactScientificEvidence } from '../../components/scientific-evidence-resolution.ts';
+import { buildRunScientificSummary } from '../../components/scientific-score-context.ts';
 import { classifyRunSummaryCompleteness } from '../../data/format.ts';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
@@ -49,12 +52,19 @@ export default async function RunsPage({
     ),
   ]);
   const entries = new Map(leaderboardResult.data.map((entry) => [entry.id, entry]));
+  const efficiencyResult = await readPublicData(
+    repository,
+    () => repository.listModelEfficiency(runsResult.data.runs.map((run) => run.id)),
+    [],
+    (value) => value.length === 0,
+    (value) => value.map(() => false),
+  );
 
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Run history</span>
-        <h1>Every public run stays inspectable.</h1>
+        <h1>Public run history</h1>
         <p>
           Each row is one configuration run. A complete Official matrix is one batch of 17
           configuration runs. In that complete batch, each run has 72 task-level executions, for
@@ -76,10 +86,7 @@ export default async function RunsPage({
               <tr>
                 <th scope="col">Started</th>
                 <th scope="col">Configuration</th>
-                <th scope="col">Completeness</th>
-                <th scope="col">Coverage</th>
-                <th scope="col">Failed</th>
-                <th scope="col">Missing</th>
+                <th scope="col">Scientific summary</th>
                 <th scope="col">Evidence</th>
               </tr>
             </thead>
@@ -88,28 +95,45 @@ export default async function RunsPage({
                 const entry = entries.get(run.entryId);
                 const completeness = classifyRunSummaryCompleteness(run);
                 const summary = run.resultSummary;
+                const evidence = resolveExactScientificEvidence({
+                  candidate: {
+                    runId: run.id,
+                    entryId: run.entryId,
+                    scoringVersion: run.scoringVersion,
+                    synthetic: run.synthetic,
+                  },
+                  runs: runsResult.data.runs,
+                  entries: leaderboardResult.data,
+                  efficiencyRows: efficiencyResult.data,
+                });
                 return (
                   <tr key={run.id}>
-                    <td>
+                    <td data-label="Started">
                       <time dateTime={run.startedAt}>
                         {new Date(run.startedAt).toLocaleDateString()}
                       </time>
                     </td>
-                    <td>
+                    <td data-label="Configuration">
                       <strong>
                         {entry ? `${entry.modelFamily} · ${entry.reasoningTier}` : run.entryId}
                       </strong>
                       <small>{entry?.modelName ?? 'Public matrix identity'}</small>
                     </td>
-                    <td>{completeness.label}</td>
-                    <td>
-                      {summary.coveragePercent === null
-                        ? 'Not reported'
-                        : `${summary.coveragePercent.toFixed(1)}%`}
+                    <td data-label="Scientific summary">
+                      <strong>{completeness.label}</strong>
+                      <RunScientificSummaryPanel
+                        compact
+                        summary={buildRunScientificSummary({
+                          run,
+                          resultSummary: summary,
+                          leaderboardEntry:
+                            evidence.state === 'exact' ? evidence.evidence.score : undefined,
+                          efficiency:
+                            evidence.state === 'exact' ? evidence.evidence.efficiency : undefined,
+                        })}
+                      />
                     </td>
-                    <td>{summary.failed}</td>
-                    <td>{summary.missing}</td>
-                    <td>
+                    <td data-label="Evidence">
                       <Link href={`/runs/${run.id}`}>Inspect run</Link>
                       <small>{run.synthetic ? 'Synthetic seed' : 'Published'}</small>
                     </td>

@@ -22,15 +22,17 @@ use sha2::{Digest as _, Sha256};
 use crate::{
 	protocol,
 	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
-	task::{EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, Visibility, evaluator},
+	task::{
+		EvaluatorRuntime, EvaluatorRuntimeKind, TaskBudgets, TaskDefinition, Visibility, evaluator,
+	},
 };
 
-/// Ordered catalog identity for the six controlled contrast variants.
+/// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:984d37e6db5a9d00b21fe0bb1a940d5712c0974c90a56f232a81347425410c24";
+	"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2";
 
 const CORE_CATALOG_JSON: &str =
-	include_str!("../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json");
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -52,7 +54,7 @@ const CONTRAST_CATALOG: CatalogContract = CatalogContract {
 	task_set_id: "aiq-core-contrast",
 	task_set_version: AIQ_TASK_SET_VERSION,
 	identity_sha256: CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
-	identity_scope: "ordered_six_contrast_variants",
+	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::FixedOrderedIds(&CONTRAST_TASK_IDS),
 };
 
@@ -394,6 +396,7 @@ struct FrozenTask {
 	task_id: String,
 	task_version: String,
 	allowed_tools: Vec<String>,
+	budget: TaskBudgets,
 }
 
 #[derive(Deserialize)]
@@ -411,6 +414,15 @@ struct SourceManifest {
 struct SourceManifestEntry {
 	path: String,
 	sha256: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RunnerRuntimeProvenance {
+	identity_kind: String,
+	source_manifest: Value,
+	source_manifest_sha256: String,
+	built_binary_sha256: Value,
 }
 
 #[cfg(test)]
@@ -590,15 +602,12 @@ pub fn validate_evaluator_runtime_commitment(
 	let commitment: CorpusCommitment = serde_json::from_value(value.clone())
 		.map_err(|_| CorpusCommitmentError::new("corpus commitment v2 shape is invalid"))?;
 	let catalog_contract = catalog_contract(&commitment.catalog)?;
-	let source_manifest = commitment
-		.execution
-		.runtime_provenance
-		.pointer("/runner/source_manifest")
-		.ok_or_else(|| CorpusCommitmentError::new("corpus commitment omits source manifest"))?;
+	let runner_provenance =
+		validate_runner_runtime_provenance(&commitment.execution.runtime_provenance)?;
 
 	validate_deterministic_execution_digests(
 		&commitment.execution,
-		source_manifest,
+		&runner_provenance.source_manifest,
 		&policy,
 		catalog_contract,
 		None,
@@ -669,7 +678,7 @@ pub fn validate_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads and validates the immutable 72-task AIQ Core 1.0.2 corpus.
+/// Loads and validates the immutable 72-task AIQ Core 1.0.5 corpus.
 pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -678,7 +687,7 @@ pub fn validate_core_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads the six controlled AIQ Core 1.0.2 contrast variants.
+/// Loads the six controlled AIQ Core 1.0.5 contrast variants.
 ///
 /// The caller supplies the expected canonical commitment digest. Contrast tasks
 /// are calibration-only and are not part of the 72-task core catalog.
@@ -947,17 +956,13 @@ fn validate_corpus_commitment_inner(
 
 	validate_header(&commitment, catalog_contract)?;
 	validate_catalog_tasks(&commitment.tasks, catalog_contract)?;
+	validate_selected_catalog_budgets(tasks, catalog_contract)?;
 
 	let baseline_workspace_digests = validate_selected_tasks(&commitment.tasks, tasks)?;
-	let source_manifest =
-		commitment.execution.runtime_provenance.pointer("/runner/source_manifest").ok_or_else(
-			|| CorpusCommitmentError::new("corpus commitment omits the runner source manifest"),
-		)?;
-	let source_manifest_digest = string_at(
-		&commitment.execution.runtime_provenance,
-		"/runner/source_manifest_sha256",
-		"runner source-manifest digest",
-	)?;
+	let runner_provenance =
+		validate_runner_runtime_provenance(&commitment.execution.runtime_provenance)?;
+	let source_manifest = &runner_provenance.source_manifest;
+	let source_manifest_digest = &runner_provenance.source_manifest_sha256;
 	let evaluator_runtime_executable_digest = string_at(
 		&commitment.execution.runtime_provenance,
 		"/node_runtime/executable_sha256",
@@ -985,16 +990,6 @@ fn validate_corpus_commitment_inner(
 		return Err(CorpusCommitmentError::new("corpus evaluator runtime identity is invalid"));
 	}
 
-	let observed_source_manifest = protocol::canonical_hash(source_manifest).map_err(|error| {
-		CorpusCommitmentError::new(format!("cannot hash runner source manifest: {error}"))
-	})?;
-
-	if observed_source_manifest != source_manifest_digest {
-		return Err(CorpusCommitmentError::new(
-			"runner source manifest does not match its commitment",
-		));
-	}
-
 	validate_deterministic_execution_digests(
 		&commitment.execution,
 		source_manifest,
@@ -1020,12 +1015,46 @@ fn validate_corpus_commitment_inner(
 		tool_policy_digest: commitment.execution.declared_tool_policy_sha256,
 		network_policy_digest: commitment.execution.declared_network_policy_sha256,
 		environment_digest: commitment.execution.environment_sha256,
-		source_manifest_digest: source_manifest_digest.to_owned(),
+		source_manifest_digest: source_manifest_digest.clone(),
 		evaluator_runtime_executable_digest: evaluator_runtime_executable_digest.to_owned(),
 		evaluator_runtime_version: evaluator_runtime_version.to_owned(),
 		model_toolchain_policy,
 		baseline_workspace_digests,
 	})
+}
+
+fn validate_runner_runtime_provenance(
+	runtime_provenance: &Value,
+) -> Result<RunnerRuntimeProvenance, CorpusCommitmentError> {
+	let runner: RunnerRuntimeProvenance =
+		serde_json::from_value(runtime_provenance.pointer("/runner").cloned().ok_or_else(
+			|| CorpusCommitmentError::new("corpus commitment omits runner provenance"),
+		)?)
+		.map_err(|_| CorpusCommitmentError::new("runner runtime provenance contract is invalid"))?;
+
+	if runner.identity_kind != "source_only" || !runner.built_binary_sha256.is_null() {
+		return Err(CorpusCommitmentError::new(
+			"runner runtime provenance must use source-only identity",
+		));
+	}
+	if !valid_digest(&runner.source_manifest_sha256) {
+		return Err(CorpusCommitmentError::new(
+			"corpus commitment has an invalid runner source-manifest digest",
+		));
+	}
+
+	let observed_source_manifest =
+		protocol::canonical_hash(&runner.source_manifest).map_err(|error| {
+			CorpusCommitmentError::new(format!("cannot hash runner source manifest: {error}"))
+		})?;
+
+	if observed_source_manifest != runner.source_manifest_sha256 {
+		return Err(CorpusCommitmentError::new(
+			"runner source manifest does not match its commitment",
+		));
+	}
+
+	Ok(runner)
 }
 
 fn host_toolchain_identity()
@@ -1111,6 +1140,48 @@ fn catalog_tool_policy_tasks(
 	}
 }
 
+fn validate_controlled_openssl_environment(
+	runtime_provenance: &Value,
+	model_toolchain_policy: &ExecutionToolPolicy,
+) -> Result<(), CorpusCommitmentError> {
+	let operating_system_platform = runtime_provenance
+		.pointer("/operating_system/platform")
+		.and_then(Value::as_str)
+		.ok_or_else(|| {
+			CorpusCommitmentError::new("corpus commitment omits operating-system platform")
+		})?;
+	let openssl_conf = runtime_provenance
+		.pointer("/locale_and_timezone/environment/OPENSSL_CONF")
+		.and_then(Value::as_str)
+		.ok_or_else(|| {
+			CorpusCommitmentError::new("corpus commitment omits controlled OpenSSL configuration")
+		})?;
+
+	if operating_system_platform != model_toolchain_policy.platform {
+		return Err(CorpusCommitmentError::new(
+			"corpus operating-system platform does not match the model toolchain",
+		));
+	}
+
+	let expected = match model_toolchain_policy.platform.as_str() {
+		"darwin" | "linux" => "/dev/null",
+		"win32" => "NUL",
+		_ => {
+			return Err(CorpusCommitmentError::new(
+				"corpus commitment has an unsupported OpenSSL platform",
+			));
+		},
+	};
+
+	if openssl_conf != expected {
+		return Err(CorpusCommitmentError::new(
+			"corpus OpenSSL configuration does not match the model toolchain platform",
+		));
+	}
+
+	Ok(())
+}
+
 fn validate_deterministic_execution_digests(
 	execution: &CorpusExecution,
 	source_manifest: &Value,
@@ -1118,6 +1189,8 @@ fn validate_deterministic_execution_digests(
 	catalog_contract: CatalogContract,
 	selected_tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), CorpusCommitmentError> {
+	validate_controlled_openssl_environment(&execution.runtime_provenance, model_toolchain_policy)?;
+
 	let tool_policy_tasks = catalog_tool_policy_tasks(catalog_contract, selected_tasks)?;
 	let observed_environment = protocol::canonical_hash(&execution.runtime_provenance)
 		.map_err(|error| CorpusCommitmentError::new(error.to_string()))?;
@@ -1467,6 +1540,31 @@ fn validate_selected_tasks(
 	Ok(baseline_workspace_digests)
 }
 
+fn validate_selected_catalog_budgets(
+	selected: &[TaskDefinition],
+	catalog_contract: CatalogContract,
+) -> Result<(), CorpusCommitmentError> {
+	let CatalogTaskAuthority::Embedded(catalog_json) = catalog_contract.tasks else {
+		return Ok(());
+	};
+	let catalog: FrozenCatalog = serde_json::from_str(catalog_json).map_err(|error| {
+		CorpusCommitmentError::new(format!("embedded catalog is invalid: {error}"))
+	})?;
+	let expected = catalog
+		.tasks
+		.into_iter()
+		.map(|task| (task.task_id, task.budget))
+		.collect::<BTreeMap<_, _>>();
+
+	if selected.iter().any(|task| expected.get(&task.task_id) != Some(&task.budgets)) {
+		return Err(CorpusCommitmentError::new(
+			"selected Core task budget does not match the frozen public catalog",
+		));
+	}
+
+	Ok(())
+}
+
 fn string_at<'a>(
 	value: &'a Value,
 	pointer: &str,
@@ -1545,6 +1643,256 @@ mod tests {
 		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
 
+	#[cfg(unix)]
+	struct RunnerProvenancePathFixture {
+		root: std::path::PathBuf,
+		source_root: std::path::PathBuf,
+		toolchain_root: std::path::PathBuf,
+		runtime: crate::task::EvaluatorRuntime,
+		core_tasks: Vec<crate::task::TaskDefinition>,
+		contrast_tasks: Vec<crate::task::TaskDefinition>,
+		core_commitment: serde_json::Value,
+		contrast_commitment: serde_json::Value,
+	}
+
+	#[cfg(unix)]
+	impl RunnerProvenancePathFixture {
+		fn new(label: &str) -> Self {
+			let root = env::temp_dir().join(format!(
+				"aiq-runner-provenance-{label}-{}-{}",
+				process::id(),
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.expect("fixture clock")
+					.as_nanos()
+			));
+			let source_root = root.join("repository");
+			let runner_source = source_root.join("apps/aiq-runner/src/runner.rs");
+			let executable_source = root.join("executables");
+			let toolchain_root = root.join("toolchain");
+
+			fs::create_dir_all(runner_source.parent().expect("runner source parent"))
+				.expect("fixture source root");
+			fs::create_dir_all(&executable_source).expect("fixture executable source");
+			fs::create_dir(&toolchain_root).expect("fixture toolchain root");
+			fs::write(&runner_source, b"committed runner source").expect("fixture runner source");
+
+			for (name, version) in [("node", "v24.18.0"), ("rg", "ripgrep 15.1.0")] {
+				let source = executable_source.join(name);
+
+				fs::write(&source, format!("#!/bin/sh\nprintf '%s\\n' '{version}'\n"))
+					.expect("fixture executable");
+				fs::set_permissions(&source, fs::Permissions::from_mode(0o700))
+					.expect("fixture executable mode");
+				fs::hard_link(&source, toolchain_root.join(name)).expect("toolchain hard link");
+			}
+
+			let runtime = crate::task::EvaluatorRuntime::resolve(&toolchain_root.join("node"))
+				.expect("fixture Node runtime");
+			let policy = super::fixture_validated_model_toolchain(&toolchain_root, &runtime)
+				.policy()
+				.clone();
+			let mut core_tasks = runner::synthetic_demo_tasks();
+
+			Self::bind_external_evaluators(&mut core_tasks, runtime.executable_digest());
+
+			let mut contrast_tasks = core_tasks[..super::CONTRAST_TASK_IDS.len()].to_vec();
+
+			for (task, task_id) in contrast_tasks.iter_mut().zip(super::CONTRAST_TASK_IDS) {
+				task.task_id = task_id.to_owned();
+				task.task_version = super::CONTRAST_CATALOG.task_set_version.to_owned();
+				task.catalog_entry_digest = Some(format!("sha256:{}", "c".repeat(64)));
+			}
+
+			Self::apply_core_catalog_budgets(&mut core_tasks);
+
+			let core_commitment =
+				Self::commitment(super::CORE_CATALOG, &core_tasks, &source_root, &runtime, &policy);
+			let contrast_commitment = Self::commitment(
+				super::CONTRAST_CATALOG,
+				&contrast_tasks,
+				&source_root,
+				&runtime,
+				&policy,
+			);
+
+			Self {
+				root,
+				source_root,
+				toolchain_root,
+				runtime,
+				core_tasks,
+				contrast_tasks,
+				core_commitment,
+				contrast_commitment,
+			}
+		}
+
+		fn bind_external_evaluators(
+			tasks: &mut [crate::task::TaskDefinition],
+			runtime_digest: &str,
+		) {
+			for task in tasks {
+				let configuration = std::collections::BTreeMap::new();
+				let configuration_digest =
+					protocol::canonical_hash(&configuration).expect("configuration digest");
+
+				task.visibility = crate::task::Visibility::Hidden;
+				task.evaluator = Some(crate::task::Evaluator {
+					kind: "controlled_fixture".to_owned(),
+					expected: None,
+					case_sensitive: false,
+					external: Some(crate::task::ExternalEvaluatorBinding {
+						protocol_version: crate::task::EVALUATOR_PROTOCOL_VERSION.to_owned(),
+						scorer_version: task.scorer_version.clone(),
+						runtime_kind: crate::task::EvaluatorRuntimeKind::Node,
+						runtime_executable_digest: runtime_digest.to_owned(),
+						executable_ref: std::path::PathBuf::from("fixture/evaluator"),
+						executable_digest: format!("sha256:{}", "e".repeat(64)),
+						configuration_digest,
+						arguments: Vec::new(),
+						timeout_ms: 1_000,
+						max_input_bytes: 1_024,
+						max_output_bytes: 1_024,
+						configuration,
+					}),
+				});
+			}
+		}
+
+		fn apply_core_catalog_budgets(tasks: &mut [crate::task::TaskDefinition]) {
+			let catalog: super::FrozenCatalog =
+				serde_json::from_str(super::CORE_CATALOG_JSON).expect("embedded Core catalog");
+			let budgets = catalog
+				.tasks
+				.into_iter()
+				.map(|task| (task.task_id, task.budget))
+				.collect::<std::collections::BTreeMap<_, _>>();
+
+			for task in tasks {
+				task.budgets = budgets.get(&task.task_id).expect("Core task budget").clone();
+			}
+		}
+
+		fn commitment(
+			catalog: super::CatalogContract,
+			tasks: &[crate::task::TaskDefinition],
+			source_root: &std::path::Path,
+			runtime: &crate::task::EvaluatorRuntime,
+			policy: &super::ExecutionToolPolicy,
+		) -> serde_json::Value {
+			let runner_source = fs::read(source_root.join("apps/aiq-runner/src/runner.rs"))
+				.expect("fixture runner source");
+			let runner_source_digest =
+				format!("sha256:{}", hex::encode(Sha256::digest(runner_source)));
+			let source_manifest = serde_json::json!({
+				"schema_version": "aiq.runner-source-manifest.v1",
+				"package": "aiq-runner",
+				"scope": "cargo_build_and_test_inputs",
+				"path_base": "repository_root",
+				"entries": [{
+					"path": "apps/aiq-runner/src/runner.rs",
+					"sha256": runner_source_digest,
+				}],
+			});
+			let source_manifest_digest =
+				protocol::canonical_hash(&source_manifest).expect("source manifest digest");
+			let runtime_provenance = serde_json::json!({
+				"operating_system": {
+					"platform": policy.platform.as_str(),
+				},
+				"locale_and_timezone": {
+					"environment": {
+						"OPENSSL_CONF": if policy.platform == "win32" { "NUL" } else { "/dev/null" },
+					},
+				},
+				"node_runtime": {
+					"executable_sha256": runtime.executable_digest(),
+					"version": runtime.version(),
+				},
+				"model_toolchain": policy,
+				"runner": {
+					"identity_kind": "source_only",
+					"source_manifest": source_manifest,
+					"source_manifest_sha256": source_manifest_digest,
+					"built_binary_sha256": null,
+				},
+			});
+			let network_policy = serde_json::json!({
+				"protocol": "aiq.network-policy.v1",
+				"evidence_class": "declared_policy_commitment",
+				"codex_web_search": "disabled_for_controlled_corpus",
+				"codex_mcp": "disabled",
+				"evaluator_node_scenario": "network_denied_by_node_permission_model",
+			});
+			let tool_policy_tasks = super::catalog_tool_policy_tasks(catalog, Some(tasks))
+				.expect("fixture catalog tool policy");
+			let tool_policy = serde_json::json!({
+				"protocol": "aiq.tool-policy.v1",
+				"evidence_class": "declared_policy_commitment",
+				"catalog": tool_policy_tasks,
+				"model_toolchain": policy,
+			});
+			let committed_tasks = tasks
+				.iter()
+				.map(|task| {
+					let external = task
+						.evaluator
+						.as_ref()
+						.and_then(|evaluator| evaluator.external.as_ref())
+						.expect("fixture external evaluator");
+
+					serde_json::json!({
+						"task_id": task.task_id,
+						"task_version": task.task_version,
+						"task_definition_sha256": task.content_hash().expect("fixture task digest"),
+						"baseline_workspace_tree_sha256": format!("sha256:{}", "b".repeat(64)),
+						"fixture_bundle_sha256": format!("sha256:{}", "f".repeat(64)),
+						"catalog_entry_sha256": task.catalog_entry_digest.as_ref().expect("catalog digest"),
+						"evaluator_runtime_kind": "node",
+						"evaluator_runtime_executable_sha256": external.runtime_executable_digest,
+						"evaluator_executable_sha256": external.executable_digest,
+						"evaluator_configuration_sha256": external.configuration_digest,
+						"acceptance_suite_sha256": format!("sha256:{}", "a".repeat(64)),
+						"leakage_review_sha256": format!("sha256:{}", "d".repeat(64)),
+					})
+				})
+				.collect::<Vec<_>>();
+
+			serde_json::json!({
+				"schema_version": "aiq.corpus-commitment.v2",
+				"release_id": "corpus_runner_provenance_fixture",
+				"controlled": true,
+				"synthetic": false,
+				"catalog": {
+					"schema_version": catalog.catalog_schema_version,
+					"task_set_id": catalog.task_set_id,
+					"task_set_version": catalog.task_set_version,
+					"identity_sha256": catalog.identity_sha256,
+					"identity_scope": catalog.identity_scope,
+				},
+				"execution": {
+					"harness_sha256": format!("sha256:{}", "8".repeat(64)),
+					"runner_prompt_source_sha256": runner_source_digest,
+					"declared_tool_policy_sha256": protocol::canonical_hash(&tool_policy).expect("tool digest"),
+					"declared_network_policy_sha256": protocol::canonical_hash(&network_policy).expect("network digest"),
+					"environment_sha256": protocol::canonical_hash(&runtime_provenance).expect("environment digest"),
+					"runtime_provenance": runtime_provenance,
+				},
+				"tasks": committed_tasks,
+			})
+		}
+
+		fn write(&self, label: &str, value: &serde_json::Value) -> std::path::PathBuf {
+			let path = self.root.join(format!("{label}.json"));
+
+			fs::write(&path, serde_json::to_vec(value).expect("serialize fixture commitment"))
+				.expect("write fixture commitment");
+
+			path
+		}
+	}
+
 	#[test]
 	fn bounded_runtime_version_is_not_parsed_as_a_digest() {
 		let value = serde_json::json!({"node_runtime": {"version": "v24.18.0"}});
@@ -1554,6 +1902,391 @@ mod tests {
 				.expect("actual Node.js version"),
 			"v24.18.0"
 		);
+	}
+
+	#[test]
+	fn core_task_budgets_must_match_the_frozen_public_catalog() {
+		let catalog: super::FrozenCatalog =
+			serde_json::from_str(super::CORE_CATALOG_JSON).expect("embedded Core catalog");
+		let budgets = catalog
+			.tasks
+			.into_iter()
+			.map(|task| (task.task_id, task.budget))
+			.collect::<std::collections::BTreeMap<_, _>>();
+		let mut tasks = runner::synthetic_demo_tasks();
+
+		for task in &mut tasks {
+			task.budgets = budgets.get(&task.task_id).expect("Core task budget").clone();
+		}
+
+		super::validate_selected_catalog_budgets(&tasks, super::CORE_CATALOG)
+			.expect("exact Core budgets");
+
+		for field in ["wall_seconds", "max_steps", "max_tool_calls"] {
+			let mut mismatched = tasks.clone();
+
+			match field {
+				"wall_seconds" => mismatched[0].budgets.wall_seconds += 1,
+				"max_steps" => mismatched[0].budgets.max_steps += 1,
+				"max_tool_calls" => mismatched[0].budgets.max_tool_calls += 1,
+				_ => unreachable!("unknown budget field"),
+			}
+
+			let error = super::validate_selected_catalog_budgets(&mismatched, super::CORE_CATALOG)
+				.expect_err("mismatched Core budget");
+
+			assert_eq!(
+				error.to_string(),
+				"selected Core task budget does not match the frozen public catalog",
+				"{field} reached the wrong gate"
+			);
+		}
+
+		super::validate_selected_catalog_budgets(&tasks, super::CONTRAST_CATALOG)
+			.expect("Contrast budgets remain corpus-controlled");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn core_validation_rejects_each_public_catalog_budget_mismatch() {
+		let fixture = RunnerProvenancePathFixture::new("core-budget");
+		let path = fixture.write("valid-core", &fixture.core_commitment);
+
+		super::validate_core_corpus_commitment(&path, &fixture.core_tasks, &fixture.source_root)
+			.expect("exact Core budgets");
+
+		for field in ["wall_seconds", "max_steps", "max_tool_calls"] {
+			let mut mismatched = fixture.core_tasks.clone();
+
+			match field {
+				"wall_seconds" => mismatched[0].budgets.wall_seconds += 1,
+				"max_steps" => mismatched[0].budgets.max_steps += 1,
+				"max_tool_calls" => mismatched[0].budgets.max_tool_calls += 1,
+				_ => unreachable!("unknown budget field"),
+			}
+
+			let error =
+				super::validate_core_corpus_commitment(&path, &mismatched, &fixture.source_root)
+					.expect_err("mismatched Core budget");
+
+			assert_eq!(
+				error.to_string(),
+				"selected Core task budget does not match the frozen public catalog",
+				"{field} reached the wrong gate"
+			);
+		}
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn controlled_openssl_environment_has_one_platform_mapping() {
+		let mut policy =
+			super::fixture_model_toolchain(std::path::PathBuf::from("/toolchain")).policy().clone();
+
+		for (platform, openssl_conf) in
+			[("darwin", "/dev/null"), ("linux", "/dev/null"), ("win32", "NUL")]
+		{
+			policy.platform = platform.to_owned();
+
+			let runtime = serde_json::json!({
+				"operating_system": { "platform": platform },
+				"locale_and_timezone": {
+					"environment": { "OPENSSL_CONF": openssl_conf },
+				},
+			});
+
+			super::validate_controlled_openssl_environment(&runtime, &policy)
+				.expect("platform-bound OpenSSL configuration");
+
+			let mut wrong = runtime;
+
+			wrong["locale_and_timezone"]["environment"]["OPENSSL_CONF"] =
+				serde_json::json!(if openssl_conf == "NUL" { "/dev/null" } else { "NUL" });
+
+			assert!(super::validate_controlled_openssl_environment(&wrong, &policy).is_err());
+		}
+	}
+
+	#[test]
+	fn runner_runtime_provenance_requires_exact_source_only_contract() {
+		let source_manifest = serde_json::json!({
+			"schema_version": "aiq.runner-source-manifest.v1",
+			"package": "aiq-runner",
+			"scope": "cargo_build_and_test_inputs",
+			"path_base": "repository_root",
+			"entries": [{
+				"path": "apps/aiq-runner/src/runner.rs",
+				"sha256": format!("sha256:{}", "1".repeat(64)),
+			}],
+		});
+		let source_manifest_sha256 =
+			protocol::canonical_hash(&source_manifest).expect("source manifest digest");
+		let runtime_provenance = serde_json::json!({
+			"runner": {
+				"identity_kind": "source_only",
+				"source_manifest": source_manifest,
+				"source_manifest_sha256": source_manifest_sha256,
+				"built_binary_sha256": null,
+			},
+		});
+
+		assert!(super::validate_runner_runtime_provenance(&runtime_provenance).is_ok());
+		assert!(
+			super::validate_runner_runtime_provenance(&serde_json::json!({"runner": []})).is_err()
+		);
+		assert!(super::validate_runner_runtime_provenance(&serde_json::json!({})).is_err());
+
+		let mut non_source_only = runtime_provenance.clone();
+
+		non_source_only["runner"]["identity_kind"] = serde_json::json!("built_binary");
+
+		assert!(super::validate_runner_runtime_provenance(&non_source_only).is_err());
+
+		let mut non_null_binary = runtime_provenance.clone();
+
+		non_null_binary["runner"]["built_binary_sha256"] =
+			serde_json::json!(format!("sha256:{}", "2".repeat(64)));
+
+		assert!(super::validate_runner_runtime_provenance(&non_null_binary).is_err());
+
+		for field in
+			["identity_kind", "source_manifest", "source_manifest_sha256", "built_binary_sha256"]
+		{
+			let mut missing = runtime_provenance.clone();
+
+			missing["runner"].as_object_mut().expect("runner object").remove(field);
+
+			assert!(
+				super::validate_runner_runtime_provenance(&missing).is_err(),
+				"missing {field} must be rejected"
+			);
+		}
+
+		let mut extra = runtime_provenance;
+
+		extra["runner"]
+			.as_object_mut()
+			.expect("runner object")
+			.insert("unexpected".to_owned(), serde_json::Value::Null);
+
+		assert!(super::validate_runner_runtime_provenance(&extra).is_err());
+	}
+
+	#[cfg(unix)]
+	fn mutate_runner_provenance(value: &mut serde_json::Value, mutation: &str) {
+		let runner = &mut value["execution"]["runtime_provenance"]["runner"];
+
+		match mutation {
+			"legacy identity" => runner["identity_kind"] = serde_json::json!("built_binary"),
+			"non-object runner" => *runner = serde_json::json!([]),
+			"extra field" => {
+				runner
+					.as_object_mut()
+					.expect("runner object")
+					.insert("unexpected".to_owned(), serde_json::Value::Null);
+			},
+			"missing field" => {
+				runner.as_object_mut().expect("runner object").remove("source_manifest_sha256");
+			},
+			"non-null binary" => {
+				runner["built_binary_sha256"] =
+					serde_json::json!(format!("sha256:{}", "9".repeat(64)));
+			},
+			_ => unreachable!("unknown runner mutation"),
+		}
+
+		let runtime_provenance = value["execution"]["runtime_provenance"].clone();
+
+		value["execution"]["environment_sha256"] = serde_json::json!(
+			protocol::canonical_hash(&runtime_provenance).expect("mutated environment digest")
+		);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn shared_corpus_validation_rejects_runner_provenance_drift_for_core_and_contrast() {
+		let fixture = RunnerProvenancePathFixture::new("shared");
+		let core_path = fixture.write("valid-core", &fixture.core_commitment);
+		let contrast_path = fixture.write("valid-contrast", &fixture.contrast_commitment);
+		let contrast_digest =
+			protocol::canonical_hash(&fixture.contrast_commitment).expect("contrast digest");
+
+		super::validate_core_corpus_commitment(
+			&core_path,
+			&fixture.core_tasks,
+			&fixture.source_root,
+		)
+		.expect("valid Core commitment");
+		super::validate_contrast_corpus_commitment(
+			&contrast_path,
+			&fixture.contrast_tasks,
+			&fixture.source_root,
+			&contrast_digest,
+		)
+		.expect("valid Contrast commitment");
+
+		for (catalog, mutation) in [
+			("core", "legacy identity"),
+			("core", "non-object runner"),
+			("core", "extra field"),
+			("core", "missing field"),
+			("core", "non-null binary"),
+			("contrast", "legacy identity"),
+			("contrast", "non-object runner"),
+			("contrast", "extra field"),
+			("contrast", "missing field"),
+			("contrast", "non-null binary"),
+		] {
+			let mut commitment = if catalog == "core" {
+				fixture.core_commitment.clone()
+			} else {
+				fixture.contrast_commitment.clone()
+			};
+
+			mutate_runner_provenance(&mut commitment, mutation);
+
+			let path = fixture.write(&format!("{catalog}-{mutation}"), &commitment);
+			let error = if catalog == "core" {
+				super::validate_core_corpus_commitment(
+					&path,
+					&fixture.core_tasks,
+					&fixture.source_root,
+				)
+				.expect_err("mutated Core runner provenance")
+			} else {
+				let digest =
+					protocol::canonical_hash(&commitment).expect("mutated contrast digest");
+
+				super::validate_contrast_corpus_commitment(
+					&path,
+					&fixture.contrast_tasks,
+					&fixture.source_root,
+					&digest,
+				)
+				.expect_err("mutated Contrast runner provenance")
+			};
+
+			assert!(
+				error.to_string().starts_with("runner runtime provenance"),
+				"{catalog} {mutation} reached the wrong gate: {error}"
+			);
+		}
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn shared_corpus_validation_enforces_platform_bound_openssl_configuration() {
+		let fixture = RunnerProvenancePathFixture::new("openssl-environment");
+
+		for catalog in ["core", "contrast"] {
+			for mutation in ["missing", "wrong null device", "platform mismatch"] {
+				let mut commitment = if catalog == "core" {
+					fixture.core_commitment.clone()
+				} else {
+					fixture.contrast_commitment.clone()
+				};
+				let runtime = &mut commitment["execution"]["runtime_provenance"];
+
+				match mutation {
+					"missing" => {
+						runtime["locale_and_timezone"]["environment"]
+							.as_object_mut()
+							.expect("environment object")
+							.remove("OPENSSL_CONF");
+					},
+					"wrong null device" => {
+						runtime["locale_and_timezone"]["environment"]["OPENSSL_CONF"] =
+							serde_json::json!("NUL");
+					},
+					"platform mismatch" => {
+						runtime["operating_system"]["platform"] = serde_json::json!("win32");
+					},
+					_ => unreachable!("unknown OpenSSL mutation"),
+				}
+
+				commitment["execution"]["environment_sha256"] = serde_json::json!(
+					protocol::canonical_hash(runtime).expect("mutated environment digest")
+				);
+
+				let path = fixture.write(&format!("{catalog}-openssl-{mutation}"), &commitment);
+				let error = if catalog == "core" {
+					super::validate_core_corpus_commitment(
+						&path,
+						&fixture.core_tasks,
+						&fixture.source_root,
+					)
+					.expect_err("mutated Core OpenSSL provenance")
+				} else {
+					let digest =
+						protocol::canonical_hash(&commitment).expect("mutated contrast digest");
+
+					super::validate_contrast_corpus_commitment(
+						&path,
+						&fixture.contrast_tasks,
+						&fixture.source_root,
+						&digest,
+					)
+					.expect_err("mutated Contrast OpenSSL provenance")
+				};
+
+				assert!(
+					error.to_string().contains("OpenSSL")
+						|| error.to_string().contains("operating-system platform"),
+					"{catalog} {mutation} reached the wrong gate: {error}"
+				);
+			}
+		}
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn evaluator_runtime_validation_reuses_runner_provenance_gate() {
+		let fixture = RunnerProvenancePathFixture::new("evaluator-runtime");
+		let valid_path = fixture.write("valid", &fixture.core_commitment);
+		let valid_digest =
+			protocol::canonical_hash(&fixture.core_commitment).expect("valid commitment digest");
+
+		super::validate_evaluator_runtime_commitment(
+			&valid_path,
+			&valid_digest,
+			&fixture.runtime,
+			&fixture.toolchain_root,
+		)
+		.expect("valid evaluator runtime commitment");
+
+		for mutation in [
+			"legacy identity",
+			"non-object runner",
+			"extra field",
+			"missing field",
+			"non-null binary",
+		] {
+			let mut commitment = fixture.core_commitment.clone();
+
+			mutate_runner_provenance(&mut commitment, mutation);
+
+			let path = fixture.write(mutation, &commitment);
+			let digest = protocol::canonical_hash(&commitment).expect("mutated commitment digest");
+			let error = super::validate_evaluator_runtime_commitment(
+				&path,
+				&digest,
+				&fixture.runtime,
+				&fixture.toolchain_root,
+			)
+			.expect_err("mutated evaluator runner provenance");
+
+			assert!(
+				error.to_string().starts_with("runner runtime provenance"),
+				"{mutation} reached the wrong gate: {error}"
+			);
+		}
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
 	}
 
 	#[test]
@@ -1575,12 +2308,27 @@ mod tests {
 				"sha256": runner_digest,
 			}],
 		});
+		let source_manifest_sha256 =
+			protocol::canonical_hash(&source_manifest).expect("source manifest digest");
 		let runtime_provenance = serde_json::json!({
-			"runner": {"source_manifest": source_manifest},
+			"operating_system": {
+				"platform": policy.platform.as_str(),
+			},
+			"locale_and_timezone": {
+				"environment": {
+					"OPENSSL_CONF": if policy.platform == "win32" { "NUL" } else { "/dev/null" },
+				},
+			},
+			"runner": {
+				"identity_kind": "source_only",
+				"source_manifest": source_manifest,
+				"source_manifest_sha256": source_manifest_sha256,
+				"built_binary_sha256": null,
+			},
 			"model_toolchain": policy,
 		});
 		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json"
 		))
 		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
@@ -1623,10 +2371,10 @@ mod tests {
 				.expect("environment digest"),
 			runtime_provenance,
 		};
-		let source = execution
-			.runtime_provenance
-			.pointer("/runner/source_manifest")
-			.expect("source manifest");
+		let runner_provenance =
+			super::validate_runner_runtime_provenance(&execution.runtime_provenance)
+				.expect("runner provenance");
+		let source = &runner_provenance.source_manifest;
 
 		super::validate_deterministic_execution_digests(
 			&execution,
@@ -1759,12 +2507,21 @@ mod tests {
 
 		let mut predecessor = commitment();
 
-		predecessor.catalog.task_set_version = "1.0.1".to_owned();
+		predecessor.catalog.task_set_version = "1.0.4".to_owned();
 		predecessor.catalog.identity_sha256 =
-			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
+			"sha256:2b009bfe1c590898b143c13b264b738f950cbda5c42dae104aaf9dd63426a59e".to_owned();
 
 		assert!(corpus_commitment::validate_header(&predecessor, super::CORE_CATALOG).is_err());
 		assert!(super::catalog_contract(&predecessor.catalog).is_err());
+
+		let mut historical = commitment();
+
+		historical.catalog.task_set_version = "1.0.2".to_owned();
+		historical.catalog.identity_sha256 =
+			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();
+
+		assert!(corpus_commitment::validate_header(&historical, super::CORE_CATALOG).is_err());
+		assert!(super::catalog_contract(&historical.catalog).is_err());
 
 		let mut contrast = commitment();
 
@@ -1776,13 +2533,25 @@ mod tests {
 
 		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
 		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
-		assert_eq!(contrast.catalog.identity_scope, "ordered_six_contrast_variants");
+		assert_eq!(contrast.catalog.task_set_version, "1.0.5");
+		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
-			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256
+			"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2"
+		);
+		assert_eq!(
+			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
+			contrast.catalog.identity_sha256
 		);
 		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG,).is_ok());
 		assert!(corpus_commitment::validate_header(&contrast, super::CORE_CATALOG).is_err());
+
+		contrast.catalog.identity_sha256 =
+			"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32".to_owned();
+
+		assert_eq!(contrast.catalog.task_set_version, "1.0.5");
+		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG).is_err());
+		assert!(super::catalog_contract(&contrast.catalog).is_err());
 
 		let mut synthetic = commitment();
 
@@ -1861,6 +2630,7 @@ mod tests {
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()
 		);
 	}
+
 	#[test]
 	fn source_manifest_is_checked_against_current_bytes_and_executables_are_hashed() {
 		let root = env::temp_dir().join(format!("aiq-source-manifest-{}", process::id()));

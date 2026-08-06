@@ -212,12 +212,18 @@ jobs:
             drop role if exists authenticated;
             drop role if exists anon;"
 
-      - name: Create database roles
+      - name: Create database roles and Storage catalog
         run: >-
           docker exec "${{ job.services.postgres.id }}"
           psql --username postgres --dbname postgres --set ON_ERROR_STOP=1
           --command
-          "create role anon nologin;
+          "create schema storage;
+          create table storage.buckets (
+            id text primary key,
+            name text not null unique,
+            public boolean not null default false
+          );
+          create role anon nologin;
           create role authenticated nologin;
           create role authenticator nologin noinherit;
           create role service_role nologin;"
