@@ -6,7 +6,7 @@ test('malformed public Supabase configuration fails closed with sanitized diagno
 }) => {
   const response = await page.goto('/');
   expect(response?.status()).toBe(200);
-  await expect(page.getByText('invalid config', { exact: true })).toBeVisible();
+  await expect(page.getByText('Config error', { exact: true })).toBeVisible();
   await expect(page.getByText('Invalid public data configuration', { exact: false })).toBeVisible();
   await expect(
     page.getByText('Published evidence unavailable', { exact: true }).first(),

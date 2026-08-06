@@ -48,16 +48,14 @@ export default async function ComparePage() {
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Comparison studio</span>
-        <h1>Configuration comparison</h1>
+        <span className="eyebrow">Side by side</span>
+        <h1>Compare configurations</h1>
         <p>
-          Compare exact model and reasoning-level pairs. Keep sample size, coverage, runtime issues,
-          scoring version, and task-set sensitivity beside each fixed-fixture point estimate. The
-          public comparison is descriptive because aggregate leaderboard rows do not contain the
-          paired-task evidence required for a statistically supported difference.
+          Select any two model and reasoning configurations. Compare capability first, then inspect
+          coverage, reliability, time, and API-equivalent cost.
         </p>
       </div>
-      <ReadStateNote result={result} />
+      {result.state === 'unavailable' ? <ReadStateNote result={result} /> : null}
       {runSummaries.state === 'unavailable' ? (
         <ReadStateNote result={runSummaries} subject="Selected run context" />
       ) : null}
@@ -71,14 +69,21 @@ export default async function ComparePage() {
           efficiency={efficiency.data}
         />
       )}
-      <p className="formula-note">
-        AIQ remains the primary score. Codex adapter elapsed and estimated Standard API equivalent
-        token cost are separate, coverage-qualified dimensions with no combined rank or API-frontier
-        claim. Summed cell elapsed can overlap; signed matrix batch wall-clock is counted once.
-        Missing cost is unavailable and excluded from any frontier.{' '}
-        <Link href="/calibrations">Inspect current efficiency evidence</Link>; unavailable Official
-        values are not replaced with zero.
-      </p>
+      <details className="evidence-notes">
+        <summary>
+          <strong>Evidence notes</strong>
+          <span>How to interpret time, cost, and uncertainty</span>
+        </summary>
+        <div className="evidence-note-body">
+          <ReadStateNote result={result} />
+          <p className="fine-print">
+            AIQ remains the primary score. Adapter elapsed and estimated Standard API-equivalent
+            token cost are separate, coverage-qualified dimensions; AIQ does not combine them into
+            one rank. Summed cell time can overlap. Missing values remain unavailable, never zero.{' '}
+            <Link href="/calibrations">Inspect calibration evidence</Link>.
+          </p>
+        </div>
+      </details>
     </section>
   );
 }

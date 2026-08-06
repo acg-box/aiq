@@ -144,11 +144,11 @@ export default async function MethodPage() {
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Methodology</span>
-        <h1>Scoring method</h1>
+        <span className="eyebrow">Method</span>
+        <h1>How AIQ is scored</h1>
         <p>
-          AIQ v1 estimates outcomes on one committed 72-task fixture set. It does not estimate
-          general intelligence or universal model capability.
+          AIQ measures outcomes on one committed set of 72 practical tasks. It is a transparent
+          benchmark score, not a claim about general intelligence.
         </p>
       </div>
       <ReadStateNote result={result} />
