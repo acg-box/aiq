@@ -237,17 +237,20 @@ unknown. Distributed contributions remain non-Official until an independent
 verifier reproduces the deterministic evaluator result and a separate publisher
 accepts the signed package.
 
-Scientific reporting exposes the observation count, fixed-fixture
-task-sensitivity interval, coverage, missing cells, runtime state, scoring
-method, and provenance needed to interpret a score. Score and efficiency charts,
-tooltips, and accessible data tables retain this context; when an aggregate
-missing-state value is unavailable, the UI says so rather than inventing it.
-These fields must remain explicit when evidence is partial. Efficiency plots
-include only coverage-qualified measures. Their descriptive Pareto rings compare
-nondominated points only within matching matrix batch, scoring version,
-concurrency, and evidence-method bindings, plus matching pricing bindings for
-cost; they never create a combined rank. Estimated Standard API-equivalent cost
-is a comparison method, not an actual ChatGPT or Codex subscription bill.
+Scientific reporting keeps each metric on the scale of its matching interval.
+Official rows show calibrated ability with the conditional 95% score interval.
+Synthetic rows show descriptive quality with task-mix sensitivity and never appear
+as Official. Strict pass and its Wilson interval remain separate diagnostics.
+Reports also expose observation count, coverage, missing cells, runtime state,
+scoring method, and provenance. Score and efficiency charts, tooltips, and
+accessible data tables retain this context; when an aggregate missing-state value
+is unavailable, the UI says so rather than inventing it. These fields must remain
+explicit when evidence is partial. Efficiency plots include only
+coverage-qualified measures. Their descriptive Pareto rings compare nondominated
+points only within matching matrix batch, scoring version, concurrency, and
+evidence-method bindings, plus matching pricing bindings for cost; they never
+create a combined rank. Estimated Standard API-equivalent cost is a comparison
+method, not an actual ChatGPT or Codex subscription bill.
 
 ## Outcomes and scoring
 
@@ -280,7 +283,7 @@ unless its public explanation code is `timeout`, `budget_exceeded`,
 are grouped as execution failures. Null scores and `invalid`, `missing`, or
 `not_applicable` statuses are unscored. “Completed tasks earning any credit”
 counts correct plus partial cells; it is a descriptive task-cell rate, neither a
-score-weighted percentage nor the domain-weighted AIQ index. The outcome and
+score-weighted percentage nor calibrated ability. The outcome and
 domain views in the [public application](architecture-and-runtime.md#public-application)
 keep runtime, invalid, missing, and not-applicable states separate.
 

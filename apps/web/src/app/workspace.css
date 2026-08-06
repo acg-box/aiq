@@ -1418,6 +1418,12 @@ dd {
 	margin-block: 16px;
 }
 
+.calibration-facts > div,
+.calibration-facts dd {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
 .calibration-filter {
 	display: grid;
 	grid-template-columns: minmax(220px, 1fr) auto;
@@ -1855,6 +1861,6 @@ dd {
 	.scientific-run-summary,
 	.radar-summary-grid,
 	.calibration-facts {
-		grid-template-columns: 1fr;
+		grid-template-columns: minmax(0, 1fr);
 	}
 }

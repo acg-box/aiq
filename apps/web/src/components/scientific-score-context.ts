@@ -1,4 +1,5 @@
 import { formatHumanDuration } from '../data/format-duration.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import {
   isScoredLeaderboardEntry,
   type LeaderboardEntry,
@@ -21,7 +22,12 @@ export interface ScientificScoreContext {
 
 export interface RunScientificSummary {
   score: string;
+  scoreLabel: string;
   interval: string;
+  intervalLabel: string;
+  qualityScore: string;
+  sensitivityInterval: string;
+  strictPass: string;
   sampleSize: string;
   coverage: string;
   runtime: string;
@@ -148,13 +154,22 @@ export function buildRunScientificSummary({
     // Public pages must fail closed when joined evidence drifts from the run identity.
   }
   const { score, efficiency: exactEfficiency } = evidence;
+  const metric = score ? presentScoreMetric(score) : null;
+  const presentation = score ? presentLeaderboardEntry(score) : null;
   const costAvailable =
     exactEfficiency?.costEstimatorStatus === 'estimated' &&
     exactEfficiency.standardApiEquivalentUsdNanos !== null;
   return {
-    score: score ? score.score.toFixed(1) : UNAVAILABLE,
-    interval: score
-      ? `${score.sensitivityLow.toFixed(1)}–${score.sensitivityHigh.toFixed(1)}`
+    score: metric?.scoreText ?? UNAVAILABLE,
+    scoreLabel: metric?.scoreLabel ?? (run.synthetic ? 'Quality score' : 'Calibrated ability'),
+    interval: metric?.interval ?? UNAVAILABLE,
+    intervalLabel:
+      metric?.intervalLabel ??
+      (run.synthetic ? 'Task-mix sensitivity' : 'Conditional 95% interval'),
+    qualityScore: presentation?.qualityScore ?? UNAVAILABLE,
+    sensitivityInterval: presentation?.sensitivityInterval ?? UNAVAILABLE,
+    strictPass: presentation
+      ? `${presentation.strictPassRate} · Wilson 95% ${presentation.strictPassInterval}`
       : UNAVAILABLE,
     sampleSize: score ? score.sampleSize.toLocaleString() : UNAVAILABLE,
     coverage:

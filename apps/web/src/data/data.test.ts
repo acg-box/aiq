@@ -19,7 +19,7 @@ import {
   summarizeRunOutcomes,
   TRUST_LEVELS,
 } from './format.ts';
-import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from './leaderboard-presentation.ts';
 import {
   CALIBRATION_MODEL_CONFIGURATIONS,
   CALIBRATION_RUN_PAGE_SIZE,
@@ -508,6 +508,7 @@ void describe('seed repository', () => {
         matrix_id: official.id,
         run_id: canonicalRunId(official.id),
         ...officialLeaderboardRowEvidence,
+        quality_score: official.qualityScore,
         score: official.score,
         sensitivity_low: official.sensitivityLow,
         sensitivity_high: official.sensitivityHigh,
@@ -707,6 +708,13 @@ void describe('seed repository', () => {
       score_status: 'official',
       synthetic: false,
     };
+    const separatedScales = joinModelMatrixWithLeaderboard(matrix, [
+      { ...row, score: 90, score_ci_low: 80, score_ci_high: 100 },
+    ])[0];
+    assert.equal(separatedScales?.score, 90);
+    assert.equal(separatedScales?.qualityScore, 70);
+    assert.equal(separatedScales?.sensitivityLow, 68);
+    assert.equal(separatedScales?.sensitivityHigh, 72);
     for (const rows of [
       [row, row],
       [{ ...row, matrix_id: 'future-low' }],
@@ -745,6 +753,16 @@ void describe('presentation aggregates', () => {
       },
       { status: 'Complete synthetic fixture · not Official', evidence: 'Synthetic' },
     );
+    assert.deepEqual(presentScoreMetric(syntheticEntry), {
+      official: false,
+      score: syntheticEntry.qualityScore,
+      scoreText: syntheticEntry.qualityScore?.toFixed(1),
+      scoreLabel: 'Quality score',
+      intervalLow: syntheticEntry.sensitivityLow,
+      intervalHigh: syntheticEntry.sensitivityHigh,
+      interval: formatSensitivityInterval(syntheticEntry),
+      intervalLabel: 'Task-mix sensitivity',
+    });
 
     const officialEntry = {
       ...syntheticEntry,
@@ -762,6 +780,16 @@ void describe('presentation aggregates', () => {
     };
     assert.equal(isScoredLeaderboardEntry(officialEntry), true);
     assert.equal(presentLeaderboardEntry(officialEntry).runtimeIssues, officialEntry.runtimeIssues);
+    assert.deepEqual(presentScoreMetric(officialEntry), {
+      official: true,
+      score: officialEntry.score,
+      scoreText: officialEntry.score.toFixed(1),
+      scoreLabel: 'Calibrated ability',
+      intervalLow: officialEntry.scoreCiLow,
+      intervalHigh: officialEntry.scoreCiHigh,
+      interval: '70.0–90.0',
+      intervalLabel: 'Conditional 95% interval',
+    });
     assert.deepEqual(
       {
         status: presentLeaderboardEntry(officialEntry).status,

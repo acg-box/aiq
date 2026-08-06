@@ -273,11 +273,14 @@ public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
 The public site is a professional analysis workbench backed by real historical
-production evidence. Its scientific score context identifies the observation
-count, fixed-fixture task-sensitivity interval, coverage, missing cells, runtime
-status, scoring method, and provenance. Cost is an estimated Standard
-API-equivalent comparison, not an actual ChatGPT or Codex subscription bill. The
-public-data repository validates each live public-view response before rendering:
+production evidence. Official rows present calibrated ability with its conditional
+95% interval. Explicit synthetic fixtures present descriptive quality with
+task-mix sensitivity and never appear as Official. Scientific context also
+identifies strict pass with its Wilson interval, observation count, coverage,
+missing cells, runtime status, scoring method, and provenance. Cost is an
+estimated Standard API-equivalent comparison, not an actual ChatGPT or Codex
+subscription bill. The public-data repository validates each live public-view
+response before rendering:
 it requires canonical run and task identities, expected field sets, internally
 consistent task counts and status totals, valid timing and token evidence, and
 verifier-recomputed cost consistent with the published pricing digest. The
@@ -286,11 +289,12 @@ readiness probe verifies the same expanded result-view contract.
 The overview leads with the publication identity, three compact benchmark
 insights, and the top five configurations. On narrow screens the complete top
 five precedes analytical charts in the first viewport. When exact Official
-efficiency evidence exists, the primary chart compares descriptive AIQ with
+efficiency evidence exists, the primary chart compares calibrated ability with
 either summed adapter time or estimated Standard API-equivalent cost. When that
 evidence does not exist, the primary chart falls back to the scored
 17-configuration matrix. The full matrix still supports dot, bar, and
-ordered-horizontal presentations with task-sensitivity intervals. If the live
+ordered-horizontal presentations with the interval that matches its primary
+metric. If the live
 matrix has identities but no scores, the page preserves all 17 identities in an
 explicit unavailable-values table instead of displaying zeros or removing the
 matrix contract.
@@ -307,14 +311,15 @@ efficiency, calibration, and provenance tables remain available through
 progressive disclosures rather than competing with the first-read results.
 
 These views preserve the scoring and evidence distinctions defined by
-[Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
+[Benchmark Method](benchmark-method.md): calibrated ability is not an IQ estimate,
 coverage is not correctness, and API-equivalent cost is not subscription spend.
 Semantic outcomes remain separate from runtime, invalid, and missing states.
 Charts use ECharts with SVG rendering. The chart wrapper exposes the generated
 ECharts description to assistive technology and each chart has a complete data
-table. Charts expose the fixed-fixture task-sensitivity interval and support
-explicit System, Light, and Dark themes. Synthetic fixtures remain confined to
-explicit development and test paths. Source anchors are
+table. Official charts expose the conditional score interval. Synthetic and raw
+quality diagnostics expose task-mix sensitivity. Charts support explicit System,
+Light, and Dark themes. Synthetic fixtures remain confined to explicit
+development and test paths. Source anchors are
 `apps/web/src/app/page.tsx`, `apps/web/src/components/scientific-evidence-resolution.ts`,
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.

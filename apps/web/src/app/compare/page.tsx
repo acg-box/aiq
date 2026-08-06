@@ -77,9 +77,11 @@ export default async function ComparePage() {
         <div className="evidence-note-body">
           <ReadStateNote result={result} />
           <p className="fine-print">
-            AIQ remains the primary score. Adapter elapsed and estimated Standard API-equivalent
-            token cost are separate, coverage-qualified dimensions; AIQ does not combine them into
-            one rank. Summed cell time can overlap. Missing values remain unavailable, never zero.{' '}
+            Official rows use calibrated ability and its conditional interval. Synthetic rows use
+            descriptive quality and task-mix sensitivity and are not Official. Strict pass, adapter
+            elapsed, and estimated Standard API-equivalent token cost remain separate,
+            coverage-qualified dimensions; AIQ does not combine them into one rank. Summed cell time
+            can overlap. Missing values remain unavailable, never zero.{' '}
             <Link href="/calibrations">Inspect calibration evidence</Link>.
           </p>
         </div>

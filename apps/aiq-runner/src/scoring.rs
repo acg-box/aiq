@@ -2220,9 +2220,7 @@ mod tests {
 		(model_locations, difficulties, results)
 	}
 
-	fn calibration_matrix<'a>(
-		results: &'a [TaskResult],
-	) -> BTreeMap<(&'a str, ModelConfig), &'a TaskResult> {
+	fn calibration_matrix(results: &[TaskResult]) -> BTreeMap<(&str, ModelConfig), &TaskResult> {
 		results.iter().map(|result| ((result.task_id.as_str(), result.model), result)).collect()
 	}
 

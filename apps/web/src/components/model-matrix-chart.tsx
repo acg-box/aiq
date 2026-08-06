@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
 import { sortLeaderboardByPointEstimate } from '../data/format.ts';
+import { presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import {
   isScoredLeaderboardEntry,
   type LeaderboardEntry,
@@ -71,14 +72,13 @@ export function ModelMatrixChart({
     narrowViewport.addEventListener('change', selectReadableNarrowView);
     return () => narrowViewport.removeEventListener('change', selectReadableNarrowView);
   }, []);
-  const scored = useMemo(
-    () =>
-      sortLeaderboardByPointEstimate(entries).filter(
-        (entry) =>
-          isScoredLeaderboardEntry(entry) && (family === 'All' || entry.modelFamily === family),
-      ),
-    [entries, family],
-  );
+  const scored = useMemo(() => {
+    const candidates = entries.filter(isScoredLeaderboardEntry);
+    const official = candidates.filter((entry) => entry.scoreStatus === 'official');
+    return sortLeaderboardByPointEstimate(official.length > 0 ? official : candidates).filter(
+      (entry) => family === 'All' || entry.modelFamily === family,
+    );
+  }, [entries, family]);
   const scoredIds = useMemo(() => scored.map((entry) => entry.id), [scored]);
   const selectedId = readIdParam(searchParams, 'matrixSelection', scoredIds, scoredIds[0] ?? '');
   const selected = scored.find((entry) => entry.id === selectedId);
@@ -86,9 +86,12 @@ export function ModelMatrixChart({
     onVisualizationPresenceChange?.(scored.length > 0);
   }, [onVisualizationPresenceChange, scored.length]);
   const option = useMemo<EChartsCoreOption>(() => {
+    const metricExample = scored[0] ? presentScoreMetric(scored[0]) : null;
+    const scoreLabel = metricExample?.scoreLabel ?? 'Primary score';
+    const intervalLabel = metricExample?.intervalLabel ?? 'Primary interval';
     const labels = scored.map(shortLabel);
     const values = scored.map((entry) => ({
-      value: entry.score ?? 0,
+      value: presentScoreMetric(entry).score ?? 0,
       itemStyle: { color: familyColor(entry) },
       label:
         entry.id === selectedId
@@ -97,7 +100,7 @@ export function ModelMatrixChart({
               color: 'var(--ink)',
               fontWeight: 700,
               position: kind === 'ordered' ? ('right' as const) : ('top' as const),
-              formatter: entry.score?.toFixed(1) ?? '—',
+              formatter: presentScoreMetric(entry).scoreText,
             }
           : undefined,
     }));
@@ -108,16 +111,20 @@ export function ModelMatrixChart({
         if (index === null) return 'Configuration evidence unavailable';
         const entry = scored[index];
         if (!entry) return '';
-        return `${entry.modelFamily} · ${entry.reasoningTier}<br/>AIQ ${entry.score?.toFixed(1)} · interval ${entry.sensitivityLow?.toFixed(1)}–${entry.sensitivityHigh?.toFixed(1)}<br/>n=${entry.sampleSize ?? '—'} · coverage ${entry.coveragePercent?.toFixed(1) ?? '—'}%<br/>runtime ${entry.runtimeIssues ?? '—'} · missing ${entry.missing ?? '—'}<br/>scoring ${entry.scoringVersion ?? '—'} · ${entry.synthetic ? 'synthetic' : 'published'}`;
+        const metric = presentScoreMetric(entry);
+        return `${entry.modelFamily} · ${entry.reasoningTier}<br/>${metric.scoreLabel} ${metric.scoreText} · ${metric.intervalLabel.toLowerCase()} ${metric.interval}<br/>strict pass ${(entry.strictPassRate * 100).toFixed(1)}% (n=${entry.strictPassSampleSize})<br/>n=${entry.sampleSize} · coverage ${entry.coveragePercent.toFixed(1)}%<br/>runtime ${entry.runtimeIssues} · missing ${entry.missing}<br/>scoring ${entry.scoringVersion} · ${entry.synthetic ? 'synthetic' : 'Official'}`;
       },
     };
     const aria = { enabled: true, decal: { show: true } };
     const verticalIntervalSeries = {
       type: 'custom',
-      name: 'Task-sensitivity interval',
+      name: intervalLabel,
       silent: true,
       z: 4,
-      data: scored.map((entry, index) => [index, entry.sensitivityLow, entry.sensitivityHigh]),
+      data: scored.map((entry, index) => {
+        const metric = presentScoreMetric(entry);
+        return [index, metric.intervalLow, metric.intervalHigh];
+      }),
       renderItem: (
         _params: unknown,
         api: {
@@ -159,7 +166,7 @@ export function ModelMatrixChart({
           type: 'value',
           min: 0,
           max: 100,
-          name: 'AIQ index (0–100)',
+          name: `${scoreLabel} (0–100)`,
           nameLocation: 'middle',
           nameGap: 34,
           axisLabel: { color: 'var(--muted)' },
@@ -177,17 +184,16 @@ export function ModelMatrixChart({
           axisLine: { lineStyle: { color: 'var(--line-bright)' } },
         },
         series: [
-          { type: 'bar', name: 'Point estimate', data: values, barMaxWidth: 18 },
+          { type: 'bar', name: scoreLabel, data: values, barMaxWidth: 18 },
           {
             type: 'custom',
-            name: 'Task-sensitivity interval',
+            name: intervalLabel,
             silent: true,
             z: 4,
-            data: scored.map((entry, index) => [
-              entry.sensitivityLow,
-              index,
-              entry.sensitivityHigh,
-            ]),
+            data: scored.map((entry, index) => {
+              const metric = presentScoreMetric(entry);
+              return [metric.intervalLow, index, metric.intervalHigh];
+            }),
             renderItem: (
               _params: unknown,
               api: {
@@ -241,7 +247,7 @@ export function ModelMatrixChart({
         type: 'value' as const,
         min: 0,
         max: 100,
-        name: 'AIQ index (0–100)',
+        name: `${scoreLabel} (0–100)`,
         nameLocation: 'middle' as const,
         nameGap: 34,
         axisLabel: { color: 'var(--muted)' },
@@ -255,14 +261,17 @@ export function ModelMatrixChart({
         kind === 'dots'
           ? [
               verticalIntervalSeries,
-              { type: 'scatter', name: 'Point estimate', symbolSize: 11, data: values },
+              { type: 'scatter', name: scoreLabel, symbolSize: 11, data: values },
             ]
           : [
-              { type: 'bar', name: 'Point estimate', data: values, barMaxWidth: 34 },
+              { type: 'bar', name: scoreLabel, data: values, barMaxWidth: 34 },
               verticalIntervalSeries,
             ],
     };
   }, [kind, scored, selectedId]);
+
+  const selectedMetric = selected ? presentScoreMetric(selected) : null;
+  const visibleMetric = scored[0] ? presentScoreMetric(scored[0]) : null;
 
   return (
     <section
@@ -272,8 +281,14 @@ export function ModelMatrixChart({
       <header className="chart-header">
         <div>
           <span className="eyebrow">Current matrix</span>
-          <Heading id="matrix-chart-heading">AIQ index by configuration</Heading>
-          <p>Point estimates and fixed-fixture task-sensitivity intervals stay visible together.</p>
+          <Heading id="matrix-chart-heading">
+            {visibleMetric?.scoreLabel ?? 'Score'} by configuration
+          </Heading>
+          <p>
+            {visibleMetric?.official
+              ? 'Calibrated estimates and conditional intervals share one scale.'
+              : 'Synthetic quality estimates and task-mix sensitivity stay visible together.'}
+          </p>
         </div>
         <div className="chart-controls">
           <div className="chart-switch" role="group" aria-label="Model family">
@@ -344,14 +359,13 @@ export function ModelMatrixChart({
           Terra · L Luna
         </p>
       ) : null}
-      {selected ? (
+      {selected && selectedMetric ? (
         <p className="matrix-encoding-note" aria-live="polite">
-          Selected: {selected.modelFamily} · {selected.reasoningTier} · AIQ{' '}
-          {selected.score?.toFixed(1)} · task-sensitivity interval{' '}
-          {selected.sensitivityLow?.toFixed(1)}–{selected.sensitivityHigh?.toFixed(1)} · n=
-          {selected.sampleSize ?? '—'} · coverage {selected.coveragePercent?.toFixed(1) ?? '—'}% ·
-          scoring {selected.scoringVersion ?? '—'} ·{' '}
-          {selected.synthetic ? 'synthetic' : 'published'}
+          Selected: {selected.modelFamily} · {selected.reasoningTier} · {selectedMetric.scoreLabel}{' '}
+          {selectedMetric.scoreText} · {selectedMetric.intervalLabel.toLowerCase()}{' '}
+          {selectedMetric.interval} · strict pass {(selected.strictPassRate * 100).toFixed(1)}% (n=
+          {selected.strictPassSampleSize}) · coverage {selected.coveragePercent.toFixed(1)}% ·
+          scoring {selected.scoringVersion} · {selected.synthetic ? 'synthetic' : 'Official'}
         </p>
       ) : null}
       {scored.length === 0 ? (
@@ -361,7 +375,7 @@ export function ModelMatrixChart({
           <EChartsChart
             className={`matrix-chart-svg matrix-chart-svg-${kind}`}
             option={option}
-            label={`${kind === 'dots' ? 'Dots' : kind === 'bars' ? 'Zero-baseline bars' : 'Ordered horizontal bars'} with task-sensitivity intervals compare AIQ for ${scored.length} configurations; scoring versions ${[...new Set(scored.map((entry) => entry.scoringVersion))].join(', ') || 'unavailable'}.`}
+            label={`${kind === 'dots' ? 'Dots' : kind === 'bars' ? 'Zero-baseline bars' : 'Ordered horizontal bars'} with ${visibleMetric?.intervalLabel.toLowerCase() ?? 'intervals'} compare ${visibleMetric?.scoreLabel.toLowerCase() ?? 'scores'} for ${scored.length} configurations; scoring versions ${[...new Set(scored.map((entry) => entry.scoringVersion))].join(', ') || 'unavailable'}.`}
           />
         </div>
       )}
@@ -374,12 +388,17 @@ export function ModelMatrixChart({
           tabIndex={0}
         >
           <table>
-            <caption>Descriptive AIQ index values, highest point estimate first.</caption>
+            <caption>
+              {visibleMetric?.official
+                ? 'Official calibrated ability estimates, highest first.'
+                : 'Synthetic descriptive quality scores, highest first; not Official.'}
+            </caption>
             <thead>
               <tr>
                 <th scope="col">Configuration</th>
-                <th scope="col">AIQ index</th>
-                <th scope="col">Task sensitivity</th>
+                <th scope="col">Primary metric</th>
+                <th scope="col">Primary interval</th>
+                <th scope="col">Strict pass</th>
                 <th scope="col">n</th>
                 <th scope="col">Coverage</th>
                 <th scope="col">Runtime</th>
@@ -389,23 +408,31 @@ export function ModelMatrixChart({
               </tr>
             </thead>
             <tbody>
-              {scored.map((entry) => (
-                <tr key={entry.id}>
-                  <th scope="row">
-                    {entry.modelFamily} · {entry.reasoningTier}
-                  </th>
-                  <td>{entry.score?.toFixed(1)}</td>
-                  <td>
-                    {entry.sensitivityLow?.toFixed(1)}–{entry.sensitivityHigh?.toFixed(1)}
-                  </td>
-                  <td>{entry.sampleSize ?? '—'}</td>
-                  <td>{entry.coveragePercent?.toFixed(1)}%</td>
-                  <td>{entry.runtimeIssues ?? '—'}</td>
-                  <td>{entry.missing ?? '—'}</td>
-                  <td>{entry.scoringVersion ?? '—'}</td>
-                  <td>{entry.synthetic ? 'Synthetic' : 'Published'}</td>
-                </tr>
-              ))}
+              {scored.map((entry) => {
+                const metric = presentScoreMetric(entry);
+                return (
+                  <tr key={entry.id}>
+                    <th scope="row">
+                      {entry.modelFamily} · {entry.reasoningTier}
+                    </th>
+                    <td>
+                      {metric.scoreText} · {metric.scoreLabel}
+                    </td>
+                    <td>
+                      {metric.interval} · {metric.intervalLabel}
+                    </td>
+                    <td>
+                      {(entry.strictPassRate * 100).toFixed(1)}% (n={entry.strictPassSampleSize})
+                    </td>
+                    <td>{entry.sampleSize}</td>
+                    <td>{entry.coveragePercent?.toFixed(1)}%</td>
+                    <td>{entry.runtimeIssues ?? '—'}</td>
+                    <td>{entry.missing ?? '—'}</td>
+                    <td>{entry.scoringVersion ?? '—'}</td>
+                    <td>{entry.synthetic ? 'Synthetic' : 'Official'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

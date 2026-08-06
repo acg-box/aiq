@@ -4263,9 +4263,9 @@ mod tests {
 			assert_eq!(analysis.descriptive_status, CalibrationDescriptiveStatus::CompleteFixture);
 			assert_eq!(analysis.official_eligible, FalseOnly);
 			assert_eq!(analysis.ranking_eligible, FalseOnly);
-		assert!(analysis.quality_score.is_some());
-		assert!(!serialized.contains("\"tier\""));
-		assert!(!serialized.contains("Official"));
+			assert!(analysis.quality_score.is_some());
+			assert!(!serialized.contains("\"tier\""));
+			assert!(!serialized.contains("Official"));
 			assert!(!serialized.contains("Provisional"));
 		}
 

@@ -289,13 +289,13 @@ function isTrendRow(value: unknown): value is TrendRow {
     isFiniteNumber(sensitivityLow) &&
     isFiniteNumber(sensitivityHigh) &&
     sensitivityLow >= 0 &&
-    sensitivityLow <= score &&
-    score <= sensitivityHigh &&
+    sensitivityLow <= qualityScore &&
+    qualityScore <= sensitivityHigh &&
     sensitivityHigh <= 100 &&
     sampleSize === 72 &&
     isPositiveCount(representedRunCount) &&
     isCount(resolutionSeconds) &&
-    typeof value.synthetic === 'boolean'
+    value.synthetic === false
   );
 }
 
@@ -409,6 +409,10 @@ const LEADERBOARD_STATUSES = new Set([
 ]);
 const CALIBRATION_STATUSES = new Set(['calibrated', 'pending', 'failed', 'not_applicable']);
 const RELIABILITY_STATUSES = new Set(['single_matrix_information_only', 'not_estimated']);
+
+function isLeaderboardStatus(value: unknown): value is LeaderboardStatus {
+  return typeof value === 'string' && LEADERBOARD_STATUSES.has(value);
+}
 
 function taskIdMatchesDomain(taskId: unknown, domain: unknown): taskId is string {
   if (typeof taskId !== 'string' || typeof domain !== 'string') return false;
@@ -2211,8 +2215,8 @@ function normalizeLeaderboardStatus(row: LeaderboardRow | undefined): Leaderboar
   if (!row) {
     return 'unpublished';
   }
-  if (typeof row.score_status === 'string' && LEADERBOARD_STATUSES.has(row.score_status)) {
-    return row.score_status as LeaderboardStatus;
+  if (isLeaderboardStatus(row.score_status)) {
+    return row.score_status;
   }
   return 'missing';
 }
@@ -2265,7 +2269,7 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
     SEMANTIC_VERSION.test(value.scoring_version) &&
     value.synthetic === false;
   if (!baseShape) return false;
-  if (typeof value.score_status !== 'string' || !LEADERBOARD_STATUSES.has(value.score_status)) {
+  if (!isLeaderboardStatus(value.score_status)) {
     return false;
   }
   if (
@@ -2325,8 +2329,8 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
       isFiniteNumber(value.sensitivity_low) &&
       isFiniteNumber(value.sensitivity_high) &&
       value.sensitivity_low >= 0 &&
-      value.sensitivity_low <= value.score &&
-      value.score <= value.sensitivity_high &&
+      value.sensitivity_low <= value.quality_score &&
+      value.quality_score <= value.sensitivity_high &&
       value.sensitivity_high <= 100 &&
       value.sample_size === 72 &&
       value.coverage_percent === 100 &&
@@ -2336,7 +2340,6 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
     );
   }
   return (
-    value.score_status !== 'official' &&
     value.score === null &&
     value.theta === null &&
     value.standard_error === null &&

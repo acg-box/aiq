@@ -36,7 +36,7 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
       {availableScores.length === 0 ? (
         <p className="empty-note">No scored domain observations are available for this run.</p>
       ) : (
-        <div className="domain-bars" role="img" aria-label="AIQ score by benchmark domain">
+        <div className="domain-bars" role="img" aria-label="Average task score by benchmark domain">
           {domains.map((domain) => (
             <div className="domain-bar-row" key={domain.domain}>
               <span>{formatDomain(domain.domain)}</span>
@@ -78,8 +78,8 @@ export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
       </div>
 
       <p className="panel-footnote">
-        Any-credit rate counts correct or partial completed tasks; it is not the AIQ index. A zero
-        is a scored outcome, not missing data.{' '}
+        Any-credit rate counts correct or partial completed tasks; it is not calibrated ability or
+        strict pass. A zero is a scored outcome, not missing data.{' '}
         <Link href={`/runs/${run.id}`}>Inspect every task</Link>
       </p>
     </section>

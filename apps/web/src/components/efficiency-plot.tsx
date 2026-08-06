@@ -8,6 +8,7 @@ import {
   type LeaderboardEntry,
   type PublicModelEfficiency,
 } from '../data/types.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import {
   pushAnalyticalUrl,
   readEnumParam,
@@ -54,6 +55,9 @@ type EfficiencyDatum = readonly [
   number,
   number,
   number,
+  string,
+  string,
+  string,
   string,
 ];
 
@@ -123,7 +127,7 @@ export function resolveEfficiencyPlotEvidence({
       metricUnavailable += 1;
       continue;
     }
-    points.push({ row, entry, x, y: entry.score });
+    points.push({ row, entry, x, y: presentScoreMetric(entry).score ?? entry.score });
   }
 
   return {
@@ -159,7 +163,10 @@ function readEfficiencyDatum(value: unknown): EfficiencyDatum | null {
     typeof data[9] !== 'number' ||
     typeof data[10] !== 'number' ||
     typeof data[11] !== 'number' ||
-    typeof data[12] !== 'string'
+    typeof data[12] !== 'string' ||
+    typeof data[13] !== 'string' ||
+    typeof data[14] !== 'string' ||
+    typeof data[15] !== 'string'
   ) {
     return null;
   }
@@ -177,6 +184,9 @@ function readEfficiencyDatum(value: unknown): EfficiencyDatum | null {
     data[10],
     data[11],
     data[12],
+    data[13],
+    data[14],
+    data[15],
   ];
 }
 
@@ -229,6 +239,7 @@ export function EfficiencyPlot({
   const pointIds = useMemo(() => points.map(({ entry }) => entry.id), [points]);
   const selectedId = readIdParam(searchParams, 'efficiencySelection', pointIds, pointIds[0] ?? '');
   const selectedPoint = points.find(({ entry }) => entry.id === selectedId);
+  const visibleMetric = points[0] ? presentScoreMetric(points[0].entry) : null;
   useEffect(() => {
     onVisualizationPresenceChange?.(points.length > 0);
   }, [onVisualizationPresenceChange, points.length]);
@@ -282,7 +293,7 @@ export function EfficiencyPlot({
             scoringVersion: datum[7],
             provenance: datum[8],
           });
-          return `${datum[2]}<br/>AIQ: ${datum[1].toFixed(1)} (interval ${datum[5].toFixed(1)}–${datum[6].toFixed(1)})<br/>${duration ? 'Summed cell adapter time' : 'Standard API-equivalent estimate'}: ${x} · metric evidence n=${datum[3]}<br/>${scientificContext}`;
+          return `${datum[2]}<br/>${datum[13]}: ${datum[1].toFixed(1)} (${datum[14].toLowerCase()} ${datum[5].toFixed(1)}–${datum[6].toFixed(1)})<br/>strict pass ${datum[15]}<br/>${duration ? 'Summed cell adapter time' : 'Standard API-equivalent estimate'}: ${x} · metric evidence n=${datum[3]}<br/>${scientificContext}`;
         },
       },
       xAxis: {
@@ -305,7 +316,7 @@ export function EfficiencyPlot({
         type: 'value',
         min: 0,
         max: 100,
-        name: 'AIQ index (0–100)',
+        name: `${visibleMetric?.scoreLabel ?? 'Primary score'} (0–100)`,
         nameLocation: 'middle',
         nameGap: 43,
         axisLabel: { color: 'var(--muted)' },
@@ -316,14 +327,13 @@ export function EfficiencyPlot({
       series: [
         {
           type: 'custom',
-          name: 'Task-sensitivity interval',
+          name: visibleMetric?.intervalLabel ?? 'Primary interval',
           silent: true,
           z: 4,
-          data: points.map(({ entry, x, y }) => [
-            x,
-            entry.sensitivityLow ?? y,
-            entry.sensitivityHigh ?? y,
-          ]),
+          data: points.map(({ entry, x, y }) => {
+            const scoreMetric = presentScoreMetric(entry);
+            return [x, scoreMetric.intervalLow ?? y, scoreMetric.intervalHigh ?? y];
+          }),
           renderItem: (
             _params: unknown,
             api: {
@@ -375,34 +385,43 @@ export function EfficiencyPlot({
           },
           data: points
             .filter(({ entry }) => entry.modelFamily === family)
-            .map(({ entry, row, x, y }) => ({
-              value: [
-                x,
-                y,
-                `${entry.modelFamily} · ${entry.reasoningTier}`,
-                metric === 'duration' ? row.observedTimeSampleCount : row.estimatedCostSampleCount,
-                `${entry.coveragePercent?.toFixed(1) ?? '—'}%`,
-                entry.sensitivityLow ?? y,
-                entry.sensitivityHigh ?? y,
-                entry.scoringVersion ?? 'unavailable',
-                entry.synthetic ? 'synthetic' : 'published',
-                entry.sampleSize,
-                entry.runtimeIssues,
-                entry.missing,
-                entry.scoreStatus.replaceAll('_', ' '),
-              ],
-              symbolSize: entry.id === selectedId ? 19 : 13,
-              label:
-                entry.id === selectedId
-                  ? {
-                      show: true,
-                      position: 'top' as const,
-                      color: 'var(--ink)',
-                      fontWeight: 700,
-                      formatter: `${entry.modelFamily} · ${entry.reasoningTier}`,
-                    }
-                  : undefined,
-            })),
+            .map(({ entry, row, x, y }) => {
+              const scoreMetric = presentScoreMetric(entry);
+              const presentation = presentLeaderboardEntry(entry);
+              return {
+                value: [
+                  x,
+                  y,
+                  `${entry.modelFamily} · ${entry.reasoningTier}`,
+                  metric === 'duration'
+                    ? row.observedTimeSampleCount
+                    : row.estimatedCostSampleCount,
+                  `${entry.coveragePercent?.toFixed(1) ?? '—'}%`,
+                  scoreMetric.intervalLow ?? y,
+                  scoreMetric.intervalHigh ?? y,
+                  entry.scoringVersion ?? 'unavailable',
+                  entry.synthetic ? 'synthetic' : 'published',
+                  entry.sampleSize,
+                  entry.runtimeIssues,
+                  entry.missing,
+                  entry.scoreStatus.replaceAll('_', ' '),
+                  scoreMetric.scoreLabel,
+                  scoreMetric.intervalLabel,
+                  presentation.strictPassRate,
+                ],
+                symbolSize: entry.id === selectedId ? 19 : 13,
+                label:
+                  entry.id === selectedId
+                    ? {
+                        show: true,
+                        position: 'top' as const,
+                        color: 'var(--ink)',
+                        fontWeight: 700,
+                        formatter: `${entry.modelFamily} · ${entry.reasoningTier}`,
+                      }
+                    : undefined,
+              };
+            }),
         })),
         {
           type: 'scatter',
@@ -419,18 +438,26 @@ export function EfficiencyPlot({
         },
       ],
     };
-  }, [frontierRunIds, metric, points, selectedId]);
+  }, [
+    frontierRunIds,
+    metric,
+    points,
+    selectedId,
+    visibleMetric?.intervalLabel,
+    visibleMetric?.scoreLabel,
+  ]);
 
   return (
     <section className="efficiency-plot" aria-labelledby="efficiency-plot-heading">
       <header className="chart-header">
         <div>
           <h2 id="efficiency-plot-heading">
-            AIQ score vs {metric === 'cost' ? 'API-equivalent cost' : 'total run time'}
+            {visibleMetric?.scoreLabel ?? 'Score'} vs{' '}
+            {metric === 'cost' ? 'API-equivalent cost' : 'total run time'}
           </h2>
           <p>
-            Higher is better. Lower and left is more efficient. Vertical lines show task-set
-            sensitivity.
+            Higher is better. Lower and left is more efficient. Vertical lines show the matching{' '}
+            {visibleMetric?.intervalLabel.toLowerCase() ?? 'score interval'}.
           </p>
         </div>
         <div className="chart-controls">
@@ -485,21 +512,28 @@ export function EfficiencyPlot({
         <EChartsChart
           className="efficiency-chart"
           option={option}
-          label={`Scatter plot of AIQ against ${metric} for ${points.length} configurations, with visible task-sensitivity intervals and descriptive Pareto frontier rings; upper-left is better`}
+          label={`Scatter plot of ${visibleMetric?.scoreLabel.toLowerCase() ?? 'score'} against ${metric} for ${points.length} configurations, with ${visibleMetric?.intervalLabel.toLowerCase() ?? 'intervals'} and descriptive Pareto frontier rings; upper-left is better`}
         />
       )}
-      {selectedPoint ? (
-        <p className="chart-selection" aria-live="polite">
-          Selected: {selectedPoint.entry.modelFamily} · {selectedPoint.entry.reasoningTier} · AIQ{' '}
-          {selectedPoint.y.toFixed(1)} · task-sensitivity interval{' '}
-          {selectedPoint.entry.sensitivityLow?.toFixed(1)}–
-          {selectedPoint.entry.sensitivityHigh?.toFixed(1)} ·{' '}
-          {metric === 'cost'
-            ? `Standard API-equivalent estimate $${selectedPoint.x.toFixed(4)}`
-            : `summed cell adapter time ${(selectedPoint.x / 60_000).toFixed(2)} min`}{' '}
-          · {frontierRunIds.has(selectedPoint.row.runId) ? 'descriptive frontier' : 'not frontier'}
-        </p>
-      ) : null}
+      {selectedPoint
+        ? (() => {
+            const scoreMetric = presentScoreMetric(selectedPoint.entry);
+            return (
+              <p className="chart-selection" aria-live="polite">
+                Selected: {selectedPoint.entry.modelFamily} · {selectedPoint.entry.reasoningTier} ·{' '}
+                {scoreMetric.scoreLabel} {selectedPoint.y.toFixed(1)} ·{' '}
+                {scoreMetric.intervalLabel.toLowerCase()} {scoreMetric.interval} ·{' '}
+                {metric === 'cost'
+                  ? `Standard API-equivalent estimate $${selectedPoint.x.toFixed(4)}`
+                  : `summed cell adapter time ${(selectedPoint.x / 60_000).toFixed(2)} min`}{' '}
+                ·{' '}
+                {frontierRunIds.has(selectedPoint.row.runId)
+                  ? 'descriptive frontier'
+                  : 'not frontier'}
+              </p>
+            );
+          })()
+        : null}
       <details className="chart-data-disclosure">
         <summary>
           Evidence coverage · {points.length}/{configurationCount} configurations plotted in the
@@ -519,15 +553,15 @@ export function EfficiencyPlot({
           <table>
             <caption>
               Only exact canonical configurations with coverage-qualified values appear below.
-              Excluded evidence is counted in the summary without using its unverified labels. AIQ
-              is unchanged by the selected efficiency metric. Cost is a Standard API-equivalent
-              estimate, not billed subscription cost; duration is summed cell adapter time, not
-              wall-clock time.
+              Excluded evidence is counted in the summary without using its unverified labels. The
+              primary score is unchanged by the selected efficiency metric. Cost is a Standard
+              API-equivalent estimate, not billed subscription cost; duration is summed cell adapter
+              time, not wall-clock time.
             </caption>
             <thead>
               <tr>
                 <th scope="col">Configuration</th>
-                <th scope="col">AIQ (task-sensitivity interval)</th>
+                <th scope="col">Primary score (interval)</th>
                 <th scope="col">{metric === 'cost' ? 'Estimate (USD)' : 'Adapter time'}</th>
                 <th scope="col">n</th>
                 <th scope="col">Coverage</th>
@@ -537,36 +571,41 @@ export function EfficiencyPlot({
               </tr>
             </thead>
             <tbody>
-              {points.map(({ entry, row, x, y }) => (
-                <tr key={row.runId}>
-                  <th scope="row">
-                    {entry.modelFamily} · {entry.reasoningTier}
-                  </th>
-                  <td>
-                    {y.toFixed(1)} ({entry.sensitivityLow?.toFixed(1)}–
-                    {entry.sensitivityHigh?.toFixed(1)})
-                  </td>
-                  <td>
-                    {metric === 'cost' ? `$${x.toFixed(4)}` : `${(x / 60_000).toFixed(2)} min`}
-                  </td>
-                  <td>
-                    {metric === 'cost' ? row.estimatedCostSampleCount : row.observedTimeSampleCount}
-                  </td>
-                  <td>{entry.coveragePercent?.toFixed(1) ?? '—'}%</td>
-                  <td>
-                    {entry.runtimeIssues ?? '—'} / {entry.missing ?? '—'}
-                  </td>
-                  <td>{frontierRunIds.has(row.runId) ? 'Descriptive frontier' : '—'}</td>
-                  <td>
-                    {entry.synthetic ? 'Synthetic' : 'Published'} · scoring{' '}
-                    {entry.scoringVersion ?? '—'} · batch {row.matrixBatchId.slice(0, 16)}… ·
-                    concurrency {row.executionConcurrency} ·{' '}
-                    {metric === 'cost'
-                      ? `pricing ${row.pricingVersion ?? 'unavailable'}`
-                      : `duration ${row.durationEvidenceLevel ?? 'unavailable'}`}
-                  </td>
-                </tr>
-              ))}
+              {points.map(({ entry, row, x, y }) => {
+                const scoreMetric = presentScoreMetric(entry);
+                return (
+                  <tr key={row.runId}>
+                    <th scope="row">
+                      {entry.modelFamily} · {entry.reasoningTier}
+                    </th>
+                    <td>
+                      {y.toFixed(1)} {scoreMetric.scoreLabel} ({scoreMetric.interval},{' '}
+                      {scoreMetric.intervalLabel})
+                    </td>
+                    <td>
+                      {metric === 'cost' ? `$${x.toFixed(4)}` : `${(x / 60_000).toFixed(2)} min`}
+                    </td>
+                    <td>
+                      {metric === 'cost'
+                        ? row.estimatedCostSampleCount
+                        : row.observedTimeSampleCount}
+                    </td>
+                    <td>{entry.coveragePercent?.toFixed(1) ?? '—'}%</td>
+                    <td>
+                      {entry.runtimeIssues ?? '—'} / {entry.missing ?? '—'}
+                    </td>
+                    <td>{frontierRunIds.has(row.runId) ? 'Descriptive frontier' : '—'}</td>
+                    <td>
+                      {entry.synthetic ? 'Synthetic' : 'Published'} · scoring{' '}
+                      {entry.scoringVersion ?? '—'} · batch {row.matrixBatchId.slice(0, 16)}… ·
+                      concurrency {row.executionConcurrency} ·{' '}
+                      {metric === 'cost'
+                        ? `pricing ${row.pricingVersion ?? 'unavailable'}`
+                        : `duration ${row.durationEvidenceLevel ?? 'unavailable'}`}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

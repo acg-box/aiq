@@ -358,7 +358,9 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
   await expect(page.getByText('Published Aug 3, 2026', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  await expect(page.getByRole('heading', { name: 'AIQ index by configuration' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Calibrated ability by configuration' }),
+  ).toBeVisible();
   await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
   await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
   await page.getByText('Read all configuration values as a table', { exact: true }).click();
@@ -370,7 +372,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(page.getByText('1,224 task cells', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
   const efficiencyPlot = page.getByRole('region', {
-    name: 'AIQ score vs total run time',
+    name: 'Calibrated ability vs total run time',
   });
   await expect(efficiencyPlot).toBeVisible();
   await expect(efficiencyPlot).toContainText('Lower and left is more efficient');
@@ -381,12 +383,12 @@ test('the live overview exposes all 17 published configurations without seed sub
   );
   await efficiencyPlot.getByRole('button', { name: 'Cost', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'AIQ score vs API-equivalent cost' }),
+    page.getByRole('heading', { name: 'Calibrated ability vs API-equivalent cost' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('region', { name: 'AIQ score vs API-equivalent cost' }),
+    page.getByRole('region', { name: 'Calibrated ability vs API-equivalent cost' }),
   ).toContainText('1/17 configurations plotted in the canonical matrix');
-  await page.locator('details.evidence-notes > summary').click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
   await expect(
     page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),

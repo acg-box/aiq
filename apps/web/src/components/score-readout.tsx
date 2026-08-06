@@ -1,7 +1,7 @@
 export function ScoreReadout({
   score,
   label,
-  unit = 'AIQ index',
+  unit = 'Calibrated ability',
 }: {
   score: number;
   label: string;

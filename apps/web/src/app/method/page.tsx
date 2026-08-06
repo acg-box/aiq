@@ -151,7 +151,7 @@ export default async function MethodPage() {
           benchmark score, not a claim about general intelligence.
         </p>
       </div>
-      <ReadStateNote result={result} />
+      <ReadStateNote result={result} subject="Benchmark method" />
       {result.state === 'unavailable' ? null : (
         <>
           <div className="version-banner">
@@ -248,8 +248,14 @@ export default async function MethodPage() {
             </article>
             <TaskScoreMethod />
             <article>
-              <span className="eyebrow">05 · Sensitivity, not generalization</span>
-              <h2>What the interval can and cannot say</h2>
+              <span className="eyebrow">05 · Uncertainty and task mix</span>
+              <h2>Two intervals with different meanings</h2>
+              <p>
+                Official calibrated ability uses a conditional 95% interval derived from latent
+                standard error while the released item bank stays fixed. The raw quality diagnostic
+                has a separate task-mix sensitivity interval. Neither interval includes every source
+                of benchmark or deployment uncertainty.
+              </p>
               <p>{result.data.sensitivityPolicy}</p>
               <div className="formula">
                 <span>Official calibrated ability</span>

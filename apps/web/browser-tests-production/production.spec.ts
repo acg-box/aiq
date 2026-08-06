@@ -209,7 +209,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await page.getByText('Read all configuration values as a table', { exact: true }).click();
-  await page.locator('details.evidence-notes > summary').click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Time, token, and cost table', { exact: true }).click();
 
   const leaderboard = page.getByRole('region', {
@@ -437,7 +437,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
   await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
-  await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Calibrated ability history' })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
   ).toHaveCount(6);

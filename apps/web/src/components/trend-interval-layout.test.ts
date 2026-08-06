@@ -13,14 +13,14 @@ void describe('trend interval layout', () => {
       {
         entryId: 'sol-low',
         recordedAt: '2026-08-01T00:00:00.000Z',
-        sensitivityLow: 41,
-        sensitivityHigh: 49,
+        intervalLow: 41,
+        intervalHigh: 49,
       },
       {
         entryId: 'terra-medium',
         recordedAt: '2026-08-01T00:00:00.000Z',
-        sensitivityLow: 52,
-        sensitivityHigh: 61,
+        intervalLow: 52,
+        intervalHigh: 61,
       },
     ];
 

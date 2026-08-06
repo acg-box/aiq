@@ -41,7 +41,7 @@ export default async function RadarPage() {
           evidence the receiver verified. Registry status is not a live heartbeat.
         </p>
       </div>
-      <ReadStateNote result={result} />
+      <ReadStateNote result={result} subject="Runner network" />
       {result.state === 'unavailable' ? null : (
         <>
           <section className="radar-summary" aria-labelledby="runner-summary-heading">

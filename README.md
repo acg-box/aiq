@@ -139,14 +139,16 @@ batch of 17 configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
 
-The Web application is a professional analysis workbench. Scientific score
-context reports the sample count, fixed-fixture task-sensitivity interval, coverage,
-missing cells, runtime state, scoring method, and provenance. It keeps semantic
-task outcomes separate from runtime, invalid, and missing cells. Cost remains an
-estimated Standard API-equivalent comparison, not an actual ChatGPT or Codex
-subscription bill. Charts use ECharts with SVG rendering and ARIA descriptions.
-Users can select system, light, or dark color themes. The production views use
-the real historical matrix, not synthetic data.
+The Web application is a professional analysis workbench. Official evidence
+presents calibrated ability with its conditional 95% interval. Synthetic fixtures
+present descriptive quality with task-mix sensitivity and never appear as Official.
+Scientific context also reports strict pass with a Wilson interval, sample count,
+coverage, missing cells, runtime state, scoring method, and provenance. It keeps
+semantic task outcomes separate from runtime, invalid, and missing cells. Cost
+remains an estimated Standard API-equivalent comparison, not an actual ChatGPT or
+Codex subscription bill. Charts use ECharts with SVG rendering and ARIA
+descriptions. Users can select system, light, or dark color themes. Production
+views use real historical evidence, not synthetic data.
 
 ## Repository map
 
