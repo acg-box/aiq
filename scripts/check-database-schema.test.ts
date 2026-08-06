@@ -332,7 +332,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
   for (const [changed, expected] of [
     [
       schema.replaceAll(
-        'sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6',
+        'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05',
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
       /Official provenance must compare the task-set digest/,
@@ -453,7 +453,7 @@ await test('checker rejects readiness that reports but does not enforce evaluato
 await test('checker rejects readiness that reports but does not enforce task-set identity', async () => {
   const [schema, syntheticDemo] = await sources();
   const changed = schema.replace(
-    "      and task_set_identity_sha256 =\n        'sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6'\n",
+    "      and task_set_identity_sha256 =\n        'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'\n",
     '',
   );
   assert.notEqual(changed, schema);

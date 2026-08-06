@@ -684,7 +684,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6'/,
+    /task_set_identity_sha256 =\s*'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'/,
   );
   assert.match(
     schema,

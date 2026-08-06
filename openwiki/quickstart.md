@@ -24,8 +24,11 @@ distinct identities: runner, verifier, and publisher.
 
 The active public candidate, task, and scorer contract is `1.0.5`. It retargets
 four calibration-sensitive tasks and carries forward 68 task designs with new
-bindings. Controlled identities, final calibration, native build verification,
-a real Official run, publication, and final deployment are pending. Production
+bindings. The create-new interaction candidate passed two-candidate
+reproducibility, independent authoring validation, and the Rust 72-task corpus
+validator. Its identities remain calibration candidates. The new targeted
+pilot, full calibration, Contrast generation, native build verification, a real
+Official run, publication, and final deployment are pending. Production
 still publishes the one historical AIQ Core `1.0.2` Official matrix; no `1.0.5`
 Official run or deployment has been accepted.
 
@@ -46,8 +49,9 @@ task set as saturated. The active public candidate now gives all four tasks
 multiple interacting daily-work requirements: a bounded keyed executor, a
 quoted-record parser, a six-field layered service configuration, and a bounded
 Unicode log preview. Each revised task has a 900-second wall budget while its
-40-step and 28-tool-call limits remain unchanged. This candidate still needs
-create-new controlled generation and a new 68-cell pilot.
+40-step and 28-tool-call limits remain unchanged. Model-free controlled
+generation and validation passed. This candidate still needs a new 68-cell
+pilot.
 
 ## Deployment status
 
@@ -177,10 +181,18 @@ AIQ readiness inventory. The ordered task-metadata catalog digest is
 the release-policy identity is `aiq-core/1.0.5`, and its public catalog
 release-identity digest is
 `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The controlled scorer-manifest, evaluator, runtime task-set, generated-task
-tree, Core corpus, Contrast corpus, and database commitment identities are
-pending. Create-new generation and review must establish them. The shared Rust
-validator fails closed unless
+The controlled interaction candidate has evaluator identity
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
+scorer-manifest identity
+`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
+generated-task tree identity
+`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
+Core commitment identity
+`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`,
+and public-safe database task-set identity
+`sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`.
+They remain calibration-candidate identities; Contrast is pending. The shared
+Rust validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent
 shared typed enforcement even though it has no separate checked-in JSON schema.
