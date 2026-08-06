@@ -331,6 +331,12 @@ for (const route of routes) {
     expectNotPubliclyCacheable(response);
     await expect(page.locator('main h1')).toBeVisible();
     await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
+    if (route.startsWith('/trends')) {
+      const evidenceDisclosure = page.locator('details.evidence-status-disclosure');
+      await expect(evidenceDisclosure).not.toHaveAttribute('open', '');
+      await evidenceDisclosure.locator('summary').click();
+      await expect(evidenceDisclosure).toHaveAttribute('open', '');
+    }
     await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
     await expect(
@@ -385,7 +391,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     calibrationEfficiency.getByRole('row').filter({ hasText: 'terra · medium' }),
   ).toBeVisible();
-  await expect(page.locator('.calibration-chart svg')).toHaveCount(2);
+  await expect(page.locator('.calibration-chart svg')).toHaveCount(1);
   await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Inspect calibration subsets' })).toHaveAttribute(
     'href',
@@ -469,7 +475,7 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   await expect(selector.locator('option')).toHaveCount(17);
   const results = page.getByRole('region', { name: 'Calibration results' });
   await expect(results.getByRole('row')).toHaveCount(73);
-  await expect(page.locator('.calibration-chart svg')).toHaveCount(2);
+  await expect(page.locator('.calibration-chart svg')).toHaveCount(1);
   await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
   const workspaceIntegrity = results
     .getByRole('row')
