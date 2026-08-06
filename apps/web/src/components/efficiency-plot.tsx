@@ -425,9 +425,9 @@ export function EfficiencyPlot({
     <section className="efficiency-plot" aria-labelledby="efficiency-plot-heading">
       <header className="chart-header">
         <div>
-          <h3 id="efficiency-plot-heading">
+          <h2 id="efficiency-plot-heading">
             AIQ score vs {metric === 'cost' ? 'API-equivalent cost' : 'total run time'}
-          </h3>
+          </h2>
           <p>
             Higher is better. Lower and left is more efficient. Vertical lines show task-set
             sensitivity.
