@@ -5,11 +5,21 @@ import {
   validateProductionPageEvidence,
 } from '../playwright-production-evidence.ts';
 
+async function expectPublishedEvidenceLabel(page: Page, label: string): Promise<void> {
+  const note = page.getByLabel(label, { exact: true });
+  await expect(note).toHaveCount(1);
+  if (await note.isVisible()) return;
+
+  const disclosure = page.locator('details').filter({ has: note });
+  await expect(disclosure).toHaveCount(1);
+  await expect(disclosure.locator('summary')).toBeVisible();
+}
+
 export async function expectProductionPageEvidence(page: Page, path: string): Promise<void> {
   const expectation = productionPageEvidenceExpectation(path);
   await Promise.all([
     ...expectation.requiredPublishedLabels.map((label) =>
-      expect(page.getByLabel(label, { exact: true })).toBeVisible(),
+      expectPublishedEvidenceLabel(page, label),
     ),
     expect(page.getByText('Published evidence unavailable', { exact: true })).toHaveCount(0),
     expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0),

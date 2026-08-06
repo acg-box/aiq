@@ -79,7 +79,9 @@ async function expectMobileMatrixLegibility(page: Page) {
   await expect(
     chart.getByRole('button', { name: 'Ordered + interval', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
-  await expect(chart.getByText('All 17 configurations shown', { exact: false })).toBeVisible();
+  await expect(
+    chart.getByText('All 17 scored configurations shown', { exact: false }),
+  ).toBeVisible();
   await expect(chart.getByText('Read 17 configuration values', { exact: true })).toBeVisible();
   const labels = await chart
     .locator('svg text')
