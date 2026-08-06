@@ -32,8 +32,8 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
             const presentation = presentLeaderboardEntry(entry);
             const compareWith = visibleEntries.find((candidate) => candidate.id !== entry.id);
             const compareHref = compareWith
-              ? `/compare?compareFirst=${encodeURIComponent(entry.id)}&compareSecond=${encodeURIComponent(compareWith.id)}`
-              : '/compare';
+              ? `/?compareFirst=${encodeURIComponent(entry.id)}&compareSecond=${encodeURIComponent(compareWith.id)}#compare`
+              : '/#compare';
             return (
               <li key={entry.id}>
                 <span className="ranking-position" aria-label={`Position ${index + 1}`}>
