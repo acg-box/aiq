@@ -3,8 +3,10 @@
 mod replay;
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::str;
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Builder};
@@ -24,6 +26,7 @@ use std::{
 use clap::Parser;
 use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use ureq::{
 	self, Body,
@@ -457,7 +460,7 @@ struct VerifyLocalCli {
 struct OperationalProductionReference {
 	schema_version: String,
 	published_at: String,
-	corpus_commitment: serde_json::Value,
+	corpus_commitment: Value,
 	nodes: Vec<OperationalReferenceNode>,
 }
 
@@ -1997,6 +2000,12 @@ enum PackageDisposition {
 	LeaseLost(&'static str),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PublicationPoint {
+	Install(usize),
+	Rollback(usize),
+}
+
 /// Parses configuration and runs one bounded worker invocation or offline replay.
 pub fn run_cli() -> Result<(), WorkerError> {
 	let arguments = env::args_os().collect::<Vec<_>>();
@@ -2523,7 +2532,6 @@ fn verify_and_write_local_with_admission(
 			format!("calibration admission failed: {error}"),
 		)
 	})?;
-
 	let bundle = CalibrationAdmissionBundleV1 {
 		schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
 		stage: stage.clone(),
@@ -2707,12 +2715,6 @@ where
 	Ok(bytes)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PublicationPoint {
-	Install(usize),
-	Rollback(usize),
-}
-
 fn publish_outputs_atomically<F>(
 	outputs: &[(&OutputTarget, &str, &[u8])],
 	mut fault: F,
@@ -2772,7 +2774,6 @@ where
 	T: Serialize,
 {
 	let bytes = serialize_json_output(value, "diagnostic")?;
-
 	let temporary = create_temporary_output(target, "diagnostic", &bytes)?;
 
 	fs::hard_link(&temporary.path, &target.path).map_err(|error| {
@@ -3001,8 +3002,8 @@ fn is_canonical_millisecond_utc(value: &str) -> bool {
 		return false;
 	}
 
-	let number = |range: std::ops::Range<usize>| {
-		std::str::from_utf8(&bytes[range]).ok().and_then(|part| part.parse::<u32>().ok())
+	let number = |range: Range<usize>| {
+		str::from_utf8(&bytes[range]).ok().and_then(|part| part.parse::<u32>().ok())
 	};
 	let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) =
 		(number(0..4), number(5..7), number(8..10), number(11..13), number(14..16), number(17..19))
@@ -3048,6 +3049,7 @@ fn approved_operational_nodes(
 			"production reference does not match the independently expected digest",
 		));
 	}
+
 	let reference: OperationalProductionReference = serde_json::from_slice(&input.bytes)
 		.map_err(|error| WorkerError::configuration(format!("production reference: {error}")))?;
 
@@ -3057,9 +3059,9 @@ fn approved_operational_nodes(
 	{
 		return Err(WorkerError::configuration("production reference is invalid"));
 	}
+
 	let corpus_commitment_sha256 = protocol::canonical_hash(&reference.corpus_commitment)
 		.map_err(|error| WorkerError::configuration(format!("production reference: {error}")))?;
-
 	let mut identities = BTreeMap::new();
 
 	for node in reference.nodes {
@@ -3323,6 +3325,7 @@ fn operational_admission_context(
 	corpus
 		.validate_evaluator_runtime(evaluator_runtime)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
 	let model_toolchain = corpus
 		.validate_model_toolchain(toolchain_root, evaluator_runtime)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
@@ -3501,7 +3504,6 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 			)
 		})
 		.transpose()?;
-
 	let request = PreparationRequest {
 		package_bytes: &package_bytes,
 		package_sha256: &package_sha256,
@@ -5173,6 +5175,7 @@ mod tests {
 				.expect("expected provenance")
 				.task_set_digest
 				.clone_from(&task_set_hash);
+
 			let run_id = resume::classified_run_id(
 				&official.schedule_slot,
 				&task_set_hash,
@@ -5676,7 +5679,6 @@ mod tests {
 				node("publisher", &publisher)
 			]
 		});
-
 		let reference_bytes = serde_json::to_vec(&reference).expect("reference JSON");
 		let expected_reference_sha256 =
 			format!("sha256:{}", hex::encode(Sha256::digest(&reference_bytes)));
@@ -5699,6 +5701,7 @@ mod tests {
 
 		fs::write(&path, serde_json::to_vec(&reference).expect("tampered JSON"))
 			.expect("tampered reference");
+
 		assert!(super::approved_operational_nodes(&path, &expected_reference_sha256).is_err());
 
 		fs::remove_dir_all(root).expect("remove reference root");
@@ -5707,6 +5710,7 @@ mod tests {
 	#[test]
 	fn production_reference_timestamp_requires_a_real_utc_calendar_instant() {
 		assert!(super::is_canonical_millisecond_utc("2024-02-29T23:59:59.999Z"));
+
 		for invalid in [
 			"2023-02-29T12:00:00.000Z",
 			"2026-04-31T12:00:00.000Z",
@@ -5738,19 +5742,26 @@ mod tests {
 		};
 
 		git(&["init", "-q"]);
+
 		fs::write(root.join("source.rs"), "fn main() {}\n").expect("source");
+
 		git(&["add", "source.rs"]);
 		git(&["-c", "core.hooksPath=/dev/null", "commit", "-qm", "test: fixture"]);
+
 		let commit =
 			super::git_output(&root, &["rev-parse", "HEAD"], "fixture commit").expect("commit");
 
 		assert!(super::validate_detached_source_identity(&root, &commit).is_err());
+
 		git(&["checkout", "-q", "--detach", "HEAD"]);
+
 		let tree = super::validate_detached_source_identity(&root, &commit).expect("detached tree");
 
 		assert_eq!(tree.len(), 40);
 		assert!(super::validate_detached_source_identity(&root, &"f".repeat(40)).is_err());
+
 		fs::write(root.join("source.rs"), "changed\n").expect("dirty source");
+
 		assert!(super::validate_detached_source_identity(&root, &commit).is_err());
 
 		fs::remove_dir_all(root).expect("remove source fixture");
@@ -5780,12 +5791,15 @@ mod tests {
 		let expected = write_receipt(&receipt);
 
 		super::validated_build_receipt(&path, &expected).expect("digest-pinned build receipt");
+
 		assert!(super::validated_build_receipt(&path, &digest('f')).is_err());
 
 		receipt["source_commit"] = serde_json::json!("A".repeat(40));
+
 		let invalid_expected = write_receipt(&receipt);
 
 		assert!(super::validated_build_receipt(&path, &invalid_expected).is_err());
+
 		fs::remove_dir_all(root).expect("remove build receipt fixture");
 	}
 
@@ -6021,6 +6035,7 @@ mod tests {
 		};
 
 		assert_eq!(stage.task_ids.len(), 71);
+
 		stage.verify().expect("legacy subset stage contract");
 		attestation
 			.verify(&stage, &attestation.verifier)
@@ -6086,6 +6101,7 @@ mod tests {
 		admission
 			.verify(&expected_bindings, &fixture.tasks, &run.results)
 			.expect("externally anchored admission");
+
 		assert_eq!(admission.claims.task_count, 72);
 		assert_eq!(admission.claims.model_configuration_count, 17);
 		assert_eq!(admission.claims.official_eligible, FalseOnly);
@@ -6109,6 +6125,7 @@ mod tests {
 		let mut attacker_bindings = expected_bindings.clone();
 
 		attacker_bindings.approved_verifier = attacker.node().clone();
+
 		let attacker_admission = calibration_verification::sign_full_calibration_admission(
 			&attacker,
 			&stage,
@@ -6149,7 +6166,9 @@ mod tests {
 		);
 
 		let mut incomplete_results = run.results.clone();
+
 		incomplete_results.pop();
+
 		assert!(
 			calibration_verification::sign_full_calibration_admission(
 				&verifier,
@@ -6189,6 +6208,7 @@ mod tests {
 		value
 			.verify(&context.bindings, &fixture.tasks, &run.results)
 			.expect("persisted admission signature");
+
 		assert_eq!(
 			serde_json::from_slice::<CalibrationVerifiedStageV1>(
 				&fs::read(&stage).expect("stage bytes")
@@ -6220,13 +6240,16 @@ mod tests {
 		assert!(!failed_admission.exists());
 
 		let preserved = fixture.root.join("preserved-admission.json");
+
 		fs::write(&preserved, b"preserve").expect("pre-existing admission");
+
 		let race_stage = fixture.root.join("race-stage.json");
 		let race_attestation = fixture.root.join("race-attestation.json");
 
 		fixture
 			.prepare_admission(&race_stage, &race_attestation, &preserved, &context)
 			.expect_err("existing bundle must reject without partial publication");
+
 		assert_eq!(fs::read(&preserved).expect("preserved bundle"), b"preserve");
 		assert!(!race_stage.exists());
 		assert!(!race_attestation.exists());
@@ -6263,9 +6286,9 @@ mod tests {
 
 			assert!(error.to_string().contains("injected install failure"));
 			assert!(paths.iter().all(|path| !path.exists()));
+
 			fs::remove_dir_all(root).expect("remove install-failure fixture");
 		}
-
 		for failed_rollback in 0..2 {
 			let root = temporary_test_root(&format!("publication-rollback-{failed_rollback}"));
 			let paths = [
@@ -6298,6 +6321,7 @@ mod tests {
 			assert!(error.to_string().contains("rollback failures"));
 			assert!(error.to_string().contains("injected rollback failure"));
 			assert!(paths.iter().all(|path| !path.exists()));
+
 			fs::remove_dir_all(root).expect("remove rollback-failure fixture");
 		}
 	}
