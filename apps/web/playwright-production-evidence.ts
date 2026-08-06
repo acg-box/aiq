@@ -50,8 +50,15 @@ export function productionPageEvidenceExpectation(path: string): ProductionPageE
   const pathname = new URL(path, 'https://aiq.invalid').pathname;
   if (pathname === '/') {
     return {
-      requiredPublishedLabels: ['Data provenance', 'Official efficiency provenance'],
-      allowedEmptyLabels: ['Latest calibration status', 'Calibration score matrix status'],
+      requiredPublishedLabels: [
+        'Data provenance',
+        'Official efficiency provenance',
+        'Run archive provenance',
+        'Comparison matrix provenance',
+        'Benchmark method provenance',
+        'Runner network provenance',
+      ],
+      allowedEmptyLabels: ['Calibration status'],
     };
   }
   if (pathname === '/trends') {
@@ -69,6 +76,18 @@ export function productionPageEvidenceExpectation(path: string): ProductionPageE
       requiredPublishedLabels: [],
       allowedEmptyLabels: ['Calibration register status', 'Selected-run score matrix status'],
     };
+  }
+  if (pathname === '/runs') {
+    return { requiredPublishedLabels: ['Run archive provenance'], allowedEmptyLabels: [] };
+  }
+  if (pathname === '/compare') {
+    return { requiredPublishedLabels: ['Comparison matrix provenance'], allowedEmptyLabels: [] };
+  }
+  if (pathname === '/method') {
+    return { requiredPublishedLabels: ['Benchmark method provenance'], allowedEmptyLabels: [] };
+  }
+  if (pathname === '/radar') {
+    return { requiredPublishedLabels: ['Runner network provenance'], allowedEmptyLabels: [] };
   }
   if (/^\/runs\/[^/]+$/.test(pathname)) {
     return {

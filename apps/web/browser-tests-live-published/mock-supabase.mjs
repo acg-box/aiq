@@ -1,6 +1,40 @@
 import { createServer } from 'node:http';
 
+import activeCatalog from '../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json' with { type: 'json' };
+import generatedPublicFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
 import { REQUIRED_RPC_CONTRACT } from '../src/server/readiness.ts';
+
+if (
+  generatedPublicFixture.schema_version !== 'aiq.test-generated-public-fixture.v1' ||
+  generatedPublicFixture.fixture_provenance !== 'test_generated' ||
+  !generatedPublicFixture.test_generated ||
+  generatedPublicFixture.production_publishable ||
+  generatedPublicFixture.official_eligible ||
+  generatedPublicFixture.ranking_eligible ||
+  !generatedPublicFixture.synthetic ||
+  generatedPublicFixture.benchmark_version !== 'aiq-core@1.0.5' ||
+  generatedPublicFixture.scoring_version !== '1.0.5' ||
+  generatedPublicFixture.measurement_version !== '2.0.0' ||
+  generatedPublicFixture.task_count !== 72 ||
+  generatedPublicFixture.configuration_count !== 17 ||
+  generatedPublicFixture.cell_count !== 1_224 ||
+  !generatedPublicFixture.calibration_gate.passed ||
+  generatedPublicFixture.calibration_gate.violations.length !== 0 ||
+  generatedPublicFixture.leaderboard.length !== 17 ||
+  generatedPublicFixture.trend.length !== 17 ||
+  generatedPublicFixture.task_cells.length !== 1_224
+) {
+  throw new Error('The scorer-owned browser fixture is not isolated and complete.');
+}
+
+if (
+  `${activeCatalog.task_set_id}@${activeCatalog.task_set_version}` !==
+    generatedPublicFixture.benchmark_version ||
+  activeCatalog.scoring_version !== generatedPublicFixture.scoring_version ||
+  activeCatalog.tasks.length !== generatedPublicFixture.task_count
+) {
+  throw new Error('The scorer-owned browser fixture does not match the active public catalog.');
+}
 
 const port = Number.parseInt(process.argv[2] ?? '', 10);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
@@ -398,8 +432,8 @@ const canonicalPublicExecutionFailures = {
 };
 
 const provenanceHash = `sha256:${'1'.repeat(64)}`;
-const currentRunStartedAt = '2026-08-03T12:00:00.000Z';
-const currentRunCompletedAt = '2026-08-03T13:37:24.411Z';
+const currentRunStartedAt = '2025-12-31T23:00:00.000Z';
+const currentRunCompletedAt = '2025-12-31T23:59:59.000Z';
 
 /**
  * Expand one anonymous per-domain distribution into public result rows.
@@ -532,32 +566,69 @@ if (
   throw new Error('Verified public run identities must be unique canonical digests.');
 }
 
-const currentRunEvidence = matrix.map((entry, entryIndex) => {
-  const results = officialResultsForEntry(entry);
+const generatedLeaderboardByMatrix = new Map(
+  generatedPublicFixture.leaderboard.map((row) => [row.matrix_id, row]),
+);
+const catalogByTaskId = new Map(activeCatalog.tasks.map((task) => [task.task_id, task]));
+
+const currentRunEvidence = matrix.map((entry) => {
+  const generatedRow = generatedLeaderboardByMatrix.get(entry.id);
+  const generatedCells = generatedPublicFixture.task_cells.filter(
+    (cell) => cell.matrix_id === entry.id,
+  );
+  const resultTemplates = officialResultsForEntry(entry);
+  if (!generatedRow || generatedCells.length !== 72 || resultTemplates.length !== 72) {
+    throw new Error(`Missing complete scorer-generated evidence for ${entry.id}.`);
+  }
+  const results = generatedCells.map((cell, index) => {
+    const task = catalogByTaskId.get(cell.task_id);
+    const template = resultTemplates[index];
+    if (
+      !task ||
+      !template ||
+      task.task_version !== cell.task_version ||
+      task.domain !== template.domain ||
+      cell.provenance !== 'test_generated' ||
+      !['correct', 'partial', 'incorrect'].includes(cell.evaluation)
+    ) {
+      throw new Error(`Invalid scorer-generated task evidence for ${entry.id}.`);
+    }
+    return Object.assign({}, template, {
+      task_id: cell.task_id,
+      task: task.title,
+      domain: task.domain,
+      outcome: cell.evaluation,
+      execution_status: 'completed',
+      score: cell.task_score,
+      explanation_code: null,
+      explanation_summary:
+        cell.evaluation === 'incorrect' ? 'The evaluator rejected the response.' : null,
+      retryable: null,
+    });
+  });
   const outcomes = summarizeOfficialOutcomes(results);
-  const published = verifiedPublishedAggregates[entry.id];
-  if (!published) throw new Error(`Missing published aggregates for ${entry.id}.`);
-  const recomputedScore = Number(equalDomainAiq(results).toFixed(3));
+  const recomputedQuality = equalDomainAiq(results);
+  const strictPassSuccesses = results.filter((result) => result.score === 1).length;
   if (
-    recomputedScore !== published.score ||
-    published.sensitivityLow > recomputedScore ||
-    published.sensitivityHigh < recomputedScore
+    Math.abs(recomputedQuality - generatedRow.quality_score) > Number.EPSILON * 100 ||
+    generatedRow.strict_pass_sample_size !== 72 ||
+    generatedRow.strict_pass_successes !== strictPassSuccesses ||
+    Math.abs(generatedRow.strict_pass_rate - strictPassSuccesses / 72) > Number.EPSILON ||
+    generatedRow.sensitivity_low > generatedRow.quality_score ||
+    generatedRow.sensitivity_high < generatedRow.quality_score ||
+    generatedRow.score_ci_low > generatedRow.score ||
+    generatedRow.score_ci_high < generatedRow.score
   ) {
-    throw new Error(`Published aggregates do not match ${entry.id} task evidence.`);
+    throw new Error(`Scorer-generated aggregates do not match ${entry.id} task evidence.`);
   }
   return {
     entry,
-    entryIndex,
-    runId: officialRunId(entry, entryIndex),
+    runId: generatedRow.run_id,
     startedAt: currentRunStartedAt,
     completedAt: currentRunCompletedAt,
     outcomes,
     results,
-    interval: {
-      center: recomputedScore,
-      lower: published.sensitivityLow,
-      upper: published.sensitivityHigh,
-    },
+    generatedRow,
   };
 });
 
@@ -582,32 +653,19 @@ const officialOutcomeTotals = currentRunEvidence.reduce(
   },
 );
 if (
-  officialOutcomeTotals.correct !== 329 ||
-  officialOutcomeTotals.partial !== 259 ||
-  officialOutcomeTotals.evaluatorIncorrect !== 630 ||
-  officialOutcomeTotals.timeouts !== 5 ||
-  officialOutcomeTotals.budgetExceeded !== 1 ||
-  officialOutcomeTotals.executionFailures !== 6 ||
-  officialOutcomeTotals.completed !== 1_218 ||
+  officialOutcomeTotals.correct !== 10 ||
+  officialOutcomeTotals.partial !== 1_207 ||
+  officialOutcomeTotals.evaluatorIncorrect !== 7 ||
+  officialOutcomeTotals.timeouts !== 0 ||
+  officialOutcomeTotals.budgetExceeded !== 0 ||
+  officialOutcomeTotals.executionFailures !== 0 ||
+  officialOutcomeTotals.completed !== 1_224 ||
   currentRunEvidence.reduce((total, evidence) => total + evidence.results.length, 0) !== 1_224
 ) {
-  throw new Error('The live-published fixture does not match verified Official outcome totals.');
+  throw new Error('The live-published fixture does not match scorer-generated outcome totals.');
 }
 
-const leaderboard = currentRunEvidence.map(({ entry, runId, outcomes, interval }) => ({
-  matrix_id: entry.id,
-  run_id: runId,
-  score: interval.center,
-  sensitivity_low: interval.lower,
-  sensitivity_high: interval.upper,
-  sample_size: 72,
-  coverage_percent: 100,
-  runtime_issues: outcomes.executionFailures,
-  missing: 0,
-  scoring_version: '1.0.2',
-  score_status: 'official',
-  synthetic: false,
-}));
+const leaderboard = generatedPublicFixture.leaderboard;
 
 const runEvidence = currentRunEvidence;
 const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcomes }) => {
@@ -616,17 +674,17 @@ const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcome
     matrix_id: entry.id,
     started_at: startedAt,
     completed_at: completedAt,
-    benchmark_version: 'aiq-core@1.0.2',
-    scoring_version: '1.0.2',
-    prompt_set_digest: 'sha256:a6aead1a94c0e6dc6e9f80fe2057ab46c60fa9ce287e8db1c6000f8000541105',
-    runner_commit: '7a0c4d1',
-    region: 'us-east-1',
+    benchmark_version: generatedPublicFixture.benchmark_version,
+    scoring_version: generatedPublicFixture.scoring_version,
+    prompt_set_digest: `sha256:${'2'.repeat(64)}`,
+    runner_commit: '4566388',
+    region: 'test-generated',
     synthetic: false,
-    corpus_release_id: 'corpus_2026.08.02-aiq-core-1.0.2-controlled.1',
+    corpus_release_id: 'corpus_test-generated-aiq-core-1.0.5',
     corpus_commitment_sha256:
-      'sha256:5b8cfddaacefcd58274b880815fd3f955bd319396755d041f2f30d000555624f',
-    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
-    task_set_digest: 'sha256:d5463bf713a83d07fdb43c2bf16093779096bcdeb17682ca68952060d71b7e10',
+      'sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612',
+    catalog_digest: 'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7',
+    task_set_digest: 'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05',
     preflight_digest: `sha256:${'6'.repeat(64)}`,
     runtime_digest: `sha256:${'7'.repeat(64)}`,
     run_class: 'official',
@@ -681,7 +739,7 @@ const pricingRates = [
 const calibrationRun = {
   run_id: calibrationRunId,
   classification: 'local_calibration_non_official',
-  scoring_version: '1.0.2',
+  scoring_version: generatedPublicFixture.scoring_version,
   selected_task_count: 72,
   selected_model_count: 17,
   result_count: 1_224,
@@ -709,7 +767,7 @@ const subsetCalibrationRun = {
 };
 
 const calibrationScores = matrix.map((entry, index) => {
-  const aiq = Number((82.5 - index * 0.6).toFixed(2));
+  const qualityScore = Number((82.5 - index * 0.6).toFixed(2));
   const unavailableContextBand = index === 1;
   const inputTokens = unavailableContextBand ? 344_001 : 72_000 + index * 1_000;
   const outputTokens = 36_000 + index * 800;
@@ -718,9 +776,9 @@ const calibrationScores = matrix.map((entry, index) => {
     model_family: entry.model_family.toLowerCase(),
     reasoning_effort: entry.reasoning_tier,
     descriptive_status: index === 0 ? 'conditional_observed' : 'complete_fixture',
-    aiq,
-    task_resampling_sensitivity_lower: Number((aiq - 1.5).toFixed(2)),
-    task_resampling_sensitivity_upper: Number((aiq + 1.5).toFixed(2)),
+    quality_score: qualityScore,
+    task_resampling_sensitivity_lower: Number((qualityScore - 1.5).toFixed(2)),
+    task_resampling_sensitivity_upper: Number((qualityScore + 1.5).toFixed(2)),
     task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
     result_count: 72,
     sample_size: index === 0 ? 71 : 72,
@@ -795,7 +853,7 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
       run_id: calibrationRunId,
       task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
-      task_version: '1.0.2',
+      task_version: generatedPublicFixture.scoring_version,
       domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
@@ -929,7 +987,8 @@ for (const evidence of runEvidence) {
     publishedResultIndex += 1;
     const runtimeIssue = result.execution_status === 'runtime_issue';
     const unavailableContextBand = !runtimeIssue && publishedResultIndex <= 10;
-    const estimatedCost = !runtimeIssue && !unavailableContextBand;
+    const unavailableMissingUsage = !runtimeIssue && publishedResultIndex > 1_218;
+    const estimatedCost = !runtimeIssue && !unavailableContextBand && !unavailableMissingUsage;
     const tokensAvailable = estimatedCost || unavailableContextBand;
     const inputTokens = tokensAvailable
       ? unavailableContextBand
@@ -999,24 +1058,24 @@ if (
 }
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.2',
-  scoring_version: '1.0.2',
-  published_at: '2026-07-29T16:00:00.000Z',
+  benchmark_version: generatedPublicFixture.benchmark_version,
+  scoring_version: generatedPublicFixture.scoring_version,
+  published_at: '2026-01-01T00:00:00.000Z',
   principles: [
-    'Estimate performance on the committed AIQ v1 fixed-fixture set.',
-    'Score every frozen domain with equal weight.',
-    'Publish outcome counts and provenance without exposing hidden payloads.',
-    'Keep missing or invalid work visible.',
+    'Calibrate latent ability from one complete fixed 17-by-72 matrix.',
+    'Keep descriptive quality score separate from calibrated ability.',
+    'Publish strict-pass Wilson uncertainty and task-mix sensitivity separately.',
+    'Keep missing, invalid, and runtime evidence visible.',
   ],
   missing_policy: 'Missing and invalid results block Official publication.',
   failure_policy: 'A valid failed attempt scores zero and remains visible.',
   sensitivity_policy:
-    'The interval is a fixed-fixture task-resampling sensitivity interval, not a universal capability claim.',
+    'Task-mix sensitivity surrounds descriptive quality score; the conditional interval surrounds calibrated ability.',
   synthetic: false,
 };
 
 const taskCoverage = domainCounts.map(([domain, task_count]) => ({
-  scoring_version: '1.0.2',
+  scoring_version: generatedPublicFixture.scoring_version,
   domain,
   weight: 0.1,
   task_count,
@@ -1064,39 +1123,8 @@ const radar = [
   },
 ];
 
-/**
- * @param {string} recordedAt
- */
-function trendBucket(recordedAt) {
-  const bucketStartedAt = new Date(recordedAt);
-  bucketStartedAt.setUTCMinutes(0, 0, 0);
-  return {
-    bucketStartedAt: bucketStartedAt.toISOString(),
-    bucketEndedAt: new Date(bucketStartedAt.getTime() + 3_600_000).toISOString(),
-  };
-}
-
-const currentTrends = leaderboard.map((current) => {
-  const { bucketStartedAt, bucketEndedAt } = trendBucket(currentRunCompletedAt);
-  return {
-    matrix_id: current.matrix_id,
-    run_id: current.run_id,
-    scoring_version: current.scoring_version,
-    recorded_at: currentRunCompletedAt,
-    bucket_started_at: bucketStartedAt,
-    bucket_ended_at: bucketEndedAt,
-    score: current.score,
-    sensitivity_low: current.sensitivity_low,
-    sensitivity_high: current.sensitivity_high,
-    sample_size: current.sample_size,
-    represented_run_count: 1,
-    resolution_seconds: 3_600,
-    synthetic: false,
-  };
-});
-
-const trendDates = [currentRunCompletedAt];
-const trends = currentTrends;
+const trends = generatedPublicFixture.trend;
+const trendDates = [...new Set(trends.map((point) => point.recorded_at))];
 
 if (new Set(trends.map((point) => point.run_id)).size !== trends.length) {
   throw new Error('Every retained trend point must have one independent run identity.');
@@ -1115,10 +1143,10 @@ for (const point of trends) {
   }
 }
 for (const current of leaderboard) {
-  const retained = trends.filter((point) => point.matrix_id === current.matrix_id);
-  retained.sort((left, right) => right.recorded_at.localeCompare(left.recorded_at));
-  const latest = retained[0];
+  const retainedCount = trends.filter((point) => point.matrix_id === current.matrix_id).length;
+  const latest = trends.find((point) => point.matrix_id === current.matrix_id);
   if (
+    retainedCount !== 1 ||
     !latest ||
     latest.run_id !== current.run_id ||
     latest.score !== current.score ||
@@ -1132,14 +1160,19 @@ for (const current of leaderboard) {
 
 for (const evidence of currentRunEvidence) {
   const current = leaderboard.find((row) => row.run_id === evidence.runId);
+  const recomputedQuality = equalDomainAiq(evidence.results);
+  const strictPassSuccesses = evidence.results.filter((result) => result.score === 1).length;
   if (
     !current ||
-    current.score !== Number(equalDomainAiq(evidence.results).toFixed(3)) ||
-    current.score !== evidence.interval.center ||
-    current.sensitivity_low !== evidence.interval.lower ||
-    current.sensitivity_high !== evidence.interval.upper ||
-    current.sensitivity_low > current.score ||
-    current.sensitivity_high < current.score
+    Math.abs(current.quality_score - recomputedQuality) > Number.EPSILON * 100 ||
+    current.strict_pass_sample_size !== evidence.results.length ||
+    current.strict_pass_successes !== strictPassSuccesses ||
+    Math.abs(current.strict_pass_rate - strictPassSuccesses / evidence.results.length) >
+      Number.EPSILON ||
+    current.sensitivity_low > current.quality_score ||
+    current.sensitivity_high < current.quality_score ||
+    current.score_ci_low > current.score ||
+    current.score_ci_high < current.score
   ) {
     throw new Error('Current leaderboard values must derive from their exact task evidence.');
   }
