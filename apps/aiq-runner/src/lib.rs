@@ -12,6 +12,7 @@ pub mod isolation;
 pub mod model;
 pub mod normalization;
 pub mod protocol;
+pub mod public_fixture;
 pub mod resume;
 pub mod run_validation;
 pub mod runner;

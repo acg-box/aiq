@@ -59,6 +59,7 @@ use aiq_runner::{
 		self, CALIBRATION_RUN_PAYLOAD_TYPE, ProtocolError, RUN_PAYLOAD_TYPE, SigningIdentity,
 		SubmissionEnvelope, TrustTier,
 	},
+	public_fixture,
 	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
 	runner::{
 		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
@@ -1386,6 +1387,15 @@ enum Command {
 		#[arg(long)]
 		official_admission: Option<PathBuf>,
 	},
+	/// Generate a browser-only 1.0.5 public projection from deterministic test observations.
+	///
+	/// The output is explicitly test-generated and cannot be submitted, normalized, or
+	/// published as Official evidence.
+	GenerateTestPublicFixture {
+		/// Output JSON file, or `-` for standard output.
+		#[arg(long, default_value = "benchmarks/fixtures/aiq-2.0-test-generated-public.json")]
+		output: PathBuf,
+	},
 	/// Produce explicitly synthetic data without invoking Codex.
 	Demo {
 		/// Local slot date in YYYY-MM-DD format.
@@ -1655,6 +1665,10 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			output,
 			official_admission.as_deref(),
 		)?,
+		Command::GenerateTestPublicFixture { output } => {
+			let fixture = public_fixture::generate_test_generated_public_fixture()?;
+			write_json(&output, &fixture)?;
+		},
 		Command::Demo {
 			slot_date,
 			occurrence,
