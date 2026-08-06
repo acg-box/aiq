@@ -1906,7 +1906,6 @@ mod tests {
 
 	#[test]
 	fn core_task_budgets_must_match_the_frozen_public_catalog() {
-		let mut tasks = runner::synthetic_demo_tasks();
 		let catalog: super::FrozenCatalog =
 			serde_json::from_str(super::CORE_CATALOG_JSON).expect("embedded Core catalog");
 		let budgets = catalog
@@ -1914,6 +1913,7 @@ mod tests {
 			.into_iter()
 			.map(|task| (task.task_id, task.budget))
 			.collect::<std::collections::BTreeMap<_, _>>();
+		let mut tasks = runner::synthetic_demo_tasks();
 
 		for task in &mut tasks {
 			task.budgets = budgets.get(&task.task_id).expect("Core task budget").clone();
@@ -2515,6 +2515,7 @@ mod tests {
 		assert!(super::catalog_contract(&predecessor.catalog).is_err());
 
 		let mut historical = commitment();
+
 		historical.catalog.task_set_version = "1.0.2".to_owned();
 		historical.catalog.identity_sha256 =
 			"sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc".to_owned();

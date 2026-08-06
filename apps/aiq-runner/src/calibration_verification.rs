@@ -14,7 +14,10 @@ use sha2::{Digest, Sha256};
 use crate::adapter::ArtifactReference;
 use crate::runner::MAX_RUN_JOBS;
 use crate::runner::TaskResult;
-use crate::scoring::{AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION};
+use crate::scoring::{
+	AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, OfficialCalibrationDiagnostic,
+	OfficialCalibrationPolicy,
+};
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
@@ -593,7 +596,7 @@ pub struct CalibrationAdmissionClaims {
 	/// Applied diagnostic identity.
 	pub diagnostic_digest: String,
 	/// Complete passing fixed calibration diagnostic.
-	pub diagnostic: scoring::OfficialCalibrationDiagnostic,
+	pub diagnostic: OfficialCalibrationDiagnostic,
 	/// Independently supplied controlled identity bindings.
 	pub bindings: CalibrationAdmissionBindings,
 	/// Safe Unix-millisecond verifier observation time.
@@ -654,7 +657,7 @@ impl CalibrationAdmissionV1 {
 				!= claims.bindings.runner_executable_digest
 			|| claims.provenance.codex_executable_digest != claims.bindings.codex_executable_digest
 			|| claims.task_set_hash != claims.bindings.task_set_digest
-			|| claims.diagnostic.policy != scoring::OfficialCalibrationPolicy::default()
+			|| claims.diagnostic.policy != OfficialCalibrationPolicy::default()
 			|| claims.diagnostic != expected_diagnostic
 			|| claims.diagnostic.policy.version != claims.diagnostic.observed.policy_version
 			|| claims.diagnostic.observed.tasks != 72
@@ -698,6 +701,7 @@ impl CalibrationAdmissionV1 {
 
 		validate_node(&claims.runner)?;
 		validate_node(&claims.verifier)?;
+
 		corpus_commitment::validate_run_provenance(
 			&claims.provenance,
 			&claims.task_set_hash,
@@ -1193,6 +1197,7 @@ pub fn sign_full_calibration_admission(
 ) -> Result<CalibrationAdmissionV1, CalibrationVerificationError> {
 	stage.verify()?;
 	attestation.verify(stage, identity.node())?;
+
 	let diagnostic = scoring::diagnose_official_calibration(tasks, results)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 
@@ -1209,7 +1214,7 @@ pub fn sign_full_calibration_admission(
 		|| stage.provenance.codex_executable_digest != bindings.codex_executable_digest
 		|| stage.task_set_hash != bindings.task_set_digest
 		|| stage.runner_commit != bindings.runner_commit
-		|| diagnostic.policy != scoring::OfficialCalibrationPolicy::default()
+		|| diagnostic.policy != OfficialCalibrationPolicy::default()
 		|| !diagnostic.passed()
 		|| diagnostic.observed.tasks != 72
 		|| diagnostic.observed.model_configurations != MODEL_MATRIX.len()
@@ -1263,6 +1268,7 @@ pub fn sign_full_calibration_admission(
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 
 	admission.signature = identity.sign_calibration_bytes(&bytes);
+
 	admission.verify(&admission.claims.bindings.clone(), tasks, results)?;
 
 	Ok(admission)
