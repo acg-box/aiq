@@ -488,7 +488,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'capabilities',
       'source',
       'trust',
-      'execution_status',
+      'status',
       'last_seen_at',
       'signature_status',
       'provenance',
