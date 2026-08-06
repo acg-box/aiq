@@ -73,7 +73,9 @@ export default async function TrendsPage({
     runSummariesResult.state,
     efficiencyResult.state,
   ];
-  const evidenceNeedsAttention = evidenceStates.some((state) => state === 'unavailable');
+  const evidenceNeedsAttention = evidenceStates.some(
+    (state) => state === 'empty' || state === 'unavailable',
+  );
   const evidenceStateSummary = [...new Set(evidenceStates)]
     .map((state) => (state === 'synthetic' ? 'synthetic / seed' : state))
     .join(' + ');
