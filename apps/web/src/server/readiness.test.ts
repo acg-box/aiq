@@ -514,6 +514,29 @@ void describe('bounded readiness probe', () => {
     await withDependencyFetch();
   });
 
+  void it('accepts the current public node status contract', async () => {
+    await withDependencyFetch(undefined, undefined, undefined, undefined, (view) =>
+      view === 'public_nodes'
+        ? Response.json([
+            {
+              id: `node_${'a'.repeat(64)}`,
+              name: 'Atlas',
+              operator: 'official',
+              public_key_fingerprint: 'sha256:fixture',
+              capabilities: {},
+              source: {},
+              trust: 'trusted_verified',
+              status: 'online',
+              last_seen_at: null,
+              signature_status: 'verified',
+              provenance: {},
+              synthetic: false,
+            },
+          ])
+        : undefined,
+    );
+  });
+
   void it('fails closed when a nonempty public view omits a required column', async () => {
     await assert.rejects(
       withDependencyFetch(undefined, undefined, undefined, undefined, (view) =>
