@@ -5,6 +5,7 @@ import {
   validateProductionEfficiencyEvidence,
   validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
+import { validateProductionExpectedIdentity } from '../playwright-production-identity.ts';
 import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production reads stay serial to bound load on the public origin. */
@@ -14,17 +15,6 @@ interface ProductionFixtures {
 }
 
 const allowedMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
-const expectedBenchmarkVersion = 'aiq-core@1.0.2';
-const expectedScoringVersion = '1.0.2';
-const expectedCorpusRelease = 'corpus_2026.08.02-aiq-core-1.0.2-controlled.1';
-const expectedCorpusCommitment =
-  'sha256:5b8cfddaacefcd58274b880815fd3f955bd319396755d041f2f30d000555624f';
-const expectedCatalogDigest =
-  'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
-const expectedTaskSetDigest =
-  'sha256:d5463bf713a83d07fdb43c2bf16093779096bcdeb17682ca68952060d71b7e10';
-const expectedPromptSetDigest =
-  'sha256:a6aead1a94c0e6dc6e9f80fe2057ab46c60fa9ce287e8db1c6000f8000541105';
 const matrixBatchPattern = /^run_[0-9a-f]{64}$/;
 
 const test = base.extend<ProductionFixtures>({
@@ -201,9 +191,12 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   baseURL,
   page,
 }, testInfo) => {
+  const expectedIdentity = validateProductionExpectedIdentity(
+    testInfo.config.metadata.productionExpectedIdentity,
+  );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'What can a model actually do');
+  await expectPublishedPage(page, expectedOrigin, '/', 'Fixed-task AI capability analysis');
   await expectNoDocumentOverflow(page, testInfo);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     await expect(
@@ -272,12 +265,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   for (let pageNumber = 0; historyPath !== null && pageNumber < 3; pageNumber += 1) {
     expect(visitedHistoryPaths.has(historyPath), 'run-history cursor cycle').toBe(false);
     visitedHistoryPaths.add(historyPath);
-    await expectPublishedPage(
-      page,
-      expectedOrigin,
-      historyPath,
-      'Every public run stays inspectable',
-    );
+    await expectPublishedPage(page, expectedOrigin, historyPath, 'Public run history');
     const historyRows = page
       .getByRole('region', { name: 'Public run history' })
       .locator('tbody tr');
@@ -310,12 +298,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     const newer = page.getByRole('link', { name: 'Newer runs' });
     await expect(newer).toBeVisible();
     const newerPath = await newer.getAttribute('href');
-    await expectPublishedPage(
-      page,
-      expectedOrigin,
-      newerPath ?? '',
-      'Every public run stays inspectable',
-    );
+    await expectPublishedPage(page, expectedOrigin, newerPath ?? '', 'Public run history');
     const newerHrefs = await page
       .getByRole('region', { name: 'Public run history' })
       .getByRole('link', { name: 'Inspect run' })
@@ -325,10 +308,12 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   await expect(page.getByRole('link', { name: 'Newer runs' })).toHaveCount(0);
 
   let resultCount = 0;
+  let pricedCostSubtotalUsdNanos = 0n;
   const taskCostStatuses = new Map<string, number>();
   const provenance = {
     benchmark: new Set<string>(),
     scoring: new Set<string>(),
+    runnerCommit: new Set<string>(),
     corpusRelease: new Set<string>(),
     corpusCommitment: new Set<string>(),
     catalog: new Set<string>(),
@@ -367,6 +352,10 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
       const costStatus = result.costStatus?.replaceAll('_', '-') ?? '';
       const costUsdNanos =
         result.costUsdNanos === 'unavailable' ? null : Number(result.costUsdNanos);
+      if (result.costUsdNanos !== null && result.costUsdNanos !== 'unavailable') {
+        expect(result.costUsdNanos).toMatch(/^(?:0|[1-9][0-9]*)$/);
+        pricedCostSubtotalUsdNanos += BigInt(result.costUsdNanos);
+      }
       const tokenEvidenceLevel = nullableEvidence(result.tokenEvidenceLevel);
       const costEvidenceLevel = nullableEvidence(result.costEvidenceLevel);
       validateProductionTaskCostEvidence({
@@ -396,6 +385,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
       ).trim();
     provenance.benchmark.add(await readProvenance('Benchmark'));
     provenance.scoring.add(await readProvenance('Scoring'));
+    provenance.runnerCommit.add(await readProvenance('Runner commit'));
     provenance.corpusRelease.add(await readProvenance('Corpus release'));
     provenance.corpusCommitment.add(await readProvenance('Corpus commitment'));
     provenance.catalog.add(await readProvenance('Catalog digest'));
@@ -405,18 +395,21 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   expect(resultCount).toBe(1_224);
   expect(taskCostStatuses).toEqual(
     new Map([
-      ['estimated', 1_208],
-      ['unavailable-context-band', 10],
-      ['unavailable-missing-usage', 6],
+      ['estimated', expectedIdentity.estimatedCostResultCount],
+      ['unavailable-context-band', expectedIdentity.unavailableContextBandResultCount],
+      ['unavailable-missing-usage', expectedIdentity.unavailableMissingUsageResultCount],
     ]),
   );
-  expect(provenance.benchmark).toEqual(new Set([expectedBenchmarkVersion]));
-  expect(provenance.scoring).toEqual(new Set([expectedScoringVersion]));
-  expect(provenance.corpusRelease).toEqual(new Set([expectedCorpusRelease]));
-  expect(provenance.corpusCommitment).toEqual(new Set([expectedCorpusCommitment]));
-  expect(provenance.catalog).toEqual(new Set([expectedCatalogDigest]));
-  expect(provenance.taskSet).toEqual(new Set([expectedTaskSetDigest]));
-  expect(provenance.promptSet).toEqual(new Set([expectedPromptSetDigest]));
+  expect(pricedCostSubtotalUsdNanos).toBe(BigInt(expectedIdentity.pricedCostSubtotalUsdNanos));
+  expect(provenance.benchmark).toEqual(new Set([expectedIdentity.benchmarkVersion]));
+  expect(provenance.scoring).toEqual(new Set([expectedIdentity.scoringVersion]));
+  expect(provenance.runnerCommit).toEqual(new Set([expectedIdentity.runnerCommit]));
+  expect(provenance.corpusRelease).toEqual(new Set([expectedIdentity.corpusReleaseId]));
+  expect(provenance.corpusCommitment).toEqual(new Set([expectedIdentity.corpusCommitment]));
+  expect(provenance.catalog).toEqual(new Set([expectedIdentity.catalogDigest]));
+  expect(provenance.taskSet).toEqual(new Set([expectedIdentity.taskSetDigest]));
+  expect(provenance.promptSet).toEqual(new Set([expectedIdentity.promptSetDigest]));
+  expect(signedBatchId).toBe(expectedIdentity.matrixBatchId);
 });
 
 test('production method, trends, and radar preserve transparent evidence semantics', async ({
@@ -425,12 +418,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
 }, testInfo) => {
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(
-    page,
-    expectedOrigin,
-    '/method',
-    'Transparent scoring, version by version',
-  );
+  await expectPublishedPage(page, expectedOrigin, '/method', 'Scoring method');
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();
@@ -444,24 +432,42 @@ test('production method, trends, and radar preserve transparent evidence semanti
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
-  await expectPublishedPage(
-    page,
-    expectedOrigin,
-    '/trends?range=all',
-    'The past remains part of the record',
-  );
+  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'Benchmark history');
   await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Trend series' }).getByRole('listitem')).toHaveCount(
-    17,
+  await expect(
+    page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
+  ).toHaveCount(6);
+  await expect(page.getByRole('note')).toContainText(
+    'Showing all 6 Sol configurations in canonical matrix order',
+  );
+  await expect(page.getByRole('note')).toContainText(
+    'The family is an explicit filter, not a point-estimate cutoff.',
   );
   await expect(
     page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
   ).toBeVisible();
-  await expectTransparentEfficiency(
-    page.getByRole('region', { name: 'Official model efficiency' }).locator('tbody tr'),
-  );
+  await page.getByText('Read visible trend values as a table', { exact: true }).click();
+  const trendValues = page.getByRole('region', { name: 'Visible trend values' });
+  await expect(trendValues.locator('tbody tr')).toHaveCount(6);
+  for (const heading of [
+    'Coverage',
+    'Runtime',
+    'Missing',
+    'Summed adapter duration',
+    'API-equivalent cost',
+  ]) {
+    await expect(trendValues.getByRole('columnheader', { name: heading })).toBeVisible();
+  }
+  for (const row of await trendValues.locator('tbody tr').all()) {
+    const cells = row.getByRole('cell');
+    await expect(cells.nth(5)).not.toHaveText('Unavailable');
+    await expect(cells.nth(6)).not.toHaveText('Unavailable');
+    await expect(cells.nth(7)).not.toHaveText('Unavailable');
+    await expect(cells.nth(8)).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
+    await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\$\d+\.\d{4})$/);
+  }
 
-  await expectPublishedPage(page, expectedOrigin, '/radar', 'Know the runner behind the result');
+  await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner provenance');
   await expect(page.locator('.node-card')).not.toHaveCount(0);
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
   await expect(

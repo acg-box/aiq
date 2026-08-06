@@ -1570,6 +1570,70 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 		assert_eq!(usage.len(), 1_224);
 		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
 	}
+
+	#[test]
+	fn diagnostic_rescore_accepts_candidate_outcomes_that_differ_from_source() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.expand_results(16);
+
+		let mut candidate_tasks = fixture.tasks.clone();
+
+		candidate_tasks[0].evaluator.as_mut().expect("candidate evaluator").expected =
+			Some("DIFFERENT".to_owned());
+
+		let single = super::diagnose_rescore_run(
+			&fixture.run,
+			&candidate_tasks,
+			&fixture.resolver,
+			&fixture.evaluator_root,
+			&fixture.evaluator_runtime,
+			&fixture.replay_root,
+			"diagnostic-candidate-single",
+			1,
+		)
+		.expect("candidate diagnostic replay");
+		let parallel = super::diagnose_rescore_run(
+			&fixture.run,
+			&candidate_tasks,
+			&fixture.resolver,
+			&fixture.evaluator_root,
+			&fixture.evaluator_runtime,
+			&fixture.replay_root,
+			"diagnostic-candidate-parallel",
+			4,
+		)
+		.expect("parallel candidate diagnostic replay");
+		let result = parallel.evaluator_results[0].as_ref().expect("candidate outcome");
+
+		assert_eq!(parallel.evaluator_results, single.evaluator_results);
+		assert_eq!(parallel.evaluator_results.len(), 16);
+		assert_eq!(result.outcome, EvaluatorOutcome::Incorrect);
+		assert_eq!(result.score, 0.0);
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
+	fn diagnostic_rescore_preserves_runtime_failure_without_evaluation() {
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.make_failed(FailureKind::Timeout);
+
+		let evidence = super::diagnose_rescore_run(
+			&fixture.run,
+			&fixture.tasks,
+			&fixture.resolver,
+			&fixture.evaluator_root,
+			&fixture.evaluator_runtime,
+			&fixture.replay_root,
+			"diagnostic-failure-fixture",
+			4,
+		)
+		.expect("runtime failure diagnostic replay");
+
+		assert_eq!(evidence.evaluator_results, vec![None]);
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
 }
 
 #[cfg(unix)]
@@ -1665,6 +1729,14 @@ impl ReplayRun for CalibrationRunRecord {
 #[cfg(test)]
 pub(crate) struct ProductionReplayEvidence {
 	pub provider_usage: Vec<aiq_runner::runner::ProviderTokenUsage>,
+	pub evaluator_results: Vec<Option<EvaluationResult>>,
+}
+
+/// Candidate-evaluator outcomes produced for a diagnostic rescore.
+///
+/// The vector remains aligned with the source run. Runtime failures contain
+/// `None` and are not passed to the candidate evaluator.
+pub(crate) struct DiagnosticRescoreEvidence {
 	pub evaluator_results: Vec<Option<EvaluationResult>>,
 }
 
@@ -1804,6 +1876,129 @@ where
 	})
 }
 
+/// Reconstructs source candidates and evaluates them with a different,
+/// controlled task/evaluator set. This does not compare candidate outcomes to
+/// the source evaluator bundle and cannot produce publication evidence.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn diagnose_rescore_run<R, U>(
+	run: &U,
+	candidate_tasks: &[TaskDefinition],
+	resolver: &R,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+	replay_root: &Path,
+	claim_identity: &str,
+	replay_jobs: usize,
+) -> Result<DiagnosticRescoreEvidence, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	let task_map = candidate_tasks
+		.iter()
+		.map(|task| (task.task_id.as_str(), task))
+		.collect::<BTreeMap<_, _>>();
+
+	if task_map.len() != candidate_tasks.len() {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"candidate task sources contain duplicate identifiers",
+		));
+	}
+
+	let source_task_ids =
+		run.results().iter().map(|result| result.task_id.as_str()).collect::<BTreeSet<_>>();
+	let candidate_task_ids = task_map.keys().copied().collect::<BTreeSet<_>>();
+
+	if source_task_ids != candidate_task_ids {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"candidate task identifiers do not equal the source matrix",
+		));
+	}
+	if replay_jobs == 0 || replay_jobs > 32 {
+		return Err(WorkerError::configuration("replay jobs must be between 1 and 32"));
+	}
+
+	with_replay_directory(replay_root, claim_identity, |claim_root| {
+		let scheduler = Mutex::new(ReplayScheduler::new(run.results().len()));
+		let worker_error = thread::scope(|scope| {
+			let mut workers = Vec::with_capacity(replay_jobs.min(run.results().len()));
+			let mut worker_error = None;
+
+			for worker_index in 0..replay_jobs.min(run.results().len()) {
+				match Builder::new()
+					.name(format!("aiq-verifier-diagnostic-{worker_index:02}"))
+					.spawn_scoped(scope, || {
+						catch_diagnostic_worker_panic(
+							&scheduler,
+							run,
+							&task_map,
+							resolver,
+							claim_root,
+							evaluator_root,
+							evaluator_runtime,
+						)
+					}) {
+					Ok(worker) => workers.push(worker),
+					Err(_) => {
+						if let Ok(mut scheduler) = scheduler.lock() {
+							scheduler.cancelled = true;
+						}
+
+						worker_error = Some(WorkerError::transient(
+							"candidate diagnostic worker could not start",
+						));
+
+						break;
+					},
+				}
+			}
+			for worker in workers {
+				let result = worker.join().unwrap_or_else(|_| {
+					Err(WorkerError::transient("candidate diagnostic worker panicked"))
+				});
+
+				if let Err(error) = result
+					&& worker_error.is_none()
+				{
+					worker_error = Some(error);
+				}
+			}
+
+			worker_error
+		});
+		let mut scheduler = scheduler
+			.into_inner()
+			.map_err(|_| WorkerError::transient("diagnostic scheduler is unavailable"))?;
+
+		if let Some((_, error)) = scheduler.failure.take() {
+			return Err(error);
+		}
+		if let Some(error) = worker_error {
+			return Err(error);
+		}
+
+		let evaluator_results = scheduler
+			.outputs
+			.into_iter()
+			.map(|output| {
+				output
+					.ok_or_else(|| {
+						WorkerError::transient(
+							"candidate diagnostic stopped without a recorded failure",
+						)
+					})
+					.map(|output| output.evaluator_result)
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+
+		resolver.maintain_lease()?;
+
+		Ok(DiagnosticRescoreEvidence { evaluator_results })
+	})
+}
+
 /// Reconstructs candidates and returns every independently replayed evaluator result.
 #[cfg(test)]
 #[allow(clippy::too_many_arguments)]
@@ -1836,6 +2031,165 @@ where
 	})?;
 
 	Ok(ProductionReplayEvidence { provider_usage, evaluator_results })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn catch_diagnostic_worker_panic<R, U>(
+	scheduler: &Mutex<ReplayScheduler>,
+	run: &U,
+	task_map: &BTreeMap<&str, &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	panic::catch_unwind(AssertUnwindSafe(|| {
+		diagnostic_replay_worker(
+			scheduler,
+			run,
+			task_map,
+			resolver,
+			claim_root,
+			evaluator_root,
+			evaluator_runtime,
+		)
+	}))
+	.unwrap_or_else(|_| Err(WorkerError::transient("candidate diagnostic worker panicked")))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn diagnostic_replay_worker<R, U>(
+	scheduler: &Mutex<ReplayScheduler>,
+	run: &U,
+	task_map: &BTreeMap<&str, &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<(), WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	loop {
+		let index = {
+			let mut scheduler = scheduler
+				.lock()
+				.map_err(|_| WorkerError::transient("diagnostic scheduler is unavailable"))?;
+
+			if scheduler.cancelled
+				|| scheduler.failure.is_some()
+				|| scheduler.next_index >= run.results().len()
+			{
+				return Ok(());
+			}
+
+			let index = scheduler.next_index;
+
+			scheduler.next_index += 1;
+
+			index
+		};
+		let output = replay_diagnostic_candidate(
+			index,
+			run,
+			task_map,
+			resolver,
+			claim_root,
+			evaluator_root,
+			evaluator_runtime,
+		);
+		let mut scheduler = scheduler
+			.lock()
+			.map_err(|_| WorkerError::transient("diagnostic scheduler is unavailable"))?;
+
+		match output {
+			Ok(output) => scheduler.outputs[index] = Some(output),
+			Err(error) => {
+				if scheduler.failure.as_ref().is_none_or(|(failed, _)| index < *failed) {
+					scheduler.failure = Some((index, error));
+				}
+			},
+		}
+	}
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replay_diagnostic_candidate<R, U>(
+	index: usize,
+	run: &U,
+	task_map: &BTreeMap<&str, &TaskDefinition>,
+	resolver: &R,
+	claim_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<CandidateReplayOutput, WorkerError>
+where
+	R: ArtifactResolverClient + ?Sized,
+	U: ReplayRun + ?Sized,
+{
+	let result = &run.results()[index];
+	let task = task_map.get(result.task_id.as_str()).ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"source result does not bind a candidate task",
+		)
+	})?;
+
+	if result.status == ResultStatus::Failed {
+		verify_failed_result_policy(result)?;
+
+		let destination = claim_root.join(format!("candidate-{index:04}"));
+		let workspace_integrity_without_snapshot = result
+			.failure
+			.as_ref()
+			.is_some_and(|failure| failure.kind == FailureKind::WorkspaceIntegrity)
+			&& result.workspace_manifest.is_none();
+
+		if workspace_integrity_without_snapshot {
+			verified_failed_tool_usage_without_workspace(result, resolver)?;
+		} else {
+			let evidence = materialize_candidate(result, resolver, &destination)?;
+
+			verified_failed_tool_usage(result, &evidence)?;
+		}
+
+		return Ok(CandidateReplayOutput {
+			provider_usage: runner::ProviderTokenUsage::default(),
+			evaluator_result: None,
+		});
+	}
+	if result.status != ResultStatus::Completed {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"diagnostic rescore accepts only completed cells and preserved runtime failures",
+		));
+	}
+
+	let destination = claim_root.join(format!("candidate-{index:04}"));
+	let evidence = materialize_candidate(result, resolver, &destination)?;
+	let response = complete_response(result, &evidence)?;
+	let tool_usage = verified_tool_usage(result, &evidence)?;
+
+	resolver.maintain_lease()?;
+
+	Ok(CandidateReplayOutput {
+		provider_usage: tool_usage.provider_tokens.clone(),
+		evaluator_result: Some(evaluate_candidate(
+			run.run_id(),
+			result,
+			task,
+			&response,
+			&tool_usage,
+			&destination,
+			evaluator_root,
+			evaluator_runtime,
+		)?),
+	})
 }
 
 fn with_replay_directory<T>(
@@ -2546,71 +2900,17 @@ fn replay_evaluator(
 	evaluator_runtime: &EvaluatorRuntime,
 	expected: &EvaluationResult,
 ) -> Result<EvaluationResult, WorkerError> {
-	let evaluator = task.evaluator.as_ref().ok_or_else(|| {
-		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
-			"completed result has no committed evaluator",
-		)
-	})?;
-	let manifest = result.workspace_manifest.as_ref().ok_or_else(|| {
-		WorkerError::terminal(
-			ReasonCode::InvalidReplayEvidence,
-			"completed result lacks its workspace manifest",
-		)
-	})?;
-	let tool_evidence = NormalizedToolEvidence {
-		steps: tool_usage.steps,
-		total_calls: tool_usage.total_calls,
-		by_tool: tool_usage.by_tool.clone(),
-	};
-	let context = EvaluatorContext {
-		task_id: &result.task_id,
-		task_version: &result.task_version,
+	let replayed = evaluate_candidate(
 		run_id,
-		model: result.model,
-		final_response: response,
+		result,
+		task,
+		response,
+		tool_usage,
 		candidate_workspace,
-		workspace_manifest_sha256: &manifest.content_hash,
-		tool_evidence: &tool_evidence,
-	};
-	let (mut replayed, replayed_raw_stdout_sha256) = if evaluator.kind == "exact_match" {
-		(
-			evaluator.evaluate_checked(response, Some(&context)).map_err(|_| {
-				WorkerError::terminal(
-					ReasonCode::EvaluatorReplayMismatch,
-					"controlled evaluator replay failed or was nondeterministic",
-				)
-			})?,
-			None,
-		)
-	} else {
-		let observation = evaluator
-			.evaluate_checked_observation_at_root(
-				response,
-				Some(&context),
-				evaluator_root,
-				evaluator_runtime,
-			)
-			.map_err(|_| {
-				WorkerError::terminal(
-					ReasonCode::EvaluatorReplayMismatch,
-					"controlled evaluator replay failed or was nondeterministic",
-				)
-			})?;
-
-		(observation.result, Some(observation.raw_stdout_sha256))
-	};
-	let external = evaluator.external.is_some();
-
-	if external == (evaluator.kind == "exact_match") {
-		return Err(WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
-			"evaluator kind and controlled executable binding are inconsistent",
-		));
-	}
-
-	replayed.raw_stdout_sha256 = replayed_raw_stdout_sha256;
-
+		evaluator_root,
+		evaluator_runtime,
+	)?;
+	let external = task.evaluator.as_ref().is_some_and(|evaluator| evaluator.external.is_some());
 	let raw_stdout_is_consistent = if external {
 		result.evaluator_stdout_sha256.is_some()
 			&& result.evaluator_stdout_sha256 == replayed.raw_stdout_sha256
@@ -2658,6 +2958,85 @@ fn replay_evaluator(
 			"evaluator outcome, score, checks, or evidence digests differ from the signed result",
 		));
 	}
+
+	Ok(replayed)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_candidate(
+	run_id: &str,
+	result: &TaskResult,
+	task: &TaskDefinition,
+	response: &str,
+	tool_usage: &aiq_runner::runner::ToolUsage,
+	candidate_workspace: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+) -> Result<EvaluationResult, WorkerError> {
+	let evaluator = task.evaluator.as_ref().ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"completed result has no committed evaluator",
+		)
+	})?;
+	let manifest = result.workspace_manifest.as_ref().ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"completed result lacks its workspace manifest",
+		)
+	})?;
+	let tool_evidence = NormalizedToolEvidence {
+		steps: tool_usage.steps,
+		total_calls: tool_usage.total_calls,
+		by_tool: tool_usage.by_tool.clone(),
+	};
+	let context = EvaluatorContext {
+		task_id: &result.task_id,
+		task_version: &task.task_version,
+		run_id,
+		model: result.model,
+		final_response: response,
+		candidate_workspace,
+		workspace_manifest_sha256: &manifest.content_hash,
+		tool_evidence: &tool_evidence,
+	};
+	let (mut replayed, replayed_raw_stdout_sha256) = if evaluator.kind == "exact_match" {
+		(
+			evaluator.evaluate_checked(response, Some(&context)).map_err(|_| {
+				WorkerError::terminal(
+					ReasonCode::EvaluatorReplayMismatch,
+					"controlled evaluator replay failed or was nondeterministic",
+				)
+			})?,
+			None,
+		)
+	} else {
+		let observation = evaluator
+			.evaluate_checked_observation_at_root(
+				response,
+				Some(&context),
+				evaluator_root,
+				evaluator_runtime,
+			)
+			.map_err(|_| {
+				WorkerError::terminal(
+					ReasonCode::EvaluatorReplayMismatch,
+					"controlled evaluator replay failed or was nondeterministic",
+				)
+			})?;
+
+		(observation.result, Some(observation.raw_stdout_sha256))
+	};
+	let external = evaluator.external.is_some();
+
+	if external == (evaluator.kind == "exact_match") {
+		return Err(WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"evaluator kind and controlled executable binding are inconsistent",
+		));
+	}
+
+	replayed.raw_stdout_sha256 = replayed_raw_stdout_sha256;
 
 	Ok(replayed)
 }

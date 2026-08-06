@@ -31,8 +31,8 @@ const matrix = [
 );
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.2',
-  scoring_version: '1.0.2',
+  benchmark_version: 'aiq-core@1.0.5',
+  scoring_version: '1.0.5',
   published_at: '2026-07-30T12:00:00Z',
   principles: [
     'Give each of the ten domains weight 0.1.',
@@ -45,7 +45,7 @@ const scoringVersion = {
     'Missing and invalid tasks block Official. Provisional output uses observed domain means and fixed-fixture completion bounds.',
   failure_policy:
     'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
-  confidence_policy:
+  sensitivity_policy:
     'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
   synthetic: false,
 };
@@ -62,7 +62,7 @@ const taskCoverage = [
   ['instruction_following', 6],
   ['reliability_recovery', 7],
 ].map(([domain, task_count]) => ({
-  scoring_version: '1.0.2',
+  scoring_version: '1.0.5',
   domain,
   weight: 0.1,
   task_count,

@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 
 import {
   classifyRunCompleteness,
   classifyRunSummaryCompleteness,
+  classifyObservationRecency,
   filterTrendPoints,
-  formatConfidenceInterval,
+  formatAnyCreditRate,
+  formatSensitivityInterval,
   formatLastObservation,
   formatTrustLevel,
+  latestCompletedRun,
   leaderboardRunHref,
-  radarOrbitPosition,
   sortLeaderboardByPointEstimate,
   summarizeRun,
   summarizeRunDomains,
@@ -25,7 +28,7 @@ import {
   buildSeedRunHistoryPage,
   calibrationExplanationSummaryForOutcome,
   calibrationFailureCodeForOutcome,
-  calibrationStatusForOutcome,
+  executionStatusForOutcome,
   classifyPublicDataConfiguration,
   collectPaginatedRows,
   createAiqRepository,
@@ -111,16 +114,21 @@ function distributedRadarRowFromNode(node: RadarNode): DistributedRadarRow {
   };
 }
 
+function canonicalRunId(seed: string): string {
+  return `run_${createHash('sha256').update(seed).digest('hex')}`;
+}
+
 function trendRow(matrixId: string, recordedAt: string): TrendRow {
   return {
     matrix_id: matrixId,
-    run_id: `run-${matrixId}-${recordedAt}`,
+    run_id: canonicalRunId(`${matrixId}:${recordedAt}`),
+    scoring_version: '1.0.5',
     recorded_at: recordedAt,
     bucket_started_at: recordedAt,
     bucket_ended_at: new Date(Date.parse(recordedAt) + 1).toISOString(),
     score: 70,
-    ci_low: 68,
-    ci_high: 72,
+    sensitivity_low: 68,
+    sensitivity_high: 72,
     sample_size: 72,
     represented_run_count: 1,
     resolution_seconds: 1,
@@ -141,6 +149,116 @@ function modelEfficiencyRepository(rows: readonly unknown[]): SupabaseAiqReposit
     'https://example.supabase.co',
     'sb_publishable_public_example',
     async () => Response.json(rows),
+  );
+}
+
+function runSummaryRow(index = 0): RunRow {
+  return {
+    id: `run_${index.toString(16).padStart(64, '0')}`,
+    matrix_id: 'sol-low',
+    started_at: '2026-08-04T12:00:00.000Z',
+    completed_at: '2026-08-04T12:30:00.000Z',
+    benchmark_version: 'aiq-core@1.0.5',
+    scoring_version: '1.0.5',
+    prompt_set_digest: `sha256:${'1'.repeat(64)}`,
+    runner_commit: 'abcdef0',
+    region: 'us-east-1',
+    synthetic: false,
+    corpus_release_id: null,
+    corpus_commitment_sha256: null,
+    catalog_digest: null,
+    task_set_digest: null,
+    preflight_digest: null,
+    runtime_digest: null,
+    run_class: null,
+    permission_evidence_digest: null,
+    result_count: 72,
+    correct_count: 20,
+    partial_count: 10,
+    incorrect_count: 40,
+    runtime_issue_count: 2,
+    invalid_count: 0,
+    missing_count: 0,
+    not_applicable_count: 0,
+    completed_count: 70,
+    observed_count: 72,
+    coverage_percent: 100,
+    covered_domain_count: 10,
+    provisional_domain_count: 10,
+  };
+}
+
+function runSummaryRepository(response: () => Response): SupabaseAiqRepository {
+  return new SupabaseAiqRepository(
+    'https://example.supabase.co',
+    'sb_publishable_public_example',
+    async () => response(),
+  );
+}
+
+function runResultRow(runId: string, index = 1): RunResultRow {
+  return {
+    run_id: runId,
+    id: `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+    task_id: `coding-${String(index).padStart(2, '0')}`,
+    task: `Task ${index}`,
+    domain: 'coding',
+    outcome: 'correct',
+    execution_status: 'completed',
+    score: 1,
+    explanation_code: null,
+    explanation_summary: null,
+    retryable: null,
+    tools: [],
+    latency_ms: 1,
+    latency_evidence_level: 'runner_observed',
+    input_tokens: null,
+    cached_input_tokens: null,
+    cache_write_input_tokens: null,
+    output_tokens: null,
+    reasoning_output_tokens: null,
+    total_tokens: null,
+    token_usage_source_level: null,
+    token_usage_evidence_level: null,
+    standard_api_equivalent_usd_nanos: null,
+    cost_estimator_status: 'unavailable_missing_usage',
+    cost_evidence_level: null,
+    pricing_digest: 'sha256:e1a28656f2918a14e86997b06bf9e29ec4db084ff89ee0319aafa0c05cc1f31d',
+  };
+}
+
+function singleResultRunRow(index = 1): RunRow {
+  return {
+    ...runSummaryRow(index),
+    result_count: 1,
+    correct_count: 1,
+    partial_count: 0,
+    incorrect_count: 0,
+    runtime_issue_count: 0,
+    invalid_count: 0,
+    missing_count: 0,
+    not_applicable_count: 0,
+    completed_count: 1,
+    observed_count: 1,
+    coverage_percent: 100,
+    covered_domain_count: 1,
+    provisional_domain_count: 0,
+  };
+}
+
+function runDetailRepository(
+  runResponse: readonly unknown[],
+  resultResponse: readonly unknown[],
+): SupabaseAiqRepository {
+  return new SupabaseAiqRepository(
+    'https://example.supabase.co',
+    'sb_publishable_public_example',
+    async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      return Response.json(
+        url.pathname.endsWith(`/${PUBLIC_VIEW_NAMES.runResults}`) ? resultResponse : runResponse,
+      );
+    },
   );
 }
 
@@ -178,7 +296,7 @@ void describe('seed repository', () => {
           entry.sampleSize === 72 &&
           entry.coveragePercent === 100 &&
           entry.missing === 0 &&
-          entry.scoringVersion === '1.0.2',
+          entry.scoringVersion === '1.0.5',
       ),
     );
   });
@@ -333,13 +451,13 @@ void describe('seed repository', () => {
     const rows: readonly LeaderboardRow[] = [
       {
         matrix_id: official.id,
-        run_id: official.runId,
+        run_id: canonicalRunId(official.id),
         score: official.score,
-        ci_low: official.ciLow,
-        ci_high: official.ciHigh,
+        sensitivity_low: official.sensitivityLow,
+        sensitivity_high: official.sensitivityHigh,
         sample_size: official.sampleSize,
         coverage_percent: official.coveragePercent,
-        failures: official.failures,
+        runtime_issues: official.runtimeIssues,
         missing: official.missing,
         scoring_version: official.scoringVersion,
         score_status: 'official',
@@ -347,29 +465,29 @@ void describe('seed repository', () => {
       },
       {
         matrix_id: notApplicable.id,
-        run_id: 'run_not_applicable',
+        run_id: canonicalRunId(notApplicable.id),
         score: null,
-        ci_low: null,
-        ci_high: null,
+        sensitivity_low: null,
+        sensitivity_high: null,
         sample_size: null,
         coverage_percent: null,
-        failures: null,
+        runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.2',
+        scoring_version: '1.0.5',
         score_status: 'not_applicable',
         synthetic: false,
       },
       {
         matrix_id: missing.id,
-        run_id: 'run_missing',
+        run_id: canonicalRunId(missing.id),
         score: null,
-        ci_low: null,
-        ci_high: null,
+        sensitivity_low: null,
+        sensitivity_high: null,
         sample_size: null,
         coverage_percent: null,
-        failures: null,
+        runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.2',
+        scoring_version: '1.0.5',
         score_status: 'missing',
         synthetic: false,
       },
@@ -384,7 +502,7 @@ void describe('seed repository', () => {
     assert.equal(joined.find((entry) => entry.id === official.id)?.score, official.score);
     const joinedOfficial = joined.find((entry) => entry.id === official.id);
     assert.ok(joinedOfficial);
-    assert.equal(leaderboardRunHref(joinedOfficial), `/runs/${official.runId}`);
+    assert.equal(leaderboardRunHref(joinedOfficial), `/runs/${canonicalRunId(official.id)}`);
     assert.equal(
       joined.find((entry) => entry.id === notApplicable.id)?.scoreStatus,
       'not_applicable',
@@ -437,13 +555,13 @@ void describe('seed repository', () => {
       matrix_id: 'sol-low',
       run_id: 'run_untrusted_status',
       score: 99,
-      ci_low: 98,
-      ci_high: 100,
+      sensitivity_low: 98,
+      sensitivity_high: 100,
       sample_size: 72,
       coverage_percent: 100,
-      failures: 0,
+      runtime_issues: 0,
       missing: 0,
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.5',
       score_status: null,
       synthetic: false,
     };
@@ -461,11 +579,11 @@ void describe('seed repository', () => {
     const unscoredRow = {
       ...baseRow,
       score: null,
-      ci_low: null,
-      ci_high: null,
+      sensitivity_low: null,
+      sensitivity_high: null,
       sample_size: null,
       coverage_percent: null,
-      failures: null,
+      runtimeIssues: null,
       missing: null,
     };
     for (const syntheticRow of [
@@ -516,15 +634,15 @@ void describe('seed repository', () => {
     }));
     const row: LeaderboardRow = {
       matrix_id: 'sol-low',
-      run_id: 'run-sol-low',
+      run_id: canonicalRunId('sol-low'),
       score: 70,
-      ci_low: 68,
-      ci_high: 72,
+      sensitivity_low: 68,
+      sensitivity_high: 72,
       sample_size: 72,
       coverage_percent: 100,
-      failures: 1,
+      runtime_issues: 1,
       missing: 0,
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.5',
       score_status: 'official',
       synthetic: false,
     };
@@ -532,6 +650,10 @@ void describe('seed repository', () => {
       [row, row],
       [{ ...row, matrix_id: 'future-low' }],
       [{ ...row, sample_size: Number.NaN }],
+      [{ ...row, sample_size: 71 }],
+      [{ ...row, coverage_percent: 99.9 }],
+      [{ ...row, missing: 1 }],
+      [{ ...row, run_id: 'run-short' }],
     ]) {
       assert.throws(() => joinModelMatrixWithLeaderboard(matrix, rows), /public_leaderboard/);
     }
@@ -543,7 +665,10 @@ void describe('presentation aggregates', () => {
     const ordered = sortLeaderboardByPointEstimate(seedLeaderboard);
     assert.ok((ordered[0]?.score ?? 0) >= (ordered.at(-1)?.score ?? 100));
     assert.ok(ordered.every((entry) => !('rank' in entry)));
-    assert.equal(formatConfidenceInterval({ ciLow: 78.15, ciHigh: 82.94 }), '78.2–82.9');
+    assert.equal(
+      formatSensitivityInterval({ sensitivityLow: 78.15, sensitivityHigh: 82.94 }),
+      '78.2–82.9',
+    );
   });
 
   void it('keeps scored status, provenance, and presentation consistent', () => {
@@ -566,10 +691,7 @@ void describe('presentation aggregates', () => {
       synthetic: false as const,
     };
     assert.equal(isScoredLeaderboardEntry(officialEntry), true);
-    assert.deepEqual(presentLeaderboardEntry(officialEntry).taskCredit, {
-      credited: 72 - officialEntry.failures,
-      scored: 72,
-    });
+    assert.equal(presentLeaderboardEntry(officialEntry).runtimeIssues, officialEntry.runtimeIssues);
     assert.deepEqual(
       {
         status: presentLeaderboardEntry(officialEntry).status,
@@ -585,8 +707,8 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.2');
-    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.2');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.5');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.5');
     assert.ok(
       seedRuns
         .flatMap((run) => run.tasks)
@@ -618,17 +740,27 @@ void describe('presentation aggregates', () => {
     );
     assert.deepEqual(
       {
-        passed: summarizeRun(coverageOnlyRun).passed,
-        failed: summarizeRun(coverageOnlyRun).failed,
+        correct: summarizeRun(coverageOnlyRun).correct,
+        partial: summarizeRun(coverageOnlyRun).partial,
+        incorrect: summarizeRun(coverageOnlyRun).incorrect,
+        runtimeIssues: summarizeRun(coverageOnlyRun).runtimeIssues,
         invalid: summarizeRun(coverageOnlyRun).invalid,
         missing: summarizeRun(coverageOnlyRun).missing,
         notApplicable: summarizeRun(coverageOnlyRun).notApplicable,
       },
-      { passed: 56, failed: 2, invalid: 0, missing: 14, notApplicable: 0 },
+      {
+        correct: 0,
+        partial: 56,
+        incorrect: 0,
+        runtimeIssues: 2,
+        invalid: 0,
+        missing: 14,
+        notApplicable: 0,
+      },
     );
     assert.ok(
       coverageOnlyRun.tasks
-        .filter((task) => task.status !== 'passed')
+        .filter((task) => task.executionStatus !== 'completed')
         .every((task) => task.explanation !== null),
     );
     assert.deepEqual(classifyRunCompleteness(firstRun), {
@@ -656,7 +788,11 @@ void describe('presentation aggregates', () => {
     const notApplicableRun = {
       ...firstRun,
       tasks: firstRun.tasks.map((task) =>
-        Object.assign({}, task, { status: 'not_applicable' as const, score: null }),
+        Object.assign({}, task, {
+          outcome: 'not_applicable' as const,
+          executionStatus: 'not_applicable' as const,
+          score: null,
+        }),
       ),
     };
     assert.deepEqual(classifyRunCompleteness(notApplicableRun), {
@@ -674,28 +810,190 @@ void describe('presentation aggregates', () => {
     const run = {
       ...source,
       tasks: [
-        { ...template, status: 'passed' as const, score: 1, explanation: null },
-        { ...template, status: 'passed' as const, score: 0.5, explanation: null },
-        { ...template, status: 'failed' as const, score: 0, explanation: null },
         {
           ...template,
-          status: 'failed' as const,
+          outcome: 'correct' as const,
+          executionStatus: 'completed' as const,
+          score: 1,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'partial' as const,
+          executionStatus: 'completed' as const,
+          score: 0.5,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'incorrect' as const,
+          executionStatus: 'completed' as const,
+          score: 0,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'timeout' as const,
+          executionStatus: 'runtime_issue' as const,
           score: 0,
           explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
         },
-        { ...template, status: 'missing' as const, score: null, explanation: null },
+        {
+          ...template,
+          outcome: 'missing' as const,
+          executionStatus: 'missing' as const,
+          score: null,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'invalid' as const,
+          executionStatus: 'invalid' as const,
+          score: null,
+          explanation: null,
+        },
+        {
+          ...template,
+          outcome: 'not_applicable' as const,
+          executionStatus: 'not_applicable' as const,
+          score: null,
+          explanation: null,
+        },
       ],
     };
     assert.deepEqual(summarizeRunOutcomes(run), {
       correct: 1,
       partial: 1,
       incorrect: 1,
-      executionFailures: 1,
-      unscored: 1,
-      passed: 2,
-      total: 5,
-      successRate: 40,
+      runtimeIssues: 1,
+      invalid: 1,
+      missing: 1,
+      notApplicable: 1,
+      anyCredit: 2,
+      completedOutcomes: 3,
+      total: 7,
+      anyCreditRate: (2 / 3) * 100,
     });
+  });
+
+  void it('does not present an all-runtime run as all failed', () => {
+    const source = seedRuns[0];
+    assert.ok(source);
+    const run = {
+      ...source,
+      tasks: source.tasks.map((task) =>
+        Object.assign({}, task, {
+          outcome: 'timeout' as const,
+          executionStatus: 'runtime_issue' as const,
+          score: 0,
+          explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
+        }),
+      ),
+    };
+    const summary = summarizeRunOutcomes(run);
+    assert.deepEqual(summary, {
+      correct: 0,
+      partial: 0,
+      incorrect: 0,
+      runtimeIssues: 72,
+      invalid: 0,
+      missing: 0,
+      notApplicable: 0,
+      anyCredit: 0,
+      completedOutcomes: 0,
+      total: 72,
+      anyCreditRate: null,
+    });
+    assert.equal(formatAnyCreditRate(summary.anyCreditRate), '—');
+  });
+
+  void it('keeps uniform incorrect, runtime, invalid, and missing matrices distinct', () => {
+    const source = seedRuns[0];
+    assert.ok(source);
+    const cases = [
+      {
+        task: {
+          outcome: 'incorrect' as const,
+          executionStatus: 'completed' as const,
+          score: 0,
+          explanation: null,
+        },
+        expected: {
+          incorrect: 72,
+          runtimeIssues: 0,
+          invalid: 0,
+          missing: 0,
+          completedOutcomes: 72,
+          anyCreditRate: 0,
+        },
+      },
+      {
+        task: {
+          outcome: 'timeout' as const,
+          executionStatus: 'runtime_issue' as const,
+          score: 0,
+          explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
+        },
+        expected: {
+          incorrect: 0,
+          runtimeIssues: 72,
+          invalid: 0,
+          missing: 0,
+          completedOutcomes: 0,
+          anyCreditRate: null,
+        },
+      },
+      {
+        task: {
+          outcome: 'invalid' as const,
+          executionStatus: 'invalid' as const,
+          score: null,
+          explanation: null,
+        },
+        expected: {
+          incorrect: 0,
+          runtimeIssues: 0,
+          invalid: 72,
+          missing: 0,
+          completedOutcomes: 0,
+          anyCreditRate: null,
+        },
+      },
+      {
+        task: {
+          outcome: 'missing' as const,
+          executionStatus: 'missing' as const,
+          score: null,
+          explanation: null,
+        },
+        expected: {
+          incorrect: 0,
+          runtimeIssues: 0,
+          invalid: 0,
+          missing: 72,
+          completedOutcomes: 0,
+          anyCreditRate: null,
+        },
+      },
+    ];
+
+    for (const fixture of cases) {
+      const summary = summarizeRunOutcomes({
+        ...source,
+        tasks: source.tasks.map((task) => Object.assign({}, task, fixture.task)),
+      });
+      assert.deepEqual(
+        {
+          incorrect: summary.incorrect,
+          runtimeIssues: summary.runtimeIssues,
+          invalid: summary.invalid,
+          missing: summary.missing,
+          completedOutcomes: summary.completedOutcomes,
+          anyCreditRate: summary.anyCreditRate,
+        },
+        fixture.expected,
+      );
+    }
   });
 
   void it('keeps synthetic calibration invocation counts and efficiency evidence unavailable', async () => {
@@ -707,7 +1005,7 @@ void describe('presentation aggregates', () => {
       modelFamily: 'sol',
       reasoningEffort: 'low',
     });
-    assert.equal(detail?.results[0]?.taskVersion, '1.0.2');
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.5');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -747,7 +1045,10 @@ void describe('presentation aggregates', () => {
       });
       const score = (domainMeans.reduce((sum, mean) => sum + mean, 0) / 10) * 100;
       assert.ok(Math.abs(score - entry.score) < 0.02);
-      assert.equal(run.tasks.filter((task) => task.status === 'failed').length, entry.failures);
+      assert.equal(
+        run.tasks.filter((task) => task.executionStatus === 'runtime_issue').length,
+        entry.runtimeIssues,
+      );
     }
   });
 
@@ -791,13 +1092,14 @@ void describe('presentation aggregates', () => {
     const requests: Request[] = [];
     const row: TrendRow = {
       matrix_id: 'sol-ultra',
-      run_id: 'run-latest-in-bucket',
+      run_id: canonicalRunId('latest-in-bucket'),
+      scoring_version: '0.9.7',
       recorded_at: '2026-07-24T00:00:00.000Z',
       bucket_started_at: '2026-07-23T12:00:00.000Z',
       bucket_ended_at: '2026-07-24T00:00:00.001Z',
       score: 82.4,
-      ci_low: 80.1,
-      ci_high: 84.7,
+      sensitivity_low: 80.1,
+      sensitivity_high: 84.7,
       sample_size: 72,
       represented_run_count: 19,
       resolution_seconds: 43_200,
@@ -816,12 +1118,13 @@ void describe('presentation aggregates', () => {
       {
         entryId: row.matrix_id,
         runId: row.run_id,
+        scoringVersion: row.scoring_version,
         recordedAt: row.recorded_at,
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
         score: row.score,
-        ciLow: row.ci_low,
-        ciHigh: row.ci_high,
+        sensitivityLow: row.sensitivity_low,
+        sensitivityHigh: row.sensitivity_high,
         sampleSize: row.sample_size,
         representedRunCount: row.represented_run_count,
         resolutionSeconds: row.resolution_seconds,
@@ -868,6 +1171,9 @@ void describe('presentation aggregates', () => {
       [unordered[0], unordered[0]],
       [trendRow('future-low', '2026-07-24T02:00:00.000Z')],
       [{ ...unordered[0], score: Number.NaN }],
+      [{ ...unordered[0], sample_size: 71 }],
+      [{ ...unordered[0], sensitivity_high: 101 }],
+      [{ ...unordered[0], run_id: 'run-short' }],
     ];
     await Promise.all(
       invalidRows.map(async (rows) => {
@@ -879,6 +1185,314 @@ void describe('presentation aggregates', () => {
         await assert.rejects(invalid.listTrendPoints(), /public_trend_points/);
       }),
     );
+  });
+
+  void it('reads exact run summaries in bounded, deduplicated batches', async () => {
+    const rows = Array.from({ length: 51 }, (_, index) => runSummaryRow(index + 1));
+    const requests: Request[] = [];
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        requests.push(request.clone());
+        return Response.json(requests.length === 1 ? rows.slice(0, 50) : rows.slice(50));
+      },
+    );
+
+    assert.deepEqual(await repository.listRunSummaries([]), []);
+    assert.equal(requests.length, 0);
+    const summaries = await repository.listRunSummaries([
+      ...rows.map((row) => row.id),
+      rows[0]?.id ?? '',
+    ]);
+    assert.equal(summaries.length, rows.length);
+    assert.equal(requests.length, 2);
+    assert.equal(new URL(requests[0]?.url ?? '').searchParams.get('limit'), '51');
+    assert.equal(new URL(requests[1]?.url ?? '').searchParams.get('limit'), '2');
+  });
+
+  void it('rejects invalid and oversized run-summary selections without a request', async () => {
+    let requests = 0;
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async () => {
+        requests += 1;
+        return Response.json([]);
+      },
+    );
+    await assert.rejects(repository.listRunSummaries(['x'.repeat(161)]), /invalid run selection/);
+    await assert.rejects(
+      repository.listRunSummaries(
+        Array.from({ length: TREND_MAX_POINTS + 1 }, (_, index) => `run-${index}`),
+      ),
+      /invalid run selection/,
+    );
+    assert.equal(requests, 0);
+  });
+
+  void it('accepts coherent empty and partial run-summary coverage', async () => {
+    const empty = {
+      ...runSummaryRow(1),
+      result_count: 0,
+      correct_count: 0,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
+      completed_count: 0,
+      observed_count: 0,
+      coverage_percent: null,
+      covered_domain_count: 0,
+      provisional_domain_count: 0,
+    };
+    const partial = {
+      ...runSummaryRow(2),
+      result_count: 4,
+      correct_count: 1,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 1,
+      invalid_count: 1,
+      missing_count: 1,
+      completed_count: 1,
+      observed_count: 2,
+      coverage_percent: 50,
+      covered_domain_count: 1,
+      provisional_domain_count: 0,
+    };
+    const summaries = await runSummaryRepository(() =>
+      Response.json([empty, partial]),
+    ).listRunSummaries([empty.id, partial.id]);
+    assert.deepEqual(
+      summaries.map((run) => run.resultSummary.coveragePercent),
+      [null, 50],
+    );
+  });
+
+  void it('fails closed on run-summary transport, identity, and shape drift', async () => {
+    const row = runSummaryRow(1);
+    await assert.rejects(
+      runSummaryRepository(() =>
+        Response.json({ message: 'unavailable' }, { status: 503 }),
+      ).listRunSummaries([row.id]),
+      /public_runs/,
+    );
+    await assert.rejects(
+      runSummaryRepository(() =>
+        Response.json([{ ...row, id: runSummaryRow(2).id }]),
+      ).listRunSummaries([row.id]),
+      /invalid response shape/,
+    );
+    await assert.rejects(
+      runSummaryRepository(() => Response.json([row, row])).listRunSummaries([row.id]),
+      /invalid response shape|duplicate run identity/,
+    );
+
+    const malformedRows = [
+      { ...row, matrix_id: 'future-low' },
+      { ...row, synthetic: 'false' },
+      { ...row, completed_at: 'not-a-timestamp' },
+      { ...row, completed_at: '2026-08-04T11:59:59.999Z' },
+      { ...row, run_class: 'official' },
+      { ...row, unexpected: true },
+      { ...row, result_count: '72' },
+      { ...row, correct_count: -1, incorrect_count: 41 },
+      { ...row, completed_count: 69 },
+      { ...row, observed_count: 71 },
+      { ...row, coverage_percent: 99.9 },
+      { ...row, covered_domain_count: 11 },
+      { ...row, provisional_domain_count: 11 },
+      {
+        ...row,
+        correct_count: 1,
+        partial_count: 0,
+        incorrect_count: 0,
+        runtime_issue_count: 0,
+        missing_count: 71,
+        completed_count: 1,
+        observed_count: 1,
+        coverage_percent: 1.4,
+        covered_domain_count: 2,
+        provisional_domain_count: 0,
+      },
+      {
+        ...row,
+        correct_count: 1,
+        partial_count: 0,
+        incorrect_count: 0,
+        runtime_issue_count: 0,
+        missing_count: 71,
+        completed_count: 1,
+        observed_count: 1,
+        coverage_percent: 1.4,
+        covered_domain_count: 1,
+        provisional_domain_count: 1,
+      },
+    ];
+    await Promise.all(
+      malformedRows.map((malformed) =>
+        assert.rejects(
+          runSummaryRepository(() => Response.json([malformed])).listRunSummaries([row.id]),
+          /invalid response shape/,
+        ),
+      ),
+    );
+  });
+
+  void it('fails closed on malformed and duplicate run-page and newest-run transport', async () => {
+    const row = runSummaryRow(1);
+    await assert.rejects(
+      runSummaryRepository(() => Response.json([{ ...row, unexpected: true }])).listRunPage(),
+      /invalid response shape/,
+    );
+    await assert.rejects(
+      runSummaryRepository(() => Response.json([row, row])).listRunPage(),
+      /duplicate run identity/,
+    );
+    await assert.rejects(
+      runSummaryRepository(() => Response.json([runSummaryRow(2), runSummaryRow(1)])).listRunPage(),
+      /invalid response order/,
+    );
+    await assert.rejects(
+      runSummaryRepository(() =>
+        Response.json([{ ...row, completed_at: 'yesterday' }]),
+      ).getNewestCompletedRun(),
+      /invalid response shape/,
+    );
+    await assert.rejects(
+      runSummaryRepository(() => Response.json([row, row])).getNewestCompletedRun(),
+      /invalid response shape/,
+    );
+  });
+
+  void it('validates complete run-detail transport and aggregate coherence', async () => {
+    const row = singleResultRunRow(1);
+    const result = runResultRow(row.id);
+    const run = await runDetailRepository([row], [result]).getRun(row.id);
+    assert.equal(run?.id, row.id);
+    assert.deepEqual(
+      run?.tasks.map((task) => task.id),
+      [result.task_id],
+    );
+
+    await assert.rejects(
+      runDetailRepository([row, row], []).getRun(row.id),
+      /duplicate run identity/,
+    );
+    await assert.rejects(
+      runDetailRepository([row], [result, result]).getRun(row.id),
+      /duplicate result identity/,
+    );
+    await assert.rejects(
+      runDetailRepository(
+        [
+          {
+            ...row,
+            result_count: 2,
+            correct_count: 2,
+            completed_count: 2,
+            observed_count: 2,
+          },
+        ],
+        [
+          result,
+          {
+            ...result,
+            id: '00000000-0000-4000-8000-000000000002',
+          },
+        ],
+      ).getRun(row.id),
+      /result summary does not match run/,
+    );
+    await assert.rejects(
+      runDetailRepository([row], [{ ...result, run_id: runSummaryRow(2).id }]).getRun(row.id),
+      /invalid response shape/,
+    );
+    await assert.rejects(
+      runDetailRepository(
+        [
+          {
+            ...row,
+            result_count: 2,
+            missing_count: 1,
+            coverage_percent: 50,
+          },
+        ],
+        [result],
+      ).getRun(row.id),
+      /result summary does not match run/,
+    );
+  });
+
+  void it('rejects malformed public result token, cost, and evidence relationships', async () => {
+    const row = singleResultRunRow(1);
+    const result = runResultRow(row.id);
+    const pricedResult: RunResultRow = {
+      ...result,
+      input_tokens: 10,
+      cached_input_tokens: 2,
+      cache_write_input_tokens: 1,
+      output_tokens: 3,
+      reasoning_output_tokens: 1,
+      total_tokens: 13,
+      token_usage_source_level: 'provider_reported',
+      token_usage_evidence_level: 'verifier_recomputed',
+      standard_api_equivalent_usd_nanos: 132_250,
+      cost_estimator_status: 'estimated',
+      cost_evidence_level: 'verifier_recomputed',
+    };
+    assert.equal(
+      (await runDetailRepository([row], [pricedResult]).getRun(row.id))?.tasks[0]
+        ?.standardApiEquivalentUsdNanos,
+      132_250,
+    );
+    const malformedResults = [
+      { ...result, input_tokens: -1 },
+      { ...result, unexpected: true },
+      { ...result, task_id: 'debugging-01' },
+      { ...result, task_id: 'coding-09' },
+      { ...result, pricing_digest: `sha256:${'2'.repeat(64)}` },
+      { ...result, input_tokens: 10, token_usage_source_level: null },
+      {
+        ...result,
+        input_tokens: 10,
+        cached_input_tokens: 8,
+        cache_write_input_tokens: 3,
+        output_tokens: 2,
+        token_usage_source_level: 'provider_reported',
+        token_usage_evidence_level: 'verifier_recomputed',
+        cost_estimator_status: 'estimated',
+        standard_api_equivalent_usd_nanos: 1,
+        cost_evidence_level: 'verifier_recomputed',
+      },
+      { ...result, cost_estimator_status: 'estimated' },
+      { ...result, execution_status: 'runtime_issue' },
+      { ...result, score: 0 },
+    ];
+    await Promise.all(
+      malformedResults.map((malformed) =>
+        assert.rejects(
+          runDetailRepository([row], [malformed]).getRun(row.id),
+          /invalid response shape/,
+        ),
+      ),
+    );
+  });
+
+  void it('returns a not-found result for a noncanonical public run without a request', async () => {
+    let requestCount = 0;
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async () => {
+        requestCount += 1;
+        return Response.json([]);
+      },
+    );
+
+    assert.equal(await repository.getRun('unknown-live-run'), null);
+    assert.equal(requestCount, 0);
   });
 
   void it('uses the same bounded pagination contract for run and task-result history', async () => {
@@ -905,7 +1519,7 @@ void describe('presentation aggregates', () => {
     const run = {
       run_id: runId,
       classification: 'local_calibration_non_official',
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.5',
       selected_task_count: 72,
       selected_model_count: 17,
       result_count: 1_224,
@@ -933,12 +1547,12 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.2',
+          task_version: '1.0.5',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
           outcome,
-          status: calibrationStatusForOutcome(outcome),
+          execution_status: executionStatusForOutcome(outcome),
           failure_code: failureCode,
           explanation_code: failureCode,
           explanation_summary: explanationSummary,
@@ -1009,7 +1623,7 @@ void describe('presentation aggregates', () => {
     );
     assert.ok(
       calibration.results.every(
-        (result) => result.status === calibrationStatusForOutcome(result.outcome),
+        (result) => result.executionStatus === executionStatusForOutcome(result.outcome),
       ),
     );
     for (const outcome of ['incorrect', 'missing'] as const) {
@@ -1029,7 +1643,7 @@ void describe('presentation aggregates', () => {
     );
     assert.ok(workspaceIntegrity);
     assert.equal(workspaceIntegrity.outcome, 'invalid');
-    assert.equal(workspaceIntegrity.status, 'invalid');
+    assert.equal(workspaceIntegrity.executionStatus, 'invalid');
     assert.equal(workspaceIntegrity.taskScore, null);
     assert.equal(workspaceIntegrity.explanationCode, 'workspace_integrity');
     assert.equal(
@@ -1085,7 +1699,9 @@ void describe('presentation aggregates', () => {
     );
 
     const invalidRows = [
-      selectedRows.map((row, index) => (index === 2 ? { ...row, status: 'passed' } : row)),
+      selectedRows.map((row, index) =>
+        index === 2 ? { ...row, execution_status: 'runtime_issue' } : row,
+      ),
       selectedRows.map((row, index) =>
         index === 2 ? { ...row, explanation_summary: 'An internal detail leaked.' } : row,
       ),
@@ -1277,6 +1893,8 @@ void describe('presentation aggregates', () => {
         { ...row, adapter_elapsed_observed_result_count: 71 },
         { ...row, token_usage_sample_count: 73 },
         { ...row, priced_result_count: 73, estimated_cost_sample_count: 73 },
+        { ...row, model_family: 'future' },
+        { ...row, reasoning_effort: 'future' },
       ].map((invalid) =>
         assert.rejects(
           modelEfficiencyRepository([invalid]).listModelEfficiency([runId]),
@@ -1297,6 +1915,14 @@ void describe('presentation aggregates', () => {
         },
       ]).listModelEfficiency([runId, secondRunId]),
       /inconsistent matrix batch elapsed time/,
+    );
+
+    await assert.rejects(
+      modelEfficiencyRepository([
+        row,
+        { ...row, model_family: 'terra', reasoning_effort: 'high' },
+      ]).listModelEfficiency([runId, secondRunId]),
+      /duplicate run identity/,
     );
   });
 
@@ -1345,7 +1971,7 @@ void describe('presentation aggregates', () => {
     const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
       id: `calibration-${String(index).padStart(4, '0')}`,
       classification: 'local_calibration_non_official',
-      scoringVersion: '1.0.2',
+      scoringVersion: '1.0.5',
       selectedTaskCount: 72,
       selectedModelCount: 17,
       resultCount: 1_224,
@@ -1465,7 +2091,11 @@ void describe('presentation aggregates', () => {
         if (task.domain !== sparseDomain || task.id === retainedTaskId) {
           return task;
         }
-        return Object.assign({}, task, { status: 'missing' as const, score: null });
+        return Object.assign({}, task, {
+          outcome: 'missing' as const,
+          executionStatus: 'missing' as const,
+          score: null,
+        });
       }),
     };
     const summary = buildSeedRunHistoryPage([counterexample]).runs[0];
@@ -1554,33 +2184,18 @@ void describe('presentation aggregates', () => {
   });
 
   void it('preserves every same-time live run in both directions with constant requests', async () => {
-    const template = seedRuns[0];
-    assert.ok(template);
     const rows: RunRow[] = Array.from({ length: 31 }, (_, index) => ({
-      id: `run-tie-${String(index).padStart(2, '0')}`,
-      matrix_id: template.entryId,
+      ...runSummaryRow(index + 1),
       started_at: '2026-07-24T12:00:00.000Z',
-      completed_at: template.completedAt,
-      benchmark_version: template.benchmarkVersion,
-      scoring_version: template.scoringVersion,
-      prompt_set_digest: template.promptSetDigest,
-      runner_commit: template.runnerCommit,
-      region: template.region,
-      synthetic: template.synthetic,
-      corpus_release_id: null,
-      corpus_commitment_sha256: null,
-      catalog_digest: null,
-      task_set_digest: null,
-      preflight_digest: null,
-      runtime_digest: null,
-      run_class: null,
-      permission_evidence_digest: null,
       result_count: 72,
-      passed_count: 72,
-      failed_count: 0,
+      correct_count: 72,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
+      completed_count: 72,
       observed_count: 72,
       coverage_percent: 100,
       covered_domain_count: 10,
@@ -1592,7 +2207,12 @@ void describe('presentation aggregates', () => {
       requests.push(url);
       if (url.searchParams.get('select') === 'id,started_at') {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
-        return Response.json(rows.filter((row) => row.id === id).slice(0, 1));
+        return Response.json(
+          rows
+            .filter((row) => row.id === id)
+            .slice(0, 1)
+            .map((row) => ({ id: row.id, started_at: row.started_at })),
+        );
       }
       const boundary = /id\.(gt|lt)\.([^)]+)/.exec(url.searchParams.get('or') ?? '');
       let selected = boundary
@@ -1738,15 +2358,59 @@ void describe('presentation aggregates', () => {
     assert.equal(formatLastObservation(null, now), 'Never observed');
     assert.match(formatLastObservation('2026-07-24T14:00:00.000Z', now), /stale$/);
     assert.doesNotMatch(formatLastObservation(null, now), /online/i);
+    assert.equal(classifyObservationRecency('2026-07-24T14:50:00.000Z', now), 'recent');
+    assert.equal(classifyObservationRecency('not-a-date', now), 'unavailable');
   });
 
-  void it('positions every current radar node and additional nodes inside the orbit', () => {
-    const positions = Array.from({ length: 12 }, (_, index) => radarOrbitPosition(index));
-    assert.equal(new Set(positions.map(({ left, top }) => `${left}:${top}`)).size, 12);
-    for (const position of positions) {
-      assert.ok(Number.parseFloat(position.left) > 0 && Number.parseFloat(position.left) < 100);
-      assert.ok(Number.parseFloat(position.top) > 0 && Number.parseFloat(position.top) < 100);
-    }
+  void it('selects the newest completed run rather than a score-ordered run', () => {
+    assert.deepEqual(
+      latestCompletedRun([
+        { id: 'highest-score', completedAt: '2026-07-24T14:00:00.000Z' },
+        { id: 'newest-evidence', completedAt: '2026-07-25T14:00:00.000Z' },
+        { id: 'invalid-time', completedAt: 'not-a-date' },
+      ]),
+      { id: 'newest-evidence', completedAt: '2026-07-25T14:00:00.000Z' },
+    );
+  });
+
+  void it('queries the newest completed run across the complete retained relation', async () => {
+    const newestRow: RunRow = {
+      ...runSummaryRow(1),
+      started_at: '2026-07-01T12:00:00.000Z',
+      completed_at: '2026-08-04T12:00:00.000Z',
+      result_count: 72,
+      correct_count: 72,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
+      invalid_count: 0,
+      missing_count: 0,
+      not_applicable_count: 0,
+      completed_count: 72,
+      observed_count: 72,
+      coverage_percent: 100,
+      covered_domain_count: 10,
+      provisional_domain_count: 10,
+    };
+    const requests: URL[] = [];
+    const testFetch: typeof fetch = async (input) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      requests.push(url);
+      return Response.json([newestRow]);
+    };
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      testFetch,
+    );
+
+    const newest = await repository.getNewestCompletedRun();
+
+    assert.equal(newest?.id, newestRow.id);
+    assert.equal(newest?.completedAt, newestRow.completed_at);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.searchParams.get('order'), 'completed_at.desc,id.asc');
+    assert.equal(requests[0]?.searchParams.get('limit'), '1');
   });
 
   void it('maps all public run provenance fields and preserves nulls', () => {
@@ -1755,8 +2419,8 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.2',
-      scoring_version: '1.0.2',
+      benchmark_version: 'aiq-core@1.0.5',
+      scoring_version: '1.0.5',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
       region: 'us-east-1',
@@ -1770,11 +2434,14 @@ void describe('presentation aggregates', () => {
       run_class: 'official',
       permission_evidence_digest: 'sha256:permission',
       result_count: 0,
-      passed_count: 0,
-      failed_count: 0,
+      correct_count: 0,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
+      completed_count: 0,
       observed_count: 0,
       coverage_percent: null,
       covered_domain_count: 0,
@@ -1842,11 +2509,14 @@ void describe('presentation aggregates', () => {
       run_class: 'official',
       permission_evidence_digest: template.permissionEvidenceDigest,
       result_count: 3,
-      passed_count: 0,
-      failed_count: 3,
+      correct_count: 0,
+      partial_count: 0,
+      incorrect_count: 1,
+      runtime_issue_count: 2,
       invalid_count: 0,
       missing_count: 0,
       not_applicable_count: 0,
+      completed_count: 1,
       observed_count: 3,
       coverage_percent: 100,
       covered_domain_count: 1,
@@ -1855,9 +2525,11 @@ void describe('presentation aggregates', () => {
     const evaluatorIncorrect: RunResultRow = {
       run_id: row.id,
       id: 'result-evaluator-incorrect',
+      task_id: 'coding-01',
       task: 'Evaluator-incorrect result',
       domain: 'coding',
-      status: 'failed',
+      outcome: 'incorrect',
+      execution_status: 'completed',
       score: 0,
       explanation_code: null,
       explanation_summary: 'The evaluator rejected the response.',
@@ -1876,11 +2548,15 @@ void describe('presentation aggregates', () => {
       standard_api_equivalent_usd_nanos: null,
       cost_estimator_status: 'unavailable_missing_usage',
       cost_evidence_level: null,
+      pricing_digest: 'sha256:e1a28656f2918a14e86997b06bf9e29ec4db084ff89ee0319aafa0c05cc1f31d',
     };
     const timeout: RunResultRow = {
       ...evaluatorIncorrect,
       id: 'result-timeout',
+      task_id: 'coding-02',
       task: 'Timed-out result',
+      outcome: 'timeout',
+      execution_status: 'runtime_issue',
       explanation_code: 'timeout',
       explanation_summary: 'The task exceeded its time limit.',
       retryable: true,
@@ -1888,7 +2564,10 @@ void describe('presentation aggregates', () => {
     const budgetExceeded: RunResultRow = {
       ...evaluatorIncorrect,
       id: 'result-budget-exceeded',
+      task_id: 'coding-03',
       task: 'Budget-exhausted result',
+      outcome: 'budget_exhausted',
+      execution_status: 'runtime_issue',
       explanation_code: 'budget_exceeded',
       explanation_summary: 'The task exceeded a resource budget.',
       retryable: false,

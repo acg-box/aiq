@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-documentation-communication-01",
-  "task_version": "1.0.2",
+  "task_version": "1.0.5",
   "title": "Use the required synthetic label",
   "domain": "documentation_communication",
   "difficulty": "easy",
@@ -9,7 +9,7 @@
   "allowed_tools": ["none"],
   "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
   "tags": ["synthetic", "labeling"],
-  "scorer_version": "1.0.2",
+  "scorer_version": "1.0.5",
   "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
   "fixture_refs": [
     "repo://benchmarks/examples/tasks/public-example-documentation-communication.json"

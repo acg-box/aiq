@@ -65,7 +65,7 @@ as $$
 $$;
 
 select pg_temp.aiq_assert(
-  aiq_private.task_catalog_is_exact('aiq-core','1.0.2'),
+  aiq_private.task_catalog_is_exact('aiq-core','1.0.5'),
   'calibration integration requires the exact production initializer catalog'
 );
 
@@ -135,7 +135,7 @@ begin
     jsonb_agg('sha256:'||fixture_commitment order by fixture_commitment collate "C")
   into task_ids,task_hashes
   from aiq_private.aiq_task_catalog
-  where task_set_id='aiq-core' and task_set_version='1.0.2';
+  where task_set_id='aiq-core' and task_set_version='1.0.5';
   task_set_hash:=aiq_private.jcs_sha256(task_hashes);
   select jsonb_build_object('node_id',node_id,'public_key',public_key)
     into runner from pg_temp.aiq_calibration_identities where role_name='runner';
@@ -174,8 +174,8 @@ begin
     'schema_version','aiq.run-provenance.v2','run_class','calibration',
     'corpus_release_id','corpus_integration_calibration',
     'corpus_commitment_sha256',(select metadata->>'corpus_commitment_sha256'
-      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.2'),
-    'catalog_digest','sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.5'),
+    'catalog_digest','sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7',
     'task_set_digest',task_set_hash,
     'evaluator_digest','sha256:'||repeat('3',64),
     'runtime_digest','sha256:'||repeat('4',64),
@@ -194,7 +194,7 @@ begin
     'schema_version','aiq.run-identity.v3','run_class','calibration',
     'slot',schedule_slot,'task_set_hash',task_set_hash,
     'corpus_commitment_sha256',provenance->'corpus_commitment_sha256',
-    'models',models,'scoring_version','1.0.2'
+    'models',models,'scoring_version','1.0.5'
   )),8);
   select jsonb_agg(result order by model_ordinal,task_ordinal) into results
   from (
@@ -226,13 +226,13 @@ begin
         'synthetic',false,'local_trust','untrusted'
       )
     ) as result_base) built
-    where task.task_set_id='aiq-core' and task.task_set_version='1.0.2'
+    where task.task_set_id='aiq-core' and task.task_set_version='1.0.5'
   ) generated;
   payload:=jsonb_build_object(
     'schema_version','aiq.calibration-run.v3','official_eligible',false,
     'classification','local_calibration_non_official','run_id',run_id,
     'schedule_slot',schedule_slot,'task_set_hash',task_set_hash,
-    'scoring_version','1.0.2','execution_concurrency',1,
+    'scoring_version','1.0.5','execution_concurrency',1,
     'models',models,'task_ids',task_ids,'started_unix_ms',1785672000000,
     'finished_unix_ms',1785672001000,'capability_validation',preflight,
     'provenance',provenance,
@@ -274,8 +274,17 @@ select pg_temp.aiq_assert(
     envelope#>>'{payload,provenance,preflight_digest}'
   )
   and aiq_private.dto_run_provenance_is_valid(
-    jsonb_set(envelope#>'{payload,provenance}','{run_class}','"official"'::jsonb),
-    envelope#>>'{payload,task_set_hash}',envelope#>>'{payload,provenance,preflight_digest}'
+    jsonb_set(
+      jsonb_set(
+        envelope#>'{payload,provenance}',
+        '{run_class}',
+        '"official"'::jsonb
+      ),
+      '{evaluator_digest}',
+      '"sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c"'::jsonb
+    ),
+    envelope#>>'{payload,task_set_hash}',
+    envelope#>>'{payload,provenance,preflight_digest}'
   )
   and not aiq_private.calibration_package_v3_is_valid(jsonb_set(
     envelope,'{payload,provenance,run_class}','"official"'::jsonb
@@ -295,7 +304,7 @@ cross join lateral public.aiq_enqueue_submission(
     'source','calibration-integration'
   ),
   jsonb_build_object(
-    'bucket','integration-private-submissions','bytes',input.body_bytes,
+    'bucket','aiq-submission-packages','bytes',input.body_bytes,
     'content_sha256',input.package_sha256,'key','sha256/'||input.package_sha256
   )
 ) queued;
@@ -315,7 +324,7 @@ select pg_temp.aiq_assert(
        'source','calibration-integration'
      ),
      jsonb_build_object(
-       'bucket','integration-private-submissions','bytes',input.body_bytes,
+       'bucket','aiq-submission-packages','bytes',input.body_bytes,
        'content_sha256',input.package_sha256,'key','sha256/'||input.package_sha256
      )
    ) replay),
@@ -325,7 +334,7 @@ select pg_temp.aiq_assert(
   public.aiq_record_artifact_ingress(
     run_id,'evaluator-results.json',repeat('e',64),128,
     jsonb_build_object(
-      'bucket','integration-private-artifacts',
+      'bucket','aiq-runner-artifacts',
       'key','sha256/'||repeat('e',64)||'/evaluator-results.json'
     )
   )='accepted','calibration evaluator evidence must enter retained Storage'
@@ -366,7 +375,7 @@ with source as (
     'model',model,
     'score',jsonb_build_object(
       'schema_version','aiq.calibration-score-report.v1','run_class','calibration',
-      'scoring_version','1.0.2','model',model,'descriptive_status','coverage_only',
+      'scoring_version','1.0.5','model',model,'descriptive_status','coverage_only',
       'official_eligible',false,'ranking_eligible',false,
       'fixed_fixture_aiq',null,'conditional_observed_aiq',null,'completion_bounds',null,
       'task_resampling_sensitivity_interval',null,
@@ -389,7 +398,7 @@ with source as (
       ) order by domain) from (
         select domain,count(*)::integer as task_count
         from aiq_private.aiq_task_catalog
-        where task_set_id='aiq-core' and task_set_version='1.0.2' group by domain
+        where task_set_id='aiq-core' and task_set_version='1.0.5' group by domain
       ) domain_counts),
       'rule','Synthetic untrusted calibration evidence is descriptive only.'
     ),
@@ -421,11 +430,11 @@ with source as (
       'capability_validation_digest',aiq_private.jcs_sha256(source.payload->'capability_validation'),
       'provenance',source.payload->'provenance',
       'evaluator_results_artifact',source.payload->'evaluator_results_artifact',
-      'scoring_version','1.0.2','execution_concurrency',source.payload->'execution_concurrency',
+      'scoring_version','1.0.5','execution_concurrency',source.payload->'execution_concurrency',
       'task_ids',source.payload->'task_ids','models',source.payload->'models',
       'scores',scores.value,'result_efficiency',result_efficiency.value,
       'pricing',pg_temp.aiq_efficiency_pricing(),'task_set_id','aiq-core',
-      'task_set_version','1.0.2','benchmark_version','aiq-core@1.0.2',
+      'task_set_version','1.0.5','benchmark_version','aiq-core@1.0.5',
       'prompt_set_digest',source.payload#>>'{provenance,prompt_digest}',
       'runner_commit','integration','region','integration','scheduled_unix_ms',1785672000000,
       'started_unix_ms',source.payload->'started_unix_ms',
@@ -454,7 +463,7 @@ select stage.*,
     'score_reports_digest',stage.stage->>'score_reports_digest',
     'telemetry_digest',stage.stage->>'telemetry_digest',
     'capability_validation_digest',stage.stage->>'capability_validation_digest',
-    'scoring_version','1.0.2','execution_concurrency',stage.stage->'execution_concurrency',
+    'scoring_version','1.0.5','execution_concurrency',stage.stage->'execution_concurrency',
     'observed_unix_ms',1785672002000,'replay_status','evaluator_replayed',
     'signature',repeat('32',64)
   ) as attestation
@@ -561,7 +570,8 @@ select pg_temp.aiq_assert(
      and min(result_count)=1224 and min(attempted_result_count)=0
      and min(invoked_result_count)=0 and min(cost_estimator_status)='unavailable_missing_usage'
    from public.public_calibration_runs)
-  and (select count(*)=1224 and bool_and(status='invalid')
+  and (select count(*)=1224 and bool_and(outcome='invalid')
+     and bool_and(execution_status='invalid')
      and bool_and(failure_code='capability_validation_failed')
      and bool_and(explanation_code='capability_validation_failed')
      and bool_and(explanation_summary is not null)
@@ -630,12 +640,12 @@ select pg_temp.aiq_assert(
   'public calibration views must not expose private evidence fields'
 );
 select pg_temp.aiq_assert(
-  (select count(*) = 4
+  (select count(*) = 5
    from information_schema.columns
    where table_schema = 'public'
      and table_name = 'public_calibration_results'
      and column_name in (
-       'status','failure_code','explanation_code','explanation_summary'
+       'outcome','execution_status','failure_code','explanation_code','explanation_summary'
      )),
   'public calibration results must expose bounded failure classification'
 );

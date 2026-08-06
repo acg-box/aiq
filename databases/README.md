@@ -2,11 +2,37 @@
 
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization command.
+`databases/reset.ts` is the production greenfield replacement command. It
+removes only the existing AIQ prelaunch namespace and then calls the production
+initializer. It is not a migration or an upgrade path.
 
 The initializer opens one direct PostgreSQL connection, starts one transaction,
 applies the schema, inserts public reference data, checks readiness, and commits.
-It rejects a database that already contains the AIQ schema or AIQ roles. Only a
-new empty AIQ database is supported.
+The production connection must use PostgreSQL, host
+`db.xxnszykaeapolqdnhalx.supabase.co`, database and user `postgres`, and the
+direct port `5432` or its omitted default. This binds initialization to the
+personal Supabase project documented by repository authority. Tests and local
+development can target only a loopback host when
+`NODE_ENV` is `test` or `development` and
+`AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true` is set explicitly. Production
+cannot use this override.
+It rejects a database that already contains the AIQ schema, AIQ roles, or either
+exact AIQ Storage bucket identity. Only a new empty AIQ namespace in the existing
+target Supabase project is supported.
+If AIQ residue exists, the operator must remove only `aiq_private`,
+`aiq_verifier`, `aiq_publisher`, and the exact AIQ-owned public views and RPC
+overloads. Preserve all Supabase-managed and non-AIQ objects. This cleanup is a
+deployment prerequisite, not a migration or compatibility path. The schema
+creates `aiq-submission-packages` and `aiq-runner-artifacts` in
+`storage.buckets` and sets both buckets to private. The greenfield preflight
+rejects either exact bucket ID or name if it already exists. Do not create either
+bucket before initialization.
+
+The model-free preflight checks every one of the 12 canonical AIQ public view
+names and every public RPC name created by `databases/schema.sql`. Any overload
+with one of those exact names rejects initialization. It does not use a broad
+`public`-schema or prefix match, so unrelated views and functions remain
+outside the cleanup boundary.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \
@@ -17,30 +43,122 @@ cargo make init-database
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
 controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.2`, its real `published_at` timestamp, and exactly three public identities:
+`1.0.5`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
-final native binaries pass model-free validation. The repository does not
-contain a substitute production commitment or benchmark results. Supply the
-controlled production reference separately.
+final native binaries pass validation. The controlled production reference is
+still pending. The reviewed 72-task database commitment is frozen in
+`aiq-core-1.0.5-task-commitments.json`. The repository does not contain a
+substitute production commitment or benchmark results. Supply the controlled
+production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.2` with benchmark identifier `aiq-core@1.0.2`;
-- scoring version `1.0.2`;
+- AIQ Core task release `1.0.5` with benchmark identifier `aiq-core@1.0.5`;
+- scoring version `1.0.5`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
 - 40 private tables with enabled and forced RLS;
-- 12 security-invoker public views;
+- 12 canonical AIQ-owned security-invoker public views. Unrelated `public`
+  views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`;
+  `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`;
 - catalog release identity
-  `sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
+  `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`;
+- reviewed runtime task-set identity
+  `sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`;
+- reviewed task-commitment manifest identity
+  `sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94`;
+- reviewed evaluator identity
+  `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
+- reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
+  Contrast corpus identities from the final controlled production reference.
 
-AIQ Core `1.0.2` is the only supported task-set and benchmark version in this
-desired state. There is no migration, compatibility, dual-version, or data
-preservation path.
+The controlled tree identity is not a runtime task-set hash. The database does
+not write it to `task_set_hash` or `task_set_digest`. Those fields use the
+canonical runtime hash of the 72 task definitions. The initializer derives
+that hash with the same sorted-address RFC 8785 algorithm as the Rust
+protocol. The database binds the exact
+evaluator identity in signed `evaluator_digest` provenance and in the frozen
+task-set metadata that production readiness checks. It does not copy the
+scorer-manifest identity into an unrelated field.
+The native corpus commitment owns the scorer-manifest identity. The
+database binds its output through scoring version `1.0.5` and recomputes
+the score from normalized result evidence.
+
+The reviewed public-safe `1.0.5` 72-task database binding manifest is
+`aiq-core-1.0.5-task-commitments.json`. Its canonical JCS identity is
+`sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94`.
+
+The pre-release desired state targets AIQ Core `1.0.5`. Production is still on
+the historical published `1.0.2` state. Do not initialize production until the
+controlled `1.0.5` commitments are complete and reviewed.
+
+## Greenfield replacement
+
+First, run a read-only inventory. The command lists the canonical database
+objects. For each private AIQ bucket, it reports only the object count and a
+deterministic SHA-256 commitment to the ordered object paths. It never writes
+private object paths to the dry-run result, reset receipt, or standard output.
+It rejects an unexpected AIQ schema, role, function, bucket, or bucket identity.
+It also rejects a non-canonical policy or role membership that depends on an
+AIQ role, a non-view relation that uses a canonical public view name, and any
+object outside the canonical AIQ surface that depends on `aiq_private`. Thus,
+the internal schema cascade cannot remove an external dependent.
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
+cargo make reset-database -- --dry-run
+```
+
+Review the inventory. Then run the one-step replacement with the exact project
+and namespace confirmation:
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
+AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
+cargo make reset-database -- \
+  --confirm xxnszykaeapolqdnhalx:aiq_private
+```
+
+Before it makes a Storage request or starts PostgreSQL cleanup, the destructive
+command reads, parses, and validates the production reference plus the
+checked-in schema, catalog, corpus schema, and reviewed task commitments. A
+missing, malformed, or inconsistent authority stops the reset without mutation.
+
+The command uses the supported Supabase Storage API to list and delete objects
+before it removes a bucket. Listing uses pages of 100 objects. Object deletion
+uses batches of 100 and at most four concurrent requests. The command reads the
+buckets again before it removes them. It does not delete rows directly from
+`storage.objects`.
+
+Storage deletion and database replacement cannot share one transaction. The
+command processes `aiq-runner-artifacts` and then `aiq-submission-packages`.
+All requests in a bounded object-deletion group settle before readback. If a
+request fails and objects remain, the command reports the remaining count and
+stops before it removes that bucket or changes PostgreSQL. Earlier object
+batches or the first bucket can already be deleted. If a failed response follows
+a successful object deletion, an empty readback permits the bucket removal.
+A bucket-removal failure can also mean that the bucket is present or already
+removed. In each Storage failure case, rerun the same command. The new inventory
+skips an absent bucket and resumes with an existing bucket.
+
+The command verifies that both buckets are absent before it changes PostgreSQL.
+It then removes the
+canonical public RPC overloads, the 12 canonical public views, `aiq_private`,
+`aiq_publisher`, and `aiq_verifier` in one PostgreSQL transaction. It reads the
+database boundary again inside that transaction after it acquires the reset
+advisory lock, dependency-catalog locks, role-membership locks, and exclusive
+locks on the AIQ relations. Concurrent DDL cannot add a dependent between the
+final boundary check and schema removal. It reads the database namespace again
+before it starts initialization. If Storage succeeds
+and the database transaction or initialization fails, the AIQ Storage objects
+are already deleted. Correct the reported database problem and run the same
+command again. The command preserves Supabase-managed and unrelated schemas,
+roles, functions, views, tables, users, and buckets.
 
 The reference and receipt are public-safe. They must not contain private tasks,
 expected outputs, signing keys, tokens, or database credentials.
@@ -88,8 +206,9 @@ Browser roles can read published rows from `public_calibration_runs`,
 `public_calibration_results`, and `public_calibration_scores`. These
 security-invoker views do not expose package identities, digests, node
 identities, envelopes, raw responses, private artifacts, or raw failure
-messages. Calibration results keep the normalized outcome and expose a bounded
-failure code, the five-state public status, and a fixed explanation summary.
+messages. Calibration results keep the exact normalized outcome and expose a
+bounded failure code, a separate five-state execution status, and a fixed
+explanation summary.
 Efficiency values distinguish observed Codex adapter invocation elapsed time,
 provider-reported token usage, and verifier-recomputed API-equivalent
 estimates. Unknown values are `NULL`. Standard short-context rates come from

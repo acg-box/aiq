@@ -82,12 +82,24 @@ export default async function CalibrationDetailPage({
         score.reasoningEffort === configuration.reasoningEffort,
     ),
   );
+  const selectedExecutionContext = run
+    ? new Map([
+        [
+          selectedKey,
+          {
+            runtimeIssues: run.results.filter((item) => item.executionStatus === 'runtime_issue')
+              .length,
+            missing: run.results.filter((item) => item.executionStatus === 'missing').length,
+          },
+        ],
+      ])
+    : new Map();
 
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Calibration detail</span>
-        <h1>Verified provenance · untrusted calibration · not Official · not ranking eligible</h1>
+        <h1>Calibration evidence</h1>
         <p>
           This bounded public view omits packages, signatures, private artifacts, raw responses,
           envelopes, and private failure details. It publishes fixed safe explanations and
@@ -121,6 +133,10 @@ export default async function CalibrationDetailPage({
               <dd>Evaluator replayed</dd>
             </div>
             <div>
+              <dt>Scoring</dt>
+              <dd>{run.scoringVersion || 'Unavailable'}</dd>
+            </div>
+            <div>
               <dt>Published</dt>
               <dd>
                 <time dateTime={run.publishedAt}>{new Date(run.publishedAt).toLocaleString()}</time>
@@ -141,7 +157,11 @@ export default async function CalibrationDetailPage({
             </select>
             <button type="submit">Show {run.selectedTaskCount}-task subset</button>
           </form>
-          <p className="calibration-slice-count" role="status">
+          <p
+            className="calibration-slice-count"
+            role="status"
+            aria-label="Calibration result count"
+          >
             Showing {run.results.length.toLocaleString()} of {run.resultCount.toLocaleString()}{' '}
             result cells for {selection.modelFamily} · {selection.reasoningEffort}.
           </p>
@@ -151,7 +171,7 @@ export default async function CalibrationDetailPage({
                 <tr>
                   <th>Task</th>
                   <th>Domain</th>
-                  <th>Outcome / status</th>
+                  <th>Outcome / execution</th>
                   <th>Public explanation</th>
                   <th>Task score</th>
                   <th>Observed adapter elapsed</th>
@@ -169,7 +189,7 @@ export default async function CalibrationDetailPage({
                     <td>{item.domain}</td>
                     <td>
                       {item.outcome.replaceAll('_', ' ')}
-                      <small>Status: {item.status.replaceAll('_', ' ')}</small>
+                      <small>Execution: {item.executionStatus.replaceAll('_', ' ')}</small>
                     </td>
                     <td>
                       {item.explanationSummary ?? 'No failure explanation'}
@@ -212,7 +232,13 @@ export default async function CalibrationDetailPage({
             </table>
           </div>
           <ReadStateNote result={scores} subject="Full run score matrix" />
-          {scores.state === 'unavailable' ? null : <CalibrationEfficiency scores={scores.data} />}
+          {scores.state === 'unavailable' ? null : (
+            <CalibrationEfficiency
+              scores={scores.data}
+              scoringVersion={run.scoringVersion || null}
+              executionContext={selectedExecutionContext}
+            />
+          )}
         </>
       ) : null}
     </section>

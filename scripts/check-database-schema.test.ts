@@ -3,12 +3,33 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 
-import { checkDatabaseSchema, checkDatabaseSchemaSources } from './check-database-schema.ts';
+import {
+  checkDatabaseInitializerSource,
+  checkDatabaseSchema,
+  checkDatabaseSchemaSources,
+  checkDatabaseTaskCommitmentFixture,
+} from './check-database-schema.ts';
 
 const repositoryRoot =
   process.env.AIQ_DATABASE_SCHEMA_ROOT === undefined
     ? resolve(import.meta.dirname, '..')
     : resolve(process.env.AIQ_DATABASE_SCHEMA_ROOT);
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  if (!isJsonObject(value)) {
+    throw new Error('Expected a JSON object.');
+  }
+  return value;
+}
+
+function unknownArray(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw new Error('Expected a JSON array.');
+  return Array.from(value, (item: unknown) => item);
+}
 
 async function sources(): Promise<[string, string]> {
   return Promise.all([
@@ -21,13 +42,48 @@ await test('the canonical fresh-database schema satisfies the static contract', 
   await checkDatabaseSchema(repositoryRoot);
 });
 
+await test('checker rejects readiness that counts unrelated public views', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "    where namespace.nspname='public' and relation.relkind='v'\n      and relation.relname in (",
+    "    where namespace.nspname='public' and relation.relkind='v'\n      and true in (",
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /count only the canonical AIQ public views/,
+  );
+});
+
 await test('schema and synthetic demo data have separate final-state owners', async () => {
   const [schema, syntheticDemo] = await sources();
   assert.match(schema, /^begin;\n/);
   assert.match(schema, /\ncommit;\s*$/);
-  assert.doesNotMatch(schema, /^insert\s+into\s/im);
+  assert.match(schema, /^insert\s+into\s+storage\.buckets/im);
+  assert.doesNotMatch(schema, /^insert\s+into\s+aiq_private\./im);
   assert.match(syntheticDemo, /^-- Deterministic local demonstration data\./);
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
+});
+
+await test('checker requires both AIQ Storage buckets to be private and create-new', async () => {
+  const [schema, syntheticDemo] = await sources();
+  for (const changed of [
+    schema.replace("('aiq-runner-artifacts', 'aiq-runner-artifacts', false)", ''),
+    schema.replace(
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', false)",
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', true)",
+    ),
+    schema.replace(
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', false);",
+      "('aiq-runner-artifacts', 'aiq-runner-artifacts', false) on conflict (id) do nothing;",
+    ),
+  ]) {
+    assert.notEqual(changed, schema);
+    assert.throws(
+      () => checkDatabaseSchemaSources(changed, syntheticDemo),
+      /Storage bucket initialization|Storage buckets as private|greenfield Storage/,
+    );
+  }
 });
 
 await test('checker rejects an exposed base table or missing forced RLS', async () => {
@@ -103,6 +159,29 @@ await test('checker rejects conditional reuse of an existing AIQ role', async ()
   assert.throws(
     () => checkDatabaseSchemaSources(changed, syntheticDemo),
     /create both AIQ roles directly|must not preserve pre-existing AIQ roles/,
+  );
+});
+
+await test('checker rejects initializer readiness without private Storage buckets', async () => {
+  const initializer = await readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8');
+  const changed = initializer.replace('and public is false', 'and public is true');
+  assert.notEqual(changed, initializer);
+  assert.throws(
+    () => checkDatabaseInitializerSource(changed),
+    /readiness must require both private AIQ Storage buckets/,
+  );
+});
+
+await test('checker rejects an initializer that reuses existing AIQ Storage buckets', async () => {
+  const initializer = await readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8');
+  const changed = initializer.replace(
+    'select 1 from storage.buckets',
+    'select 1 from storage.other',
+  );
+  assert.notEqual(changed, initializer);
+  assert.throws(
+    () => checkDatabaseInitializerSource(changed),
+    /greenfield preflight must reject either existing AIQ Storage bucket identity/,
   );
 });
 
@@ -252,16 +331,30 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
   const [schema, syntheticDemo] = await sources();
   for (const [changed, expected] of [
     [
-      schema.replace(
+      schema.replaceAll(
+        'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05',
+        'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      ),
+      /Official provenance must compare the task-set digest/,
+    ],
+    [
+      schema.replaceAll(
         "'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'",
         "'non_zero_exit','budget_exceeded','output_truncated'",
       ),
       /adapter-failure validator must accept workspace_integrity/,
     ],
-    [schema.replace('aiq-core@1.0.2', 'aiq-core@1.0.1'), /expected to not match/],
+    [schema.replace('aiq-core@1.0.5', 'aiq-core@1.0.1'), /expected to not match/],
+    [
+      schema.replaceAll(
+        'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
+        'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      ),
+      /d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c/,
+    ],
     [
       schema.replace(
-        'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6',
+        'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d',
         'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
       ),
       /expected to not match/,
@@ -277,4 +370,95 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
     assert.notEqual(changed, schema);
     assert.throws(() => checkDatabaseSchemaSources(changed, syntheticDemo), expected);
   }
+});
+
+await test('checker rejects initializer evaluator constants that are not enforced', async () => {
+  const initializer = await readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8');
+  for (const [changed, expected] of [
+    [
+      initializer.replace(
+        'documentDigest(taskDefinitionIdentities.toSorted())',
+        'documentDigest(taskDefinitionIdentities)',
+      ),
+      /Rust sorted-address canonical task-set hash algorithm/,
+    ],
+    [
+      initializer.replace(
+        'binding.fixture_bundle_sha256 !== reviewed.fixture_bundle_sha256',
+        'false',
+      ),
+      /Every fixture bundle must match/,
+    ],
+    [
+      initializer.replace('evaluatorDigest !== EVALUATOR_IDENTITY', 'false'),
+      /compare runtime evaluator provenance/,
+    ],
+    [
+      initializer.replace(
+        'binding.evaluator_executable_sha256 !== EVALUATOR_IDENTITY',
+        'binding.evaluator_executable_sha256 !== evaluatorDigest',
+      ),
+      /Every task binding must compare/,
+    ],
+    [
+      initializer.replace(
+        'evaluator_identity_sha256: reference.evaluatorIdentitySha256',
+        'evaluator_identity_sha256: EVALUATOR_IDENTITY',
+      ),
+      /persist the validated evaluator identity/,
+    ],
+    [
+      initializer.replace(
+        'value.evaluator_identity_sha256 === expected.evaluator_identity_sha256',
+        "typeof value.evaluator_identity_sha256 === 'string'",
+      ),
+      /compare readiness output/,
+    ],
+  ] as const) {
+    assert.notEqual(changed, initializer);
+    assert.throws(() => checkDatabaseInitializerSource(changed), expected);
+  }
+});
+
+await test('checker derives the native identity from all reviewed task commitments', async () => {
+  const fixture: unknown = JSON.parse(
+    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json'), 'utf8'),
+  );
+  checkDatabaseTaskCommitmentFixture(fixture);
+  const changed = jsonObject(structuredClone(fixture));
+  const first = jsonObject(unknownArray(changed.tasks)[0]);
+  first.task_definition_sha256 =
+    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  assert.throws(() => checkDatabaseTaskCommitmentFixture(changed));
+  const changedFixture = jsonObject(structuredClone(fixture));
+  const firstFixture = jsonObject(unknownArray(changedFixture.tasks)[0]);
+  firstFixture.fixture_bundle_sha256 =
+    'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+  assert.throws(() => checkDatabaseTaskCommitmentFixture(changedFixture));
+});
+
+await test('checker rejects readiness that reports but does not enforce evaluator identity', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "      and evaluator_identity_sha256 =\n        'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'\n",
+    '',
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /Production readiness must compare/,
+  );
+});
+
+await test('checker rejects readiness that reports but does not enforce task-set identity', async () => {
+  const [schema, syntheticDemo] = await sources();
+  const changed = schema.replace(
+    "      and task_set_identity_sha256 =\n        'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'\n",
+    '',
+  );
+  assert.notEqual(changed, schema);
+  assert.throws(
+    () => checkDatabaseSchemaSources(changed, syntheticDemo),
+    /Production readiness must compare the derived task-set identity/,
+  );
 });

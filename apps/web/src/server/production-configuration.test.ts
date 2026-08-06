@@ -36,8 +36,8 @@ const validEnvironment = {
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_public_example',
   SUPABASE_SECRET_KEY: secretKey,
   AIQ_RUNNER_SUBMISSION_TOKEN: runnerToken,
-  AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
-  AIQ_RUNNER_ARTIFACT_BUCKET: 'private-artifacts',
+  AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
+  AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',
   AIQ_VERIFIER_INGRESS_TOKEN: verifierToken,
   AIQ_SUPABASE_PUBLISHABLE_KEY: apiKey,
   AIQ_SUPABASE_JWT_PRIVATE_JWK: privateJwk,
@@ -50,13 +50,13 @@ void describe('route-scoped production configuration', () => {
       ...common,
       SUPABASE_SECRET_KEY: secretKey,
       AIQ_RUNNER_SUBMISSION_TOKEN: runnerToken,
-      AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
+      AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
     });
     assert.deepEqual(configuration.values, {
       serviceUrl: common.SUPABASE_URL,
       secretKey,
       runnerToken,
-      packageBucket: 'private-packages',
+      packageBucket: 'aiq-submission-packages',
     });
   });
 
@@ -65,13 +65,13 @@ void describe('route-scoped production configuration', () => {
       ...common,
       SUPABASE_SECRET_KEY: secretKey,
       AIQ_RUNNER_SUBMISSION_TOKEN: runnerToken,
-      AIQ_RUNNER_ARTIFACT_BUCKET: 'private-artifacts',
+      AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',
     });
     assert.deepEqual(configuration.values, {
       serviceUrl: common.SUPABASE_URL,
       secretKey,
       runnerToken,
-      artifactBucket: 'private-artifacts',
+      artifactBucket: 'aiq-runner-artifacts',
     });
   });
 
@@ -115,13 +115,35 @@ void describe('route-scoped production configuration', () => {
     assert.equal(inspectProductionConfiguration(incomplete).values, undefined);
   });
 
+  void it('rejects well-formed but non-canonical Storage bucket names', () => {
+    const packageInspection = inspectSubmissionConfiguration({
+      ...common,
+      SUPABASE_SECRET_KEY: secretKey,
+      AIQ_RUNNER_SUBMISSION_TOKEN: runnerToken,
+      AIQ_SUBMISSION_PACKAGE_BUCKET: 'unrelated-private-bucket',
+    });
+    assert.equal(packageInspection.values, undefined);
+    assert.deepEqual(packageInspection.issues, [
+      'AIQ_SUBMISSION_PACKAGE_BUCKET must be aiq-submission-packages',
+    ]);
+
+    const artifactInspection = inspectProductionConfiguration({
+      ...validEnvironment,
+      AIQ_RUNNER_ARTIFACT_BUCKET: 'unrelated-private-bucket',
+    });
+    assert.equal(artifactInspection.values, undefined);
+    assert.ok(
+      artifactInspection.issues.includes('AIQ_RUNNER_ARTIFACT_BUCKET must be aiq-runner-artifacts'),
+    );
+  });
+
   void it('fails each route scope closed when one of its required variables is invalid', () => {
     assert.equal(
       inspectSubmissionConfiguration({
         ...common,
         SUPABASE_SECRET_KEY: secretKey,
         AIQ_RUNNER_SUBMISSION_TOKEN: 'runner token',
-        AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
+        AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
       }).values,
       undefined,
     );
@@ -163,7 +185,7 @@ void describe('route-scoped production configuration', () => {
           SUPABASE_URL: 'http://127.0.0.1:54321',
           SUPABASE_SECRET_KEY: secretKey,
           AIQ_RUNNER_SUBMISSION_TOKEN: runnerToken,
-          AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
+          AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
         }).values,
       );
     }
@@ -173,7 +195,7 @@ void describe('route-scoped production configuration', () => {
         SUPABASE_URL: 'http://127.0.0.1:54321',
         SUPABASE_SECRET_KEY: secretKey,
         AIQ_RUNNER_SUBMISSION_TOKEN: runnerToken,
-        AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
+        AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
       }).values,
       undefined,
     );

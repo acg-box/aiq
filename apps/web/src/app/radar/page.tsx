@@ -2,12 +2,14 @@ import type { Metadata } from 'next';
 
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import {
+  classifyObservationRecency,
   formatLastObservation,
   formatProtocolToken,
   formatRegistryStatus,
   formatTrustLevel,
-  radarOrbitPosition,
+  TRUST_LEVELS,
 } from '../../data/format.ts';
+import type { RegistryStatus } from '../../data/types.ts';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
 import { createPageMetadata } from '../site-metadata.ts';
@@ -19,6 +21,14 @@ export const metadata: Metadata = createPageMetadata({
 });
 export const dynamic = 'force-dynamic';
 
+const registryStatuses: readonly RegistryStatus[] = [
+  'pending',
+  'active',
+  'degraded',
+  'offline',
+  'revoked',
+];
+
 export default async function RadarPage() {
   const repository = createAiqRepository();
   const result = await readPublicData(
@@ -29,11 +39,23 @@ export default async function RadarPage() {
     (value) => value.map((node) => node.synthetic),
   );
   const nodes = result.data;
+  const now = new Date();
+  const statusSummary = registryStatuses
+    .map(
+      (status) =>
+        `${formatRegistryStatus(status)} ${nodes.filter((node) => node.registryStatus === status).length}`,
+    )
+    .join(' · ');
+  const trustSummary = TRUST_LEVELS.map(
+    (trust) =>
+      `${formatTrustLevel(trust)} ${nodes.filter((node) => node.registryTrust === trust).length}`,
+  ).join(' · ');
+  const recency = nodes.map((node) => classifyObservationRecency(node.registryLastSeenAt, now));
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Execution radar</span>
-        <h1>Know the runner behind the result.</h1>
+        <span className="eyebrow">Runner evidence</span>
+        <h1>Runner provenance</h1>
         <p>
           Registry identity, signed capability and observation records, assignment history, and
           trust-layer aggregation are separate evidence. None of these records is a live heartbeat.
@@ -42,23 +64,34 @@ export default async function RadarPage() {
       <ReadStateNote result={result} />
       {result.state === 'unavailable' ? null : (
         <>
-          <div className="radar-summary">
-            <div className="radar-orbit" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-              {nodes.map((node, index) => (
-                <span
-                  key={node.id}
-                  className={node.registryStatus}
-                  style={radarOrbitPosition(index)}
-                />
-              ))}
+          <section className="radar-summary" aria-labelledby="runner-summary-heading">
+            <div className="section-heading compact">
+              <div>
+                <span className="eyebrow">Exact retained records</span>
+                <h2 id="runner-summary-heading">Registry and evidence summary</h2>
+              </div>
+              <p>No distance, angle, or animation is used to imply topology or liveness.</p>
             </div>
-            <dl>
+            <dl className="radar-summary-grid">
               <div>
                 <dt>Nodes</dt>
                 <dd>{nodes.length}</dd>
+              </div>
+              <div>
+                <dt>Registry status</dt>
+                <dd>{statusSummary || 'No nodes'}</dd>
+              </div>
+              <div>
+                <dt>Registry trust</dt>
+                <dd>{trustSummary || 'No nodes'}</dd>
+              </div>
+              <div>
+                <dt>Registry record recency</dt>
+                <dd>
+                  recent {recency.filter((value) => value === 'recent').length} · stale{' '}
+                  {recency.filter((value) => value === 'stale').length} · never/unavailable{' '}
+                  {recency.filter((value) => value === 'never' || value === 'unavailable').length}
+                </dd>
               </div>
               <div>
                 <dt>Verified observation signatures</dt>
@@ -70,8 +103,23 @@ export default async function RadarPage() {
                 </dd>
               </div>
               <div>
-                <dt>Active registry entries</dt>
-                <dd>{nodes.filter((node) => node.registryStatus === 'active').length}</dd>
+                <dt>Capability records</dt>
+                <dd>
+                  {nodes.filter((node) => node.latestCapability !== null).length}/{nodes.length}
+                </dd>
+              </div>
+              <div>
+                <dt>Observation records</dt>
+                <dd>
+                  {nodes.filter((node) => node.latestObservation !== null).length}/{nodes.length}
+                </dd>
+              </div>
+              <div>
+                <dt>Evidence provenance</dt>
+                <dd>
+                  published {nodes.filter((node) => !node.synthetic).length} · synthetic{' '}
+                  {nodes.filter((node) => node.synthetic).length}
+                </dd>
               </div>
               <div>
                 <dt>Trusted aggregation inputs</dt>
@@ -83,6 +131,54 @@ export default async function RadarPage() {
                 </dd>
               </div>
             </dl>
+          </section>
+          <div
+            className="table-scroll radar-register"
+            role="region"
+            aria-label="Runner registry evidence"
+            tabIndex={0}
+          >
+            <table>
+              <caption>
+                Exact registry, trust, recency, signature, and provenance state for each public
+                node.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Node</th>
+                  <th scope="col">Registry</th>
+                  <th scope="col">Trust</th>
+                  <th scope="col">Registry record</th>
+                  <th scope="col">Capability evidence</th>
+                  <th scope="col">Observation evidence</th>
+                  <th scope="col">Provenance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nodes.map((node) => (
+                  <tr key={node.id}>
+                    <th scope="row">
+                      {node.name}
+                      <small>{node.operator}</small>
+                    </th>
+                    <td>{formatRegistryStatus(node.registryStatus)}</td>
+                    <td>{formatTrustLevel(node.registryTrust)}</td>
+                    <td>{formatLastObservation(node.registryLastSeenAt, now)}</td>
+                    <td>
+                      {node.latestCapability
+                        ? `${formatProtocolToken(node.latestCapability.status)} · signature ${formatProtocolToken(node.latestCapability.signatureStatus)} · ${formatLastObservation(node.latestCapability.observedAt, now)}`
+                        : 'No published record'}
+                    </td>
+                    <td>
+                      {node.latestObservation
+                        ? `${formatProtocolToken(node.latestObservation.state)} · ${formatProtocolToken(node.latestObservation.recordStatus)} · signature ${formatProtocolToken(node.latestObservation.signatureStatus)} · ${formatLastObservation(node.latestObservation.observedAt, now)}`
+                        : 'No published record'}
+                    </td>
+                    <td>{node.synthetic ? 'Synthetic and unverified' : 'Published'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
           <div className="node-grid">
             {nodes.map((node) => (

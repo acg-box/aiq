@@ -37,7 +37,7 @@ void describe('Storage lifecycle registration', () => {
       object: {
         objectType: 'submission_package',
         artifactKind: null,
-        bucket: 'private-packages',
+        bucket: 'aiq-submission-packages',
         path: `sha256/${digest}`,
         digest,
         bytes: 4_096,
@@ -53,7 +53,7 @@ void describe('Storage lifecycle registration', () => {
         parameters: {
           supplied_object_type: 'submission_package',
           supplied_artifact_kind: null,
-          supplied_bucket: 'private-packages',
+          supplied_bucket: 'aiq-submission-packages',
           supplied_path: `sha256/${digest}`,
           supplied_sha256: digest,
           supplied_bytes: 4_096,
@@ -73,7 +73,7 @@ void describe('Storage lifecycle registration', () => {
       object: {
         objectType: 'runner_artifact',
         artifactKind: 'stdout.jsonl',
-        bucket: 'private-artifacts',
+        bucket: 'aiq-runner-artifacts',
         path: `sha256/${digest}/stdout.jsonl`,
         digest,
         bytes: 512,
@@ -93,7 +93,7 @@ void describe('Storage lifecycle registration', () => {
       object: {
         objectType: 'runner_artifact',
         artifactKind: 'evaluator-results.json',
-        bucket: 'private-artifacts',
+        bucket: 'aiq-runner-artifacts',
         path: `sha256/${digest}/evaluator-results.json`,
         digest,
         bytes: 3_948_544,
@@ -111,7 +111,7 @@ void describe('Storage lifecycle registration', () => {
         object: {
           objectType: 'runner_artifact',
           artifactKind: 'evaluator-results.json',
-          bucket: 'private-artifacts',
+          bucket: 'aiq-runner-artifacts',
           path: `sha256/${digest}/evaluator-results.json`,
           digest,
           bytes: 3_948_545,
@@ -126,13 +126,14 @@ void describe('Storage lifecycle registration', () => {
     const valid: StorageLifecycleObject = {
       objectType: 'submission_package',
       artifactKind: null,
-      bucket: 'private-packages',
+      bucket: 'aiq-submission-packages',
       path: `sha256/${digest}`,
       digest,
       bytes: 1,
     };
     for (const object of [
       { ...valid, bucket: '../private' },
+      { ...valid, bucket: 'unrelated-private-bucket' },
       { ...valid, path: `sha256/${digest}/other` },
       { ...valid, digest: `${digest}\n` },
       { ...valid, bytes: 0 },
@@ -140,7 +141,7 @@ void describe('Storage lifecycle registration', () => {
       {
         objectType: 'runner_artifact',
         artifactKind: 'unexpected.txt',
-        bucket: 'private-artifacts',
+        bucket: 'aiq-runner-artifacts',
         path: `sha256/${digest}/unexpected.txt`,
         digest,
         bytes: 1,
@@ -167,7 +168,7 @@ void describe('Storage lifecycle registration', () => {
     const object: StorageLifecycleObject = {
       objectType: 'submission_package',
       artifactKind: null,
-      bucket: 'private-packages',
+      bucket: 'aiq-submission-packages',
       path: `sha256/${digest}`,
       digest,
       bytes: 1,
@@ -201,7 +202,7 @@ void describe('Storage lifecycle registration', () => {
         object: {
           objectType: 'submission_package',
           artifactKind: null,
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           path: `sha256/${digest}`,
           digest,
           bytes: 1,

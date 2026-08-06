@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 
+import { AIQ_CORE_TASK_METADATA_IDENTITY } from '../aiq-core-contract.ts';
 import { PUBLIC_VIEW_NAMES } from '../data/repository.ts';
 import {
   inspectProductionConfiguration,
@@ -91,9 +92,9 @@ export const REQUIRED_RPC_CONTRACT = {
   public_trend_points: {
     arguments: 'supplied_range text',
     result:
-      'TABLE(matrix_id text, run_id text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
+      'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
     defaultCount: 0,
-    modes: ['i', ...Array<string>(12).fill('t')],
+    modes: ['i', ...Array<string>(13).fill('t')],
     grants: ROLE_GRANTS.publicRead,
   },
   aiq_gateway_role_probe: {
@@ -315,11 +316,11 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'matrix_id',
       'run_id',
       'score',
-      'ci_low',
-      'ci_high',
+      'sensitivity_low',
+      'sensitivity_high',
       'sample_size',
       'coverage_percent',
-      'failures',
+      'runtime_issues',
       'missing',
       'scoring_version',
       'score_status',
@@ -330,11 +331,11 @@ const PUBLIC_VIEW_PROBES: Readonly<
       nullable: [
         'run_id',
         'score',
-        'ci_low',
-        'ci_high',
+        'sensitivity_low',
+        'sensitivity_high',
         'sample_size',
         'coverage_percent',
-        'failures',
+        'runtime_issues',
         'missing',
         'scoring_version',
         'score_status',
@@ -342,11 +343,11 @@ const PUBLIC_VIEW_PROBES: Readonly<
       ],
       numbers: [
         'score',
-        'ci_low',
-        'ci_high',
+        'sensitivity_low',
+        'sensitivity_high',
         'sample_size',
         'coverage_percent',
-        'failures',
+        'runtime_issues',
         'missing',
       ],
     },
@@ -372,11 +373,14 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'run_class',
       'permission_evidence_digest',
       'result_count',
-      'passed_count',
-      'failed_count',
+      'correct_count',
+      'partial_count',
+      'incorrect_count',
+      'runtime_issue_count',
       'invalid_count',
       'missing_count',
       'not_applicable_count',
+      'completed_count',
       'observed_count',
       'coverage_percent',
       'covered_domain_count',
@@ -397,11 +401,14 @@ const PUBLIC_VIEW_PROBES: Readonly<
       ],
       numbers: [
         'result_count',
-        'passed_count',
-        'failed_count',
+        'correct_count',
+        'partial_count',
+        'incorrect_count',
+        'runtime_issue_count',
         'invalid_count',
         'missing_count',
         'not_applicable_count',
+        'completed_count',
         'observed_count',
         'coverage_percent',
         'covered_domain_count',
@@ -413,9 +420,11 @@ const PUBLIC_VIEW_PROBES: Readonly<
     [
       'run_id',
       'id',
+      'task_id',
       'task',
       'domain',
-      'status',
+      'outcome',
+      'execution_status',
       'score',
       'explanation_code',
       'explanation_summary',
@@ -434,6 +443,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'standard_api_equivalent_usd_nanos',
       'cost_estimator_status',
       'cost_evidence_level',
+      'pricing_digest',
     ],
     {
       booleans: ['retryable'],
@@ -577,7 +587,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'principles',
       'missing_policy',
       'failure_policy',
-      'confidence_policy',
+      'sensitivity_policy',
       'synthetic',
     ],
     { booleans: ['synthetic'], stringArrays: ['principles'] },
@@ -618,7 +628,7 @@ const PUBLIC_VIEW_PROBES: Readonly<
       'model_family',
       'reasoning_effort',
       'outcome',
-      'status',
+      'execution_status',
       'failure_code',
       'explanation_code',
       'explanation_summary',
@@ -990,12 +1000,13 @@ function isTrendPoint(candidate: unknown): boolean {
     isRecord(candidate) &&
     typeof candidate.matrix_id === 'string' &&
     typeof candidate.run_id === 'string' &&
+    typeof candidate.scoring_version === 'string' &&
     typeof candidate.recorded_at === 'string' &&
     typeof candidate.bucket_started_at === 'string' &&
     typeof candidate.bucket_ended_at === 'string' &&
     typeof candidate.score === 'number' &&
-    typeof candidate.ci_low === 'number' &&
-    typeof candidate.ci_high === 'number' &&
+    typeof candidate.sensitivity_low === 'number' &&
+    typeof candidate.sensitivity_high === 'number' &&
     typeof candidate.sample_size === 'number' &&
     typeof candidate.represented_run_count === 'number' &&
     typeof candidate.resolution_seconds === 'number' &&
@@ -1112,8 +1123,7 @@ const EXPECTED_DOMAIN_COUNTS = {
   reliability_recovery: 7,
 } as const;
 
-const EXPECTED_CATALOG_IDENTITY =
-  'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
+const EXPECTED_CATALOG_IDENTITY = AIQ_CORE_TASK_METADATA_IDENTITY;
 
 async function probeProductionReference(
   serviceUrl: string,

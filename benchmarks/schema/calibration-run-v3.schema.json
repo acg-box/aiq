@@ -29,7 +29,7 @@
     "run_id": { "$ref": "#/$defs/runId" },
     "schedule_slot": { "$ref": "result-package-v3.schema.json#/$defs/scheduleSlot" },
     "task_set_hash": { "$ref": "#/$defs/sha256" },
-    "scoring_version": { "const": "1.0.2" },
+    "scoring_version": { "const": "1.0.5" },
     "execution_concurrency": { "type": "integer", "minimum": 1, "maximum": 32 },
     "models": {
       "type": "array",

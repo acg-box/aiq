@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 
+import { AIQ_CORE_TASK_SCORING_CONTRACT } from '../../aiq-core-contract.ts';
 import { ReadStateNote } from '../../components/read-state-note.tsx';
 import { readPublicValue } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
@@ -8,14 +9,15 @@ import { createPageMetadata } from '../site-metadata.ts';
 export const metadata: Metadata = createPageMetadata({
   title: 'Method',
   path: '/method',
-  description: 'Read the AIQ fixed-fixture benchmark, scoring, uncertainty, and provenance method.',
+  description:
+    'Read the AIQ fixed-fixture benchmark, scoring, task-mix sensitivity, and provenance method.',
 });
 export const dynamic = 'force-dynamic';
 
 function EfficiencyMethod() {
   return (
     <article>
-      <span className="eyebrow">05 · Calibration efficiency estimates</span>
+      <span className="eyebrow">06 · Calibration efficiency estimates</span>
       <h2>Observed Codex adapter elapsed time and estimated token cost stay distinct</h2>
       <p>
         Time is observed Codex adapter elapsed time. Cost is a versioned estimate from covered token
@@ -62,7 +64,7 @@ function EfficiencyMethod() {
           <dt>Observed Codex adapter elapsed time</dt>
           <dd>
             Sum, median, and p95 of Codex adapter elapsed time: model plus allowed tools. It
-            excludes workspace setup, artifact sealing, and evaluator replay. Failed attempted tasks
+            excludes workspace setup, artifact sealing, and evaluator replay. Runtime-issue tasks
             consume time; missing or non-invoked cells do not. Full-matrix timings are operational
             resource-profile evidence under the recorded node, execution order, and concurrency (17
             jobs for the current run). Model, tool, network, and local contention vary. This is not
@@ -84,6 +86,54 @@ function EfficiencyMethod() {
   );
 }
 
+function TaskScoreMethod() {
+  return (
+    <article>
+      <span className="eyebrow">04 · Task-level score</span>
+      <h2>Committed weighted checks with explicit hard gates</h2>
+      <p>
+        Each task uses at most {AIQ_CORE_TASK_SCORING_CONTRACT.maximum_checks_per_result} binary
+        checks from a content-addressed private evaluator configuration. Check names and weights
+        remain hidden with the task payload, but their exact identities are committed and the
+        verifier replays them.
+      </p>
+      <div className="formula">
+        <span>Valid evaluator result</span>
+        <strong>hard gate or structural failure ? 0 : Σ(weight × passed) ÷ Σ(weight)</strong>
+      </div>
+      <dl className="policy-list">
+        <div>
+          <dt>Partial credit</dt>
+          <dd>
+            A passing check contributes its committed nonnegative integer weight. A valid positive
+            denominator is required. The evaluator does not round before exact replay.
+          </dd>
+        </div>
+        <div>
+          <dt>Hard gates</dt>
+          <dd>
+            An explicit hard gate or workspace-policy check can force zero. A positive-weight hard
+            gate also participates in the weighted fraction when every gate passes. Only a hard gate
+            may have zero weight.
+          </dd>
+        </div>
+        <div>
+          <dt>Outcome labels</dt>
+          <dd>1 is Correct; a score between 0 and 1 is Partial; 0 is Incorrect.</dd>
+        </div>
+        <div>
+          <dt>Execution evidence</dt>
+          <dd>
+            Attributable runtime failures score zero with an explicit runtime status. Evaluator or
+            infrastructure-invalid evidence stays unscored and blocks Official publication; it is
+            never converted into semantic Incorrect.
+          </dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
 export default async function MethodPage() {
   const repository = createAiqRepository();
   const result = await readPublicValue(
@@ -95,7 +145,7 @@ export default async function MethodPage() {
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Methodology</span>
-        <h1>Transparent scoring, version by version.</h1>
+        <h1>Scoring method</h1>
         <p>
           AIQ v1 estimates outcomes on one committed 72-task fixture set. It does not estimate
           general intelligence or universal model capability.
@@ -131,20 +181,48 @@ export default async function MethodPage() {
             <article>
               <span className="eyebrow">02 · Domain coverage</span>
               <h2>72 tasks · 10 equally weighted domains</h2>
-              <div className="domain-bars">
-                {result.data.domainWeights.map((domain) => (
-                  <div key={domain.domain}>
-                    <span>
-                      <strong>{domain.domain}</strong>
-                      <small>
-                        {domain.taskCount} tasks · {(domain.weight * 100).toFixed(0)}%
-                      </small>
-                    </span>
-                    <div aria-hidden="true">
-                      <i style={{ width: `${domain.weight * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
+              <div className="table-scroll domain-weight-table" tabIndex={0}>
+                <table>
+                  <caption>
+                    Exact fixed-fixture domain task counts and macro-average weights.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Domain</th>
+                      <th scope="col">Tasks</th>
+                      <th scope="col">Weight</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.data.domainWeights.map((domain) => (
+                      <tr key={domain.domain}>
+                        <th scope="row">{domain.domain}</th>
+                        <td>{domain.taskCount}</td>
+                        <td>{(domain.weight * 100).toFixed(0)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th scope="row">Total</th>
+                      <td>
+                        {result.data.domainWeights.reduce(
+                          (total, domain) => total + domain.taskCount,
+                          0,
+                        )}
+                      </td>
+                      <td>
+                        {(
+                          result.data.domainWeights.reduce(
+                            (total, domain) => total + domain.weight,
+                            0,
+                          ) * 100
+                        ).toFixed(0)}
+                        %
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             </article>
             <article>
@@ -168,10 +246,11 @@ export default async function MethodPage() {
                 </div>
               </dl>
             </article>
+            <TaskScoreMethod />
             <article>
-              <span className="eyebrow">04 · Sensitivity, not generalization</span>
+              <span className="eyebrow">05 · Sensitivity, not generalization</span>
               <h2>What the interval can and cannot say</h2>
-              <p>{result.data.confidencePolicy}</p>
+              <p>{result.data.sensitivityPolicy}</p>
               <div className="formula">
                 <span>Fixed-fixture or conditional AIQ</span>
                 <strong>equal-weight mean of 10 frozen-fixture domain means</strong>

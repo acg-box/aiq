@@ -1,5 +1,6 @@
 import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
 
+import { AIQ_CORE_SCORING_VERSION } from '../aiq-core-contract.ts';
 import { isOfficialRunProvenance, isRunProvenance, type RunProvenance } from './run-provenance.ts';
 
 /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/restrict-template-expressions -- Exact validators narrow untrusted JSON one field at a time. */
@@ -10,6 +11,7 @@ export const RESULT_PACKAGE_SCHEMA = 'aiq.result-package.v3';
 export const RUN_PAYLOAD_TYPE = 'aiq.run.v3';
 export const CALIBRATION_RUN_PAYLOAD_TYPE = 'aiq.calibration-run.v3';
 export const RESULT_SCHEMA = 'aiq.result.v2';
+export const OFFICIAL_SCORING_VERSION = AIQ_CORE_SCORING_VERSION;
 export const EVALUATOR_RESULTS_ARTIFACT_MAX_BYTES = 3_948_544;
 export const MAX_RESULTS = 1_224;
 export const MAX_MODELS = 17;
@@ -981,7 +983,7 @@ function validateOfficialRunPayload(
     !isScheduleSlot(payload.schedule_slot) ||
     typeof payload.task_set_hash !== 'string' ||
     !contentHashPattern.test(payload.task_set_hash) ||
-    payload.scoring_version !== '1.0.2' ||
+    payload.scoring_version !== OFFICIAL_SCORING_VERSION ||
     !isExactModelMatrix(payload.models) ||
     !isSafeUnsignedInteger(payload.started_unix_ms) ||
     !isSafeUnsignedInteger(payload.finished_unix_ms) ||
@@ -1077,7 +1079,7 @@ function validateOfficialRunPayload(
     task_set_hash: payload.task_set_hash,
     corpus_commitment_sha256: provenance.corpus_commitment_sha256,
     models: payload.models,
-    scoring_version: '1.0.2',
+    scoring_version: OFFICIAL_SCORING_VERSION,
   };
   return payload.run_id === `run_${sha256Hex(canonicalJson(classifiedIdentity))}`;
 }
@@ -1093,7 +1095,7 @@ function validateCalibrationRunPayload(
     !isScheduleSlot(payload.schedule_slot) ||
     typeof payload.task_set_hash !== 'string' ||
     !contentHashPattern.test(payload.task_set_hash) ||
-    payload.scoring_version !== '1.0.2' ||
+    payload.scoring_version !== OFFICIAL_SCORING_VERSION ||
     !Array.isArray(payload.models) ||
     payload.models.length < 1 ||
     payload.models.length > MAX_MODELS ||
@@ -1201,7 +1203,7 @@ function validateCalibrationRunPayload(
     task_set_hash: payload.task_set_hash,
     corpus_commitment_sha256: provenance.corpus_commitment_sha256,
     models: payload.models,
-    scoring_version: '1.0.2',
+    scoring_version: OFFICIAL_SCORING_VERSION,
   };
   return payload.run_id === `run_${sha256Hex(canonicalJson(classifiedIdentity))}`;
 }

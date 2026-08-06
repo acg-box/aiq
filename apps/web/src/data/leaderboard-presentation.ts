@@ -1,4 +1,4 @@
-import { formatConfidenceInterval, leaderboardRunHref } from './format.ts';
+import { formatSensitivityInterval, leaderboardRunHref } from './format.ts';
 import type { LeaderboardEntry, LeaderboardStatus } from './types.ts';
 
 const statusLabels: Record<LeaderboardStatus, string> = {
@@ -11,13 +11,10 @@ const statusLabels: Record<LeaderboardStatus, string> = {
 
 export interface LeaderboardPresentation {
   score: string;
-  confidenceInterval: string;
+  sensitivityInterval: string;
   samples: string;
   coverage: string;
-  taskCredit: Readonly<{
-    credited: number;
-    scored: number;
-  }> | null;
+  runtimeIssues: number | null;
   scoringVersion: string | null;
   status: string;
   evidence: string;
@@ -27,16 +24,10 @@ export interface LeaderboardPresentation {
 export function presentLeaderboardEntry(entry: LeaderboardEntry): LeaderboardPresentation {
   return {
     score: entry.score === null ? '—' : entry.score.toFixed(1),
-    confidenceInterval: formatConfidenceInterval(entry),
+    sensitivityInterval: formatSensitivityInterval(entry),
     samples: entry.sampleSize === null ? '—' : String(entry.sampleSize),
     coverage: entry.coveragePercent === null ? '—' : `${entry.coveragePercent.toFixed(1)}%`,
-    taskCredit:
-      entry.failures === null || entry.sampleSize === null
-        ? null
-        : {
-            credited: Math.max(0, entry.sampleSize - entry.failures),
-            scored: entry.sampleSize,
-          },
+    runtimeIssues: entry.runtimeIssues,
     scoringVersion: entry.scoringVersion,
     status: statusLabels[entry.scoreStatus],
     evidence:

@@ -1517,6 +1517,10 @@ enum Command {
 		#[arg(long)]
 		read_only_write_file: PathBuf,
 		#[arg(long)]
+		node_executable: PathBuf,
+		#[arg(long)]
+		rg_executable: PathBuf,
+		#[arg(long)]
 		network_sentinel_port: u16,
 	},
 }
@@ -1837,6 +1841,8 @@ fn dispatch_permission_probe(command: Command) -> Result<(), Box<dyn std::error:
 		writable_file,
 		read_only_file,
 		read_only_write_file,
+		node_executable,
+		rg_executable,
 		network_sentinel_port,
 	} = command
 	else {
@@ -1849,6 +1855,7 @@ fn dispatch_permission_probe(command: Command) -> Result<(), Box<dyn std::error:
 		&writable_file,
 		&read_only_file,
 		&read_only_write_file,
+		(&node_executable, &rg_executable),
 		network_sentinel_port,
 	)?;
 
@@ -2594,7 +2601,7 @@ fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::
 			)?,
 			CorpusValidationMode::Core => {
 				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
-					return Err("tasks do not match the immutable AIQ Core 1.0.2 catalog".into());
+					return Err("tasks do not match the immutable AIQ Core 1.0.5 catalog".into());
 				}
 
 				corpus_commitment::validate_core_corpus_commitment(
@@ -4077,7 +4084,7 @@ where
 
 		let mut file = options.open(&allowed_file)?;
 
-		file.write_all(b"AIQ_ALLOWED\n")?;
+		file.write_all(b"AIQ_ALLOWED\nAIQ_RG_OK\n")?;
 		file.sync_all()?;
 		adapter.verify_permission_boundary(
 			&workspace,
@@ -4104,7 +4111,11 @@ where
 fn permission_canary_evidence_digest(
 	bindings: &[(&'static str, String, &'static str)],
 ) -> Result<String, Box<dyn std::error::Error>> {
-	Ok(protocol::canonical_hash(&("aiq.permission-canary-evidence.v1", bindings, "passed"))?)
+	Ok(protocol::canonical_hash(&(
+		"aiq.permission-canary-evidence.v2",
+		bindings,
+		"filesystem_network_and_toolchain_executables_passed",
+	))?)
 }
 
 fn path_digest(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
@@ -5436,6 +5447,7 @@ mod tests {
 	use clap::Parser as _;
 
 	use crate::capacity;
+	use crate::protocol;
 	use crate::resume;
 	use crate::runner;
 	use crate::{
@@ -5505,6 +5517,27 @@ mod tests {
 				.expect("repository root");
 
 		repository_root.join("target").join(format!("aiq-cli-{name}-{}-{suffix}", process::id()))
+	}
+
+	#[test]
+	fn permission_canary_evidence_digest_commits_to_executable_canary_schema() {
+		let bindings = [
+			("workspace", "sha256:workspace".to_owned(), "directory"),
+			("toolchain", "sha256:toolchain".to_owned(), "directory"),
+		];
+		let digest = cli::permission_canary_evidence_digest(&bindings)
+			.expect("permission canary evidence digest");
+		let legacy_digest =
+			protocol::canonical_hash(&("aiq.permission-canary-evidence.v1", &bindings, "passed"))
+				.expect("legacy permission canary evidence digest");
+
+		assert!(digest.starts_with("sha256:"));
+		assert_ne!(digest, legacy_digest);
+		assert_eq!(
+			digest,
+			cli::permission_canary_evidence_digest(&bindings)
+				.expect("stable permission canary evidence digest")
+		);
 	}
 
 	fn expected_path(path: &Path) -> PathBuf {

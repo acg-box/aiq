@@ -13,8 +13,8 @@ const psqlCommand = process.env.AIQ_DATABASE_CONCURRENCY_TEST_PSQL;
 const inboxId = '71783153-6205-4929-a173-183153620529';
 const leaseToken = '18315362-0529-4717-8315-362052971783';
 const runId = `run_${'7'.repeat(64)}`;
-const artifactBucket = 'resolver-concurrency-artifacts';
-const rejectionBucket = 'resolver-rejection-artifacts';
+const artifactBucket = 'aiq-runner-artifacts';
+const rejectionBucket = 'aiq-runner-artifacts';
 const resultArtifacts = [
   ['evaluator-results.json', '1'.repeat(64), 101],
   ['final-response.txt', '2'.repeat(64), 102],
@@ -36,6 +36,9 @@ const rejectedArtifacts = [
   ['stderr.txt', 'd'.repeat(64), 113, 'bytes'],
   ['stdout.jsonl', 'e'.repeat(64), 114, 'undeclared'],
 ] as const;
+const persistedRejectedArtifacts = rejectedArtifacts.filter(
+  ([, , , rejection]) => rejection !== 'missing',
+);
 
 function databaseEnvironment(url: string, applicationName: string): NodeJS.ProcessEnv {
   const parsed = new URL(url);
@@ -128,9 +131,9 @@ function fixtureSql(): string {
     .join(',');
   const ingressArtifacts = [
     ...artifacts.map(([kind, digest, bytes]) => [kind, digest, bytes, artifactBucket] as const),
-    ...rejectedArtifacts
-      .filter(([, , , rejection]) => rejection !== 'missing')
-      .map(([kind, digest, bytes]) => [kind, digest, bytes, rejectionBucket] as const),
+    ...persistedRejectedArtifacts.map(
+      ([kind, digest, bytes]) => [kind, digest, bytes, rejectionBucket] as const,
+    ),
   ];
   const objectValues = ingressArtifacts
     .map(
@@ -272,6 +275,11 @@ void test('locks the claim before artifact binding can enter the Storage gate', 
   const bindingInsert = resolver.indexOf('insert into aiq_private.aiq_artifact_claim_bindings');
   assert.ok(claimLock >= 0, 'artifact resolution must lock its claim row');
   assert.ok(bindingInsert > claimLock, 'the claim lock must precede the binding trigger');
+});
+
+void test('uses only the canonical private artifact bucket in concurrency fixtures', () => {
+  assert.equal(artifactBucket, 'aiq-runner-artifacts');
+  assert.equal(rejectionBucket, 'aiq-runner-artifacts');
 });
 
 void test('matches capability probe artifacts by exact claim-bound metadata', () => {
@@ -465,7 +473,10 @@ select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
             join aiq_private.aiq_artifact_ingress_objects ingress
               using(artifact_kind,content_sha256)
             where binding.inbox_id='${inboxId}'
-              and ingress.bucket_name='${rejectionBucket}')
+              and ingress.bucket_name='${rejectionBucket}'
+              and ingress.content_sha256 in (${persistedRejectedArtifacts
+                .map(([, digest]) => `'${digest}'`)
+                .join(',')}))
         )::text;`,
         'aiq-resolver-concurrency-state',
       ),
@@ -474,7 +485,7 @@ select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
       activation_count: artifacts.length,
       active_reference_count: artifacts.length,
       binding_count: artifacts.length,
-      ingress_count: artifacts.length,
+      ingress_count: artifacts.length + persistedRejectedArtifacts.length,
       rejected_binding_count: 0,
       registry_match_count: artifacts.length,
     });

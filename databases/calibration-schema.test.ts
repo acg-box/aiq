@@ -8,6 +8,7 @@ const calibrationIntegration = await readFile(
   resolve(import.meta.dirname, 'calibration-integration.sql'),
   'utf8',
 );
+const stateIntegration = await readFile(resolve(import.meta.dirname, 'integration.sql'), 'utf8');
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,9 +46,17 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 });
 
 void test('runs calibration against the production initializer catalog authority', () => {
-  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.2'\)/);
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.5'\)/);
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
+});
+
+void test('uses the canonical private Storage identities in every SQL integration fixture', () => {
+  for (const fixture of [calibrationIntegration, stateIntegration]) {
+    assert.doesNotMatch(fixture, /integration-private-(?:submissions|artifacts)/);
+    assert.match(fixture, /aiq-submission-packages/);
+    assert.match(fixture, /aiq-runner-artifacts/);
+  }
 });
 
 void test('keeps calibration evidence separate from Official publication tables', () => {
@@ -110,11 +119,72 @@ void test('exposes only published sanitized calibration columns', () => {
   );
   const publicResults =
     schema.match(/CREATE VIEW public\.public_calibration_results[\s\S]*?;\n/)?.[0] ?? '';
-  for (const field of ['status', 'failure_code', 'explanation_code', 'explanation_summary']) {
+  for (const field of [
+    'outcome',
+    'execution_status',
+    'failure_code',
+    'explanation_code',
+    'explanation_summary',
+  ]) {
     assert.match(publicResults, new RegExp(field));
   }
-  assert.match(publicResults, /when result\.outcome in \('correct','partial'\) then 'passed'/);
+  assert.match(
+    publicResults,
+    /when result\.outcome in \('correct','partial','incorrect'\) then 'completed'/,
+  );
+  assert.match(
+    publicResults,
+    /'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'[\s\S]{0,40}then 'runtime_issue'/,
+  );
   assert.match(publicResults, /when result\.outcome='not_applicable' then 'not_applicable'/);
+  assert.doesNotMatch(publicResults, /as status|then 'passed'|then 'failed'/);
+});
+
+void test('publishes leaderboard runtime issues without merging semantic incorrect outcomes', () => {
+  const leaderboard = schema.match(/create view public\.public_leaderboard[\s\S]*?;\n/)?.[0] ?? '';
+
+  assert.match(leaderboard, /as runtime_issue_count/);
+  assert.match(leaderboard, /then runtime_issue_count[\s\S]{0,80}as runtime_issues/);
+  assert.match(
+    leaderboard,
+    /'timeout'::aiq_private\.result_outcome[\s\S]*?'wrong_artifact'::aiq_private\.result_outcome/,
+  );
+  assert.doesNotMatch(leaderboard, /'incorrect'::aiq_private\.result_outcome/);
+  assert.doesNotMatch(leaderboard, /failure_count|as failures/);
+  assert.match(leaderboard, /then fixed_fixture_aiq[\s\S]{0,80}as score/);
+  assert.match(leaderboard, /then valid_task_count[\s\S]{0,80}as sample_size/);
+  assert.match(
+    leaderboard,
+    /valid_task_count[\s\S]{0,80}expected_task_count[\s\S]{0,80}as coverage_percent/,
+  );
+});
+
+void test('names public task-mix ranges as sensitivity, not confidence intervals', () => {
+  const leaderboard = schema.match(/create view public\.public_leaderboard[\s\S]*?;\n/)?.[0] ?? '';
+  const trend =
+    schema.match(/create function public\.public_trend_points[\s\S]*?\n\$\$;/)?.[0] ?? '';
+  const scoringVersions =
+    schema.match(/create view public\.public_scoring_versions[\s\S]*?;\n/)?.[0] ?? '';
+
+  for (const publicContract of [leaderboard, trend]) {
+    assert.match(publicContract, /sensitivity_low/);
+    assert.match(publicContract, /sensitivity_high/);
+    assert.doesNotMatch(publicContract, /\bci_low\b|\bci_high\b/);
+  }
+  assert.match(scoringVersions, /confidence_policy as sensitivity_policy/);
+  assert.doesNotMatch(scoringVersions, /\n    confidence_policy,/);
+  assert.match(
+    schema,
+    /comment on function public\.public_trend_points\(text\) IS '[^']*do not provide inferential confidence coverage[^']*';/,
+  );
+  assert.match(
+    schema,
+    /comment on view public\.public_leaderboard IS '[^']*not inferential confidence intervals[^']*';/,
+  );
+  assert.match(
+    schema,
+    /comment on view public\.public_scoring_versions IS '[^']*does not claim inferential confidence coverage[^']*';/,
+  );
 });
 
 void test('separates verifier and publisher RPC authority', () => {
@@ -382,6 +452,7 @@ void test('binds Official efficiency evidence to the exact payload matrix', () =
 void test('publishes narrow Official per-result efficiency without private payload fields', () => {
   const view = schema.match(/create view public\.public_run_results[\s\S]*?;\n/)?.[0] ?? '';
   for (const field of [
+    'task_id',
     'latency_evidence_level',
     'input_tokens',
     'cached_input_tokens',
@@ -393,11 +464,20 @@ void test('publishes narrow Official per-result efficiency without private paylo
     'standard_api_equivalent_usd_nanos',
     'cost_estimator_status',
     'cost_evidence_level',
+    'pricing_digest',
   ]) {
     assert.match(view, new RegExp(`result\\.${field}`));
   }
   assert.match(view, /join aiq_private\.aiq_runs run on \(\(run\.run_id = result\.run_id\)\)/);
   assert.match(view, /where run\.published/);
+  assert.match(view, /\(result\.outcome\)::text as outcome/);
+  assert.match(view, /'incorrect'::aiq_private\.result_outcome[\s\S]{0,40}then 'completed'::text/);
+  assert.match(
+    view,
+    /'wrong_artifact'::aiq_private\.result_outcome[\s\S]{0,40}then 'runtime_issue'::text/,
+  );
+  assert.match(view, /end as execution_status/);
+  assert.doesNotMatch(view, /as status|then 'passed'::text|then 'failed'::text/);
   assert.doesNotMatch(
     view,
     /failure_detail|result\.usage|provenance|response_sha256|result_package_sha256/,
@@ -566,10 +646,27 @@ void test('exposes the Official prompt-set digest in canonical sha256 form', () 
 
   assert.match(publicRuns, /\('sha256:'::text \|\| run\.prompt_set_digest\) as prompt_set_digest/);
   assert.doesNotMatch(publicRuns, /^\s+run\.prompt_set_digest,/m);
+  for (const count of [
+    'correct_count',
+    'partial_count',
+    'incorrect_count',
+    'runtime_issue_count',
+    'invalid_count',
+    'missing_count',
+    'not_applicable_count',
+    'completed_count',
+  ]) {
+    assert.match(publicRuns, new RegExp(`result_summary\\.${count}`));
+  }
+  assert.doesNotMatch(publicRuns, /passed_count|failed_count/);
 });
 
 void test('production readiness attests the exact schema and gateway role shape', () => {
   for (const field of [
+    'task_set_identity_sha256',
+    'task_set_identity_valid',
+    'evaluator_identity_sha256',
+    'evaluator_identity_valid',
     'private_table_count',
     'forced_rls_table_count',
     'public_view_count',
@@ -581,5 +678,17 @@ void test('production readiness attests the exact schema and gateway role shape'
   assert.match(schema, /private_table_count=40 and forced_rls_table_count=40/);
   assert.match(schema, /public_view_count=12 and security_invoker_view_count=12/);
   assert.match(schema, /canonical_public_view_count=12/);
+  assert.match(
+    schema,
+    /where namespace\.nspname='public' and relation\.relkind='v'\s+and relation\.relname in \([\s\S]*?'public_model_efficiency'[\s\S]*?\)/,
+  );
+  assert.match(
+    schema,
+    /task_set_identity_sha256 =\s*'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'/,
+  );
+  assert.match(
+    schema,
+    /evaluator_identity_sha256 =\s*'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'/,
+  );
   assert.match(schema, /pg_catalog\.pg_has_role\('authenticator',gateway_role\.rolname,'MEMBER'\)/);
 });

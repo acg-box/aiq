@@ -17,7 +17,7 @@ function claimRow(): Readonly<Record<string, unknown>> {
     idempotency_key: claimRunId,
     package_sha256: digest,
     body_bytes: 123,
-    object_bucket: 'private-packages',
+    object_bucket: 'aiq-submission-packages',
     object_key: `sha256/${digest}`,
     object_content_sha256: digest,
     lease_token: leaseToken,

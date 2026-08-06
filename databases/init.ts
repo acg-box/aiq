@@ -6,9 +6,16 @@ import { pathToFileURL } from 'node:url';
 
 type JsonObject = Record<string, unknown>;
 
-const CATALOG_IDENTITY = 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937';
+const CATALOG_IDENTITY = 'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
 const CATALOG_RELEASE_IDENTITY =
-  'sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6';
+  'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d';
+const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
+const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
+const TASK_SET_IDENTITY = 'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05';
+const REVIEWED_TASK_COMMITMENTS_IDENTITY =
+  'sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94';
+const EVALUATOR_IDENTITY =
+  'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 const DIGEST_PATTERN = /^sha256:(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
 const HEX_PATTERN = /^(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
 const RELEASE_ID_PATTERN = /^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\s\S])/;
@@ -67,6 +74,8 @@ interface ValidatedNode {
 
 interface ValidatedReference {
   readonly corpusCommitmentSha256: string;
+  readonly taskSetIdentitySha256: string;
+  readonly evaluatorIdentitySha256: string;
   readonly releaseId: string;
   readonly publishedAt: string;
   readonly taskBindings: readonly JsonObject[];
@@ -76,11 +85,13 @@ interface ValidatedReference {
 export interface InitializationReceipt {
   readonly schema_version: 'aiq.production-initialization-receipt.v1';
   readonly initialized: true;
-  readonly scoring_version: '1.0.2';
+  readonly scoring_version: '1.0.5';
   readonly catalog_identity_sha256: string;
   readonly catalog_release_identity_sha256: string;
   readonly corpus_commitment_sha256: string;
   readonly corpus_release_id: string;
+  readonly task_set_identity_sha256: string;
+  readonly evaluator_identity_sha256: string;
   readonly task_count: 72;
   readonly model_config_count: 17;
   readonly public_node_count: 3;
@@ -93,9 +104,17 @@ export interface InitializationReceipt {
 }
 
 export interface PreparedInitialization {
+  readonly schema: string;
   readonly sql: string;
   readonly receipt: InitializationReceipt;
 }
+
+export interface InitializationPreparationOptions {
+  readonly referencePath: string;
+  readonly repositoryRoot?: string;
+}
+
+const validatedPreparations = new WeakSet<PreparedInitialization>();
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -266,6 +285,18 @@ function validateSchemaNode(
   }
   if (isObject(value)) {
     const properties = isObject(schema.properties) ? schema.properties : {};
+    const propertyEntries = Object.entries(value);
+    if (typeof schema.minProperties === 'number' && propertyEntries.length < schema.minProperties) {
+      throw new Error(`${path} has too few corpus properties`);
+    }
+    if (typeof schema.maxProperties === 'number' && propertyEntries.length > schema.maxProperties) {
+      throw new Error(`${path} has too many corpus properties`);
+    }
+    if (schema.propertyNames !== undefined) {
+      for (const [key] of propertyEntries) {
+        validateSchemaNode(root, schema.propertyNames, key, `${path} property name`);
+      }
+    }
     if (Array.isArray(schema.required)) {
       for (const key of schema.required) {
         if (typeof key !== 'string' || !Object.hasOwn(value, key)) {
@@ -305,6 +336,7 @@ function validateCommitment(
   reference: JsonObject,
   catalog: JsonObject,
   corpusSchema: unknown,
+  reviewedTaskCommitments: unknown,
 ): ValidatedReference {
   exactKeys(
     reference,
@@ -341,7 +373,7 @@ function validateCommitment(
   if (
     bindingCatalog.schema_version !== 'aiq.catalog.v1' ||
     bindingCatalog.task_set_id !== 'aiq-core' ||
-    bindingCatalog.task_set_version !== '1.0.2' ||
+    bindingCatalog.task_set_version !== '1.0.5' ||
     bindingCatalog.identity_sha256 !== CATALOG_IDENTITY ||
     bindingCatalog.identity_scope !== 'ordered_full_task_metadata'
   ) {
@@ -379,6 +411,15 @@ function validateCommitment(
   if (catalogTasks.length !== 72 || taskBindings.length !== 72) {
     throw new Error('corpus commitment must bind all 72 catalog tasks');
   }
+  const catalogByTaskId = new Map<string, JsonObject>();
+  catalogTasks.forEach((task, index) => {
+    const taskId = string(task.task_id, `catalog.tasks[${String(index)}].task_id`);
+    if (catalogByTaskId.has(taskId)) {
+      throw new Error(`catalog contains duplicate task ${taskId}`);
+    }
+    catalogByTaskId.set(taskId, task);
+  });
+  const bindingsByTaskId = new Map<string, JsonObject>();
   taskBindings.forEach((binding, index) => {
     exactKeys(
       binding,
@@ -398,14 +439,18 @@ function validateCommitment(
       ],
       `corpus commitment tasks[${String(index)}]`,
     );
-    const task = catalogTasks[index];
+    const taskId = string(binding.task_id, `corpus commitment tasks[${String(index)}].task_id`);
+    if (bindingsByTaskId.has(taskId)) {
+      throw new Error(`corpus commitment contains duplicate task ${taskId}`);
+    }
+    bindingsByTaskId.set(taskId, binding);
+    const task = catalogByTaskId.get(taskId);
     if (
       task === undefined ||
-      binding.task_id !== task.task_id ||
       binding.task_version !== task.task_version ||
       digest(binding.catalog_entry_sha256, 'catalog_entry_sha256') !== documentDigest(task)
     ) {
-      throw new Error(`corpus commitment task ${String(index)} is not ordered and exact`);
+      throw new Error(`corpus commitment task ${taskId} does not exactly match the catalog`);
     }
     if (binding.evaluator_runtime_kind !== 'node') {
       throw new Error(`corpus commitment task ${String(index)} runtime is invalid`);
@@ -423,22 +468,105 @@ function validateCommitment(
       digest(binding[field], `corpus commitment task ${String(index)} ${field}`);
     }
   });
-  validateRuntimeProvenance(execution, catalogTasks, taskBindings);
+  const orderedTaskBindings = catalogTasks.map((task, index) => {
+    const taskId = string(task.task_id, `catalog.tasks[${String(index)}].task_id`);
+    const binding = bindingsByTaskId.get(taskId);
+    if (binding === undefined) {
+      throw new Error(`corpus commitment is missing catalog task ${taskId}`);
+    }
+    return binding;
+  });
+  const taskSetIdentitySha256 = validateReviewedTaskCommitments(
+    reviewedTaskCommitments,
+    orderedTaskBindings,
+  );
+  const evaluatorIdentitySha256 = validateRuntimeProvenance(
+    execution,
+    catalogTasks,
+    orderedTaskBindings,
+  );
   const nodes = validateNodes(reference.nodes);
   return {
     corpusCommitmentSha256: commitmentSha256,
+    taskSetIdentitySha256,
+    evaluatorIdentitySha256,
     releaseId,
     publishedAt: timestamp(reference.published_at, 'reference.published_at'),
-    taskBindings,
+    taskBindings: orderedTaskBindings,
     nodes,
   };
+}
+
+function validateReviewedTaskCommitments(
+  value: unknown,
+  taskBindings: readonly JsonObject[],
+): string {
+  const manifest = object(value, 'reviewed task commitments');
+  exactKeys(
+    manifest,
+    ['schema_version', 'task_set_id', 'task_set_version', 'task_set_identity_sha256', 'tasks'],
+    'reviewed task commitments',
+  );
+  if (
+    manifest.schema_version !== 'aiq.production-task-commitments.v1' ||
+    manifest.task_set_id !== 'aiq-core' ||
+    manifest.task_set_version !== '1.0.5' ||
+    digest(manifest.task_set_identity_sha256, 'reviewed task-set identity') !== TASK_SET_IDENTITY ||
+    documentDigest(manifest) !== REVIEWED_TASK_COMMITMENTS_IDENTITY
+  ) {
+    throw new Error('reviewed task commitment authority is invalid');
+  }
+  const reviewedTasks = array(manifest.tasks, 'reviewed task commitments tasks').map(
+    (item, index) => object(item, `reviewed task commitments tasks[${String(index)}]`),
+  );
+  if (reviewedTasks.length !== 72 || taskBindings.length !== 72) {
+    throw new Error('reviewed task commitments must bind all 72 tasks');
+  }
+  const reviewedByTaskId = new Map<string, JsonObject>();
+  reviewedTasks.forEach((reviewed, index) => {
+    exactKeys(
+      reviewed,
+      ['task_id', 'task_definition_sha256', 'fixture_bundle_sha256'],
+      `reviewed task commitments tasks[${String(index)}]`,
+    );
+    const taskId = string(reviewed.task_id, 'reviewed task_id');
+    digest(reviewed.task_definition_sha256, 'reviewed task_definition_sha256');
+    digest(reviewed.fixture_bundle_sha256, 'reviewed fixture_bundle_sha256');
+    if (reviewedByTaskId.has(taskId)) {
+      throw new Error(`reviewed task commitments duplicate task ${taskId}`);
+    }
+    reviewedByTaskId.set(taskId, reviewed);
+  });
+  const taskDefinitionIdentities = taskBindings.map((binding, index) => {
+    const taskId = string(binding.task_id, 'corpus task_id');
+    const reviewed = reviewedByTaskId.get(taskId);
+    if (
+      reviewed === undefined ||
+      binding.task_definition_sha256 !== reviewed.task_definition_sha256 ||
+      binding.fixture_bundle_sha256 !== reviewed.fixture_bundle_sha256
+    ) {
+      throw new Error(`corpus task ${String(index)} does not match the reviewed commitments`);
+    }
+    return string(reviewed.task_definition_sha256, 'reviewed task_definition_sha256');
+  });
+  if (new Set(taskDefinitionIdentities).size !== 72) {
+    throw new Error('reviewed task definitions must have distinct content identities');
+  }
+
+  // Rust task_set_hash sorts TaskDefinition content hashes, then applies the
+  // protocol RFC 8785 canonical hash to that string array.
+  const derivedIdentity = documentDigest(taskDefinitionIdentities.toSorted());
+  if (derivedIdentity !== TASK_SET_IDENTITY) {
+    throw new Error('reviewed task commitments do not derive the native task-set identity');
+  }
+  return derivedIdentity;
 }
 
 function validateRuntimeProvenance(
   execution: JsonObject,
   catalogTasks: readonly JsonObject[],
   taskBindings: readonly JsonObject[],
-): void {
+): string {
   const runtime = object(execution.runtime_provenance, 'corpus commitment runtime_provenance');
   const operatingSystem = object(runtime.operating_system, 'runtime operating_system');
   const nodeRuntime = object(runtime.node_runtime, 'runtime node_runtime');
@@ -515,14 +643,16 @@ function validateRuntimeProvenance(
     'runtime evaluator executable_sha256',
   );
   if (
+    evaluatorDigest !== EVALUATOR_IDENTITY ||
     taskBindings.some(
       (binding) =>
         binding.evaluator_runtime_executable_sha256 !== runtimeDigest ||
-        binding.evaluator_executable_sha256 !== evaluatorDigest,
+        binding.evaluator_executable_sha256 !== EVALUATOR_IDENTITY,
     )
   ) {
-    throw new Error('task evaluator identities do not match runtime provenance');
+    throw new Error('task evaluator identities do not match the reviewed runtime provenance');
   }
+  return evaluatorDigest;
 }
 
 function validateNodes(value: unknown): ValidatedNode[] {
@@ -621,10 +751,10 @@ function orderedJsonLiteral(value: unknown): string {
 function scoringRows(reviewedAt: string): JsonObject[] {
   return [
     {
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.5',
       schema_version: 'aiq.score-snapshot.v1',
-      benchmark_version: 'aiq-core@1.0.2',
-      name: 'AIQ fixed-fixture score 1.0.2',
+      benchmark_version: 'aiq-core@1.0.5',
+      name: 'AIQ fixed-fixture score 1.0.5',
       fixed_fixture_estimand:
         'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
       principles: [
@@ -696,7 +826,7 @@ function referenceRows(
     taskSets: [
       {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.2',
+        task_set_version: '1.0.5',
         title: 'AIQ Core 72',
         task_count: 72,
         domain_count: 10,
@@ -713,6 +843,7 @@ function referenceRows(
           corpus_commitment_schema: 'aiq.corpus-commitment.v2',
           corpus_commitment_sha256: reference.corpusCommitmentSha256,
           catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,
+          evaluator_identity_sha256: reference.evaluatorIdentitySha256,
           quota_policy: 'frozen_domain_by_difficulty',
         },
       },
@@ -724,7 +855,7 @@ function referenceRows(
       if (binding === undefined) throw new Error('task binding is missing');
       return {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.2',
+        task_set_version: '1.0.5',
         task_id: task.task_id,
         task_version: task.task_version,
         title: task.title,
@@ -873,13 +1004,29 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.2', '1.0.2')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.5', '1.0.5')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
   end if;
 end
 $aiq_reference_check$;
+
+do $aiq_storage_bucket_check$
+begin
+  if (
+    select count(*)
+    from storage.buckets
+    where id = name
+      and id in ('aiq-submission-packages', 'aiq-runner-artifacts')
+      and public is false
+  ) <> 2
+  then
+    raise exception 'AIQ private Storage bucket initialization did not validate'
+      using errcode = '23514';
+  end if;
+end
+$aiq_storage_bucket_check$;
 
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
@@ -888,7 +1035,8 @@ do $aiq_readiness_check$
 begin
   if coalesce((
     public.aiq_production_reference_status('${publisherNodeId}') ->> 'initialized'
-  )::boolean, false) is distinct from true then
+  )::boolean, false) is distinct from true
+  then
     raise exception 'AIQ production reference readiness did not validate'
       using errcode = '23514';
   end if;
@@ -932,12 +1080,13 @@ export function prepareInitialization(
   catalogValue: unknown,
   referenceValue: unknown,
   corpusSchemaValue: unknown,
+  reviewedTaskCommitmentsValue: unknown,
 ): PreparedInitialization {
   const catalog = object(catalogValue, 'catalog');
   if (
     catalog.schema_version !== 'aiq.catalog.v1' ||
     catalog.task_set_id !== 'aiq-core' ||
-    catalog.task_set_version !== '1.0.2' ||
+    catalog.task_set_version !== '1.0.5' ||
     object(catalog.task_metadata_identity, 'catalog.task_metadata_identity').digest !==
       CATALOG_IDENTITY ||
     object(catalog.catalog_release_identity, 'catalog.catalog_release_identity').digest !==
@@ -949,6 +1098,7 @@ export function prepareInitialization(
     object(referenceValue, 'reference'),
     catalog,
     corpusSchemaValue,
+    reviewedTaskCommitmentsValue,
   );
   const rows = referenceRows(catalog, reference);
   const publisher = reference.nodes.find(({ role }) => role === 'publisher');
@@ -959,6 +1109,50 @@ begin
     or exists (
       select 1 from pg_catalog.pg_roles
       where rolname in ('aiq_verifier', 'aiq_publisher')
+    )
+    or exists (
+      select 1 from storage.buckets
+      where id in ('aiq-submission-packages', 'aiq-runner-artifacts')
+        or name in ('aiq-submission-packages', 'aiq-runner-artifacts')
+    )
+    or exists (
+      select 1
+      from pg_catalog.pg_class relation
+      join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+      where namespace.nspname = 'public'
+        and relation.relkind in ('v', 'm')
+        and relation.relname in (
+          'public_distributed_radar', 'public_leaderboard', 'public_model_matrix',
+          'public_nodes', 'public_run_results', 'public_runs',
+          'public_scoring_versions', 'public_task_coverage',
+          'public_calibration_runs', 'public_model_efficiency',
+          'public_calibration_results', 'public_calibration_scores'
+        )
+    )
+    or exists (
+      select 1
+      from pg_catalog.pg_proc procedure
+      join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+      where namespace.nspname = 'public'
+        and procedure.proname in (
+          'aiq_ack_storage_deletion', 'aiq_ack_submission_claim',
+          'aiq_attach_storage_reference', 'aiq_claim_storage_deletions',
+          'aiq_claim_submission', 'aiq_deactivate_storage_reference',
+          'aiq_describe_web_rpc_contract', 'aiq_enqueue_submission',
+          'aiq_gateway_role_probe', 'aiq_list_storage_reconciliation',
+          'aiq_list_storage_registry', 'aiq_production_reference_status',
+          'aiq_promote_storage_orphan', 'aiq_publish_calibration_evidence',
+          'aiq_purge_expired_artifact_ingress', 'aiq_purge_expired_submissions',
+          'aiq_record_artifact_ingress', 'aiq_record_calibration_attestation',
+          'aiq_record_storage_inventory_epoch', 'aiq_record_storage_reconciliation',
+          'aiq_record_verification_rejection', 'aiq_record_verifier_attestation',
+          'aiq_register_storage_object', 'aiq_renew_submission_claim',
+          'aiq_resolve_claim_artifact', 'aiq_resolve_storage_reconciliation',
+          'aiq_retry_storage_deletion', 'aiq_set_storage_legal_hold',
+          'aiq_stage_calibration_verification', 'aiq_stage_verifier_result',
+          'aiq_storage_lifecycle_status', 'aiq_verify_and_publish',
+          'public_trend_points'
+        )
     )
   then
     raise exception 'AIQ_GREENFIELD_REUSE_REJECTED'
@@ -973,7 +1167,8 @@ $aiq_greenfield_preflight$;
     publisher: '',
   };
   for (const node of reference.nodes) nodeIds[node.role] = node.node_id;
-  return {
+  const prepared: PreparedInitialization = {
+    schema,
     sql: `\\set ON_ERROR_STOP on
 \\set VERBOSITY verbose
 begin;
@@ -985,11 +1180,13 @@ commit;
     receipt: {
       schema_version: 'aiq.production-initialization-receipt.v1',
       initialized: true,
-      scoring_version: '1.0.2',
+      scoring_version: '1.0.5',
       catalog_identity_sha256: CATALOG_IDENTITY,
       catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,
       corpus_commitment_sha256: reference.corpusCommitmentSha256,
       corpus_release_id: reference.releaseId,
+      task_set_identity_sha256: reference.taskSetIdentitySha256,
+      evaluator_identity_sha256: reference.evaluatorIdentitySha256,
       task_count: 72,
       model_config_count: 17,
       public_node_count: 3,
@@ -1001,6 +1198,50 @@ commit;
       node_ids: nodeIds,
     },
   };
+  Object.freeze(prepared.receipt.node_ids);
+  Object.freeze(prepared.receipt);
+  Object.freeze(prepared);
+  validatedPreparations.add(prepared);
+  return prepared;
+}
+
+function parseJsonDocument(bytes: Buffer | string, label: string): unknown {
+  try {
+    return JSON.parse(bytes.toString()) as unknown;
+  } catch {
+    throw new Error(`${label} is not valid JSON`);
+  }
+}
+
+export async function prepareInitializationFromFiles(
+  options: InitializationPreparationOptions,
+): Promise<PreparedInitialization> {
+  const repositoryRoot = options.repositoryRoot ?? resolve(import.meta.dirname, '..');
+  let referenceBytes: Buffer;
+  try {
+    referenceBytes = await readFile(options.referencePath);
+  } catch {
+    throw new Error('production reference file could not be read');
+  }
+  if (referenceBytes.length === 0 || referenceBytes.length > MAX_REFERENCE_BYTES) {
+    throw new Error('production reference file size is invalid');
+  }
+  const reference = parseJsonDocument(referenceBytes, 'production reference file');
+  const [schema, catalogBytes, corpusSchemaBytes, reviewedTaskCommitmentsBytes] = await Promise.all(
+    [
+      readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
+      readFile(resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.5/catalog.json')),
+      readFile(resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v2.schema.json')),
+      readFile(resolve(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json')),
+    ],
+  );
+  return prepareInitialization(
+    schema,
+    parseJsonDocument(catalogBytes, 'checked-in catalog authority'),
+    reference,
+    parseJsonDocument(corpusSchemaBytes, 'checked-in corpus schema authority'),
+    parseJsonDocument(reviewedTaskCommitmentsBytes, 'checked-in task commitment authority'),
+  );
 }
 
 async function runPsql(
@@ -1042,14 +1283,14 @@ async function runPsql(
         ) {
           rejectPromise(
             new Error(
-              'Initialization rejected because AIQ objects already exist. The rejected attempt made no changes. Use a new project for greenfield initialization.',
+              'Initialization rejected because AIQ objects already exist. The rejected attempt made no changes. Remove only the exact AIQ-owned objects from the existing target project, preserve all Supabase-managed and non-AIQ objects, and retry after the AIQ namespace is empty.',
             ),
           );
           return;
         }
         rejectPromise(
           new Error(
-            'Fresh initialization did not complete. Do not reuse this target for first launch. Inspect protected PostgreSQL logs, correct the inputs, and use a new empty project.',
+            'Fresh initialization did not complete. Inspect protected PostgreSQL logs, confirm that the transaction rolled back and the AIQ namespace is empty, then correct the inputs before retrying.',
           ),
         );
         return;
@@ -1111,11 +1352,53 @@ export function databaseConnectionEnvironment(databaseUrl: string): NodeJS.Proce
   return result;
 }
 
-function readinessPassed(output: string): boolean {
+export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.ProcessEnv): void {
+  let parsed: URL;
+  try {
+    if (databaseUrl.length > 2048 || /\s/.test(databaseUrl)) throw new Error('invalid URL');
+    parsed = new URL(databaseUrl);
+  } catch {
+    throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
+  }
+  const postgresProtocol = parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:';
+  const productionTarget =
+    postgresProtocol &&
+    parsed.hostname === PRODUCTION_DATABASE_HOST &&
+    parsed.pathname === '/postgres' &&
+    (parsed.port === '' || parsed.port === '5432') &&
+    parsed.username === 'postgres' &&
+    parsed.hash === '';
+  if (productionTarget) return;
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
+  const localOverride =
+    postgresProtocol &&
+    parsed.pathname !== '' &&
+    parsed.pathname !== '/' &&
+    parsed.hash === '' &&
+    environment.AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET === 'true' &&
+    (environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') &&
+    loopback;
+  if (!localOverride) {
+    throw new Error(
+      `AIQ_DATABASE_URL must target Supabase project ${PRODUCTION_SUPABASE_PROJECT_REF}`,
+    );
+  }
+}
+
+function readinessPassed(output: string, expected: InitializationReceipt): boolean {
   for (const line of output.trim().split(/\r?\n/).toReversed()) {
     try {
       const value: unknown = JSON.parse(line);
-      if (isObject(value) && value.initialized === true) return true;
+      if (
+        isObject(value) &&
+        value.initialized === true &&
+        value.task_set_identity_sha256 === expected.task_set_identity_sha256 &&
+        value.task_set_identity_valid === true &&
+        value.evaluator_identity_sha256 === expected.evaluator_identity_sha256 &&
+        value.evaluator_identity_valid === true
+      ) {
+        return true;
+      }
     } catch {
       // Ignore bounded psql status lines that are not JSON.
     }
@@ -1126,49 +1409,35 @@ function readinessPassed(output: string): boolean {
 export async function initializeDatabase(options: {
   readonly referencePath: string;
   readonly environment?: NodeJS.ProcessEnv;
+  readonly preparedInitialization?: PreparedInitialization;
   readonly psqlCommand?: string;
   readonly repositoryRoot?: string;
 }): Promise<InitializationReceipt> {
   const environment = options.environment ?? process.env;
   const databaseUrl = environment.AIQ_DATABASE_URL;
-  if (
-    databaseUrl === undefined ||
-    !/^postgres(?:ql)?:\/\/[^\s]{1,2048}(?![\s\S])/.test(databaseUrl)
-  ) {
+  if (databaseUrl === undefined) {
     throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
   }
+  assertDatabaseTarget(databaseUrl, environment);
   const repositoryRoot = options.repositoryRoot ?? resolve(import.meta.dirname, '..');
-  const referenceBytes = await readFile(options.referencePath);
-  if (referenceBytes.length === 0 || referenceBytes.length > MAX_REFERENCE_BYTES) {
-    throw new Error('production reference file size is invalid');
+  const prepared =
+    options.preparedInitialization ??
+    (await prepareInitializationFromFiles({
+      referencePath: options.referencePath,
+      repositoryRoot,
+    }));
+  if (!validatedPreparations.has(prepared)) {
+    throw new Error('Prepared initialization did not come from validated repository authority');
   }
-  let reference: unknown;
-  try {
-    reference = JSON.parse(referenceBytes.toString('utf8'));
-  } catch {
-    throw new Error('production reference file is not valid JSON');
-  }
-  const [schema, catalog, corpusSchema] = await Promise.all([
-    readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
-    readFile(
-      resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.2/catalog.json'),
-      'utf8',
-    ).then((bytes) => JSON.parse(bytes) as unknown),
-    readFile(
-      resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v2.schema.json'),
-      'utf8',
-    ).then((bytes) => JSON.parse(bytes) as unknown),
-  ]);
-  const prepared = prepareInitialization(schema, catalog, reference, corpusSchema);
   const output = await runPsql(
     options.psqlCommand ?? 'psql',
     databaseUrl,
     prepared.sql,
     environment,
   );
-  if (!readinessPassed(output)) {
+  if (!readinessPassed(output, prepared.receipt)) {
     throw new Error(
-      'Fresh initialization did not return a valid readiness result. Do not reuse this target for first launch. Inspect protected PostgreSQL logs and use a new empty project.',
+      'Fresh initialization did not return a valid readiness result. Do not retry against the uncertain state. Inspect protected PostgreSQL logs and readiness, confirm that the transaction rolled back, and retry the existing target project only after its AIQ namespace is empty.',
     );
   }
   return prepared.receipt;

@@ -13,6 +13,7 @@ import {
   MAX_RAW_SUBMISSION_BYTES,
   MAX_RESULTS,
   MAX_SIGNED_PACKAGE_BYTES,
+  OFFICIAL_SCORING_VERSION,
   RESULT_PACKAGE_SCHEMA,
   RUN_PAYLOAD_TYPE,
   CALIBRATION_RUN_PAYLOAD_TYPE,
@@ -24,6 +25,7 @@ import {
   type ValidatedSubmission,
 } from './submission-contract.ts';
 import { handleSubmission, hasValidBearerToken } from './submission-handler.ts';
+import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const token = 'runner-submission-token';
 const acceptedInboxId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -68,7 +70,7 @@ const fixtureRunId = `run_${sha256Hex(
     slot: scheduleSlot,
     task_set_hash: taskSetHash,
     models: [...models],
-    scoring_version: '1.0.2',
+    scoring_version: OFFICIAL_SCORING_VERSION,
   }),
 )}`;
 
@@ -80,7 +82,7 @@ function syntheticResults(): Record<string, unknown>[] {
         result_id: '',
         run_id: fixtureRunId,
         task_id: `task-${taskIndex}`,
-        task_version: '1.0.2',
+        task_version: OFFICIAL_SCORING_VERSION,
         task_hash: taskHashes[taskIndex],
         model,
         status: 'failed',
@@ -185,7 +187,7 @@ function productionProvenance(
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
-    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+    catalog_digest: FROZEN_CATALOG_DIGEST,
     task_set_digest: digest('3'),
     evaluator_digest: digest('4'),
     runtime_digest: digest('5'),
@@ -217,7 +219,7 @@ function officialPackage(): Record<string, unknown> {
       task_set_hash: taskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models,
-      scoring_version: '1.0.2',
+      scoring_version: OFFICIAL_SCORING_VERSION,
     }),
   )}`;
   const results = Array.from({ length: 72 }, (_, taskIndex) =>
@@ -228,7 +230,7 @@ function officialPackage(): Record<string, unknown> {
         result_id: '',
         run_id: runId,
         task_id: `task-${taskIndex}`,
-        task_version: '1.0.2',
+        task_version: OFFICIAL_SCORING_VERSION,
         task_hash: taskHashes[taskIndex],
         model,
         status: 'completed',
@@ -294,7 +296,7 @@ function calibrationPackage(): Record<string, unknown> {
       task_set_hash: selectedTaskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models: [selectedModel],
-      scoring_version: '1.0.2',
+      scoring_version: OFFICIAL_SCORING_VERSION,
     }),
   )}`;
   const result = structuredClone((officialPayload.results as Record<string, unknown>[])[0]);
@@ -309,7 +311,7 @@ function calibrationPackage(): Record<string, unknown> {
     run_id: runId,
     schedule_slot: scheduleSlot,
     task_set_hash: selectedTaskSetHash,
-    scoring_version: '1.0.2',
+    scoring_version: OFFICIAL_SCORING_VERSION,
     execution_concurrency: 17,
     models: [selectedModel],
     task_ids: ['task-0'],
@@ -349,7 +351,7 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       task_set_hash: taskSetHash,
       corpus_commitment_sha256: provenance.corpus_commitment_sha256,
       models,
-      scoring_version: '1.0.2',
+      scoring_version: OFFICIAL_SCORING_VERSION,
     }),
   )}`;
   const taskMajorResults = structuredClone(officialPayload.results as Record<string, unknown>[]);
@@ -379,7 +381,7 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       run_id: runId,
       schedule_slot: scheduleSlot,
       task_set_hash: taskSetHash,
-      scoring_version: '1.0.2',
+      scoring_version: OFFICIAL_SCORING_VERSION,
       execution_concurrency: 17,
       models,
       task_ids: Array.from({ length: 72 }, (_, index) => `task-${index}`),
@@ -413,7 +415,7 @@ function signedPackage(
       ...scheduleSlot,
     },
     task_set_hash: taskSetHash,
-    scoring_version: '1.0.2',
+    scoring_version: OFFICIAL_SCORING_VERSION,
     execution_concurrency: synthetic ? 1 : 17,
     started_unix_ms: 1,
     finished_unix_ms: 2,
@@ -528,7 +530,7 @@ function dependencies(
       _rawBytes: Uint8Array,
       receipt: SubmissionReceipt,
     ): Promise<SubmissionObjectIdentity> => ({
-      bucket: 'private-packages',
+      bucket: 'aiq-submission-packages',
       key: `sha256/${receipt.packageSha256}`,
       contentSha256: receipt.packageSha256,
       bytes: receipt.bodyBytes,
@@ -570,6 +572,22 @@ void describe('shared result-package contract', () => {
     }
     assert.equal(validation.submission.schemaVersion, RESULT_PACKAGE_SCHEMA);
     assert.equal(validation.submission.idempotencyKey, fixtureRunId);
+  });
+
+  void it('accepts the current Rust-generated signed fixture', () => {
+    const currentFixture = JSON.parse(
+      readFileSync(
+        new URL(
+          '../../../../benchmarks/fixtures/result-package-v3.synthetic.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    ) as unknown;
+    const validation = validateSubmission(currentFixture);
+    assert.equal(validation.ok, true);
+    if (!validation.ok) return;
+    assert.equal(validation.submission.envelope.payload.scoring_version, OFFICIAL_SCORING_VERSION);
   });
 
   void it('accepts a complete non-synthetic Official 17-by-72 package', () => {
@@ -1345,7 +1363,7 @@ void describe('shared result-package contract', () => {
     };
     assert.deepEqual(
       createEnqueueRpcArguments(validation.submission, receipt, {
-        bucket: 'private-packages',
+        bucket: 'aiq-submission-packages',
         key: `sha256/${receipt.packageSha256}`,
         contentSha256: receipt.packageSha256,
         bytes: receipt.bodyBytes,
@@ -1360,7 +1378,7 @@ void describe('shared result-package contract', () => {
           body_bytes: receipt.bodyBytes,
         },
         object_identity: {
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           key: `sha256/${receipt.packageSha256}`,
           content_sha256: receipt.packageSha256,
           bytes: receipt.bodyBytes,
@@ -1665,7 +1683,7 @@ void describe('submission handler', () => {
         calls.push('store');
         storedBytes = rawBytes;
         return {
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           key: `sha256/${receipt.packageSha256}`,
           contentSha256: receipt.packageSha256,
           bytes: receipt.bodyBytes,
@@ -1702,7 +1720,7 @@ void describe('submission handler', () => {
       async storePackage(_rawBytes, receipt) {
         calls.push('store');
         return {
-          bucket: 'private-packages',
+          bucket: 'aiq-submission-packages',
           key: `sha256/${receipt.packageSha256}`,
           contentSha256: receipt.packageSha256,
           bytes: receipt.bodyBytes,
@@ -1738,7 +1756,7 @@ void describe('submission handler', () => {
     const identityMismatch = await handleSubmission(request(), {
       ...dependencies(),
       storePackage: async (_rawBytes, receipt) => ({
-        bucket: 'private-packages',
+        bucket: 'aiq-submission-packages',
         key: `sha256/${receipt.packageSha256}`,
         contentSha256: '0'.repeat(64),
         bytes: receipt.bodyBytes,

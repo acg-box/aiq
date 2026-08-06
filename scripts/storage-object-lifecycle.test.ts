@@ -19,8 +19,8 @@ const leaseToken = '22222222-2222-4222-8222-222222222222';
 const environment = {
   SUPABASE_URL: 'https://project.supabase.co',
   SUPABASE_SECRET_KEY: 'sb_secret_service_role_key_that_is_long_enough',
-  AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
-  AIQ_RUNNER_ARTIFACT_BUCKET: 'private-artifacts',
+  AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
+  AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',
   AIQ_STORAGE_LIFECYCLE_MODE: 'delete',
 };
 
@@ -32,7 +32,7 @@ function response(value: unknown, status = 200): Response {
   return Response.json(value, { status });
 }
 
-void test('configuration requires exact distinct private bucket and bounded worker settings', () => {
+void test('configuration requires the two canonical private buckets and bounded worker settings', () => {
   assert.equal(readLifecycleConfiguration(environment).mode, 'delete');
   assert.throws(
     () =>
@@ -61,9 +61,17 @@ void test('configuration requires exact distinct private bucket and bounded work
     () =>
       readLifecycleConfiguration({
         ...environment,
-        AIQ_RUNNER_ARTIFACT_BUCKET: 'private-packages',
+        AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-submission-packages',
       }),
-    /distinct/,
+    /must be aiq-runner-artifacts/,
+  );
+  assert.throws(
+    () =>
+      readLifecycleConfiguration({
+        ...environment,
+        AIQ_SUBMISSION_PACKAGE_BUCKET: 'unrelated-private-bucket',
+      }),
+    /must be aiq-submission-packages/,
   );
   assert.throws(
     () => readLifecycleConfiguration({ ...environment, AIQ_STORAGE_LIFECYCLE_BATCH_SIZE: '101' }),
@@ -119,7 +127,7 @@ void test('deletion acknowledges success and idempotent not-found without exposi
       object_id: objectId,
       object_type: 'submission_package',
       artifact_kind: null,
-      bucket_name: 'private-packages',
+      bucket_name: 'aiq-submission-packages',
       object_path: `sha256/${packageDigest}`,
       content_sha256: packageDigest,
       byte_size: 12,
@@ -131,7 +139,7 @@ void test('deletion acknowledges success and idempotent not-found without exposi
       object_id: '33333333-3333-4333-8333-333333333333',
       object_type: 'runner_artifact',
       artifact_kind: 'stderr.txt',
-      bucket_name: 'private-artifacts',
+      bucket_name: 'aiq-runner-artifacts',
       object_path: `sha256/${artifactDigest}/stderr.txt`,
       content_sha256: artifactDigest,
       byte_size: 4,
@@ -192,7 +200,7 @@ void test('deletion accepts the registered evaluator results artifact kind', asy
           object_id: objectId,
           object_type: 'runner_artifact',
           artifact_kind: 'evaluator-results.json',
-          bucket_name: 'private-artifacts',
+          bucket_name: 'aiq-runner-artifacts',
           object_path: `sha256/${artifactDigest}/evaluator-results.json`,
           content_sha256: artifactDigest,
           byte_size: 128,
@@ -238,7 +246,7 @@ void test('deletion rejects out-of-allowlist claims and records bounded retry st
           object_id: objectId,
           object_type: 'submission_package',
           artifact_kind: null,
-          bucket_name: 'private-artifacts',
+          bucket_name: 'aiq-runner-artifacts',
           object_path: `sha256/${packageDigest}`,
           content_sha256: packageDigest,
           byte_size: 12,
@@ -271,7 +279,7 @@ void test('deletion converts upstream failures to sanitized durable retry codes'
           object_id: objectId,
           object_type: 'submission_package',
           artifact_kind: null,
-          bucket_name: 'private-packages',
+          bucket_name: 'aiq-submission-packages',
           object_path: `sha256/${packageDigest}`,
           content_sha256: packageDigest,
           byte_size: 12,
@@ -305,7 +313,7 @@ void test('deletion claims each object only after the prior lease is acknowledge
         object_id: claimCount === 0 ? objectId : '33333333-3333-4333-8333-333333333333',
         object_type: 'submission_package',
         artifact_kind: null,
-        bucket_name: 'private-packages',
+        bucket_name: 'aiq-submission-packages',
         object_path: `sha256/${digest}`,
         content_sha256: digest,
         byte_size: 12,
@@ -349,7 +357,7 @@ void test('deletion repeats the exact acknowledgement after its committed respon
           object_id: objectId,
           object_type: 'submission_package',
           artifact_kind: null,
-          bucket_name: 'private-packages',
+          bucket_name: 'aiq-submission-packages',
           object_path: `sha256/${packageDigest}`,
           content_sha256: packageDigest,
           byte_size: 12,
@@ -398,7 +406,7 @@ void test('deletion returns the claim to retry only after both exact acknowledge
           object_id: objectId,
           object_type: 'submission_package',
           artifact_kind: null,
-          bucket_name: 'private-packages',
+          bucket_name: 'aiq-submission-packages',
           object_path: `sha256/${packageDigest}`,
           content_sha256: packageDigest,
           byte_size: 12,
@@ -438,7 +446,7 @@ void test('reconciliation records storage-only grace, registry-only, and identit
       return response([]);
     }
     if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) {
-      if (body.supplied_bucket === 'private-packages') {
+      if (body.supplied_bucket === 'aiq-submission-packages') {
         return response([
           {
             object_id: objectId,
@@ -472,14 +480,14 @@ void test('reconciliation records storage-only grace, registry-only, and identit
       assert.deepEqual(body, {
         supplied_object_type: 'submission_package',
         supplied_artifact_kind: null,
-        supplied_bucket: 'private-packages',
+        supplied_bucket: 'aiq-submission-packages',
         supplied_path: `sha256/${packageDigest}`,
         supplied_sha256: packageDigest,
         supplied_bytes: 12,
       });
       return response('66666666-6666-4666-8666-666666666666');
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-packages')) {
+    if (url.pathname.includes('/storage/v1/object/list/aiq-submission-packages')) {
       if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
       return response([
         {
@@ -490,7 +498,7 @@ void test('reconciliation records storage-only grace, registry-only, and identit
         },
       ]);
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-artifacts')) {
+    if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) {
       if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
       if (body.prefix === 'sha256') return response([{ name: artifactDigest, id: null }]);
       return response([
@@ -534,11 +542,11 @@ void test('reconciliation rejects file and directory type confusion', async () =
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) return response([]);
     if (url.pathname.endsWith('/rpc/aiq_list_storage_reconciliation')) return response([]);
-    if (url.pathname.includes('/storage/v1/object/list/private-packages')) {
+    if (url.pathname.includes('/storage/v1/object/list/aiq-submission-packages')) {
       if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
       return response([{ name: packageDigest, id: null, metadata: { size: 12 } }]);
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-artifacts')) {
+    if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) {
       if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
       return response([]);
     }
@@ -560,11 +568,11 @@ void test('reconciliation requires artifact digest directories and artifact file
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
       if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) return response([]);
       if (url.pathname.endsWith('/rpc/aiq_list_storage_reconciliation')) return response([]);
-      if (url.pathname.includes('/storage/v1/object/list/private-packages')) {
+      if (url.pathname.includes('/storage/v1/object/list/aiq-submission-packages')) {
         if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
         return response([]);
       }
-      if (url.pathname.includes('/storage/v1/object/list/private-artifacts')) {
+      if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) {
         if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
         if (body.prefix === 'sha256')
           return response([{ name: artifactDigest, id: testCase.digestId }]);
@@ -591,13 +599,19 @@ void test('reconciliation fails closed on unexpected bucket paths', async () => 
       durableWrites += 1;
       return response('55555555-5555-4555-8555-555555555555');
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-packages') && body.prefix === '') {
+    if (
+      url.pathname.includes('/storage/v1/object/list/aiq-submission-packages') &&
+      body.prefix === ''
+    ) {
       return response([{ name: 'unexpected', id: 'file' }]);
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-artifacts') && body.prefix === '') {
+    if (
+      url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts') &&
+      body.prefix === ''
+    ) {
       return response([{ name: 'sha256', id: null }]);
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-artifacts')) return response([]);
+    if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) return response([]);
     throw new Error(`unexpected request ${url.pathname}`);
   };
   await assert.rejects(
@@ -613,7 +627,7 @@ void test('reconciliation resolves stale events after exact parity returns', asy
     const url = new URL(String(input));
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) {
-      return body.supplied_bucket === 'private-packages'
+      return body.supplied_bucket === 'aiq-submission-packages'
         ? response([
             {
               object_id: objectId,
@@ -632,11 +646,11 @@ void test('reconciliation resolves stale events after exact parity returns', asy
       resolved.push(body);
       return response(1);
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-packages')) {
+    if (url.pathname.includes('/storage/v1/object/list/aiq-submission-packages')) {
       if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
       return response([{ name: packageDigest, id: 'file', metadata: { size: 12 } }]);
     }
-    if (url.pathname.includes('/storage/v1/object/list/private-artifacts')) {
+    if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) {
       if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
       return response([]);
     }
@@ -651,7 +665,7 @@ void test('reconciliation resolves stale events after exact parity returns', asy
   assert.equal(metrics.resolved, 1);
   assert.deepEqual(resolved, [
     {
-      supplied_bucket: 'private-packages',
+      supplied_bucket: 'aiq-submission-packages',
       supplied_path: `sha256/${packageDigest}`,
     },
   ]);
@@ -665,7 +679,7 @@ void test('reconciliation resolves events after both sides disappear or deletion
     const url = new URL(String(input));
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) {
-      return body.supplied_bucket === 'private-packages'
+      return body.supplied_bucket === 'aiq-submission-packages'
         ? response([
             {
               object_id: objectId,
@@ -680,7 +694,7 @@ void test('reconciliation resolves events after both sides disappear or deletion
         : response([]);
     }
     if (url.pathname.endsWith('/rpc/aiq_list_storage_reconciliation')) {
-      return body.supplied_bucket === 'private-packages'
+      return body.supplied_bucket === 'aiq-submission-packages'
         ? response([
             { object_path: `sha256/${absentDigest}`, mismatch_type: 'storage_only' },
             { object_path: `sha256/${deletedDigest}`, mismatch_type: 'identity_mismatch' },
