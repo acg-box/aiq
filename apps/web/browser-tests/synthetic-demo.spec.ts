@@ -581,7 +581,7 @@ test('keyboard users can reach navigation and operate trend controls with visibl
 }) => {
   const runtimeFailures = monitorErrors(page);
   const linkNavigationKey = browserName === 'webkit' ? 'Alt+Tab' : 'Tab';
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'networkidle' });
   await page.keyboard.press(linkNavigationKey);
   const skipLink = page.getByRole('link', { name: 'Skip to content' });
   await expect(skipLink).toBeFocused();
