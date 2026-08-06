@@ -293,7 +293,7 @@ export default async function OverviewPage() {
             </span>
           </div>
           <ReadStateNote result={leaderboardResult} subject="Configuration matrix" />
-          <DeferredModelMatrixChart entries={leaderboard} />
+          <DeferredModelMatrixChart entries={leaderboard} headingLevel={3} />
           <details className="data-disclosure">
             <summary>Read all configuration values as a table</summary>
             <LeaderboardTable entries={leaderboard} />

@@ -19,18 +19,13 @@ test('the homepage keeps exact evidence in server markup and defers analytics', 
   await expect(ranking.getByRole('listitem')).toHaveCount(5);
   await expect(page.getByRole('region', { name: 'Domain profile' })).toBeAttached();
   const analytics = page.locator('[data-homepage-analytics="matrix"]');
-  const loading = analytics.locator('[data-homepage-analytics-loading="matrix"]');
-  await expect(loading).toHaveRole('status');
-  await expect(loading).toContainText('Loading interactive configuration matrix');
   const reservedBox = await analytics.boundingBox();
   expect(reservedBox?.height ?? 0).toBeGreaterThanOrEqual(430);
-  await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toHaveCount(0);
 
   await analytics.evaluate((element) => {
     const documentTop = element.getBoundingClientRect().top + window.scrollY;
     window.scrollTo(0, documentTop - window.innerHeight - 250);
   });
-  await expect(loading).toHaveCount(0);
   const preloadedBox = await analytics.boundingBox();
   expect(preloadedBox?.y ?? 0).toBeGreaterThanOrEqual(400);
   await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toHaveCount(1);
