@@ -3,6 +3,7 @@ import {
   isSupabasePublicKey,
 } from '../data/public-configuration.ts';
 import { isAiqNodeId, isSupabaseRoleTokenKeyConfigured } from './supabase-role-token.ts';
+import { AIQ_RUNNER_ARTIFACT_BUCKET, AIQ_SUBMISSION_PACKAGE_BUCKET } from './storage-buckets.ts';
 
 export type RuntimeMode = 'production' | 'non_production' | 'unknown';
 
@@ -57,7 +58,6 @@ export type ProductionConfiguration = ConfigurationInspection<ValidatedProductio
 type Environment = Readonly<Record<string, string | undefined>>;
 
 const SECRET_KEY = /^sb_secret_[A-Za-z0-9_-]+(?![\s\S])/;
-const BUCKET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(?![\s\S])/;
 const VISIBLE_ASCII_SECRET = /^[\x21-\x7e]+(?![\s\S])/;
 
 function runtimeMode(nodeEnvironment: string | undefined): RuntimeMode {
@@ -182,9 +182,14 @@ function publisherNodeId(environment: Environment, issues: string[]): string | u
   return value;
 }
 
-function bucket(environment: Environment, name: string, issues: string[]): string | undefined {
+function bucket(
+  environment: Environment,
+  name: string,
+  expected: string,
+  issues: string[],
+): string | undefined {
   const value = requiredValue(environment, name, issues);
-  if (value && !BUCKET_NAME.test(value)) issues.push(`${name} has an invalid bucket name`);
+  if (value && value !== expected) issues.push(`${name} must be ${expected}`);
   return value;
 }
 
@@ -213,7 +218,12 @@ export function inspectSubmissionConfiguration(
   const url = serviceUrl(environment, inspection.mode, inspection.issues);
   const key = secretKey(environment, inspection.issues);
   const token = visibleToken(environment, 'AIQ_RUNNER_SUBMISSION_TOKEN', inspection.issues);
-  const packageBucket = bucket(environment, 'AIQ_SUBMISSION_PACKAGE_BUCKET', inspection.issues);
+  const packageBucket = bucket(
+    environment,
+    'AIQ_SUBMISSION_PACKAGE_BUCKET',
+    AIQ_SUBMISSION_PACKAGE_BUCKET,
+    inspection.issues,
+  );
   rejectCredentialReuse(
     [
       ['SUPABASE_SECRET_KEY', key],
@@ -235,7 +245,12 @@ export function inspectArtifactIngressConfiguration(
   const url = serviceUrl(environment, inspection.mode, inspection.issues);
   const key = secretKey(environment, inspection.issues);
   const token = visibleToken(environment, 'AIQ_RUNNER_SUBMISSION_TOKEN', inspection.issues);
-  const artifactBucket = bucket(environment, 'AIQ_RUNNER_ARTIFACT_BUCKET', inspection.issues);
+  const artifactBucket = bucket(
+    environment,
+    'AIQ_RUNNER_ARTIFACT_BUCKET',
+    AIQ_RUNNER_ARTIFACT_BUCKET,
+    inspection.issues,
+  );
   rejectCredentialReuse(
     [
       ['SUPABASE_SECRET_KEY', key],
@@ -332,8 +347,18 @@ export function inspectProductionConfiguration(environment: Environment): Produc
   }
   const key = secretKey(environment, inspection.issues);
   const runnerToken = visibleToken(environment, 'AIQ_RUNNER_SUBMISSION_TOKEN', inspection.issues);
-  const packageBucket = bucket(environment, 'AIQ_SUBMISSION_PACKAGE_BUCKET', inspection.issues);
-  const artifactBucket = bucket(environment, 'AIQ_RUNNER_ARTIFACT_BUCKET', inspection.issues);
+  const packageBucket = bucket(
+    environment,
+    'AIQ_SUBMISSION_PACKAGE_BUCKET',
+    AIQ_SUBMISSION_PACKAGE_BUCKET,
+    inspection.issues,
+  );
+  const artifactBucket = bucket(
+    environment,
+    'AIQ_RUNNER_ARTIFACT_BUCKET',
+    AIQ_RUNNER_ARTIFACT_BUCKET,
+    inspection.issues,
+  );
   const verifierToken = visibleToken(environment, 'AIQ_VERIFIER_INGRESS_TOKEN', inspection.issues);
   const gatewayKey = publishableKey(environment, inspection.issues);
   const jwk = privateJwk(environment, inspection.issues);

@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
+import { AIQ_CORE_SCORING_VERSION, AIQ_CORE_TASK_SET_VERSION } from '../aiq-core-contract.ts';
 import { createBoundedSupabaseFetch, createSupabaseApiKeyFetch } from '../server/supabase-http.ts';
-import { filterTrendPoints } from './format.ts';
+import { filterTrendPoints, latestCompletedRun } from './format.ts';
 import {
   inspectPublicSupabaseConfiguration,
   type PublicDataConfiguration,
@@ -27,6 +28,7 @@ import type {
   LeaderboardStatus,
   Methodology,
   ModelFamily,
+  ExecutionStatus,
   ObservationRecordStatus,
   ObservationState,
   PublicCalibrationResult,
@@ -36,7 +38,6 @@ import type {
   PublicModelEfficiency,
   RadarNode,
   ReasoningTier,
-  RunStatus,
   SignatureStatus,
   RunHistoryCursor,
   RunHistoryPage,
@@ -61,6 +62,9 @@ export const PUBLIC_VIEW_NAMES = {
   calibrationScores: 'public_calibration_scores',
   modelEfficiency: 'public_model_efficiency',
 } as const;
+
+const RUN_SUMMARY_SELECT =
+  'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,correct_count,partial_count,incorrect_count,runtime_issue_count,invalid_count,missing_count,not_applicable_count,completed_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count';
 
 export interface ModelMatrixRow {
   id: string;
@@ -146,11 +150,11 @@ export interface LeaderboardRow {
   matrix_id: string;
   run_id: string | null;
   score: number | null;
-  ci_low: number | null;
-  ci_high: number | null;
+  sensitivity_low: number | null;
+  sensitivity_high: number | null;
   sample_size: number | null;
   coverage_percent: number | null;
-  failures: number | null;
+  runtime_issues: number | null;
   missing: number | null;
   scoring_version: string | null;
   score_status: string | null;
@@ -160,12 +164,13 @@ export interface LeaderboardRow {
 export interface TrendRow {
   matrix_id: string;
   run_id: string;
+  scoring_version: string;
   recorded_at: string;
   bucket_started_at: string;
   bucket_ended_at: string;
   score: number;
-  ci_low: number;
-  ci_high: number;
+  sensitivity_low: number;
+  sensitivity_high: number;
   sample_size: number;
   represented_run_count: number;
   resolution_seconds: number;
@@ -182,14 +187,18 @@ function isTrendRow(value: unknown): value is TrendRow {
   const bucketStartedAt = value.bucket_started_at;
   const bucketEndedAt = value.bucket_ended_at;
   const score = value.score;
-  const ciLow = value.ci_low;
-  const ciHigh = value.ci_high;
+  const sensitivityLow = value.sensitivity_low;
+  const sensitivityHigh = value.sensitivity_high;
   const sampleSize = value.sample_size;
   const representedRunCount = value.represented_run_count;
   const resolutionSeconds = value.resolution_seconds;
   return (
-    isBoundedIdentifier(value.matrix_id) &&
-    isBoundedIdentifier(value.run_id) &&
+    typeof value.matrix_id === 'string' &&
+    CANONICAL_MODEL_MATRIX_BY_ID.has(value.matrix_id) &&
+    typeof value.run_id === 'string' &&
+    RUN_ID.test(value.run_id) &&
+    typeof value.scoring_version === 'string' &&
+    SEMANTIC_VERSION.test(value.scoring_version) &&
     isTimestamp(recordedAt) &&
     isTimestamp(bucketStartedAt) &&
     isTimestamp(bucketEndedAt) &&
@@ -198,11 +207,13 @@ function isTrendRow(value: unknown): value is TrendRow {
     isFiniteNumber(score) &&
     score >= 0 &&
     score <= 100 &&
-    isFiniteNumber(ciLow) &&
-    isFiniteNumber(ciHigh) &&
-    ciLow <= score &&
-    score <= ciHigh &&
-    isPositiveCount(sampleSize) &&
+    isFiniteNumber(sensitivityLow) &&
+    isFiniteNumber(sensitivityHigh) &&
+    sensitivityLow >= 0 &&
+    sensitivityLow <= score &&
+    score <= sensitivityHigh &&
+    sensitivityHigh <= 100 &&
+    sampleSize === 72 &&
     isPositiveCount(representedRunCount) &&
     isCount(resolutionSeconds) &&
     typeof value.synthetic === 'boolean'
@@ -229,23 +240,212 @@ export interface RunRow {
   run_class: string | null;
   permission_evidence_digest: string | null;
   result_count: number;
-  passed_count: number;
-  failed_count: number;
+  correct_count: number;
+  partial_count: number;
+  incorrect_count: number;
+  runtime_issue_count: number;
   invalid_count: number;
   missing_count: number;
   not_applicable_count: number;
+  completed_count: number;
   observed_count: number;
   coverage_percent: number | null;
   covered_domain_count: number;
   provisional_domain_count: number;
 }
 
+const RUN_ROW_KEYS = new Set([
+  'id',
+  'matrix_id',
+  'started_at',
+  'completed_at',
+  'benchmark_version',
+  'scoring_version',
+  'prompt_set_digest',
+  'runner_commit',
+  'region',
+  'synthetic',
+  'corpus_release_id',
+  'corpus_commitment_sha256',
+  'catalog_digest',
+  'task_set_digest',
+  'preflight_digest',
+  'runtime_digest',
+  'run_class',
+  'permission_evidence_digest',
+  'result_count',
+  'correct_count',
+  'partial_count',
+  'incorrect_count',
+  'runtime_issue_count',
+  'invalid_count',
+  'missing_count',
+  'not_applicable_count',
+  'completed_count',
+  'observed_count',
+  'coverage_percent',
+  'covered_domain_count',
+  'provisional_domain_count',
+]);
+const RUN_ID = /^run_[0-9a-f]{64}$/;
+const RESULT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SEMANTIC_VERSION = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const BENCHMARK_VERSION = /^aiq-core@(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/;
+const RUNNER_COMMIT = /^[0-9a-f]{7,40}$/;
+const CORPUS_RELEASE_ID = /^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+const BENCHMARK_DOMAINS = new Set([
+  'coding',
+  'debugging',
+  'repository_understanding',
+  'data_processing',
+  'retrieval_verification',
+  'documentation_communication',
+  'planning_execution',
+  'tool_use',
+  'instruction_following',
+  'reliability_recovery',
+]);
+const BENCHMARK_DOMAIN_TASK_COUNTS = new Map<string, number>([
+  ['coding', 8],
+  ['debugging', 8],
+  ['repository_understanding', 7],
+  ['data_processing', 8],
+  ['retrieval_verification', 7],
+  ['documentation_communication', 7],
+  ['planning_execution', 7],
+  ['tool_use', 7],
+  ['instruction_following', 6],
+  ['reliability_recovery', 7],
+]);
+const CORE_TASK_ID = /^(?<prefix>[a-z][a-z0-9-]{0,62})-(?<ordinal>[0-9]{2})$/;
+
+function taskIdMatchesDomain(taskId: unknown, domain: unknown): taskId is string {
+  if (typeof taskId !== 'string' || typeof domain !== 'string') return false;
+  const expectedCount = BENCHMARK_DOMAIN_TASK_COUNTS.get(domain);
+  const match = CORE_TASK_ID.exec(taskId);
+  if (!expectedCount || !match?.groups) return false;
+  const ordinal = Number(match.groups.ordinal);
+  return (
+    match.groups.prefix === domain.replaceAll('_', '-') &&
+    Number.isInteger(ordinal) &&
+    ordinal >= 1 &&
+    ordinal <= expectedCount
+  );
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.size && actual.every((key) => keys.has(key));
+}
+
+function isRunSummaryRow(value: unknown): value is RunRow {
+  if (!isUnknownRecord(value)) return false;
+  const counts = [
+    value.correct_count,
+    value.partial_count,
+    value.incorrect_count,
+    value.runtime_issue_count,
+    value.invalid_count,
+    value.missing_count,
+    value.not_applicable_count,
+  ];
+  const resultCount = value.result_count;
+  const completedCount = safeCountSum([
+    value.correct_count,
+    value.partial_count,
+    value.incorrect_count,
+  ]);
+  const observedCount = safeCountSum([completedCount, value.runtime_issue_count]);
+  const expectedCoverage =
+    isPositiveCount(resultCount) && observedCount !== null
+      ? Number(((100 * observedCount) / resultCount).toFixed(1))
+      : null;
+  const provenance = [
+    value.corpus_release_id,
+    value.corpus_commitment_sha256,
+    value.catalog_digest,
+    value.task_set_digest,
+    value.preflight_digest,
+    value.runtime_digest,
+    value.run_class,
+    value.permission_evidence_digest,
+  ];
+  const provenanceIsAbsent = provenance.every((item) => item === null);
+  const provenanceIsComplete =
+    typeof value.corpus_release_id === 'string' &&
+    CORPUS_RELEASE_ID.test(value.corpus_release_id) &&
+    [
+      value.corpus_commitment_sha256,
+      value.catalog_digest,
+      value.task_set_digest,
+      value.preflight_digest,
+      value.runtime_digest,
+      value.permission_evidence_digest,
+    ].every((item) => typeof item === 'string' && SHA256.test(item)) &&
+    value.run_class === 'official';
+  return (
+    hasExactKeys(value, RUN_ROW_KEYS) &&
+    typeof value.id === 'string' &&
+    RUN_ID.test(value.id) &&
+    typeof value.matrix_id === 'string' &&
+    CANONICAL_MODEL_MATRIX_BY_ID.has(value.matrix_id) &&
+    isTimestamp(value.started_at) &&
+    isTimestamp(value.completed_at) &&
+    Date.parse(value.started_at) <= Date.parse(value.completed_at) &&
+    typeof value.benchmark_version === 'string' &&
+    BENCHMARK_VERSION.test(value.benchmark_version) &&
+    typeof value.scoring_version === 'string' &&
+    SEMANTIC_VERSION.test(value.scoring_version) &&
+    typeof value.prompt_set_digest === 'string' &&
+    SHA256.test(value.prompt_set_digest) &&
+    typeof value.runner_commit === 'string' &&
+    RUNNER_COMMIT.test(value.runner_commit) &&
+    isBoundedIdentifier(value.region) &&
+    value.region.length <= 64 &&
+    typeof value.synthetic === 'boolean' &&
+    (provenanceIsAbsent || provenanceIsComplete) &&
+    isCount(resultCount) &&
+    resultCount <= 72 &&
+    counts.every(isCount) &&
+    safeCountSum(counts) === resultCount &&
+    isCount(value.completed_count) &&
+    value.completed_count === completedCount &&
+    isCount(value.observed_count) &&
+    value.observed_count === observedCount &&
+    value.coverage_percent === expectedCoverage &&
+    isCount(value.covered_domain_count) &&
+    value.covered_domain_count <= 10 &&
+    value.covered_domain_count <= value.observed_count &&
+    isCount(value.provisional_domain_count) &&
+    value.provisional_domain_count <= value.covered_domain_count &&
+    value.provisional_domain_count * 4 <= value.observed_count &&
+    (value.observed_count === 0 ? value.covered_domain_count === 0 : value.covered_domain_count > 0)
+  );
+}
+
+function runRowsFollowQueryOrder(rows: readonly RunRow[], ascending: boolean): boolean {
+  return rows.every((row, index) => {
+    if (index === 0) return true;
+    const previous = rows[index - 1];
+    if (!previous) return false;
+    const previousTime = Date.parse(previous.started_at);
+    const currentTime = Date.parse(row.started_at);
+    if (previousTime !== currentTime) {
+      return ascending ? previousTime < currentTime : previousTime > currentTime;
+    }
+    const identityOrder = previous.id.localeCompare(row.id);
+    return ascending ? identityOrder > 0 : identityOrder < 0;
+  });
+}
+
 export interface RunResultRow {
   run_id: string;
   id: string;
+  task_id: string;
   task: string;
   domain: string;
-  status: RunStatus;
+  outcome: CalibrationOutcome;
+  execution_status: ExecutionStatus;
   score: number | null;
   explanation_code: string | null;
   explanation_summary: string | null;
@@ -264,6 +464,172 @@ export interface RunResultRow {
   standard_api_equivalent_usd_nanos: number | null;
   cost_estimator_status: TaskResult['costEstimatorStatus'];
   cost_evidence_level: 'verifier_recomputed' | null;
+  pricing_digest: string;
+}
+
+const RUN_RESULT_ROW_KEYS = new Set([
+  'run_id',
+  'id',
+  'task_id',
+  'task',
+  'domain',
+  'outcome',
+  'execution_status',
+  'score',
+  'explanation_code',
+  'explanation_summary',
+  'retryable',
+  'tools',
+  'latency_ms',
+  'latency_evidence_level',
+  'input_tokens',
+  'cached_input_tokens',
+  'cache_write_input_tokens',
+  'output_tokens',
+  'reasoning_output_tokens',
+  'total_tokens',
+  'token_usage_source_level',
+  'token_usage_evidence_level',
+  'standard_api_equivalent_usd_nanos',
+  'cost_estimator_status',
+  'cost_evidence_level',
+  'pricing_digest',
+]);
+
+const COST_RATES_BY_PRICING_DIGEST = new Map<
+  string,
+  Readonly<
+    Record<
+      ModelFamily,
+      { input: number; cachedInput: number; cacheWriteInput: number; output: number }
+    >
+  >
+>([
+  [
+    'sha256:e1a28656f2918a14e86997b06bf9e29ec4db084ff89ee0319aafa0c05cc1f31d',
+    {
+      Sol: { input: 5_000, cachedInput: 500, cacheWriteInput: 6_250, output: 30_000 },
+      Terra: { input: 2_000, cachedInput: 200, cacheWriteInput: 2_500, output: 12_000 },
+      Luna: { input: 200, cachedInput: 20, cacheWriteInput: 250, output: 1_200 },
+    },
+  ],
+]);
+
+function isRunResultRow(
+  value: unknown,
+  matrixIdByRun: ReadonlyMap<string, string>,
+): value is RunResultRow {
+  if (!isUnknownRecord(value) || !hasExactKeys(value, RUN_RESULT_ROW_KEYS)) return false;
+  const tokenValues = [
+    value.input_tokens,
+    value.cached_input_tokens,
+    value.cache_write_input_tokens,
+    value.output_tokens,
+    value.reasoning_output_tokens,
+    value.total_tokens,
+  ];
+  const hasTokenUsage = tokenValues.some((item) => item !== null);
+  const hasCoreCostUsage = [
+    value.input_tokens,
+    value.cached_input_tokens,
+    value.cache_write_input_tokens,
+    value.output_tokens,
+  ].every((item) => item !== null);
+  const inputTokens = value.input_tokens;
+  const cachedInputTokens = value.cached_input_tokens;
+  const cacheWriteInputTokens = value.cache_write_input_tokens;
+  const contextBand = hasCoreCostUsage && typeof inputTokens === 'number' && inputTokens > 272_000;
+  const invalidUsage =
+    hasCoreCostUsage &&
+    typeof inputTokens === 'number' &&
+    typeof cachedInputTokens === 'number' &&
+    typeof cacheWriteInputTokens === 'number' &&
+    cachedInputTokens + cacheWriteInputTokens > inputTokens;
+  const runMatrixId =
+    typeof value.run_id === 'string' ? matrixIdByRun.get(value.run_id) : undefined;
+  const modelFamily = runMatrixId
+    ? CANONICAL_MODEL_MATRIX_BY_ID.get(runMatrixId)?.modelFamily
+    : undefined;
+  const pricingRates =
+    typeof value.pricing_digest === 'string'
+      ? COST_RATES_BY_PRICING_DIGEST.get(value.pricing_digest)
+      : undefined;
+  const rates = modelFamily && pricingRates ? pricingRates[modelFamily] : undefined;
+  const calculatedCost =
+    hasCoreCostUsage &&
+    !contextBand &&
+    !invalidUsage &&
+    rates &&
+    typeof inputTokens === 'number' &&
+    typeof cachedInputTokens === 'number' &&
+    typeof cacheWriteInputTokens === 'number' &&
+    typeof value.output_tokens === 'number'
+      ? (inputTokens - cachedInputTokens - cacheWriteInputTokens) * rates.input +
+        cachedInputTokens * rates.cachedInput +
+        cacheWriteInputTokens * rates.cacheWriteInput +
+        value.output_tokens * rates.output
+      : null;
+  const costOverflow = calculatedCost !== null && !Number.isSafeInteger(calculatedCost);
+  const expectedCostStatus = !hasCoreCostUsage
+    ? 'unavailable_missing_usage'
+    : contextBand
+      ? 'unavailable_context_band'
+      : invalidUsage || costOverflow
+        ? 'unavailable_invalid_usage'
+        : 'estimated';
+  const tools = value.tools;
+  const outcome = value.outcome;
+  const explanationCode = value.explanation_code;
+  return (
+    typeof value.run_id === 'string' &&
+    RUN_ID.test(value.run_id) &&
+    typeof value.id === 'string' &&
+    RESULT_UUID.test(value.id) &&
+    taskIdMatchesDomain(value.task_id, value.domain) &&
+    isBoundedText(value.task) &&
+    typeof value.domain === 'string' &&
+    BENCHMARK_DOMAINS.has(value.domain) &&
+    isCalibrationOutcome(outcome) &&
+    isExecutionStatus(value.execution_status) &&
+    value.execution_status === executionStatusForOutcome(outcome) &&
+    hasValidCalibrationTaskScore(outcome, value.score) &&
+    hasValidCalibrationExplanation(
+      outcome,
+      explanationCode,
+      explanationCode,
+      value.explanation_summary,
+    ) &&
+    (explanationCode === null ? value.retryable === null : typeof value.retryable === 'boolean') &&
+    Array.isArray(tools) &&
+    tools.every(isSafeCalibrationCode) &&
+    new Set(tools).size === tools.length &&
+    tools.every((tool, index) => index === 0 || String(tools[index - 1]).localeCompare(tool) < 0) &&
+    ((value.latency_ms === null && value.latency_evidence_level === null) ||
+      (isCount(value.latency_ms) && value.latency_evidence_level === 'runner_observed')) &&
+    tokenValues.every((item) => item === null || isCount(item)) &&
+    nullableNumberIsAtMost(value.cached_input_tokens, value.input_tokens) &&
+    nullableNumberIsAtMost(value.reasoning_output_tokens, value.output_tokens) &&
+    (!hasCoreCostUsage ||
+      invalidUsage ||
+      (typeof cachedInputTokens === 'number' &&
+        typeof cacheWriteInputTokens === 'number' &&
+        typeof inputTokens === 'number' &&
+        cachedInputTokens + cacheWriteInputTokens <= inputTokens)) &&
+    (hasTokenUsage
+      ? value.token_usage_source_level === 'provider_reported' &&
+        value.token_usage_evidence_level === 'verifier_recomputed'
+      : value.token_usage_source_level === null && value.token_usage_evidence_level === null) &&
+    typeof value.pricing_digest === 'string' &&
+    pricingRates !== undefined &&
+    value.cost_estimator_status === expectedCostStatus &&
+    ((expectedCostStatus === 'estimated' &&
+      isCount(value.standard_api_equivalent_usd_nanos) &&
+      value.standard_api_equivalent_usd_nanos === calculatedCost &&
+      value.cost_evidence_level === 'verifier_recomputed') ||
+      (expectedCostStatus !== 'estimated' &&
+        value.standard_api_equivalent_usd_nanos === null &&
+        value.cost_evidence_level === null))
+  );
 }
 
 export interface CalibrationRunRow {
@@ -293,7 +659,7 @@ export interface CalibrationResultRow {
   model_family: 'sol' | 'terra' | 'luna';
   reasoning_effort: ReasoningTier;
   outcome: CalibrationOutcome;
-  status: RunStatus;
+  execution_status: ExecutionStatus;
   failure_code: string | null;
   explanation_code: string | null;
   explanation_summary: string | null;
@@ -320,12 +686,12 @@ export interface CalibrationResultRow {
   pricing_processing_tier: 'standard';
 }
 
-export function calibrationStatusForOutcome(outcome: CalibrationOutcome): RunStatus {
-  if (outcome === 'correct' || outcome === 'partial') return 'passed';
+export function executionStatusForOutcome(outcome: CalibrationOutcome): ExecutionStatus {
+  if (outcome === 'correct' || outcome === 'partial' || outcome === 'incorrect') return 'completed';
   if (outcome === 'invalid' || outcome === 'missing' || outcome === 'not_applicable') {
     return outcome;
   }
-  return 'failed';
+  return 'runtime_issue';
 }
 
 export const CALIBRATION_EXPLANATION_SUMMARIES = {
@@ -447,10 +813,10 @@ function isCalibrationOutcome(value: unknown): value is CalibrationOutcome {
   return CALIBRATION_OUTCOMES.some((outcome) => outcome === value);
 }
 
-function isRunStatus(value: unknown): value is RunStatus {
+function isExecutionStatus(value: unknown): value is ExecutionStatus {
   return (
-    value === 'passed' ||
-    value === 'failed' ||
+    value === 'completed' ||
+    value === 'runtime_issue' ||
     value === 'invalid' ||
     value === 'missing' ||
     value === 'not_applicable'
@@ -582,10 +948,11 @@ export function mapRunRow(row: RunRow, resultRows: readonly RunResultRow[]): Ben
       .filter((result) => result.run_id === row.id)
       .map(
         (result): TaskResult => ({
-          id: result.id,
+          id: result.task_id,
           task: result.task,
           domain: result.domain,
-          status: result.status,
+          outcome: result.outcome,
+          executionStatus: result.execution_status,
           score: result.score,
           explanation: result.explanation_summary
             ? {
@@ -623,11 +990,14 @@ export function mapRunSummaryRow(row: RunRow): BenchmarkRunSummary {
       coveragePercent: row.coverage_percent,
       coveredDomainCount: row.covered_domain_count,
       provisionalDomainCount: row.provisional_domain_count,
-      passed: row.passed_count,
-      failed: row.failed_count,
-      invalid: row.invalid_count,
-      missing: row.missing_count,
-      notApplicable: row.not_applicable_count,
+      correctCount: row.correct_count,
+      partialCount: row.partial_count,
+      incorrectCount: row.incorrect_count,
+      runtimeIssueCount: row.runtime_issue_count,
+      invalidCount: row.invalid_count,
+      missingCount: row.missing_count,
+      notApplicableCount: row.not_applicable_count,
+      completedCount: row.completed_count,
     },
   };
 }
@@ -673,8 +1043,8 @@ function isCalibrationResultRow(value: unknown): value is CalibrationResultRow {
     typeof value.reasoning_effort === 'string' &&
     ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].includes(value.reasoning_effort) &&
     isCalibrationOutcome(value.outcome) &&
-    isRunStatus(value.status) &&
-    value.status === calibrationStatusForOutcome(value.outcome) &&
+    isExecutionStatus(value.execution_status) &&
+    value.execution_status === executionStatusForOutcome(value.outcome) &&
     hasValidCalibrationExplanation(
       value.outcome,
       value.failure_code,
@@ -1116,7 +1486,7 @@ function mapCalibrationRun(
         modelFamily: result.model_family,
         reasoningEffort: result.reasoning_effort,
         outcome: result.outcome,
-        status: result.status,
+        executionStatus: result.execution_status,
         failureCode: result.failure_code,
         explanationCode: result.explanation_code,
         explanationSummary: result.explanation_summary,
@@ -1263,7 +1633,7 @@ function mapModelEfficiencyRow(row: ModelEfficiencyRow): PublicModelEfficiency {
 const seedCalibrationRun: PublicCalibrationRun = {
   id: `run_${'c'.repeat(64)}`,
   classification: 'local_calibration_non_official',
-  scoringVersion: '1.0.2',
+  scoringVersion: AIQ_CORE_SCORING_VERSION,
   selectedTaskCount: 1,
   selectedModelCount: 1,
   resultCount: 1,
@@ -1283,12 +1653,12 @@ const seedCalibrationRun: PublicCalibrationRun = {
       id: `result_${'d'.repeat(64)}`,
       runId: `run_${'c'.repeat(64)}`,
       taskId: 'synthetic-calibration-task',
-      taskVersion: '1.0.2',
+      taskVersion: AIQ_CORE_TASK_SET_VERSION,
       domain: 'coding',
       modelFamily: 'sol',
       reasoningEffort: 'low',
       outcome: 'correct',
-      status: 'passed',
+      executionStatus: 'completed',
       failureCode: null,
       explanationCode: null,
       explanationSummary: null,
@@ -1412,7 +1782,7 @@ interface ScoringVersionRow {
   principles: string[];
   missing_policy: string;
   failure_policy: string;
-  confidence_policy: string;
+  sensitivity_policy: string;
   synthetic: boolean;
 }
 
@@ -1690,6 +2060,16 @@ export class SeedAiqRepository implements AiqRepository {
     return buildSeedRunHistoryPage(seedRuns, request);
   }
 
+  async listRunSummaries(runIds: readonly string[]): Promise<readonly BenchmarkRunSummary[]> {
+    const selected = new Set(runIds);
+    return seedRuns.filter((run) => selected.has(run.id)).map(runSummaryFromRun);
+  }
+
+  async getNewestCompletedRun(): Promise<BenchmarkRunSummary | null> {
+    const run = latestCompletedRun(seedRuns);
+    return run ? runSummaryFromRun(run) : null;
+  }
+
   async getRun(id: string): Promise<BenchmarkRun | null> {
     return seedRuns.find((run) => run.id === id) ?? null;
   }
@@ -1787,9 +2167,12 @@ function orderCanonicalModelMatrix(matrix: readonly unknown[]): readonly ModelMa
 function isLeaderboardRow(value: unknown): value is LeaderboardRow {
   if (!isUnknownRecord(value)) return false;
   const baseShape =
-    isBoundedIdentifier(value.matrix_id) &&
-    isBoundedIdentifier(value.run_id) &&
-    isBoundedIdentifier(value.scoring_version) &&
+    typeof value.matrix_id === 'string' &&
+    CANONICAL_MODEL_MATRIX_BY_ID.has(value.matrix_id) &&
+    typeof value.run_id === 'string' &&
+    RUN_ID.test(value.run_id) &&
+    typeof value.scoring_version === 'string' &&
+    SEMANTIC_VERSION.test(value.scoring_version) &&
     value.synthetic === false;
   if (!baseShape) return false;
   if (value.score_status === 'official') {
@@ -1797,28 +2180,27 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
       isFiniteNumber(value.score) &&
       value.score >= 0 &&
       value.score <= 100 &&
-      isFiniteNumber(value.ci_low) &&
-      isFiniteNumber(value.ci_high) &&
-      value.ci_low >= 0 &&
-      value.ci_low <= value.score &&
-      value.score <= value.ci_high &&
-      value.ci_high <= 100 &&
-      isPositiveCount(value.sample_size) &&
-      isFiniteNumber(value.coverage_percent) &&
-      value.coverage_percent >= 0 &&
-      value.coverage_percent <= 100 &&
-      isCount(value.failures) &&
-      isCount(value.missing)
+      isFiniteNumber(value.sensitivity_low) &&
+      isFiniteNumber(value.sensitivity_high) &&
+      value.sensitivity_low >= 0 &&
+      value.sensitivity_low <= value.score &&
+      value.score <= value.sensitivity_high &&
+      value.sensitivity_high <= 100 &&
+      value.sample_size === 72 &&
+      value.coverage_percent === 100 &&
+      isCount(value.runtime_issues) &&
+      value.runtime_issues <= 72 &&
+      value.missing === 0
     );
   }
   return (
     (value.score_status === 'not_applicable' || value.score_status === 'missing') &&
     value.score === null &&
-    value.ci_low === null &&
-    value.ci_high === null &&
+    value.sensitivity_low === null &&
+    value.sensitivity_high === null &&
     value.sample_size === null &&
     value.coverage_percent === null &&
-    value.failures === null &&
+    value.runtime_issues === null &&
     value.missing === null
   );
 }
@@ -1849,11 +2231,11 @@ export function joinModelMatrixWithLeaderboard(
       modelName: identity.model_name,
       reasoningTier: identity.reasoning_tier,
       score: officialRow?.score ?? null,
-      ciLow: officialRow?.ci_low ?? null,
-      ciHigh: officialRow?.ci_high ?? null,
+      sensitivityLow: officialRow?.sensitivity_low ?? null,
+      sensitivityHigh: officialRow?.sensitivity_high ?? null,
       sampleSize: officialRow?.sample_size ?? null,
       coveragePercent: officialRow?.coverage_percent ?? null,
-      failures: officialRow?.failures ?? null,
+      runtimeIssues: officialRow?.runtime_issues ?? null,
       missing: officialRow?.missing ?? null,
       scoringVersion: officialRow?.scoring_version ?? null,
       scoreStatus,
@@ -1871,7 +2253,7 @@ const MAX_PUBLIC_READ_PAGES = 100;
 const RUN_ID_BATCH_SIZE = 50;
 
 function isObservedTask(task: TaskResult): boolean {
-  return task.status === 'passed' || task.status === 'failed';
+  return task.executionStatus === 'completed' || task.executionStatus === 'runtime_issue';
 }
 
 function runSummaryFromRun(run: BenchmarkRun): BenchmarkRunSummary {
@@ -1890,11 +2272,14 @@ function runSummaryFromRun(run: BenchmarkRun): BenchmarkRunSummary {
       coveredDomainCount: [...observedCountsByDomain.values()].filter((count) => count >= 1).length,
       provisionalDomainCount: [...observedCountsByDomain.values()].filter((count) => count >= 4)
         .length,
-      passed: tasks.filter((task) => task.status === 'passed').length,
-      failed: tasks.filter((task) => task.status === 'failed').length,
-      invalid: tasks.filter((task) => task.status === 'invalid').length,
-      missing: tasks.filter((task) => task.status === 'missing').length,
-      notApplicable: tasks.filter((task) => task.status === 'not_applicable').length,
+      correctCount: tasks.filter((task) => task.outcome === 'correct').length,
+      partialCount: tasks.filter((task) => task.outcome === 'partial').length,
+      incorrectCount: tasks.filter((task) => task.outcome === 'incorrect').length,
+      runtimeIssueCount: tasks.filter((task) => task.executionStatus === 'runtime_issue').length,
+      invalidCount: tasks.filter((task) => task.executionStatus === 'invalid').length,
+      missingCount: tasks.filter((task) => task.executionStatus === 'missing').length,
+      notApplicableCount: tasks.filter((task) => task.executionStatus === 'not_applicable').length,
+      completedCount: tasks.filter((task) => task.executionStatus === 'completed').length,
     },
   };
 }
@@ -2094,7 +2479,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       this.#client
         .from(PUBLIC_VIEW_NAMES.leaderboard)
         .select(
-          'matrix_id,run_id,score,ci_low,ci_high,sample_size,coverage_percent,failures,missing,scoring_version,score_status,synthetic',
+          'matrix_id,run_id,score,sensitivity_low,sensitivity_high,sample_size,coverage_percent,runtime_issues,missing,scoring_version,score_status,synthetic',
         )
         .overrideTypes<LeaderboardRow[], { merge: false }>(),
     ]);
@@ -2156,12 +2541,13 @@ export class SupabaseAiqRepository implements AiqRepository {
       .map((row) => ({
         entryId: row.matrix_id,
         runId: row.run_id,
+        scoringVersion: row.scoring_version,
         recordedAt: row.recorded_at,
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
         score: row.score,
-        ciLow: row.ci_low,
-        ciHigh: row.ci_high,
+        sensitivityLow: row.sensitivity_low,
+        sensitivityHigh: row.sensitivity_high,
         sampleSize: row.sample_size,
         representedRunCount: row.represented_run_count,
         resolutionSeconds: row.resolution_seconds,
@@ -2170,26 +2556,39 @@ export class SupabaseAiqRepository implements AiqRepository {
   }
 
   async #runRows(id?: string): Promise<readonly RunRow[]> {
-    return collectPaginatedRows(PUBLIC_VIEW_NAMES.runs, async (firstRow, lastRow) => {
+    const rows = await collectPaginatedRows(PUBLIC_VIEW_NAMES.runs, async (firstRow, lastRow) => {
       let query = this.#client
         .from(PUBLIC_VIEW_NAMES.runs)
-        .select(
-          'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,passed_count,failed_count,invalid_count,missing_count,not_applicable_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
-        )
+        .select(RUN_SUMMARY_SELECT)
         .order('started_at', { ascending: false })
         .order('id', { ascending: true });
       if (id) {
         query = query.eq('id', id);
       }
-      return query.range(firstRow, lastRow).overrideTypes<RunRow[], { merge: false }>();
+      return query.range(firstRow, lastRow).overrideTypes<unknown[], { merge: false }>();
     });
+    if (!rows.every(isRunSummaryRow) || (id !== undefined && rows.some((row) => row.id !== id))) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: invalid response shape`);
+    }
+    const identities = new Set<string>();
+    for (const row of rows) {
+      if (identities.has(row.id)) {
+        throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: duplicate run identity`);
+      }
+      identities.add(row.id);
+    }
+    return rows;
   }
 
-  async #resultRows(runIds: readonly string[]): Promise<readonly RunResultRow[]> {
+  async #resultRows(runs: readonly RunRow[]): Promise<readonly RunResultRow[]> {
+    const runIds = runs.map((run) => run.id);
     if (runIds.length === 0) {
       return [];
     }
     const rows: RunResultRow[] = [];
+    const requestedRunIds = new Set(runIds);
+    const matrixIdByRun = new Map(runs.map((run) => [run.id, run.matrix_id]));
+    const resultIdentities = new Set<string>();
     for (let offset = 0; offset < runIds.length; offset += RUN_ID_BATCH_SIZE) {
       const batch = runIds.slice(offset, offset + RUN_ID_BATCH_SIZE);
       // oxlint-disable-next-line no-await-in-loop -- bounded batches avoid oversized filter URLs.
@@ -2199,14 +2598,27 @@ export class SupabaseAiqRepository implements AiqRepository {
           this.#client
             .from(PUBLIC_VIEW_NAMES.runResults)
             .select(
-              'run_id,id,task,domain,status,score,explanation_code,explanation_summary,retryable,tools,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level',
+              'run_id,id,task_id,task,domain,outcome,execution_status,score,explanation_code,explanation_summary,retryable,tools,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,pricing_digest',
             )
             .in('run_id', batch)
             .order('run_id', { ascending: true })
             .order('id', { ascending: true })
             .range(firstRow, lastRow)
-            .overrideTypes<RunResultRow[], { merge: false }>(),
+            .overrideTypes<unknown[], { merge: false }>(),
       );
+      if (
+        !batchRows.every((row) => isRunResultRow(row, matrixIdByRun)) ||
+        batchRows.some((row) => !requestedRunIds.has(row.run_id))
+      ) {
+        throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runResults}: invalid response shape`);
+      }
+      for (const row of batchRows) {
+        const identity = `${row.run_id}\0${row.id}`;
+        if (resultIdentities.has(identity)) {
+          throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runResults}: duplicate result identity`);
+        }
+        resultIdentities.add(identity);
+      }
       rows.push(...batchRows);
     }
     return rows;
@@ -2216,11 +2628,72 @@ export class SupabaseAiqRepository implements AiqRepository {
     rows: readonly RunRow[],
     resultRows: readonly RunResultRow[],
   ): readonly BenchmarkRun[] {
+    const runIds = new Set(rows.map((row) => row.id));
+    if (resultRows.some((row) => !runIds.has(row.run_id))) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runResults}: invalid run identity`);
+    }
+    for (const row of rows) {
+      const results = resultRows.filter((result) => result.run_id === row.id);
+      const taskIds = new Set(results.map((result) => result.task_id));
+      const domainCounts = new Map<string, number>();
+      for (const result of results) {
+        domainCounts.set(result.domain, (domainCounts.get(result.domain) ?? 0) + 1);
+      }
+      const outcomeCount = (outcome: CalibrationOutcome): number =>
+        results.filter((result) => result.outcome === outcome).length;
+      const completedCount = results.filter(
+        (result) => result.execution_status === 'completed',
+      ).length;
+      const runtimeIssueCount = results.filter(
+        (result) => result.execution_status === 'runtime_issue',
+      ).length;
+      const observedByDomain = new Map<string, number>();
+      for (const result of results) {
+        if (
+          result.execution_status === 'completed' ||
+          result.execution_status === 'runtime_issue'
+        ) {
+          observedByDomain.set(result.domain, (observedByDomain.get(result.domain) ?? 0) + 1);
+        }
+      }
+      const coveredDomainCount = [...observedByDomain.values()].filter(
+        (count) => count >= 1,
+      ).length;
+      const provisionalDomainCount = [...observedByDomain.values()].filter(
+        (count) => count >= 4,
+      ).length;
+      if (
+        results.length !== row.result_count ||
+        taskIds.size !== results.length ||
+        (results.length === 72 &&
+          [...BENCHMARK_DOMAIN_TASK_COUNTS].some(
+            ([domain, expectedCount]) => domainCounts.get(domain) !== expectedCount,
+          )) ||
+        outcomeCount('correct') !== row.correct_count ||
+        outcomeCount('partial') !== row.partial_count ||
+        outcomeCount('incorrect') !== row.incorrect_count ||
+        runtimeIssueCount !== row.runtime_issue_count ||
+        outcomeCount('invalid') !== row.invalid_count ||
+        outcomeCount('missing') !== row.missing_count ||
+        outcomeCount('not_applicable') !== row.not_applicable_count ||
+        completedCount !== row.completed_count ||
+        completedCount + runtimeIssueCount !== row.observed_count ||
+        coveredDomainCount !== row.covered_domain_count ||
+        provisionalDomainCount !== row.provisional_domain_count
+      ) {
+        throw new Error(
+          `Cannot read ${PUBLIC_VIEW_NAMES.runResults}: result summary does not match run`,
+        );
+      }
+    }
     return rows.map((row) => mapRunRow(row, resultRows));
   }
 
   async listRunPage(request: RunHistoryPageRequest = {}): Promise<RunHistoryPage> {
     const direction = request.direction ?? 'older';
+    if (direction !== 'older' && direction !== 'newer') {
+      throw new Error('Invalid run-history direction.');
+    }
     const cursor = request.cursor ? decodeRunHistoryCursor(request.cursor) : undefined;
     if (cursor) {
       const boundary = await this.#client
@@ -2229,17 +2702,24 @@ export class SupabaseAiqRepository implements AiqRepository {
         .eq('id', cursor.id)
         .eq('started_at', cursor.startedAt)
         .limit(1)
-        .overrideTypes<Array<Pick<RunRow, 'id' | 'started_at'>>, { merge: false }>();
+        .overrideTypes<unknown[], { merge: false }>();
       if (boundary.error) {
         throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: ${boundary.error.message}`);
       }
-      if (boundary.data.length !== 1) throw new Error('Invalid run-history cursor.');
+      if (
+        boundary.data.length !== 1 ||
+        !boundary.data.every(
+          (row) =>
+            isUnknownRecord(row) &&
+            hasExactKeys(row, new Set(['id', 'started_at'])) &&
+            row.id === cursor.id &&
+            row.started_at === cursor.startedAt,
+        )
+      ) {
+        throw new Error('Invalid run-history cursor.');
+      }
     }
-    let query = this.#client
-      .from(PUBLIC_VIEW_NAMES.runs)
-      .select(
-        'id,matrix_id,started_at,completed_at,benchmark_version,scoring_version,prompt_set_digest,runner_commit,region,synthetic,corpus_release_id,corpus_commitment_sha256,catalog_digest,task_set_digest,preflight_digest,runtime_digest,run_class,permission_evidence_digest,result_count,passed_count,failed_count,invalid_count,missing_count,not_applicable_count,observed_count,coverage_percent,covered_domain_count,provisional_domain_count',
-      );
+    let query = this.#client.from(PUBLIC_VIEW_NAMES.runs).select(RUN_SUMMARY_SELECT);
     if (cursor) {
       const timestampOperator = direction === 'older' ? 'lt' : 'gt';
       const idOperator = direction === 'older' ? 'gt' : 'lt';
@@ -2252,8 +2732,21 @@ export class SupabaseAiqRepository implements AiqRepository {
       .order('started_at', { ascending })
       .order('id', { ascending: !ascending })
       .limit(RUN_HISTORY_PAGE_SIZE + 1)
-      .overrideTypes<RunRow[], { merge: false }>();
+      .overrideTypes<unknown[], { merge: false }>();
     if (error) throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: ${error.message}`);
+    if (!data.every(isRunSummaryRow)) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: invalid response shape`);
+    }
+    const runIdentities = new Set<string>();
+    for (const row of data) {
+      if (runIdentities.has(row.id)) {
+        throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: duplicate run identity`);
+      }
+      runIdentities.add(row.id);
+    }
+    if (!runRowsFollowQueryOrder(data, ascending)) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: invalid response order`);
+    }
     const hasMore = data.length > RUN_HISTORY_PAGE_SIZE;
     const pageRows = data.slice(0, RUN_HISTORY_PAGE_SIZE);
     if (ascending) pageRows.reverse();
@@ -2272,9 +2765,71 @@ export class SupabaseAiqRepository implements AiqRepository {
     };
   }
 
+  async listRunSummaries(runIds: readonly string[]): Promise<readonly BenchmarkRunSummary[]> {
+    const selectedRunIds = [...new Set(runIds)];
+    if (
+      selectedRunIds.length > TREND_MAX_POINTS ||
+      selectedRunIds.some((runId) => !isBoundedIdentifier(runId))
+    ) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: invalid run selection`);
+    }
+    if (selectedRunIds.length === 0) return [];
+    const rows: unknown[] = [];
+    for (let offset = 0; offset < selectedRunIds.length; offset += RUN_ID_BATCH_SIZE) {
+      const batch = selectedRunIds.slice(offset, offset + RUN_ID_BATCH_SIZE);
+      // oxlint-disable-next-line no-await-in-loop -- bounded batches avoid oversized filter URLs.
+      const result = await this.#client
+        .from(PUBLIC_VIEW_NAMES.runs)
+        .select(RUN_SUMMARY_SELECT)
+        .in('id', batch)
+        .order('id', { ascending: true })
+        .limit(batch.length + 1)
+        .overrideTypes<unknown[], { merge: false }>();
+      if (result.error) {
+        throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: ${result.error.message}`);
+      }
+      rows.push(...result.data);
+    }
+    const selected = new Set(selectedRunIds);
+    if (
+      !rows.every(isRunSummaryRow) ||
+      rows.length > selectedRunIds.length ||
+      rows.some((row) => !selected.has(row.id))
+    ) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: invalid response shape`);
+    }
+    const identities = new Set<string>();
+    for (const row of rows) {
+      if (identities.has(row.id)) {
+        throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: duplicate run identity`);
+      }
+      identities.add(row.id);
+    }
+    return rows.map(mapRunSummaryRow);
+  }
+
+  async getNewestCompletedRun(): Promise<BenchmarkRunSummary | null> {
+    const { data, error } = await this.#client
+      .from(PUBLIC_VIEW_NAMES.runs)
+      .select(RUN_SUMMARY_SELECT)
+      .order('completed_at', { ascending: false })
+      .order('id', { ascending: true })
+      .limit(1)
+      .overrideTypes<unknown[], { merge: false }>();
+    if (error) throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: ${error.message}`);
+    if (data.length > 1 || !data.every(isRunSummaryRow)) {
+      throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.runs}: invalid response shape`);
+    }
+    const row = data[0];
+    return row ? mapRunSummaryRow(row) : null;
+  }
+
   async getRun(id: string): Promise<BenchmarkRun | null> {
+    if (!RUN_ID.test(id)) {
+      return null;
+    }
     const runs = await this.#runRows(id);
-    const results = await this.#resultRows(runs.map((run) => run.id));
+    const results = await this.#resultRows(runs);
     return this.#assembleRuns(runs, results)[0] ?? null;
   }
 
@@ -2410,7 +2965,7 @@ export class SupabaseAiqRepository implements AiqRepository {
     const result = await this.#client
       .from(PUBLIC_VIEW_NAMES.calibrationResults)
       .select(
-        'result_id,run_id,task_id,task_version,domain,model_family,reasoning_effort,outcome,status,failure_code,explanation_code,explanation_summary,task_score,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,output_tokens,cache_write_input_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,cost_estimator_limitations,cost_method,cost_version,cost_as_of,cost_source,pricing_currency,pricing_processing_tier',
+        'result_id,run_id,task_id,task_version,domain,model_family,reasoning_effort,outcome,execution_status,failure_code,explanation_code,explanation_summary,task_score,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,output_tokens,cache_write_input_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,cost_estimator_limitations,cost_method,cost_version,cost_as_of,cost_source,pricing_currency,pricing_processing_tier',
       )
       .eq('run_id', id)
       .eq('model_family', selection.modelFamily)
@@ -2574,13 +3129,10 @@ export class SupabaseAiqRepository implements AiqRepository {
     }
     const identities = new Set<string>();
     for (const row of data) {
-      const identity = `${row.run_id}\0${row.model_family}\0${row.reasoning_effort}`;
-      if (identities.has(identity)) {
-        throw new Error(
-          `Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: duplicate efficiency identity`,
-        );
+      if (identities.has(row.run_id)) {
+        throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.modelEfficiency}: duplicate run identity`);
       }
-      identities.add(identity);
+      identities.add(row.run_id);
     }
     return data.map(mapModelEfficiencyRow);
   }
@@ -2590,7 +3142,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       this.#client
         .from(PUBLIC_VIEW_NAMES.scoringVersions)
         .select(
-          'benchmark_version,scoring_version,published_at,principles,missing_policy,failure_policy,confidence_policy,synthetic',
+          'benchmark_version,scoring_version,published_at,principles,missing_policy,failure_policy,sensitivity_policy,synthetic',
         )
         .order('published_at', { ascending: false })
         .limit(1)
@@ -2619,7 +3171,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       principles: version.principles,
       missingPolicy: version.missing_policy,
       failurePolicy: version.failure_policy,
-      confidencePolicy: version.confidence_policy,
+      sensitivityPolicy: version.sensitivity_policy,
       synthetic: version.synthetic,
       domainWeights: coverageResult.data
         .filter((coverage) => coverage.scoring_version === version.scoring_version)
@@ -2665,6 +3217,12 @@ class InvalidLiveAiqRepository implements AiqRepository {
     throw this.#error;
   }
   async listRunPage(): Promise<RunHistoryPage> {
+    throw this.#error;
+  }
+  async listRunSummaries(_runIds: readonly string[]): Promise<readonly BenchmarkRunSummary[]> {
+    throw this.#error;
+  }
+  async getNewestCompletedRun(): Promise<BenchmarkRunSummary | null> {
     throw this.#error;
   }
   async getRun(): Promise<BenchmarkRun | null> {

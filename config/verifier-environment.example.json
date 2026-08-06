@@ -1,15 +1,15 @@
 {
   "schema_version": "aiq.verifier-environment.v2",
   "task_set_id": "aiq-core",
-  "task_set_version": "1.0.2",
-  "benchmark_version": "aiq-core@1.0.2",
+  "task_set_version": "1.0.5",
+  "benchmark_version": "aiq-core@1.0.5",
   "prompt_set_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
   "expected_provenance": {
     "schema_version": "aiq.run-provenance.v2",
     "run_class": "official",
     "corpus_release_id": "REPLACE_WITH_CURRENT_CORPUS_RELEASE_ID",
     "corpus_commitment_sha256": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
-    "catalog_digest": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937",
+    "catalog_digest": "sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7",
     "task_set_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
     "evaluator_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",
     "runtime_digest": "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS",

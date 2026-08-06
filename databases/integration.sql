@@ -23,6 +23,63 @@ begin
 end;
 $$;
 
+-- Published history retains the scoring definition that produced each source
+-- package. A registered historical version must remain valid without weakening
+-- the current scoring-version foreign key.
+savepoint historical_source_scoring_version;
+insert into aiq_private.aiq_scoring_versions (
+  scoring_version, schema_version, benchmark_version, name,
+  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
+  confidence_policy, formula, interval_method, failure_policy,
+  synthetic, is_published, published_at
+)
+select
+  '1.0.2', schema_version, 'aiq-core@1.0.2', name || ' historical fixture',
+  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
+  confidence_policy, formula, interval_method, failure_policy,
+  true, false, null
+from aiq_private.aiq_scoring_versions
+where scoring_version = '1.0.5';
+
+insert into aiq_private.aiq_matrix_batches (
+  matrix_batch_id, package_sha256, content_hash, normalization_digest,
+  source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
+  child_count, result_count, task_set_hash, capability_validation_digest,
+  source_scoring_version, execution_concurrency
+)
+select
+  'run_' || repeat('1', 64), repeat('1', 64),
+  'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64),
+  source_node_id, task_set_id, task_set_version, scoring_version, true,
+  17, 1224, task_set_hash, null, '1.0.2', 1
+from aiq_private.aiq_matrix_batches
+order by matrix_batch_id
+limit 1;
+
+select pg_temp.aiq_assert(
+  exists (
+    select 1
+    from aiq_private.aiq_matrix_batches
+    where matrix_batch_id = 'run_' || repeat('1', 64)
+      and source_scoring_version = '1.0.2'
+  ),
+  'a registered historical source scoring version must remain admissible'
+);
+
+do $$
+begin
+  begin
+    delete from aiq_private.aiq_scoring_versions
+    where scoring_version = '1.0.2';
+    raise exception 'historical source scoring version deletion unexpectedly succeeded';
+  exception
+    when foreign_key_violation then null;
+  end;
+end;
+$$;
+rollback to savepoint historical_source_scoring_version;
+release savepoint historical_source_scoring_version;
+
 select pg_temp.aiq_assert(
   (
     select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
@@ -261,19 +318,19 @@ begin
     select 'sha256:' || catalog_task.fixture_commitment as task_hash
     from aiq_private.aiq_task_catalog catalog_task
     where catalog_task.task_set_id = 'aiq-core'
-      and catalog_task.task_set_version = '1.0.2'
+      and catalog_task.task_set_version = '1.0.5'
   ) hashes;
   run_id := 'run_' || substr(aiq_private.jcs_sha256(jsonb_build_object(
     'schema_version', 'aiq.run-identity.v1',
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.2'
+    'scoring_version', '1.0.5'
   )), 8);
 
   for task in
     select * from aiq_private.aiq_task_catalog
-    where task_set_id = 'aiq-core' and task_set_version = '1.0.2'
+    where task_set_id = 'aiq-core' and task_set_version = '1.0.5'
     order by task_id
   loop
     for model in select value from jsonb_array_elements(models) loop
@@ -323,7 +380,7 @@ begin
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.2',
+    'scoring_version', '1.0.5',
     'models', models,
     'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
@@ -438,7 +495,7 @@ begin
   from (
     select distinct task.domain
     from aiq_private.aiq_task_catalog task
-    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.2'
+    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.5'
   ) catalog;
 
   for model in
@@ -490,7 +547,7 @@ begin
     from jsonb_array_elements(payload -> 'results') source(value)
     join aiq_private.aiq_task_catalog task
       on task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.2'
+      and task.task_set_version = '1.0.5'
       and task.task_id = source.value ->> 'task_id'
       and task.task_version = source.value ->> 'task_version'
     where source.value -> 'model' = model_identity;
@@ -504,7 +561,7 @@ begin
       'results', normalized_results,
       'score', jsonb_build_object(
         'schema_version', 'aiq.score-report.v1',
-        'scoring_version', '1.0.2',
+        'scoring_version', '1.0.5',
         'model', model_identity,
         'tier', 'synthetic_complete',
         'rule', 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
@@ -554,14 +611,14 @@ begin
     'content_hash', envelope ->> 'content_hash',
     'signer', envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.2',
+    'task_set_version', '1.0.5',
     'task_set_hash', payload ->> 'task_set_hash',
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.2',
+    'benchmark_version', 'aiq-core@1.0.5',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.2',
+    'scoring_version', '1.0.5',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', payload -> 'started_unix_ms',
@@ -608,7 +665,7 @@ cross join lateral public.aiq_enqueue_submission(
     'source', 'integration'
   ),
   jsonb_build_object(
-    'bucket', 'integration-private-submissions',
+    'bucket', 'aiq-submission-packages',
     'bytes', input.body_bytes,
     'content_sha256', input.package_sha256,
     'key', 'sha256/' || input.package_sha256
@@ -633,7 +690,7 @@ cross join lateral public.aiq_enqueue_submission(
     'source', 'integration'
   ),
   jsonb_build_object(
-    'bucket', 'integration-private-submissions',
+    'bucket', 'aiq-submission-packages',
     'bytes', input.body_bytes,
     'content_sha256', input.package_sha256,
     'key', 'sha256/' || input.package_sha256
@@ -664,7 +721,7 @@ cross join lateral public.aiq_enqueue_submission(
     'source', 'integration'
   ),
   jsonb_build_object(
-    'bucket', 'integration-private-submissions',
+    'bucket', 'aiq-submission-packages',
     'bytes', octet_length(changed.envelope::text),
     'content_sha256', changed.package_sha256,
     'key', 'sha256/' || changed.package_sha256
@@ -1158,6 +1215,7 @@ select pg_temp.aiq_assert(
         > pg_catalog.date_trunc('milliseconds', recorded_at)
       and bucket_ended_at = recorded_at + interval '1 millisecond'
       and resolution_seconds = 1
+      and scoring_version = '1.0.5'
     )
     from aiq_single_batch_trend
   ),
@@ -1174,7 +1232,7 @@ create temp table aiq_storage_fixture on commit drop as
 select public.aiq_register_storage_object(
   'runner_artifact',
   'stdout.jsonl',
-  'integration-private-artifacts',
+  'aiq-runner-artifacts',
   'sha256/' || repeat('d', 64) || '/stdout.jsonl',
   repeat('d', 64),
   128,
@@ -1185,7 +1243,7 @@ select pg_temp.aiq_assert(
   (select public.aiq_register_storage_object(
     'runner_artifact',
     'stdout.jsonl',
-    'integration-private-artifacts',
+    'aiq-runner-artifacts',
     'sha256/' || repeat('d', 64) || '/stdout.jsonl',
     repeat('d', 64),
     128,
@@ -1308,14 +1366,152 @@ select pg_temp.aiq_assert(
   'public calibration views must not expose private evidence fields'
 );
 select pg_temp.aiq_assert(
-  (select count(*) = 4
+  (select count(*) = 5
    from information_schema.columns
    where table_schema = 'public'
      and table_name = 'public_calibration_results'
      and column_name in (
-       'status','failure_code','explanation_code','explanation_summary'
+       'outcome','execution_status','failure_code','explanation_code','explanation_summary'
      )),
   'public calibration results must expose bounded failure classification'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name in ('public_run_results','public_calibration_results')
+      and column_name = 'status'
+  )
+  and not exists (
+    select 1 from public.public_calibration_results
+    where execution_status is distinct from case
+      when outcome in ('correct','partial','incorrect') then 'completed'
+      when outcome in (
+        'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'
+      ) then 'runtime_issue'
+      when outcome='invalid' then 'invalid'
+      when outcome='missing' then 'missing'
+      when outcome='not_applicable' then 'not_applicable'
+    end
+  ),
+  'public calibration results must separate exact outcomes from execution status'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 2
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_run_results'
+     and column_name in ('outcome','execution_status'))
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_run_results'
+      and column_name = 'status'
+  )
+  and not exists (
+    select 1 from public.public_run_results
+    where execution_status is distinct from case
+      when outcome in ('correct','partial','incorrect') then 'completed'
+      when outcome in (
+        'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'
+      ) then 'runtime_issue'
+      when outcome='invalid' then 'invalid'
+      when outcome='missing' then 'missing'
+      when outcome='not_applicable' then 'not_applicable'
+    end
+  ),
+  'public Official results must separate exact outcomes from execution status'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 8
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_runs'
+     and column_name in (
+       'correct_count','partial_count','incorrect_count','runtime_issue_count',
+       'invalid_count','missing_count','not_applicable_count','completed_count'
+     ))
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_runs'
+      and column_name in ('passed_count','failed_count')
+  )
+  and not exists (
+    select 1
+    from public.public_runs run
+    where run.result_count is distinct from (
+      run.correct_count + run.partial_count + run.incorrect_count
+      + run.runtime_issue_count + run.invalid_count + run.missing_count
+      + run.not_applicable_count
+    )
+      or run.completed_count is distinct from (
+        run.correct_count + run.partial_count + run.incorrect_count
+      )
+  ),
+  'public Official run summaries must preserve each outcome class'
+);
+select pg_temp.aiq_assert(
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_leaderboard'
+      and column_name = 'runtime_issues'
+  )
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_leaderboard'
+      and column_name = 'failures'
+  )
+  and not exists (
+    select 1
+    from public.public_leaderboard leaderboard
+    join public.public_runs run on run.id=leaderboard.run_id
+    where leaderboard.runtime_issues is distinct from case
+      when leaderboard.score_status='official' then run.runtime_issue_count
+      else null
+    end
+  ),
+  'public leaderboard must report runtime issues without semantic incorrect outcomes'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 2
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_leaderboard'
+     and column_name in ('sensitivity_low','sensitivity_high'))
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_leaderboard'
+      and column_name in ('ci_low','ci_high')
+  )
+  and (
+    select proc.proargnames @> array['sensitivity_low','sensitivity_high']::text[]
+      and not proc.proargnames && array['ci_low','ci_high']::text[]
+    from pg_catalog.pg_proc proc
+    join pg_catalog.pg_namespace namespace
+      on namespace.oid = proc.pronamespace
+    where namespace.nspname = 'public'
+      and proc.proname = 'public_trend_points'
+  ),
+  'public score ranges must use explicit sensitivity field names'
+);
+select pg_temp.aiq_assert(
+  exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_scoring_versions'
+      and column_name = 'sensitivity_policy'
+  )
+  and not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'public_scoring_versions'
+      and column_name = 'confidence_policy'
+  ),
+  'public scoring metadata must name the fixed-fixture sensitivity policy explicitly'
 );
 select pg_temp.aiq_assert(
   (select count(*) = 6
@@ -1359,10 +1555,18 @@ select pg_temp.aiq_assert(
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'public_run_results'
       and column_name in (
-        'usage','provenance','failure_detail','result_package_sha256','pricing_digest'
+        'usage','provenance','failure_detail','result_package_sha256'
       )
   ),
-  'public Official result efficiency must omit private provider payloads and digests'
+  'public Official result efficiency must omit private provider payloads and result-package digests'
+);
+select pg_temp.aiq_assert(
+  (select count(*) = 2
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'public_run_results'
+     and column_name in ('task_id','pricing_digest')),
+  'public Official result efficiency must expose task identity and its exact pricing-record digest'
 );
 
 rollback;

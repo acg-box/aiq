@@ -27,26 +27,24 @@ export function formatProtocolToken(value: string): string {
   return value.replaceAll('_', ' ');
 }
 
-export function radarOrbitPosition(index: number): Readonly<{ left: string; top: string }> {
-  const angle = index * 2.399963229728653 - Math.PI / 2;
-  const radius = 19 + (index % 3) * 9;
-  return {
-    left: `${(50 + Math.cos(angle) * radius).toFixed(2)}%`,
-    top: `${(50 + Math.sin(angle) * radius).toFixed(2)}%`,
-  };
+export type ObservationRecency = 'never' | 'unavailable' | 'recent' | 'stale';
+
+export function classifyObservationRecency(
+  lastSeenAt: string | null,
+  now = new Date(),
+): ObservationRecency {
+  if (lastSeenAt === null) return 'never';
+  const observedAt = new Date(lastSeenAt);
+  if (Number.isNaN(observedAt.getTime())) return 'unavailable';
+  const age = now.getTime() - observedAt.getTime();
+  return age > 15 * 60 * 1_000 ? 'stale' : 'recent';
 }
 
 export function formatLastObservation(lastSeenAt: string | null, now = new Date()): string {
-  if (lastSeenAt === null) {
-    return 'Never observed';
-  }
-  const observedAt = new Date(lastSeenAt);
-  if (Number.isNaN(observedAt.getTime())) {
-    return 'Observation time unavailable';
-  }
-  const age = now.getTime() - observedAt.getTime();
-  const freshness = age > 15 * 60 * 1_000 ? 'stale' : 'recent';
-  return `${observedAt.toLocaleString()} · ${freshness}`;
+  const recency = classifyObservationRecency(lastSeenAt, now);
+  if (recency === 'never') return 'Never observed';
+  if (recency === 'unavailable') return 'Observation time unavailable';
+  return `${new Date(lastSeenAt ?? '').toLocaleString()} · ${recency}`;
 }
 
 export function leaderboardRunHref(entry: LeaderboardEntry): string | null {
@@ -59,21 +57,21 @@ export interface RunCompleteness {
   notApplicable: boolean;
 }
 
-function isValidResult(status: BenchmarkRun['tasks'][number]['status']): boolean {
-  return status === 'passed' || status === 'failed';
+function isValidResult(status: BenchmarkRun['tasks'][number]['executionStatus']): boolean {
+  return status === 'completed' || status === 'runtime_issue';
 }
 
 export function formatScore(score: number): string {
   return score.toFixed(1);
 }
 
-export function formatConfidenceInterval(
-  entry: Pick<LeaderboardEntry, 'ciLow' | 'ciHigh'>,
+export function formatSensitivityInterval(
+  entry: Pick<LeaderboardEntry, 'sensitivityLow' | 'sensitivityHigh'>,
 ): string {
-  if (entry.ciLow === null || entry.ciHigh === null) {
+  if (entry.sensitivityLow === null || entry.sensitivityHigh === null) {
     return '—';
   }
-  return `${formatScore(entry.ciLow)}–${formatScore(entry.ciHigh)}`;
+  return `${formatScore(entry.sensitivityLow)}–${formatScore(entry.sensitivityHigh)}`;
 }
 
 export function sortLeaderboardByPointEstimate(
@@ -93,9 +91,27 @@ export function sortLeaderboardByPointEstimate(
   });
 }
 
+export function latestCompletedRun<T extends Pick<BenchmarkRunSummary, 'completedAt' | 'id'>>(
+  runs: readonly T[],
+): T | null {
+  return (
+    runs.toSorted((left, right) => {
+      const leftCompletedAt = new Date(left.completedAt).getTime();
+      const rightCompletedAt = new Date(right.completedAt).getTime();
+      const leftTime = Number.isNaN(leftCompletedAt) ? Number.NEGATIVE_INFINITY : leftCompletedAt;
+      const rightTime = Number.isNaN(rightCompletedAt)
+        ? Number.NEGATIVE_INFINITY
+        : rightCompletedAt;
+      return rightTime - leftTime || left.id.localeCompare(right.id);
+    })[0] ?? null
+  );
+}
+
 export function summarizeRun(run: BenchmarkRun): {
-  passed: number;
-  failed: number;
+  correct: number;
+  partial: number;
+  incorrect: number;
+  runtimeIssues: number;
   invalid: number;
   missing: number;
   notApplicable: number;
@@ -112,11 +128,13 @@ export function summarizeRun(run: BenchmarkRun): {
     medianLatencyMs = (left + right) / 2;
   }
   return {
-    passed: run.tasks.filter((task) => task.status === 'passed').length,
-    failed: run.tasks.filter((task) => task.status === 'failed').length,
-    invalid: run.tasks.filter((task) => task.status === 'invalid').length,
-    missing: run.tasks.filter((task) => task.status === 'missing').length,
-    notApplicable: run.tasks.filter((task) => task.status === 'not_applicable').length,
+    correct: run.tasks.filter((task) => task.outcome === 'correct').length,
+    partial: run.tasks.filter((task) => task.outcome === 'partial').length,
+    incorrect: run.tasks.filter((task) => task.outcome === 'incorrect').length,
+    runtimeIssues: run.tasks.filter((task) => task.executionStatus === 'runtime_issue').length,
+    invalid: run.tasks.filter((task) => task.executionStatus === 'invalid').length,
+    missing: run.tasks.filter((task) => task.executionStatus === 'missing').length,
+    notApplicable: run.tasks.filter((task) => task.executionStatus === 'not_applicable').length,
     medianLatencyMs,
   };
 }
@@ -125,62 +143,67 @@ export interface RunOutcomeSummary {
   correct: number;
   partial: number;
   incorrect: number;
-  executionFailures: number;
-  unscored: number;
-  passed: number;
+  runtimeIssues: number;
+  invalid: number;
+  missing: number;
+  notApplicable: number;
+  anyCredit: number;
+  completedOutcomes: number;
   total: number;
-  successRate: number | null;
+  anyCreditRate: number | null;
 }
 
-const executionFailureCodes = new Set([
-  'timeout',
-  'budget_exceeded',
-  'unsupported_model',
-  'output_truncated',
-  'missing_response',
-]);
+export function formatAnyCreditRate(rate: number | null): string {
+  return rate === null ? '—' : `${rate.toFixed(0)}%`;
+}
 
 /**
  * Keep the user-facing outcome mix aligned with the immutable task score.
- * Status `passed` includes partial credit, so the task score is the source of
- * truth for the correct/partial split. Execution failures remain separate from
- * evaluator-rejected work.
+ * Exact public outcomes are the semantic source of truth. Execution status is
+ * the independent source of truth for runtime and coverage state.
  */
 export function summarizeRunOutcomes(run: BenchmarkRun): RunOutcomeSummary {
   let correct = 0;
   let partial = 0;
   let incorrect = 0;
-  let executionFailures = 0;
-  let unscored = 0;
+  let runtimeIssues = 0;
+  let invalid = 0;
+  let missing = 0;
+  let notApplicable = 0;
   for (const task of run.tasks) {
-    if (
-      task.score === null ||
-      task.status === 'invalid' ||
-      task.status === 'missing' ||
-      task.status === 'not_applicable'
-    ) {
-      unscored += 1;
-    } else if (task.score >= 1) {
+    if (task.executionStatus === 'runtime_issue') {
+      runtimeIssues += 1;
+    } else if (task.executionStatus === 'invalid') {
+      invalid += 1;
+    } else if (task.executionStatus === 'missing') {
+      missing += 1;
+    } else if (task.executionStatus === 'not_applicable') {
+      notApplicable += 1;
+    } else if (task.outcome === 'correct') {
       correct += 1;
-    } else if (task.score > 0) {
+    } else if (task.outcome === 'partial') {
       partial += 1;
-    } else if (task.explanation?.code && executionFailureCodes.has(task.explanation.code)) {
-      executionFailures += 1;
-    } else {
+    } else if (task.outcome === 'incorrect') {
       incorrect += 1;
+    } else {
+      invalid += 1;
     }
   }
   const total = run.tasks.length;
-  const passed = correct + partial;
+  const anyCredit = correct + partial;
+  const completedOutcomes = correct + partial + incorrect;
   return {
     correct,
     partial,
     incorrect,
-    executionFailures,
-    unscored,
-    passed,
+    runtimeIssues,
+    invalid,
+    missing,
+    notApplicable,
+    anyCredit,
+    completedOutcomes,
     total,
-    successRate: total === 0 ? null : (passed / total) * 100,
+    anyCreditRate: completedOutcomes === 0 ? null : (anyCredit / completedOutcomes) * 100,
   };
 }
 
@@ -188,8 +211,8 @@ export interface RunDomainSummary {
   domain: string;
   score: number | null;
   coveragePercent: number;
-  succeeded: number;
-  failed: number;
+  completed: number;
+  runtimeIssues: number;
   missing: number;
   invalid: number;
   notApplicable: number;
@@ -199,7 +222,9 @@ export interface RunDomainSummary {
 export function summarizeRunDomains(run: BenchmarkRun): readonly RunDomainSummary[] {
   return [...new Set(run.tasks.map((task) => task.domain))].toSorted().map((domain) => {
     const tasks = run.tasks.filter((task) => task.domain === domain);
-    const observed = tasks.filter((task) => task.status === 'passed' || task.status === 'failed');
+    const observed = tasks.filter(
+      (task) => task.executionStatus === 'completed' || task.executionStatus === 'runtime_issue',
+    );
     return {
       domain,
       score:
@@ -207,20 +232,20 @@ export function summarizeRunDomains(run: BenchmarkRun): readonly RunDomainSummar
           ? null
           : (observed.reduce((sum, task) => sum + (task.score ?? 0), 0) / observed.length) * 100,
       coveragePercent: tasks.length === 0 ? 0 : (observed.length / tasks.length) * 100,
-      succeeded: tasks.filter((task) => task.status === 'passed').length,
-      failed: tasks.filter((task) => task.status === 'failed').length,
-      missing: tasks.filter((task) => task.status === 'missing').length,
-      invalid: tasks.filter((task) => task.status === 'invalid').length,
-      notApplicable: tasks.filter((task) => task.status === 'not_applicable').length,
+      completed: tasks.filter((task) => task.executionStatus === 'completed').length,
+      runtimeIssues: tasks.filter((task) => task.executionStatus === 'runtime_issue').length,
+      missing: tasks.filter((task) => task.executionStatus === 'missing').length,
+      invalid: tasks.filter((task) => task.executionStatus === 'invalid').length,
+      notApplicable: tasks.filter((task) => task.executionStatus === 'not_applicable').length,
       total: tasks.length,
     };
   });
 }
 
 export function classifyRunCompleteness(run: BenchmarkRun): RunCompleteness {
-  const validResults = run.tasks.filter((task) => isValidResult(task.status)).length;
+  const validResults = run.tasks.filter((task) => isValidResult(task.executionStatus)).length;
   const notApplicable =
-    run.tasks.length === 72 && run.tasks.every((task) => task.status === 'not_applicable');
+    run.tasks.length === 72 && run.tasks.every((task) => task.executionStatus === 'not_applicable');
   if (notApplicable) {
     return {
       label: 'N/A · unsupported in a valid preflight',
@@ -233,8 +258,8 @@ export function classifyRunCompleteness(run: BenchmarkRun): RunCompleteness {
     domains.length === 10 &&
     domains.every(
       (domain) =>
-        run.tasks.filter((task) => task.domain === domain && isValidResult(task.status)).length >=
-        4,
+        run.tasks.filter((task) => task.domain === domain && isValidResult(task.executionStatus))
+          .length >= 4,
     );
   return {
     label:
@@ -252,7 +277,8 @@ export function classifyRunCompleteness(run: BenchmarkRun): RunCompleteness {
 
 export function classifyRunSummaryCompleteness(run: BenchmarkRunSummary): RunCompleteness {
   const summary = run.resultSummary;
-  const notApplicable = summary.resultCount === 72 && summary.notApplicable === summary.resultCount;
+  const notApplicable =
+    summary.resultCount === 72 && summary.notApplicableCount === summary.resultCount;
   return {
     label: notApplicable
       ? 'N/A · unsupported in a valid preflight'

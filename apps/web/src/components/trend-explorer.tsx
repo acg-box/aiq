@@ -1,7 +1,39 @@
+'use client';
+
+import type { EChartsCoreOption } from 'echarts/core';
 import Link from 'next/link';
+import { useMemo, useTransition } from 'react';
 
 import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
-import type { LeaderboardEntry, TrendPoint, TrendRange } from '../data/types.ts';
+import type {
+  BenchmarkRunSummary,
+  LeaderboardEntry,
+  ModelFamily,
+  PublicModelEfficiency,
+  TrendPoint,
+  TrendRange,
+} from '../data/types.ts';
+import { formatHumanDuration } from '../data/format-duration.ts';
+import {
+  hrefWithParams,
+  pushAnalyticalUrl,
+  readBoundedIntegerParam,
+  readEnumParam,
+  useAnalyticalSearchParams,
+} from './analytical-url-state.ts';
+import { EChartsChart } from './echarts-chart.tsx';
+import { ReadStateNote } from './read-state-note.tsx';
+import {
+  EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
+  resolveExactScientificEvidence,
+} from './scientific-evidence-resolution.ts';
+import {
+  TREND_BAR_MAX_WIDTH,
+  trendIntervalData,
+  trendIntervalLineShapes,
+  trendIntervalXOffset,
+  type TrendBarLayoutItem,
+} from './trend-interval-layout.ts';
 
 const ranges: ReadonlyArray<{ value: TrendRange; label: string }> = [
   { value: 'day', label: 'Day' },
@@ -9,7 +41,9 @@ const ranges: ReadonlyArray<{ value: TrendRange; label: string }> = [
   { value: 'month', label: 'Month' },
   { value: 'all', label: 'All history' },
 ];
-
+type SeriesFilter = ModelFamily;
+const seriesFilters: readonly SeriesFilter[] = ['Sol', 'Terra', 'Luna'];
+const TREND_ZOOM_DATE_COUNT = 12;
 const formatDate = (value: string) => value.slice(0, 10);
 const pointProvenance = (point: TrendPoint) => (point.synthetic ? 'Synthetic' : 'Published');
 
@@ -28,55 +62,332 @@ export function dateAxisTicks(minimum: number, maximum: number): readonly number
 }
 
 const formatAxisDate = (timestamp: number) =>
-  new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  }).format(new Date(timestamp));
+  new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(
+    new Date(timestamp),
+  );
 
 function seriesProvenance(points: readonly TrendPoint[]): string {
-  if (points.length === 0) {
-    return 'No observations in selected range';
-  }
-  if (points.every((point) => point.synthetic)) {
-    return 'synthetic';
-  }
-  if (points.every((point) => !point.synthetic)) {
-    return 'published';
-  }
+  if (points.length === 0) return 'No observations in selected range';
+  if (points.every((point) => point.synthetic)) return 'synthetic';
+  if (points.every((point) => !point.synthetic)) return 'published';
   return 'mixed provenance';
+}
+
+function readTrendTooltipItem(value: unknown): {
+  seriesName: string;
+  data: readonly (number | string | null)[];
+} | null {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !('seriesName' in value) ||
+    typeof value.seriesName !== 'string' ||
+    !('data' in value) ||
+    !Array.isArray(value.data) ||
+    !value.data.every(
+      (item) => typeof item === 'number' || typeof item === 'string' || item === null,
+    )
+  ) {
+    return null;
+  }
+  return { seriesName: value.seriesName, data: value.data };
+}
+
+interface TrendRenderItemApi {
+  value: (dimension: number) => number | string;
+  coord: (value: readonly (number | string)[]) => readonly [number, number];
+  barLayout: (options: {
+    count: number;
+    barMaxWidth: number;
+    barGap: number;
+  }) => readonly TrendBarLayoutItem[] | null | undefined;
+}
+
+interface TrendScientificContext {
+  coverage: string;
+  runtime: string;
+  missing: string;
+  duration: string;
+  cost: string;
+  exactJoinUnavailable: boolean;
+}
+
+const unavailableTrendContext: TrendScientificContext = {
+  coverage: 'Unavailable',
+  runtime: 'Unavailable',
+  missing: 'Unavailable',
+  duration: 'Unavailable',
+  cost: 'Unavailable',
+  exactJoinUnavailable: false,
+};
+
+function resolveTrendScientificContext({
+  point,
+  entries,
+  runSummaries,
+  efficiency,
+}: {
+  point: TrendPoint;
+  entries: readonly LeaderboardEntry[];
+  runSummaries: readonly BenchmarkRunSummary[];
+  efficiency: readonly PublicModelEfficiency[];
+}): TrendScientificContext {
+  if (point.runId === null) return unavailableTrendContext;
+  const resolution = resolveExactScientificEvidence({
+    candidate: {
+      runId: point.runId,
+      entryId: point.entryId,
+      scoringVersion: point.scoringVersion,
+      synthetic: point.synthetic,
+    },
+    runs: runSummaries,
+    entries,
+    efficiencyRows: efficiency,
+  });
+  if (resolution.state === 'unavailable') {
+    return { ...unavailableTrendContext, exactJoinUnavailable: true };
+  }
+  const exactRun = resolution.run;
+  const exactEfficiency = resolution.evidence.efficiency;
+  return {
+    coverage:
+      exactRun.resultSummary.coveragePercent === null
+        ? 'Unavailable'
+        : `${exactRun.resultSummary.coveragePercent.toFixed(1)}%`,
+    runtime: String(exactRun.resultSummary.runtimeIssueCount),
+    missing: String(exactRun.resultSummary.missingCount),
+    duration:
+      exactEfficiency?.summedCellAdapterElapsedMs == null
+        ? 'Unavailable'
+        : formatHumanDuration(exactEfficiency.summedCellAdapterElapsedMs),
+    cost:
+      exactEfficiency?.costEstimatorStatus === 'estimated' &&
+      exactEfficiency.standardApiEquivalentUsdNanos !== null
+        ? `$${(exactEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`
+        : 'Unavailable',
+    exactJoinUnavailable: false,
+  };
 }
 
 export function TrendExplorer({
   entries,
   points,
+  runSummaries,
+  efficiency,
   range,
 }: {
   entries: readonly LeaderboardEntry[];
   points: readonly TrendPoint[];
+  runSummaries: readonly BenchmarkRunSummary[];
+  efficiency: readonly PublicModelEfficiency[];
   range: TrendRange;
 }) {
-  const visible = points;
-  const entryIds = entries.map((entry) => entry.id);
-  const timestamps = visible.map((point) => new Date(point.recordedAt).getTime());
-  const minimumTime = Math.min(...timestamps);
-  const maximumTime = Math.max(...timestamps);
-  const scoreValues = visible.flatMap((point) => [point.ciLow, point.score, point.ciHigh]);
-  const observedMinimumScore = scoreValues.length === 0 ? 0 : Math.min(...scoreValues);
-  const observedMaximumScore = scoreValues.length === 0 ? 100 : Math.max(...scoreValues);
-  const scorePadding = Math.max(2, (observedMaximumScore - observedMinimumScore) * 0.1);
-  const minimumScore = Math.max(0, observedMinimumScore - scorePadding);
-  const maximumScore = Math.min(100, observedMaximumScore + scorePadding);
-  const xForTime = (timestamp: number) =>
-    maximumTime === minimumTime
-      ? 67
-      : 18 + ((timestamp - minimumTime) / (maximumTime - minimumTime)) * 98;
-  const yForScore = (score: number) =>
-    maximumScore === minimumScore
-      ? 48
-      : 91 - ((score - minimumScore) / (maximumScore - minimumScore)) * 84;
-  const scoreTicks = scoreAxisTicks(minimumScore, maximumScore);
-  const timeTicks = dateAxisTicks(minimumTime, maximumTime);
+  const searchParams = useAnalyticalSearchParams();
+  const mode = readEnumParam(searchParams, 'trendEncoding', ['line', 'bar'], 'line');
+  const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'Sol');
+  const [isPending, startTransition] = useTransition();
+  const selectedEntries = useMemo(
+    () => entries.filter((entry) => entry.modelFamily === seriesFilter),
+    [entries, seriesFilter],
+  );
+  const selectedIds = useMemo(() => selectedEntries.map((entry) => entry.id), [selectedEntries]);
+  const familyPoints = useMemo(
+    () => points.filter((point) => selectedIds.includes(point.entryId)),
+    [points, selectedIds],
+  );
+  const allTimes = useMemo(
+    () =>
+      [...new Set(familyPoints.map((point) => new Date(point.recordedAt).getTime()))].toSorted(
+        (left, right) => left - right,
+      ),
+    [familyPoints],
+  );
+  const maximumZoomStart = Math.max(0, allTimes.length - TREND_ZOOM_DATE_COUNT);
+  const zoomStart =
+    allTimes.length > TREND_ZOOM_DATE_COUNT
+      ? readBoundedIntegerParam(searchParams, 'trendZoom', 0, maximumZoomStart)
+      : null;
+  const zoomEnd =
+    zoomStart === null
+      ? allTimes.length - 1
+      : Math.min(allTimes.length - 1, zoomStart + TREND_ZOOM_DATE_COUNT - 1);
+  const zoomWindowTimes = useMemo(
+    () => (zoomStart === null ? allTimes : allTimes.slice(zoomStart, zoomEnd + 1)),
+    [allTimes, zoomEnd, zoomStart],
+  );
+  const zoomWindowTimeSet = useMemo(() => new Set(zoomWindowTimes), [zoomWindowTimes]);
+  const zoomWindowPoints = useMemo(
+    () =>
+      familyPoints.filter((point) => zoomWindowTimeSet.has(new Date(point.recordedAt).getTime())),
+    [familyPoints, zoomWindowTimeSet],
+  );
+  const latestVisibleTime = zoomWindowTimes.at(-1);
+  const latestVisiblePoints = zoomWindowPoints.filter(
+    (point) => new Date(point.recordedAt).getTime() === latestVisibleTime,
+  );
+  const latestVisiblePoint = latestVisiblePoints.toSorted(
+    (left, right) => right.score - left.score,
+  )[0];
+  const latestVisibleMinimumScore = Math.min(...latestVisiblePoints.map((point) => point.score));
+  const scientificContexts = useMemo(
+    () =>
+      new Map(
+        zoomWindowPoints.map((point) => [
+          point,
+          resolveTrendScientificContext({ point, entries, runSummaries, efficiency }),
+        ]),
+      ),
+    [efficiency, entries, runSummaries, zoomWindowPoints],
+  );
+  const latestScientificContext = latestVisiblePoint
+    ? (scientificContexts.get(latestVisiblePoint) ?? unavailableTrendContext)
+    : null;
+  const exactJoinUnavailable = [...scientificContexts.values()].some(
+    (context) => context.exactJoinUnavailable,
+  );
+  const chartOption = useMemo<EChartsCoreOption>(() => {
+    const series = selectedEntries.map((entry, index) => {
+      const byTime = new Map(
+        zoomWindowPoints
+          .filter((point) => point.entryId === entry.id)
+          .map((point) => [new Date(point.recordedAt).getTime(), point]),
+      );
+      return {
+        type: mode,
+        id: `trend-value-${entry.id}`,
+        name: `${entry.modelFamily} · ${entry.reasoningTier}`,
+        connectNulls: false,
+        smooth: false,
+        barMaxWidth: TREND_BAR_MAX_WIDTH,
+        barGap: 0,
+        showSymbol: mode === 'line',
+        symbol: ['circle', 'rect', 'triangle', 'diamond', 'roundRect'][index % 5],
+        symbolSize: 7,
+        lineStyle: {
+          width: 1.8,
+          type: index % 3 === 1 ? 'dashed' : index % 3 === 2 ? 'dotted' : 'solid',
+        },
+        itemStyle: { color: TREND_SERIES_STYLES[index]?.color },
+        data: zoomWindowTimes.map((time) => {
+          const point = byTime.get(time);
+          const context = point ? scientificContexts.get(point) : undefined;
+          return point
+            ? [
+                mode === 'bar' ? String(time) : time,
+                point.score,
+                point.sensitivityLow,
+                point.sensitivityHigh,
+                point.sampleSize,
+                point.representedRunCount,
+                point.synthetic ? 'synthetic' : 'published',
+                point.scoringVersion,
+                point.runId,
+                context?.coverage ?? 'Unavailable',
+                context?.runtime ?? 'Unavailable',
+                context?.missing ?? 'Unavailable',
+                context?.duration ?? 'Unavailable',
+                context?.cost ?? 'Unavailable',
+              ]
+            : [mode === 'bar' ? String(time) : time, null];
+        }),
+      };
+    });
+    const intervalSeries = selectedEntries.map((entry, seriesIndex) => {
+      const color = TREND_SERIES_STYLES[seriesIndex]?.color ?? '#83909c';
+      return {
+        type: 'custom',
+        id: `trend-interval-${entry.id}`,
+        name: `${entry.modelFamily} · ${entry.reasoningTier} task-sensitivity interval`,
+        silent: true,
+        z: 4,
+        encode: { x: 0, y: [1, 2] },
+        data: trendIntervalData(zoomWindowPoints, entry.id).map(([time, low, high]) => [
+          mode === 'bar' ? String(time) : time,
+          low,
+          high,
+        ]),
+        renderItem: (_params: unknown, api: TrendRenderItemApi) => {
+          const layout =
+            mode === 'bar'
+              ? api.barLayout({
+                  count: selectedEntries.length,
+                  barMaxWidth: TREND_BAR_MAX_WIDTH,
+                  barGap: 0,
+                })
+              : undefined;
+          const xOffset = trendIntervalXOffset(mode, seriesIndex, layout);
+          if (xOffset === null) return null;
+          const time = api.value(0);
+          const low = api.coord([time, Number(api.value(1))]);
+          const high = api.coord([time, Number(api.value(2))]);
+          return {
+            type: 'group',
+            children: trendIntervalLineShapes(low, high, xOffset).map((shape) => ({
+              type: 'line',
+              shape,
+              style: { stroke: color, lineWidth: 1.2, opacity: 0.9 },
+            })),
+          };
+        },
+      };
+    });
+    const xAxis =
+      mode === 'bar'
+        ? {
+            type: 'category',
+            data: zoomWindowTimes.map(String),
+            name: 'Observation date (UTC)',
+            nameLocation: 'middle',
+            nameGap: 38,
+            axisLabel: {
+              color: 'var(--muted)',
+              formatter: (value: string | number) => formatAxisDate(Number(value)),
+            },
+            axisTick: { alignWithLabel: true },
+            nameTextStyle: { color: 'var(--muted)' },
+            axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+          }
+        : {
+            type: 'time',
+            name: 'Observation date (UTC)',
+            nameLocation: 'middle',
+            nameGap: 38,
+            axisLabel: { color: 'var(--muted)' },
+            nameTextStyle: { color: 'var(--muted)' },
+            axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+          };
+    return {
+      aria: { enabled: true, decal: { show: true } },
+      grid: { left: 58, right: 24, top: 24, bottom: 62 },
+      tooltip: {
+        trigger: 'item',
+        formatter: (value: unknown) => {
+          const item = readTrendTooltipItem(value);
+          if (!item) return 'Trend evidence unavailable';
+          const data = item.data;
+          if (item.seriesName.endsWith('task-sensitivity interval')) {
+            return item.seriesName;
+          }
+          if (data[1] === null) return `${item.seriesName}<br/>No observation in this bucket`;
+          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>AIQ ${Number(data[1]).toFixed(1)} · interval ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
+        },
+      },
+      xAxis,
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 100,
+        name: 'AIQ index (0–100)',
+        nameLocation: 'middle',
+        nameGap: 40,
+        axisLabel: { color: 'var(--muted)' },
+        nameTextStyle: { color: 'var(--muted)' },
+        axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+        splitLine: { lineStyle: { color: 'var(--line)' } },
+      },
+      series: [...series, ...intervalSeries],
+    };
+  }, [mode, scientificContexts, selectedEntries, zoomWindowPoints, zoomWindowTimes]);
 
   return (
     <>
@@ -85,185 +396,247 @@ export function TrendExplorer({
           <Link
             key={candidate.value}
             aria-current={range === candidate.value ? 'page' : undefined}
-            href={`/trends?range=${candidate.value}`}
+            href={hrefWithParams('/trends', searchParams, {
+              range: candidate.value,
+              trendZoom: null,
+            })}
           >
             {candidate.label}
           </Link>
         ))}
       </nav>
-      <p className="trend-resolution" role="note">
-        The server returns at most 20 time buckets per model and reasoning combination. Each plotted
-        published value is the latest exact Official run in its bucket, not an average. Synthetic
-        fixture points do not claim a matching run detail. The table shows represented-run and task
-        sample counts.
-      </p>
-      <div className="trend-layout">
-        <div className="chart-frame">
-          {visible.length > 0 ? (
-            <svg
-              className="trend-chart"
-              viewBox="0 0 122 112"
-              role="img"
-              aria-labelledby="trend-title trend-description"
+      <div className="trend-mode-control">
+        <span>Series</span>
+        <div className="chart-switch" role="group" aria-label="Trend series filter">
+          {seriesFilters.map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              aria-pressed={seriesFilter === candidate}
+              onClick={() =>
+                startTransition(() =>
+                  pushAnalyticalUrl(
+                    { trendFamily: candidate, trendZoom: null },
+                    { hasSemanticChange: candidate !== seriesFilter },
+                  ),
+                )
+              }
             >
-              <title id="trend-title">AIQ score history</title>
-              <desc id="trend-description">
-                Lines show available fixed-fixture scores across all {entryIds.length} model and
-                reasoning combinations. Color, solid, dashed, and dotted line patterns, and the
-                adjacent labels distinguish each series. The legend explicitly marks combinations
-                with no observation in this range. A data table follows the chart.
-              </desc>
-              <g className="chart-axis" aria-hidden="true">
-                {scoreTicks.map((score) => {
-                  const y = yForScore(score);
-                  return (
-                    <g key={score}>
-                      <line className="grid-line" x1="18" x2="116" y1={y} y2={y} />
-                      <text x="15" y={y + 1} textAnchor="end">
-                        {score.toFixed(score % 1 === 0 ? 0 : 1)}
-                      </text>
-                    </g>
-                  );
-                })}
-                {timeTicks.map((timestamp) => {
-                  const x = xForTime(timestamp);
-                  return (
-                    <g key={timestamp}>
-                      <line className="axis-tick" x1={x} x2={x} y1="91" y2="94" />
-                      <text x={x} y="100" textAnchor="middle">
-                        {formatAxisDate(timestamp)}
-                      </text>
-                    </g>
-                  );
-                })}
-                <text className="axis-label" x="67" y="109" textAnchor="middle">
-                  Observation date (UTC)
-                </text>
-                <text
-                  className="axis-label"
-                  x="3"
-                  y="49"
-                  textAnchor="middle"
-                  transform="rotate(-90 3 49)"
-                >
-                  AIQ score
-                </text>
-              </g>
-              {entryIds.map((entryId, index) => {
-                const style = TREND_SERIES_STYLES[index];
-                const series = visible
-                  .filter((point) => point.entryId === entryId)
-                  .toSorted(
-                    (left, right) =>
-                      new Date(left.recordedAt).getTime() - new Date(right.recordedAt).getTime(),
-                  );
-                const path = series
-                  .map(
-                    (point, pointIndex) =>
-                      `${pointIndex === 0 ? 'M' : 'L'} ${xForTime(new Date(point.recordedAt).getTime())} ${yForScore(point.score)}`,
-                  )
-                  .join(' ');
-                return (
-                  <g key={entryId}>
-                    {path.length > 0 ? (
-                      <path
-                        d={path}
-                        style={{ stroke: style?.color, strokeDasharray: style?.dashArray }}
-                      />
-                    ) : null}
-                    {series.map((point) => (
-                      <circle
-                        key={point.recordedAt}
-                        cx={xForTime(new Date(point.recordedAt).getTime())}
-                        cy={yForScore(point.score)}
-                        r="1.1"
-                        style={{ fill: style?.color }}
-                      >
-                        <title>
-                          {point.runId === null
-                            ? `${entryId}, ${formatDate(point.recordedAt)}, ${point.score.toFixed(1)}, synthetic fixture point with no matching run detail`
-                            : `${entryId}, ${formatDate(point.recordedAt)}, ${point.score.toFixed(1)}, latest of ${point.representedRunCount} run${point.representedRunCount === 1 ? '' : 's'} in this bucket, ${pointProvenance(point)}`}
-                        </title>
-                      </circle>
-                    ))}
-                  </g>
-                );
-              })}
-            </svg>
+              {candidate}
+            </button>
+          ))}
+        </div>
+        <span>Encoding</span>
+        <div className="chart-switch" role="group" aria-label="Trend chart mode">
+          {(['line', 'bar'] as const).map((candidate) => (
+            <button
+              key={candidate}
+              type="button"
+              aria-pressed={mode === candidate}
+              onClick={() =>
+                startTransition(() =>
+                  pushAnalyticalUrl(
+                    { trendEncoding: candidate },
+                    { hasSemanticChange: candidate !== mode },
+                  ),
+                )
+              }
+            >
+              {candidate === 'line' ? 'Line' : 'Bar'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {allTimes.length > TREND_ZOOM_DATE_COUNT ? (
+        <div className="trend-window-control" aria-label="Visible trend date range">
+          <span>
+            {zoomStart === null
+              ? `All ${allTimes.length} dates`
+              : `Dates ${zoomStart + 1}–${zoomEnd + 1} of ${allTimes.length}`}
+          </span>
+          <div className="chart-switch" role="group" aria-label="Trend date window">
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              onClick={() =>
+                pushAnalyticalUrl(
+                  { trendZoom: String(maximumZoomStart) },
+                  { hasSemanticChange: zoomStart !== maximumZoomStart },
+                )
+              }
+            >
+              Latest 12
+            </button>
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              disabled={zoomStart === null || zoomStart === 0}
+              onClick={() =>
+                pushAnalyticalUrl({
+                  trendZoom: String(Math.max(0, (zoomStart ?? 0) - TREND_ZOOM_DATE_COUNT)),
+                })
+              }
+            >
+              Earlier 12
+            </button>
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              disabled={zoomStart === null || zoomStart === maximumZoomStart}
+              onClick={() =>
+                pushAnalyticalUrl({
+                  trendZoom: String(
+                    Math.min(maximumZoomStart, (zoomStart ?? 0) + TREND_ZOOM_DATE_COUNT),
+                  ),
+                })
+              }
+            >
+              Later 12
+            </button>
+            <button
+              type="button"
+              style={{ minHeight: 44 }}
+              disabled={zoomStart === null}
+              onClick={() => pushAnalyticalUrl({ trendZoom: null })}
+            >
+              Reset: all dates
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <p className="trend-resolution" role="note">
+        Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
+        order. The family is an explicit filter, not a point-estimate cutoff. Line segments connect
+        recorded observations for visual continuity only; they do not interpolate or estimate values
+        between dates, and absent buckets remain gaps. Bars use a zero baseline. Each grouped bar
+        and its task-sensitivity interval use the same per-series category offset. The server
+        returns at most 20 buckets per configuration and uses the latest exact Official run, not an
+        average. Point context requires matching run, configuration, scoring version, and provenance
+        identity; absent evidence remains unavailable. Scoring versions:{' '}
+        {[...new Set(zoomWindowPoints.map((point) => point.scoringVersion))].join(', ') ||
+          'unavailable'}
+        .
+      </p>
+      {exactJoinUnavailable ? (
+        <ReadStateNote
+          result={{
+            state: 'unavailable',
+            detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
+          }}
+          subject="Exact trend run context"
+        />
+      ) : null}
+      <div className={`trend-layout${isPending ? ' is-pending' : ''}`}>
+        <div className="chart-frame">
+          {zoomWindowPoints.length > 0 ? (
+            <EChartsChart
+              className="trend-chart-echarts"
+              option={chartOption}
+              label={
+                mode === 'bar'
+                  ? 'AIQ score history. Grouped bars with per-series aligned task-sensitivity intervals.'
+                  : 'AIQ score history. Lines with task-sensitivity intervals.'
+              }
+            />
           ) : (
             <p>No observations fall in this range.</p>
           )}
         </div>
-        <ul className="chart-legend" aria-label="Trend series">
-          {entryIds.map((entryId, index) => {
-            const entry = entries.find((candidate) => candidate.id === entryId);
-            const style = TREND_SERIES_STYLES[index];
-            const series = points.filter((point) => point.entryId === entryId);
+        <ul className="chart-legend" aria-label="Visible trend series">
+          {selectedEntries.map((entry, index) => {
+            const series = zoomWindowPoints.filter((point) => point.entryId === entry.id);
+            const scoringVersions = [...new Set(series.map((point) => point.scoringVersion))];
             return (
-              <li key={entryId}>
-                <svg viewBox="0 0 28 8" aria-hidden="true">
-                  <line
-                    x1="1"
-                    x2="27"
-                    y1="4"
-                    y2="4"
-                    style={{ stroke: style?.color, strokeDasharray: style?.dashArray }}
-                  />
-                </svg>
+              <li key={entry.id}>
+                <i
+                  className={`series-symbol series-symbol-${index + 1}`}
+                  style={{ background: TREND_SERIES_STYLES[index]?.color }}
+                  aria-hidden="true"
+                />
                 <strong>
-                  {entry?.modelFamily ?? entryId} · {entry?.reasoningTier}
+                  {entry.modelFamily} · {entry.reasoningTier}
                 </strong>
                 <small>
-                  {style?.pattern} · {seriesProvenance(series)}
+                  {seriesProvenance(series)} · scoring {scoringVersions.join(', ') || '—'}
+                  {mode === 'line' ? ' · connected observations; no interpolation' : ''}
                 </small>
               </li>
             );
           })}
         </ul>
       </div>
+      {latestVisiblePoint && latestScientificContext ? (
+        <p className="trend-resolution" aria-live="polite">
+          Latest visible date: {formatDate(latestVisiblePoint.recordedAt)} UTC ·{' '}
+          {latestVisiblePoints.length} observations · AIQ range{' '}
+          {latestVisibleMinimumScore.toFixed(1)}–{latestVisiblePoint.score.toFixed(1)}. Highest
+          point estimate: {latestVisiblePoint.entryId} · task-sensitivity interval{' '}
+          {latestVisiblePoint.sensitivityLow.toFixed(1)}–
+          {latestVisiblePoint.sensitivityHigh.toFixed(1)} · n={latestVisiblePoint.sampleSize} ·
+          coverage {latestScientificContext.coverage} · scoring {latestVisiblePoint.scoringVersion}{' '}
+          · {pointProvenance(latestVisiblePoint).toLowerCase()}
+        </p>
+      ) : null}
       <details className="data-disclosure">
-        <summary>Read trend values as a table</summary>
-        <div className="table-scroll" tabIndex={0}>
+        <summary>Read visible trend values as a table</summary>
+        <div className="table-scroll" role="region" aria-label="Visible trend values" tabIndex={0}>
           <table>
             <thead>
               <tr>
                 <th scope="col">Recorded</th>
                 <th scope="col">Series</th>
-                <th scope="col">Score</th>
+                <th scope="col">AIQ</th>
                 <th scope="col">Task sensitivity</th>
-                <th scope="col">Samples</th>
-                <th scope="col">Bucket coverage</th>
+                <th scope="col">n</th>
+                <th scope="col">Run / bucket</th>
+                <th scope="col">Coverage</th>
+                <th scope="col">Runtime</th>
+                <th scope="col">Missing</th>
+                <th scope="col">Summed adapter duration</th>
+                <th scope="col">API-equivalent cost</th>
+                <th scope="col">Scoring</th>
                 <th scope="col">Evidence</th>
               </tr>
             </thead>
             <tbody>
-              {visible
+              {zoomWindowPoints
                 .toSorted(
                   (left, right) =>
                     new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime(),
                 )
-                .map((point) => (
-                  <tr key={`${point.entryId}-${point.recordedAt}`}>
-                    <td>{formatDate(point.recordedAt)}</td>
-                    <th scope="row">{point.entryId}</th>
-                    <td>{point.score.toFixed(1)}</td>
-                    <td>
-                      {point.ciLow.toFixed(1)}–{point.ciHigh.toFixed(1)}
-                    </td>
-                    <td>{point.sampleSize}</td>
-                    <td>
-                      {point.runId === null ? (
-                        <>Synthetic fixture · no run detail</>
-                      ) : (
-                        <>
-                          Latest of {point.representedRunCount} run
-                          {point.representedRunCount === 1 ? '' : 's'}
-                        </>
-                      )}
-                    </td>
-                    <td>{pointProvenance(point)}</td>
-                  </tr>
-                ))}
+                .map((point) => {
+                  const context = scientificContexts.get(point) ?? unavailableTrendContext;
+                  return (
+                    <tr key={`${point.entryId}-${point.recordedAt}`}>
+                      <td>{formatDate(point.recordedAt)}</td>
+                      <th scope="row">{point.entryId}</th>
+                      <td>{point.score.toFixed(1)}</td>
+                      <td>
+                        {point.sensitivityLow.toFixed(1)}–{point.sensitivityHigh.toFixed(1)}
+                      </td>
+                      <td>{point.sampleSize}</td>
+                      <td>
+                        {point.runId === null ? (
+                          'Synthetic fixture · no run detail'
+                        ) : (
+                          <>
+                            <Link href={`/runs/${point.runId}`}>{point.runId}</Link>
+                            <br />
+                            Latest of {point.representedRunCount} run
+                            {point.representedRunCount === 1 ? '' : 's'}
+                          </>
+                        )}
+                      </td>
+                      <td>{context.coverage}</td>
+                      <td>{context.runtime}</td>
+                      <td>{context.missing}</td>
+                      <td>{context.duration}</td>
+                      <td>{context.cost}</td>
+                      <td>{point.scoringVersion}</td>
+                      <td>{pointProvenance(point)}</td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>

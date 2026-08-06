@@ -7,7 +7,6 @@ if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
   throw new Error('Supply one valid mock Supabase port.');
 }
 const emptyCalibrationEvidence = process.env.AIQ_MOCK_EMPTY_CALIBRATION_EVIDENCE === '1';
-const longOfficialRunIds = process.env.AIQ_MOCK_LONG_OFFICIAL_RUN_IDS === '1';
 
 /** @type {ReadonlyArray<readonly [string, number]>} */
 const domainCounts = [
@@ -49,13 +48,340 @@ const matrix = [
 );
 
 /**
+ * Exact public aggregates from the hash-verified production public backup RSC payload.
+ * These fields were already public and contain no private task material.
+ *
+ * @type {Readonly<Record<string, {runId: string; score: number; sensitivityLow: number; sensitivityHigh: number}>>}
+ */
+const verifiedPublishedAggregates = {
+  'sol-low': {
+    runId: 'run_441adf403347a1f32c3176e2ca837341e236a8db5ef5ee3059cdc7baa3cac1d7',
+    score: 41.959,
+    sensitivityLow: 31.377,
+    sensitivityHigh: 52.066,
+  },
+  'sol-medium': {
+    runId: 'run_fa605028cfc2d6c94d2ee0769a75d0f5c7bfddfc3b32b0106f525cc328e68930',
+    score: 42.801,
+    sensitivityLow: 32.474,
+    sensitivityHigh: 52.45,
+  },
+  'sol-high': {
+    runId: 'run_37c17d1683b14473966cfc9c4ac8fb97ea16b7f9a0bf2948bd8b234220f6240f',
+    score: 42.26,
+    sensitivityLow: 32.472,
+    sensitivityHigh: 51.524,
+  },
+  'sol-xhigh': {
+    runId: 'run_17b245b7a4b7c46348864a100e70cb0ce47d8f961e4d762ef4b4610e620bee5c',
+    score: 42.865,
+    sensitivityLow: 31.708,
+    sensitivityHigh: 53.996,
+  },
+  'sol-max': {
+    runId: 'run_87c706c0bdc9e7cdfd52eebc9f55661d3cb6c2f2606721dd68fd869df8723093',
+    score: 42.397,
+    sensitivityLow: 31.196,
+    sensitivityHigh: 53.282,
+  },
+  'sol-ultra': {
+    runId: 'run_f43f06eefb714c86d413a802587ba303b16e9a0ddc3de9f4cc01b8ff9e8d3f14',
+    score: 40.803,
+    sensitivityLow: 28.825,
+    sensitivityHigh: 52.294,
+  },
+  'terra-low': {
+    runId: 'run_a8358a9ea1ee1fb19edc9b2c0a3f8909764503d5f1d2c4f2a7161debaac610c4',
+    score: 37.299,
+    sensitivityLow: 27.509,
+    sensitivityHigh: 47.286,
+  },
+  'terra-medium': {
+    runId: 'run_130c49d83c7816a4939cf9851d936e8fa578d2b1d3dcedff5a6c9bbbfae53684',
+    score: 40.571,
+    sensitivityLow: 29.572,
+    sensitivityHigh: 51.103,
+  },
+  'terra-high': {
+    runId: 'run_0f873d71f76b85a0670444fec79be29fb0102e7435b1c1bcb3f0b2d8f50387b4',
+    score: 39.117,
+    sensitivityLow: 29.328,
+    sensitivityHigh: 48.561,
+  },
+  'terra-xhigh': {
+    runId: 'run_834fdafb3146ead1d05f146388e68b99a0f2569a19d92bd2fb9f3de25f93fcc7',
+    score: 39.67,
+    sensitivityLow: 29.983,
+    sensitivityHigh: 48.929,
+  },
+  'terra-max': {
+    runId: 'run_b7415ac6300414b294a668149710c4fecb7a7bec368d25361e4fcc961db7cac4',
+    score: 42.432,
+    sensitivityLow: 32,
+    sensitivityHigh: 52.211,
+  },
+  'terra-ultra': {
+    runId: 'run_db0ba87f356c60ee87a93df4cf730c44b3d511ca65c3310d00acb193686fa685',
+    score: 42.347,
+    sensitivityLow: 32.279,
+    sensitivityHigh: 51.96,
+  },
+  'luna-low': {
+    runId: 'run_ff1d6d7ac0b68f652e28a4437baa9417fbab23789dc60c2b0bb6c6fee4eac71c',
+    score: 37.314,
+    sensitivityLow: 26.628,
+    sensitivityHigh: 47.616,
+  },
+  'luna-medium': {
+    runId: 'run_f4bfbadc40f66cfd7bdd279a9ac025c4fdf6951e61e2f58ccb90b0988090a363',
+    score: 39.083,
+    sensitivityLow: 29.548,
+    sensitivityHigh: 48.834,
+  },
+  'luna-high': {
+    runId: 'run_34f3e4bdea2d80922c016d17f0fb8005ae4a4bfbd7724c0e841384466666dc82',
+    score: 41.879,
+    sensitivityLow: 31.824,
+    sensitivityHigh: 51.618,
+  },
+  'luna-xhigh': {
+    runId: 'run_5b896428917c276cc7aec28f91f48a3572b2b62e1266a89fd568cf8ac3983c8b',
+    score: 38.781,
+    sensitivityLow: 29.728,
+    sensitivityHigh: 48.172,
+  },
+  'luna-max': {
+    runId: 'run_03c1830225ab52b741137eb34847d4432b08f3f57c7e562df4288999f1b48f0d',
+    score: 41.39,
+    sensitivityLow: 31.042,
+    sensitivityHigh: 51.324,
+  },
+};
+
+/**
+ * Anonymous result distributions extracted from the verified production result package.
+ *
+ * Domains use `domainCounts` order. Each tuple is
+ * `[correct count, partial score multiset, incorrect count, timeout count, budget count]`.
+ * It contains no task identifiers, prompts, responses, artifacts, or credentials.
+ *
+ * @type {Readonly<Record<string, ReadonlyArray<readonly [number, readonly number[], number, number, number]>>>}
+ */
+const officialDomainEvidence = {
+  'sol-low': [
+    [6, [], 2, 0, 0],
+    [6, [], 2, 0, 0],
+    [2, [], 5, 0, 0],
+    [2, [0.6125, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.425, 0.7], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.6875, 0.8], 4, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.5375, 0.625, 0.7875, 0.8875, 0.8875], 2, 0, 0],
+  ],
+  'sol-medium': [
+    [7, [], 1, 0, 0],
+    [6, [], 2, 0, 0],
+    [2, [], 5, 0, 0],
+    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.425, 0.525], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.55, 0.8], 4, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'sol-high': [
+    [6, [], 2, 0, 0],
+    [5, [0.875], 2, 0, 0],
+    [2, [], 5, 0, 0],
+    [1, [0.5, 0.75, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.425, 0.525], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [2, [0.55, 0.8], 3, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.3625, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'sol-xhigh': [
+    [7, [], 1, 0, 0],
+    [6, [], 2, 0, 0],
+    [3, [], 4, 0, 0],
+    [2, [0.5, 0.6625, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.55, 0.8], 5, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'sol-max': [
+    [6, [], 2, 0, 0],
+    [6, [], 2, 0, 0],
+    [3, [], 4, 0, 0],
+    [2, [0.4875, 0.5, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.425, 0.525], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.4375, 0.8], 3, 1, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'sol-ultra': [
+    [6, [], 1, 1, 0],
+    [5, [], 2, 1, 0],
+    [3, [], 4, 0, 0],
+    [1, [0.5, 0.6625, 0.75, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.425, 0.525], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.4375, 0.8], 4, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.5375, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'terra-low': [
+    [7, [], 1, 0, 0],
+    [5, [], 3, 0, 0],
+    [0, [], 7, 0, 0],
+    [3, [0.5, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.75, 0.8], 4, 0, 0],
+    [2, [0.6625], 3, 0, 0],
+    [0, [0.3625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'terra-medium': [
+    [7, [], 1, 0, 0],
+    [6, [], 2, 0, 0],
+    [1, [], 6, 0, 0],
+    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.75, 0.8], 4, 0, 0],
+    [3, [], 3, 0, 0],
+    [0, [0.3625, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'terra-high': [
+    [7, [], 1, 0, 0],
+    [6, [], 2, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.5, 0.6625, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.6125, 0.7], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.6875, 0.8], 4, 0, 0],
+    [2, [0.6625, 0.8], 2, 0, 0],
+    [0, [0.1625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'terra-xhigh': [
+    [8, [], 0, 0, 0],
+    [6, [], 2, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.5, 0.75, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.6375, 0.8], 4, 0, 0],
+    [3, [], 3, 0, 0],
+    [0, [0.3625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'terra-max': [
+    [7, [], 1, 0, 0],
+    [6, [], 2, 0, 0],
+    [2, [], 5, 0, 0],
+    [1, [0.5, 0.6625, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.75, 0.8], 4, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.3625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'terra-ultra': [
+    [8, [], 0, 0, 0],
+    [5, [0.875], 2, 0, 0],
+    [1, [], 6, 0, 0],
+    [1, [0.5, 0.6625, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.75, 0.8], 4, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.3625, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'luna-low': [
+    [7, [], 1, 0, 0],
+    [4, [], 4, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.5, 0.6875, 0.825, 0.825, 0.8625, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.425], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.375, 0.8], 4, 0, 0],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.3375, 0.7875, 0.8, 0.8875, 0.8875], 2, 0, 0],
+  ],
+  'luna-medium': [
+    [7, [], 1, 0, 0],
+    [5, [], 3, 0, 0],
+    [0, [], 7, 0, 0],
+    [3, [0.6125, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.6125, 0.7], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [2, [0.575, 0.8], 3, 0, 0],
+    [2, [0.6625], 3, 0, 0],
+    [0, [0.5375, 0.6875, 0.7875, 0.8, 0.8375], 2, 0, 0],
+  ],
+  'luna-high': [
+    [8, [], 0, 0, 0],
+    [4, [0.875], 3, 0, 0],
+    [1, [], 6, 0, 0],
+    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.6125, 0.7], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [2, [0.575, 0.8], 3, 0, 0],
+    [3, [], 3, 0, 0],
+    [0, [0.3375, 0.7875, 0.8, 0.8875, 0.8875], 2, 0, 0],
+  ],
+  'luna-xhigh': [
+    [7, [], 1, 0, 0],
+    [5, [], 3, 0, 0],
+    [1, [], 6, 0, 0],
+    [3, [0.5, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.4375, 0.8], 4, 0, 0],
+    [2, [0.6625], 3, 0, 0],
+    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
+  ],
+  'luna-max': [
+    [8, [], 0, 0, 0],
+    [4, [], 3, 1, 0],
+    [2, [], 5, 0, 0],
+    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
+    [0, [], 7, 0, 0],
+    [0, [0.525, 0.6125], 5, 0, 0],
+    [0, [], 7, 0, 0],
+    [1, [0.375, 0.8], 2, 1, 1],
+    [3, [0.6625], 2, 0, 0],
+    [0, [0.5375, 0.625, 0.7875, 0.8875, 0.8875], 2, 0, 0],
+  ],
+};
+
+/**
  * @param {{id: string}} entry
  * @param {number} index
  */
 function officialRunId(entry, index) {
-  return longOfficialRunIds
-    ? `run_${index.toString(16).padStart(64, '0')}`
-    : `run-live-${entry.id}`;
+  const published = verifiedPublishedAggregates[entry.id];
+  if (!published) throw new Error(`Missing published run identity for matrix entry ${index}.`);
+  return published.runId;
 }
 
 const canonicalPublicExecutionFailures = {
@@ -71,83 +397,225 @@ const canonicalPublicExecutionFailures = {
   },
 };
 
-const officialOutcomeCounts = matrix.map((_, index) => {
-  const passed = index < 10 ? 35 : 34;
-  const executionFailure =
-    index < 5
-      ? canonicalPublicExecutionFailures.timeout
-      : index === 5
-        ? canonicalPublicExecutionFailures.budgetExceeded
-        : null;
-  const executionFailures = executionFailure ? 1 : 0;
+const provenanceHash = `sha256:${'1'.repeat(64)}`;
+const currentRunStartedAt = '2026-08-03T12:00:00.000Z';
+const currentRunCompletedAt = '2026-08-03T13:37:24.411Z';
+
+/**
+ * Expand one anonymous per-domain distribution into public result rows.
+ *
+ * @param {{id: string}} entry
+ */
+function officialResultsForEntry(entry) {
+  const distributions = officialDomainEvidence[entry.id];
+  if (!distributions || distributions.length !== domainCounts.length) {
+    throw new Error(`Missing complete Official domain evidence for ${entry.id}.`);
+  }
+
+  return domainCounts.flatMap(([domain, expectedTaskCount], domainIndex) => {
+    const distribution = distributions[domainIndex];
+    if (!distribution) throw new Error(`Missing Official ${domain} evidence for ${entry.id}.`);
+    const [correctCount, partialScores, incorrectCount, timeoutCount, budgetCount] = distribution;
+    if (
+      ![correctCount, incorrectCount, timeoutCount, budgetCount].every(Number.isSafeInteger) ||
+      partialScores.some((score) => !Number.isFinite(score) || score <= 0 || score >= 1) ||
+      correctCount + partialScores.length + incorrectCount + timeoutCount + budgetCount !==
+        expectedTaskCount
+    ) {
+      throw new Error(`Invalid Official ${domain} evidence for ${entry.id}.`);
+    }
+
+    const results = [
+      ...Array.from({ length: correctCount }, () => ({
+        outcome: 'correct',
+        execution_status: 'completed',
+        score: 1,
+        explanation_code: null,
+        explanation_summary: null,
+        retryable: null,
+      })),
+      ...partialScores.map((score) => ({
+        outcome: 'partial',
+        execution_status: 'completed',
+        score,
+        explanation_code: null,
+        explanation_summary: null,
+        retryable: null,
+      })),
+      ...Array.from({ length: incorrectCount }, () => ({
+        outcome: 'incorrect',
+        execution_status: 'completed',
+        score: 0,
+        explanation_code: null,
+        explanation_summary: 'The evaluator rejected the response.',
+        retryable: null,
+      })),
+      ...Array.from({ length: timeoutCount }, () => ({
+        outcome: 'timeout',
+        execution_status: 'runtime_issue',
+        score: 0,
+        explanation_code: canonicalPublicExecutionFailures.timeout.code,
+        explanation_summary: canonicalPublicExecutionFailures.timeout.summary,
+        retryable: canonicalPublicExecutionFailures.timeout.retryable,
+      })),
+      ...Array.from({ length: budgetCount }, () => ({
+        outcome: 'budget_exhausted',
+        execution_status: 'runtime_issue',
+        score: 0,
+        explanation_code: canonicalPublicExecutionFailures.budgetExceeded.code,
+        explanation_summary: canonicalPublicExecutionFailures.budgetExceeded.summary,
+        retryable: canonicalPublicExecutionFailures.budgetExceeded.retryable,
+      })),
+    ];
+
+    return results.map((result, taskIndex) =>
+      Object.assign(result, {
+        id: `00000000-0000-4000-8000-${String(domainIndex * 10 + taskIndex + 1).padStart(12, '0')}`,
+        task_id: `${domain.replaceAll('_', '-')}-${String(taskIndex + 1).padStart(2, '0')}`,
+        task: `${domain.replaceAll('_', ' ')} anonymous result ${taskIndex + 1}`,
+        domain,
+      }),
+    );
+  });
+}
+
+/**
+ * AIQ v1: compute each domain's task-score mean, then give all ten domains equal weight.
+ *
+ * @param {ReadonlyArray<{domain: string; score: number}>} results
+ */
+function equalDomainAiq(results) {
+  if (results.length !== 72) throw new Error('Official AIQ requires exactly 72 result rows.');
+  const domainMeans = domainCounts.map(([domain, expectedTaskCount]) => {
+    const scores = results
+      .filter((result) => result.domain === domain)
+      .map((result) => result.score);
+    if (
+      scores.length !== expectedTaskCount ||
+      scores.some((score) => !Number.isFinite(score) || score < 0 || score > 1)
+    ) {
+      throw new Error(`Official AIQ requires ${expectedTaskCount} valid ${domain} scores.`);
+    }
+    return scores.reduce((total, score) => total + score, 0) / scores.length;
+  });
+  return (100 * domainMeans.reduce((total, score) => total + score, 0)) / domainMeans.length;
+}
+
+/** @param {ReadonlyArray<{outcome: string; execution_status: string}>} results */
+function summarizeOfficialOutcomes(results) {
   return {
-    passed,
-    failed: 72 - passed,
-    executionFailure,
-    executionFailures,
-    evaluatorIncorrect: 72 - passed - executionFailures,
+    correct: results.filter((result) => result.outcome === 'correct').length,
+    partial: results.filter((result) => result.outcome === 'partial').length,
+    evaluatorIncorrect: results.filter((result) => result.outcome === 'incorrect').length,
+    timeouts: results.filter((result) => result.outcome === 'timeout').length,
+    budgetExceeded: results.filter((result) => result.outcome === 'budget_exhausted').length,
+    executionFailures: results.filter((result) => result.execution_status === 'runtime_issue')
+      .length,
+    completed: results.filter((result) => result.execution_status === 'completed').length,
+  };
+}
+
+if (
+  Object.keys(officialDomainEvidence).length !== matrix.length ||
+  Object.keys(verifiedPublishedAggregates).length !== matrix.length ||
+  matrix.some(
+    (entry) => !officialDomainEvidence[entry.id] || !verifiedPublishedAggregates[entry.id],
+  )
+) {
+  throw new Error('Official evidence must cover the exact 17-entry model matrix.');
+}
+const verifiedPublishedRuns = Object.values(verifiedPublishedAggregates).map(({ runId }) => runId);
+if (
+  new Set(verifiedPublishedRuns).size !== matrix.length ||
+  verifiedPublishedRuns.some((runId) => !/^run_[0-9a-f]{64}$/.test(runId))
+) {
+  throw new Error('Verified public run identities must be unique canonical digests.');
+}
+
+const currentRunEvidence = matrix.map((entry, entryIndex) => {
+  const results = officialResultsForEntry(entry);
+  const outcomes = summarizeOfficialOutcomes(results);
+  const published = verifiedPublishedAggregates[entry.id];
+  if (!published) throw new Error(`Missing published aggregates for ${entry.id}.`);
+  const recomputedScore = Number(equalDomainAiq(results).toFixed(3));
+  if (
+    recomputedScore !== published.score ||
+    published.sensitivityLow > recomputedScore ||
+    published.sensitivityHigh < recomputedScore
+  ) {
+    throw new Error(`Published aggregates do not match ${entry.id} task evidence.`);
+  }
+  return {
+    entry,
+    entryIndex,
+    runId: officialRunId(entry, entryIndex),
+    startedAt: currentRunStartedAt,
+    completedAt: currentRunCompletedAt,
+    outcomes,
+    results,
+    interval: {
+      center: recomputedScore,
+      lower: published.sensitivityLow,
+      upper: published.sensitivityHigh,
+    },
   };
 });
-const officialOutcomeTotals = officialOutcomeCounts.reduce(
-  (totals, outcomes) => ({
-    passed: totals.passed + outcomes.passed,
-    failed: totals.failed + outcomes.failed,
+
+const officialOutcomeTotals = currentRunEvidence.reduce(
+  (totals, { outcomes }) => ({
+    correct: totals.correct + outcomes.correct,
+    partial: totals.partial + outcomes.partial,
     evaluatorIncorrect: totals.evaluatorIncorrect + outcomes.evaluatorIncorrect,
+    timeouts: totals.timeouts + outcomes.timeouts,
+    budgetExceeded: totals.budgetExceeded + outcomes.budgetExceeded,
     executionFailures: totals.executionFailures + outcomes.executionFailures,
-    timeouts: totals.timeouts + (outcomes.executionFailure?.code === 'timeout' ? 1 : 0),
-    budgetExceeded:
-      totals.budgetExceeded + (outcomes.executionFailure?.code === 'budget_exceeded' ? 1 : 0),
+    completed: totals.completed + outcomes.completed,
   }),
   {
-    passed: 0,
-    failed: 0,
+    correct: 0,
+    partial: 0,
     evaluatorIncorrect: 0,
-    executionFailures: 0,
     timeouts: 0,
     budgetExceeded: 0,
+    executionFailures: 0,
+    completed: 0,
   },
 );
 if (
-  officialOutcomeTotals.passed !== 588 ||
-  officialOutcomeTotals.failed !== 636 ||
+  officialOutcomeTotals.correct !== 329 ||
+  officialOutcomeTotals.partial !== 259 ||
   officialOutcomeTotals.evaluatorIncorrect !== 630 ||
-  officialOutcomeTotals.executionFailures !== 6 ||
   officialOutcomeTotals.timeouts !== 5 ||
   officialOutcomeTotals.budgetExceeded !== 1 ||
-  officialOutcomeTotals.passed + officialOutcomeTotals.evaluatorIncorrect !== 1_218
+  officialOutcomeTotals.executionFailures !== 6 ||
+  officialOutcomeTotals.completed !== 1_218 ||
+  currentRunEvidence.reduce((total, evidence) => total + evidence.results.length, 0) !== 1_224
 ) {
-  throw new Error('The live-published fixture does not match the pending Official outcome shape.');
+  throw new Error('The live-published fixture does not match verified Official outcome totals.');
 }
 
-const leaderboard = matrix.map((entry, index) => {
-  const outcomes = officialOutcomeCounts[index];
-  if (!outcomes) throw new Error('Missing Official outcome counts.');
-  const score = Number(((100 * outcomes.passed) / 72).toFixed(1));
-  return {
-    matrix_id: entry.id,
-    run_id: officialRunId(entry, index),
-    score,
-    ci_low: Number((score - 1.8).toFixed(1)),
-    ci_high: Number((score + 1.8).toFixed(1)),
-    sample_size: 72,
-    coverage_percent: 100,
-    failures: outcomes.failed,
-    missing: 0,
-    scoring_version: '1.0.2',
-    score_status: 'official',
-    synthetic: false,
-  };
-});
+const leaderboard = currentRunEvidence.map(({ entry, runId, outcomes, interval }) => ({
+  matrix_id: entry.id,
+  run_id: runId,
+  score: interval.center,
+  sensitivity_low: interval.lower,
+  sensitivity_high: interval.upper,
+  sample_size: 72,
+  coverage_percent: 100,
+  runtime_issues: outcomes.executionFailures,
+  missing: 0,
+  scoring_version: '1.0.2',
+  score_status: 'official',
+  synthetic: false,
+}));
 
-const provenanceHash = `sha256:${'1'.repeat(64)}`;
-const runRows = matrix.map((entry, index) => {
-  const outcomes = officialOutcomeCounts[index];
-  if (!outcomes) throw new Error('Missing Official outcome counts.');
+const runEvidence = currentRunEvidence;
+const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcomes }) => {
   return {
-    id: officialRunId(entry, index),
+    id: runId,
     matrix_id: entry.id,
-    started_at: '2026-08-03T12:00:00.000Z',
-    completed_at: '2026-08-03T13:37:24.411Z',
+    started_at: startedAt,
+    completed_at: completedAt,
     benchmark_version: 'aiq-core@1.0.2',
     scoring_version: '1.0.2',
     prompt_set_digest: 'sha256:a6aead1a94c0e6dc6e9f80fe2057ab46c60fa9ce287e8db1c6000f8000541105',
@@ -164,11 +632,14 @@ const runRows = matrix.map((entry, index) => {
     run_class: 'official',
     permission_evidence_digest: `sha256:${'9'.repeat(64)}`,
     result_count: 72,
-    passed_count: outcomes.passed,
-    failed_count: outcomes.failed,
+    correct_count: outcomes.correct,
+    partial_count: outcomes.partial,
+    incorrect_count: outcomes.evaluatorIncorrect,
+    runtime_issue_count: outcomes.executionFailures,
     invalid_count: 0,
     missing_count: 0,
     not_applicable_count: 0,
+    completed_count: outcomes.completed,
     observed_count: 72,
     coverage_percent: 100,
     covered_domain_count: 10,
@@ -179,6 +650,7 @@ const runRows = matrix.map((entry, index) => {
 const calibrationRunId = `run_${'8'.repeat(64)}`;
 const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
 const pricingSource = 'https://developers.openai.com/api/docs/pricing';
+const pricingDigest = 'sha256:e1a28656f2918a14e86997b06bf9e29ec4db084ff89ee0319aafa0c05cc1f31d';
 const pricingLimitation =
   'Standard short-context API-equivalent comparison only. Prompts above 272000 input tokens use 2x input and 1.5x output rates, but aggregate usage cannot identify each request context band; a result above 272000 aggregate input tokens is therefore unpriced. Regional processing uplift and hosted tool fees are excluded. This is not actual subscription spend. Long-context rule: https://developers.openai.com/api/docs/pricing';
 const costFormula =
@@ -328,7 +800,7 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
       outcome: workspaceIntegrity ? 'invalid' : 'correct',
-      status: workspaceIntegrity ? 'invalid' : 'passed',
+      execution_status: workspaceIntegrity ? 'invalid' : 'completed',
       failure_code: workspaceIntegrity ? 'workspace_integrity' : null,
       explanation_code: workspaceIntegrity ? 'workspace_integrity' : null,
       explanation_summary: workspaceIntegrity
@@ -443,65 +915,87 @@ const modelEfficiency = calibrationScores.map((score, index) => {
   };
 });
 
-const historicalModelEfficiency = [
-  ...modelEfficiency,
-  { ...modelEfficiency[0], run_id: 'run-stale-official-history' },
-];
+const publishedModelEfficiency = modelEfficiency;
 
 /** @type {Array<{ run_id: string; [key: string]: unknown }>} */
 const runResults = [];
 let publishedResultIndex = 0;
-for (const [runIndex, run] of runRows.entries()) {
-  const outcomes = officialOutcomeCounts[runIndex];
-  if (!outcomes) throw new Error('Missing Official outcome counts.');
+for (const evidence of runEvidence) {
+  const modelRate = pricingRates.find((rate) => rate.model === evidence.entry.model_name);
+  if (!modelRate) throw new Error(`Missing pricing rate for ${evidence.entry.model_name}.`);
   let globalIndex = 0;
-  for (const [domain, taskCount] of domainCounts) {
-    for (let taskIndex = 0; taskIndex < taskCount; taskIndex += 1) {
-      globalIndex += 1;
-      publishedResultIndex += 1;
-      const estimatedCost = publishedResultIndex <= 1_208;
-      const unavailableContextBand = publishedResultIndex > 1_208 && publishedResultIndex <= 1_218;
-      const tokensAvailable = estimatedCost || unavailableContextBand;
-      const passed = globalIndex <= outcomes.passed;
-      const executionFailure =
-        !passed && globalIndex > 72 - outcomes.executionFailures ? outcomes.executionFailure : null;
-      runResults.push({
-        run_id: run.id,
-        id: `aiq-v1-${domain}-${String(taskIndex + 1).padStart(2, '0')}`,
-        task: `${domain.replaceAll('_', ' ')} published fixture ${taskIndex + 1}`,
-        domain,
-        status: passed ? 'passed' : 'failed',
-        score: passed ? 1 : 0,
-        explanation_code: executionFailure?.code ?? null,
-        explanation_summary: passed
-          ? null
-          : executionFailure
-            ? executionFailure.summary
-            : 'The evaluator rejected the response.',
-        retryable: executionFailure?.retryable ?? null,
-        tools: ['repository search', 'test runner'],
-        latency_ms: 7_500 + globalIndex * 137,
-        latency_evidence_level: 'runner_observed',
-        input_tokens: tokensAvailable ? 1_000 + publishedResultIndex : null,
-        cached_input_tokens: tokensAvailable ? 200 : null,
-        cache_write_input_tokens: tokensAvailable ? 50 : null,
-        output_tokens: tokensAvailable ? 500 : null,
-        reasoning_output_tokens: tokensAvailable ? 250 : null,
-        total_tokens: null,
-        token_usage_source_level: tokensAvailable ? 'provider_reported' : null,
-        token_usage_evidence_level: tokensAvailable ? 'verifier_recomputed' : null,
-        standard_api_equivalent_usd_nanos: estimatedCost
-          ? 650_000 + publishedResultIndex * 1_000
-          : null,
-        cost_estimator_status: estimatedCost
-          ? 'estimated'
-          : unavailableContextBand
-            ? 'unavailable_context_band'
-            : 'unavailable_missing_usage',
-        cost_evidence_level: estimatedCost ? 'verifier_recomputed' : null,
-      });
-    }
+  for (const result of evidence.results) {
+    globalIndex += 1;
+    publishedResultIndex += 1;
+    const runtimeIssue = result.execution_status === 'runtime_issue';
+    const unavailableContextBand = !runtimeIssue && publishedResultIndex <= 10;
+    const estimatedCost = !runtimeIssue && !unavailableContextBand;
+    const tokensAvailable = estimatedCost || unavailableContextBand;
+    const inputTokens = tokensAvailable
+      ? unavailableContextBand
+        ? 272_001 + publishedResultIndex
+        : 1_000 + publishedResultIndex
+      : null;
+    const cachedInputTokens = tokensAvailable ? 200 : null;
+    const cacheWriteInputTokens = tokensAvailable ? 50 : null;
+    const outputTokens = tokensAvailable ? 500 : null;
+    const estimatedUsdNanos = estimatedCost
+      ? (inputTokens - cachedInputTokens - cacheWriteInputTokens) *
+          modelRate.input_usd_nanos_per_token +
+        cachedInputTokens * modelRate.cached_input_usd_nanos_per_token +
+        cacheWriteInputTokens * modelRate.cache_write_input_usd_nanos_per_token +
+        outputTokens * modelRate.output_usd_nanos_per_token
+      : null;
+    runResults.push({
+      run_id: evidence.runId,
+      id: result.id,
+      task_id: result.task_id,
+      task: result.task,
+      domain: result.domain,
+      outcome: result.outcome,
+      execution_status: result.execution_status,
+      score: result.score,
+      explanation_code: result.explanation_code,
+      explanation_summary: result.explanation_summary,
+      retryable: result.retryable,
+      tools: ['repository_search', 'test_runner'],
+      latency_ms: 7_500 + globalIndex * 137,
+      latency_evidence_level: 'runner_observed',
+      input_tokens: inputTokens,
+      cached_input_tokens: cachedInputTokens,
+      cache_write_input_tokens: cacheWriteInputTokens,
+      output_tokens: outputTokens,
+      reasoning_output_tokens: tokensAvailable ? 250 : null,
+      total_tokens: null,
+      token_usage_source_level: tokensAvailable ? 'provider_reported' : null,
+      token_usage_evidence_level: tokensAvailable ? 'verifier_recomputed' : null,
+      standard_api_equivalent_usd_nanos: estimatedUsdNanos,
+      cost_estimator_status: estimatedCost
+        ? 'estimated'
+        : unavailableContextBand
+          ? 'unavailable_context_band'
+          : 'unavailable_missing_usage',
+      cost_evidence_level: estimatedCost ? 'verifier_recomputed' : null,
+      pricing_digest: pricingDigest,
+    });
   }
+}
+
+const resultCostCoverage = {
+  estimated: runResults.filter((result) => result.cost_estimator_status === 'estimated').length,
+  unavailableContextBand: runResults.filter(
+    (result) => result.cost_estimator_status === 'unavailable_context_band',
+  ).length,
+  unavailableMissingUsage: runResults.filter(
+    (result) => result.cost_estimator_status === 'unavailable_missing_usage',
+  ).length,
+};
+if (
+  resultCostCoverage.estimated !== 1_208 ||
+  resultCostCoverage.unavailableContextBand !== 10 ||
+  resultCostCoverage.unavailableMissingUsage !== 6
+) {
+  throw new Error('Official result cost coverage must match the verified production matrix.');
 }
 
 const scoringVersion = {
@@ -516,7 +1010,7 @@ const scoringVersion = {
   ],
   missing_policy: 'Missing and invalid results block Official publication.',
   failure_policy: 'A valid failed attempt scores zero and remains visible.',
-  confidence_policy:
+  sensitivity_policy:
     'The interval is a fixed-fixture task-resampling sensitivity interval, not a universal capability claim.',
   synthetic: false,
 };
@@ -570,31 +1064,86 @@ const radar = [
   },
 ];
 
-const trendDates = [
-  '2026-07-29T12:00:00.000Z',
-  '2026-07-26T12:00:00.000Z',
-  '2026-07-12T12:00:00.000Z',
-  '2026-05-29T12:00:00.000Z',
-];
-const trends = matrix.flatMap((entry, entryIndex) =>
-  trendDates.map((recordedAt, dateIndex) => {
-    const score = Number((84.2 - entryIndex * 0.7 - dateIndex * 0.4).toFixed(1));
-    return {
-      matrix_id: entry.id,
-      run_id: officialRunId(entry, entryIndex),
-      recorded_at: recordedAt,
-      bucket_started_at: recordedAt,
-      bucket_ended_at: new Date(Date.parse(recordedAt) + 3_600_000).toISOString(),
-      score,
-      ci_low: Number((score - 1.8).toFixed(1)),
-      ci_high: Number((score + 1.8).toFixed(1)),
-      sample_size: 72,
-      represented_run_count: 1,
-      resolution_seconds: 3_600,
-      synthetic: false,
-    };
-  }),
-);
+/**
+ * @param {string} recordedAt
+ */
+function trendBucket(recordedAt) {
+  const bucketStartedAt = new Date(recordedAt);
+  bucketStartedAt.setUTCMinutes(0, 0, 0);
+  return {
+    bucketStartedAt: bucketStartedAt.toISOString(),
+    bucketEndedAt: new Date(bucketStartedAt.getTime() + 3_600_000).toISOString(),
+  };
+}
+
+const currentTrends = leaderboard.map((current) => {
+  const { bucketStartedAt, bucketEndedAt } = trendBucket(currentRunCompletedAt);
+  return {
+    matrix_id: current.matrix_id,
+    run_id: current.run_id,
+    scoring_version: current.scoring_version,
+    recorded_at: currentRunCompletedAt,
+    bucket_started_at: bucketStartedAt,
+    bucket_ended_at: bucketEndedAt,
+    score: current.score,
+    sensitivity_low: current.sensitivity_low,
+    sensitivity_high: current.sensitivity_high,
+    sample_size: current.sample_size,
+    represented_run_count: 1,
+    resolution_seconds: 3_600,
+    synthetic: false,
+  };
+});
+
+const trendDates = [currentRunCompletedAt];
+const trends = currentTrends;
+
+if (new Set(trends.map((point) => point.run_id)).size !== trends.length) {
+  throw new Error('Every retained trend point must have one independent run identity.');
+}
+for (const point of trends) {
+  const run = runRows.find((candidate) => candidate.id === point.run_id);
+  if (
+    !run ||
+    run.matrix_id !== point.matrix_id ||
+    run.synthetic ||
+    point.synthetic ||
+    Date.parse(run.started_at) > Date.parse(run.completed_at) ||
+    Date.parse(run.completed_at) > Date.parse(point.recorded_at)
+  ) {
+    throw new Error('Retained trend evidence must bind one time-valid non-synthetic run.');
+  }
+}
+for (const current of leaderboard) {
+  const retained = trends.filter((point) => point.matrix_id === current.matrix_id);
+  retained.sort((left, right) => right.recorded_at.localeCompare(left.recorded_at));
+  const latest = retained[0];
+  if (
+    !latest ||
+    latest.run_id !== current.run_id ||
+    latest.score !== current.score ||
+    latest.sensitivity_low !== current.sensitivity_low ||
+    latest.sensitivity_high !== current.sensitivity_high ||
+    latest.sample_size !== current.sample_size
+  ) {
+    throw new Error('The latest retained trend point must equal its current leaderboard row.');
+  }
+}
+
+for (const evidence of currentRunEvidence) {
+  const current = leaderboard.find((row) => row.run_id === evidence.runId);
+  if (
+    !current ||
+    current.score !== Number(equalDomainAiq(evidence.results).toFixed(3)) ||
+    current.score !== evidence.interval.center ||
+    current.sensitivity_low !== evidence.interval.lower ||
+    current.sensitivity_high !== evidence.interval.upper ||
+    current.sensitivity_low > current.score ||
+    current.sensitivity_high < current.score
+  ) {
+    throw new Error('Current leaderboard values must derive from their exact task evidence.');
+  }
+}
 
 const rpcContract = Object.entries(REQUIRED_RPC_CONTRACT).map(([name, contract]) => ({
   name,
@@ -653,7 +1202,7 @@ function limited(url, rows) {
  * @param {string} range
  */
 function trendRowsForRange(range) {
-  const dateCount = range === 'day' ? 1 : range === 'week' ? 2 : range === 'month' ? 3 : 4;
+  const dateCount = range === 'day' ? 1 : range === 'week' ? 2 : range === 'month' ? 4 : 5;
   const allowedDates = new Set(trendDates.slice(0, dateCount));
   return trends.filter((point) => allowedDates.has(point.recorded_at));
 }
@@ -666,8 +1215,8 @@ const server = createServer((request, response) => {
   }
   if (url.pathname === '/storage/v1/bucket') {
     json(response, [
-      { name: 'private-packages', public: false },
-      { name: 'private-artifacts', public: false },
+      { name: 'aiq-submission-packages', public: false },
+      { name: 'aiq-runner-artifacts', public: false },
     ]);
     return;
   }
@@ -709,19 +1258,54 @@ const server = createServer((request, response) => {
     return;
   }
   if (url.pathname === '/rest/v1/public_runs') {
-    const exactId = url.searchParams.get('id')?.replace(/^eq\./, '');
+    const idFilter = url.searchParams.get('id') ?? '';
+    const exactId = idFilter.startsWith('eq.') ? idFilter.slice(3) : undefined;
+    const selectedIds = new Set(
+      idFilter.startsWith('in.(') ? idFilter.slice(4, -1).split(',').filter(Boolean) : [],
+    );
+    const exactStartedAt = url.searchParams.get('started_at')?.replace(/^eq\./, '');
     const cursorExpression = url.searchParams.get('or') ?? '';
+    const olderStartedAt = /started_at\.lt\.([^,)]+)/.exec(cursorExpression)?.[1];
+    const newerStartedAt = /started_at\.gt\.([^,)]+)/.exec(cursorExpression)?.[1];
+    const boundaryStartedAt = /started_at\.eq\.([^,)]+)/.exec(cursorExpression)?.[1];
     const olderId = /id\.gt\.([^,)]+)/.exec(cursorExpression)?.[1];
     const newerId = /id\.lt\.([^,)]+)/.exec(cursorExpression)?.[1];
     const ordered = [...runRows];
-    const descendingIds = (url.searchParams.get('order') ?? '').includes('id.desc');
-    ordered.sort((left, right) =>
-      descendingIds ? right.id.localeCompare(left.id) : left.id.localeCompare(right.id),
+    const ascending = (url.searchParams.get('order') ?? '').includes('started_at.asc');
+    ordered.sort(
+      (left, right) =>
+        (ascending
+          ? left.started_at.localeCompare(right.started_at)
+          : right.started_at.localeCompare(left.started_at)) ||
+        (ascending ? right.id.localeCompare(left.id) : left.id.localeCompare(right.id)),
     );
-    const rows = exactId
-      ? ordered.filter((run) => run.id === exactId)
-      : ordered.filter((run) => (!olderId || run.id > olderId) && (!newerId || run.id < newerId));
-    json(response, limited(url, rows));
+    const rows =
+      selectedIds.size > 0
+        ? ordered.filter((run) => selectedIds.has(run.id))
+        : exactId
+          ? ordered.filter(
+              (run) => run.id === exactId && (!exactStartedAt || run.started_at === exactStartedAt),
+            )
+          : ordered.filter((run) => {
+              if (olderStartedAt) {
+                return (
+                  run.started_at < olderStartedAt ||
+                  (run.started_at === boundaryStartedAt && (!olderId || run.id > olderId))
+                );
+              }
+              if (newerStartedAt) {
+                return (
+                  run.started_at > newerStartedAt ||
+                  (run.started_at === boundaryStartedAt && (!newerId || run.id < newerId))
+                );
+              }
+              return true;
+            });
+    const selectedRows =
+      url.searchParams.get('select') === 'id,started_at'
+        ? rows.map(({ id, started_at }) => ({ id, started_at }))
+        : rows;
+    json(response, limited(url, selectedRows));
     return;
   }
   if (url.pathname === '/rest/v1/public_run_results') {
@@ -792,8 +1376,8 @@ const server = createServer((request, response) => {
     );
     const rows =
       selectedIds.size === 0
-        ? historicalModelEfficiency
-        : historicalModelEfficiency.filter((entry) => selectedIds.has(entry.run_id));
+        ? publishedModelEfficiency
+        : publishedModelEfficiency.filter((entry) => selectedIds.has(entry.run_id));
     json(response, limited(url, rows));
     return;
   }

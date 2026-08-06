@@ -92,14 +92,28 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937
+sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 ```
+
+This is the active public `1.0.5` metadata identity. Its public release digest
+is `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
+The create-new interaction candidate passed reproducible generation,
+independent authoring validation, and the 72-task Rust corpus validator. Its
+Core, runtime, evaluator, generated-task tree, and database commitments remain
+calibration candidates; Contrast generation and release acceptance are pending.
 
 ## Execution and evidence
 
 The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
+
+For the `1.0.5` release, run one complete 17-by-72 calibration before any real
+Official publication path. This non-Official calibration must try to falsify
+fixture discrimination and must pass the release policy without an operator
+override. The interrupted `1.0.3` Official attempt was rejected as unpublished
+calibration evidence after an already-conclusive ceiling failure. No hidden
+responses or hidden task details were published.
 
 Capability preflight records the exact local model support state. The run binds
 the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,

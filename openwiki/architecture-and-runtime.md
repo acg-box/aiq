@@ -20,18 +20,54 @@ tags: ['architecture', 'runtime', 'security']
 The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
-Repository source has one active full-catalog Official contract: AIQ Core
-`1.0.2` with scoring `1.0.2`, task-metadata digest
-`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
-release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-This is the only launch contract. The first real Official benchmark batch
-completed on the native macOS runner. The batch is non-synthetic. Its 1,224
+Repository source has one active public candidate, task, and scorer contract:
+AIQ Core `1.0.5` with task-metadata digest
+`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
+release-policy identity `aiq-core/1.0.5`, and public release digest
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
+This public candidate retargets four calibration-sensitive tasks and carries
+forward 68 task designs with new bindings. The latest catalog revision uses a
+bounded keyed executor, a quoted-record parser, a six-field layered service
+configuration loader, and a bounded Unicode log preview. Each task composes
+multiple public requirements and uses a 900-second wall budget with unchanged
+step and tool-call limits. The preceding 63-complete, 5-timeout pilot was
+rejected for 0.933–0.992 completed means and remains immutable non-Official
+evidence. The current task semantics and calibration implications are
+canonicalized in [Benchmark Method](benchmark-method.md).
+The create-new interaction candidate passed reproducibility generation,
+independent authoring validation, and the Rust 72-task corpus validator. Its
+controlled Core, scorer-manifest, evaluator, runtime task-set, generated-task
+tree, and database commitment identities remain calibration candidates rather
+than accepted release identities. Contrast generation remains pending. The
+shared Rust validator fails closed
+unless the runner subtree remains `identity_kind: source_only` with a null
+`built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
+has equivalent shared typed enforcement even though it has no separate
+checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
+identities. The source-only corpus rule and signed per-run runner and Codex
+executable provenance are the executable product contracts. After the final
+clean build, the operator retains a private, unsigned audit receipt with the
+exact source commit and tree identity and SHA-256 values for the native runner,
+verifier, Node.js, and ripgrep executables. The repository does not validate or
+publish this reproducibility evidence. Full calibration, native build
+verification, real Official execution, publication, and final deployment of
+`1.0.5` are pending. The `1.0.3` Official attempt was interrupted after an
+already-conclusive ceiling failure and was rejected as unpublished calibration
+evidence. No hidden responses or hidden task details were published. The first
+`1.0.4` calibration completed all 1,224 cells but failed the statistical release
+gate. It remains non-Official evidence; this does not mean every task execution
+failed. The `1.0.5` sequence is a 17-configuration by four-revised-task pilot,
+followed by the complete 17-by-72 non-Official calibration. Real calibration
+can enter the public calibration register only after signed verifier admission
+and distinct publication, and it remains non-Official after acceptance.
+The first published real Official benchmark batch completed on the native macOS
+runner. The batch is non-synthetic. Its 1,224
 task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
 The native verifier replayed the committed evaluators, and the distinct
 publisher completed the database transition. Production exposes the matrix as
-`trusted_verified`. The first Official launch publication was deployed from
-merge commit `725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
+`trusted_verified` under the historical AIQ Core `1.0.2` contract. The first
+Official launch publication was deployed from merge commit
+`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
 historical launch evidence, not the identity of every later production
 deployment. The published outcome and efficiency semantics are detailed in
 [Benchmark Method](benchmark-method.md).
@@ -59,6 +95,10 @@ command. The verifier receives the committed corpus, evaluator assets,
 submitted artifacts, and only its verifier credential. It never receives the
 Codex authentication copy.
 
+The runner copies `~/.codex/auth.json` into a mode-private, isolated release
+home and injects that directory as the Codex subprocess `CODEX_HOME`. It does
+not use the interactive Codex home as its writable execution home.
+
 The native runtime uses canonical non-overlapping paths, a clean source worktree
 at the declared commit, exact executable digests, mode-private writable roots,
 create-new outputs, and macOS atomic file operations. Before paid preflight and
@@ -81,7 +121,10 @@ capacity, worker count, and permission boundary. The runner starts Codex with
 strict CLI configuration that selects the explicit `aiq_benchmark` profile and
 requires external managed requirements to be absent, then runs the sandbox
 canaries and validates the planned preflight, checkpoint, run, score, and package
-paths. It writes one private create-once
+paths. Permission-canary evidence v2 preserves the filesystem read-only and
+write-denial checks and network denial. It also executes the committed Node.js
+and ripgrep absolute paths directly inside the benchmark boundary. The runner
+writes one private create-once
 `aiq.official-permission-admission.v2` receipt without invoking a model. Paid
 preflight validates the public catalog, current corpus commitment, controlled
 toolchain, evaluator runtime, source manifest, capability manifest,
@@ -117,6 +160,13 @@ trusted single-writer boundary. An Official run is non-synthetic, complete, and
 exactly 17 by 72. Calibration accepts a deterministic subset but remains
 untrusted, non-Official, and ineligible for ranking.
 
+The complete Official matrix is one run with 1,224 task-model cells, not 1,224
+runs. An admitted host can execute it with `--jobs 32` when the conservative
+capacity check accepts that value. A corpus, toolchain, or permission-evidence
+digest change defines a different plan. It requires a new admission, preflight,
+checkpoint, run, score, package, verifier environment, replay stage, and
+attestation; evidence from the changed plan cannot authorize the new one.
+
 After each paid invocation, the runner retains the available invocation and
 workspace evidence before cleanup. Authentication, subscription-limit, or
 workspace-integrity boundaries cancel remaining paid cells; checkpoints do not
@@ -139,6 +189,13 @@ It resolves and digest/size-checks every signed capability-probe artifact so
 publication retention can prove ownership of that run-level evidence, then
 reconstructs submitted workspaces and replays committed evaluators with the
 committed runtime. Production requires the `evaluator_replayed` disposition.
+
+The offline `diagnose-rescore` mode is separate from verification and
+publication. It verifies the source package signature, provenance, artifacts,
+and complete source evaluator replay before it uses the candidate source, tasks,
+evaluators, runtime, and toolchain to replay the preserved matrix cells. The
+create-new diagnostic is permanently non-Official and non-ranking. It cannot
+publish, create a verifier stage, or sign an attestation.
 
 The verification route performs three ordered database actions for Official
 evidence: stage `aiq.normalized-batch.v3`, record the immutable verifier
@@ -186,19 +243,23 @@ signatures, raw provider events, artifacts, and private failure details.
 Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
-AIQ database. It accepts only the AIQ Core `1.0.2` catalog and scoring `1.0.2`.
+AIQ database. There is no migration chain. The pre-release desired state
+targets the public AIQ Core `1.0.5` catalog and scoring `1.0.5`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,
 [Deployment Handoff](deployment-handoff.md) requires model-free validation of
-the controlled corpus and final native binaries before preparing that
-reference. The initializer validates its shape and bindings. It inserts the
-reference with the model matrix as the one greenfield desired state.
+the controlled corpus and a verified final native build before preparing that
+reference. The operator retains the private final-build audit receipt separately;
+the initializer does not consume or validate it. The initializer validates the
+reference shape and bindings. It inserts the reference with the model matrix as
+the one greenfield desired state.
 
 ## Storage boundary
 
 Submitted packages use the private `aiq-submission-packages` bucket. Runner
-artifacts use the private `aiq-runner-artifacts` bucket. Database
+artifacts use the private `aiq-runner-artifacts` bucket. The greenfield database
+schema creates both buckets and enforces their private setting. Database
 rows bind object type, digest, byte count, retention state, and active
 references. Reconciliation records database-only and Storage-only mismatches.
 Deletion is a separate bounded worker action and cannot remove referenced or
@@ -211,24 +272,49 @@ production path requires both browser-safe Supabase values and serves only live
 public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
-The overview now leads with a chart of the scored 17-configuration matrix and
-supports bar and line presentations. It fetches the complete run behind the
-highest point estimate and uses that run for a task-outcome card, a ten-domain
-breakdown, and a link to every task result. The full leaderboard, Official
-efficiency table, and latest verified calibration remain available through
-progressive disclosures rather than competing with the first-read matrix. These
-views preserve the scoring and evidence distinctions defined by
-[Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
-coverage is not correctness, and API-equivalent cost is not subscription spend.
-Source anchors are `apps/web/src/app/page.tsx`,
+The public site is a professional analysis workbench backed by real historical
+production evidence. Its scientific score context identifies the observation
+count, fixed-fixture task-sensitivity interval, coverage, missing cells, runtime
+status, scoring method, and provenance. Cost is an estimated Standard
+API-equivalent comparison, not an actual ChatGPT or Codex subscription bill. The
+public-data repository validates each live public-view response before rendering:
+it requires canonical run and task identities, expected field sets, internally
+consistent task counts and status totals, valid timing and token evidence, and
+verifier-recomputed cost consistent with the published pricing digest. The
+readiness probe verifies the same expanded result-view contract.
+
+The overview leads with a chart of the scored 17-configuration matrix and
+supports dot, bar, and ordered-horizontal presentations with task-sensitivity
+intervals. Its score, run context, and efficiency displays resolve only after an
+exact run, configuration, scoring-version, and synthetic/provenance identity
+join. The run-detail, compare, and trends routes use the same rule; ambiguous or
+mismatched joins remain unavailable rather than borrowing nearby evidence. The
+overview fetches the complete run behind the highest point estimate and uses
+that run for a task-outcome card, a ten-domain breakdown, and a link to every
+task result; it reads the newest retained run independently rather than treating
+it as that highlighted run. Official efficiency reports unavailable and rejected
+rows explicitly when its exact evidence cannot be established. The full
+leaderboard, Official efficiency table, and latest verified calibration remain
+available through progressive disclosures rather than competing with the
+first-read matrix. These views preserve the scoring and evidence distinctions
+defined by [Benchmark Method](benchmark-method.md): the AIQ index is not an IQ
+estimate, coverage is not correctness, and API-equivalent cost is not
+subscription spend. Semantic outcomes remain separate from runtime, invalid,
+and missing states. Charts use ECharts with SVG rendering. The chart wrapper
+exposes the generated ECharts description to assistive technology and each chart
+has a complete data table. Charts expose the fixed-fixture task-sensitivity
+interval and support explicit System, Light, and Dark themes. Synthetic fixtures
+remain confined to explicit development and test paths. Source anchors are
+`apps/web/src/app/page.tsx`, `apps/web/src/components/scientific-evidence-resolution.ts`,
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.
 
-Primary navigation keeps Overview, Compare, Trends, and Runs visible.
-Calibrations, Method, and Radar remain routable under the `More` disclosure in
-`apps/web/src/components/site-header.tsx`. Browser tests exercise both the
-collapsed evidence sections and secondary-route discovery across synthetic,
-live-empty, live-published, and production fixtures.
+Primary navigation keeps Overview and Runs visible. Compare, Trends,
+Calibrations, Method, and Runner provenance remain routable under the `Analyze`
+disclosure in `apps/web/src/components/site-header.tsx`; the route remains
+`/radar`. This keeps the header compact while preserving every analysis route.
+Browser tests exercise both the collapsed evidence sections and secondary-route
+discovery across synthetic, live-empty, live-published, and production fixtures.
 
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
@@ -268,7 +354,11 @@ and it fails closed when a required production dependency is absent.
 
 ## Distributed radar
 
-The radar protocol keeps registry identity, signed observations, receipts, and
-aggregation evidence distinct. Checked-in radar rows are synthetic. The
-repository defines the contracts and public aggregate read but does not operate
-a coordinator or remote nodes.
+The `/radar` Runner provenance view presents a retained-record registry and
+per-node evidence register: registry status and trust, record recency, latest
+capability and observation signature evidence, and provenance. It deliberately
+does not use distance, angle, or animation to imply topology or liveness, and no
+record is a live heartbeat. The underlying protocol keeps registry identity,
+signed observations, receipts, and aggregation evidence distinct. Checked-in
+radar rows are synthetic. The repository defines the contracts and public read
+but does not operate a coordinator or remote nodes.

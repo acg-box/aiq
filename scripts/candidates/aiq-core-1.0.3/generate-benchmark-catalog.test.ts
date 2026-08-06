@@ -17,10 +17,13 @@ import {
 type JsonObject = Record<string, unknown>;
 
 const catalogPath = fileURLToPath(
-  new URL('../../../benchmarks/candidates/aiq-core-1.0.2/catalog.json', import.meta.url),
+  new URL('../../../benchmarks/candidates/aiq-core-1.0.3/catalog.json', import.meta.url),
 );
 const schemaPath = fileURLToPath(
-  new URL('../../../benchmarks/candidates/aiq-core-1.0.2/catalog.schema.json', import.meta.url),
+  new URL('../../../benchmarks/candidates/aiq-core-1.0.3/catalog.schema.json', import.meta.url),
+);
+const taskSchemaPath = fileURLToPath(
+  new URL('../../../benchmarks/candidates/aiq-core-1.0.3/task.schema.json', import.meta.url),
 );
 
 function jsonObject(value: unknown): JsonObject {
@@ -41,9 +44,25 @@ await test('the generated active catalog is deterministic and keeps all 72 task 
   assertCatalogInvariants(catalog);
   deepStrictEqual(committed, catalog);
   strictEqual(catalog.status, 'active');
-  strictEqual(catalog.scoring_version, '1.0.2');
+  strictEqual(catalog.scoring_version, '1.0.3');
   strictEqual(catalog.catalog_release_identity.scoring_version, catalog.scoring_version);
   strictEqual(catalog.tasks.length, 72);
+  for (const task of catalog.tasks) {
+    deepStrictEqual(Object.keys(task.evaluator.acceptance_fixture_commitments), [
+      'gold',
+      'alternate_correct',
+      'partial',
+      'adversarial_format',
+      'empty',
+      'timeout',
+    ]);
+  }
+  strictEqual(
+    catalog.content_policy.controlled_source.includes(
+      'Near-miss and paired-contrast calibration belongs to the separate AIQ Core Contrast suite',
+    ),
+    true,
+  );
   strictEqual(taskMetadataIdentityDigest(catalog.tasks), AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256);
   strictEqual(catalog.catalog_release_identity.digest, AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256);
 });
@@ -119,7 +138,7 @@ await test('the active catalog schema closes the lifecycle-free release identity
   const definitions = jsonObject(schema.$defs);
 
   deepStrictEqual(properties.status, { const: 'active' });
-  deepStrictEqual(properties.scoring_version, { const: '1.0.2' });
+  deepStrictEqual(properties.scoring_version, { const: '1.0.3' });
   strictEqual(properties.predecessor_catalog, undefined);
   strictEqual(properties.release_gate_policy, undefined);
   strictEqual(definitions.releaseGatePolicy, undefined);
@@ -133,10 +152,21 @@ await test('the active catalog schema closes the lifecycle-free release identity
     'digest',
     'scope',
   ]);
-  deepStrictEqual(releaseProperties.release_identity, { const: 'aiq-core/1.0.2' });
-  deepStrictEqual(releaseProperties.scoring_version, { const: '1.0.2' });
+  deepStrictEqual(releaseProperties.release_identity, { const: 'aiq-core/1.0.3' });
+  deepStrictEqual(releaseProperties.scoring_version, { const: '1.0.3' });
   deepStrictEqual(releaseProperties.canonicalization, { const: 'aiq.sorted-key-json.v1' });
   deepStrictEqual(releaseProperties.scope, {
     const: 'release_identity_scoring_version_and_ordered_task_metadata_identity',
   });
+});
+
+await test('the active task schema accepts only AIQ Core 1.0.3 task bindings', async () => {
+  const source = await readFile(taskSchemaPath, 'utf8');
+  const schema = jsonObject(JSON.parse(source));
+  const properties = jsonObject(schema.properties);
+
+  deepStrictEqual(properties.task_version, { const: '1.0.3' });
+  deepStrictEqual(properties.scorer_version, { const: '1.0.3' });
+  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.3/'), true);
+  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.2/'), false);
 });

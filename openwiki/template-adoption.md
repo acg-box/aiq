@@ -32,10 +32,19 @@ Review each result against source authority. Do not replace real product values
 with generic examples. Do not add deployment resources, secrets, schedules, or
 automation only to remove a marker.
 
-The source-head project constants include AIQ Core and scoring version `1.0.2`,
+The source-head public constants include AIQ Core and scoring version `1.0.5`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937`,
-release-policy identity `aiq-core/1.0.2`, and catalog release-identity digest
-`sha256:54e8010f9c9ebc187574015dd6f8a62fd8025884d86c5cdd0d581551ab6095a6`.
-This is the only greenfield launch contract.
+`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
+release-policy identity `aiq-core/1.0.5`, and public release digest
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
+The interaction candidate's controlled Core, scorer-manifest, evaluator,
+runtime task-set, generated-task tree, and database commitment identities
+passed model-free validation but remain calibration candidates. Contrast
+generation is pending. The first
+`1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
+evidence, not as an all-execution failure. The `1.0.5` sequence requires a
+17-by-4 targeted pilot before the full 17-by-72 non-Official calibration. Final
+native build verification, a real Official run, publication, and final
+deployment remain pending. Live production retains the historical AIQ Core
+`1.0.2` matrix.

@@ -25,7 +25,7 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
             <th scope="col">Task sensitivity</th>
             <th scope="col">Samples</th>
             <th scope="col">Coverage</th>
-            <th scope="col">Tasks with credit</th>
+            <th scope="col">Runtime issues</th>
             <th scope="col">Scoring</th>
             <th scope="col">Completeness</th>
             <th scope="col">Evidence</th>
@@ -44,19 +44,10 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
                   </span>
                 </th>
                 <td className="score">{presentation.score}</td>
-                <td>{presentation.confidenceInterval}</td>
+                <td>{presentation.sensitivityInterval}</td>
                 <td>{presentation.samples}</td>
                 <td>{presentation.coverage}</td>
-                <td>
-                  {presentation.taskCredit === null ? (
-                    '—'
-                  ) : (
-                    <>
-                      <strong>{presentation.taskCredit.credited}</strong> /{' '}
-                      {presentation.taskCredit.scored}
-                    </>
-                  )}
-                </td>
+                <td>{presentation.runtimeIssues ?? '—'}</td>
                 <td>
                   {presentation.scoringVersion ? <code>{presentation.scoringVersion}</code> : '—'}
                 </td>

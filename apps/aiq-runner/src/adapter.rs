@@ -34,7 +34,9 @@ use std::{
 	iter,
 	net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream},
 	path::{Path, PathBuf},
-	process::{self, Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio},
+	process::{
+		self, Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Output, Stdio,
+	},
 	sync::{
 		Arc,
 		mpsc::{self, RecvTimeoutError, Sender, SyncSender},
@@ -133,6 +135,7 @@ const DISABLED_CODEX_FEATURES: &[&str] = &[
 	"workspace_dependencies",
 ];
 const BENCHMARK_PERMISSION_PROFILE: &str = "aiq_benchmark";
+const CONTROLLED_OPENSSL_CONF: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 const MAX_AUTH_JSON_BYTES: u64 = 1_024 * 1_024;
 const MAX_ID_TOKEN_PAYLOAD_BYTES: usize = 128 * 1_024;
 const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
@@ -140,6 +143,9 @@ const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
 
 #[cfg(unix)]
 static SCRATCH_QUARANTINE_SEQUENCE: std::sync::atomic::AtomicU64 =
+	std::sync::atomic::AtomicU64::new(0);
+#[cfg(unix)]
+static ARTIFACT_TEMPORARY_SEQUENCE: std::sync::atomic::AtomicU64 =
 	std::sync::atomic::AtomicU64::new(0);
 
 /// An injectable process execution seam.
@@ -383,13 +389,24 @@ impl LocalArtifactSink {
 		bytes: &[u8],
 		post_publish: impl FnOnce(),
 	) -> Result<ArtifactReference, ExecutorError> {
-		self.put_inner(kind, bytes, post_publish)
+		self.put_inner(kind, bytes, || {}, post_publish)
+	}
+
+	#[cfg(all(test, unix))]
+	fn put_with_install_hook(
+		&self,
+		kind: &str,
+		bytes: &[u8],
+		post_install: impl FnOnce(),
+	) -> Result<ArtifactReference, ExecutorError> {
+		self.put_inner(kind, bytes, post_install, || {})
 	}
 
 	fn put_inner(
 		&self,
 		kind: &str,
 		bytes: &[u8],
+		post_install: impl FnOnce(),
 		post_publish: impl FnOnce(),
 	) -> Result<ArtifactReference, ExecutorError> {
 		if kind.is_empty()
@@ -404,93 +421,9 @@ impl LocalArtifactSink {
 		let digest = content_hash.trim_start_matches("sha256:").to_owned();
 
 		#[cfg(unix)]
-		{
-			let directory = self
-				.pinned
-				.child_directory(OsStr::new(&digest), true)
-				.map_err(ExecutorError::new)?;
-			let temporary = format!(
-				".tmp-{}-{}-{kind}",
-				process::id(),
-				SystemTime::now()
-					.duration_since(UNIX_EPOCH)
-					.map_or(0, |duration| duration.as_nanos())
-			);
-			let mut file = self
-				.pinned
-				.create_child_file(&directory, OsStr::new(&temporary))
-				.map_err(ExecutorError::new)?;
-
-			file.write_all(bytes)
-				.and_then(|()| file.sync_all())
-				.map_err(|_| ExecutorError::new("artifact write failed"))?;
-
-			drop(file);
-
-			let published =
-				self.pinned.link_child_file(&directory, OsStr::new(&temporary), OsStr::new(kind));
-
-			self.pinned
-				.unlink_child_file(&directory, OsStr::new(&temporary))
-				.map_err(ExecutorError::new)?;
-
-			if let Err(error) = published
-				&& error.kind() != ErrorKind::AlreadyExists
-			{
-				return Err(ExecutorError::new("cannot publish artifact atomically"));
-			}
-
-			let mut existing = self
-				.pinned
-				.open_child_file(&directory, OsStr::new(kind))
-				.map_err(ExecutorError::new)?;
-
-			verify_existing_artifact_file(&mut existing, bytes, &content_hash)?;
-			post_publish();
-
-			directory
-				.sync_all()
-				.map_err(|_| ExecutorError::new("cannot synchronize artifact directory"))?;
-			self.pinned.sync().map_err(ExecutorError::new)?;
-			self.pinned
-				.verify_child_file(OsStr::new(&digest), &directory, OsStr::new(kind), &existing)
-				.map_err(ExecutorError::new)?;
-		}
+		self.publish_unix(kind, bytes, &content_hash, &digest, post_install, post_publish)?;
 		#[cfg(not(unix))]
-		{
-			let directory = self.root.join(&digest);
-
-			if fs::symlink_metadata(&directory)
-				.is_ok_and(|metadata| metadata.file_type().is_symlink())
-			{
-				return Err(ExecutorError::new("artifact digest directory is a symbolic link"));
-			}
-
-			fs::create_dir_all(&directory).map_err(|error| {
-				ExecutorError::new(format!("artifact directory unavailable: {error}"))
-			})?;
-
-			let path = directory.join(kind);
-
-			if path.exists() {
-				verify_existing_artifact(&path, bytes, &content_hash)?;
-			} else {
-				let mut options = OpenOptions::new();
-
-				options.write(true).create_new(true);
-
-				let mut file = options.open(&path).map_err(|error| {
-					ExecutorError::new(format!("cannot create artifact: {error}"))
-				})?;
-
-				file.write_all(bytes).and_then(|()| file.sync_all()).map_err(|error| {
-					ExecutorError::new(format!("artifact write failed: {error}"))
-				})?;
-			}
-
-			post_publish();
-		}
-
+		self.publish_portable(kind, bytes, &content_hash, &digest, post_install, post_publish)?;
 		self.verify_pinned()?;
 
 		Ok(ArtifactReference {
@@ -500,11 +433,145 @@ impl LocalArtifactSink {
 			bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
 		})
 	}
+
+	#[cfg(unix)]
+	fn publish_unix(
+		&self,
+		kind: &str,
+		bytes: &[u8],
+		content_hash: &str,
+		digest: &str,
+		post_install: impl FnOnce(),
+		post_publish: impl FnOnce(),
+	) -> Result<(), ExecutorError> {
+		let directory =
+			self.pinned.child_directory(OsStr::new(digest), true).map_err(ExecutorError::new)?;
+		let mut created = None;
+
+		for _ in 0..64 {
+			let temporary = Self::artifact_temporary_name(kind);
+
+			match self.pinned.create_child_file(&directory, OsStr::new(&temporary)) {
+				Ok(file) => {
+					created = Some((temporary, file));
+
+					break;
+				},
+				Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+				Err(_) => return Err(ExecutorError::new("cannot create protected child file")),
+			}
+		}
+
+		let (temporary, mut file) = created.ok_or_else(|| {
+			ExecutorError::new("cannot create unique protected temporary artifact file")
+		})?;
+
+		file.write_all(bytes)
+			.and_then(|()| file.sync_all())
+			.map_err(|_| ExecutorError::new("artifact write failed"))?;
+
+		drop(file);
+
+		let published = self.pinned.rename_child_file_noreplace(
+			&directory,
+			OsStr::new(&temporary),
+			OsStr::new(kind),
+		);
+
+		post_install();
+
+		if let Err(error) = published {
+			self.pinned
+				.unlink_child_file(&directory, OsStr::new(&temporary))
+				.map_err(ExecutorError::new)?;
+
+			if error.kind() != ErrorKind::AlreadyExists {
+				return Err(ExecutorError::new("cannot publish artifact atomically"));
+			}
+		}
+
+		let mut existing = self
+			.pinned
+			.open_child_file(&directory, OsStr::new(kind))
+			.map_err(ExecutorError::new)?;
+
+		verify_existing_artifact_file(&mut existing, bytes, content_hash)?;
+		post_publish();
+
+		directory
+			.sync_all()
+			.map_err(|_| ExecutorError::new("cannot synchronize artifact directory"))?;
+		self.pinned.sync().map_err(ExecutorError::new)?;
+
+		self.pinned
+			.verify_child_file(OsStr::new(digest), &directory, OsStr::new(kind), &existing)
+			.map_err(ExecutorError::new)
+	}
+
+	#[cfg(not(unix))]
+	fn publish_portable(
+		&self,
+		kind: &str,
+		bytes: &[u8],
+		content_hash: &str,
+		digest: &str,
+		post_install: impl FnOnce(),
+		post_publish: impl FnOnce(),
+	) -> Result<(), ExecutorError> {
+		let directory = self.root.join(digest);
+
+		if fs::symlink_metadata(&directory).is_ok_and(|metadata| metadata.file_type().is_symlink())
+		{
+			return Err(ExecutorError::new("artifact digest directory is a symbolic link"));
+		}
+
+		fs::create_dir_all(&directory).map_err(|error| {
+			ExecutorError::new(format!("artifact directory unavailable: {error}"))
+		})?;
+
+		let path = directory.join(kind);
+
+		if path.exists() {
+			verify_existing_artifact(&path, bytes, content_hash)?;
+		} else {
+			let mut options = OpenOptions::new();
+
+			options.write(true).create_new(true);
+
+			let mut file = options
+				.open(&path)
+				.map_err(|error| ExecutorError::new(format!("cannot create artifact: {error}")))?;
+
+			file.write_all(bytes)
+				.and_then(|()| file.sync_all())
+				.map_err(|error| ExecutorError::new(format!("artifact write failed: {error}")))?;
+		}
+
+		post_install();
+		post_publish();
+
+		Ok(())
+	}
+
+	#[cfg(unix)]
+	fn artifact_temporary_name(kind: &str) -> String {
+		let observed_nanoseconds =
+			SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |duration| duration.as_nanos());
+
+		Self::artifact_temporary_name_at(kind, observed_nanoseconds)
+	}
+
+	#[cfg(unix)]
+	fn artifact_temporary_name_at(kind: &str, observed_nanoseconds: u128) -> String {
+		let sequence = ARTIFACT_TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+
+		format!(".tmp-{}-{observed_nanoseconds}-{sequence}-{kind}", process::id())
+	}
 }
 
 impl ArtifactSink for LocalArtifactSink {
 	fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
-		self.put_inner(kind, bytes, || {})
+		self.put_inner(kind, bytes, || {}, || {})
 	}
 }
 
@@ -572,6 +639,8 @@ impl CodexExecutionConfig {
 	#[must_use]
 	pub fn isolated(codex_home: impl Into<PathBuf>) -> Self {
 		let mut allowed_environment = BTreeMap::new();
+
+		allowed_environment.insert("OPENSSL_CONF".to_owned(), CONTROLLED_OPENSSL_CONF.to_owned());
 
 		for key in ["LANG", "LC_ALL"] {
 			if let Ok(value) = env::var(key) {
@@ -922,8 +991,8 @@ where
 				"permission probe requires a model toolchain",
 			)
 		})?;
-		let read_only_file = toolchain.root().join(&toolchain.policy().commands[0].executable_ref);
-		let read_only_write_file = toolchain.root().join(".aiq-read-only-canary");
+		let (node_executable, rg_executable, read_only_file, read_only_write_file) =
+			permission_probe_toolchain_paths(toolchain);
 
 		require_permission_canaries_absent(&writable_file, &read_only_write_file)?;
 
@@ -993,6 +1062,8 @@ where
 					.unwrap_or_default(),
 				&read_only_file,
 				&read_only_write_file,
+				&node_executable,
+				&rg_executable,
 			)?,
 			Vec::new(),
 			Duration::from_secs(20),
@@ -2238,12 +2309,14 @@ pub fn run_permission_probe(
 	writable_file: &Path,
 	read_only_file: &Path,
 	read_only_write_file: &Path,
+	toolchain_executables: (&Path, &Path),
 	network_sentinel_port: u16,
 ) -> Result<(), ExecutorError> {
+	let (node_executable, rg_executable) = toolchain_executables;
 	let allowed = fs::read_to_string(allowed_file)
 		.map_err(|error| ExecutorError::new(format!("cannot read allowed canary: {error}")))?;
 
-	if allowed.trim() != "AIQ_ALLOWED" {
+	if allowed != "AIQ_ALLOWED\nAIQ_RG_OK\n" {
 		return Err(ExecutorError::new("allowed canary content mismatch"));
 	}
 	if denied_files.is_empty() {
@@ -2318,6 +2391,8 @@ pub fn run_permission_probe(
 			)));
 		},
 	}
+
+	run_toolchain_executable_canaries(node_executable, rg_executable, allowed_file)?;
 
 	io::stdout()
 		.write_all(b"AIQ_ISOLATION_OK")
@@ -2434,6 +2509,57 @@ pub fn expected_official_permission_profile_digests(
 		managed_requirements_digest,
 		profile_selection_digest,
 	})
+}
+
+fn run_toolchain_executable_canaries(
+	node_executable: &Path,
+	rg_executable: &Path,
+	allowed_file: &Path,
+) -> Result<(), ExecutorError> {
+	for (label, path) in [("Node.js", node_executable), ("ripgrep", rg_executable)] {
+		if !path.is_absolute() {
+			return Err(ExecutorError::new(format!(
+				"committed {label} canary executable path is not absolute"
+			)));
+		}
+	}
+
+	let node = Command::new(node_executable)
+		.args(["-e", "process.stdout.write(\"AIQ_NODE_OK\")"])
+		.output()
+		.map_err(|error| {
+			ExecutorError::new(format!("cannot execute committed Node.js canary: {error}"))
+		})?;
+
+	validate_toolchain_canary_output("Node.js", &node, b"AIQ_NODE_OK")?;
+
+	let rg = Command::new(rg_executable)
+		.args(["--no-config", "--fixed-strings", "--quiet", "AIQ_RG_OK"])
+		.arg(allowed_file)
+		.output()
+		.map_err(|error| {
+			ExecutorError::new(format!("cannot execute committed ripgrep canary: {error}"))
+		})?;
+
+	validate_toolchain_canary_output("ripgrep", &rg, b"")
+}
+
+fn validate_toolchain_canary_output(
+	label: &str,
+	output: &Output,
+	expected_stdout: &[u8],
+) -> Result<(), ExecutorError> {
+	if !output.status.success() {
+		return Err(ExecutorError::new(format!("committed {label} canary exited unsuccessfully")));
+	}
+	if output.stdout != expected_stdout {
+		return Err(ExecutorError::new(format!("committed {label} canary stdout mismatch")));
+	}
+	if !output.stderr.is_empty() {
+		return Err(ExecutorError::new(format!("committed {label} canary produced stderr")));
+	}
+
+	Ok(())
 }
 
 fn remove_scratch_directory(path: &Path) -> io::Result<()> {
@@ -4497,6 +4623,11 @@ fn invocation_args(
 		"--config".to_owned(),
 		format!("shell_environment_policy.set.PATH={}", toml_basic_string(&toolchain.path_value())),
 		"--config".to_owned(),
+		format!(
+			"shell_environment_policy.set.OPENSSL_CONF={}",
+			toml_basic_string(CONTROLLED_OPENSSL_CONF)
+		),
+		"--config".to_owned(),
 		"approval_policy=\"never\"".to_owned(),
 		"--config".to_owned(),
 		format!("default_permissions=\"{BENCHMARK_PERMISSION_PROFILE}\""),
@@ -4558,6 +4689,20 @@ fn permission_filesystem_config(
 	Ok(format!("permissions.{BENCHMARK_PERMISSION_PROFILE}.filesystem={{{}}}", rules.join(",")))
 }
 
+fn permission_probe_toolchain_paths(
+	toolchain: &ValidatedModelToolchain,
+) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+	let commands = &toolchain.policy().commands;
+	let node = toolchain.root().join(&commands[0].executable_ref);
+
+	(
+		node.clone(),
+		toolchain.root().join(&commands[1].executable_ref),
+		node,
+		toolchain.root().join(".aiq-read-only-canary"),
+	)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn permission_probe_args(
 	workspace: &Path,
@@ -4570,6 +4715,8 @@ fn permission_probe_args(
 	additional_read_paths: &[PathBuf],
 	read_only_file: &Path,
 	read_only_write_file: &Path,
+	node_executable: &Path,
+	rg_executable: &Path,
 ) -> Result<Vec<String>, AdapterFailure> {
 	let workspace = utf8_path(workspace, "isolation-probe workspace")?;
 	let allowed_file = utf8_path(allowed_file, "isolation-probe allowed file")?;
@@ -4578,6 +4725,8 @@ fn permission_probe_args(
 	let read_only_file = utf8_path(read_only_file, "isolation-probe read-only file")?;
 	let read_only_write_file =
 		utf8_path(read_only_write_file, "isolation-probe read-only write file")?;
+	let node_executable = utf8_path(node_executable, "isolation-probe Node.js executable")?;
+	let rg_executable = utf8_path(rg_executable, "isolation-probe ripgrep executable")?;
 	let mut args = vec![
 		"sandbox".to_owned(),
 		"--permission-profile".to_owned(),
@@ -4608,6 +4757,10 @@ fn permission_probe_args(
 		read_only_write_file.to_owned(),
 		"--network-sentinel-port".to_owned(),
 		network_sentinel_port.to_string(),
+		"--node-executable".to_owned(),
+		node_executable.to_owned(),
+		"--rg-executable".to_owned(),
+		rg_executable.to_owned(),
 	];
 
 	for denied_file in denied_files {
@@ -5132,12 +5285,14 @@ mod tests {
 	use std::os::{fd::AsRawFd as _, unix::fs::PermissionsExt as _};
 	#[cfg(unix)]
 	use std::process::{Command, Stdio};
+	#[cfg(unix)]
+	use std::sync::{Arc, Barrier};
 	use std::{
 		cell::{Cell, RefCell},
 		collections::{BTreeMap, BTreeSet},
 		env, fs,
 		io::{self, Read as _, Write as _},
-		path::PathBuf,
+		path::{Path, PathBuf},
 		process,
 		rc::Rc,
 		slice,
@@ -5878,6 +6033,10 @@ mod tests {
 			request.environment.get("CODEX_HOME"),
 			Some(&test_controlled_root().join("codex-home").display().to_string())
 		);
+		assert_eq!(
+			request.environment.get("OPENSSL_CONF").map(String::as_str),
+			Some(super::CONTROLLED_OPENSSL_CONF)
+		);
 		assert!(request.args.contains(&"--ignore-user-config".to_owned()));
 		assert!(request.args.contains(&"--ignore-rules".to_owned()));
 		assert!(request.args.contains(&"--strict-config".to_owned()));
@@ -5920,6 +6079,16 @@ mod tests {
 				.windows(2)
 				.any(|pair| { pair == ["--config", "shell_environment_policy.inherit=\"none\""] })
 		);
+		assert!(request.args.windows(2).any(|pair| {
+			pair == [
+				"--config",
+				format!(
+					"shell_environment_policy.set.OPENSSL_CONF={}",
+					super::toml_basic_string(super::CONTROLLED_OPENSSL_CONF)
+				)
+				.as_str(),
+			]
+		}));
 		assert!(!request.args.iter().any(|argument| argument.contains("HTTP_PROXY")));
 		assert!(!request.args.iter().any(|argument| argument.contains("http_proxy")));
 
@@ -6194,7 +6363,7 @@ mod tests {
 
 		fs::create_dir_all(&workspace).expect("fixture workspace");
 		fs::create_dir_all(&protected).expect("fixture protected root");
-		fs::write(&allowed, b"AIQ_ALLOWED\n").expect("allowed fixture");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
 		fs::write(&denied, b"AIQ_DENIED\n").expect("denied fixture");
 
 		let adapter = CodexAdapter::new(
@@ -6205,9 +6374,13 @@ mod tests {
 			))]),
 			MemorySink::default(),
 			"codex",
-			CodexExecutionConfig::isolated("/controlled/codex-home").with_denied_roots(vec![
-				fs::canonicalize(&protected).expect("canonical protected root"),
-			]),
+			CodexExecutionConfig::isolated("/controlled/codex-home")
+				.with_denied_roots(vec![
+					fs::canonicalize(&protected).expect("canonical protected root"),
+				])
+				.with_model_toolchain(corpus_commitment::fixture_model_toolchain(PathBuf::from(
+					"/toolchain",
+				))),
 		);
 
 		adapter
@@ -6238,9 +6411,147 @@ mod tests {
 		assert!(request.args.windows(2).any(|pair| {
 			pair == ["--config", "permissions.aiq_benchmark.network.enabled=false"]
 		}));
+
+		let expected_node = PathBuf::from("/toolchain")
+			.join(if cfg!(windows) { "node.exe" } else { "node" })
+			.to_string_lossy()
+			.into_owned();
+		let expected_rg = PathBuf::from("/toolchain")
+			.join(if cfg!(windows) { "rg.exe" } else { "rg" })
+			.to_string_lossy()
+			.into_owned();
+
+		assert!(
+			request
+				.args
+				.windows(2)
+				.any(|pair| { pair[0] == "--node-executable" && pair[1] == expected_node })
+		);
+		assert!(
+			request
+				.args
+				.windows(2)
+				.any(|pair| pair[0] == "--rg-executable" && pair[1] == expected_rg)
+		);
 		assert!(!writable.exists());
 
 		fs::remove_dir_all(&root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	fn write_executable_fixture(path: &Path, body: &str) {
+		fs::write(path, body).expect("write executable fixture");
+		fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+			.expect("make executable fixture");
+	}
+
+	#[cfg(unix)]
+	fn executable_canary_fixture(name: &str) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+		let suffix = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.expect("fixture clock")
+			.as_nanos();
+		let root = env::temp_dir()
+			.join(format!("aiq-executable-canary-{name}-{}-{suffix}", process::id()));
+		let toolchain = root.join("committed-toolchain");
+		let allowed = root.join("allowed.txt");
+
+		fs::create_dir_all(&toolchain).expect("toolchain fixture directory");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
+
+		(root, toolchain.join("node"), toolchain.join("rg"), allowed)
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canaries_accept_exact_success_outputs() {
+		let (root, node, rg, allowed) = executable_canary_fixture("success");
+
+		write_executable_fixture(
+			&node,
+			"#!/bin/sh\n[ \"$#\" -eq 2 ] && [ \"$1\" = '-e' ] && [ \"$2\" = 'process.stdout.write(\"AIQ_NODE_OK\")' ] || exit 71\nprintf '%s' 'AIQ_NODE_OK'\n",
+		);
+		write_executable_fixture(
+			&rg,
+			"#!/bin/sh\n[ \"$#\" -eq 5 ] && [ \"$1\" = '--no-config' ] && [ \"$2\" = '--fixed-strings' ] && [ \"$3\" = '--quiet' ] && [ \"$4\" = 'AIQ_RG_OK' ] || exit 72\nexit 0\n",
+		);
+
+		super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect("exact executable canaries");
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canaries_fail_on_bad_process_evidence() {
+		let (root, node, rg, allowed) = executable_canary_fixture("failure");
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'WRONG'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 0\n");
+
+		let failure = super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect_err("wrong Node.js stdout must fail");
+
+		assert!(failure.to_string().contains("Node.js canary stdout mismatch"));
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'AIQ_NODE_OK'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nprintf '%s' 'unexpected'\n");
+
+		let failure = super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect_err("ripgrep stdout must be empty");
+
+		assert!(failure.to_string().contains("ripgrep canary stdout mismatch"));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canary_detects_post_validation_tampering() {
+		let (root, node, rg, allowed) = executable_canary_fixture("tamper");
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'AIQ_NODE_OK'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 0\n");
+
+		super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect("initial exact executable canaries");
+
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 9\n");
+
+		let failure = super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect_err("tampered executable must fail");
+
+		assert!(failure.to_string().contains("ripgrep canary exited unsuccessfully"));
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn committed_toolchain_executable_canaries_ignore_same_named_path_collisions() {
+		let (root, node, rg, allowed) = executable_canary_fixture("path-collision");
+		let collision_root = root.join("ambient-path");
+		let collision_marker = root.join("collision-used");
+
+		fs::create_dir_all(&collision_root).expect("collision fixture directory");
+
+		write_executable_fixture(&node, "#!/bin/sh\nprintf '%s' 'AIQ_NODE_OK'\n");
+		write_executable_fixture(&rg, "#!/bin/sh\nexit 0\n");
+		write_executable_fixture(
+			&collision_root.join("node"),
+			&format!("#!/bin/sh\nprintf used > '{}'\nexit 80\n", collision_marker.display()),
+		);
+		write_executable_fixture(
+			&collision_root.join("rg"),
+			&format!("#!/bin/sh\nprintf used > '{}'\nexit 81\n", collision_marker.display()),
+		);
+
+		super::run_toolchain_executable_canaries(&node, &rg, &allowed)
+			.expect("exact paths must bypass same-named collisions");
+
+		assert!(!collision_marker.exists());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]
@@ -6263,7 +6574,7 @@ mod tests {
 			fs::create_dir_all(directory).expect("fixture directory");
 		}
 
-		fs::write(&allowed, b"AIQ_ALLOWED\n").expect("allowed fixture");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
 		fs::write(&denied, b"AIQ_DENIED\n").expect("denied fixture");
 
 		let adapter = CodexAdapter::new(
@@ -6481,7 +6792,7 @@ mod tests {
 
 		fs::create_dir_all(&workspace).expect("fixture workspace");
 		fs::create_dir_all(&protected).expect("fixture protected root");
-		fs::write(&allowed, b"AIQ_ALLOWED\n").expect("allowed fixture");
+		fs::write(&allowed, b"AIQ_ALLOWED\nAIQ_RG_OK\n").expect("allowed fixture");
 		fs::write(&denied, b"AIQ_DENIED\n").expect("denied fixture");
 
 		let denied_root = fs::canonicalize(&protected).expect("canonical protected fixture root");
@@ -7824,6 +8135,109 @@ mod tests {
 		assert!(sink.put("stdout.jsonl", b"original").is_err());
 
 		fs::remove_dir_all(&root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn artifact_temporary_names_are_unique_when_clock_samples_match() {
+		let barrier = Arc::new(Barrier::new(32));
+		let names = (0..32)
+			.map(|_| {
+				let barrier = Arc::clone(&barrier);
+
+				thread::spawn(move || {
+					barrier.wait();
+
+					(0..100)
+						.map(|_| {
+							LocalArtifactSink::artifact_temporary_name_at(
+								"workspace-snapshot.tar",
+								42,
+							)
+						})
+						.collect::<Vec<_>>()
+				})
+			})
+			.collect::<Vec<_>>()
+			.into_iter()
+			.flat_map(|publisher| publisher.join().expect("name publisher joins"))
+			.collect::<BTreeSet<_>>();
+
+		assert_eq!(names.len(), 3_200);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn local_artifact_sink_accepts_overlapping_identical_publication() {
+		let root = env::temp_dir().join(format!(
+			"aiq-artifact-overlap-{}-{}",
+			process::id(),
+			super::observation_time()
+		));
+		let sink = LocalArtifactSink::new(&root).expect("sink root");
+		let publisher = sink.clone();
+		let bytes = b"{\"same\":true}\n";
+		let (installed_tx, installed_rx) = mpsc::sync_channel(0);
+		let (release_tx, release_rx) = mpsc::sync_channel(0);
+		let first = thread::spawn(move || {
+			publisher.put_with_install_hook("workspace-manifest.json", bytes, || {
+				installed_tx.send(()).expect("signal installed artifact");
+				release_rx.recv().expect("release installed artifact");
+			})
+		});
+
+		installed_rx.recv().expect("first publisher reached install boundary");
+
+		let overlapping = sink.put("workspace-manifest.json", bytes);
+
+		release_tx.send(()).expect("release first publisher");
+
+		let first = first.join().expect("first publisher joins");
+
+		assert!(first.is_ok(), "first publication must succeed");
+		assert!(overlapping.is_ok(), "an overlapping identical publication must be idempotent");
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn local_artifact_sink_accepts_parallel_identical_publication() {
+		let root = env::temp_dir().join(format!(
+			"aiq-artifact-parallel-{}-{}",
+			process::id(),
+			super::observation_time()
+		));
+		let sink = Arc::new(LocalArtifactSink::new(&root).expect("sink root"));
+		let barrier = Arc::new(Barrier::new(32));
+		let publishers = (0..32)
+			.map(|_| {
+				let sink = Arc::clone(&sink);
+				let barrier = Arc::clone(&barrier);
+
+				thread::spawn(move || {
+					barrier.wait();
+
+					(0..32)
+						.map(|_| sink.put("workspace-manifest.json", b"{\"same\":true}\n"))
+						.collect::<Result<Vec<_>, _>>()
+				})
+			})
+			.collect::<Vec<_>>();
+		let references = publishers
+			.into_iter()
+			.flat_map(|publisher| {
+				publisher.join().expect("artifact publisher joins").expect("publication")
+			})
+			.collect::<Vec<_>>();
+		let expected = references.first().expect("at least one artifact reference");
+
+		assert_eq!(references.len(), 1_024);
+		assert!(references.iter().all(|reference| reference == expected));
+
+		drop(sink);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]

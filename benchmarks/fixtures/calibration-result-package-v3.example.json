@@ -20,7 +20,7 @@
       "timezone": "UTC"
     },
     "task_set_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-    "scoring_version": "1.0.2",
+    "scoring_version": "1.0.5",
     "execution_concurrency": 1,
     "models": [{ "family": "sol", "reasoning_effort": "low" }],
     "task_ids": ["example-task"],
@@ -43,7 +43,7 @@
       "run_class": "calibration",
       "corpus_release_id": "corpus_example",
       "corpus_commitment_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-      "catalog_digest": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937",
+      "catalog_digest": "sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7",
       "task_set_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
       "evaluator_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
       "runtime_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
@@ -70,7 +70,7 @@
         "result_id": "result_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "run_id": "run_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "task_id": "example-task",
-        "task_version": "1.0.2",
+        "task_version": "1.0.5",
         "task_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
         "model": { "family": "sol", "reasoning_effort": "low" },
         "status": "failed",
@@ -83,7 +83,7 @@
         "artifacts": [],
         "failure": {
           "kind": "capability_validation_failed",
-          "message": "Public example",
+          "message": "Public synthetic example",
           "exit_code": null,
           "retryable": false
         },
@@ -93,9 +93,9 @@
         "provenance": {
           "node_id": "node_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
           "runner_version": "0.1.0",
-          "codex_version": "codex-example",
-          "observed_at": "unix-ms:1785153600000",
-          "synthetic": false,
+          "codex_version": "synthetic-not-invoked",
+          "observed_at": "synthetic",
+          "synthetic": true,
           "local_trust": "untrusted"
         }
       }

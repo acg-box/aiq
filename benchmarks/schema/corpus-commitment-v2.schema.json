@@ -32,9 +32,9 @@
       "properties": {
         "schema_version": { "const": "aiq.catalog.v1" },
         "task_set_id": { "const": "aiq-core" },
-        "task_set_version": { "const": "1.0.2" },
+        "task_set_version": { "const": "1.0.5" },
         "identity_sha256": {
-          "const": "sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937"
+          "const": "sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7"
         },
         "identity_scope": { "const": "ordered_full_task_metadata" }
       }
@@ -129,6 +129,11 @@
         },
         { "type": "null" }
       ]
+    },
+    "additionalComponentVersion": {
+      "type": "string",
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9.+_-]{0,80}(?![\\s\\S])"
     },
     "toolchainCommand": {
       "type": "object",
@@ -298,10 +303,11 @@
             "environment": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["LANG", "LC_ALL", "TZ"],
+              "required": ["LANG", "LC_ALL", "OPENSSL_CONF", "TZ"],
               "properties": {
                 "LANG": { "$ref": "#/$defs/nullableEnvironmentValue" },
                 "LC_ALL": { "$ref": "#/$defs/nullableEnvironmentValue" },
+                "OPENSSL_CONF": { "enum": ["/dev/null", "NUL"] },
                 "TZ": { "$ref": "#/$defs/nullableEnvironmentValue" }
               }
             },
@@ -360,7 +366,14 @@
             },
             "components": {
               "type": "object",
-              "additionalProperties": false,
+              "minProperties": 7,
+              "maxProperties": 64,
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^[a-z][a-z0-9_]{0,31}(?![\\s\\S])"
+              },
+              "additionalProperties": { "$ref": "#/$defs/additionalComponentVersion" },
               "required": ["icu", "tz", "unicode", "v8", "modules", "openssl", "zlib"],
               "properties": {
                 "icu": { "$ref": "#/$defs/nullableComponentVersion" },
@@ -468,7 +481,60 @@
             "version": { "type": "null" }
           }
         }
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "model_toolchain": {
+              "properties": { "platform": { "const": "win32" } }
+            },
+            "operating_system": {
+              "properties": { "platform": { "const": "win32" } }
+            },
+            "locale_and_timezone": {
+              "properties": {
+                "environment": {
+                  "properties": { "OPENSSL_CONF": { "const": "NUL" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "model_toolchain": {
+              "properties": { "platform": { "const": "darwin" } }
+            },
+            "operating_system": {
+              "properties": { "platform": { "const": "darwin" } }
+            },
+            "locale_and_timezone": {
+              "properties": {
+                "environment": {
+                  "properties": { "OPENSSL_CONF": { "const": "/dev/null" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "model_toolchain": {
+              "properties": { "platform": { "const": "linux" } }
+            },
+            "operating_system": {
+              "properties": { "platform": { "const": "linux" } }
+            },
+            "locale_and_timezone": {
+              "properties": {
+                "environment": {
+                  "properties": { "OPENSSL_CONF": { "const": "/dev/null" } }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "task": {
       "type": "object",
@@ -493,7 +559,7 @@
           "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
         },
         "task_version": {
-          "const": "1.0.2"
+          "const": "1.0.5"
         },
         "task_definition_sha256": { "$ref": "#/$defs/digest" },
         "catalog_entry_sha256": { "$ref": "#/$defs/digest" },

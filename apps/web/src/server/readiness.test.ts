@@ -10,6 +10,7 @@ import {
   PUBLIC_VIEW_SELECTS,
   type ProductionDependencyProbe,
 } from './readiness.ts';
+import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const privateJwk = {
   ...generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({
@@ -26,8 +27,8 @@ const validEnvironment = {
   SUPABASE_URL: 'https://example.supabase.co',
   SUPABASE_SECRET_KEY: 'sb_secret_service_example',
   AIQ_RUNNER_SUBMISSION_TOKEN: 'runner-secret-value',
-  AIQ_SUBMISSION_PACKAGE_BUCKET: 'private-packages',
-  AIQ_RUNNER_ARTIFACT_BUCKET: 'private-artifacts',
+  AIQ_SUBMISSION_PACKAGE_BUCKET: 'aiq-submission-packages',
+  AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',
   AIQ_VERIFIER_INGRESS_TOKEN: 'verifier-secret-value',
   AIQ_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_gateway_example',
   AIQ_SUPABASE_JWT_PRIVATE_JWK: JSON.stringify(privateJwk),
@@ -109,8 +110,8 @@ async function withDependencyFetch(
       assert.equal(request.headers.get('apikey'), validEnvironment.SUPABASE_SECRET_KEY);
       assert.equal(request.headers.get('authorization'), null);
       const buckets = [
-        { name: 'private-packages', public: false },
-        { name: 'private-artifacts', public: false },
+        { name: 'aiq-submission-packages', public: false },
+        { name: 'aiq-runner-artifacts', public: false },
       ];
       mutateBuckets?.(buckets);
       return Response.json(buckets);
@@ -169,8 +170,7 @@ async function withDependencyFetch(
           instruction_following: 6,
           reliability_recovery: 7,
         },
-        catalog_identity_sha256:
-          'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
+        catalog_identity_sha256: FROZEN_CATALOG_DIGEST,
         frozen_catalog_valid: true,
         production_node_count: 3,
         distinct_production_node_count: 3,
@@ -477,7 +477,7 @@ void describe('bounded readiness probe', () => {
     })();
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
-    assert.equal(probedValues?.packageBucket, 'private-packages');
+    assert.equal(probedValues?.packageBucket, 'aiq-submission-packages');
     assert.equal(probedValues?.publisherNodeId, validEnvironment.AIQ_PUBLISHER_NODE_ID);
     const body: unknown = await response.json();
     assert.ok(isRecord(body));
@@ -514,6 +514,29 @@ void describe('bounded readiness probe', () => {
     await withDependencyFetch();
   });
 
+  void it('accepts the current public node status contract', async () => {
+    await withDependencyFetch(undefined, undefined, undefined, undefined, (view) =>
+      view === 'public_nodes'
+        ? Response.json([
+            {
+              id: `node_${'a'.repeat(64)}`,
+              name: 'Atlas',
+              operator: 'official',
+              public_key_fingerprint: 'sha256:fixture',
+              capabilities: {},
+              source: {},
+              trust: 'trusted_verified',
+              status: 'online',
+              last_seen_at: null,
+              signature_status: 'verified',
+              provenance: {},
+              synthetic: false,
+            },
+          ])
+        : undefined,
+    );
+  });
+
   void it('fails closed when a nonempty public view omits a required column', async () => {
     await assert.rejects(
       withDependencyFetch(undefined, undefined, undefined, undefined, (view) =>
@@ -537,7 +560,7 @@ void describe('bounded readiness probe', () => {
         view === 'public_task_coverage'
           ? Response.json([
               {
-                scoring_version: '1.0.2',
+                scoring_version: '1.0.5',
                 domain: 'coding',
                 weight: 'not-a-number',
                 task_count: 8,
@@ -553,9 +576,9 @@ void describe('bounded readiness probe', () => {
     assert.deepEqual(REQUIRED_RPC_CONTRACT.public_trend_points, {
       arguments: 'supplied_range text',
       result:
-        'TABLE(matrix_id text, run_id text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, ci_low numeric, ci_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
+        'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
       defaultCount: 0,
-      modes: ['i', ...Array<string>(12).fill('t')],
+      modes: ['i', ...Array<string>(13).fill('t')],
       grants: {
         anon: true,
         authenticated: true,
@@ -873,7 +896,7 @@ void describe('bounded readiness probe', () => {
   void it('rejects configured Storage buckets that are public', async () => {
     await assert.rejects(
       withDependencyFetch(undefined, (buckets) => {
-        const packageBucket = buckets.find((bucket) => bucket.name === 'private-packages');
+        const packageBucket = buckets.find((bucket) => bucket.name === 'aiq-submission-packages');
         assert.ok(packageBucket);
         packageBucket.public = true;
       }),

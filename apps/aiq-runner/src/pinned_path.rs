@@ -592,36 +592,63 @@ impl PinnedDirectoryIdentity {
 	}
 
 	/// Creates one temporary direct child file beneath a held child directory.
-	pub(crate) fn create_child_file(&self, directory: &File, name: &OsStr) -> Result<File, String> {
+	pub(crate) fn create_child_file(&self, directory: &File, name: &OsStr) -> io::Result<File> {
 		openat_file(
 			directory.as_raw_fd(),
 			name,
 			O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
 			0o600,
 		)
-		.map_err(|_| "cannot create protected child file".to_owned())
 	}
 
-	/// Publishes one temporary file under a create-once name in the same held directory.
-	pub(crate) fn link_child_file(
+	/// Atomically publishes one temporary file under a create-once name in the
+	/// same held directory. Existing destinations are never replaced.
+	pub(crate) fn rename_child_file_noreplace(
 		&self,
 		directory: &File,
 		temporary: &OsStr,
 		final_name: &OsStr,
 	) -> Result<(), io::Error> {
+		self.verify().map_err(io::Error::other)?;
+
 		let temporary = component(temporary).map_err(io::Error::other)?;
 		let final_name = component(final_name).map_err(io::Error::other)?;
+		#[cfg(target_os = "linux")]
 		let result = unsafe {
-			libc::linkat(
+			libc::syscall(
+				SYS_renameat2,
 				directory.as_raw_fd(),
 				temporary.as_ptr(),
 				directory.as_raw_fd(),
 				final_name.as_ptr(),
-				0,
+				RENAME_NOREPLACE,
 			)
 		};
+		#[cfg(target_os = "macos")]
+		let result = unsafe {
+			libc::renameatx_np(
+				directory.as_raw_fd(),
+				temporary.as_ptr(),
+				directory.as_raw_fd(),
+				final_name.as_ptr(),
+				RENAME_EXCL,
+			)
+		};
+		#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+		let result = -1;
 
-		if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+		if result == 0 {
+			self.verify().map_err(io::Error::other)
+		} else {
+			#[cfg(any(target_os = "linux", target_os = "macos"))]
+			return Err(io::Error::last_os_error());
+
+			#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+			return Err(io::Error::new(
+				ErrorKind::Unsupported,
+				"atomic create-once file rename is unavailable",
+			));
+		}
 	}
 
 	/// Removes one temporary direct child file from the held directory.
