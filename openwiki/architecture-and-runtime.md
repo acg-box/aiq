@@ -34,9 +34,12 @@ step and tool-call limits. The preceding 63-complete, 5-timeout pilot was
 rejected for 0.933–0.992 completed means and remains immutable non-Official
 evidence. The current task semantics and calibration implications are
 canonicalized in [Benchmark Method](benchmark-method.md).
-The controlled Core, Contrast, scorer-manifest, evaluator, runtime task-set, generated-task
-tree, and database commitment identities are pending. Create-new generation and
-review must establish them. The shared Rust validator fails closed
+The create-new interaction candidate passed reproducibility generation,
+independent authoring validation, and the Rust 72-task corpus validator. Its
+controlled Core, scorer-manifest, evaluator, runtime task-set, generated-task
+tree, and database commitment identities remain calibration candidates rather
+than accepted release identities. Contrast generation remains pending. The
+shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
 has equivalent shared typed enforcement even though it has no separate

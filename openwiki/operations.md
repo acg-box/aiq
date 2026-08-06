@@ -47,8 +47,10 @@ Repository source now targets the public AIQ Core candidate and scoring
 `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
 and its public release digest is
 `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-Controlled identities, final calibration, a real Official run, publication, and
-final deployment are pending. This pre-release state does not claim that
+The interaction candidate passed model-free controlled generation and
+validation. Its identities remain calibration candidates. The new targeted
+pilot, Contrast generation, full calibration, a real Official run, publication,
+and final deployment are pending. This pre-release state does not claim that
 `1.0.5` is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
@@ -121,9 +123,10 @@ Before a live run:
    the release-policy identity is `aiq-core/1.0.5`, and the public catalog
    release-identity digest is
    `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-   Generate and review the pending controlled scorer-manifest, evaluator,
-   runtime task-set, generated-task tree, Core corpus, and Contrast corpus
-   identities. Do not substitute one identity for another.
+   Use the model-free-validated interaction candidate for the targeted pilot.
+   Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
+   and Core corpus identities distinct. Generate the separate Contrast corpus
+   before release admission. Do not substitute one identity for another.
    Create new source-only Core and Contrast corpus commitments from the final
    clean source. Keep `runner.identity_kind` as `source_only` and
    `runner.built_binary_sha256` as null. Keep the Node.js and ripgrep identities

@@ -61,11 +61,13 @@ score adjustment. The rejected pilot remains immutable evidence.
 - The active public candidate, task, and scorer contract is `1.0.5`. It retargets
   four calibration-sensitive tasks and carries forward 68 task designs with new
   version, provenance, and commitment bindings.
-- The controlled `1.0.5` Core and Contrast identities, runtime identity,
-  evaluator identity, generated-task tree identity, and database commitments are
-  pending. Full calibration, a real Official run, publication, and final
-  deployment are also pending. Production remains on the historical `1.0.2`
-  matrix.
+- The create-new `1.0.5` interaction candidate passed two-candidate
+  reproducibility generation, independent authoring validation, and the Rust
+  72-task corpus validator. Its controlled identities remain calibration
+  candidates, not accepted release or Official identities. The new 68-cell
+  pilot, full calibration, Contrast generation, final native build, real
+  Official run, publication, and deployment are pending. Production remains on
+  the historical `1.0.2` matrix.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -99,9 +101,19 @@ sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 Its public release digest is
 `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
 The release-policy identity is `aiq-core/1.0.5`. Do not infer any controlled
-identity from these public digests. Create-new generation and review will
-establish the `1.0.5` scorer manifest, evaluator, runtime task set, generated
-task tree, Core corpus, and Contrast corpus identities. The checked Core schema
+identity from these public digests. The current create-new interaction candidate
+has evaluator identity
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
+scorer-manifest identity
+`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
+generated-task tree identity
+`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
+Core commitment identity
+`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`,
+and public-safe database task-set identity
+`sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`.
+These identities remain provisional until calibration accepts this candidate;
+Contrast generation is still pending. The checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
 closed on this runner subtree for both Core and Contrast. Contrast does not have
