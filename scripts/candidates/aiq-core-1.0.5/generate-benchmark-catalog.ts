@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.5' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_5_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1';
+  'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
 export const AIQ_CORE_1_0_5_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529';
+  'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -127,67 +127,73 @@ export interface Catalog105 extends Omit<
 
 const REVISION_SPECS: Readonly<Record<string, RevisionSpec>> = {
   'coding-06': {
-    title: 'Repair a priority keyed async executor',
+    title: 'Repair a bounded keyed async executor',
     evaluatorKind: 'async_executor_contract_tests',
     objective:
-      'Retarget conditional HTTP fetching to a compact priority keyed async executor repair with bounded and dynamically adjustable global concurrency, per-key FIFO serialization, stable eligible-head priority scheduling, queued-work cancellation, failure recovery, and an explicit idle lifecycle.',
+      'Repair a bounded keyed async executor with dynamically adjustable global concurrency, per-key FIFO serialization, stable eligible-head priority scheduling, bounded waiting work, AbortSignal-aware queued cancellation, exact close behavior, failure recovery, and explicit idle epochs.',
     taskSpecificDelta:
-      'Repair one existing executor module. Same-key operations serialize in submission order while priority orders only the eligible head of each idle key. Concurrency changes are non-preemptive, exact-key cancellation removes queued work without affecting active work, and fulfillment, rejection, and synchronous throws release scheduler state. Strict validation, exact value and reason identity, independent instances, and idle epochs remain observable.',
+      'Repair one existing executor module. Same-key operations serialize while priority orders only eligible key heads. Queue capacity, already-aborted and queued-aborted work, exact-key cancellation, and close must interact without preempting active work. Every terminal path must release scheduler state while preserving exact caller values and reasons, independent instances, and repeatable idle epochs.',
     summary:
-      'Repair a priority keyed async executor with same-key FIFO, stable eligible-head scheduling, dynamic concurrency, queued cancellation, failure recovery, and a correct idle lifecycle.',
-    inputKind: 'single_module_priority_keyed_async_executor_repository',
+      'Repair a bounded keyed async executor with per-key FIFO, stable eligible-head scheduling, dynamic concurrency, queue limits, abort and close semantics, failure recovery, and repeatable idle epochs.',
+    inputKind: 'bounded_keyed_async_executor_repository',
     passConditions: [
       'Operations for one key execute one at a time in submission order, while operations for different keys can overlap within the configured global limit.',
-      'Stable priority scheduling compares only eligible per-key heads, and runtime concurrency changes do not preempt active work.',
-      'Exact-key cancellation removes queued work with the supplied reason while fulfillment, rejection, and synchronous throws release scheduler state.',
-      'Strict validation, exact caller outcomes, independent executor instances, and idle waiters remain correct across repeated busy and idle epochs.',
+      'Stable priority scheduling compares only eligible per-key heads, queue capacity is bounded, and runtime concurrency changes do not preempt active work.',
+      'AbortSignal, exact-key cancellation, and close reject only the declared waiting work with exact reasons while active work remains non-preemptive.',
+      'Strict validation, terminal-path recovery, exact caller outcomes, independent instances, and idle waiters remain correct across repeated epochs.',
     ],
     tags: ['concurrency', 'scheduling'],
   },
   'debugging-01': {
+    title: 'Repair a bounded quoted-record parser',
+    evaluatorKind: 'quoted_record_contract_tests',
     objective:
-      'Retarget UTF-16 ingestion around independent raw-input, decoded-field, and field-count resource boundaries while preserving deterministic decoding behavior.',
+      'Repair a bounded quoted-record parser that combines raw and decoded UTF-16 resource limits with a deterministic pipe, quote, and backslash state machine and source-positioned syntax diagnostics.',
     taskSpecificDelta:
-      'Require a raw UTF-16 input bound before unbounded processing, decoded limits for each field, and an explicit maximum field count. The controlled evaluator must exercise each resource boundary independently and preserve valid boundary and empty-input behavior without publishing private thresholds.',
+      'Require a raw UTF-16 input bound, decoded per-field and total bounds, and a field-count bound. Quoted delimiters, constrained escapes, empty fields, forbidden line breaks, and stable SyntaxError code and index properties must compose without collapsing one resource or parser state into another.',
     summary:
-      'Repair UTF-16 ingestion with bounded raw input, decoded per-field limits, an explicit field-count limit, and preserved valid boundary behavior.',
-    inputKind: 'bounded_utf16_record_repository',
+      'Repair a quoted pipe-record parser with independent UTF-16 resource limits, deterministic quote and escape states, empty-field preservation, and source-positioned syntax errors.',
+    inputKind: 'bounded_quoted_utf16_record_repository',
     passConditions: [
-      'The raw UTF-16 input bound is enforced before unbounded processing.',
-      'Every decoded field is subject to the declared per-field resource bound.',
-      'The declared field-count limit is enforced independently of byte and decoded-field limits.',
-      'Valid boundary, empty, and malformed-input behavior remains deterministic.',
+      'Raw input, decoded per-field, decoded-total, and field-count UTF-16 bounds are enforced independently.',
+      'Quoted delimiters and the constrained backslash grammar decode deterministically while leading, internal, and trailing empty fields remain observable.',
+      'Invalid escapes, quote-state violations, unterminated quotes, and raw line breaks report stable syntax code and input index evidence.',
+      'Valid boundaries, Unicode content, argument validation, and resource interactions remain deterministic without input mutation.',
     ],
   },
   'debugging-02': {
+    title: 'Repair a layered service configuration loader',
     objective:
-      'Retarget layered configuration precedence around prototype-safe own-property lookup, null-prototype compatibility, and explicit empty and undefined value semantics.',
+      'Repair a layered service configuration loader that resolves six independently typed values with prototype-safe precedence, explicit empty and undefined semantics, built-in and protocol-derived defaults, normalization, bounds, and exact source provenance.',
     taskSpecificDelta:
-      'Require every layer to use own-property membership without inherited-key influence, including objects with null prototypes. Own empty and own undefined values must follow their declared precedence semantics instead of collapsing into absence, while fallback and error attribution remain deterministic.',
+      'Require own-property lookup across environment, file, and default layers for host, protocol, port, base path, retries, and timeout. Each field keeps source-specific parsing and errors; built-ins and protocol-derived ports remain distinct. An atomic disable sentinel, null-prototype sources, normalization, immutable inputs, and complete provenance must compose.',
     summary:
-      'Repair layered configuration precedence with prototype-safe own-property lookup, null-prototype support, and explicit empty and undefined semantics.',
-    inputKind: 'prototype_safe_layered_configuration_repository',
+      'Repair a six-field layered service configuration loader with own-property precedence, source-specific validation, built-ins, normalization, an atomic disable sentinel, and exact provenance.',
+    inputKind: 'layered_service_configuration_repository',
     passConditions: [
-      'Inherited properties cannot affect layered precedence or selected values.',
-      'Ordinary and null-prototype configuration objects follow the same own-property contract.',
-      'Own empty, own undefined, and absent properties retain distinct declared semantics.',
-      'Fallback, parsing, and source-labelled error behavior remains deterministic.',
+      'Inherited properties cannot affect six-field precedence, and ordinary and null-prototype sources follow the same own-property contract.',
+      'Own empty, own undefined, absent, built-in, and protocol-derived values retain distinct declared semantics and provenance.',
+      'Text normalization, base-path rules, and source-specific integer syntax and bounds are enforced without fallback after selection.',
+      'The atomic disable sentinel, complete returned provenance, source-labelled errors, and input immutability remain deterministic.',
     ],
   },
   'debugging-04': {
+    title: 'Repair a bounded Unicode log preview',
+    evaluatorKind: 'bounded_log_preview_tests',
     objective:
-      'Retarget text truncation around grapheme-safe content and ellipsis handling, configurable placement, and deterministic accounting against one display budget.',
+      'Repair a bounded log preview that composes line-ending normalization, head and tail line windows, Unicode grapheme-safe per-line limits, complete ellipsis accounting, and exact omission metadata.',
     taskSpecificDelta:
-      'Require both content and a possibly multi-grapheme ellipsis to preserve grapheme clusters. Support start, middle, and end placement, charge every retained content and ellipsis unit to the declared budget, and define deterministic behavior when the ellipsis alone exceeds that budget.',
+      'Require CRLF and lone-CR normalization before logical-line selection. Preserve empty logical lines, select a bounded head or tail window, and then truncate retained lines without splitting content or ellipsis graphemes. Distinguish omitted lines from truncated retained lines and define exact zero, fit, and over-budget behavior.',
     summary:
-      'Repair text truncation with grapheme-safe multi-grapheme ellipses, start, middle, and end placement, and deterministic display-budget accounting.',
-    inputKind: 'grapheme_budgeted_truncation_repository',
+      'Repair a bounded head or tail log preview with normalized line endings, preserved empty lines, grapheme-safe per-line ellipses, and exact omission metadata.',
+    inputKind: 'bounded_unicode_log_preview_repository',
     passConditions: [
-      'Retained content and the complete ellipsis preserve declared grapheme clusters.',
-      'Start, middle, and end ellipsis placement follows the public contract.',
-      'Content and ellipsis units are charged deterministically to one display budget.',
-      'Zero, exact-fit, and ellipsis-over-budget cases preserve deterministic behavior.',
+      'CRLF and lone-CR inputs normalize before head or tail line selection, and empty logical lines remain observable.',
+      'Retained content and complete ellipses preserve Unicode grapheme clusters within one declared per-line budget.',
+      'Head and tail windows preserve their corresponding line edges while omitted and truncated line counts remain separate.',
+      'Zero-line, zero-grapheme, exact-fit, trailing-line, and ellipsis-over-budget cases remain deterministic.',
     ],
+    tags: ['unicode', 'logs'],
   },
 };
 
@@ -278,7 +284,7 @@ function reviseAcceptanceFixtureCommitment(
 ): AcceptanceFixtureCommitment {
   return {
     ...fixture,
-    handle: revised ? fixture.handle.replace(/\/v[23]\//u, '/v4/') : fixture.handle,
+    handle: revised ? fixture.handle.replace(/\/v[234]\//u, '/v5/') : fixture.handle,
   };
 }
 
@@ -328,7 +334,7 @@ function reviseTask(priorTask: PriorTask): CatalogTask105 {
     },
     cluster_id: priorTask.cluster_id,
     allowed_tools: priorTask.allowed_tools,
-    budget: revised ? { wall_seconds: 600, max_steps: 40, max_tool_calls: 28 } : priorTask.budget,
+    budget: revised ? { wall_seconds: 900, max_steps: 40, max_tool_calls: 28 } : priorTask.budget,
     evaluator: {
       kind: spec?.evaluatorKind ?? priorTask.evaluator.kind,
       scorer_version: SCORER_VERSION,
@@ -525,7 +531,7 @@ export function assertCatalogInvariants(catalog: Catalog105): void {
     if (
       isRevised &&
       canonicalJson(task.budget) !==
-        canonicalJson({ wall_seconds: 600, max_steps: 40, max_tool_calls: 28 })
+        canonicalJson({ wall_seconds: 900, max_steps: 40, max_tool_calls: 28 })
     ) {
       throw new Error(`Task ${task.task_id} has an inconsistent calibration budget.`);
     }
@@ -541,7 +547,7 @@ export function assertCatalogInvariants(catalog: Catalog105): void {
     );
     if (
       acceptanceHandles.some((handle) =>
-        isRevised ? !handle.includes('/v4/') : handle.includes('/v4/'),
+        isRevised ? !handle.includes('/v5/') : handle.includes('/v5/'),
       )
     ) {
       throw new Error(`Task ${task.task_id} has inconsistent acceptance handles.`);

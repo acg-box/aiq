@@ -44,9 +44,9 @@ artifact bindings, including 19 capability artifacts.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.5`. Its public metadata digest is
-`sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`,
+`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
 and its public release digest is
-`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
 Controlled identities, final calibration, a real Official run, publication, and
 final deployment are pending. This pre-release state does not claim that
 `1.0.5` is live.
@@ -117,10 +117,10 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`,
+   `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
    the release-policy identity is `aiq-core/1.0.5`, and the public catalog
    release-identity digest is
-   `sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
+   `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
    Generate and review the pending controlled scorer-manifest, evaluator,
    runtime task-set, generated-task tree, Core corpus, and Contrast corpus
    identities. Do not substitute one identity for another.
@@ -213,9 +213,14 @@ statistical release gate. Preserve it as non-Official evidence; do not report it
 as 1,224 failed task executions. For `1.0.5`, first run the four revised tasks
 (`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
 configurations. The current `coding-06` revision is a priority keyed async
-executor repair with stable eligible-head scheduling, dynamic concurrency, and
-queued exact-key cancellation. Regenerate and revalidate the controlled catalog
-and evaluator bindings before paying for this pilot. Review this 68-cell pilot
+executor repair with stable eligible-head scheduling, dynamic concurrency,
+bounded waiting work, AbortSignal, cancellation, close, and idle epochs. The
+other three targets are a quoted-record parser, a six-field layered service
+configuration loader, and a bounded Unicode log preview. All four use a
+900-second wall budget, 40 steps, and 28 tool calls. The prior pilot completed
+63 cells, timed out on 5, and was rejected because its completed task means were
+0.933–0.992. Regenerate and revalidate the controlled catalog and evaluator
+bindings before paying for a new pilot. Review the new 68-cell pilot
 before the full non-Official 17-by-72
 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator

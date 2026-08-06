@@ -5429,6 +5429,45 @@ mod tests {
 		assert!(uppercase_signature.verify(stage, &attestation.verifier).is_err());
 	}
 
+	fn assert_calibration_admission_mutations_rejected(
+		admission: &CalibrationAdmissionV1,
+		expected_bindings: &CalibrationAdmissionBindings,
+		fixture: &LocalReplayFixture,
+		run: &CalibrationRunRecord,
+	) {
+		for mutation in 0..6 {
+			let mut changed = admission.clone();
+
+			match mutation {
+				0 => {
+					let replacement =
+						if changed.claims.package_sha256.starts_with('f') { "e" } else { "f" };
+
+					changed.claims.package_sha256.replace_range(0..1, replacement);
+				},
+				1 => {
+					changed.claims.bindings.runner_executable_digest =
+						format!("sha256:{}", "a".repeat(64))
+				},
+				2 => {
+					changed.claims.bindings.source_manifest_digest =
+						format!("sha256:{}", "b".repeat(64))
+				},
+				3 => {
+					changed.claims.bindings.verifier_executable_digest =
+						format!("sha256:{}", "c".repeat(64))
+				},
+				4 => changed.claims.diagnostic.violations.push("forced failure".to_owned()),
+				_ => changed.claims.diagnostic.policy.min_informative_task_rate = 0.0,
+			}
+
+			assert!(
+				changed.verify(expected_bindings, &fixture.tasks, &run.results).is_err(),
+				"mutation {mutation} must fail"
+			);
+		}
+	}
+
 	#[test]
 	fn verifier_cli_requires_production_runtime_bindings_but_keeps_synthetic_demo_minimal() {
 		let base = [
@@ -6053,37 +6092,12 @@ mod tests {
 		assert_eq!(admission.claims.ranking_eligible, FalseOnly);
 		assert_eq!(admission.claims.trust, TrustTier::Untrusted);
 
-		for mutation in 0..6 {
-			let mut changed: CalibrationAdmissionV1 = admission.clone();
-
-			match mutation {
-				0 => {
-					let replacement =
-						if changed.claims.package_sha256.starts_with('f') { "e" } else { "f" };
-
-					changed.claims.package_sha256.replace_range(0..1, replacement);
-				},
-				1 => {
-					changed.claims.bindings.runner_executable_digest =
-						format!("sha256:{}", "a".repeat(64))
-				},
-				2 => {
-					changed.claims.bindings.source_manifest_digest =
-						format!("sha256:{}", "b".repeat(64))
-				},
-				3 => {
-					changed.claims.bindings.verifier_executable_digest =
-						format!("sha256:{}", "c".repeat(64))
-				},
-				4 => changed.claims.diagnostic.violations.push("forced failure".to_owned()),
-				_ => changed.claims.diagnostic.policy.min_informative_task_rate = 0.0,
-			}
-
-			assert!(
-				changed.verify(&expected_bindings, &fixture.tasks, &run.results).is_err(),
-				"mutation {mutation} must fail"
-			);
-		}
+		assert_calibration_admission_mutations_rejected(
+			&admission,
+			&expected_bindings,
+			&fixture,
+			&run,
+		);
 
 		let attacker = VerifierSigningIdentity::from_secret([10; 32]);
 		let attacker_attestation = calibration_verification::attest_calibration_stage(

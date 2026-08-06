@@ -40,6 +40,15 @@ override a failed release gate. Real calibration stays non-Official until the
 signed verifier and distinct-publisher admission flow accepts it into the
 calibration register, and it remains non-Official after acceptance.
 
+The first `1.0.5` pilot completed 63 of 68 selected cells and recorded five
+timeouts. Completed means ranged from 0.933 to 0.992, so the pilot rejected the
+task set as saturated. The active public candidate now gives all four tasks
+multiple interacting daily-work requirements: a bounded keyed executor, a
+quoted-record parser, a six-field layered service configuration, and a bounded
+Unicode log preview. Each revised task has a 900-second wall budget while its
+40-step and 28-tool-call limits remain unchanged. This candidate still needs
+create-new controlled generation and a new 68-cell pilot.
+
 ## Deployment status
 
 AIQ production is live at `https://aiq.wiki`. The personal Vercel scope
@@ -164,10 +173,10 @@ receipt must contain scoring `1.0.5`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1`;
+`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`;
 the release-policy identity is `aiq-core/1.0.5`, and its public catalog
 release-identity digest is
-`sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529`.
+`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
 The controlled scorer-manifest, evaluator, runtime task-set, generated-task
 tree, Core corpus, Contrast corpus, and database commitment identities are
 pending. Create-new generation and review must establish them. The shared Rust
