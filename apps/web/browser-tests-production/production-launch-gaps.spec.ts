@@ -58,17 +58,17 @@ async function getActualRunPath(page: Page): Promise<string> {
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
-  const ranking = page.getByRole('region', { name: 'Published descriptive estimates' });
-  const snapshot = page.getByRole('region', { name: 'Secondary benchmark snapshot' });
+  const ranking = page.getByRole('region', { name: 'Top configurations' });
+  const analytics = page.getByRole('region', { name: 'Score and efficiency' });
   await expect(ranking).toBeVisible();
-  await expect(ranking.getByRole('row')).toHaveCount(6);
+  await expect(ranking.getByRole('listitem')).toHaveCount(5);
   const rankingBox = await ranking.boundingBox();
   expect(rankingBox).not.toBeNull();
   expect((rankingBox?.y ?? 844) + (rankingBox?.height ?? 0)).toBeLessThanOrEqual(844);
-  const snapshotBox = await snapshot.boundingBox();
-  expect(snapshotBox).not.toBeNull();
+  const analyticsBox = await analytics.boundingBox();
+  expect(analyticsBox).not.toBeNull();
   expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
-    snapshotBox?.y ?? Number.NEGATIVE_INFINITY,
+    analyticsBox?.y ?? Number.NEGATIVE_INFINITY,
   );
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
@@ -97,8 +97,8 @@ async function expectMobileMatrixLegibility(page: Page) {
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expectPublishedNonSyntheticPage(page, '/compare');
   const comparison = page.getByRole('table', { name: 'Selected comparison' });
-  const first = page.getByLabel('First model and reasoning level');
-  const second = page.getByLabel('Second model and reasoning level');
+  const first = page.getByLabel('First configuration');
+  const second = page.getByLabel('Second configuration');
   const secondValue = await second.inputValue();
   const optionValues = await first
     .locator('option')
@@ -117,12 +117,12 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
     if (cost === 'Unavailable') hasUnavailableCost = true;
     expect(cost).not.toBe('$0');
   }
-  await expect(
-    comparison.getByRole('row').filter({ hasText: 'Summed adapter duration' }),
-  ).toBeVisible();
-  await expect(comparison.getByRole('row').filter({ hasText: 'Batch wall-clock' })).toBeVisible();
-  await expect(comparison.getByRole('row').filter({ hasText: 'Duration coverage' })).toBeVisible();
-  await expect(comparison.getByRole('row').filter({ hasText: 'Cost coverage' })).toBeVisible();
+  await expect(comparison.getByRole('row').filter({ hasText: 'Total adapter time' })).toBeVisible();
+  await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
+  const evidence = page.getByRole('table', { name: 'Comparison evidence details' });
+  await expect(evidence.getByRole('row').filter({ hasText: 'Batch wall-clock' })).toBeVisible();
+  await expect(evidence.getByRole('row').filter({ hasText: 'Duration coverage' })).toBeVisible();
+  await expect(evidence.getByRole('row').filter({ hasText: 'Cost coverage' })).toBeVisible();
   expect(hasUnavailableCost, 'at least one selected Official cost must be unavailable').toBe(true);
   return snapshots;
 }

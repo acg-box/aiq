@@ -54,14 +54,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </a>
         <SiteHeader configuration={publicDataConfiguration} />
         <main id="main">{children}</main>
-        <footer>
+        <footer className="site-footer">
           <div>
             <strong>AIQ</strong>
-            <p>Evidence before order. Task-mix sensitivity beside every score.</p>
+            <p>Practical AI capability, measured in public.</p>
           </div>
           <div>
-            <Link href="/method">Scoring method</Link>
-            <Link href="/radar">Network provenance</Link>
+            <Link href="/runs">Run archive</Link>
+            <Link href="/method">Method</Link>
+            <Link href="/radar">Radar</Link>
           </div>
           <p className="footer-note">
             {publicDataConfiguration === 'live'

@@ -12,8 +12,10 @@ void describe('homepage evidence and loading contract', () => {
 
     assert.doesNotMatch(source, /getNewestCompletedRun|Newest retained run/);
     assert.match(source, /selectedEstimateEvidence\?\.state === 'exact'/);
-    assert.match(source, /Exact run completed/);
-    assert.doesNotMatch(source, /snapshot-metrics" tabIndex/);
+    assert.match(source, /highlightedRun \?/);
+    assert.match(source, /Exact run <Link href=/);
+    assert.match(source, /<details className="evidence-notes"/);
+    assert.doesNotMatch(source, /<code>\{highlightedRun\.id\}<\/code>/);
   });
 
   void it('presents fixed-task analysis without winner or batch-aggregate implications', async () => {
@@ -27,17 +29,17 @@ void describe('homepage evidence and loading contract', () => {
       'utf8',
     );
 
-    assert.match(source, /Fixed-task AI capability analysis/);
-    assert.match(source, /Selected descriptive estimate/);
-    assert.doesNotMatch(source, /Best configuration|Highest point estimate|Highest published/);
+    assert.match(source, /Top score/);
+    assert.match(source, /Top five spread/);
+    assert.match(source, /Sensitivity/);
+    assert.doesNotMatch(source, /general intelligence/);
     assert.match(rankingSource, /presentation\.sensitivityInterval/);
-    assert.match(rankingSource, /presentation\.runtimeIssues/);
-    assert.match(rankingSource, /visibleEntries\.length} Official configuration/);
-    assert.doesNotMatch(rankingSource, /Five Official configurations/);
-    assert.doesNotMatch(rankingSource, /presentation\.(samples|scoringVersion|evidence)/);
-    assert.match(outcomeSource, /one configuration in the 17-configuration matrix/);
-    assert.match(outcomeSource, /not an aggregate of the batch/);
-    assert.match(outcomeSource, /run\.scoringVersion/);
+    assert.match(rankingSource, /sortLeaderboardByPointEstimate/);
+    assert.match(rankingSource, /Synthetic preview · not Official/);
+    assert.match(outcomeSource, /equal weight across/);
+    assert.match(outcomeSource, /Any credit/);
+    assert.match(outcomeSource, /A zero\s+is a scored outcome, not missing data/);
+    assert.match(outcomeSource, /runs\/\$\{run\.id\}/);
   });
 
   void it('keeps ECharts consumers behind a viewport-deferred client boundary', async () => {
@@ -55,53 +57,48 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(analyticsSource, /loading: \(\) => <AnalyticsLoading/);
     assert.match(analyticsSource, /role="status"/);
     assert.match(analyticsSource, /aria-live="polite"/);
-    assert.match(workspaceStyles, /\.homepage-analytics-matrix \{\s+min-height: 680px;/);
-    assert.match(workspaceStyles, /\.homepage-analytics-efficiency \{\s+min-height: 720px;/);
-    assert.match(workspaceStyles, /\.homepage-analytics-calibration \{\s+min-height: 820px;/);
-    assert.match(workspaceStyles, /@media \(max-width: 760px\)[\s\S]+min-height: 1080px;/);
+    assert.match(workspaceStyles, /\.homepage-analytics-loading \{[\s\S]+min-height: 320px;/);
     assert.match(
       workspaceStyles,
-      /\.homepage-analytics-matrix\.homepage-analytics-empty \{\s+min-height: 300px;/,
+      /\.efficiency-panel > \.homepage-analytics,[\s\S]+min-height: 465px;/,
     );
-    assert.match(
-      workspaceStyles,
-      /\.homepage-analytics-efficiency\.homepage-analytics-empty \{\s+min-height: 280px;/,
-    );
+    assert.match(workspaceStyles, /@media \(max-width: 760px\)[\s\S]+min-height: 430px;/);
     assert.match(analyticsSource, /onVisualizationPresenceChange={setHasVisualization}/);
   });
 
-  void it('keeps the exact-run identity readable in a wider desktop evidence column', async () => {
+  void it('keeps exact-run identity in the evidence layer instead of the first-screen metrics', async () => {
+    const [source, workspaceStyles] = await Promise.all([
+      readFile(pageSourceUrl, 'utf8'),
+      readFile(workspaceStylesUrl, 'utf8'),
+    ]);
+
+    const strip = source.slice(
+      source.indexOf('<header className="benchmark-strip"'),
+      source.indexOf('</header>'),
+    );
+    assert.doesNotMatch(strip, /highlightedRun\.id/);
+    assert.match(source, /Exact run <Link href=/);
+    assert.match(workspaceStyles, /\.evidence-notes/);
+  });
+
+  void it('keeps the answer and compact ranking readable on a narrow viewport', async () => {
     const workspaceStyles = await readFile(workspaceStylesUrl, 'utf8');
 
     assert.match(
       workspaceStyles,
-      /grid-template-columns: minmax\(440px, 0\.42fr\) minmax\(0, 1fr\);/,
+      /@media \(max-width: 760px\)[\s\S]+\.insight-grid \{\s+grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/,
     );
-    assert.match(workspaceStyles, /@media \(max-width: 1050px\)[\s\S]+\.benchmark-snapshot/);
-    assert.match(workspaceStyles, /\.snapshot-estimate small,[\s\S]+overflow-wrap: anywhere;/);
+    assert.match(workspaceStyles, /\.insight-card > svg \{\s+display: none;/);
+    assert.match(workspaceStyles, /\.ranking-list li \{[\s\S]+grid-template-columns:/);
+    assert.match(workspaceStyles, /\.ranking-list \.quiet-button \{\s+display: none;/);
   });
 
-  void it('uses labeled compact-row cards on a narrow viewport', async () => {
-    const workspaceStyles = await readFile(workspaceStylesUrl, 'utf8');
-
-    assert.match(
-      workspaceStyles,
-      /\.compact-ranking-table tbody tr \{[\s\S]+grid-template-areas:[\s\S]+'order model score'[\s\S]+'order coverage runtime';/,
-    );
-    assert.match(workspaceStyles, /\.compact-cell-label \{[\s\S]+display: inline;/);
-    assert.doesNotMatch(
-      workspaceStyles,
-      /\.compact-ranking-table th:nth-child\(3\),[\s\S]{0,120}width: 58px;/,
-    );
-  });
-
-  void it('places the efficiency visualization under its own evidence heading', async () => {
+  void it('uses real efficiency evidence when present and a real score matrix otherwise', async () => {
     const source = await readFile(pageSourceUrl, 'utf8');
-    const headingIndex = source.indexOf('id="efficiency-heading"');
-    const plotIndex = source.indexOf('<DeferredEfficiencyPlot');
-
-    assert.notEqual(headingIndex, -1);
-    assert.notEqual(plotIndex, -1);
-    assert.ok(headingIndex < plotIndex);
+    assert.match(source, /const hasEfficiencyEvidence =/);
+    assert.match(source, /hasEfficiencyEvidence \? \([\s\S]+<DeferredEfficiencyPlot/);
+    assert.match(source, /\) : \([\s\S]+<DeferredModelMatrixChart/);
+    assert.match(source, /rankedEntries\.length === 0[\s\S]+<LeaderboardTable entries=/);
+    assert.doesNotMatch(source, /standardApiEquivalentUsdNanos: [0-9]/);
   });
 });

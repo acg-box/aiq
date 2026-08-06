@@ -2,22 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { DotsThreeIcon } from '@phosphor-icons/react/dist/csr/DotsThree';
 import { useEffect, useRef } from 'react';
 
 import type { AiqRepository } from '../data/types.ts';
 import { ThemeControl } from './theme-control.tsx';
 
-const secondaryNavigation = [
+const primaryNavigation = [
+  ['Results', '/'],
   ['Compare', '/compare'],
-  ['Trends', '/trends'],
-  ['Calibrations', '/calibrations'],
+  ['History', '/trends'],
   ['Method', '/method'],
+] as const;
+
+const secondaryNavigation = [
+  ['Run archive', '/runs'],
   ['Radar', '/radar'],
+  ['Calibration', '/calibrations'],
 ] as const;
 
 export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
-  const analyzeMenuRef = useRef<HTMLDetailsElement>(null);
+  const moreMenuRef = useRef<HTMLDetailsElement>(null);
   const statusClass =
     configuration === 'live'
       ? 'status-public'
@@ -27,18 +33,18 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const analyzeMenu = analyzeMenuRef.current;
-      if (!analyzeMenu || event.key !== 'Escape' || !analyzeMenu.open) return;
+      const moreMenu = moreMenuRef.current;
+      if (!moreMenu || event.key !== 'Escape' || !moreMenu.open) return;
 
       event.preventDefault();
-      analyzeMenu.open = false;
-      analyzeMenu.querySelector('summary')?.focus();
+      moreMenu.open = false;
+      moreMenu.querySelector('summary')?.focus();
     }
 
     function handlePointerDown(event: PointerEvent) {
-      const analyzeMenu = analyzeMenuRef.current;
-      if (analyzeMenu && event.target instanceof Node && !analyzeMenu.contains(event.target)) {
-        analyzeMenu.open = false;
+      const moreMenu = moreMenuRef.current;
+      if (moreMenu && event.target instanceof Node && !moreMenu.contains(event.target)) {
+        moreMenu.open = false;
       }
     }
 
@@ -52,7 +58,7 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
   }, []);
 
   useEffect(() => {
-    if (analyzeMenuRef.current) analyzeMenuRef.current.open = false;
+    if (moreMenuRef.current) moreMenuRef.current.open = false;
   }, [pathname]);
 
   return (
@@ -61,24 +67,42 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
         <span>AIQ</span>
       </Link>
       <nav aria-label="Main navigation">
-        <Link href="/" aria-current={pathname === '/' ? 'page' : undefined} prefetch={false}>
-          Overview
-        </Link>
-        <details ref={analyzeMenuRef} className="site-more">
+        {primaryNavigation.map(([label, href]) => {
+          const current =
+            pathname === href ||
+            (href === '/trends' && (pathname === '/runs' || pathname.startsWith('/runs/'))) ||
+            (href !== '/' && pathname.startsWith(`${href}/`));
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={current ? 'page' : undefined}
+              prefetch={false}
+            >
+              {label}
+            </Link>
+          );
+        })}
+        <details ref={moreMenuRef} className="site-more">
           <summary
+            aria-label="More pages"
+            title="More pages"
             className={
               secondaryNavigation.some(
-                ([, href]) => href === pathname || pathname.startsWith(`${href}/`),
+                ([, href]) =>
+                  href !== '/runs' && (href === pathname || pathname.startsWith(`${href}/`)),
               )
                 ? 'is-active'
                 : undefined
             }
           >
-            Analyze
+            <DotsThreeIcon aria-hidden="true" size={20} weight="bold" />
+            <span className="sr-only">More pages</span>
           </summary>
           <div className="site-more-menu" aria-label="More navigation">
             {secondaryNavigation.map(([label, href]) => {
-              const current = pathname === href || pathname.startsWith(`${href}/`);
+              const current =
+                href !== '/runs' && (pathname === href || pathname.startsWith(`${href}/`));
               return (
                 <Link
                   key={href}
@@ -86,7 +110,7 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
                   aria-current={current ? 'page' : undefined}
                   prefetch={false}
                   onNavigate={() => {
-                    if (analyzeMenuRef.current) analyzeMenuRef.current.open = false;
+                    if (moreMenuRef.current) moreMenuRef.current.open = false;
                   }}
                 >
                   {label}
@@ -95,23 +119,25 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
             })}
           </div>
         </details>
-        <Link
-          href="/runs"
-          aria-current={pathname === '/runs' || pathname.startsWith('/runs/') ? 'page' : undefined}
-          prefetch={false}
-        >
-          Runs
-        </Link>
       </nav>
       <div className="header-tools">
         <ThemeControl />
-        <span className={`live-pill ${statusClass}`}>
+        <span
+          className={`live-pill ${statusClass}`}
+          title={
+            configuration === 'live'
+              ? 'Published public data'
+              : configuration === 'invalid'
+                ? 'Public data configuration is invalid'
+                : 'Synthetic seed data'
+          }
+        >
           <span aria-hidden="true" />
           {configuration === 'live'
-            ? 'public data'
+            ? 'Live'
             : configuration === 'invalid'
-              ? 'invalid config'
-              : 'seed mode'}
+              ? 'Config error'
+              : 'Seed'}
         </span>
       </div>
     </header>

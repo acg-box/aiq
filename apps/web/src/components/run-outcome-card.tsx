@@ -3,93 +3,84 @@ import Link from 'next/link';
 import { formatAnyCreditRate, summarizeRunDomains, summarizeRunOutcomes } from '../data/format.ts';
 import type { BenchmarkRun } from '../data/types.ts';
 
+function formatDomain(value: string): string {
+  return value.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 export function RunOutcomeCard({ run }: { run: BenchmarkRun }) {
   const outcomes = summarizeRunOutcomes(run);
   const domains = summarizeRunDomains(run);
-  const segments = [
-    { key: 'correct', label: 'Correct', count: outcomes.correct },
-    { key: 'partial', label: 'Partial', count: outcomes.partial },
-    { key: 'incorrect', label: 'Incorrect', count: outcomes.incorrect },
-    { key: 'runtime', label: 'Runtime issues', count: outcomes.runtimeIssues },
-    { key: 'invalid', label: 'Invalid', count: outcomes.invalid },
-    { key: 'missing', label: 'Missing', count: outcomes.missing },
-    { key: 'not-applicable', label: 'N/A', count: outcomes.notApplicable },
-  ] as const;
+  const availableScores = domains.flatMap((domain) =>
+    domain.score === null ? [] : [domain.score],
+  );
+  const strongest = domains
+    .filter((domain) => domain.score !== null)
+    .toSorted((left, right) => (right.score ?? 0) - (left.score ?? 0))[0];
+
   return (
-    <section className="outcome-card" aria-labelledby="outcome-card-heading">
-      <div className="outcome-card-heading">
+    <section className="outcome-card analysis-panel" aria-labelledby="outcome-card-heading">
+      <header className="panel-heading domain-profile-heading">
         <div>
-          <span className="eyebrow">Selected configuration only · not the batch</span>
-          <h2 id="outcome-card-heading">Task outcomes for one exact run</h2>
+          <h2 id="outcome-card-heading">Domain profile</h2>
+          <p>
+            {run.entryId.replace('-', ' ')} · equal weight across {domains.length} practical-work
+            domains
+          </p>
         </div>
-        <strong className="outcome-rate">
-          {formatAnyCreditRate(outcomes.anyCreditRate)}
-          <small>completed tasks earning any credit</small>
-        </strong>
+        <div className="domain-profile-summary">
+          <span>Strongest observed domain</span>
+          <strong>{strongest ? formatDomain(strongest.domain) : 'Unavailable'}</strong>
+        </div>
+      </header>
+
+      {availableScores.length === 0 ? (
+        <p className="empty-note">No scored domain observations are available for this run.</p>
+      ) : (
+        <div className="domain-bars" role="img" aria-label="AIQ score by benchmark domain">
+          {domains.map((domain) => (
+            <div className="domain-bar-row" key={domain.domain}>
+              <span>{formatDomain(domain.domain)}</span>
+              <div className="domain-bar-track" aria-hidden="true">
+                <i style={{ width: `${Math.max(0, Math.min(100, domain.score ?? 0))}%` }} />
+              </div>
+              <strong>{domain.score === null ? '—' : domain.score.toFixed(1)}</strong>
+              <small>{domain.coveragePercent.toFixed(0)}% cov.</small>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="outcome-summary-row" aria-label={`${outcomes.total} exact task outcomes`}>
+        <div>
+          <span>Any credit</span>
+          <strong>{formatAnyCreditRate(outcomes.anyCreditRate)}</strong>
+        </div>
+        <div>
+          <span>Correct</span>
+          <strong>{outcomes.correct}</strong>
+        </div>
+        <div>
+          <span>Partial</span>
+          <strong>{outcomes.partial}</strong>
+        </div>
+        <div>
+          <span>Incorrect</span>
+          <strong>{outcomes.incorrect}</strong>
+        </div>
+        <div>
+          <span>Runtime / invalid</span>
+          <strong>{outcomes.runtimeIssues + outcomes.invalid}</strong>
+        </div>
+        <div>
+          <span>Missing / N/A</span>
+          <strong>{outcomes.missing + outcomes.notApplicable}</strong>
+        </div>
       </div>
-      <p className="outcome-card-copy">
-        This card describes run {run.id}, one configuration in the 17-configuration matrix. It is
-        not an aggregate of the batch. AIQ is the equal-weight average of ten task domains. The rate
-        above counts completed tasks marked correct or partial; it is not a score-weighted
-        percentage or the AIQ index. Runtime, invalid, missing, and not-applicable cells remain
-        separate.
-      </p>
-      <dl
-        className="outcome-grid"
-        aria-label={`Exact task outcome states; ${outcomes.total} total`}
-      >
-        {segments.map((segment) => (
-          <div key={segment.key}>
-            <dt>{segment.label}</dt>
-            <dd>{segment.count}</dd>
-          </div>
-        ))}
-      </dl>
-      <section className="outcome-domain-disclosure" aria-labelledby="domain-matrix-heading">
-        <div className="domain-matrix-heading">
-          <span className="eyebrow">Domain matrix</span>
-          <h3 id="domain-matrix-heading">Domain profile for this configuration</h3>
-        </div>
-        <div className="table-scroll outcome-domain-table" tabIndex={0}>
-          <table>
-            <caption>
-              Exact domain scores and execution-state counts for this configuration.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Domain</th>
-                <th scope="col">AIQ</th>
-                <th scope="col">Completed</th>
-                <th scope="col">Runtime</th>
-                <th scope="col">Invalid / missing / N/A</th>
-                <th scope="col">Coverage</th>
-              </tr>
-            </thead>
-            <tbody>
-              {domains.map((domain) => (
-                <tr key={domain.domain}>
-                  <th scope="row">{domain.domain.replaceAll('_', ' ')}</th>
-                  <td>{domain.score === null ? '—' : domain.score.toFixed(1)}</td>
-                  <td>{domain.completed}</td>
-                  <td>{domain.runtimeIssues}</td>
-                  <td>
-                    {domain.invalid} / {domain.missing} / {domain.notApplicable}
-                  </td>
-                  <td>{domain.coveragePercent.toFixed(1)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="fine-print domain-score-note">
-          A zero here is a valid scored outcome for this fixed fixture, not missing data. Missing,
-          invalid, not-applicable, and runtime-issue cells are reported separately above.
-        </p>
-      </section>
-      <p className="fine-print">
-        {outcomes.total} task cells in this configuration · scoring {run.scoringVersion} ·{' '}
-        {run.synthetic ? 'synthetic seed data' : 'published evidence'} ·{' '}
-        <Link href={`/runs/${run.id}`}>inspect every task</Link>
+
+      <p className="panel-footnote">
+        Any-credit rate counts correct or partial completed tasks; it is not the AIQ index. A zero
+        is a scored outcome, not missing data.{' '}
+        <Link href={`/runs/${run.id}`}>Inspect every task</Link>
       </p>
     </section>
   );
