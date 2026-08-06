@@ -126,31 +126,16 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           <Link className="back-link" href="/runs">
             ← Back to run history
           </Link>
-          <span className="eyebrow">Run evidence</span>
+          <span className="eyebrow">Configuration run</span>
           <h1>
             {entry?.modelFamily ?? run.entryId} · {entry?.reasoningTier ?? 'unknown'}
           </h1>
           <p>
             {entry?.modelName} · started {new Date(run.startedAt).toLocaleString()}
           </p>
-          <small>
-            AIQ v1 fixed-fixture configuration run ·{' '}
-            {run.synthetic ? 'synthetic seed evidence' : 'published evidence'}
-          </small>
+          <small>{run.synthetic ? 'Synthetic seed evidence' : 'Published evidence'}</small>
         </div>
-        <code>{run.id}</code>
       </div>
-      <DataNote provenance={run.synthetic ? 'synthetic' : 'published'} />
-      <p className="fine-print">
-        This is one configuration run. A complete Official matrix is one batch of 17 configuration
-        runs and 1,224 task-level executions—not 1,224 benchmark runs.
-      </p>
-      <p className="fine-print">
-        Completeness: <strong>{completeness.label}</strong> ·{' '}
-        {completeness.notApplicable
-          ? 'The configuration was observed as unsupported before task execution.'
-          : `${completeness.validResults}/72 valid results. Missing and invalid results block Official; any Provisional estimate is conditional and includes fixed-fixture completion bounds.`}
-      </p>
       <RunScientificSummaryPanel
         summary={buildRunScientificSummary({
           run,
@@ -201,11 +186,47 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           </strong>
         </div>
       </div>
+      <details className="evidence-notes run-evidence-notes">
+        <summary>
+          <strong>Run evidence</strong>
+          <span>Identity, completeness, and provenance</span>
+        </summary>
+        <div className="evidence-note-body">
+          <DataNote provenance={run.synthetic ? 'synthetic' : 'published'} />
+          <dl className="run-evidence-facts">
+            <div>
+              <dt>Run ID</dt>
+              <dd>
+                <code>{run.id}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Completeness</dt>
+              <dd>{completeness.label}</dd>
+            </div>
+            <div>
+              <dt>Valid results</dt>
+              <dd>
+                {completeness.notApplicable ? 'Not applicable' : `${completeness.validResults}/72`}
+              </dd>
+            </div>
+            <div>
+              <dt>Scoring version</dt>
+              <dd>{run.scoringVersion}</dd>
+            </div>
+          </dl>
+          <p className="fine-print">
+            This is one configuration run. One complete Official batch contains 17 runs and 1,224
+            task attempts. Missing and invalid results block Official publication; a provisional
+            estimate remains conditional.
+          </p>
+        </div>
+      </details>
       <section className="run-section" aria-labelledby="run-efficiency-heading">
         <div className="section-heading compact">
           <div>
-            <span className="eyebrow">Retained efficiency evidence</span>
-            <h2 id="run-efficiency-heading">Official time, token coverage, and cost</h2>
+            <span className="eyebrow">Efficiency</span>
+            <h2 id="run-efficiency-heading">Time, token coverage, and cost</h2>
           </div>
           <p>
             Codex adapter elapsed is runner-observed. Summed cell durations can overlap, while the

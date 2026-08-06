@@ -98,13 +98,11 @@ export default async function CalibrationDetailPage({
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Calibration detail</span>
-        <h1>Calibration evidence</h1>
+        <span className="eyebrow">Diagnostic run</span>
+        <h1>Calibration run</h1>
         <p>
-          This bounded public view omits packages, signatures, private artifacts, raw responses,
-          envelopes, and private failure details. It publishes fixed safe explanations and
-          verifier-recomputed numeric usage and cost evidence without retained provider-event
-          contents.
+          Inspect one replay-verified diagnostic matrix. Private task payloads and raw provider
+          events remain sealed; safe explanations, usage, and recomputed cost stay public.
         </p>
       </div>
       <ReadStateNote result={result} subject="Selected configuration" />

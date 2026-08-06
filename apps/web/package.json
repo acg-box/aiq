@@ -29,6 +29,7 @@
     "test:browser:production": "playwright test --config playwright.production.ts"
   },
   "dependencies": {
+    "@phosphor-icons/react": "2.1.10",
     "@supabase/supabase-js": "2.110.8",
     "echarts": "6.1.0",
     "next": "16.3.0",
