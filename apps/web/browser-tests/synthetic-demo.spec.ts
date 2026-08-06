@@ -658,7 +658,9 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
       name: /Ordered horizontal bars with task-sensitivity intervals compare AIQ for 17 configurations/,
     }),
   ).toBeVisible();
-  await expect(chart.getByText('All 17 configurations shown', { exact: false })).toBeVisible();
+  await expect(
+    chart.getByText('All 17 scored configurations shown', { exact: false }),
+  ).toBeVisible();
   await expect(chart.getByText('Read 17 configuration values', { exact: true })).toBeVisible();
   const chartBox = await chart.locator('.matrix-chart-svg').boundingBox();
   expect(chartBox?.height ?? 0).toBeGreaterThanOrEqual(600);
