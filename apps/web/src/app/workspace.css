@@ -144,6 +144,7 @@
 	margin-bottom: 8px;
 }
 
+.chart-header h2,
 .chart-header h3 {
 	margin: 0;
 	font-size: 1rem;
@@ -192,10 +193,7 @@
 	border-radius: 6px;
 	background: transparent;
 	cursor: pointer;
-	transition:
-		color 120ms ease,
-		background 120ms ease,
-		box-shadow 120ms ease;
+	transition: box-shadow 120ms ease;
 }
 
 .chart-switch button:hover,
