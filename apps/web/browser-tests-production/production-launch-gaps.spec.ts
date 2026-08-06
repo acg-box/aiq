@@ -96,26 +96,33 @@ async function expectMobileMatrixLegibility(page: Page) {
 
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expectPublishedNonSyntheticPage(page, '/compare');
+  await page.waitForLoadState('networkidle');
   const comparison = page.getByRole('table', { name: 'Selected comparison' });
   const first = page.getByLabel('First configuration');
   const second = page.getByLabel('Second configuration');
   const secondValue = await second.inputValue();
-  const optionValues = await first
-    .locator('option')
-    .evaluateAll((options) =>
-      options.map((option) => (option instanceof HTMLOptionElement ? option.value : '')),
-    );
+  const optionEntries = await first.locator('option').evaluateAll((options) =>
+    options.map((option) => ({
+      value: option instanceof HTMLOptionElement ? option.value : '',
+      label: option.textContent?.trim() ?? '',
+    })),
+  );
   const snapshots: string[] = [];
   let hasUnavailableCost = false;
-  for (const value of optionValues) {
+  for (const { value, label } of optionEntries) {
     if (value === secondValue) continue;
     await first.selectOption(value);
+    const labelMatch = /^(.+) · (.+) \((.+)\)$/.exec(label);
+    expect(labelMatch, `canonical configuration option: ${label}`).not.toBeNull();
+    await expect(page.locator('.compare-model').first()).toContainText(
+      `${labelMatch?.[2] ?? ''} reasoning`,
+    );
     const snapshot = await comparison.innerText();
     snapshots.push(snapshot);
     const costRow = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
-    const cost = (await costRow.getByRole('cell').first().innerText()).trim();
-    if (cost === 'Unavailable') hasUnavailableCost = true;
-    expect(cost).not.toBe('$0');
+    const costs = (await costRow.getByRole('cell').allInnerTexts()).map((cost) => cost.trim());
+    if (costs.includes('Unavailable')) hasUnavailableCost = true;
+    expect(costs).not.toContain('$0');
   }
   await expect(comparison.getByRole('row').filter({ hasText: 'Total adapter time' })).toBeVisible();
   await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
