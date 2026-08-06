@@ -504,28 +504,6 @@ export function TrendExplorer({
           </div>
         </div>
       ) : null}
-      <p className="trend-resolution" role="note">
-        Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
-        order. The family is an explicit filter, not a point-estimate cutoff. Line segments connect
-        recorded observations for visual continuity only; they do not interpolate or estimate values
-        between dates, and absent buckets remain gaps. Bars use a zero baseline. Each grouped bar
-        and its task-sensitivity interval use the same per-series category offset. The server
-        returns at most 20 buckets per configuration and uses the latest exact Official run, not an
-        average. Point context requires matching run, configuration, scoring version, and provenance
-        identity; absent evidence remains unavailable. Scoring versions:{' '}
-        {[...new Set(zoomWindowPoints.map((point) => point.scoringVersion))].join(', ') ||
-          'unavailable'}
-        .
-      </p>
-      {exactJoinUnavailable ? (
-        <ReadStateNote
-          result={{
-            state: 'unavailable',
-            detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
-          }}
-          subject="Exact trend run context"
-        />
-      ) : null}
       <div className={`trend-layout${isPending ? ' is-pending' : ''}`}>
         <div className="chart-frame">
           {zoomWindowPoints.length > 0 ? (
@@ -578,7 +556,25 @@ export function TrendExplorer({
         </p>
       ) : null}
       <details className="data-disclosure">
-        <summary>Read visible trend values as a table</summary>
+        <summary>Evidence notes and visible values</summary>
+        <p className="trend-resolution" role="note">
+          Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
+          order. The family is an explicit filter, not a point-estimate cutoff. Published buckets
+          retain the latest exact Official run; synthetic fixture buckets expose no run detail.
+          Lines connect observations for continuity only; they do not interpolate or estimate values
+          between dates. Absent buckets remain gaps, bars use a zero baseline, and the server
+          returns at most 20 buckets per configuration. Each point requires matching run,
+          configuration, scoring version, and provenance identity. Scoring versions:{' '}
+          {[...new Set(zoomWindowPoints.map((point) => point.scoringVersion))].join(', ') ||
+            'unavailable'}
+          .
+        </p>
+        {exactJoinUnavailable ? (
+          <ReadStateNote
+            result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
+            subject="Exact trend run context"
+          />
+        ) : null}
         <div className="table-scroll" role="region" aria-label="Visible trend values" tabIndex={0}>
           <table>
             <thead>

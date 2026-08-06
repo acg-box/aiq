@@ -63,14 +63,38 @@ export function RunScientificSummaryPanel({
       </div>
     );
   }
+  const primaryFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
+    ['aiq', 'AIQ'],
+    ['interval', 'Task sensitivity'],
+    ['coverage', 'Coverage'],
+    ['runtime', 'Runtime issues'],
+    ['adapterDuration', 'Adapter time'],
+    ['cost', 'API-equivalent cost'],
+  ];
+  const evidenceFields = fields.filter(
+    ([key]) => !primaryFields.some(([primaryKey]) => primaryKey === key),
+  );
   return (
-    <dl className="scientific-run-summary" aria-label="Run scientific summary">
-      {fields.map(([key, label]) => (
-        <div key={key}>
-          <dt>{label}</dt>
-          <dd>{summary[key]}</dd>
-        </div>
-      ))}
-    </dl>
+    <section className="scientific-run-card" aria-label="Run scientific summary">
+      <dl className="scientific-run-summary">
+        {primaryFields.map(([key, label]) => (
+          <div key={key}>
+            <dt>{label}</dt>
+            <dd>{summary[key]}</dd>
+          </div>
+        ))}
+      </dl>
+      <details className="run-scientific-context">
+        <summary>Sample, scoring, provenance, and metric coverage</summary>
+        <dl>
+          {evidenceFields.map(([key, label]) => (
+            <div key={key}>
+              <dt>{label}</dt>
+              <dd>{summary[key]}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </section>
   );
 }

@@ -17,12 +17,16 @@ void describe('analytical chart interaction contracts', () => {
 
   void it('keeps primary chart and theme targets at least 44px for coarse pointers', () => {
     const styles = source('../app/workspace.css');
+    const globalStyles = source('../app/globals.css');
     const coarsePointerRules = styles.match(/@media \(pointer: coarse\) \{[\s\S]*?\n\}/)?.[0] ?? '';
     assert.match(coarsePointerRules, /\.chart-switch button/);
     assert.match(coarsePointerRules, /\.chart-controls select/);
     assert.match(coarsePointerRules, /\.range-tabs a/);
-    assert.match(coarsePointerRules, /\.theme-control button/);
     assert.match(coarsePointerRules, /min-height: 44px/);
+    assert.match(
+      globalStyles,
+      /@media \(pointer: coarse\) \{[\s\S]+\.theme-control button[\s\S]+min-height: 44px/,
+    );
   });
 
   void it('qualifies the efficiency frontier in the chart legend', () => {

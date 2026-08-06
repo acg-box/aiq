@@ -10,9 +10,9 @@ async function expectPublishedEvidenceLabel(page: Page, label: string): Promise<
   await expect(note).toHaveCount(1);
   if (await note.isVisible()) return;
 
-  const disclosure = page.locator('details').filter({ has: note });
+  const disclosure = note.locator('xpath=ancestor::details[1]');
   await expect(disclosure).toHaveCount(1);
-  await expect(disclosure.locator('summary')).toBeVisible();
+  await expect(disclosure.locator(':scope > summary')).toBeVisible();
 }
 
 export async function expectProductionPageEvidence(page: Page, path: string): Promise<void> {

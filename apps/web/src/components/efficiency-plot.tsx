@@ -57,6 +57,13 @@ type EfficiencyDatum = readonly [
   string,
 ];
 
+function formatDurationAxis(value: number): string {
+  const minutes = value / 60_000;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  return hours >= 10 ? `${hours.toFixed(0)}h` : `${hours.toFixed(1)}h`;
+}
+
 export function resolveEfficiencyPlotEvidence({
   entries,
   runSummaries,
@@ -213,7 +220,7 @@ export function EfficiencyPlot({
   onVisualizationPresenceChange?: (hasVisualization: boolean) => void;
 }) {
   const searchParams = useAnalyticalSearchParams();
-  const metric = readEnumParam(searchParams, 'efficiencyMetric', ['cost', 'duration'], 'cost');
+  const metric = readEnumParam(searchParams, 'efficiencyMetric', ['cost', 'duration'], 'duration');
   const { points, configurationCount, metricUnavailable, identityOrScoreRejected, absent } =
     useMemo(
       () => resolveEfficiencyPlotEvidence({ entries, runSummaries, rows, metric }),
@@ -281,10 +288,15 @@ export function EfficiencyPlot({
       xAxis: {
         type: 'value',
         min: 0,
-        name: duration ? 'Summed cell adapter time (ms)' : 'Standard API-equivalent estimate (USD)',
+        name: duration ? 'Total adapter time' : 'API-equivalent estimate (USD)',
         nameLocation: 'middle',
         nameGap: 36,
-        axisLabel: { color: 'var(--muted)' },
+        axisLabel: {
+          color: 'var(--muted)',
+          formatter: duration
+            ? (value: number) => formatDurationAxis(value)
+            : (value: number) => `$${value.toFixed(value < 0.1 ? 2 : 1)}`,
+        },
         nameTextStyle: { color: 'var(--muted)' },
         axisLine: { lineStyle: { color: 'var(--line-bright)' } },
         splitLine: { lineStyle: { color: 'var(--line)' } },
@@ -413,30 +425,16 @@ export function EfficiencyPlot({
     <section className="efficiency-plot" aria-labelledby="efficiency-plot-heading">
       <header className="chart-header">
         <div>
-          <span className="eyebrow">Descriptive efficiency frontier</span>
           <h3 id="efficiency-plot-heading">
-            AIQ versus {metric === 'cost' ? 'estimated cost' : 'duration'}
+            AIQ score vs {metric === 'cost' ? 'API-equivalent cost' : 'total run time'}
           </h3>
           <p>
-            Upper-left is better. Rings mark nondominated points and do not create a combined rank.
-            Matching matrix batch, scoring, concurrency, evidence-method, and pricing bindings are
-            required.
+            Higher is better. Lower and left is more efficient. Vertical lines show task-set
+            sensitivity.
           </p>
         </div>
         <div className="chart-controls">
           <div className="chart-switch" role="group" aria-label="Efficiency metric">
-            <button
-              type="button"
-              aria-pressed={metric === 'cost'}
-              onClick={() =>
-                pushAnalyticalUrl(
-                  { efficiencyMetric: 'cost', efficiencySelection: null },
-                  { hasSemanticChange: metric !== 'cost' },
-                )
-              }
-            >
-              Cost
-            </button>
             <button
               type="button"
               aria-pressed={metric === 'duration'}
@@ -448,6 +446,18 @@ export function EfficiencyPlot({
               }
             >
               Duration
+            </button>
+            <button
+              type="button"
+              aria-pressed={metric === 'cost'}
+              onClick={() =>
+                pushAnalyticalUrl(
+                  { efficiencyMetric: 'cost', efficiencySelection: null },
+                  { hasSemanticChange: metric !== 'cost' },
+                )
+              }
+            >
+              Cost
             </button>
           </div>
           {points.length > 0 ? (
@@ -479,7 +489,7 @@ export function EfficiencyPlot({
         />
       )}
       {selectedPoint ? (
-        <p className="efficiency-coverage" aria-live="polite">
+        <p className="chart-selection" aria-live="polite">
           Selected: {selectedPoint.entry.modelFamily} · {selectedPoint.entry.reasoningTier} · AIQ{' '}
           {selectedPoint.y.toFixed(1)} · task-sensitivity interval{' '}
           {selectedPoint.entry.sensitivityLow?.toFixed(1)}–
@@ -490,14 +500,16 @@ export function EfficiencyPlot({
           · {frontierRunIds.has(selectedPoint.row.runId) ? 'descriptive frontier' : 'not frontier'}
         </p>
       ) : null}
-      <p className="efficiency-coverage">
-        {points.length}/{configurationCount} configurations plotted in the canonical matrix ·{' '}
-        {metricUnavailable} metric unavailable · {identityOrScoreRejected} rejected because exact
-        identity or score evidence could not be verified · {absent} absent from efficiency evidence
-        · missing values are excluded, never encoded as zero
-      </p>
       <details className="chart-data-disclosure">
-        <summary>Read efficiency values</summary>
+        <summary>
+          Evidence coverage · {points.length}/{configurationCount} configurations plotted in the
+          canonical matrix
+        </summary>
+        <p className="efficiency-coverage">
+          {metricUnavailable} metric unavailable · {identityOrScoreRejected} rejected because exact
+          identity or score evidence could not be verified · {absent} absent from efficiency
+          evidence · missing values are excluded, never encoded as zero
+        </p>
         <div
           className="table-scroll"
           role="region"

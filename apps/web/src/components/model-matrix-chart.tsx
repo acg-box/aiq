@@ -44,11 +44,14 @@ function readTooltipDataIndex(value: unknown): number | null {
 
 export function ModelMatrixChart({
   entries,
+  headingLevel = 2,
   onVisualizationPresenceChange,
 }: {
   entries: readonly LeaderboardEntry[];
+  headingLevel?: 2 | 3;
   onVisualizationPresenceChange?: (hasVisualization: boolean) => void;
 }) {
+  const Heading = headingLevel === 2 ? 'h2' : 'h3';
   const searchParams = useAnalyticalSearchParams();
   const [responsiveDefaultKind, setResponsiveDefaultKind] = useState<ChartKind>('dots');
   const kind = readEnumParam(
@@ -269,7 +272,7 @@ export function ModelMatrixChart({
       <header className="chart-header">
         <div>
           <span className="eyebrow">Current matrix</span>
-          <h3 id="matrix-chart-heading">AIQ index by configuration</h3>
+          <Heading id="matrix-chart-heading">AIQ index by configuration</Heading>
           <p>Point estimates and fixed-fixture task-sensitivity intervals stay visible together.</p>
         </div>
         <div className="chart-controls">

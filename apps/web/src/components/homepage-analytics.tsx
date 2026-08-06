@@ -77,7 +77,13 @@ function useNearViewport() {
   return { host, shouldLoad };
 }
 
-export function DeferredModelMatrixChart({ entries }: { entries: readonly LeaderboardEntry[] }) {
+export function DeferredModelMatrixChart({
+  entries,
+  headingLevel = 2,
+}: {
+  entries: readonly LeaderboardEntry[];
+  headingLevel?: 2 | 3;
+}) {
   const { host, shouldLoad } = useNearViewport();
   const [hasVisualization, setHasVisualization] = useState(() =>
     entries.some(isScoredLeaderboardEntry),
@@ -89,7 +95,11 @@ export function DeferredModelMatrixChart({ entries }: { entries: readonly Leader
       data-homepage-analytics="matrix"
     >
       {shouldLoad ? (
-        <ModelMatrixChart entries={entries} onVisualizationPresenceChange={setHasVisualization} />
+        <ModelMatrixChart
+          entries={entries}
+          headingLevel={headingLevel}
+          onVisualizationPresenceChange={setHasVisualization}
+        />
       ) : (
         <AnalyticsLoading kind="matrix" />
       )}
