@@ -601,6 +601,7 @@ table,
 	max-width: 75ch;
 	margin: 8px 0 22px;
 	color: var(--muted);
+	overflow-wrap: anywhere;
 }
 
 .outcome-grid {
