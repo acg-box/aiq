@@ -60,9 +60,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <p>Practical AI capability, measured in public.</p>
           </div>
           <div>
-            <Link href="/runs">Run archive</Link>
-            <Link href="/method">Method</Link>
-            <Link href="/radar">Radar</Link>
+            <Link href="/#runs">Run archive</Link>
+            <Link href="/#method">Method</Link>
+            <Link href="/#radar">Radar</Link>
           </div>
           <p className="footer-note">
             {publicDataConfiguration === 'live'

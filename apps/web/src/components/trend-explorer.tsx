@@ -2,6 +2,7 @@
 
 import type { EChartsCoreOption } from 'echarts/core';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useMemo, useTransition } from 'react';
 
 import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
@@ -183,6 +184,7 @@ export function TrendExplorer({
   range: TrendRange;
 }) {
   const searchParams = useAnalyticalSearchParams();
+  const pathname = usePathname();
   const mode = readEnumParam(searchParams, 'trendEncoding', ['line', 'bar'], 'line');
   const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'Sol');
   const [isPending, startTransition] = useTransition();
@@ -396,10 +398,10 @@ export function TrendExplorer({
           <Link
             key={candidate.value}
             aria-current={range === candidate.value ? 'page' : undefined}
-            href={hrefWithParams('/trends', searchParams, {
+            href={`${hrefWithParams(pathname === '/' ? '/' : '/trends', searchParams, {
               range: candidate.value,
               trendZoom: null,
-            })}
+            })}${pathname === '/' ? '#trends' : ''}`}
           >
             {candidate.label}
           </Link>

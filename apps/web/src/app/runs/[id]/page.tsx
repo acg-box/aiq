@@ -123,7 +123,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     <section className="page-shell inner-page">
       <div className="run-heading">
         <div>
-          <Link className="back-link" href="/runs">
+          <Link className="back-link" href="/#runs">
             ← Back to run history
           </Link>
           <span className="eyebrow">Configuration run</span>

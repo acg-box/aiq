@@ -20,6 +20,10 @@ export const dynamic = 'force-dynamic';
 
 type RunsSearchParams = { before?: string; after?: string };
 
+function historyHref(parameter: 'after' | 'before', cursor: string): string {
+  return `/?${parameter}=${encodeURIComponent(cursor)}#runs`;
+}
+
 export default async function RunsPage({
   searchParams,
 }: {
@@ -59,7 +63,6 @@ export default async function RunsPage({
     (value) => value.length === 0,
     (value) => value.map(() => false),
   );
-
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
@@ -144,16 +147,12 @@ export default async function RunsPage({
       {runsResult.state === 'unavailable' || runsResult.state === 'empty' ? null : (
         <nav className="history-pagination" aria-label="Run history pages">
           {runsResult.data.newerCursor ? (
-            <Link href={`/runs?after=${encodeURIComponent(runsResult.data.newerCursor)}`}>
-              ← Newer runs
-            </Link>
+            <Link href={historyHref('after', runsResult.data.newerCursor)}>← Newer runs</Link>
           ) : (
             <span aria-disabled="true">← Newer runs</span>
           )}
           {runsResult.data.olderCursor ? (
-            <Link href={`/runs?before=${encodeURIComponent(runsResult.data.olderCursor)}`}>
-              Older runs →
-            </Link>
+            <Link href={historyHref('before', runsResult.data.olderCursor)}>Older runs →</Link>
           ) : (
             <span aria-disabled="true">Older runs →</span>
           )}
