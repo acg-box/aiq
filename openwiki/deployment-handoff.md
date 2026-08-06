@@ -34,6 +34,136 @@ falsification-first non-Official 17-by-72 calibration. A failed release gate has
 no operator override. Real calibration remains permanently non-Official even
 after signed verifier admission and distinct publication to its public register.
 
+## AIQ 2.0 cutover
+
+Keep the live signed `1.0.2` production database and Web deployment unchanged
+while the new evidence is prepared. The repository does not contain the private
+`1.0.2` task catalog and task-level package required to prove a replay under the
+new joint Rasch scorer. Therefore do not recompute the old matrix or relabel it
+as AIQ 2.0. The new real `1.0.5` 17-by-72 matrix is the only source for the new
+Official publication.
+
+The order below is intentional:
+
+1. Complete the required 17-by-4 pilot and full 17-by-72 non-Official
+   calibration with the final native runner/verifier inputs. Only after its
+   release gate passes, execute the controlled 17-by-72 Official run, score it
+   with AIQ measurement `2.0.0`, and create one signed result package. Keep the
+   package and all private inputs outside Git.
+2. Before changing production, run the real native verifier against that exact
+   package. The verifier must exit successfully and create a new normalized
+   stage, verifier attestation, and Official admission output. A submission
+   queue receipt, a synthetic fixture, or a hand-written JSON summary is not
+   evidence of this gate.
+3. Optionally retain the old production state with an ordinary database and
+   Storage backup. This is for historical retention only; it is not a reset
+   manifest, migration input, or publication gate.
+4. During one short window, run the read-only reset inventory and then the
+   one-shot greenfield reset/init. The reset code intentionally has no
+   `AIQ_PRE_RESET_EVIDENCE_ARCHIVE` variable or self-reported archive manifest.
+   It only validates the current schema and production reference before it
+   removes the AIQ-owned namespace and Storage buckets.
+5. Submit the already verified new package to the fresh database, run the
+   controlled verifier through the gateway, and publish through the distinct
+   publisher identity. Do not load `databases/synthetic-demo.sql`.
+6. Run `cargo make check-aiq-2-cutover`. Deploy the new Web only if it passes;
+   otherwise leave the old deployment online and keep the new state
+   unpublished.
+
+### Offline package gate
+
+Use the canonical verifier, not a second TypeScript implementation of package
+cryptography. Set the following paths to the exact artifacts from the new run:
+
+```sh
+set -eu
+: "${AIQ_PRODUCTION_REFERENCE:?set the current controlled production-reference.json path}"
+AIQ_2_PACKAGE='/controlled/aiq-2/official-result-package.json'
+AIQ_2_ARTIFACT_ROOT='/controlled/aiq-2/artifacts'
+AIQ_2_TASKS='/controlled/aiq-2/tasks'
+AIQ_2_VERIFIER_ENVIRONMENT='/controlled/aiq-2/verifier-environment.json'
+AIQ_2_EVALUATOR_ROOT='/controlled/aiq-2/evaluators'
+AIQ_2_CORPUS_COMMITMENT='/controlled/aiq-2/aiq-core-1.0.5-commitment.json'
+AIQ_2_EVALUATOR_RUNTIME='/controlled/toolchain/node'
+AIQ_2_CODEX_TOOLCHAIN_ROOT='/controlled/toolchain'
+AIQ_2_REPLAY_ROOT='/controlled/aiq-2/replay'
+AIQ_2_SOURCE_ROOT='/controlled/aiq-2/source'
+AIQ_2_RUNNER_BINARY='/controlled/aiq-2/bin/aiq-runner'
+AIQ_2_CODEX_BINARY='/controlled/aiq-2/bin/codex'
+AIQ_2_BUILD_RECEIPT='/controlled/aiq-2/final-build-receipt.json'
+AIQ_2_STAGE_OUTPUT='/controlled/aiq-2/verified-stage.json'
+AIQ_2_ATTESTATION_OUTPUT='/controlled/aiq-2/verifier-attestation.json'
+AIQ_2_ADMISSION_OUTPUT='/controlled/aiq-2/official-admission.json'
+AIQ_2_PRODUCTION_REFERENCE_SHA256='<sha256-of-production-reference-file>'
+AIQ_2_BUILD_RECEIPT_SHA256='<sha256-of-final-build-receipt-file>'
+
+target/release/aiq-verifier verify-local \
+  --package "$AIQ_2_PACKAGE" \
+  --artifact-root "$AIQ_2_ARTIFACT_ROOT" \
+  --tasks "$AIQ_2_TASKS" \
+  --environment "$AIQ_2_VERIFIER_ENVIRONMENT" \
+  --evaluator-root "$AIQ_2_EVALUATOR_ROOT" \
+  --corpus-commitment "$AIQ_2_CORPUS_COMMITMENT" \
+  --evaluator-runtime "$AIQ_2_EVALUATOR_RUNTIME" \
+  --codex-toolchain-root "$AIQ_2_CODEX_TOOLCHAIN_ROOT" \
+  --replay-root "$AIQ_2_REPLAY_ROOT" \
+  --replay-jobs 4 \
+  --observed-unix-ms "$(date +%s000)" \
+  --stage-output "$AIQ_2_STAGE_OUTPUT" \
+  --attestation-output "$AIQ_2_ATTESTATION_OUTPUT" \
+  --admission-output "$AIQ_2_ADMISSION_OUTPUT" \
+  --source-root "$AIQ_2_SOURCE_ROOT" \
+  --frozen-runner-binary "$AIQ_2_RUNNER_BINARY" \
+  --codex-binary "$AIQ_2_CODEX_BINARY" \
+  --production-reference "$AIQ_PRODUCTION_REFERENCE" \
+  --expected-production-reference-sha256 "$AIQ_2_PRODUCTION_REFERENCE_SHA256" \
+  --build-receipt "$AIQ_2_BUILD_RECEIPT" \
+  --expected-build-receipt-sha256 "$AIQ_2_BUILD_RECEIPT_SHA256"
+
+test -s "$AIQ_2_STAGE_OUTPUT"
+test -s "$AIQ_2_ATTESTATION_OUTPUT"
+test -s "$AIQ_2_ADMISSION_OUTPUT"
+```
+
+The live verifier and publisher must still process this package after the fresh
+database is initialized. The offline output proves the package and replay
+inputs; it does not itself publish rows.
+
+### Optional historical backup
+
+If historical retention is desired, run this while `1.0.2` is still online,
+before reset. The backup is not consumed by `reset.ts`:
+
+```sh
+AIQ_BACKUP_DIR='/controlled/backups/aiq-1.0.2-2026-08-06'
+mkdir -p "$AIQ_BACKUP_DIR"
+pg_dump "$AIQ_DATABASE_URL" --format=custom --no-owner --no-acl \
+  --file "$AIQ_BACKUP_DIR/aiq-1.0.2.dump"
+supabase storage cp --project-ref xxnszykaeapolqdnhalx \
+  'ss://aiq-submission-packages' "$AIQ_BACKUP_DIR/aiq-submission-packages" --recursive
+supabase storage cp --project-ref xxnszykaeapolqdnhalx \
+  'ss://aiq-runner-artifacts' "$AIQ_BACKUP_DIR/aiq-runner-artifacts" --recursive
+```
+
+Do not treat this backup as proof that `1.0.2` can be scored by the new
+contract. If it is restored for investigation, label it historical and keep it
+out of the AIQ 2.0 Official leaderboard.
+
+### Post-publication gate
+
+After publication, run this read-only query gate against the new database:
+
+```sh
+AIQ_DATABASE_URL='<direct-connection-url>' cargo make check-aiq-2-cutover
+```
+
+It fails unless the database contains exactly one published, non-synthetic
+`1.0.5` matrix, 17 published runs, 17 Official scores, 1,224 task results, one
+calibration digest, zero synthetic Official scores, and exactly 17 public
+Official leaderboard rows with zero synthetic rows. It also checks measurement
+`2.0.0` and method `rasch_fractional_joint_map_v1`. This is the release gate
+with database evidence; it is not a migration framework.
+
 ## First-release topology
 
 The accepted first release uses these exact surfaces:
@@ -376,13 +506,17 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       publication or deployment change.
 - [ ] Regenerate and audit the final AIQ Core `1.0.5` corpus from the final clean
       source commit, then build and hash the native runner and verifier.
-- [ ] Empty only the AIQ-owned namespace and initialize the new desired state
-      once from the final AIQ Core `1.0.5` `databases/schema.sql`; do not apply a
-      migration chain.
+- [ ] Create and successfully offline-verify one new signed AIQ 2.0
+      `1.0.5` 17-by-72 package before touching the live database.
+- [ ] Optionally take an ordinary `pg_dump`/Storage backup, then empty only the
+      AIQ-owned namespace and initialize the new desired state once from the
+      final AIQ Core `1.0.5` `databases/schema.sql`; do not apply a migration
+      chain or provide a synthetic archive manifest to reset.
 - [ ] Complete the 17-by-4 targeted pilot and the required full non-Official
       calibration. Then run, replay, verify, and publish one real 17-by-72 AIQ
       Core `1.0.5` matrix;
-      then deploy that exact source and pass the identity-bound production gate.
+      then run `cargo make check-aiq-2-cutover` and deploy the exact source only
+      after the count gate passes.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
       next run without changing the accepted execution contract.
 

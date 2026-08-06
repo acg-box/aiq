@@ -5147,27 +5147,33 @@ begin
       score,
       array[
         'binary_micro_diagnostic', 'completion_bounds',
-        'conditional_observed_aiq', 'coverage', 'difficulty_coverage',
-        'domains', 'duplicate_results', 'model', 'official_aiq',
-        'ranking_eligible', 'rule', 'schema_version', 'scoring_version',
+        'quality_score', 'coverage', 'difficulty_coverage',
+        'domains', 'duplicate_results', 'model', 'score',
+        'latent_ability', 'measurement_version', 'ranking_eligible', 'rule',
+        'schema_version', 'scoring_version',
         'task_resampling_sensitivity_interval', 'tier'
       ]::text[]
     )
-      or score ->> 'schema_version' is distinct from 'aiq.score-report.v1'
+      or score ->> 'schema_version' is distinct from 'aiq.score-report.v2'
+      or score ->> 'measurement_version' is distinct from '2.0.0'
       or score ->> 'scoring_version' is distinct from stage ->> 'scoring_version'
       or score -> 'model' is distinct from child -> 'model'
       or jsonb_typeof(score -> 'tier') is distinct from 'string'
       or jsonb_typeof(score -> 'rule') is distinct from 'string'
       or score ->> 'rule' is distinct from
-        'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.'
+        'AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate''s predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Official requires non-synthetic 72/72 coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.'
       or jsonb_typeof(score -> 'ranking_eligible') is distinct from 'boolean'
       or (
-        jsonb_typeof(score -> 'official_aiq') is distinct from 'null'
-        and jsonb_typeof(score -> 'official_aiq') is distinct from 'number'
+        score -> 'latent_ability' is distinct from 'null'::jsonb
+        and not aiq_private.latent_ability_jsonb_is_valid(score -> 'latent_ability')
       )
       or (
-        jsonb_typeof(score -> 'conditional_observed_aiq') is distinct from 'null'
-        and jsonb_typeof(score -> 'conditional_observed_aiq') is distinct from 'number'
+        jsonb_typeof(score -> 'score') is distinct from 'null'
+        and jsonb_typeof(score -> 'score') is distinct from 'number'
+      )
+      or (
+        jsonb_typeof(score -> 'quality_score') is distinct from 'null'
+        and jsonb_typeof(score -> 'quality_score') is distinct from 'number'
       )
       or (
         jsonb_typeof(score -> 'completion_bounds') is distinct from 'null'
@@ -5279,7 +5285,8 @@ begin
     ) completion_domains;
     select
       count(*) filter (
-        where value -> 'task_score' in ('0'::jsonb, '1'::jsonb)
+        where value -> 'task_score' is not null
+          and value -> 'task_score' is distinct from 'null'::jsonb
       )::integer,
       count(*) filter (where value -> 'task_score' = '1'::jsonb)::integer
     into binary_sample_count, binary_success_count
@@ -5293,10 +5300,7 @@ begin
       '{}'::jsonb
     ) into supplied_domains
     from jsonb_array_elements(score -> 'domains');
-    supplied_fixed := coalesce(
-      (score ->> 'official_aiq')::numeric,
-      (score ->> 'conditional_observed_aiq')::numeric
-    );
+    supplied_fixed := (score ->> 'quality_score')::numeric;
 
     if (score -> 'coverage' ->> 'expected_tasks')::integer is distinct from 72
       or (score -> 'coverage' ->> 'valid_tasks')::integer
@@ -5334,40 +5338,43 @@ begin
       or (score ->> 'tier' = 'synthetic_complete' and not is_synthetic)
       or (score ->> 'tier' = 'official' and is_synthetic)
       or (
-        jsonb_typeof(score -> 'official_aiq') = 'number'
-        and (score ->> 'official_aiq')::numeric not between 0 and 100
+        jsonb_typeof(score -> 'score') = 'number'
+        and (score ->> 'score')::numeric not between 0 and 100
       )
       or (
-        jsonb_typeof(score -> 'conditional_observed_aiq') = 'number'
-        and (score ->> 'conditional_observed_aiq')::numeric not between 0 and 100
+        jsonb_typeof(score -> 'quality_score') = 'number'
+        and (score ->> 'quality_score')::numeric not between 0 and 100
       )
       or (
         score ->> 'tier' = 'official'
         and (
-          jsonb_typeof(score -> 'official_aiq') is distinct from 'number'
-          or jsonb_typeof(score -> 'conditional_observed_aiq')
+          jsonb_typeof(score -> 'score') is distinct from 'number'
+          or jsonb_typeof(score -> 'quality_score')
             is distinct from 'number'
-          or round((score ->> 'official_aiq')::numeric, 3)
-            is distinct from round(fixed_score, 3)
-          or round((score ->> 'conditional_observed_aiq')::numeric, 3)
+          or not aiq_private.latent_ability_jsonb_is_valid(score -> 'latent_ability')
+          or round((score ->> 'score')::numeric, 3)
+            is distinct from round((score -> 'latent_ability' ->> 'score')::numeric, 3)
+          or round((score ->> 'quality_score')::numeric, 3)
             is distinct from round(fixed_score, 3)
         )
       )
       or (
         score ->> 'tier' in ('synthetic_complete', 'provisional')
         and (
-          score -> 'official_aiq' is distinct from 'null'::jsonb
-          or jsonb_typeof(score -> 'conditional_observed_aiq')
+          score -> 'score' is distinct from 'null'::jsonb
+          or jsonb_typeof(score -> 'quality_score')
             is distinct from 'number'
-          or round((score ->> 'conditional_observed_aiq')::numeric, 3)
+          or score -> 'latent_ability' is distinct from 'null'::jsonb
+          or round((score ->> 'quality_score')::numeric, 3)
             is distinct from round(fixed_score, 3)
         )
       )
       or (
         score ->> 'tier' in ('coverage_only', 'not_applicable')
         and (
-          score -> 'official_aiq' is distinct from 'null'::jsonb
-          or score -> 'conditional_observed_aiq' is distinct from 'null'::jsonb
+          score -> 'score' is distinct from 'null'::jsonb
+          or score -> 'quality_score' is distinct from 'null'::jsonb
+          or score -> 'latent_ability' is distinct from 'null'::jsonb
           or supplied_fixed is not null
         )
       )
@@ -5559,7 +5566,8 @@ begin
     ) verified;
 
     insert into aiq_private.aiq_score_snapshots (
-      run_id, scoring_version, score_status, fixed_fixture_aiq,
+      run_id, scoring_version, score_status, quality_score, score,
+      latent_ability,
       task_resampling_low, task_resampling_high, completion_bound_low,
       completion_bound_high, micro_accuracy, micro_wilson_low,
       micro_wilson_high, valid_task_count, expected_task_count,
@@ -5569,7 +5577,11 @@ begin
     ) values (
       child_id, '1.0.5', (score ->> 'tier')::aiq_private.score_status,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
-        then round(fixed_score, 3) end,
+        then round((score ->> 'quality_score')::numeric, 3) end,
+      case when score ->> 'tier' = 'official'
+        then round((score ->> 'score')::numeric, 3) end,
+      case when score ->> 'tier' = 'official'
+        then score -> 'latent_ability' end,
       (score -> 'task_resampling_sensitivity_interval' ->> 'lower')::numeric,
       (score -> 'task_resampling_sensitivity_interval' ->> 'upper')::numeric,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
@@ -5861,6 +5873,72 @@ end;
 $$;
 
 
+-- Name: latent_ability_jsonb_is_valid(jsonb); Type: FUNCTION; Schema: aiq_private; Owner: -
+--
+
+create function aiq_private.latent_ability_jsonb_is_valid(candidate jsonb) returns boolean
+    language plpgsql immutable
+    SET search_path to ''
+    as $$
+begin
+  if jsonb_typeof(candidate) is distinct from 'object'
+    or not aiq_private.has_exact_jsonb_keys(
+      candidate,
+      array[
+        'calibration_digest', 'calibration_model_count',
+        'calibration_task_count', 'items_used', 'method',
+        'observed_information', 'reliability_status', 'score',
+        'score_ci_high', 'score_ci_low', 'standard_error', 'theta',
+        'theta_ci_high', 'theta_ci_low'
+      ]::text[]
+    )
+  then
+    return false;
+  end if;
+  if jsonb_typeof(candidate -> 'calibration_digest') is distinct from 'string'
+    or jsonb_typeof(candidate -> 'calibration_model_count') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'calibration_task_count') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'items_used') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'method') is distinct from 'string'
+    or jsonb_typeof(candidate -> 'observed_information') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'reliability_status') is distinct from 'string'
+    or jsonb_typeof(candidate -> 'score') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'score_ci_high') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'score_ci_low') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'standard_error') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'theta') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'theta_ci_high') is distinct from 'number'
+    or jsonb_typeof(candidate -> 'theta_ci_low') is distinct from 'number'
+  then
+    return false;
+  end if;
+  return coalesce(
+    candidate ->> 'method' = 'rasch_fractional_joint_map_v1'
+    and candidate ->> 'calibration_digest' ~ '^sha256:[0-9a-f]{64}$'
+    and (candidate ->> 'calibration_model_count')::numeric = 17
+    and (candidate ->> 'calibration_task_count')::numeric = 72
+    and (candidate ->> 'items_used')::numeric between 1 and 72
+    and (candidate ->> 'observed_information')::numeric between 0 and 72
+    and candidate ->> 'reliability_status' = 'single_matrix_information_only'
+    and (candidate ->> 'score')::numeric between 0 and 100
+    and (candidate ->> 'score_ci_low')::numeric between 0 and 100
+    and (candidate ->> 'score_ci_high')::numeric between 0 and 100
+    and (candidate ->> 'score_ci_low')::numeric <= (candidate ->> 'score_ci_high')::numeric
+    and (candidate ->> 'standard_error')::numeric > 0
+    and (candidate ->> 'standard_error')::numeric <= 8
+    and (candidate ->> 'theta')::numeric between -8 and 8
+    and (candidate ->> 'theta_ci_low')::numeric between -32 and 32
+    and (candidate ->> 'theta_ci_high')::numeric between -32 and 32
+    and (candidate ->> 'theta_ci_low')::numeric <= (candidate ->> 'theta_ci_high')::numeric,
+    false
+  );
+exception
+  when invalid_text_representation or numeric_value_out_of_range then
+    return false;
+end;
+$$;
+
+
 --
 -- Name: publication_is_complete(text, text); Type: function; Schema: aiq_private; Owner: -
 --
@@ -6089,6 +6167,9 @@ begin
       where link.package_sha256 = target_package_sha256
         and score.scoring_version = batch.scoring_version
         and score.score_status = 'official'
+        and score.score is not null
+        and score.latent_ability is not null
+        and aiq_private.latent_ability_jsonb_is_valid(score.latent_ability)
         and score.valid_task_count = 72
         and score.expected_task_count = 72
         and score.covered_domain_count = 10
@@ -7460,7 +7541,7 @@ begin
             "official_covered_domain_count":10,
             "synthetic_complete":{
               "covered_domain_count":10,
-              "official_aiq":null,
+              "score":null,
               "ranking_eligible":false,
               "valid_task_count":72
             }
@@ -8444,7 +8525,7 @@ $$;
 -- Name: public_trend_points(text); Type: function; Schema: public; Owner: -
 --
 
-create function public.public_trend_points(supplied_range text) returns table(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)
+create function public.public_trend_points(supplied_range text) returns table(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, theta numeric, standard_error numeric, theta_ci_low numeric, theta_ci_high numeric, score_ci_low numeric, score_ci_high numeric, information numeric, quality_score numeric, strict_pass_rate numeric, strict_pass_low numeric, strict_pass_high numeric, strict_pass_sample_size integer, strict_pass_successes integer, reliability_status text, calibration_status text, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)
     language plpgsql stable
     SET search_path to ''
     as $$
@@ -8520,6 +8601,21 @@ begin
     buckets.bucket_start,
     buckets.bucket_end,
     observation.score,
+    observation.theta,
+    observation.standard_error,
+    observation.theta_ci_low,
+    observation.theta_ci_high,
+    observation.score_ci_low,
+    observation.score_ci_high,
+    observation.information,
+    observation.quality_score,
+    observation.strict_pass_rate,
+    observation.strict_pass_low,
+    observation.strict_pass_high,
+    observation.strict_pass_sample_size,
+    observation.strict_pass_successes,
+    observation.reliability_status,
+    observation.calibration_status,
     observation.sensitivity_low,
     observation.sensitivity_high,
     observation.sample_size,
@@ -8532,7 +8628,24 @@ begin
       run.run_id,
       score.scoring_version,
       run.scheduled_for as recorded_at,
-      score.fixed_fixture_aiq as score,
+      score.score as score,
+      (score.latent_ability ->> 'theta')::numeric as theta,
+      (score.latent_ability ->> 'standard_error')::numeric as standard_error,
+      (score.latent_ability ->> 'theta_ci_low')::numeric as theta_ci_low,
+      (score.latent_ability ->> 'theta_ci_high')::numeric as theta_ci_high,
+      (score.latent_ability ->> 'score_ci_low')::numeric as score_ci_low,
+      (score.latent_ability ->> 'score_ci_high')::numeric as score_ci_high,
+      (score.latent_ability ->> 'observed_information')::numeric as information,
+      score.quality_score as quality_score,
+      score.micro_accuracy as strict_pass_rate,
+      score.micro_wilson_low as strict_pass_low,
+      score.micro_wilson_high as strict_pass_high,
+      (select count(*)::integer from aiq_private.aiq_task_results result
+        where result.run_id = run.run_id and result.task_score is not null) as strict_pass_sample_size,
+      (select count(*)::integer from aiq_private.aiq_task_results result
+        where result.run_id = run.run_id and result.task_score = 1) as strict_pass_successes,
+      score.latent_ability ->> 'reliability_status' as reliability_status,
+      'calibrated'::text as calibration_status,
       score.task_resampling_low as sensitivity_low,
       score.task_resampling_high as sensitivity_high,
       score.valid_task_count as sample_size,
@@ -9085,7 +9198,9 @@ create table aiq_private.aiq_score_snapshots (
     run_id text not null,
     scoring_version text not null,
     score_status aiq_private.score_status not null,
-    fixed_fixture_aiq numeric(6,3),
+    quality_score numeric(6,3),
+    score numeric(6,3),
+    latent_ability jsonb,
     task_resampling_low numeric(6,3),
     task_resampling_high numeric(6,3),
     completion_bound_low numeric(6,3) not null,
@@ -9112,12 +9227,16 @@ create table aiq_private.aiq_score_snapshots (
     constraint aiq_score_snapshots_check1 check ((((completion_bound_low >= (0)::numeric) and (completion_bound_low <= (100)::numeric)) and ((completion_bound_high >= (0)::numeric) and (completion_bound_high <= (100)::numeric)) and (completion_bound_low <= completion_bound_high))),
     constraint aiq_score_snapshots_check2 check (((valid_task_count >= 0) and (expected_task_count = 72))),
     constraint aiq_score_snapshots_check3 check (((covered_domain_count >= 0) and (expected_domain_count = 10) and (covered_domain_count <= expected_domain_count))),
-    constraint aiq_score_snapshots_check4 check (((score_status <> all (ARRAY['official'::aiq_private.score_status, 'synthetic_complete'::aiq_private.score_status])) or ((valid_task_count = expected_task_count) and (covered_domain_count = expected_domain_count) and (invalid_count = 0) and (missing_count = 0) and (not_applicable_count = 0) and (fixed_fixture_aiq IS not null)))),
+    constraint aiq_score_snapshots_check4 check (((score_status <> all (ARRAY['official'::aiq_private.score_status, 'synthetic_complete'::aiq_private.score_status])) or ((valid_task_count = expected_task_count) and (covered_domain_count = expected_domain_count) and (invalid_count = 0) and (missing_count = 0) and (not_applicable_count = 0) and (quality_score IS not null)))),
     constraint aiq_score_snapshots_check5 check (((score_status <> 'coverage_only'::aiq_private.score_status) or (task_resampling_low IS null))),
-    constraint aiq_score_snapshots_fixed_fixture_aiq_check check (((fixed_fixture_aiq IS null) or ((fixed_fixture_aiq >= (0)::numeric) and (fixed_fixture_aiq <= (100)::numeric)))),
+    constraint aiq_score_snapshots_quality_score_check check (((quality_score IS null) or ((quality_score >= (0)::numeric) and (quality_score <= (100)::numeric)))),
+    constraint aiq_score_snapshots_score_check check (((score IS null) or ((score >= (0)::numeric) and (score <= (100)::numeric)))),
+    constraint aiq_score_snapshots_latent_ability_check check (((latent_ability IS null) or aiq_private.latent_ability_jsonb_is_valid(latent_ability))),
     constraint aiq_score_snapshots_task_resampling_high_check check (((task_resampling_high IS null) or ((task_resampling_high >= (0)::numeric) and (task_resampling_high <= (100)::numeric)))),
     constraint aiq_score_snapshots_task_resampling_low_check check (((task_resampling_low IS null) or ((task_resampling_low >= (0)::numeric) and (task_resampling_low <= (100)::numeric)))),
-    constraint aiq_score_tier_metric_nullability check ((((score_status = ANY (ARRAY['official'::aiq_private.score_status, 'synthetic_complete'::aiq_private.score_status, 'provisional'::aiq_private.score_status])) and (fixed_fixture_aiq IS not null) and (task_resampling_low IS not null) and (task_resampling_high IS not null) and ((task_resampling_low >= (0)::numeric) and (task_resampling_low <= (100)::numeric)) and ((task_resampling_high >= (0)::numeric) and (task_resampling_high <= (100)::numeric)) and (task_resampling_low <= task_resampling_high)) or ((score_status = ANY (ARRAY['coverage_only'::aiq_private.score_status, 'not_applicable'::aiq_private.score_status])) and (fixed_fixture_aiq IS null) and (task_resampling_low IS null) and (task_resampling_high IS null))))
+    constraint aiq_score_official_latent_check check (((score_status <> 'official'::aiq_private.score_status) or ((score IS not null) and (latent_ability IS not null)))),
+    constraint aiq_score_nonofficial_latent_check check (((score_status = 'official'::aiq_private.score_status) or ((score IS null) and (latent_ability IS null)))),
+    constraint aiq_score_tier_metric_nullability check ((((score_status = ANY (ARRAY['official'::aiq_private.score_status, 'synthetic_complete'::aiq_private.score_status, 'provisional'::aiq_private.score_status])) and (quality_score IS not null) and (task_resampling_low IS not null) and (task_resampling_high IS not null) and ((task_resampling_low >= (0)::numeric) and (task_resampling_low <= (100)::numeric)) and ((task_resampling_high >= (0)::numeric) and (task_resampling_high <= (100)::numeric)) and (task_resampling_low <= task_resampling_high)) or ((score_status = ANY (ARRAY['coverage_only'::aiq_private.score_status, 'not_applicable'::aiq_private.score_status])) and (quality_score IS null) and (score IS null) and (task_resampling_low IS null) and (task_resampling_high IS null))))
 );
 
 
@@ -9636,7 +9755,12 @@ create view public.public_leaderboard with (security_invoker = true) as
             run.synthetic,
             score.scoring_version,
             score.score_status,
-            score.fixed_fixture_aiq,
+            score.score,
+            score.quality_score as quality_score,
+            score.latent_ability,
+            score.micro_accuracy as strict_pass_rate,
+            score.micro_wilson_low as strict_pass_low,
+            score.micro_wilson_high as strict_pass_high,
             score.task_resampling_low,
             score.task_resampling_high,
             score.valid_task_count,
@@ -9645,18 +9769,108 @@ create view public.public_leaderboard with (security_invoker = true) as
             score.missing_count,
             ( select (count(*))::integer as count
                    from aiq_private.aiq_task_results result
+                  where result.run_id = run.run_id
+                    and result.task_score is not null) as strict_pass_sample_size,
+            ( select (count(*))::integer as count
+                   from aiq_private.aiq_task_results result
+                  where result.run_id = run.run_id
+                    and result.task_score = 1) as strict_pass_successes,
+            ( select (count(*))::integer as count
+                   from aiq_private.aiq_task_results result
                   where ((result.run_id = run.run_id) and (result.outcome = ANY (ARRAY['timeout'::aiq_private.result_outcome, 'budget_exhausted'::aiq_private.result_outcome, 'tool_failure'::aiq_private.result_outcome, 'policy_failure'::aiq_private.result_outcome, 'wrong_artifact'::aiq_private.result_outcome])))) as runtime_issue_count
+           , ( select (count(*))::integer as count
+                   from aiq_private.aiq_task_results result
+                  where result.run_id = run.run_id
+                    and result.outcome = 'invalid'
+                    and result.failure_responsibility in ('benchmark_infrastructure', 'platform')) as invalid_infrastructure_count
            from (aiq_private.aiq_runs run
              join aiq_private.aiq_score_snapshots score on ((score.run_id = run.run_id)))
           where (run.published and score.published)
           ORDER BY run.model_config_id, run.scheduled_for DESC, score.calculated_at DESC
-        )
+        ),
+ status_evidence as (
+   select latest_evidence.*,
+     case
+       when score_status = 'official'::aiq_private.score_status then 'official'::text
+       when score_status = 'synthetic_complete'::aiq_private.score_status then 'synthetic_complete'::text
+       when score_status = 'provisional'::aiq_private.score_status then 'provisional'::text
+       when score_status = 'not_applicable'::aiq_private.score_status then 'not_applicable'::text
+       when valid_task_count = 0 and missing_count = expected_task_count then 'missing'::text
+       when valid_task_count = 0 and missing_count = 0 and invalid_count > 0
+         and invalid_infrastructure_count = invalid_count then 'infra_failure'::text
+       when valid_task_count = 0 and missing_count = 0 and invalid_count > 0 then 'failed'::text
+       else 'coverage_only'::text
+     end as public_score_status
+   from latest_evidence
+ )
  select model_config_id as matrix_id,
     run_id,
         case
-            when (score_status = 'official'::aiq_private.score_status) then fixed_fixture_aiq
+            when (score_status = 'official'::aiq_private.score_status) then score
             else null::numeric
         end as score,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'theta')::numeric
+            else null::numeric
+        end as theta,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'standard_error')::numeric
+            else null::numeric
+        end as standard_error,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'theta_ci_low')::numeric
+            else null::numeric
+        end as theta_ci_low,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'theta_ci_high')::numeric
+            else null::numeric
+        end as theta_ci_high,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'score_ci_low')::numeric
+            else null::numeric
+        end as score_ci_low,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'score_ci_high')::numeric
+            else null::numeric
+        end as score_ci_high,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then (latent_ability ->> 'observed_information')::numeric
+            else null::numeric
+        end as information,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then quality_score
+            else null::numeric
+        end as quality_score,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then strict_pass_rate
+            else null::numeric
+        end as strict_pass_rate,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then strict_pass_low
+            else null::numeric
+        end as strict_pass_low,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then strict_pass_high
+            else null::numeric
+        end as strict_pass_high,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then strict_pass_sample_size
+            else null::integer
+        end as strict_pass_sample_size,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then strict_pass_successes
+            else null::integer
+        end as strict_pass_successes,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then latent_ability ->> 'reliability_status'
+            else null::text
+        end as reliability_status,
+        case
+            when (score_status = 'official'::aiq_private.score_status) then 'calibrated'::text
+            when public_score_status in ('failed', 'infra_failure') then 'failed'::text
+            when public_score_status in ('not_applicable', 'synthetic_complete') then 'not_applicable'::text
+            else 'pending'::text
+        end as calibration_status,
         case
             when (score_status = 'official'::aiq_private.score_status) then task_resampling_low
             else null::numeric
@@ -9682,20 +9896,16 @@ create view public.public_leaderboard with (security_invoker = true) as
             else null::integer
         end as missing,
     scoring_version,
-        case
-            when (score_status = 'official'::aiq_private.score_status) then 'official'::text
-            when (score_status = 'not_applicable'::aiq_private.score_status) then 'not_applicable'::text
-            else 'missing'::text
-        end as score_status,
+    public_score_status as score_status,
     synthetic
-   from latest_evidence;
+   from status_evidence;
 
 
 --
 -- Name: view public_leaderboard; Type: COMMENT; Schema: public; Owner: -
 --
 
-comment on view public.public_leaderboard IS 'Published Official scores with deterministic fixed-fixture task-mix sensitivity ranges, not inferential confidence intervals.';
+comment on view public.public_leaderboard IS 'Published Official Rasch ability scores with model-based Wald uncertainty, raw criterion diagnostics, and deterministic fixed-fixture task-mix sensitivity ranges. Sensitivity ranges are not inferential confidence intervals.';
 
 
 --
@@ -12294,6 +12504,13 @@ revoke all on function aiq_private.task_resampling_interval_is_valid(candidate j
 
 
 --
+-- Name: function latent_ability_jsonb_is_valid(candidate jsonb); Type: ACL; Schema: aiq_private; Owner: -
+--
+
+revoke all on function aiq_private.latent_ability_jsonb_is_valid(candidate jsonb) from PUBLIC;
+
+
+--
 -- Name: function publication_is_complete(target_batch_id text, target_package_sha256 text); Type: ACL; Schema: aiq_private; Owner: -
 --
 
@@ -13232,11 +13449,26 @@ grant select(score_status) on table aiq_private.aiq_score_snapshots to authentic
 
 
 --
--- Name: COLUMN aiq_score_snapshots.fixed_fixture_aiq; Type: ACL; Schema: aiq_private; Owner: -
+-- Name: COLUMN aiq_score_snapshots.quality_score; Type: ACL; Schema: aiq_private; Owner: -
 --
 
-grant select(fixed_fixture_aiq) on table aiq_private.aiq_score_snapshots to anon;
-grant select(fixed_fixture_aiq) on table aiq_private.aiq_score_snapshots to authenticated;
+grant select(quality_score) on table aiq_private.aiq_score_snapshots to anon;
+grant select(quality_score) on table aiq_private.aiq_score_snapshots to authenticated;
+
+
+--
+-- Name: COLUMN aiq_score_snapshots.score; Type: ACL; Schema: aiq_private; Owner: -
+--
+
+grant select(score) on table aiq_private.aiq_score_snapshots to anon;
+grant select(score) on table aiq_private.aiq_score_snapshots to authenticated;
+
+
+-- Name: COLUMN aiq_score_snapshots.latent_ability; Type: ACL; Schema: aiq_private; Owner: -
+--
+
+grant select(latent_ability) on table aiq_private.aiq_score_snapshots to anon;
+grant select(latent_ability) on table aiq_private.aiq_score_snapshots to authenticated;
 
 
 --
@@ -14316,7 +14548,7 @@ create table aiq_private.calibration_model_scores (
   model_family text not null,
   reasoning_effort text not null,
   descriptive_status text not null,
-  score numeric(12,8),
+  quality_score numeric(12,8),
   task_resampling_sensitivity_lower numeric(12,8),
   task_resampling_sensitivity_upper numeric(12,8),
   task_resampling_sensitivity_method text,
@@ -14349,7 +14581,7 @@ create table aiq_private.calibration_model_scores (
   pricing_version text not null default 'aiq.standard-api-equivalent-usd.v1',
   pricing_digest text not null references aiq_private.efficiency_pricing_methods(pricing_digest),
   primary key (run_id, model_family, reasoning_effort),
-  constraint calibration_model_scores_score check (score is null or score between 0 and 100),
+  constraint calibration_model_scores_quality_score check (quality_score is null or quality_score between 0 and 100),
   constraint calibration_model_scores_interval check (
     (task_resampling_sensitivity_lower is null) =
       (task_resampling_sensitivity_upper is null)
@@ -14409,7 +14641,7 @@ create table aiq_private.calibration_model_scores (
   constraint calibration_model_scores_counts check (
     result_count >= 1 and scored_result_count between 0 and result_count
     and coverage_percent = round(100 * scored_result_count::numeric / result_count, 4)
-    and ((descriptive_status in ('coverage_only','not_applicable')) = (score is null))
+    and ((descriptive_status in ('coverage_only','not_applicable')) = (quality_score is null))
   )
 );
 
@@ -15045,12 +15277,18 @@ begin
     score_efficiency := score -> 'efficiency';
     if jsonb_typeof(score_report) <> 'object'
       or not aiq_private.has_exact_jsonb_keys(score_report,array[
-        'binary_micro_diagnostic','completion_bounds','conditional_observed_aiq','coverage',
-        'descriptive_status','difficulty_coverage','domains','duplicate_results','fixed_fixture_aiq',
-        'model','official_eligible','ranking_eligible','rule','run_class','schema_version',
-        'scoring_version','task_resampling_sensitivity_interval'
+        'binary_micro_diagnostic','completion_bounds','quality_score','coverage',
+        'descriptive_status','difficulty_coverage','domains','duplicate_results',
+        'latent_ability','measurement_version','model','official_eligible','ranking_eligible',
+        'rule','run_class','schema_version','scoring_version',
+        'task_resampling_sensitivity_interval'
       ]::text[])
-      or score_report->>'schema_version' <> 'aiq.calibration-score-report.v1'
+      or score_report->>'schema_version' <> 'aiq.calibration-score-report.v2'
+      or score_report->>'measurement_version' <> '2.0.0'
+      or (
+        score_report->'latent_ability' is distinct from 'null'::jsonb
+        and not aiq_private.latent_ability_jsonb_is_valid(score_report->'latent_ability')
+      )
       or score_report->>'run_class' <> 'calibration'
       or score_report->'official_eligible' <> 'false'::jsonb
       or score_report->'ranking_eligible' <> 'false'::jsonb
@@ -15082,7 +15320,7 @@ begin
         is distinct from score_efficiency->>'selected_tasks'
     then raise exception 'invalid calibration score report' using errcode='22023'; end if;
     insert into aiq_private.calibration_model_scores(
-      run_id,model_family,reasoning_effort,descriptive_status,score,
+      run_id,model_family,reasoning_effort,descriptive_status,quality_score,
       task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,
       task_resampling_sensitivity_method,result_count,
       scored_result_count,coverage_percent,observed_total_wall_ms,
@@ -15096,10 +15334,8 @@ begin
       cost_estimator_status,cost_evidence_level,
       cost_estimator_limitations,pricing_source,pricing_as_of,pricing_version,pricing_digest
     ) select saved.run_id,score#>>'{model,family}',score#>>'{model,reasoning_effort}',
-      score_report->>'descriptive_status',coalesce(
-        (score_report->>'fixed_fixture_aiq')::numeric,
-        (score_report->>'conditional_observed_aiq')::numeric
-      ),(score_report#>>'{task_resampling_sensitivity_interval,lower}')::numeric,
+      score_report->>'descriptive_status',(score_report->>'quality_score')::numeric,
+      (score_report#>>'{task_resampling_sensitivity_interval,lower}')::numeric,
       (score_report#>>'{task_resampling_sensitivity_interval,upper}')::numeric,
       score_report#>>'{task_resampling_sensitivity_interval,method}',
       (score_report#>>'{coverage,expected_tasks}')::integer,
@@ -15554,7 +15790,7 @@ select score.run_id,
   score.model_family,
   score.reasoning_effort,
   score.descriptive_status,
-  score.score as aiq,
+  score.quality_score,
   score.task_resampling_sensitivity_lower,
   score.task_resampling_sensitivity_upper,
   score.task_resampling_sensitivity_method,
@@ -15715,7 +15951,7 @@ grant select(result_id,run_id,task_id,task_version,domain,model_family,reasoning
   cost_estimator_limitations,cost_method,cost_version,
   cost_as_of,cost_source,pricing_digest)
   on aiq_private.calibration_task_results to anon, authenticated;
-grant select(run_id,model_family,reasoning_effort,descriptive_status,score,result_count,
+grant select(run_id,model_family,reasoning_effort,descriptive_status,quality_score,result_count,
   task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,
   task_resampling_sensitivity_method,
   scored_result_count,coverage_percent,observed_total_wall_ms,observed_median_wall_ms,

@@ -17,7 +17,7 @@ void describe('public calibration evidence boundary', () => {
   void it('publishes separate exact schemas and one non-secret calibration fixture', () => {
     const files = [
       'calibration-run-v3.schema.json',
-      'calibration-score-report-v1.schema.json',
+      'calibration-score-report-v2.schema.json',
       'calibration-verified-stage-v1.schema.json',
       'calibration-verifier-attestation-v1.schema.json',
       'calibration-result-package-v3.schema.json',

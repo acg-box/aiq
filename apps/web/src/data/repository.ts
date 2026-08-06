@@ -18,6 +18,7 @@ import type {
   AiqRepository,
   BenchmarkRun,
   BenchmarkRunSummary,
+  CalibrationStatus,
   CalibrationModelFamily,
   CalibrationModelSelection,
   CalibrationOutcome,
@@ -38,6 +39,7 @@ import type {
   PublicModelEfficiency,
   RadarNode,
   ReasoningTier,
+  ReliabilityStatus,
   SignatureStatus,
   RunHistoryCursor,
   RunHistoryPage,
@@ -150,6 +152,21 @@ export interface LeaderboardRow {
   matrix_id: string;
   run_id: string | null;
   score: number | null;
+  theta: number | null;
+  standard_error: number | null;
+  theta_ci_low: number | null;
+  theta_ci_high: number | null;
+  score_ci_low: number | null;
+  score_ci_high: number | null;
+  information: number | null;
+  quality_score: number | null;
+  strict_pass_rate: number | null;
+  strict_pass_low: number | null;
+  strict_pass_high: number | null;
+  strict_pass_sample_size: number | null;
+  strict_pass_successes: number | null;
+  reliability_status: ReliabilityStatus | null;
+  calibration_status: CalibrationStatus;
   sensitivity_low: number | null;
   sensitivity_high: number | null;
   sample_size: number | null;
@@ -169,6 +186,21 @@ export interface TrendRow {
   bucket_started_at: string;
   bucket_ended_at: string;
   score: number;
+  theta: number | null;
+  standard_error: number | null;
+  theta_ci_low: number | null;
+  theta_ci_high: number | null;
+  score_ci_low: number | null;
+  score_ci_high: number | null;
+  information: number | null;
+  quality_score: number | null;
+  strict_pass_rate: number | null;
+  strict_pass_low: number | null;
+  strict_pass_high: number | null;
+  strict_pass_sample_size: number | null;
+  strict_pass_successes: number | null;
+  reliability_status: ReliabilityStatus | null;
+  calibration_status: CalibrationStatus;
   sensitivity_low: number;
   sensitivity_high: number;
   sample_size: number;
@@ -187,6 +219,19 @@ function isTrendRow(value: unknown): value is TrendRow {
   const bucketStartedAt = value.bucket_started_at;
   const bucketEndedAt = value.bucket_ended_at;
   const score = value.score;
+  const theta = value.theta;
+  const standardError = value.standard_error;
+  const thetaCiLow = value.theta_ci_low;
+  const thetaCiHigh = value.theta_ci_high;
+  const scoreCiLow = value.score_ci_low;
+  const scoreCiHigh = value.score_ci_high;
+  const information = value.information;
+  const qualityScore = value.quality_score;
+  const strictPassRate = value.strict_pass_rate;
+  const strictPassLow = value.strict_pass_low;
+  const strictPassHigh = value.strict_pass_high;
+  const strictPassSampleSize = value.strict_pass_sample_size;
+  const strictPassSuccesses = value.strict_pass_successes;
   const sensitivityLow = value.sensitivity_low;
   const sensitivityHigh = value.sensitivity_high;
   const sampleSize = value.sample_size;
@@ -207,6 +252,40 @@ function isTrendRow(value: unknown): value is TrendRow {
     isFiniteNumber(score) &&
     score >= 0 &&
     score <= 100 &&
+    isFiniteNumber(theta) &&
+    isFiniteNumber(standardError) &&
+    standardError > 0 &&
+    isFiniteNumber(thetaCiLow) &&
+    isFiniteNumber(thetaCiHigh) &&
+    thetaCiLow <= thetaCiHigh &&
+    isFiniteNumber(scoreCiLow) &&
+    isFiniteNumber(scoreCiHigh) &&
+    scoreCiLow >= 0 &&
+    scoreCiLow <= score &&
+    score <= scoreCiHigh &&
+    scoreCiHigh <= 100 &&
+    isFiniteNumber(information) &&
+    information >= 0 &&
+    information <= 72 &&
+    isFiniteNumber(qualityScore) &&
+    qualityScore >= 0 &&
+    qualityScore <= 100 &&
+    isFiniteNumber(strictPassRate) &&
+    strictPassRate >= 0 &&
+    strictPassRate <= 1 &&
+    isFiniteNumber(strictPassLow) &&
+    isFiniteNumber(strictPassHigh) &&
+    strictPassLow >= 0 &&
+    strictPassLow <= strictPassRate &&
+    strictPassRate <= strictPassHigh &&
+    strictPassHigh <= 1 &&
+    isPositiveCount(strictPassSampleSize) &&
+    strictPassSampleSize <= 72 &&
+    isCount(strictPassSuccesses) &&
+    strictPassSuccesses <= strictPassSampleSize &&
+    Math.abs(strictPassRate - strictPassSuccesses / strictPassSampleSize) <= 0.000001 &&
+    value.reliability_status === 'single_matrix_information_only' &&
+    value.calibration_status === 'calibrated' &&
     isFiniteNumber(sensitivityLow) &&
     isFiniteNumber(sensitivityHigh) &&
     sensitivityLow >= 0 &&
@@ -318,6 +397,18 @@ const BENCHMARK_DOMAIN_TASK_COUNTS = new Map<string, number>([
   ['reliability_recovery', 7],
 ]);
 const CORE_TASK_ID = /^(?<prefix>[a-z][a-z0-9-]{0,62})-(?<ordinal>[0-9]{2})$/;
+const LEADERBOARD_STATUSES = new Set([
+  'official',
+  'synthetic_complete',
+  'provisional',
+  'coverage_only',
+  'not_applicable',
+  'missing',
+  'failed',
+  'infra_failure',
+]);
+const CALIBRATION_STATUSES = new Set(['calibrated', 'pending', 'failed', 'not_applicable']);
+const RELIABILITY_STATUSES = new Set(['single_matrix_information_only', 'not_estimated']);
 
 function taskIdMatchesDomain(taskId: unknown, domain: unknown): taskId is string {
   if (typeof taskId !== 'string' || typeof domain !== 'string') return false;
@@ -828,7 +919,7 @@ export interface CalibrationScoreRow {
   model_family: 'sol' | 'terra' | 'luna';
   reasoning_effort: ReasoningTier;
   descriptive_status: PublicCalibrationScore['descriptiveStatus'];
-  aiq: number | null;
+  quality_score: number | null;
   task_resampling_sensitivity_lower: number | null;
   task_resampling_sensitivity_upper: number | null;
   task_resampling_sensitivity_method: string | null;
@@ -1164,7 +1255,10 @@ function isCalibrationScoreRow(value: unknown): value is CalibrationScoreRow {
     ['complete_fixture', 'conditional_observed', 'coverage_only', 'not_applicable'].includes(
       value.descriptive_status,
     ) &&
-    (value.aiq === null || (isFiniteNumber(value.aiq) && value.aiq >= 0 && value.aiq <= 100)) &&
+    (value.quality_score === null ||
+      (isFiniteNumber(value.quality_score) &&
+        value.quality_score >= 0 &&
+        value.quality_score <= 100)) &&
     isNullableNonnegativeNumber(value.task_resampling_sensitivity_lower) &&
     isNullableNonnegativeNumber(value.task_resampling_sensitivity_upper) &&
     (value.task_resampling_sensitivity_method === null ||
@@ -1176,9 +1270,9 @@ function isCalibrationScoreRow(value: unknown): value is CalibrationScoreRow {
     ]) &&
     (value.task_resampling_sensitivity_lower === null ||
       (value.task_resampling_sensitivity_upper !== null &&
-        value.aiq !== null &&
-        value.task_resampling_sensitivity_lower <= value.aiq &&
-        value.aiq <= value.task_resampling_sensitivity_upper &&
+        value.quality_score !== null &&
+        value.task_resampling_sensitivity_lower <= value.quality_score &&
+        value.quality_score <= value.task_resampling_sensitivity_upper &&
         value.task_resampling_sensitivity_upper <= 100)) &&
     isCount(value.sample_size) &&
     isCount(value.result_count) &&
@@ -1522,7 +1616,7 @@ function mapCalibrationScoreRow(row: CalibrationScoreRow): PublicCalibrationScor
     modelFamily: row.model_family,
     reasoningEffort: row.reasoning_effort,
     descriptiveStatus: row.descriptive_status,
-    aiq: row.aiq,
+    qualityScore: row.quality_score,
     taskResamplingSensitivityLower: row.task_resampling_sensitivity_lower,
     taskResamplingSensitivityUpper: row.task_resampling_sensitivity_upper,
     taskResamplingSensitivityMethod: row.task_resampling_sensitivity_method,
@@ -1693,7 +1787,7 @@ const seedCalibrationScores: readonly PublicCalibrationScore[] = [
     modelFamily: 'sol',
     reasoningEffort: 'low',
     descriptiveStatus: 'coverage_only',
-    aiq: null,
+    qualityScore: null,
     taskResamplingSensitivityLower: null,
     taskResamplingSensitivityUpper: null,
     taskResamplingSensitivityMethod: null,
@@ -2117,12 +2211,8 @@ function normalizeLeaderboardStatus(row: LeaderboardRow | undefined): Leaderboar
   if (!row) {
     return 'unpublished';
   }
-  if (
-    row.score_status === 'official' ||
-    row.score_status === 'not_applicable' ||
-    row.score_status === 'missing'
-  ) {
-    return row.score_status;
+  if (typeof row.score_status === 'string' && LEADERBOARD_STATUSES.has(row.score_status)) {
+    return row.score_status as LeaderboardStatus;
   }
   return 'missing';
 }
@@ -2175,11 +2265,63 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
     SEMANTIC_VERSION.test(value.scoring_version) &&
     value.synthetic === false;
   if (!baseShape) return false;
+  if (typeof value.score_status !== 'string' || !LEADERBOARD_STATUSES.has(value.score_status)) {
+    return false;
+  }
+  if (
+    typeof value.calibration_status !== 'string' ||
+    !CALIBRATION_STATUSES.has(value.calibration_status)
+  ) {
+    return false;
+  }
+  if (
+    value.reliability_status !== null &&
+    (typeof value.reliability_status !== 'string' ||
+      !RELIABILITY_STATUSES.has(value.reliability_status))
+  ) {
+    return false;
+  }
   if (value.score_status === 'official') {
     return (
       isFiniteNumber(value.score) &&
       value.score >= 0 &&
       value.score <= 100 &&
+      isFiniteNumber(value.theta) &&
+      isFiniteNumber(value.standard_error) &&
+      value.standard_error > 0 &&
+      isFiniteNumber(value.theta_ci_low) &&
+      isFiniteNumber(value.theta_ci_high) &&
+      value.theta_ci_low <= value.theta_ci_high &&
+      isFiniteNumber(value.score_ci_low) &&
+      isFiniteNumber(value.score_ci_high) &&
+      value.score_ci_low >= 0 &&
+      value.score_ci_low <= value.score &&
+      value.score <= value.score_ci_high &&
+      value.score_ci_high <= 100 &&
+      isFiniteNumber(value.information) &&
+      value.information >= 0 &&
+      value.information <= 72 &&
+      isFiniteNumber(value.quality_score) &&
+      value.quality_score >= 0 &&
+      value.quality_score <= 100 &&
+      isFiniteNumber(value.strict_pass_rate) &&
+      value.strict_pass_rate >= 0 &&
+      value.strict_pass_rate <= 1 &&
+      isFiniteNumber(value.strict_pass_low) &&
+      isFiniteNumber(value.strict_pass_high) &&
+      value.strict_pass_low >= 0 &&
+      value.strict_pass_low <= value.strict_pass_rate &&
+      value.strict_pass_rate <= value.strict_pass_high &&
+      value.strict_pass_high <= 1 &&
+      isPositiveCount(value.strict_pass_sample_size) &&
+      value.strict_pass_sample_size <= 72 &&
+      isCount(value.strict_pass_successes) &&
+      value.strict_pass_successes <= value.strict_pass_sample_size &&
+      Math.abs(
+        value.strict_pass_rate - value.strict_pass_successes / value.strict_pass_sample_size,
+      ) <= 0.000001 &&
+      value.reliability_status === 'single_matrix_information_only' &&
+      value.calibration_status === 'calibrated' &&
       isFiniteNumber(value.sensitivity_low) &&
       isFiniteNumber(value.sensitivity_high) &&
       value.sensitivity_low >= 0 &&
@@ -2194,8 +2336,23 @@ function isLeaderboardRow(value: unknown): value is LeaderboardRow {
     );
   }
   return (
-    (value.score_status === 'not_applicable' || value.score_status === 'missing') &&
+    value.score_status !== 'official' &&
     value.score === null &&
+    value.theta === null &&
+    value.standard_error === null &&
+    value.theta_ci_low === null &&
+    value.theta_ci_high === null &&
+    value.score_ci_low === null &&
+    value.score_ci_high === null &&
+    value.information === null &&
+    value.quality_score === null &&
+    value.strict_pass_rate === null &&
+    value.strict_pass_low === null &&
+    value.strict_pass_high === null &&
+    value.strict_pass_sample_size === null &&
+    value.strict_pass_successes === null &&
+    value.reliability_status === null &&
+    value.calibration_status !== 'calibrated' &&
     value.sensitivity_low === null &&
     value.sensitivity_high === null &&
     value.sample_size === null &&
@@ -2231,6 +2388,21 @@ export function joinModelMatrixWithLeaderboard(
       modelName: identity.model_name,
       reasoningTier: identity.reasoning_tier,
       score: officialRow?.score ?? null,
+      theta: officialRow?.theta ?? null,
+      standardError: officialRow?.standard_error ?? null,
+      thetaCiLow: officialRow?.theta_ci_low ?? null,
+      thetaCiHigh: officialRow?.theta_ci_high ?? null,
+      scoreCiLow: officialRow?.score_ci_low ?? null,
+      scoreCiHigh: officialRow?.score_ci_high ?? null,
+      information: officialRow?.information ?? null,
+      qualityScore: officialRow?.quality_score ?? null,
+      strictPassRate: officialRow?.strict_pass_rate ?? null,
+      strictPassLow: officialRow?.strict_pass_low ?? null,
+      strictPassHigh: officialRow?.strict_pass_high ?? null,
+      strictPassSampleSize: officialRow?.strict_pass_sample_size ?? null,
+      strictPassSuccesses: officialRow?.strict_pass_successes ?? null,
+      reliabilityStatus: officialRow?.reliability_status ?? null,
+      calibrationStatus: row?.calibration_status ?? 'pending',
       sensitivityLow: officialRow?.sensitivity_low ?? null,
       sensitivityHigh: officialRow?.sensitivity_high ?? null,
       sampleSize: officialRow?.sample_size ?? null,
@@ -2479,7 +2651,7 @@ export class SupabaseAiqRepository implements AiqRepository {
       this.#client
         .from(PUBLIC_VIEW_NAMES.leaderboard)
         .select(
-          'matrix_id,run_id,score,sensitivity_low,sensitivity_high,sample_size,coverage_percent,runtime_issues,missing,scoring_version,score_status,synthetic',
+          'matrix_id,run_id,score,theta,standard_error,theta_ci_low,theta_ci_high,score_ci_low,score_ci_high,information,quality_score,strict_pass_rate,strict_pass_low,strict_pass_high,strict_pass_sample_size,strict_pass_successes,reliability_status,calibration_status,sensitivity_low,sensitivity_high,sample_size,coverage_percent,runtime_issues,missing,scoring_version,score_status,synthetic',
         )
         .overrideTypes<LeaderboardRow[], { merge: false }>(),
     ]);
@@ -2546,6 +2718,21 @@ export class SupabaseAiqRepository implements AiqRepository {
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
         score: row.score,
+        theta: row.theta,
+        standardError: row.standard_error,
+        thetaCiLow: row.theta_ci_low,
+        thetaCiHigh: row.theta_ci_high,
+        scoreCiLow: row.score_ci_low,
+        scoreCiHigh: row.score_ci_high,
+        information: row.information,
+        qualityScore: row.quality_score,
+        strictPassRate: row.strict_pass_rate,
+        strictPassLow: row.strict_pass_low,
+        strictPassHigh: row.strict_pass_high,
+        strictPassSampleSize: row.strict_pass_sample_size,
+        strictPassSuccesses: row.strict_pass_successes,
+        reliabilityStatus: row.reliability_status,
+        calibrationStatus: row.calibration_status,
         sensitivityLow: row.sensitivity_low,
         sensitivityHigh: row.sensitivity_high,
         sampleSize: row.sample_size,
@@ -3013,7 +3200,7 @@ export class SupabaseAiqRepository implements AiqRepository {
     const { data, error } = await this.#client
       .from(PUBLIC_VIEW_NAMES.calibrationScores)
       .select(
-        'run_id,model_family,reasoning_effort,descriptive_status,aiq,task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,task_resampling_sensitivity_method,result_count,sample_size,coverage_percent,observed_total_wall_ms,observed_median_wall_ms,observed_p95_wall_ms,observed_time_sample_count,observed_time_coverage_percent,duration_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_sample_count,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,estimated_cost_sample_count,token_usage_coverage_percent,cost_estimator_status,cost_evidence_level,cost_estimator_limitations,pricing_source,pricing_as_of,pricing_version,pricing_currency,pricing_processing_tier,attempted_result_count,invoked_result_count,adapter_elapsed_observed_result_count,token_observed_result_count,priced_result_count',
+        'run_id,model_family,reasoning_effort,descriptive_status,quality_score,task_resampling_sensitivity_lower,task_resampling_sensitivity_upper,task_resampling_sensitivity_method,result_count,sample_size,coverage_percent,observed_total_wall_ms,observed_median_wall_ms,observed_p95_wall_ms,observed_time_sample_count,observed_time_coverage_percent,duration_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_sample_count,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,estimated_cost_sample_count,token_usage_coverage_percent,cost_estimator_status,cost_evidence_level,cost_estimator_limitations,pricing_source,pricing_as_of,pricing_version,pricing_currency,pricing_processing_tier,attempted_result_count,invoked_result_count,adapter_elapsed_observed_result_count,token_observed_result_count,priced_result_count',
       )
       .eq('run_id', runId)
       .order('model_family', { ascending: true })

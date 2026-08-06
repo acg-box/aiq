@@ -20,7 +20,7 @@ export interface ScientificScoreContext {
 }
 
 export interface RunScientificSummary {
-  aiq: string;
+  score: string;
   interval: string;
   sampleSize: string;
   coverage: string;
@@ -72,9 +72,16 @@ export function joinExactRunScientificEvidence({
   entries: readonly LeaderboardEntry[];
   efficiencyRows: readonly PublicModelEfficiency[];
 }): ExactRunScientificEvidence {
-  const scoreCandidates = entries.filter(
-    (entry): entry is ScoredLeaderboardEntry =>
-      isScoredLeaderboardEntry(entry) && entry.runId === run.id,
+  const identityCandidates = entries.filter((entry) => entry.runId === run.id);
+  if (identityCandidates.length > 1) {
+    throw new Error(`Ambiguous leaderboard evidence for run ${run.id}.`);
+  }
+  const identityCandidate = identityCandidates[0];
+  if (identityCandidate && !isScoredLeaderboardEntry(identityCandidate)) {
+    throw new Error(`Mismatched leaderboard evidence for run ${run.id}.`);
+  }
+  const scoreCandidates = identityCandidates.filter((entry): entry is ScoredLeaderboardEntry =>
+    isScoredLeaderboardEntry(entry),
   );
   if (scoreCandidates.length > 1) {
     throw new Error(`Ambiguous leaderboard evidence for run ${run.id}.`);
@@ -145,7 +152,7 @@ export function buildRunScientificSummary({
     exactEfficiency?.costEstimatorStatus === 'estimated' &&
     exactEfficiency.standardApiEquivalentUsdNanos !== null;
   return {
-    aiq: score ? score.score.toFixed(1) : UNAVAILABLE,
+    score: score ? score.score.toFixed(1) : UNAVAILABLE,
     interval: score
       ? `${score.sensitivityLow.toFixed(1)}–${score.sensitivityHigh.toFixed(1)}`
       : UNAVAILABLE,

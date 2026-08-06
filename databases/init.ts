@@ -86,6 +86,7 @@ export interface InitializationReceipt {
   readonly schema_version: 'aiq.production-initialization-receipt.v1';
   readonly initialized: true;
   readonly scoring_version: '1.0.5';
+  readonly measurement_version: '2.0.0';
   readonly catalog_identity_sha256: string;
   readonly catalog_release_identity_sha256: string;
   readonly corpus_commitment_sha256: string;
@@ -752,34 +753,43 @@ function scoringRows(reviewedAt: string): JsonObject[] {
   return [
     {
       scoring_version: '1.0.5',
-      schema_version: 'aiq.score-snapshot.v1',
+      schema_version: 'aiq.score-snapshot.v2',
       benchmark_version: 'aiq-core@1.0.5',
-      name: 'AIQ fixed-fixture score 1.0.5',
+      name: 'AIQ calibrated latent score 2.0',
       fixed_fixture_estimand:
-        'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
+        'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is retained as a diagnostic and is not the Official ranking score.',
       principles: [
-        'Give each of the ten domains weight 0.1.',
-        'Keep the frozen domain and difficulty quotas.',
+        'Jointly estimate one Rasch item difficulty per task and one model location per configuration from the complete 17-configuration by 72-task calibration matrix, with a centered item scale.',
+        'Estimate each model theta with fractional task credit and a weak N(0, 3²) MAP prior; report conditional Wald uncertainty given the released item bank.',
+        'Publish 100 × logistic(theta) as predicted success on an average calibrated task; do not call it an IQ norm or a 150-point scale.',
+        'Retain the equal-domain criterion score, item information, theta, and standard error as separate evidence.',
+        'Keep the frozen domain and difficulty quotas until a new calibration pilot proves a task-set replacement is needed.',
         'Keep missing and invalid tasks in completion accounting and block Official publication.',
         'Classify complete synthetic fixtures as descriptive Synthetic Complete, never Official or ranking eligible.',
         'Treat attributable agent, model, tool, timeout, budget, and wrong-artifact failures as valid zero scores.',
         'Treat benchmark infrastructure failures as invalid and audit a rerun.',
+        'Define strict pass rate as strict successes divided by all attributable tasks with a semantic task score; partial scores remain in the denominator and Wilson bounds use the same sample.',
       ],
       missing_policy:
         'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use descriptive observed domain means and fixed-fixture completion bounds without ranking eligibility.',
       failure_policy_text:
         'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
       confidence_policy:
-        'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+        'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank and is not a population confidence interval.',
       formula: {
-        aggregate: 'mean_of_domain_means',
+        aggregate: 'rasch_fractional_joint_map',
+        measurement_version: '2.0.0',
+        measurement_method: 'rasch_fractional_joint_map_v1',
+        official_score: '100 * logistic(theta)',
+        calibration_matrix: '17_model_configurations_by_72_tasks',
+        criterion_diagnostic: '100 * mean_of_equal_domain_means',
         coverage_multiplier: false,
         domain_weight: 0.1,
         official_valid_task_count: 72,
         official_covered_domain_count: 10,
         synthetic_complete: {
           covered_domain_count: 10,
-          official_aiq: null,
+          score: null,
           ranking_eligible: false,
           valid_task_count: 72,
         },
@@ -1181,6 +1191,7 @@ commit;
       schema_version: 'aiq.production-initialization-receipt.v1',
       initialized: true,
       scoring_version: '1.0.5',
+      measurement_version: '2.0.0',
       catalog_identity_sha256: CATALOG_IDENTITY,
       catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,
       corpus_commitment_sha256: reference.corpusCommitmentSha256,

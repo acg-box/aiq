@@ -73,6 +73,15 @@ score adjustment. The rejected pilot remains immutable evidence.
   structural check sets the score to zero; otherwise the evaluator divides
   passed positive weight by total positive weight. The verifier replays the
   exact committed check identities and weights without rounding.
+- The source-head AIQ measurement contract is `2.0.0`: the Official ranking
+  score is `100 × logistic(theta)` from a jointly calibrated Rasch item bank;
+  theta and its conditional Wald interval are reported separately from the raw
+  equal-domain `qualityScore` diagnostic. This contract is not an IQ norm or a
+  150-point scale.
+- Strict pass is strict successes divided by all attributable tasks with a
+  valid semantic task score. Partial scores remain in that denominator; only
+  missing, infrastructure-invalid, and unscored tasks are excluded. The Wilson
+  interval uses the same sample.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v3` envelopes.

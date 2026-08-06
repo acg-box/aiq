@@ -4,8 +4,12 @@ import type { LeaderboardEntry, LeaderboardStatus } from './types.ts';
 const statusLabels: Record<LeaderboardStatus, string> = {
   official: 'Official · 72/72',
   synthetic_complete: 'Complete synthetic fixture · not Official',
+  provisional: 'Provisional · not ranked',
+  coverage_only: 'Coverage only · no score',
   not_applicable: 'N/A · unsupported',
   missing: 'Missing result',
+  failed: 'Failed · no score',
+  infra_failure: 'Infrastructure failure · rerun required',
   unpublished: 'Unpublished',
 };
 

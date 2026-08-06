@@ -284,17 +284,38 @@ score-weighted percentage nor the domain-weighted AIQ index. The outcome and
 domain views in the [public application](architecture-and-runtime.md#public-application)
 keep runtime, invalid, missing, and not-applicable states separate.
 
-AIQ v1 computes each domain mean and then gives each of the ten domains weight
-`0.1`. It does not multiply the score by coverage. The reported interval is a
-fixed-fixture task-resampling sensitivity interval with 10,000 deterministic
-bootstrap samples and the checked-in correction factor.
+AIQ measurement `2.0.0` separates the ranking estimand from the raw fixture
+diagnostics. The raw equal-domain fixed-fixture mean remains a criterion-
+referenced `qualityScore`; it is not the ranking score. A complete 17-by-72
+calibration matrix jointly estimates model locations (`theta`) and task
+difficulties (`beta`) with weak `N(0, 3²)` priors and a centered item scale. The
+released Official score is bounded to 0–100 as
+`100 × logistic(theta)` for the average calibrated task. It is a calibrated
+ability index, not an IQ norm, percentile, or claim of general intelligence.
+
+The model estimate uses the MAP score equation, including the normal-prior
+derivative, and the observed information includes prior precision. A failed or
+non-converged joint calibration is a structured error: it cannot create a
+calibration bank or an Official score. The displayed theta standard error and
+the transformed theta/score Wald intervals are conditional on the released
+item bank. They do not include item-bank calibration uncertainty. The
+`reliabilityStatus` is therefore explicitly
+`single_matrix_information_only`, not test-retest reliability.
+
+The raw strict-pass diagnostic is strict successes divided by every attributable
+task with a valid semantic task score. Partial scores are non-passes but remain
+in the denominator. Missing, infrastructure-invalid, and unscored tasks are
+excluded and are reported through coverage and status. The Wilson interval and
+`strictPassSampleSize` use this same denominator. The fixed-fixture
+task-resampling interval remains a calibrated sensitivity interval for task-mix
+sensitivity, not a universal confidence interval for model capability.
 
 An Official result requires non-synthetic evidence for all 72 tasks in one model
-configuration and valid evidence for the complete 17-configuration batch. A
-complete synthetic score uses `synthetic_complete`: it retains the descriptive
-conditional AIQ, completion bounds, and sensitivity interval, but its Official
-AIQ is null and it is never ranking eligible. Partial data can be shown as
-Provisional or coverage-only but is not ranked as Official.
+configuration, valid evidence for the complete 17-configuration batch, and a
+passed calibration release gate. A complete synthetic score uses
+`synthetic_complete`: it has no latent Official score, is descriptive only, and
+is never ranking eligible. Partial data can be shown as Provisional or
+coverage-only but is not ranked as Official.
 
 ## Verification
 

@@ -252,8 +252,8 @@ export default async function MethodPage() {
               <h2>What the interval can and cannot say</h2>
               <p>{result.data.sensitivityPolicy}</p>
               <div className="formula">
-                <span>Fixed-fixture or conditional AIQ</span>
-                <strong>equal-weight mean of 10 frozen-fixture domain means</strong>
+                <span>Official calibrated ability</span>
+                <strong>100 × logistic(theta); raw domain mean is qualityScore</strong>
               </div>
             </article>
             <EfficiencyMethod />

@@ -1,7 +1,7 @@
 import type { RunScientificSummary } from './scientific-score-context.ts';
 
 const fields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
-  ['aiq', 'AIQ'],
+  ['score', 'Calibrated ability'],
   ['interval', 'Task-sensitivity interval'],
   ['sampleSize', 'n'],
   ['coverage', 'Coverage'],
@@ -24,7 +24,7 @@ export function RunScientificSummaryPanel({
 }) {
   if (compact) {
     const primaryFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
-      ['aiq', 'AIQ'],
+      ['score', 'Calibrated ability'],
       ['interval', 'Task sensitivity'],
       ['sampleSize', 'n'],
       ['coverage', 'Coverage'],
@@ -64,7 +64,7 @@ export function RunScientificSummaryPanel({
     );
   }
   const primaryFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
-    ['aiq', 'AIQ'],
+    ['score', 'Calibrated ability'],
     ['interval', 'Task sensitivity'],
     ['coverage', 'Coverage'],
     ['runtime', 'Runtime issues'],

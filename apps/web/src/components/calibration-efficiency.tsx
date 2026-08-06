@@ -97,7 +97,7 @@ function Scatter({
 }) {
   const points = scores.flatMap((score) => {
     const x = calibrationMetricValue(score, metric);
-    return score.aiq === null || x === null ? [] : [{ score, x, y: score.aiq }];
+    return score.qualityScore === null || x === null ? [] : [{ score, x, y: score.qualityScore }];
   });
   const label = `${calibrationMetricLabel(metric)} (${metric === 'cost' ? 'USD' : 'seconds'})`;
   if (points.length === 0)
@@ -361,7 +361,7 @@ export function CalibrationEfficiency({
                   {score.synthetic ? <small>Synthetic seed</small> : null}
                 </td>
                 <td>
-                  {score.aiq === null ? 'Unavailable' : score.aiq.toFixed(2)}
+                  {score.qualityScore === null ? 'Unavailable' : score.qualityScore.toFixed(2)}
                   {score.taskResamplingSensitivityLower !== null &&
                   score.taskResamplingSensitivityUpper !== null ? (
                     <small>

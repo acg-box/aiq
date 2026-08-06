@@ -95,6 +95,51 @@ The pre-release desired state targets AIQ Core `1.0.5`. Production is still on
 the historical published `1.0.2` state. Do not initialize production until the
 controlled `1.0.5` commitments are complete and reviewed.
 
+## AIQ 2.0 cutover order
+
+Keep the live `1.0.2` production database online while the new real evidence is
+created. The repository does not contain the historical private task catalog
+and task-level package needed to replay `1.0.2` under the new scorer. Do not
+recompute it and relabel it as AIQ 2.0. The new `1.0.5` package must be created
+from the current controlled 72-task set, then replay-verified by the native
+verifier before any destructive database action.
+
+The hard pre-reset gate is the real verifier result, not a reset manifest. Run
+`aiq-verifier verify-local` (or the equivalent controlled production verifier)
+against the new signed package, private artifacts, current tasks, evaluator
+registry, corpus commitment, and production verifier environment. Require exit
+status zero and retain the newly written normalized stage, verifier attestation,
+and, for the full Official matrix, the verifier admission output. A queue
+receipt, a synthetic fixture, or a self-authored JSON summary does not satisfy
+this gate. The complete command template is in
+[Deployment Handoff](../openwiki/deployment-handoff.md#aiq-20-cutover).
+
+An ordinary historical backup is optional and is not a release gate. If it is
+useful for retention, take it before reset with provider tools, for example:
+
+```sh
+AIQ_BACKUP_DIR='/controlled/backups/aiq-1.0.2-2026-08-06'
+mkdir -p "$AIQ_BACKUP_DIR"
+pg_dump "$AIQ_DATABASE_URL" --format=custom --no-owner --no-acl \
+  --file "$AIQ_BACKUP_DIR/aiq-1.0.2.dump"
+supabase storage cp --project-ref xxnszykaeapolqdnhalx \
+  'ss://aiq-submission-packages' "$AIQ_BACKUP_DIR/aiq-submission-packages" --recursive
+supabase storage cp --project-ref xxnszykaeapolqdnhalx \
+  'ss://aiq-runner-artifacts' "$AIQ_BACKUP_DIR/aiq-runner-artifacts" --recursive
+```
+
+After the new package passes verification, perform one read-only reset
+inventory, then one greenfield reset/init window. The reset command has no
+`AIQ_PRE_RESET_EVIDENCE_ARCHIVE` manifest dependency and does not pretend to
+archive or validate old private evidence. Submit the already verified new
+package to the fresh database, run the controlled verifier and distinct
+publisher, and publish only after all 17 Official scores are accepted.
+Finally run `cargo make check-aiq-2-cutover`. It must report exactly one
+non-synthetic `1.0.5` matrix, 17 runs, 17 Official scores, 1,224 task results,
+one calibration digest, and zero synthetic Official/public rows. If either
+hard gate fails, keep the existing production deployment and do not deploy the
+new Web build.
+
 ## Greenfield replacement
 
 First, run a read-only inventory. The command lists the canonical database

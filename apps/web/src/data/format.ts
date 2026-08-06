@@ -74,6 +74,20 @@ export function formatSensitivityInterval(
   return `${formatScore(entry.sensitivityLow)}–${formatScore(entry.sensitivityHigh)}`;
 }
 
+export function formatScoreConfidenceInterval(
+  entry: Pick<LeaderboardEntry, 'scoreCiLow' | 'scoreCiHigh'>,
+): string {
+  if (entry.scoreCiLow === null || entry.scoreCiHigh === null) return '—';
+  return `${formatScore(entry.scoreCiLow)}–${formatScore(entry.scoreCiHigh)}`;
+}
+
+export function formatStrictPassRate(
+  entry: Pick<LeaderboardEntry, 'strictPassRate' | 'strictPassSampleSize'>,
+): string {
+  if (entry.strictPassRate === null || entry.strictPassSampleSize === null) return '—';
+  return `${(entry.strictPassRate * 100).toFixed(1)}% (n=${entry.strictPassSampleSize})`;
+}
+
 export function sortLeaderboardByPointEstimate(
   entries: readonly LeaderboardEntry[],
 ): readonly LeaderboardEntry[] {

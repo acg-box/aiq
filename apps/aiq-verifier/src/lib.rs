@@ -5416,8 +5416,8 @@ mod tests {
 
 		let mut changed = stage.clone();
 
-		changed.scores[0].score.fixed_fixture_aiq =
-			changed.scores[0].score.fixed_fixture_aiq.map(|value| (value - 0.01).max(0.0));
+		changed.scores[0].score.quality_score =
+			changed.scores[0].score.quality_score.map(|value| (value - 0.01).max(0.0));
 		changed.score_reports_digest =
 			protocol::canonical_hash(&changed.scores).expect("changed score digest");
 		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");

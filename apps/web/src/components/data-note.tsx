@@ -4,7 +4,7 @@ const provenanceCopy: Record<DataProvenance, { label: string; detail: string }> 
   synthetic: {
     label: 'Synthetic / seed data',
     detail:
-      'Values demonstrate the AIQ v1 product contract. They are not measured model claims. Configure the public Supabase variables to read RLS-protected views.',
+      'Values demonstrate the AIQ 2.0 product contract. They are not measured model claims. Configure the public Supabase variables to read RLS-protected views.',
   },
   published: {
     label: 'Published evidence',

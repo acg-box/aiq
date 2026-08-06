@@ -461,6 +461,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .digest('hex')}`,
   );
   strictEqual(prepared.receipt.scoring_version, '1.0.5');
+  strictEqual(prepared.receipt.measurement_version, '2.0.0');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,
     'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7',

@@ -17,8 +17,8 @@ export function ReadStateNote({
       >
         <span className="eyebrow">Synthetic / seed data</span>
         <p>
-          {subjectPrefix}Values demonstrate the AIQ v1 product contract. They are not measured model
-          claims.
+          {subjectPrefix}Values demonstrate the AIQ 2.0 product contract. They are not measured
+          model claims.
         </p>
       </aside>
     );

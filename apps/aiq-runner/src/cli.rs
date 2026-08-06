@@ -1362,7 +1362,7 @@ enum Command {
 		#[arg(long, default_value = "-")]
 		output: PathBuf,
 	},
-	/// Score a saved run with transparent AIQ v1 rules.
+	/// Score a saved run with the transparent AIQ 2.0 Rasch rules.
 	Score {
 		/// Directory of public-example task JSON files.
 		#[arg(long)]
@@ -1377,7 +1377,7 @@ enum Command {
 		#[arg(long, default_value_t = 10_000)]
 		bootstrap_samples: usize,
 		/// Deterministic bootstrap seed.
-		#[arg(long, default_value_t = 0x41_49_51_5f_56_31_u64)]
+		#[arg(long, default_value_t = 0x41_49_51_5f_56_32_u64)]
 		bootstrap_seed: u64,
 		/// Output JSON file, or `-` for standard output.
 		#[arg(long, default_value = "-")]
@@ -4419,7 +4419,7 @@ fn run_score(
 			write_json(
 				&output,
 				&ScoreBundle {
-					schema_version: "aiq.score-bundle.v1".to_owned(),
+					schema_version: "aiq.score-bundle.v2".to_owned(),
 					synthetic: run.synthetic,
 					scores,
 				},
@@ -4445,7 +4445,7 @@ fn run_score(
 			write_json(
 				&output,
 				&CalibrationScoreBundle {
-					schema_version: "aiq.calibration-score-bundle.v1",
+					schema_version: "aiq.calibration-score-bundle.v2",
 					run_class: "calibration",
 					official_eligible: FalseOnly,
 					ranking_eligible: FalseOnly,
@@ -4540,7 +4540,7 @@ fn run_normalize(
 
 	let score_bundle = read_json::<ScoreBundle>(scores_path)?;
 
-	if score_bundle.schema_version != "aiq.score-bundle.v1"
+	if score_bundle.schema_version != "aiq.score-bundle.v2"
 		|| score_bundle.synthetic != run.synthetic
 	{
 		return Err("score bundle schema or synthetic policy does not match the signed run".into());
@@ -4808,7 +4808,7 @@ fn run_demo(
 	let scores = score_all(
 		&tasks,
 		&run,
-		ScoreOptions { bootstrap_samples, bootstrap_seed: 0x41_49_51_5f_56_31 },
+		ScoreOptions { bootstrap_samples, bootstrap_seed: 0x41_49_51_5f_56_32 },
 	)?;
 
 	if let Some(path) = outputs.run {
@@ -4818,7 +4818,7 @@ fn run_demo(
 		write_json(
 			path,
 			&ScoreBundle {
-				schema_version: "aiq.score-bundle.v1".to_owned(),
+				schema_version: "aiq.score-bundle.v2".to_owned(),
 				synthetic: true,
 				scores: scores.clone(),
 			},
