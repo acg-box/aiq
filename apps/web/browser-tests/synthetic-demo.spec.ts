@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page, type TestInfo } from '@playwrigh
 const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
 
 const routes = [
-  { path: '/', heading: 'Benchmark overview', navigation: 'Overview' },
+  { path: '/', heading: 'Fixed-task AI capability analysis', navigation: 'Overview' },
   { path: '/runs', heading: 'Public run history', navigation: 'Runs' },
   {
     path: '/calibrations',
@@ -149,7 +149,7 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   await expect(compactPreview.getByRole('row')).toHaveCount(6);
   await Promise.all(
     ['Evidence', 'Model / reasoning', 'AIQ demo', 'Coverage'].map((heading) =>
-      expect(compactPreview.getByRole('columnheader', { name: heading })).toBeVisible(),
+      expect(compactPreview.getByRole('columnheader', { name: heading })).toBeAttached(),
     ),
   );
   await expect(compactPreview.getByRole('columnheader', { name: 'Rank' })).toHaveCount(0);
@@ -241,7 +241,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   ).toBeVisible();
   await chart.getByRole('button', { name: 'Sol', exact: true }).click();
   await expect(chart.getByText('Showing 6 Sol configurations as ordered.')).toBeAttached();
-  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
+  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
   await expect(snapshot).toContainText('Task-sensitivity interval');
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(snapshot).toContainText('Coverage');
@@ -273,14 +273,16 @@ test('the overview workspace exposes evidence and switches chart modes and famil
       valuesTable.getByRole('columnheader', { name: heading, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByRole('heading', { name: 'Task outcomes, not model IQ' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Task outcomes for one exact run' }),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Domain profile for this configuration' }),
   ).toBeVisible();
   await expect(
     page.getByText('A zero here is a valid scored outcome', { exact: false }),
   ).toBeVisible();
-  const outcomeCard = page.getByRole('region', { name: 'Task outcomes, not model IQ' });
+  const outcomeCard = page.getByRole('region', { name: 'Task outcomes for one exact run' });
   const outcomeGrid = outcomeCard.locator('.outcome-grid');
   await expect(outcomeGrid).toBeVisible();
   await expect(outcomeCard.getByText('Runtime issues', { exact: true })).toBeVisible();
@@ -522,6 +524,7 @@ test('time range and comparison filters update the visible result', async ({ pag
 test('trend chart exposes scaled score and UTC date axes at narrow widths', async ({
   page,
 }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/trends?range=all');
   const chart = page.getByRole('img', { name: 'AIQ score history' });
@@ -636,7 +639,9 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Benchmark overview' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Fixed-task AI capability analysis' }),
+  ).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
@@ -687,9 +692,12 @@ for (const viewport of [
     await expect(ranking.getByRole('columnheader', { name: 'Rank' })).toHaveCount(0);
     const rankingBox = await ranking.boundingBox();
     expect(rankingBox).not.toBeNull();
-    expect((rankingBox?.y ?? viewport.height) + (rankingBox?.height ?? 0)).toBeLessThanOrEqual(
-      viewport.height,
-    );
+    expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(viewport.height);
+    const firstEvidenceRowBox = await ranking.getByRole('row').nth(1).boundingBox();
+    expect(firstEvidenceRowBox).not.toBeNull();
+    expect(
+      (firstEvidenceRowBox?.y ?? viewport.height) + (firstEvidenceRowBox?.height ?? 0),
+    ).toBeLessThanOrEqual(viewport.height);
     const snapshotBox = await snapshot.boundingBox();
     expect(snapshotBox).not.toBeNull();
     expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(

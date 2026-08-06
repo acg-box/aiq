@@ -349,7 +349,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
   await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
-  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
+  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
   await expect(
     snapshot.getByText('Exact run completed', { exact: true }).locator('..'),
   ).toContainText('Aug 3, 2026');

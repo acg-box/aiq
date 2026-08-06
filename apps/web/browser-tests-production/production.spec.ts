@@ -196,7 +196,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'Benchmark overview');
+  await expectPublishedPage(page, expectedOrigin, '/', 'Fixed-task AI capability analysis');
   await expectNoDocumentOverflow(page, testInfo);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     await expect(
