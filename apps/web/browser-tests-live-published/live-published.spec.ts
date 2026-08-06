@@ -337,6 +337,9 @@ for (const route of routes) {
       await evidenceDisclosure.locator('summary').click();
       await expect(evidenceDisclosure).toHaveAttribute('open', '');
     }
+    if (route === '/compare') {
+      await page.locator('details.evidence-notes > summary').click();
+    }
     await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
     await expect(
@@ -351,36 +354,40 @@ test('the live overview exposes all 17 published configurations without seed sub
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Current configuration matrix' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Latest benchmark' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
+  await expect(page.getByText('Published Aug 3, 2026', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
+  await expect(page.getByRole('heading', { name: 'AIQ index by configuration' })).toBeVisible();
   await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
   await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
-  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
-  await expect(
-    snapshot.getByText('Exact run completed', { exact: true }).locator('..'),
-  ).toContainText('Aug 3, 2026');
-  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
+  await page.getByText('Read all configuration values as a table', { exact: true }).click();
   const leaderboardRegion = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
   await expect(leaderboardRegion.getByRole('row')).toHaveCount(18);
   await expect(leaderboardRegion.getByRole('link', { name: 'Inspect' })).toHaveCount(17);
-  await expect(page.getByText('17 configurations · 1,224 task cells')).toBeVisible();
+  await expect(page.getByText('1,224 task cells', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
-  const efficiencyPlot = page.getByRole('region', { name: 'AIQ versus estimated cost' });
+  const efficiencyPlot = page.getByRole('region', {
+    name: 'AIQ score vs total run time',
+  });
   await expect(efficiencyPlot).toBeVisible();
-  await expect(efficiencyPlot).toContainText('Upper-left is better');
+  await expect(efficiencyPlot).toContainText('Lower and left is more efficient');
   await expect(efficiencyPlot.locator('.efficiency-chart svg')).toBeVisible();
   await expect(efficiencyPlot.locator('canvas')).toHaveCount(0);
-  await expect(efficiencyPlot).toContainText('Rings mark nondominated points');
-  await expect(efficiencyPlot).toContainText('1/17 configurations plotted');
-  await efficiencyPlot.getByRole('button', { name: 'Duration', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'AIQ versus duration' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'AIQ versus duration' })).toContainText(
-    '16/17 configurations plotted',
+  await expect(efficiencyPlot).toContainText(
+    '16/17 configurations plotted in the canonical matrix',
   );
-  await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
-  await page.getByText('Open 1 × 5 calibration evidence', { exact: true }).click();
+  await efficiencyPlot.getByRole('button', { name: 'Cost', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'AIQ score vs API-equivalent cost' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'AIQ score vs API-equivalent cost' }),
+  ).toContainText('1/17 configurations plotted in the canonical matrix');
+  await page.locator('details.evidence-notes > summary').click();
+  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
   await expect(
     page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
   ).toBeVisible();
@@ -393,12 +400,11 @@ test('the live overview exposes all 17 published configurations without seed sub
   ).toBeVisible();
   await expect(page.locator('.calibration-chart svg')).toHaveCount(1);
   await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Inspect calibration subsets' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'Inspect calibration' })).toHaveAttribute(
     'href',
     `/calibrations/${subsetCalibrationRunId}`,
   );
-  await page.getByText('Open time, token, and cost details', { exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Time and cost, kept separate' })).toBeVisible();
+  await page.getByText('Time, token, and cost table', { exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
   ).toHaveCount(18);
@@ -413,7 +419,8 @@ test('the public index reports runtime issues without conflating evaluator outco
   page,
 }) => {
   await page.goto('/');
-  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
+  await page.getByText('Read all configuration values as a table', { exact: true }).click();
   const publicIndex = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
@@ -514,13 +521,16 @@ test('Official compare efficiency is limited to the two selected run identities'
 }) => {
   await page.goto('/compare');
   const comparison = page.getByRole('table', { name: 'Selected comparison' });
-  await expect(comparison.getByRole('row')).toHaveCount(14);
+  await expect(comparison.getByRole('row')).toHaveCount(7);
   const cost = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
   await expect(cost.getByRole('cell').first()).toHaveText('$12.3456');
   await expect(cost.getByRole('cell').nth(1)).toHaveText('Unavailable');
-  const batch = comparison.getByRole('row').filter({ hasText: 'Batch wall-clock' });
+  await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
+  const evidence = page.getByRole('table', { name: 'Comparison evidence details' });
+  await expect(evidence.getByRole('row')).toHaveCount(8);
+  const batch = evidence.getByRole('row').filter({ hasText: 'Batch wall-clock' });
   await expect(batch.getByRole('cell')).toHaveText(['1.6 h', '1.6 h']);
-  const durationCoverage = comparison.getByRole('row').filter({ hasText: 'Duration coverage' });
+  const durationCoverage = evidence.getByRole('row').filter({ hasText: 'Duration coverage' });
   await expect(durationCoverage.getByRole('cell')).toHaveText(['72/72 (100.0%)', '72/72 (100.0%)']);
   await expect(comparison).not.toContainText(calibrationRunId);
   await expect(comparison).not.toContainText('$0');
@@ -666,10 +676,7 @@ test('published leaderboard, trends, runs, and results share coherent score evid
 
 test('Official trends expose current time and cost evidence', async ({ page }) => {
   await page.goto('/trends?range=all');
-  await expect(
-    page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
-  ).toBeVisible();
-  await page.getByText('Read visible trend values as a table', { exact: true }).click();
+  await page.getByText('Evidence notes and visible values', { exact: true }).click();
   const values = page.getByRole('region', { name: 'Visible trend values' });
   await expect(values.getByRole('row')).toHaveCount(7);
   await expect(values.getByRole('columnheader', { name: 'Coverage' })).toBeVisible();
@@ -685,6 +692,7 @@ test('Official trends expose current time and cost evidence', async ({ page }) =
 test('the published run exposes complete task and provenance evidence', async ({ page }) => {
   await page.goto(`/runs/${verifiedPublishedAggregate('sol-ultra').runId}`);
   await expect(page.locator('.task-list > article')).toHaveCount(72);
+  await page.locator('details.run-evidence-notes > summary').click();
   await expect(page.getByText('Official', { exact: true })).toBeVisible();
   await expect(page.getByText('Correct', { exact: true }).locator('..')).toContainText('19');
   await expect(page.getByText('Partial', { exact: true }).locator('..')).toContainText('16');
@@ -696,9 +704,7 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(provenance).toContainText('corpus_2026.08.02-aiq-core-1.0.2-controlled.1');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
   await expect(provenance.getByText('Not published', { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole('heading', { name: 'Official time, token coverage, and cost' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Time, token coverage, and cost' })).toBeVisible();
   await expect(
     page.getByText('Neither value is isolated model latency.', { exact: false }),
   ).toBeVisible();
@@ -753,6 +759,7 @@ test('the published method and radar retain versioned, signed provenance', async
   ).toBeVisible();
 
   await page.goto('/radar');
+  await page.locator('details.radar-node-details > summary').click();
   await expect(page.getByText('Registry trust: trusted verified', { exact: true })).toBeVisible();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Verified observation signatures').locator('..')).toContainText('1');
