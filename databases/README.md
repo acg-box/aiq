@@ -67,9 +67,9 @@ A successful receipt reports:
 - catalog release identity
   `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`;
 - reviewed runtime task-set identity
-  `sha256:68477574e438bf2635659cf29f14a07bada4d93d0f3b754979fe8da0ddc276b6`;
+  `sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`;
 - reviewed task-commitment manifest identity
-  `sha256:5b1d4849bfa9c31fbc309d27cfda431118e1f849e4a76c0179402784a757b8f3`;
+  `sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94`;
 - reviewed evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
@@ -89,7 +89,7 @@ the score from normalized result evidence.
 
 The reviewed public-safe `1.0.5` 72-task database binding manifest is
 `aiq-core-1.0.5-task-commitments.json`. Its canonical JCS identity is
-`sha256:5b1d4849bfa9c31fbc309d27cfda431118e1f849e4a76c0179402784a757b8f3`.
+`sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94`.
 
 The pre-release desired state targets AIQ Core `1.0.5`. Production is still on
 the historical published `1.0.2` state. Do not initialize production until the

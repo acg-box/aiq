@@ -38,8 +38,10 @@ task-metadata digest
 `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
 release-policy identity `aiq-core/1.0.5`, and public release digest
 `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The controlled Core, Contrast, scorer-manifest, evaluator, runtime task-set,
-generated-task tree, and database commitment identities are pending. The first
+The interaction candidate's controlled Core, scorer-manifest, evaluator,
+runtime task-set, generated-task tree, and database commitment identities
+passed model-free validation but remain calibration candidates. Contrast
+generation is pending. The first
 `1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
 evidence, not as an all-execution failure. The `1.0.5` sequence requires a
 17-by-4 targeted pilot before the full 17-by-72 non-Official calibration. Final

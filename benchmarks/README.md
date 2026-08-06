@@ -9,12 +9,14 @@ content stay outside Git.
 
 The active public candidate, task, and scorer contract is `1.0.5`. It revises
 four calibration-sensitive tasks and carries forward 68 task designs with new
-version, provenance, and commitment bindings. The
-controlled Core, Contrast, runtime, evaluator, generated-task tree, and database
-commitment identities are pending. Full calibration, final native build
-verification, a real Official run, publication, and final deployment are
-pending. Live
-production remains the historical `1.0.2` contract: the native macOS runner
+version, provenance, and commitment bindings. The create-new interaction
+candidate passed two-candidate reproducibility,
+independent authoring validation, and the Rust 72-task corpus validator. Its
+controlled Core, runtime, evaluator, generated-task tree, and database
+commitment identities remain calibration candidates. Contrast generation, full
+calibration, final native build verification, a real Official run, publication,
+and final deployment are pending. Live production remains the historical
+`1.0.2` contract: the native macOS runner
 completed its real, non-synthetic Official benchmark matrix with 17
 configurations by 72 tasks, or 1,224 task-level results. The verifier replayed
 and accepted its evidence. The distinct publisher published the matrix as
@@ -61,8 +63,12 @@ Its release identity is:
 sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d
 ```
 
-The release-policy identity is `aiq-core/1.0.5`. The controlled scorer-manifest
-and evaluator identities are pending.
+The release-policy identity is `aiq-core/1.0.5`. The current controlled
+candidate evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
+and its scorer-manifest identity is
+`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`.
+They are not accepted release identities until calibration passes.
 
 Each task score uses the executable weighted-check contract. A private,
 content-addressed evaluator configuration binds each binary check, its
@@ -96,9 +102,15 @@ sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d
 ```
 
 The first digest binds the ordered public task metadata. The second binds the
-public catalog release. They do not define controlled identities. Create-new
-generation and review will establish the runtime task-set, generated-task tree,
-Core corpus, Contrast corpus, scorer-manifest, and evaluator identities. The
+public catalog release. They do not define controlled identities. The current
+create-new candidate passed model-free generation and validation. Its
+generated-task tree is
+`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
+its Core commitment is
+`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`,
+and its public-safe database task-set identity is
+`sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`.
+These are calibration-candidate identities; Contrast remains pending. The
 shared Rust validator fails closed
 unless `runner.identity_kind` is `source_only` and
 `runner.built_binary_sha256` is null. The Core JSON schema enforces the same

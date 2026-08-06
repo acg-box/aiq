@@ -18,8 +18,10 @@ public metadata digest is
 `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
 and its public release digest is
 `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-Controlled identities, final calibration, final native build verification, a
-real Official run, publication, and final deployment are pending. Do not treat
+The interaction candidate passed model-free controlled generation and
+validation, but its identities remain calibration candidates. The new targeted
+pilot, Contrast generation, full calibration, final native build verification,
+a real Official run, publication, and final deployment are pending. Do not treat
 the source-head change as a deployment claim.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive

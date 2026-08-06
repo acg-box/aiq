@@ -97,8 +97,10 @@ sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 
 This is the active public `1.0.5` metadata identity. Its public release digest
 is `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The controlled Core, Contrast, runtime, evaluator, generated-task tree, and
-database commitment identities are pending.
+The create-new interaction candidate passed reproducible generation,
+independent authoring validation, and the 72-task Rust corpus validator. Its
+Core, runtime, evaluator, generated-task tree, and database commitments remain
+calibration candidates; Contrast generation and release acceptance are pending.
 
 ## Execution and evidence
 

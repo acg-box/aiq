@@ -38,9 +38,18 @@ sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 The release-policy identity is `aiq-core/1.0.5`. Its public catalog
 release-identity digest is
 `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The controlled scorer-manifest, evaluator, runtime task-set, generated-task
-tree, Core corpus, Contrast corpus, and database commitment identities are
-pending. Create-new generation and review must establish them. Each final
+The create-new interaction candidate passed two-candidate reproducibility,
+independent authoring validation, and the Rust 72-task corpus validator. Its
+evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
+its scorer-manifest identity is
+`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
+its generated-task tree identity is
+`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
+and its Core commitment identity is
+`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`.
+These are calibration-candidate identities, not accepted release identities.
+Contrast generation remains pending. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The
