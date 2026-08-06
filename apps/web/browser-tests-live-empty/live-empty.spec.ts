@@ -94,7 +94,7 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   });
   await expect(table.getByRole('row')).toHaveCount(18);
   await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
-  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
+  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
   const coverage = snapshot.getByText('Coverage', { exact: true }).locator('..');
   const exactRun = snapshot.getByText('Exact run completed', { exact: true }).locator('..');
   await expect(coverage).toContainText('Sample size unavailable');

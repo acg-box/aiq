@@ -58,7 +58,7 @@ async function getActualRunPath(page: Page): Promise<string> {
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
-  const ranking = page.getByRole('region', { name: 'Top configurations' });
+  const ranking = page.getByRole('region', { name: 'Published descriptive estimates' });
   const snapshot = page.getByRole('region', { name: 'Secondary benchmark snapshot' });
   await expect(ranking).toBeVisible();
   await expect(ranking.getByRole('row')).toHaveCount(6);
