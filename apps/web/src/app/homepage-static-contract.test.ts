@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const pageSourceUrl = new URL('./page.tsx', import.meta.url);
 const analyticsSourceUrl = new URL('../components/homepage-analytics.tsx', import.meta.url);
 const workspaceStylesUrl = new URL('./workspace.css', import.meta.url);
+const globalStylesUrl = new URL('./globals.css', import.meta.url);
 
 void describe('homepage evidence and loading contract', () => {
   void it('binds the snapshot to exact highlighted-run evidence', async () => {
@@ -100,5 +101,55 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(source, /\) : \([\s\S]+<DeferredModelMatrixChart/);
     assert.match(source, /rankedEntries\.length === 0[\s\S]+<LeaderboardTable entries=/);
     assert.doesNotMatch(source, /standardApiEquivalentUsdNanos: [0-9]/);
+  });
+
+  void it('composes the primary product into one anchored workspace', async () => {
+    const source = await readFile(pageSourceUrl, 'utf8');
+
+    assert.match(source, /import ComparePage from '\.\/compare\/page\.tsx'/);
+    assert.match(source, /import TrendsPage from '\.\/trends\/page\.tsx'/);
+    assert.match(source, /import RunsPage from '\.\/runs\/page\.tsx'/);
+    assert.match(source, /import MethodPage from '\.\/method\/page\.tsx'/);
+    assert.match(source, /import RadarPage from '\.\/radar\/page\.tsx'/);
+    for (const section of ['results', 'trends', 'compare', 'runs', 'method', 'radar']) {
+      assert.match(source, new RegExp(`id="${section}"[\\s\\S]+data-workspace-section`));
+    }
+    assert.match(source, /<TrendsPage searchParams={searchParams} \/>/);
+    assert.match(source, /<ComparePage \/>/);
+    assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
+    assert.match(source, /<MethodPage \/>/);
+    assert.match(source, /<RadarPage \/>/);
+    assert.match(source, /href="#method"/);
+  });
+
+  void it('keeps embedded archive pagination inside the one-page workspace', async () => {
+    const [source, archiveSource, detailSource] = await Promise.all([
+      readFile(pageSourceUrl, 'utf8'),
+      readFile(new URL('./runs/page.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('./runs/[id]/page.tsx', import.meta.url), 'utf8'),
+    ]);
+
+    assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
+    assert.match(archiveSource, /`\/\?\$\{parameter}/);
+    assert.match(archiveSource, /#runs`/);
+    assert.match(detailSource, /href="\/#runs"/);
+  });
+
+  void it('uses whitespace and semantic rows instead of nested decorative frames', async () => {
+    const [workspaceStyles, globalStyles] = await Promise.all([
+      readFile(workspaceStylesUrl, 'utf8'),
+      readFile(globalStylesUrl, 'utf8'),
+    ]);
+
+    assert.match(
+      workspaceStyles,
+      /\.analysis-panel \{[\s\S]+border: 0;[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.task-list > article \{[\s\S]+border: 0;[\s\S]+border-bottom: 1px solid var\(--line\);[\s\S]+background: transparent;/,
+    );
+    assert.match(globalStyles, /\.data-note \{[\s\S]+border: 0;[\s\S]+background: transparent;/);
+    assert.doesNotMatch(globalStyles, /\.data-note \{[\s\S]+border-left:/);
   });
 });

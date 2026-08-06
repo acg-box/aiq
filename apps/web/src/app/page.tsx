@@ -3,6 +3,7 @@ import { ChartBarIcon } from '@phosphor-icons/react/dist/ssr/ChartBar';
 import { TargetIcon } from '@phosphor-icons/react/dist/ssr/Target';
 import { TrophyIcon } from '@phosphor-icons/react/dist/ssr/Trophy';
 import Link from 'next/link';
+import { Suspense } from 'react';
 
 import { CompactRanking } from '../components/compact-ranking.tsx';
 import { DataNote } from '../components/data-note.tsx';
@@ -24,6 +25,11 @@ import { formatHumanDuration } from '../data/format-duration.ts';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
 import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
+import ComparePage from './compare/page.tsx';
+import MethodPage from './method/page.tsx';
+import RadarPage from './radar/page.tsx';
+import RunsPage from './runs/page.tsx';
+import TrendsPage from './trends/page.tsx';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +43,25 @@ function formatDate(value: string | undefined): string {
   }).format(new Date(value));
 }
 
-export default async function OverviewPage() {
+type WorkspaceSearchParams = {
+  after?: string;
+  before?: string;
+  range?: string;
+};
+
+function WorkspaceSectionLoading({ label }: { label: string }) {
+  return (
+    <p className="workspace-section-loading" role="status">
+      Loading {label}…
+    </p>
+  );
+}
+
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<WorkspaceSearchParams>;
+}) {
   const repository = createAiqRepository();
   const [leaderboardResult, calibrationRunsResult] = await Promise.all([
     readPublicData(
@@ -179,218 +203,284 @@ export default async function OverviewPage() {
     officialEfficiencyResult.data.length > 0 && officialRunSummariesResult.data.length > 0;
 
   return (
-    <div className="page-shell results-page">
-      <header className="benchmark-strip">
-        <div>
-          <h1>{benchmarkLabel}</h1>
-          <p>
-            {leaderboard.length} configurations
-            {taskCount === null || taskCount === undefined ? '' : ` · ${taskCount} tasks each`} ·{' '}
-            {highlightedRun
-              ? `Published ${formatDate(highlightedRun.completedAt)}`
-              : 'Publication pending'}
-          </p>
-        </div>
-        <Link className="text-link" href="/method">
-          How AIQ works <span aria-hidden="true">→</span>
-        </Link>
-      </header>
+    <div className="page-shell results-page one-page-workspace">
+      <section
+        className="workspace-overview"
+        id="results"
+        data-workspace-section
+        data-nav-section="results"
+      >
+        <header className="benchmark-strip">
+          <div>
+            <h1>{benchmarkLabel}</h1>
+            <p>
+              {leaderboard.length} configurations
+              {taskCount === null || taskCount === undefined
+                ? ''
+                : ` · ${taskCount} tasks each`} ·{' '}
+              {highlightedRun
+                ? `Published ${formatDate(highlightedRun.completedAt)}`
+                : 'Publication pending'}
+            </p>
+          </div>
+          <Link className="text-link" href="#method">
+            How AIQ works <span aria-hidden="true">→</span>
+          </Link>
+        </header>
 
-      <section className="insight-grid" aria-label="Latest benchmark highlights">
-        <article className="insight-card">
-          <TrophyIcon aria-hidden="true" size={34} weight="light" />
-          <div>
-            <span>Top score</span>
-            <strong>
-              {highlightedScore
-                ? `${highlightedScore.modelFamily} ${highlightedScore.reasoningTier} ${highlightedScore.score.toFixed(1)}`
-                : 'Unavailable'}
-            </strong>
-            <small>
-              {highlightedScore
-                ? `Sensitivity ${highlightedScore.sensitivityLow.toFixed(1)}–${highlightedScore.sensitivityHigh.toFixed(1)}`
-                : 'Exact run evidence is unavailable'}
-            </small>
+        <section className="insight-grid" aria-label="Latest benchmark highlights">
+          <article className="insight-card">
+            <TrophyIcon aria-hidden="true" size={34} weight="light" />
+            <div>
+              <span>Top score</span>
+              <strong>
+                {highlightedScore
+                  ? `${highlightedScore.modelFamily} ${highlightedScore.reasoningTier} ${highlightedScore.score.toFixed(1)}`
+                  : 'Unavailable'}
+              </strong>
+              <small>
+                {highlightedScore
+                  ? `Sensitivity ${highlightedScore.sensitivityLow.toFixed(1)}–${highlightedScore.sensitivityHigh.toFixed(1)}`
+                  : 'Exact run evidence is unavailable'}
+              </small>
+            </div>
+          </article>
+          <article className="insight-card">
+            <ChartBarIcon aria-hidden="true" size={34} weight="light" />
+            <div>
+              <span>Top five spread</span>
+              <strong>
+                {topFiveSpread === null ? 'Unavailable' : `${topFiveSpread.toFixed(1)} points`}
+              </strong>
+              <small>
+                {topFive.length > 1
+                  ? `${topFive.at(-1)?.score.toFixed(1)}–${topFive[0]?.score.toFixed(1)} AIQ`
+                  : 'At least two scored configurations are required'}
+              </small>
+            </div>
+          </article>
+          <article className="insight-card">
+            <TargetIcon aria-hidden="true" size={34} weight="light" />
+            <div>
+              <span>Coverage</span>
+              <strong>
+                {averageCoverage === null ? 'Unavailable' : `${averageCoverage.toFixed(1)}%`}
+              </strong>
+              <small>
+                {completeCoverageCount}/{leaderboard.length} configurations at 100%
+              </small>
+            </div>
+          </article>
+        </section>
+
+        <div className="results-main-grid">
+          <section className="analysis-panel efficiency-panel" aria-label="Score and efficiency">
+            {hasEfficiencyEvidence ? (
+              <DeferredEfficiencyPlot
+                entries={leaderboard}
+                runSummaries={officialRunSummariesResult.data}
+                rows={officialEfficiencyResult.data}
+              />
+            ) : (
+              <>
+                <DeferredModelMatrixChart entries={leaderboard} />
+                {rankedEntries.length === 0 && leaderboard.length > 0 ? (
+                  <details className="data-disclosure empty-matrix-table">
+                    <summary>Read all configuration values as a table</summary>
+                    <LeaderboardTable entries={leaderboard} />
+                  </details>
+                ) : null}
+              </>
+            )}
+          </section>
+          <CompactRanking entries={leaderboard} />
+        </div>
+
+        {highlightedRun ? (
+          <RunOutcomeCard run={highlightedRun} />
+        ) : selectedEstimateIdentityUnavailable ? (
+          <ReadStateNote
+            result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
+            subject="Top configuration domain profile"
+          />
+        ) : null}
+
+        {hasEfficiencyEvidence ? (
+          <section
+            className="analysis-panel matrix-panel"
+            id="matrix"
+            aria-labelledby="matrix-heading"
+          >
+            <div className="panel-heading">
+              <div>
+                <h2 id="matrix-heading">All configurations</h2>
+                <p>
+                  Switch between dots, bars, and ordered views without changing the underlying
+                  scores.
+                </p>
+              </div>
+              <span className="panel-meta">
+                {sampleTotal === null
+                  ? 'Task cells unavailable'
+                  : `${sampleTotal.toLocaleString()} task cells`}
+              </span>
+            </div>
+            <ReadStateNote result={leaderboardResult} subject="Configuration matrix" />
+            <DeferredModelMatrixChart entries={leaderboard} headingLevel={3} />
+            <details className="data-disclosure">
+              <summary>Read all configuration values as a table</summary>
+              <LeaderboardTable entries={leaderboard} />
+            </details>
+          </section>
+        ) : (
+          <div id="matrix" className="sr-only" aria-hidden="true" />
+        )}
+
+        <details className="evidence-notes" open={leaderboardResult.state === 'unavailable'}>
+          <summary>
+            <BookOpenTextIcon aria-hidden="true" size={20} />
+            <strong>Evidence notes</strong>
+            <span>Scoring, sensitivity, provenance, time, and cost</span>
+          </summary>
+          <div className="evidence-note-body">
+            <div className="evidence-note-grid">
+              <div>
+                <h2>What this page claims</h2>
+                <p>
+                  AIQ is a fixed-task descriptive score on a 0–100 scale. Sensitivity intervals show
+                  how the point estimate changes when the task set is resampled. They are not model
+                  confidence intervals and do not establish a winner.
+                </p>
+              </div>
+              <dl>
+                <div>
+                  <dt>Scoring version</dt>
+                  <dd>{highlightedScore?.scoringVersion ?? 'Unavailable'}</dd>
+                </div>
+                <div>
+                  <dt>Summed adapter time</dt>
+                  <dd>
+                    {highlightedEfficiency?.summedCellAdapterElapsedMs == null
+                      ? 'Unavailable'
+                      : formatHumanDuration(highlightedEfficiency.summedCellAdapterElapsedMs)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>API-equivalent cost</dt>
+                  <dd>{cost}</dd>
+                </div>
+                <div>
+                  <dt>Evidence</dt>
+                  <dd>
+                    {highlightedRun?.synthetic
+                      ? 'Synthetic seed'
+                      : highlightedRun
+                        ? 'Published'
+                        : 'Unavailable'}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <DataNote provenance={overviewProvenance} />
+            <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
+            {selectedEstimateIdentityUnavailable ? (
+              <ReadStateNote
+                result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
+                subject="Top estimate run context"
+              />
+            ) : null}
+            {highlightedRun ? (
+              <p className="fine-print">
+                Exact run <Link href={`/runs/${highlightedRun.id}`}>{highlightedRun.id}</Link> ·
+                API-equivalent cost is a verifier-recomputed estimate, not billed subscription
+                spend.
+              </p>
+            ) : null}
+            {officialEfficiencyResult.state === 'published' ? (
+              <details className="data-disclosure">
+                <summary>Time, token, and cost table</summary>
+                <OfficialEfficiencyTable
+                  rows={exactOfficialEfficiency.rows}
+                  expectedCount={exactOfficialEfficiency.expectedCount}
+                  unavailableCount={exactOfficialEfficiency.unavailableCount}
+                  rejectedCount={exactOfficialEfficiency.rejectedCount}
+                />
+              </details>
+            ) : null}
+            {latestCalibration ? (
+              <details className="data-disclosure">
+                <summary>Latest non-ranking calibration evidence</summary>
+                <ReadStateNote result={calibrationRunsResult} subject="Calibration" />
+                {calibrationScoresResult.state === 'unavailable' ||
+                calibrationScoresResult.state === 'empty' ? null : (
+                  <DeferredCalibrationEfficiency
+                    scores={calibrationScoresResult.data}
+                    scoringVersion={latestCalibration.scoringVersion || null}
+                  />
+                )}
+                <Link className="text-link" href={`/calibrations/${latestCalibration.id}`}>
+                  Inspect calibration <span aria-hidden="true">→</span>
+                </Link>
+              </details>
+            ) : null}
           </div>
-        </article>
-        <article className="insight-card">
-          <ChartBarIcon aria-hidden="true" size={34} weight="light" />
-          <div>
-            <span>Top five spread</span>
-            <strong>
-              {topFiveSpread === null ? 'Unavailable' : `${topFiveSpread.toFixed(1)} points`}
-            </strong>
-            <small>
-              {topFive.length > 1
-                ? `${topFive.at(-1)?.score.toFixed(1)}–${topFive[0]?.score.toFixed(1)} AIQ`
-                : 'At least two scored configurations are required'}
-            </small>
-          </div>
-        </article>
-        <article className="insight-card">
-          <TargetIcon aria-hidden="true" size={34} weight="light" />
-          <div>
-            <span>Coverage</span>
-            <strong>
-              {averageCoverage === null ? 'Unavailable' : `${averageCoverage.toFixed(1)}%`}
-            </strong>
-            <small>
-              {completeCoverageCount}/{leaderboard.length} configurations at 100%
-            </small>
-          </div>
-        </article>
+        </details>
       </section>
 
-      <div className="results-main-grid">
-        <section className="analysis-panel efficiency-panel" aria-label="Score and efficiency">
-          {hasEfficiencyEvidence ? (
-            <DeferredEfficiencyPlot
-              entries={leaderboard}
-              runSummaries={officialRunSummariesResult.data}
-              rows={officialEfficiencyResult.data}
-            />
-          ) : (
-            <>
-              <DeferredModelMatrixChart entries={leaderboard} />
-              {rankedEntries.length === 0 && leaderboard.length > 0 ? (
-                <details className="data-disclosure empty-matrix-table">
-                  <summary>Read all configuration values as a table</summary>
-                  <LeaderboardTable entries={leaderboard} />
-                </details>
-              ) : null}
-            </>
-          )}
-        </section>
-        <CompactRanking entries={leaderboard} />
+      <div
+        className="workspace-section"
+        id="trends"
+        data-workspace-section
+        data-nav-section="trends"
+      >
+        <Suspense fallback={<WorkspaceSectionLoading label="history" />}>
+          <TrendsPage searchParams={searchParams} />
+        </Suspense>
       </div>
 
-      {highlightedRun ? (
-        <RunOutcomeCard run={highlightedRun} />
-      ) : selectedEstimateIdentityUnavailable ? (
-        <ReadStateNote
-          result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
-          subject="Top configuration domain profile"
-        />
-      ) : null}
+      <div
+        className="workspace-section"
+        id="compare"
+        data-workspace-section
+        data-nav-section="compare"
+      >
+        <Suspense fallback={<WorkspaceSectionLoading label="comparison" />}>
+          <ComparePage />
+        </Suspense>
+      </div>
 
-      {hasEfficiencyEvidence ? (
-        <section
-          className="analysis-panel matrix-panel"
-          id="matrix"
-          aria-labelledby="matrix-heading"
-        >
-          <div className="panel-heading">
-            <div>
-              <h2 id="matrix-heading">All configurations</h2>
-              <p>
-                Switch between dots, bars, and ordered views without changing the underlying scores.
-              </p>
-            </div>
-            <span className="panel-meta">
-              {sampleTotal === null
-                ? 'Task cells unavailable'
-                : `${sampleTotal.toLocaleString()} task cells`}
-            </span>
-          </div>
-          <ReadStateNote result={leaderboardResult} subject="Configuration matrix" />
-          <DeferredModelMatrixChart entries={leaderboard} headingLevel={3} />
-          <details className="data-disclosure">
-            <summary>Read all configuration values as a table</summary>
-            <LeaderboardTable entries={leaderboard} />
-          </details>
-        </section>
-      ) : (
-        <div id="matrix" className="sr-only" aria-hidden="true" />
-      )}
+      <div
+        className="workspace-section"
+        id="runs"
+        data-workspace-section
+        data-nav-section="evidence"
+      >
+        <Suspense fallback={<WorkspaceSectionLoading label="run evidence" />}>
+          <RunsPage searchParams={searchParams} />
+        </Suspense>
+      </div>
 
-      <details className="evidence-notes" open={leaderboardResult.state === 'unavailable'}>
-        <summary>
-          <BookOpenTextIcon aria-hidden="true" size={20} />
-          <strong>Evidence notes</strong>
-          <span>Scoring, sensitivity, provenance, time, and cost</span>
-        </summary>
-        <div className="evidence-note-body">
-          <div className="evidence-note-grid">
-            <div>
-              <h2>What this page claims</h2>
-              <p>
-                AIQ is a fixed-task descriptive score on a 0–100 scale. Sensitivity intervals show
-                how the point estimate changes when the task set is resampled. They are not model
-                confidence intervals and do not establish a winner.
-              </p>
-            </div>
-            <dl>
-              <div>
-                <dt>Scoring version</dt>
-                <dd>{highlightedScore?.scoringVersion ?? 'Unavailable'}</dd>
-              </div>
-              <div>
-                <dt>Summed adapter time</dt>
-                <dd>
-                  {highlightedEfficiency?.summedCellAdapterElapsedMs == null
-                    ? 'Unavailable'
-                    : formatHumanDuration(highlightedEfficiency.summedCellAdapterElapsedMs)}
-                </dd>
-              </div>
-              <div>
-                <dt>API-equivalent cost</dt>
-                <dd>{cost}</dd>
-              </div>
-              <div>
-                <dt>Evidence</dt>
-                <dd>
-                  {highlightedRun?.synthetic
-                    ? 'Synthetic seed'
-                    : highlightedRun
-                      ? 'Published'
-                      : 'Unavailable'}
-                </dd>
-              </div>
-            </dl>
-          </div>
-          <DataNote provenance={overviewProvenance} />
-          <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
-          {selectedEstimateIdentityUnavailable ? (
-            <ReadStateNote
-              result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
-              subject="Top estimate run context"
-            />
-          ) : null}
-          {highlightedRun ? (
-            <p className="fine-print">
-              Exact run <Link href={`/runs/${highlightedRun.id}`}>{highlightedRun.id}</Link> ·
-              API-equivalent cost is a verifier-recomputed estimate, not billed subscription spend.
-            </p>
-          ) : null}
-          {officialEfficiencyResult.state === 'published' ? (
-            <details className="data-disclosure">
-              <summary>Time, token, and cost table</summary>
-              <OfficialEfficiencyTable
-                rows={exactOfficialEfficiency.rows}
-                expectedCount={exactOfficialEfficiency.expectedCount}
-                unavailableCount={exactOfficialEfficiency.unavailableCount}
-                rejectedCount={exactOfficialEfficiency.rejectedCount}
-              />
-            </details>
-          ) : null}
-          {latestCalibration ? (
-            <details className="data-disclosure">
-              <summary>Latest non-ranking calibration evidence</summary>
-              <ReadStateNote result={calibrationRunsResult} subject="Calibration" />
-              {calibrationScoresResult.state === 'unavailable' ||
-              calibrationScoresResult.state === 'empty' ? null : (
-                <DeferredCalibrationEfficiency
-                  scores={calibrationScoresResult.data}
-                  scoringVersion={latestCalibration.scoringVersion || null}
-                />
-              )}
-              <Link className="text-link" href={`/calibrations/${latestCalibration.id}`}>
-                Inspect calibration <span aria-hidden="true">→</span>
-              </Link>
-            </details>
-          ) : null}
-        </div>
-      </details>
+      <div
+        className="workspace-section"
+        id="method"
+        data-workspace-section
+        data-nav-section="evidence"
+      >
+        <Suspense fallback={<WorkspaceSectionLoading label="method" />}>
+          <MethodPage />
+        </Suspense>
+      </div>
+
+      <div
+        className="workspace-section"
+        id="radar"
+        data-workspace-section
+        data-nav-section="evidence"
+      >
+        <Suspense fallback={<WorkspaceSectionLoading label="radar evidence" />}>
+          <RadarPage />
+        </Suspense>
+      </div>
     </div>
   );
 }

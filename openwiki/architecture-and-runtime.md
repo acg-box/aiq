@@ -319,14 +319,16 @@ explicit development and test paths. Source anchors are
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.
 
-Primary navigation keeps Results, Compare, History, and Method visible. Run
-archive, Radar, and Calibration remain routable under the compact More
-disclosure in `apps/web/src/components/site-header.tsx`. Run archive and run
-detail routes retain History as their primary navigation context. This keeps the
-header compact while preserving every analysis route. Browser tests exercise
-the collapsed evidence sections, navigation, responsive layouts, theme states,
-and secondary-route discovery across synthetic, invalid, empty, published, and
-production fixtures.
+The homepage composes Results, Trends, Compare, Run archive, Method, and Radar
+as one anchored analysis workspace. Primary navigation exposes four direct
+anchors: Results, Trends, Compare, and Evidence. Evidence covers the run
+archive, method, and distributed-radar sections without a secondary menu. Run
+archive pagination stays in the homepage workspace. An exact run keeps a
+dedicated `/runs/[id]` deep route and returns to the Evidence anchor. The
+implementation anchors are `apps/web/src/app/page.tsx` and
+`apps/web/src/components/site-header.tsx`. Browser and static-contract tests
+exercise anchored navigation, responsive layouts, theme states, and evidence
+discovery across synthetic, invalid, empty, published, and production fixtures.
 
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
