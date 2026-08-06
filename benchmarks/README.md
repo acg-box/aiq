@@ -52,13 +52,13 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
+sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 ```
 
 Its release identity is:
 
 ```text
-sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529
+sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d
 ```
 
 The release-policy identity is `aiq-core/1.0.5`. The controlled scorer-manifest
@@ -86,13 +86,13 @@ These files own the active catalog authority:
 The task-metadata identity is:
 
 ```text
-sha256:e5ec5c2fa9d3423b228eb3fc4e717be8e48e34e1a1352608394aa4643850c1a1
+sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
 ```
 
 The release identity is:
 
 ```text
-sha256:4431b4027ce35f5bee9dda55cbcb8e28dcd985708da2918ec94ff7cee76ed529
+sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d
 ```
 
 The first digest binds the ordered public task metadata. The second binds the
