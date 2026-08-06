@@ -14,6 +14,7 @@ void describe('trend-page evidence hierarchy', () => {
 
     assert.match(pageSource, /<details className="evidence-status-disclosure"/);
     assert.match(pageSource, /open=\{evidenceNeedsAttention\}/);
+    assert.match(pageSource, /state === 'empty' \|\| state === 'unavailable'/);
     assert.match(pageSource, /Evidence availability/);
     assert.match(pageSource, /4 sources/);
     assert.match(workspaceStyles, /\.evidence-status-disclosure > summary/);
