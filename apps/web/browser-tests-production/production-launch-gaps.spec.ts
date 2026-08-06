@@ -70,6 +70,7 @@ async function expectMobileMatrixLegibility(page: Page) {
   expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
     snapshotBox?.y ?? Number.NEGATIVE_INFINITY,
   );
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
