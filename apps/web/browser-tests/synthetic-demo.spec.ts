@@ -143,6 +143,7 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   const response = await page.goto('/');
   expect(response?.headers()['cache-control']).toContain('no-store');
   await expect(page.getByRole('heading', { name: 'Current configuration matrix' })).toBeVisible();
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toBeVisible();
   const compactPreview = page.getByRole('region', { name: 'Synthetic matrix preview' });
   await expect(compactPreview).toBeVisible();
@@ -546,7 +547,7 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
     'aria-label',
     'AIQ score history. Grouped bars with per-series aligned task-sensitivity intervals.',
   );
-  await expect(page.locator('.trend-resolution')).toContainText(
+  await expect(page.locator('.trend-resolution[role="note"]')).toContainText(
     'Each grouped bar and its task-sensitivity interval use the same per-series category offset.',
   );
   const chartSvg = chart.locator('svg');
@@ -643,6 +644,7 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
     page.getByRole('heading', { level: 1, name: 'Fixed-task AI capability analysis' }),
   ).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
