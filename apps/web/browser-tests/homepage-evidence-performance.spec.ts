@@ -9,13 +9,13 @@ test('the homepage keeps exact evidence in server markup and defers analytics', 
 
   const serverMarkup = await response?.text();
   expect(serverMarkup).toContain('Synthetic matrix preview');
-  expect(serverMarkup).toContain('Best configuration exact-run snapshot');
+  expect(serverMarkup).toContain('Selected configuration exact-run snapshot');
   expect(serverMarkup).toContain('Exact run completed');
   expect(serverMarkup).toContain('data-homepage-analytics-loading="matrix"');
   expect(serverMarkup).toContain('Loading interactive configuration matrix');
   expect(serverMarkup).not.toContain('AIQ index by configuration');
 
-  const snapshot = page.getByLabel('Best configuration exact-run snapshot');
+  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
   await expect(snapshot).toContainText(/configuration \S+ · exact run \S+/);
   await expect(snapshot.locator('dl')).not.toHaveAttribute('tabindex', /.+/);
   const analytics = page.locator('[data-homepage-analytics="matrix"]');
