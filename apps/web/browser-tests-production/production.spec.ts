@@ -53,7 +53,10 @@ async function expectPublishedPage(
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
   );
-  await expect(page.getByText('public data', { exact: true })).toBeVisible();
+  await expect(page.locator('.live-pill.status-public')).toHaveAttribute(
+    'title',
+    'Published public data',
+  );
 }
 
 async function expectNoDocumentOverflow(page: Page, testInfo: TestInfo) {
@@ -196,18 +199,18 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'Fixed-task AI capability analysis');
+  await expectPublishedPage(page, expectedOrigin, '/', 'Latest benchmark');
   await expectNoDocumentOverflow(page, testInfo);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     await expect(
-      page
-        .getByLabel('Latest calibration status', { exact: true })
-        .getByText('No published evidence', { exact: true }),
-    ).toBeVisible();
+      page.getByText('Latest non-ranking calibration evidence', { exact: true }),
+    ).toHaveCount(0);
   }
 
-  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
-  await page.getByText('Open time, token, and cost details', { exact: true }).click();
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
+  await page.getByText('Read all configuration values as a table', { exact: true }).click();
+  await page.locator('details.evidence-notes > summary').click();
+  await page.getByText('Time, token, and cost table', { exact: true }).click();
 
   const leaderboard = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
@@ -265,7 +268,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   for (let pageNumber = 0; historyPath !== null && pageNumber < 3; pageNumber += 1) {
     expect(visitedHistoryPaths.has(historyPath), 'run-history cursor cycle').toBe(false);
     visitedHistoryPaths.add(historyPath);
-    await expectPublishedPage(page, expectedOrigin, historyPath, 'Public run history');
+    await expectPublishedPage(page, expectedOrigin, historyPath, 'Run archive');
     const historyRows = page
       .getByRole('region', { name: 'Public run history' })
       .locator('tbody tr');
@@ -298,7 +301,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     const newer = page.getByRole('link', { name: 'Newer runs' });
     await expect(newer).toBeVisible();
     const newerPath = await newer.getAttribute('href');
-    await expectPublishedPage(page, expectedOrigin, newerPath ?? '', 'Public run history');
+    await expectPublishedPage(page, expectedOrigin, newerPath ?? '', 'Run archive');
     const newerHrefs = await page
       .getByRole('region', { name: 'Public run history' })
       .getByRole('link', { name: 'Inspect run' })
@@ -322,9 +325,10 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   };
   for (const href of runHrefs) {
     await expectPublishedPage(page, expectedOrigin, href);
+    await page.locator('details.run-evidence-notes > summary').click();
     await expect(page.getByText('Official', { exact: true })).toBeVisible();
-    await expect(page.getByText('Completeness:', { exact: false })).toContainText(
-      '72 valid results',
+    await expect(page.getByText('Valid results', { exact: true }).locator('..')).toContainText(
+      '72/72',
     );
     const results = page.locator('.task-list > article');
     await expect(results).toHaveCount(72);
@@ -418,7 +422,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
 }, testInfo) => {
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/method', 'Scoring method');
+  await expectPublishedPage(page, expectedOrigin, '/method', 'How AIQ is scored');
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();
@@ -432,21 +436,18 @@ test('production method, trends, and radar preserve transparent evidence semanti
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
-  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'Benchmark history');
+  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
   await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
   ).toHaveCount(6);
+  await page.getByText('Evidence notes and visible values', { exact: true }).click();
   await expect(page.getByRole('note')).toContainText(
     'Showing all 6 Sol configurations in canonical matrix order',
   );
   await expect(page.getByRole('note')).toContainText(
     'The family is an explicit filter, not a point-estimate cutoff.',
   );
-  await expect(
-    page.getByRole('heading', { name: 'Time and API-equivalent cost by retained point' }),
-  ).toBeVisible();
-  await page.getByText('Read visible trend values as a table', { exact: true }).click();
   const trendValues = page.getByRole('region', { name: 'Visible trend values' });
   await expect(trendValues.locator('tbody tr')).toHaveCount(6);
   for (const heading of [
@@ -467,7 +468,8 @@ test('production method, trends, and radar preserve transparent evidence semanti
     await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\$\d+\.\d{4})$/);
   }
 
-  await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner provenance');
+  await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner network');
+  await page.locator('details.radar-node-details > summary').click();
   await expect(page.locator('.node-card')).not.toHaveCount(0);
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
   await expect(

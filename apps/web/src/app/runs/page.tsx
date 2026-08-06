@@ -63,14 +63,11 @@ export default async function RunsPage({
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Run history</span>
-        <h1>Public run history</h1>
+        <span className="eyebrow">Evidence archive</span>
+        <h1>Run archive</h1>
         <p>
-          Each row is one configuration run. A complete Official matrix is one batch of 17
-          configuration runs. In that complete batch, each run has 72 task-level executions, for
-          1,224 executions in total—not 1,224 benchmark runs. Complete, coverage-only, and
-          missing-result runs share one timeline. Missing evidence stays visible and never becomes
-          an invented score.
+          Each row is one model configuration. One complete benchmark batch contains 17 runs × 72
+          tasks: 1,224 task attempts, not 1,224 benchmark runs.
         </p>
       </div>
       <ReadStateNote result={runsResult} />

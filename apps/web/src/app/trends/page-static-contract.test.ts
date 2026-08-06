@@ -18,9 +18,6 @@ void describe('trend-page evidence hierarchy', () => {
     assert.match(pageSource, /Evidence availability/);
     assert.match(pageSource, /4 sources/);
     assert.match(workspaceStyles, /\.evidence-status-disclosure > summary/);
-    assert.match(
-      workspaceStyles,
-      /\.evidence-status-disclosure \.evidence-status-grid \{\s+margin: 0;\s+border: 0;/,
-    );
+    assert.match(workspaceStyles, /\.evidence-status-grid \{[\s\S]+grid-template-columns:/);
   });
 });

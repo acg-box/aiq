@@ -82,13 +82,23 @@ export default async function TrendsPage({
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Longitudinal evidence</span>
-        <h1>Benchmark history</h1>
+        <span className="eyebrow">History</span>
+        <h1>AIQ over time</h1>
         <p>
-          Follow published fixed-fixture observations from the last day through all retained
-          history. Each point carries its task count and task-resampling sensitivity interval.
+          Track how each configuration changes across retained benchmark runs. Switch the time
+          window, model family, and chart type without losing uncertainty or coverage context.
         </p>
       </div>
+      {evidenceNeedsAttention ? <ReadStateNote result={pointsResult} subject="History" /> : null}
+      {entriesResult.state !== 'unavailable' && pointsResult.state !== 'unavailable' ? (
+        <TrendExplorer
+          entries={entriesResult.data}
+          points={pointsResult.data}
+          runSummaries={runSummariesResult.data}
+          efficiency={efficiencyResult.data}
+          range={range}
+        />
+      ) : null}
       <details className="evidence-status-disclosure" open={evidenceNeedsAttention}>
         <summary>
           <span>Evidence availability</span>
@@ -101,26 +111,6 @@ export default async function TrendsPage({
           <ReadStateNote result={efficiencyResult} subject="Historical efficiency" />
         </div>
       </details>
-      <div className="section-heading compact">
-        <div>
-          <span className="eyebrow">Exact run joins</span>
-          <h2>Time and API-equivalent cost by retained point</h2>
-        </div>
-        <p>
-          Each point binds coverage, runtime, missing results, duration, and cost through exact run,
-          configuration, scoring-version, and provenance identity. Missing evidence remains
-          unavailable.
-        </p>
-      </div>
-      {entriesResult.state !== 'unavailable' && pointsResult.state !== 'unavailable' ? (
-        <TrendExplorer
-          entries={entriesResult.data}
-          points={pointsResult.data}
-          runSummaries={runSummariesResult.data}
-          efficiency={efficiencyResult.data}
-          range={range}
-        />
-      ) : null}
     </section>
   );
 }

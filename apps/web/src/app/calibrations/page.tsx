@@ -55,11 +55,11 @@ export default async function CalibrationsPage({
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
-        <span className="eyebrow">Calibration register</span>
-        <h1>Calibration register</h1>
+        <span className="eyebrow">Diagnostics</span>
+        <h1>Calibration evidence</h1>
         <p>
-          Chronological, replay-verified diagnostic evidence stays separate from the Official
-          leaderboard, compare, and trends surfaces. Each page contains at most 20 retained runs.
+          Replay-verified evaluator checks live here, separate from Official scores and rankings.
+          Use them to inspect scoring behavior, not to compare models.
         </p>
       </div>
       <ReadStateNote result={runs} subject="Calibration register" />
@@ -125,16 +125,21 @@ export default async function CalibrationsPage({
         </nav>
       ) : null}
       {selectedRun && hasScores ? (
-        <>
-          <p className="formula-note">
-            Efficiency and scatter evidence below is bounded to the first run on this page:{' '}
-            <code>{selectedRun.id}</code>.
-          </p>
-          <CalibrationEfficiency
-            scores={scores.data}
-            scoringVersion={selectedRun.scoringVersion || null}
-          />
-        </>
+        <details className="evidence-notes calibration-analysis-disclosure">
+          <summary>
+            <strong>Selected calibration analysis</strong>
+            <span>Scores, intervals, time, cost, and exact run identity</span>
+          </summary>
+          <div className="evidence-note-body">
+            <p className="fine-print">
+              This analysis is bounded to the first run on this page: <code>{selectedRun.id}</code>.
+            </p>
+            <CalibrationEfficiency
+              scores={scores.data}
+              scoringVersion={selectedRun.scoringVersion || null}
+            />
+          </div>
+        </details>
       ) : hasRuns ? (
         <>
           <ReadStateNote result={scores} subject="Selected-run score matrix" />

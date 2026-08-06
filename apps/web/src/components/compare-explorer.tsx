@@ -114,26 +114,28 @@ export function CompareExplorer({
     rightResolution.state === 'exact' ? rightResolution.evidence.efficiency : undefined;
   const exactJoinUnavailable =
     leftResolution.state === 'unavailable' || rightResolution.state === 'unavailable';
-  const metrics = [
-    ['Point estimate', left.score.toFixed(1), right.score.toFixed(1)],
+  const primaryMetrics = [
+    ['AIQ score', left.score.toFixed(1), right.score.toFixed(1)],
     ['Task sensitivity', formatSensitivityInterval(left), formatSensitivityInterval(right)],
-    ['Samples', String(left.sampleSize), String(right.sampleSize)],
     ['Coverage', `${left.coveragePercent.toFixed(1)}%`, `${right.coveragePercent.toFixed(1)}%`],
-    ['Scoring version', left.scoringVersion, right.scoringVersion],
     ['Runtime issues', String(left.runtimeIssues), String(right.runtimeIssues)],
-    ['Missing', String(left.missing), String(right.missing)],
     [
-      'Summed adapter duration',
+      'Total adapter time',
       efficiencyValue(leftEfficiency, 'summedCellAdapterElapsedMs'),
       efficiencyValue(rightEfficiency, 'summedCellAdapterElapsedMs'),
     ],
+    ['API-equivalent cost', costValue(leftEfficiency), costValue(rightEfficiency)],
+  ] as const;
+  const evidenceMetrics = [
+    ['Samples', String(left.sampleSize), String(right.sampleSize)],
+    ['Scoring version', left.scoringVersion, right.scoringVersion],
+    ['Missing', String(left.missing), String(right.missing)],
     [
       'Batch wall-clock',
       efficiencyValue(leftEfficiency, 'matrixBatchElapsedMs'),
       efficiencyValue(rightEfficiency, 'matrixBatchElapsedMs'),
     ],
     ['Duration coverage', durationCoverage(leftEfficiency), durationCoverage(rightEfficiency)],
-    ['API-equivalent cost', costValue(leftEfficiency), costValue(rightEfficiency)],
     ['Cost coverage', costCoverage(leftEfficiency), costCoverage(rightEfficiency)],
     [
       'Evidence',
@@ -146,7 +148,7 @@ export function CompareExplorer({
     <>
       <div className="compare-controls">
         <label>
-          First model and reasoning level
+          First configuration
           <select
             value={leftId}
             onChange={(event) =>
@@ -160,9 +162,9 @@ export function CompareExplorer({
             ))}
           </select>
         </label>
-        <span aria-hidden="true">versus</span>
+        <span aria-hidden="true">vs</span>
         <label>
-          Second model and reasoning level
+          Second configuration
           <select
             value={rightId}
             onChange={(event) =>
@@ -201,33 +203,18 @@ export function CompareExplorer({
           subject="Selected run context"
         />
       ) : null}
-      <div className="comparison-grid" role="table" aria-label="Selected comparison">
-        <div className="comparison-row comparison-head" role="row">
-          <span role="columnheader">Metric</span>
-          <strong role="columnheader">{left.modelFamily}</strong>
-          <strong role="columnheader">{right.modelFamily}</strong>
-        </div>
-        {metrics.map(([label, leftValue, rightValue]) => (
-          <div className="comparison-row" role="row" key={label}>
-            <span role="rowheader">{label}</span>
-            <strong role="cell">{leftValue}</strong>
-            <strong role="cell">{rightValue}</strong>
-          </div>
-        ))}
-      </div>
       <section className="comparison-interpretation" aria-labelledby="comparison-reading">
         <div>
-          <span className="eyebrow">Descriptive comparison</span>
-          <h2 id="comparison-reading">How to read this difference</h2>
+          <span className="eyebrow">Observed difference</span>
+          <h2 id="comparison-reading">{difference} AIQ points apart</h2>
           <p>
-            Descriptive point-estimate difference: <span>{difference} points</span>. This is a raw
-            summary of these two fixed-fixture estimates, not evidence that either configuration is
-            better.
+            This is a descriptive difference on the fixed task set. It does not by itself show that
+            either configuration is generally better.
           </p>
         </div>
         <dl className="compatibility-list" aria-label="Comparison compatibility checks">
           <div>
-            <dt>Sample count</dt>
+            <dt>Samples</dt>
             <dd>{sameSampleSize ? `Matched · ${left.sampleSize}` : 'Different'}</dd>
           </div>
           <div>
@@ -235,17 +222,46 @@ export function CompareExplorer({
             <dd>{sameCoverage ? `Matched · ${left.coveragePercent.toFixed(1)}%` : 'Different'}</dd>
           </div>
           <div>
-            <dt>Scoring version</dt>
-            <dd>{sameScoringVersion ? `Matched · ${left.scoringVersion}` : 'Different'}</dd>
+            <dt>Scoring</dt>
+            <dd>{sameScoringVersion ? 'Matched' : 'Different'}</dd>
           </div>
         </dl>
         <p className="comparison-caution" role="note">
-          No statistically supported difference can be declared from these aggregate rows. AIQ
-          requires complete paired-task evidence from the matching benchmark release. Matching
-          samples, coverage, scoring versions, or overlapping independent intervals does not replace
-          that evidence.
+          A supported winner claim requires complete paired-task evidence from the same benchmark
+          release. Aggregate rows are not enough.
         </p>
       </section>
+      <div className="comparison-grid" role="table" aria-label="Selected comparison">
+        <div className="comparison-row comparison-head" role="row">
+          <span role="columnheader">Metric</span>
+          <strong role="columnheader">{left.modelFamily}</strong>
+          <strong role="columnheader">{right.modelFamily}</strong>
+        </div>
+        {primaryMetrics.map(([label, leftValue, rightValue]) => (
+          <div className="comparison-row" role="row" key={label}>
+            <span role="rowheader">{label}</span>
+            <strong role="cell">{leftValue}</strong>
+            <strong role="cell">{rightValue}</strong>
+          </div>
+        ))}
+      </div>
+      <details className="data-disclosure comparison-evidence-table">
+        <summary>Exact run, provenance, and metric coverage</summary>
+        <div className="comparison-grid" role="table" aria-label="Comparison evidence details">
+          <div className="comparison-row comparison-head" role="row">
+            <span role="columnheader">Metric</span>
+            <strong role="columnheader">{left.modelFamily}</strong>
+            <strong role="columnheader">{right.modelFamily}</strong>
+          </div>
+          {evidenceMetrics.map(([label, leftValue, rightValue]) => (
+            <div className="comparison-row" role="row" key={label}>
+              <span role="rowheader">{label}</span>
+              <strong role="cell">{leftValue}</strong>
+              <strong role="cell">{rightValue}</strong>
+            </div>
+          ))}
+        </div>
+      </details>
     </>
   );
 }

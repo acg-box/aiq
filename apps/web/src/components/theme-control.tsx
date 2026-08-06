@@ -1,5 +1,8 @@
 'use client';
 
+import { DesktopIcon } from '@phosphor-icons/react/dist/csr/Desktop';
+import { MoonIcon } from '@phosphor-icons/react/dist/csr/Moon';
+import { SunIcon } from '@phosphor-icons/react/dist/csr/Sun';
 import { useEffect, useState } from 'react';
 
 import { persistThemeSetting, readThemeSetting, type ThemeSetting } from './theme-setting.ts';
@@ -7,6 +10,11 @@ import { persistThemeSetting, readThemeSetting, type ThemeSetting } from './them
 type ResolvedTheme = Exclude<ThemeSetting, 'system'>;
 
 const settings: readonly ThemeSetting[] = ['system', 'light', 'dark'];
+const settingLabels: Readonly<Record<ThemeSetting, string>> = {
+  system: 'Use device theme',
+  light: 'Use light theme',
+  dark: 'Use dark theme',
+};
 
 function applyTheme(setting: ThemeSetting): ResolvedTheme {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -43,14 +51,21 @@ export function ThemeControl() {
           key={candidate}
           type="button"
           aria-pressed={setting === candidate}
-          title={`${candidate[0]?.toUpperCase()}${candidate.slice(1)} theme`}
+          title={settingLabels[candidate]}
+          aria-label={settingLabels[candidate]}
           onClick={() => {
             persistThemeSetting(() => window.localStorage, candidate);
             setSetting(candidate);
             setResolved(applyTheme(candidate));
           }}
         >
-          {candidate === 'system' ? 'System' : candidate === 'light' ? 'Light' : 'Dark'}
+          {candidate === 'system' ? (
+            <DesktopIcon aria-hidden="true" size={17} />
+          ) : candidate === 'light' ? (
+            <SunIcon aria-hidden="true" size={17} />
+          ) : (
+            <MoonIcon aria-hidden="true" size={17} />
+          )}
         </button>
       ))}
       <p className="sr-only" role="status" aria-label="Resolved color theme" aria-live="polite">

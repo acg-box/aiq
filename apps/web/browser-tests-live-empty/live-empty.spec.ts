@@ -74,7 +74,8 @@ for (const route of routes) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
     expectPrivateNoStore(response);
-    await expect(page.getByText('public data', { exact: true })).toBeVisible();
+    await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
+    await expect(page.locator('.live-pill')).toHaveAttribute('title', 'Published public data');
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
     await expect(page.locator('main h1')).toBeVisible();
     expect(await new AxeBuilder({ page }).analyze()).toMatchObject({ violations: [] });
@@ -87,25 +88,25 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
 }) => {
   const response = await page.goto('/');
   expectPrivateNoStore(response);
+  await page.getByText('Evidence notes', { exact: true }).click();
   await expect(page.getByText('No published evidence', { exact: true }).first()).toBeVisible();
-  await page.getByText('Show all 17 configurations and intervals', { exact: true }).click();
+  await page.getByText('Read all configuration values as a table', { exact: true }).click();
   const table = page.getByRole('region', {
     name: 'Descriptively ordered public index table',
   });
   await expect(table.getByRole('row')).toHaveCount(18);
   await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
-  const snapshot = page.getByLabel('Selected configuration exact-run snapshot');
-  const coverage = snapshot.getByText('Coverage', { exact: true }).locator('..');
-  const exactRun = snapshot.getByText('Exact run completed', { exact: true }).locator('..');
-  await expect(coverage).toContainText('Sample size unavailable');
-  await expect(coverage).not.toContainText('0 fixed task cells');
   await expect(
-    page.getByText('17 configurations · task cells unavailable', { exact: true }),
+    page.getByText('17 configurations · Publication pending', { exact: true }),
   ).toBeVisible();
+  const highlights = page.getByRole('region', { name: 'Latest benchmark highlights' });
+  await expect(highlights.getByText('Top score', { exact: true }).locator('..')).toContainText(
+    'Unavailable',
+  );
+  await expect(highlights.getByText('Coverage', { exact: true }).locator('..')).toContainText(
+    'Unavailable',
+  );
   await expect(page.getByText('17 configurations · 0 task cells', { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByText('Average coverage across 0/17 configurations:', { exact: false }),
-  ).toBeVisible();
   const deferredMatrix = page.locator('[data-homepage-analytics="matrix"]');
   await expect(deferredMatrix).toHaveClass(/homepage-analytics-empty/);
   await deferredMatrix.scrollIntoViewIfNeeded();
@@ -114,11 +115,7 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   await expect(page.getByText(/scored configurations shown/)).toHaveCount(0);
   const emptyMatrixBox = await deferredMatrix.boundingBox();
   expect(emptyMatrixBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(700);
-  await expect(exactRun).toContainText('Unavailable');
-  await expect(exactRun).toContainText('Exact run identity unavailable');
-  await expect(snapshot).not.toContainText('trusted publication');
-  await expect(page.getByRole('heading', { name: 'Latest verified calibration' })).toBeVisible();
-  await expect(page.getByRole('status', { name: 'Latest calibration status' })).toContainText(
+  await expect(page.getByRole('status', { name: 'Official efficiency status' })).toContainText(
     'The live public read is available, but it has no evidence to display.',
   );
 });

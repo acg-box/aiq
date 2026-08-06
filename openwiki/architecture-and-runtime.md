@@ -283,38 +283,50 @@ consistent task counts and status totals, valid timing and token evidence, and
 verifier-recomputed cost consistent with the published pricing digest. The
 readiness probe verifies the same expanded result-view contract.
 
-The overview leads with a chart of the scored 17-configuration matrix and
-supports dot, bar, and ordered-horizontal presentations with task-sensitivity
-intervals. Its score, run context, and efficiency displays resolve only after an
-exact run, configuration, scoring-version, and synthetic/provenance identity
-join. The run-detail, compare, and trends routes use the same rule; ambiguous or
+The overview leads with the publication identity, three compact benchmark
+insights, and the top five configurations. On narrow screens the complete top
+five precedes analytical charts in the first viewport. When exact Official
+efficiency evidence exists, the primary chart compares descriptive AIQ with
+either summed adapter time or estimated Standard API-equivalent cost. When that
+evidence does not exist, the primary chart falls back to the scored
+17-configuration matrix. The full matrix still supports dot, bar, and
+ordered-horizontal presentations with task-sensitivity intervals. If the live
+matrix has identities but no scores, the page preserves all 17 identities in an
+explicit unavailable-values table instead of displaying zeros or removing the
+matrix contract.
+
+Score, run context, and efficiency displays resolve only after an exact run,
+configuration, scoring-version, and synthetic/provenance identity join. The
+run-detail, compare, and trends routes use the same rule; ambiguous or
 mismatched joins remain unavailable rather than borrowing nearby evidence. The
 overview fetches the complete run behind the highest point estimate and uses
 that run for a task-outcome card, a ten-domain breakdown, and a link to every
-task result; it reads the newest retained run independently rather than treating
-it as that highlighted run. Official efficiency reports unavailable and rejected
-rows explicitly when its exact evidence cannot be established. The full
-leaderboard, Official efficiency table, and latest verified calibration remain
-available through progressive disclosures rather than competing with the
-first-read matrix. These views preserve the scoring and evidence distinctions
-defined by [Benchmark Method](benchmark-method.md): the AIQ index is not an IQ
-estimate, coverage is not correctness, and API-equivalent cost is not
-subscription spend. Semantic outcomes remain separate from runtime, invalid,
-and missing states. Charts use ECharts with SVG rendering. The chart wrapper
-exposes the generated ECharts description to assistive technology and each chart
-has a complete data table. Charts expose the fixed-fixture task-sensitivity
-interval and support explicit System, Light, and Dark themes. Synthetic fixtures
-remain confined to explicit development and test paths. Source anchors are
+task result. Official efficiency reports unavailable and rejected rows
+explicitly when its exact evidence cannot be established. Complete matrix,
+efficiency, calibration, and provenance tables remain available through
+progressive disclosures rather than competing with the first-read results.
+
+These views preserve the scoring and evidence distinctions defined by
+[Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
+coverage is not correctness, and API-equivalent cost is not subscription spend.
+Semantic outcomes remain separate from runtime, invalid, and missing states.
+Charts use ECharts with SVG rendering. The chart wrapper exposes the generated
+ECharts description to assistive technology and each chart has a complete data
+table. Charts expose the fixed-fixture task-sensitivity interval and support
+explicit System, Light, and Dark themes. Synthetic fixtures remain confined to
+explicit development and test paths. Source anchors are
 `apps/web/src/app/page.tsx`, `apps/web/src/components/scientific-evidence-resolution.ts`,
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.
 
-Primary navigation keeps Overview and Runs visible. Compare, Trends,
-Calibrations, Method, and Runner provenance remain routable under the `Analyze`
-disclosure in `apps/web/src/components/site-header.tsx`; the route remains
-`/radar`. This keeps the header compact while preserving every analysis route.
-Browser tests exercise both the collapsed evidence sections and secondary-route
-discovery across synthetic, live-empty, live-published, and production fixtures.
+Primary navigation keeps Results, Compare, History, and Method visible. Run
+archive, Radar, and Calibration remain routable under the compact More
+disclosure in `apps/web/src/components/site-header.tsx`. Run archive and run
+detail routes retain History as their primary navigation context. This keeps the
+header compact while preserving every analysis route. Browser tests exercise
+the collapsed evidence sections, navigation, responsive layouts, theme states,
+and secondary-route discovery across synthetic, invalid, empty, published, and
+production fixtures.
 
 The standard public application also exposes `/calibrations` and
 `/calibrations/[id]`. The register uses bounded 20-run keyset pages; detail reads
