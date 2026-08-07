@@ -1032,8 +1032,13 @@ fn official_calibration_gate_passed(
 		.len()
 		.checked_mul(MODEL_MATRIX.len())
 		.is_some_and(|expected_cells| results.len() == expected_cells);
+	let has_complete_semantic_matrix =
+		has_complete_matrix && results.iter().all(is_semantic_result);
 
-	if coverage_tier == ScoreTier::Official && !has_synthetic_results && has_complete_matrix {
+	if coverage_tier == ScoreTier::Official
+		&& !has_synthetic_results
+		&& has_complete_semantic_matrix
+	{
 		return Ok(diagnose_official_calibration(tasks, results)?.passed());
 	}
 
@@ -2601,6 +2606,110 @@ mod tests {
 		assert!(report.score.is_none());
 		assert!(report.quality_score.is_none());
 		assert_eq!(report.coverage.valid_tasks, 72);
+	}
+
+	#[test]
+	fn runtime_null_in_full_matrix_is_reportable_without_official_latent_or_ranking() {
+		let tasks = official_tasks();
+		let mut results = matrix_results(&tasks);
+
+		for result in &mut results {
+			result.provenance.synthetic = false;
+		}
+
+		let runtime = results
+			.iter_mut()
+			.find(|result| result.model == MODEL_MATRIX[0] && result.task_id == tasks[0].task_id)
+			.expect("full matrix must contain the selected cell");
+
+		runtime.status = ResultStatus::Failed;
+		runtime.evaluation = EvaluationOutcome::NotEvaluated;
+		runtime.task_score = None;
+		runtime.response = None;
+		runtime.failure = Some(ResultFailure {
+			kind: FailureKind::Timeout,
+			message: "fixture runtime timeout".to_owned(),
+			exit_code: None,
+			retryable: true,
+		});
+
+		let reports = MODEL_MATRIX
+			.iter()
+			.map(|model| {
+				scoring::score_calibration_model_with_context(
+					&tasks,
+					&results,
+					*model,
+					ScoreContext::default(),
+					ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+				)
+			})
+			.collect::<Result<Vec<_>, _>>()
+			.expect("incomplete calibration matrix must remain reportable");
+
+		assert_eq!(reports.len(), MODEL_MATRIX.len());
+		assert_eq!(reports[0].coverage.valid_tasks, 71);
+		assert_eq!(reports[0].coverage.invalid_tasks, 1);
+		assert_eq!(reports[0].coverage.missing_tasks, 0);
+		assert_eq!(
+			reports[0].domains.iter().map(|domain| domain.zero_failure_tasks).sum::<usize>(),
+			0
+		);
+
+		for report in &reports {
+			assert_eq!(report.official_eligible, scoring::FalseOnly);
+			assert_eq!(report.ranking_eligible, scoring::FalseOnly);
+			assert!(report.latent_ability.is_none());
+			assert!(!matches!(
+				report.descriptive_status,
+				scoring::CalibrationDescriptiveStatus::CompleteFixture
+			));
+		}
+
+		let serialized = serde_json::to_value(&reports).expect("diagnostic reports serialize");
+
+		assert_eq!(serialized.as_array().map(Vec::len), Some(MODEL_MATRIX.len()));
+		assert!(serialized.to_string().contains("coverage_only"));
+	}
+
+	#[test]
+	fn semantic_duplicate_or_unexpected_matrix_cells_still_fail_closed() {
+		let tasks = official_tasks();
+		let mut duplicate_results = matrix_results(&tasks);
+
+		for result in &mut duplicate_results {
+			result.provenance.synthetic = false;
+		}
+
+		duplicate_results[1] = duplicate_results[0].clone();
+
+		let duplicate_error = scoring::score_model_with_options(
+			&tasks,
+			&duplicate_results,
+			MODEL_MATRIX[1],
+			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+		)
+		.expect_err("semantic duplicate matrix cells must remain an error");
+
+		assert!(duplicate_error.to_string().contains("duplicate"));
+
+		let mut unexpected_results = matrix_results(&tasks);
+
+		for result in &mut unexpected_results {
+			result.provenance.synthetic = false;
+		}
+
+		unexpected_results[0].task_id = "unexpected-task".to_owned();
+
+		let unexpected_error = scoring::score_model_with_options(
+			&tasks,
+			&unexpected_results,
+			MODEL_MATRIX[1],
+			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+		)
+		.expect_err("semantic unexpected matrix cells must remain an error");
+
+		assert!(unexpected_error.to_string().contains("unexpected task or model"));
 	}
 
 	#[test]
