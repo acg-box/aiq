@@ -29,9 +29,9 @@ use crate::{
 
 /// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2";
+	"sha256:221931b2719348e418e067886ba46e4cebc6162927ea31ae0035ab6a8dc2dd82";
 
-const CONTROLLED_CONTRAST_TASK_SET_VERSION: &str = "1.0.5";
+const CONTROLLED_CONTRAST_TASK_SET_VERSION: &str = "1.0.6";
 const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
@@ -688,7 +688,7 @@ pub fn validate_core_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads the six controlled AIQ Core 1.0.5 contrast variants.
+/// Loads the six controlled AIQ Core 1.0.6 contrast variants.
 ///
 /// The caller supplies the expected canonical commitment digest. Contrast tasks
 /// are calibration-only and are not part of the 72-task core catalog.
@@ -2565,7 +2565,7 @@ mod tests {
 		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
-			"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2"
+			"sha256:221931b2719348e418e067886ba46e4cebc6162927ea31ae0035ab6a8dc2dd82"
 		);
 		assert_eq!(
 			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
