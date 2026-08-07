@@ -264,7 +264,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
 test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
   await page.goto('/');
   await page.locator('#results > details.evidence-notes > summary').click();
-  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
+  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).press('Enter');
   await expect(
     page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
   ).toBeVisible();
