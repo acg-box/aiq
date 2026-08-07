@@ -112,13 +112,14 @@ pub const MAX_STDIN_BYTES: usize = 256 * 1_024;
 /// Normalization contract for Codex `exec --json` item events.
 pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v1";
 
+// Current ChatGPT-bundled Codex 5.6 requires this host transport; aiq_benchmark,
+// denied roots, no-network policy, and the remaining disabled features stay the security boundary.
 const DISABLED_CODEX_FEATURES: &[&str] = &[
 	"apps",
 	"auth_elicitation",
 	"browser_use",
 	"browser_use_external",
 	"browser_use_full_cdp_access",
-	"code_mode_host",
 	"computer_use",
 	"goals",
 	"hooks",
@@ -2260,7 +2261,8 @@ pub(crate) fn normalize_codex_item(line: &[u8]) -> Option<NormalizedCodexItem> {
 
 	// Known presentation/reasoning items are not tools. A future item type is
 	// conservatively a tool so a Codex format addition cannot bypass a task budget.
-	let is_tool_call = !matches!(raw_type, "agent_message" | "message" | "reasoning" | "todo_list");
+	let is_tool_call =
+		!matches!(raw_type, "agent_message" | "message" | "error" | "reasoning" | "todo_list");
 
 	Some(NormalizedCodexItem {
 		version: CODEX_ITEM_ACCOUNTING_VERSION,
@@ -6100,6 +6102,12 @@ mod tests {
 			.collect::<BTreeSet<_>>();
 
 		assert_eq!(disabled, super::DISABLED_CODEX_FEATURES.iter().copied().collect());
+		assert!(disabled.contains("apps"));
+		assert!(disabled.contains("browser_use"));
+		assert!(disabled.contains("computer_use"));
+		assert!(disabled.contains("multi_agent"));
+		assert!(disabled.contains("plugins"));
+		assert!(!disabled.contains("code_mode_host"));
 		assert!(!disabled.contains("browser"));
 	}
 
@@ -7398,6 +7406,10 @@ mod tests {
 				Some((CodexItemPhase::Completed, "agent_message", false)),
 			),
 			(
+				r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
+				Some((CodexItemPhase::Completed, "error", false)),
+			),
+			(
 				r#"{"type":"item.completed","item":{"id":"future-1","type":"future_tool","payload":{}}}"#,
 				Some((CodexItemPhase::Completed, "future_tool", true)),
 			),
@@ -7436,6 +7448,19 @@ mod tests {
 
 		assert_eq!(accounting.steps, 3);
 		assert_eq!(accounting.tool_calls, 2);
+	}
+
+	#[test]
+	fn live_accounting_does_not_count_error_items_as_tool_calls() {
+		let mut accounting = LiveItemAccounting::default();
+
+		accounting.observe(
+			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#
+				.as_bytes(),
+		);
+
+		assert_eq!(accounting.steps, 1);
+		assert_eq!(accounting.tool_calls, 0);
 	}
 
 	#[cfg(unix)]
