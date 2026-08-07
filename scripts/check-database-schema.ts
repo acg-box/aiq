@@ -79,6 +79,119 @@ function checkSecurityDefinerSearchPaths(schema: string): void {
   }
 }
 
+function sqlSection(schema: string, start: string, endMarkers: readonly string[]): string {
+  const startIndex = schema.indexOf(start);
+  assert.notEqual(startIndex, -1, `The schema is missing ${start}.`);
+  const endIndexes = endMarkers
+    .map((marker) => schema.indexOf(marker, startIndex + start.length))
+    .filter((index) => index >= 0);
+  const endIndex = endIndexes.length > 0 ? Math.min(...endIndexes) : schema.length;
+  return schema.slice(startIndex, endIndex);
+}
+
+function checkActivePublicReadVersionFilters(schema: string): void {
+  const coreViewEnd = ['\n--\n-- Name:'];
+  const calibrationViewEnd = [
+    '\nCREATE VIEW public.',
+    '\nalter table aiq_private.calibration_runs',
+  ];
+  const sections = new Map([
+    [
+      'public_leaderboard',
+      sqlSection(schema, 'create view public.public_leaderboard', coreViewEnd),
+    ],
+    [
+      'public_run_results',
+      sqlSection(schema, 'create view public.public_run_results', coreViewEnd),
+    ],
+    ['public_runs', sqlSection(schema, 'create view public.public_runs', coreViewEnd)],
+    [
+      'public_scoring_versions',
+      sqlSection(schema, 'create view public.public_scoring_versions', coreViewEnd),
+    ],
+    [
+      'public_task_coverage',
+      sqlSection(schema, 'create view public.public_task_coverage', coreViewEnd),
+    ],
+    [
+      'public_trend_points',
+      sqlSection(schema, 'create function public.public_trend_points', coreViewEnd),
+    ],
+    [
+      'public_calibration_runs',
+      sqlSection(schema, 'CREATE VIEW public.public_calibration_runs', calibrationViewEnd),
+    ],
+    [
+      'public_calibration_results',
+      sqlSection(schema, 'CREATE VIEW public.public_calibration_results', calibrationViewEnd),
+    ],
+    [
+      'public_calibration_scores',
+      sqlSection(schema, 'CREATE VIEW public.public_calibration_scores', calibrationViewEnd),
+    ],
+    [
+      'public_model_efficiency',
+      sqlSection(schema, 'CREATE VIEW public.public_model_efficiency', calibrationViewEnd),
+    ],
+  ]);
+
+  const runFilters = [
+    /run\.task_set_id\s*=\s*'aiq-core'/,
+    /run\.task_set_version\s*=\s*'1\.0\.6'/,
+    /run\.benchmark_version\s*=\s*'aiq-core@1\.0\.6'/,
+    /run\.scoring_version\s*=\s*'1\.0\.6'/,
+  ];
+  for (const viewName of [
+    'public_leaderboard',
+    'public_run_results',
+    'public_runs',
+    'public_model_efficiency',
+  ]) {
+    const section = sections.get(viewName);
+    assert.ok(section, `The schema checker is missing ${viewName}.`);
+    for (const filter of runFilters) {
+      assert.match(section, filter, `${viewName} must expose only the active AIQ 1.0.6 tuple.`);
+    }
+  }
+
+  const leaderboard = sections.get('public_leaderboard');
+  assert.ok(leaderboard);
+  assert.match(
+    leaderboard,
+    /score\.scoring_version\s*=\s*'1\.0\.6'/,
+    'public_leaderboard must bind its snapshot to the active scoring version.',
+  );
+
+  const scoringVersions = sections.get('public_scoring_versions');
+  assert.ok(scoringVersions);
+  assert.match(scoringVersions, /benchmark_version\s*=\s*'aiq-core@1\.0\.6'/);
+  assert.match(scoringVersions, /scoring_version\s*=\s*'1\.0\.6'/);
+
+  const taskCoverage = sections.get('public_task_coverage');
+  assert.ok(taskCoverage);
+  assert.match(taskCoverage, /scoring\.benchmark_version\s*=\s*'aiq-core@1\.0\.6'/);
+  assert.match(taskCoverage, /scoring\.scoring_version\s*=\s*'1\.0\.6'/);
+
+  const trend = sections.get('public_trend_points');
+  assert.ok(trend);
+  assert.ok(
+    (trend.match(/run\.task_set_id\s*=\s*'aiq-core'/g) ?? []).length >= 2,
+    'public_trend_points must filter both its range bounds and observations to AIQ 1.0.6.',
+  );
+
+  for (const viewName of [
+    'public_calibration_runs',
+    'public_calibration_results',
+    'public_calibration_scores',
+  ]) {
+    const section = sections.get(viewName);
+    assert.ok(section, `The schema checker is missing ${viewName}.`);
+    assert.match(section, /run\.task_set_id\s*=\s*'aiq-core'/);
+    assert.match(section, /run\.task_set_version\s*=\s*'1\.0\.6'/);
+    assert.match(section, /run\.scoring_version\s*=\s*'1\.0\.6'/);
+  }
+}
+
 function checkWorkspaceIntegrityFailureClassification(schema: string): void {
   const adapterValidator =
     schema.match(
@@ -152,8 +265,8 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
-  const catalogReleaseDigest = '496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d';
+  const catalogDigest = '7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1';
+  const catalogReleaseDigest = '7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c';
   const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
   const controlledTaskTreeDigest =
     '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
@@ -183,14 +296,14 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     schema,
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
-  assert.match(schema, /task_set\.task_set_version = '1\.0\.5'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.5'/);
-  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.5'/);
+  assert.match(schema, /task_set\.task_set_version = '1\.0\.6'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.6'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.6'/);
   assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
-  assert.match(syntheticDemo, /'aiq-core@1\.0\.5'/);
+  assert.match(syntheticDemo, /'aiq-core@1\.0\.6'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.5', '1\.0\.5'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.6', '1\.0\.6'/,
   );
 
   const pricingValidator =
@@ -281,7 +394,7 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
 }
 
 function checkReviewedTaskSetIdentity(schema: string): void {
-  const taskSetIdentity = 'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05';
+  const taskSetIdentity = 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -335,9 +448,9 @@ function checkReviewedTaskSetIdentity(schema: string): void {
 }
 
 export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
-  const taskSetIdentity = 'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05';
+  const taskSetIdentity = 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82';
   const reviewedCommitmentsIdentity =
-    'sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94';
+    'sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211';
   const fixture = jsonObject(value);
   assert.deepEqual(Object.keys(fixture).toSorted(), [
     'schema_version',
@@ -348,7 +461,7 @@ export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
   ]);
   assert.equal(fixture.schema_version, 'aiq.production-task-commitments.v1');
   assert.equal(fixture.task_set_id, 'aiq-core');
-  assert.equal(fixture.task_set_version, '1.0.5');
+  assert.equal(fixture.task_set_version, '1.0.6');
   assert.equal(fixture.task_set_identity_sha256, taskSetIdentity);
   const tasks = unknownArray(fixture.tasks);
   assert.equal(tasks.length, 72);
@@ -407,12 +520,12 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   assert.match(
     initializer,
-    /const TASK_SET_IDENTITY =\s*'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'/,
+    /const TASK_SET_IDENTITY =\s*'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'/,
     'The initializer must declare the native task-set identity.',
   );
   assert.match(
     initializer,
-    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94'/,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211'/,
     'The initializer must declare the reviewed task commitment manifest identity.',
   );
   assert.match(
@@ -660,7 +773,11 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /score ->> 'tier' = 'synthetic_complete' and not is_synthetic/);
   assert.match(schema, /score ->> 'tier' = 'official' and is_synthetic/);
   assert.match(schema, /batch\.synthetic[\s\S]{0,120}return false;/);
-  assert.match(syntheticDemo, /'synthetic_complete'/);
+  assert.match(
+    syntheticDemo,
+    /["']synthetic_complete["']/,
+    'The synthetic scoring policy must retain the synthetic_complete status definition.',
+  );
   assert.doesNotMatch(schema, /create table public\.aiq_/);
   const databaseSources = `${schema}\n${syntheticDemo}`;
   for (const contractName of [
@@ -701,6 +818,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   );
   checkSecurityDefinerSearchPaths(schema);
   checkWorkspaceIntegrityFailureClassification(schema);
+  checkActivePublicReadVersionFilters(schema);
   checkCurrentReleaseAndPricing(schema, syntheticDemo);
   checkReviewedTaskSetIdentity(schema);
   checkReviewedEvaluatorIdentity(schema);
@@ -899,7 +1017,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /outcome aiq_private\.result_outcome not null/);
   assert.match(
     schema,
-    /constraint calibration_task_results_outcome_score check \([\s\S]{0,1800}\(outcome='correct' and task_score is not null and task_score=1\)[\s\S]{0,300}\(outcome='partial' and task_score is not null and task_score>0 and task_score<1\)[\s\S]{0,400}'incorrect','timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'[\s\S]{0,140}task_score=0\)[\s\S]{0,160}outcome in \('invalid','missing','not_applicable'\) and task_score is null/i,
+    /constraint calibration_task_results_outcome_score check \([\s\S]{0,1800}\(outcome='correct' and task_score is not null and task_score=1\)[\s\S]{0,300}\(outcome='partial' and task_score is not null and task_score>0 and task_score<1\)[\s\S]{0,400}\(outcome='incorrect' and task_score is not null and task_score=0\)[\s\S]{0,300}'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'[\s\S]{0,180}task_score is null\)[\s\S]{0,160}outcome in \('invalid','missing','not_applicable'\) and task_score is null/i,
     'Calibration outcomes must retain their exact score bindings.',
   );
   const failureBinding =
@@ -1074,7 +1192,7 @@ export async function checkDatabaseSchema(
     readFile(join(repositoryRoot, 'databases/schema.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/synthetic-demo.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8'),
-    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json'), 'utf8').then(
+    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.6-task-commitments.json'), 'utf8').then(
       (bytes) => JSON.parse(bytes) as unknown,
     ),
   ]);

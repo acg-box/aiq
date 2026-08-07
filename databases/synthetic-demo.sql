@@ -10,24 +10,33 @@ insert into aiq_private.aiq_scoring_versions (
   is_published, published_at
 )
 values (
-  '1.0.5',
-  'aiq.score-snapshot.v1',
-  'aiq-core@1.0.5',
-  'AIQ fixed-fixture score 1.0.5',
-  'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
+  '1.0.6',
+  'aiq.score-snapshot.v2',
+  'aiq-core@1.0.6',
+  'AIQ calibrated latent score 2.0',
+  'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is a diagnostic and is not the Official ranking score.',
   array[
-    'Give each of the ten domains weight 0.1.',
-    'Keep the frozen domain and difficulty quotas.',
+    'Jointly estimate one Rasch item difficulty per task and one model location per configuration from the complete 17-configuration by 72-task calibration matrix, with a centered item scale.',
+    'Estimate each model theta with fractional task credit and a weak N(0, 3²) MAP prior; report conditional Wald uncertainty given the released item bank.',
+    'Publish 100 × logistic(theta) as predicted success on an average calibrated task; do not call it an IQ norm or a 150-point scale.',
+    'Retain the equal-domain criterion score, item information, theta, and standard error as separate evidence.',
+    'Keep the frozen domain and difficulty quotas until a new calibration pilot proves a task-set replacement is needed.',
     'Keep missing and invalid tasks in completion accounting and block Official publication.',
     'Classify complete synthetic fixtures as descriptive Synthetic Complete, never Official or ranking eligible.',
-    'Treat attributable agent, model, tool, timeout, budget, and wrong-artifact failures as valid zero scores.',
-    'Treat benchmark infrastructure failures as invalid and audit a rerun.'
+    'Exclude agent, model, tool, timeout, budget, and wrong-artifact runtime failures from semantic scores; disclose them as observed runtime issues.',
+    'Treat benchmark infrastructure failures as invalid observed results and audit a rerun; reserve missing for cells with no result record.',
+    'Define strict pass rate as strict successes divided by all attributable tasks with a semantic task score; partial scores remain in the denominator and Wilson bounds use the same sample.'
   ],
-  'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use descriptive observed domain means and fixed-fixture completion bounds without ranking eligibility.',
-  'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
-  'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+  'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use the raw criterion diagnostic and fixed-fixture completion bounds without ranking eligibility.',
+  'Observed runtime and infrastructure failures have no semantic task score. They are disclosed separately, while missing cells have no result record and require an audited rerun before Official publication.',
+  'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank and is not a population confidence interval.',
   '{
-    "aggregate":"mean_of_domain_means",
+    "aggregate":"rasch_fractional_joint_map",
+    "measurement_version":"2.0.0",
+    "measurement_method":"rasch_fractional_joint_map_v1",
+    "official_score":"100 * logistic(theta)",
+    "calibration_matrix":"17_model_configurations_by_72_tasks",
+    "criterion_diagnostic":"100 * mean_of_equal_domain_means",
     "coverage_multiplier":false,
     "domain_weight":0.1,
     "official_valid_task_count":72,
@@ -35,13 +44,13 @@ values (
     "synthetic_complete":{
       "valid_task_count":72,
       "covered_domain_count":10,
-      "official_aiq":null,
+      "score":null,
       "ranking_eligible":false
     }
   }'::jsonb,
   '{"central_mass":0.95,"deviation_scale":1.3,"method":"finite_cluster_calibrated_percentile_sensitivity_v1","samples":10000,"scope":"fixed_fixture_calibrated_sensitivity","synthetic":false,"universal_confidence_interval":false}'::jsonb,
   '{
-    "attributable_failure_score":0,
+    "runtime_failure_score":null,
     "infrastructure_failure_score":null,
     "missing_blocks_official":true,
     "provisional_ranked":false,
@@ -59,12 +68,12 @@ insert into aiq_private.aiq_task_sets (
 )
 values (
   'aiq-core',
-  '1.0.5',
+  '1.0.6',
   'AIQ Core 72',
   72,
   10,
-  encode(extensions.digest('aiq-core-catalog-1.0.5', 'sha256'), 'hex'),
-  encode(extensions.digest('aiq-core-hidden-payload-1.0.5', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core-catalog-1.0.6', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core-hidden-payload-1.0.6', 'sha256'), 'hex'),
   'committed',
   true,
   '2026-07-22T16:00:00Z',
@@ -121,20 +130,20 @@ insert into aiq_private.aiq_task_catalog (
 )
 select
   'aiq-core',
-  '1.0.5',
+  '1.0.6',
   replace(domain, '_', '-') || '-' || lpad(domain_number::text, 2, '0'),
-  '1.0.5',
+  '1.0.6',
   initcap(replace(domain, '_', ' ')) || ' task ' || domain_number,
   domain,
   difficulty,
   'Synthetic public metadata for deterministic local contract validation.',
   'deterministic_fixture',
-  '1.0.5',
+  '1.0.6',
   '["filesystem_read","filesystem_write","web_search"]'::jsonb,
   '{"wall_time_seconds":300,"tool_calls":40}'::jsonb,
   array['synthetic', domain, difficulty],
   encode(extensions.digest(domain || ':' || domain_number || ':fixture', 'sha256'), 'hex'),
-  'supabase-private://benchmark-tasks/aiq-core/1.0.5/'
+  'supabase-private://benchmark-tasks/aiq-core/1.0.6/'
     || replace(domain, '_', '-') || '-' || lpad(domain_number::text, 2, '0') || '.json',
   'The hidden fixture is commitment-addressed and is not in a public view.',
   true
@@ -248,7 +257,7 @@ runs as (
         convert_to(
           'aiq.model-run-identity.v1' || chr(10)
           || 'run_' || encode(
-            extensions.digest('synthetic-complete-batch', 'sha256'),
+            extensions.digest('synthetic-provisional-batch', 'sha256'),
             'hex'
           ) || chr(10)
           || model.model_config_id,
@@ -271,15 +280,15 @@ insert into aiq_private.aiq_runs (
 )
 select
   run.run_id,
-  'run_' || encode(extensions.digest('synthetic-complete-batch', 'sha256'), 'hex'),
+  'run_' || encode(extensions.digest('synthetic-provisional-batch', 'sha256'), 'hex'),
   run.run_id,
   'manual',
   run.scheduled_for,
   'UTC',
   'aiq-core',
-  '1.0.5',
-  'aiq-core@1.0.5',
-  '1.0.5',
+  '1.0.6',
+  'aiq-core@1.0.6',
+  '1.0.6',
   run.model_config_id,
   node.node_id,
   encode(extensions.digest(node.node_id || ':capability:v1', 'sha256'), 'hex'),
@@ -289,7 +298,7 @@ select
   false,
   run.scheduled_for,
   run.scheduled_for + interval '18 minutes',
-  encode(extensions.digest('aiq-core:prompt-set:1.0.5', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core:prompt-set:1.0.6', 'sha256'), 'hex'),
   'a7d91f4',
   'us-east-1',
   '{"synthetic":true,"trust_layer":"unverified","source":"deterministic_seed"}'::jsonb
@@ -301,7 +310,7 @@ with ordered_tasks as (
     catalog.*,
     row_number() over (order by catalog.domain, catalog.task_id) as task_number
   from aiq_private.aiq_task_catalog catalog
-  where catalog.task_set_id = 'aiq-core' and catalog.task_set_version = '1.0.5'
+  where catalog.task_set_id = 'aiq-core' and catalog.task_set_version = '1.0.6'
 )
 insert into aiq_private.aiq_task_results (
   result_id, source_result_id, run_id, task_id, task_version, domain,
@@ -334,17 +343,17 @@ select
     else 'correct'::aiq_private.result_outcome
   end,
   case
-    when (task.task_number + model.matrix_order) % 19 = 0 then 0
+    when (task.task_number + model.matrix_order) % 19 = 0 then null
     when (task.task_number + model.matrix_order) % 7 = 0 then 0.6
     else 1
   end,
-  '1.0.5',
+  '1.0.6',
   case when (task.task_number + model.matrix_order) % 19 = 0
     then 'SYNTHETIC_TIMEOUT' end,
   case when (task.task_number + model.matrix_order) % 19 = 0
     then 'timeout' end,
   case when (task.task_number + model.matrix_order) % 19 = 0
-    then 'Synthetic timeout used to demonstrate a valid zero score.' end,
+    then 'Synthetic timeout used to demonstrate an observed runtime issue without a semantic score.' end,
   case when (task.task_number + model.matrix_order) % 19 = 0
     then true end,
   9000 + task.task_number * 137,
@@ -367,7 +376,7 @@ cross join ordered_tasks task;
 
 with constants as (
   select
-    'run_' || encode(extensions.digest('synthetic-complete-batch', 'sha256'), 'hex')
+    'run_' || encode(extensions.digest('synthetic-provisional-batch', 'sha256'), 'hex')
       as batch_id,
     encode(extensions.digest('synthetic-full-matrix-package', 'sha256'), 'hex')
       as package_sha256,
@@ -452,7 +461,7 @@ signed_results as (
       'evaluation', case (row.result).outcome
         when 'correct' then 'correct'
         when 'partial' then 'partial'
-        else 'incorrect'
+      else 'not_evaluated'
       end,
       'task_score', (row.result).task_score,
       'response', null,
@@ -533,7 +542,7 @@ select
         'timezone', 'UTC'
       ),
       'task_set_hash', 'sha256:' || task_set.catalog_sha256,
-      'scoring_version', '1.0.5',
+      'scoring_version', '1.0.6',
       'models', signed_models.value,
       'execution_concurrency', 1,
       'started_unix_ms', 1784894400000,
@@ -569,7 +578,7 @@ cross join signed_models
 cross join signed_results
 cross join evaluator_bundle_identity
 cross join aiq_private.aiq_task_sets task_set
-where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.5';
+where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.6';
 
 with artifact as (
   select
@@ -614,17 +623,17 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   package.matrix_batch_id, package.package_sha256, package.content_hash,
-  package.normalization_digest, package.node_id, 'aiq-core', '1.0.5', '1.0.5',
+  package.normalization_digest, package.node_id, 'aiq-core', '1.0.6', '1.0.6',
   true, null, null,
-  'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.5',
+  'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.6',
   'sha256:' || encode(
-    extensions.digest('aiq-core:prompt-set:1.0.5', 'sha256'), 'hex'
+    extensions.digest('aiq-core:prompt-set:1.0.6', 'sha256'), 'hex'
   ),
-  '1.0.5', 'a7d91f4', 'us-east-1',
+  '1.0.6', 'a7d91f4', 'us-east-1',
   1784894400000, 1784894400000, 1784895480000, 1
 from aiq_private.aiq_result_packages package
 cross join aiq_private.aiq_task_sets task_set
-where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.5';
+where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.6';
 
 insert into aiq_private.aiq_package_runs (
   package_sha256, run_id, model_config_id, matrix_order
@@ -639,7 +648,11 @@ with domain_means as (
   select
     result.run_id,
     result.domain,
-    avg(result.task_score)::numeric as domain_score
+    avg(result.task_score)::numeric as domain_score,
+    count(*) filter (where result.task_score is not null)::integer as valid_in_domain,
+    count(*) filter (where result.outcome in (
+      'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact','invalid'
+    ))::integer as invalid_in_domain
   from aiq_private.aiq_task_results result
   group by result.run_id, result.domain
 ),
@@ -647,18 +660,38 @@ run_scores as (
   select
     run_id,
     avg(domain_score) * 100 as fixed_score,
-    jsonb_object_agg(domain, round(domain_score, 5) order by domain) as domain_scores
+    jsonb_object_agg(domain, round(domain_score, 5) order by domain) as domain_scores,
+    sum(valid_in_domain)::integer as valid_task_count,
+    count(*) filter (where valid_in_domain > 0)::integer as covered_domain_count,
+    min(valid_in_domain)::integer as minimum_domain_count,
+    sum(invalid_in_domain)::integer as invalid_task_count
   from domain_means
   group by run_id
+),
+scored as (
+  select
+    run_scores.*,
+    case
+      when valid_task_count = 72
+        and covered_domain_count = 10
+        and invalid_task_count = 0
+        then 'synthetic_complete'
+      when valid_task_count between 60 and 71
+        and covered_domain_count = 10
+        and minimum_domain_count >= 4
+        then 'provisional'
+      else 'coverage_only'
+    end as score_status
+  from run_scores
 ),
 binary_inputs as (
   select
     result.run_id,
-    count(*) filter (where result.task_score in (0, 1))::numeric as sample_size,
+    count(*) filter (where result.task_score is not null)::numeric as sample_size,
     count(*) filter (where result.task_score = 1)::numeric as successes,
     count(*) filter (where result.task_score = 1)::numeric
       / nullif(
-        count(*) filter (where result.task_score in (0, 1))::numeric,
+        count(*) filter (where result.task_score is not null)::numeric,
         0
       ) as proportion,
     1.959963984540054::numeric as z
@@ -686,7 +719,7 @@ binary_diagnostics as (
   from binary_inputs
 )
 insert into aiq_private.aiq_score_snapshots (
-  score_snapshot_id, run_id, scoring_version, score_status, fixed_fixture_aiq,
+  score_snapshot_id, run_id, scoring_version, score_status, quality_score,
   task_resampling_low, task_resampling_high, completion_bound_low,
   completion_bound_high, micro_accuracy, micro_wilson_low, micro_wilson_high,
   valid_task_count, expected_task_count, covered_domain_count,
@@ -703,28 +736,32 @@ select
     || substr(md5(run.run_id || ':score'), 21, 12)
   )::uuid,
   run.run_id,
-  '1.0.5',
-  'synthetic_complete',
-  round(score.fixed_score, 3),
-  greatest(0, round(score.fixed_score - 2, 3)),
-  least(100, round(score.fixed_score + 2, 3)),
+  '1.0.6',
+  score.score_status::aiq_private.score_status,
+  case when score.score_status = 'coverage_only' then null else round(score.fixed_score, 3) end,
+  case when score.score_status = 'coverage_only' then null
+    else greatest(0, round(score.fixed_score - 2, 3)) end,
+  case when score.score_status = 'coverage_only' then null
+    else least(100, round(score.fixed_score + 2, 3)) end,
   round(score.fixed_score, 3),
   round(score.fixed_score, 3),
   round(diagnostic.proportion, 6),
   round(diagnostic.wilson_low, 6),
   round(diagnostic.wilson_high, 6),
+  score.valid_task_count,
   72,
-  72,
+  score.covered_domain_count,
   10,
-  10,
-  0,
+  score.invalid_task_count,
   0,
   0,
   score.domain_scores || '{"synthetic":true}'::jsonb,
   jsonb_build_object(
     'method', 'finite_cluster_calibrated_percentile_sensitivity_v1',
-    'lower', greatest(0, round(score.fixed_score - 2, 3)),
-    'upper', least(100, round(score.fixed_score + 2, 3)),
+    'lower', case when score.score_status = 'coverage_only' then null
+      else greatest(0, round(score.fixed_score - 2, 3)) end,
+    'upper', case when score.score_status = 'coverage_only' then null
+      else least(100, round(score.fixed_score + 2, 3)) end,
     'central_mass', 0.95,
     'samples', 10000,
     'seed', 71783153620529
@@ -736,7 +773,7 @@ select
     'hex'
   )
 from aiq_private.aiq_runs run
-join run_scores score on score.run_id = run.run_id
+join scored score on score.run_id = run.run_id
 join binary_diagnostics diagnostic on diagnostic.run_id = run.run_id;
 
 insert into aiq_private.aiq_submission_inbox (
@@ -806,7 +843,7 @@ cross join (
 ) event(event_type)
 where false;
 
--- The complete synthetic demonstration remains populated as terminal,
+-- The provisional synthetic demonstration remains populated as terminal,
 -- unverified seed history. It is not claimable work, and no fake signature,
 -- verifier attestation, package, run, or score is marked verified or published.
 
@@ -837,7 +874,7 @@ begin
     created_at, expires_at
   ) values (
     package_id, 1, 'aiq.distributed-task-package.v1', package_id || ':1',
-    package_hash, atlas_node, 'aiq-core', '1.0.5', 4, 2048,
+    package_hash, atlas_node, 'aiq-core', '1.0.6', 4, 2048,
     'ed25519', repeat('9', 128), 'unverified', true,
     '2026-07-24T14:00:00Z', '2026-07-25T14:00:00Z'
   );

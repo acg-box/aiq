@@ -197,9 +197,9 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   const ranking = page.getByRole('region', { name: 'Top configurations' });
   await expect(ranking).toBeVisible();
   await expect(ranking.getByRole('listitem')).toHaveCount(5);
-  await expect(ranking).toContainText('Synthetic preview · not Official');
+  await expect(ranking).toContainText('Synthetic quality preview · not Official');
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const chart = page.getByRole('region', { name: 'Quality score by configuration' });
   await expect(chart).toBeVisible();
   await chart.getByText('Read 17 configuration values', { exact: true }).click();
   const values = chart.getByRole('region', { name: 'AIQ configuration values' });
@@ -221,19 +221,9 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   await expect(page.locator('.task-list > article')).toHaveCount(72);
   await expect(page.locator('.task-list')).toContainText('Codex adapter elapsed: unavailable');
   await expect(page.locator('.task-list')).not.toContainText('runner-observed');
-  const failedTasks = page.locator('.task-list > article').filter({
-    has: page.locator('.result-runtime_issue'),
-  });
-  const failedTaskCount = await failedTasks.count();
-  expect(failedTaskCount).toBeGreaterThan(0);
-  await expect(failedTasks.locator('.result-explanation')).toHaveCount(failedTaskCount);
-  expect(
-    (await failedTasks.locator('.result-explanation code').allTextContents()).every((code) =>
-      /^(AGENT_TIMEOUT|MODEL_TIMEOUT|TOOL_TIMEOUT)$/.test(code),
-    ),
-  ).toBe(true);
-  await expect(failedTasks.locator('.result-explanation p')).toHaveCount(failedTaskCount);
-  await expect(failedTasks.locator('.result-explanation small')).toHaveCount(failedTaskCount);
+  await expect(page.locator('.task-list .result-completed')).toHaveCount(72);
+  await expect(page.locator('.task-list .result-runtime_issue')).toHaveCount(0);
+  await expect(page.locator('.task-list .result-explanation')).toHaveCount(0);
   await expectNoDocumentOverflow(page, testInfo);
   await expectAccessible(page);
   expect(runtimeFailures).toEqual([]);
@@ -245,19 +235,17 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/');
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const chart = page.getByRole('region', { name: 'Quality score by configuration' });
   const bars = chart.getByRole('button', { name: 'Bars + interval', exact: true });
   const dots = chart.getByRole('button', { name: 'Dot + interval', exact: true });
   const ordered = chart.getByRole('button', { name: 'Ordered + interval', exact: true });
   await expect(dots).toHaveAttribute('aria-pressed', 'true');
   await expect(bars).toHaveAttribute('aria-pressed', 'false');
-  await expect(
-    chart.getByRole('img', { name: /Dots with task-sensitivity intervals/ }),
-  ).toBeVisible();
+  await expect(chart.getByRole('img', { name: /Dots with task-mix sensitivity/ })).toBeVisible();
   await page.setViewportSize({ width: 620, height: 900 });
   await expect(ordered).toHaveAttribute('aria-pressed', 'true');
   await expect(
-    chart.getByRole('img', { name: /Ordered horizontal bars with task-sensitivity intervals/ }),
+    chart.getByRole('img', { name: /Ordered horizontal bars with task-mix sensitivity/ }),
   ).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
   await dots.click();
@@ -265,27 +253,27 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await bars.click();
   await expect(bars).toHaveAttribute('aria-pressed', 'true');
   await expect(
-    chart.getByRole('img', { name: /Zero-baseline bars with task-sensitivity intervals/ }),
+    chart.getByRole('img', { name: /Zero-baseline bars with task-mix sensitivity/ }),
   ).toBeVisible();
   await ordered.click();
   await expect(ordered).toHaveAttribute('aria-pressed', 'true');
   await expect(bars).toHaveAttribute('aria-pressed', 'false');
   await expect(
-    chart.getByRole('img', { name: /Ordered horizontal bars with task-sensitivity intervals/ }),
+    chart.getByRole('img', { name: /Ordered horizontal bars with task-mix sensitivity/ }),
   ).toBeVisible();
   await chart.getByRole('button', { name: 'Sol', exact: true }).click();
   await expect(chart.getByText('Showing 6 Sol configurations as ordered.')).toBeAttached();
   const selected = chart.locator('.matrix-encoding-note[aria-live="polite"]');
-  await expect(selected).toContainText('task-sensitivity interval');
+  await expect(selected).toContainText('task-mix sensitivity');
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(selected).toContainText('coverage 100.0%');
-  await expect(selected).toContainText('scoring 1.0.5 · synthetic');
+  await expect(selected).toContainText('scoring 1.0.6 · synthetic');
   const valuesDisclosure = chart.getByText('Read 6 configuration values', { exact: true });
   await valuesDisclosure.click();
   const valuesTable = chart.getByRole('region', { name: 'AIQ configuration values' });
   await expect(valuesTable).toBeVisible();
   for (const heading of [
-    'Task sensitivity',
+    'Primary interval',
     'n',
     'Coverage',
     'Runtime',
@@ -300,7 +288,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   }
   const outcomeCard = page.getByRole('region', { name: 'Domain profile' });
   await expect(
-    outcomeCard.getByRole('img', { name: 'AIQ score by benchmark domain' }),
+    outcomeCard.getByRole('img', { name: 'Average task score by benchmark domain' }),
   ).toBeVisible();
   await expect(outcomeCard.getByText('Runtime / invalid', { exact: true })).toBeVisible();
   await expect(outcomeCard.getByText('Missing / N/A', { exact: true })).toBeVisible();
@@ -316,7 +304,7 @@ test('matrix points remain visible while the pointer moves across them', async (
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?matrixEncoding=dots#results');
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const chart = page.getByRole('region', { name: 'Quality score by configuration' });
   await expect(chart.locator('.matrix-chart-svg svg')).toBeVisible();
 
   const pointPositions = await chart.locator('.matrix-chart-svg svg path').evaluateAll((paths) => {
@@ -372,7 +360,7 @@ test('synthetic calibration evidence stays visibly separate and selectable', asy
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(2);
-  await expect(page.getByText('v1.0.5', { exact: true })).toBeVisible();
+  await expect(page.getByText('v1.0.6', { exact: true })).toBeVisible();
   await expect(
     page.getByText('Adapter invocation: 0/0 attempted · elapsed observed 0'),
   ).toBeVisible();
@@ -446,7 +434,7 @@ test('a user can discover and inspect a missing-result run from history', async 
   const missingRun = history.getByRole('row').filter({ hasText: 'Coverage-only · not ranked' });
   await expect(missingRun).toHaveCount(1);
   await expect(missingRun).toContainText('14');
-  await expect(missingRun.getByText('AIQ', { exact: true })).toBeVisible();
+  await expect(missingRun.getByText('Quality score', { exact: true }).first()).toBeVisible();
   await expect(missingRun.getByText('Coverage', { exact: true })).toBeVisible();
   await expect(missingRun.getByText('Runtime issues', { exact: true })).toBeVisible();
   await expect(missingRun.getByText('Missing', { exact: true })).toBeVisible();
@@ -552,7 +540,7 @@ test('time range and comparison filters update the visible result', async ({ pag
   await expect(page).toHaveURL('/#compare');
   await expect(page.getByLabel('Selected run context status')).toHaveCount(0);
   const firstModel = page.getByLabel('First configuration');
-  const difference = page.getByRole('heading', { name: /AIQ points apart/ });
+  const difference = page.getByRole('heading', { name: /points apart/ });
   const initialDifference = await difference.textContent();
   await firstModel.selectOption({ index: 3 });
   await expect(difference).not.toHaveText(initialDifference ?? '');
@@ -581,9 +569,9 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/trends?range=all');
-  const chart = page.getByRole('img', { name: 'AIQ score history' });
+  const chart = page.getByRole('img', { name: 'Quality score history' });
   await expect(chart).toBeVisible();
-  await expect(chart.getByText('AIQ index (0–100)', { exact: true })).toBeVisible();
+  await expect(chart.getByText('Quality score (0–100)', { exact: true })).toBeVisible();
   await expect(chart.getByText('Observation date (UTC)', { exact: true })).toBeVisible();
   const scoreLabels = await chart.locator('svg text').allTextContents();
   expect(scoreLabels.some((label) => /^\d+(?:\.\d)?$/.test(label))).toBe(true);
@@ -598,7 +586,7 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   await expect(barMode).toHaveAttribute('aria-pressed', 'true');
   await expect(chart).toHaveAttribute(
     'aria-label',
-    'AIQ score history. Grouped bars with per-series aligned task-sensitivity intervals.',
+    'Quality score history. Grouped bars with provenance-matched intervals.',
   );
   const chartSvg = chart.locator('svg');
   await expect(chartSvg).toBeVisible();
@@ -693,7 +681,7 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
   await expect(page.getByRole('heading', { level: 1, name: 'Synthetic benchmark' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const chart = page.getByRole('region', { name: 'Quality score by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -703,7 +691,7 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
   ).toHaveAttribute('aria-pressed', 'true');
   await expect(
     chart.getByRole('img', {
-      name: /Ordered horizontal bars with task-sensitivity intervals compare AIQ for 17 configurations/,
+      name: /Ordered horizontal bars with task-mix sensitivity compare quality score for 17 configurations/,
     }),
   ).toBeVisible();
   await expect(
@@ -815,6 +803,7 @@ test('light and dark themes persist and remain accessible across public pages', 
   browserName,
   page,
 }, testInfo) => {
+  test.slow();
   test.skip(
     browserName !== 'chromium',
     'Theme page-by-page acceptance is captured once in Chromium.',

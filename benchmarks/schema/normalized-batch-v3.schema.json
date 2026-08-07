@@ -53,7 +53,7 @@
       "const": "aiq-core"
     },
     "task_set_version": {
-      "const": "1.0.5"
+      "const": "1.0.6"
     },
     "task_set_hash": {
       "$ref": "#/$defs/sha256"
@@ -89,13 +89,13 @@
       ]
     },
     "benchmark_version": {
-      "const": "aiq-core@1.0.5"
+      "const": "aiq-core@1.0.6"
     },
     "prompt_set_digest": {
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "const": "1.0.5"
+      "const": "1.0.6"
     },
     "runner_commit": {
       "type": "string",
@@ -291,7 +291,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7"
+          "const": "sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
@@ -1176,10 +1176,12 @@
       "required": [
         "schema_version",
         "scoring_version",
+        "measurement_version",
         "model",
         "tier",
-        "official_aiq",
-        "conditional_observed_aiq",
+        "score",
+        "quality_score",
+        "latent_ability",
         "ranking_eligible",
         "completion_bounds",
         "task_resampling_sensitivity_interval",
@@ -1192,10 +1194,13 @@
       ],
       "properties": {
         "schema_version": {
-          "const": "aiq.score-report.v1"
+          "const": "aiq.score-report.v2"
         },
         "scoring_version": {
-          "const": "1.0.5"
+          "const": "1.0.6"
+        },
+        "measurement_version": {
+          "const": "2.0.0"
         },
         "model": {
           "$ref": "#/$defs/modelConfig"
@@ -1209,11 +1214,17 @@
             "not_applicable"
           ]
         },
-        "official_aiq": {
+        "score": {
           "$ref": "#/$defs/nullableAiqScore"
         },
-        "conditional_observed_aiq": {
+        "quality_score": {
           "$ref": "#/$defs/nullableAiqScore"
+        },
+        "latent_ability": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/latentAbility" }
+          ]
         },
         "ranking_eligible": {
           "const": false
@@ -1275,7 +1286,7 @@
           }
         },
         "rule": {
-          "const": "AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability."
+          "const": "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures."
         }
       },
       "allOf": [
@@ -1295,10 +1306,10 @@
               }
             ],
             "properties": {
-              "official_aiq": {
+              "score": {
                 "$ref": "#/$defs/aiqScore"
               },
-              "conditional_observed_aiq": {
+              "quality_score": {
                 "$ref": "#/$defs/aiqScore"
               },
               "completion_bounds": {
@@ -1326,10 +1337,10 @@
               }
             ],
             "properties": {
-              "official_aiq": {
+              "score": {
                 "type": "null"
               },
-              "conditional_observed_aiq": {
+              "quality_score": {
                 "$ref": "#/$defs/aiqScore"
               },
               "ranking_eligible": {
@@ -1355,10 +1366,10 @@
           },
           "then": {
             "properties": {
-              "official_aiq": {
+              "score": {
                 "type": "null"
               },
-              "conditional_observed_aiq": {
+              "quality_score": {
                 "$ref": "#/$defs/aiqScore"
               },
               "completion_bounds": {
@@ -1381,10 +1392,10 @@
           },
           "then": {
             "properties": {
-              "official_aiq": {
+              "score": {
                 "type": "null"
               },
-              "conditional_observed_aiq": {
+              "quality_score": {
                 "type": "null"
               },
               "completion_bounds": {
@@ -1637,15 +1648,18 @@
     },
     "binaryMicroDiagnostic": {
       "type": "object",
+      "description": "Strict-pass diagnostic: successes are task scores equal to 1; sample_size includes every attributable task with a valid semantic task score, including partial scores. Missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. The Wilson interval uses this same sample_size.",
       "additionalProperties": false,
       "required": ["sample_size", "successes", "proportion", "wilson_lower", "wilson_upper"],
       "properties": {
         "sample_size": {
+          "description": "All attributable tasks with a valid semantic task score; partial scores are included. Runtime-failed results are excluded.",
           "type": "integer",
           "minimum": 0,
           "maximum": 72
         },
         "successes": {
+          "description": "Valid semantic task scores equal to exactly 1.",
           "type": "integer",
           "minimum": 0,
           "maximum": 72
@@ -1659,6 +1673,42 @@
         "wilson_upper": {
           "$ref": "#/$defs/nullableUnitInterval"
         }
+      }
+    },
+    "latentAbility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "calibration_digest",
+        "theta",
+        "standard_error",
+        "theta_ci_low",
+        "theta_ci_high",
+        "observed_information",
+        "score",
+        "score_ci_low",
+        "score_ci_high",
+        "reliability_status",
+        "items_used",
+        "calibration_task_count",
+        "calibration_model_count"
+      ],
+      "properties": {
+        "method": { "const": "rasch_fractional_joint_map_v1" },
+        "calibration_digest": { "$ref": "#/$defs/sha256" },
+        "theta": { "type": "number", "minimum": -8, "maximum": 8 },
+        "standard_error": { "type": "number", "exclusiveMinimum": 0, "maximum": 8 },
+        "theta_ci_low": { "type": "number", "minimum": -32, "maximum": 32 },
+        "theta_ci_high": { "type": "number", "minimum": -32, "maximum": 32 },
+        "observed_information": { "type": "number", "minimum": 0, "maximum": 72 },
+        "score": { "$ref": "#/$defs/aiqScore" },
+        "score_ci_low": { "$ref": "#/$defs/aiqScore" },
+        "score_ci_high": { "$ref": "#/$defs/aiqScore" },
+        "reliability_status": { "const": "single_matrix_information_only" },
+        "items_used": { "type": "integer", "minimum": 1, "maximum": 72 },
+        "calibration_task_count": { "const": 72 },
+        "calibration_model_count": { "const": 17 }
       }
     },
     "coverageSummary": {
@@ -1835,7 +1885,7 @@
           "minLength": 1
         },
         "task_version": {
-          "const": "1.0.5"
+          "const": "1.0.6"
         },
         "task_hash": {
           "$ref": "#/$defs/sha256"
@@ -1855,7 +1905,7 @@
           ]
         },
         "scorer_version": {
-          "const": "1.0.5"
+          "const": "1.0.6"
         },
         "model": {
           "$ref": "#/$defs/modelConfig"
@@ -1958,7 +2008,63 @@
         "provenance": {
           "$ref": "#/$defs/resultProvenance"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "correct" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": { "task_score": { "const": 1 } }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "partial" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "task_score": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "incorrect" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": { "task_score": { "const": 0 } }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "timeout",
+                  "budget_exhausted",
+                  "tool_failure",
+                  "policy_failure",
+                  "wrong_artifact",
+                  "invalid",
+                  "not_applicable"
+                ]
+              }
+            },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": { "task_score": { "type": "null" } }
+          }
+        }
+      ]
     },
     "resultFailure": {
       "type": "object",

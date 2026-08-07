@@ -554,7 +554,7 @@ struct DiagnosticRescoreCell {
 	source_evaluation: runner::EvaluationOutcome,
 	source_task_score: Option<f64>,
 	candidate_evaluation: runner::EvaluationOutcome,
-	candidate_task_score: f64,
+	candidate_task_score: Option<f64>,
 	preserved_runtime_failure: bool,
 }
 
@@ -3885,10 +3885,14 @@ fn materialize_diagnostic_results(
 				diagnostic.task_score = Some(result.score);
 				diagnostic.failure = None;
 
-				(evaluation, result.score, false)
+				(evaluation, Some(result.score), false)
 			},
-			None if source.status == ResultStatus::Failed && source.task_score == Some(0.0) => {
-				(diagnostic.evaluation, 0.0, true)
+			None if source.status == ResultStatus::Failed
+				&& source.evaluation == runner::EvaluationOutcome::NotEvaluated
+				&& source.task_score.is_none()
+				&& source.failure.is_some() =>
+			{
+				(diagnostic.evaluation, None, true)
 			},
 			_ => {
 				return Err(WorkerError::terminal(
@@ -5369,6 +5373,29 @@ mod tests {
 		}
 	}
 
+	fn diagnostic_source_run(fixture: &LocalReplayFixture) -> runner::RunRecord {
+		let envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("diagnostic source envelope");
+
+		serde_json::from_value(envelope.payload).expect("diagnostic source run")
+	}
+
+	fn make_diagnostic_timeout(result: &mut runner::TaskResult, task_score: Option<f64>) {
+		result.status = runner::ResultStatus::Failed;
+		result.evaluation = runner::EvaluationOutcome::NotEvaluated;
+		result.task_score = task_score;
+		result.response = None;
+		result.response_sha256 = None;
+		result.evaluator_result_sha256 = None;
+		result.evaluator_stdout_sha256 = None;
+		result.failure = Some(runner::ResultFailure {
+			kind: runner::FailureKind::Timeout,
+			message: "diagnostic timeout".to_owned(),
+			exit_code: None,
+			retryable: true,
+		});
+	}
+
 	fn admission_bindings(
 		stage: &CalibrationVerifiedStageV1,
 		attestation: &CalibrationVerifierAttestationV1,
@@ -5416,8 +5443,8 @@ mod tests {
 
 		let mut changed = stage.clone();
 
-		changed.scores[0].score.fixed_fixture_aiq =
-			changed.scores[0].score.fixed_fixture_aiq.map(|value| (value - 0.01).max(0.0));
+		changed.scores[0].score.quality_score =
+			changed.scores[0].score.quality_score.map(|value| (value - 0.01).max(0.0));
 		changed.score_reports_digest =
 			protocol::canonical_hash(&changed.scores).expect("changed score digest");
 		changed.stage_digest = changed.compute_stage_digest().expect("changed stage digest");
@@ -5856,6 +5883,67 @@ mod tests {
 		forbidden.extend(["--attestation-output", "attestation.json"]);
 
 		assert!(DiagnoseRescoreCli::try_parse_from(forbidden).is_err());
+	}
+
+	#[test]
+	fn diagnostic_rescore_preserves_runtime_failure_as_null() {
+		let fixture = LocalReplayFixture::new();
+		let mut run = diagnostic_source_run(&fixture);
+
+		run.results.truncate(1);
+
+		make_diagnostic_timeout(&mut run.results[0], None);
+
+		let (results, cells) = super::materialize_diagnostic_results(&run, &fixture.tasks, &[None])
+			.expect("runtime-null diagnostic result");
+
+		assert_eq!(results[0].task_score, None);
+		assert_eq!(results[0].evaluation, runner::EvaluationOutcome::NotEvaluated);
+		assert_eq!(cells[0].candidate_task_score, None);
+		assert!(cells[0].preserved_runtime_failure);
+
+		let wire = serde_json::to_value(&cells[0]).expect("diagnostic cell JSON");
+
+		assert!(wire["candidate_task_score"].is_null());
+	}
+
+	#[test]
+	fn diagnostic_rescore_rejects_legacy_runtime_zero() {
+		let fixture = LocalReplayFixture::new();
+		let mut run = diagnostic_source_run(&fixture);
+
+		run.results.truncate(1);
+
+		make_diagnostic_timeout(&mut run.results[0], Some(0.0));
+
+		let error = super::materialize_diagnostic_results(&run, &fixture.tasks, &[None])
+			.expect_err("legacy runtime zero must fail closed");
+
+		assert!(matches!(error.kind, ErrorKind::Terminal(ReasonCode::EvaluatorReplayMismatch)));
+	}
+
+	#[test]
+	fn diagnostic_rescore_keeps_completed_semantic_incorrect_as_zero() {
+		let fixture = LocalReplayFixture::new();
+		let mut run = diagnostic_source_run(&fixture);
+
+		run.results.truncate(1);
+
+		let candidate = task::EvaluationResult {
+			schema_version: task::EVALUATOR_RESULT_SCHEMA_VERSION.to_owned(),
+			outcome: task::EvaluatorOutcome::Incorrect,
+			score: 0.0,
+			checks: Vec::new(),
+			raw_stdout_sha256: None,
+		};
+		let (results, cells) =
+			super::materialize_diagnostic_results(&run, &fixture.tasks, &[Some(candidate)])
+				.expect("semantic incorrect diagnostic result");
+
+		assert_eq!(results[0].task_score, Some(0.0));
+		assert_eq!(results[0].evaluation, runner::EvaluationOutcome::Incorrect);
+		assert_eq!(cells[0].candidate_task_score, Some(0.0));
+		assert!(!cells[0].preserved_runtime_failure);
 	}
 
 	#[test]

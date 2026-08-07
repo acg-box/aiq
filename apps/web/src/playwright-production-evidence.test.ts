@@ -42,6 +42,14 @@ function evidence(
 
 const publishedPageEvidence = (label: string) => ({ label, state: 'Published evidence' });
 const emptyPageEvidence = (label: string) => ({ label, state: 'No published evidence' });
+const overviewPublishedPageEvidence = [
+  publishedPageEvidence('Data provenance'),
+  publishedPageEvidence('Official efficiency provenance'),
+  publishedPageEvidence('Run archive provenance'),
+  publishedPageEvidence('Comparison matrix provenance'),
+  publishedPageEvidence('Benchmark method provenance'),
+  publishedPageEvidence('Runner network provenance'),
+] as const;
 
 void describe('production efficiency evidence', () => {
   void it('accepts complete, partial, and unavailable evidence', () => {
@@ -204,12 +212,7 @@ void describe('production page evidence', () => {
     const expectation = productionPageEvidenceExpectation('/');
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
-        [
-          publishedPageEvidence('Overview provenance'),
-          emptyPageEvidence('Latest calibration status'),
-          emptyPageEvidence('Calibration score matrix status'),
-          publishedPageEvidence('Official efficiency provenance'),
-        ],
+        [...overviewPublishedPageEvidence, emptyPageEvidence('Calibration status')],
         expectation,
       ),
     );
@@ -217,8 +220,8 @@ void describe('production page evidence', () => {
       () =>
         validateProductionPageEvidence(
           [
-            publishedPageEvidence('Overview provenance'),
-            emptyPageEvidence('Latest calibration status'),
+            ...overviewPublishedPageEvidence,
+            emptyPageEvidence('Calibration status'),
             emptyPageEvidence('Official efficiency status'),
           ],
           expectation,
@@ -230,20 +233,12 @@ void describe('production page evidence', () => {
   void it('rejects unavailable, synthetic, or mixed secondary evidence', () => {
     const expectation = productionPageEvidenceExpectation('/');
     for (const note of [
-      { label: 'Latest calibration status', state: 'Published evidence unavailable' },
-      { label: 'Latest calibration provenance', state: 'Synthetic / seed data' },
-      { label: 'Latest calibration provenance', state: 'Mixed evidence' },
+      { label: 'Calibration status', state: 'Published evidence unavailable' },
+      { label: 'Calibration status', state: 'Synthetic / seed data' },
+      { label: 'Calibration status', state: 'Mixed evidence' },
     ]) {
       assert.throws(
-        () =>
-          validateProductionPageEvidence(
-            [
-              publishedPageEvidence('Overview provenance'),
-              publishedPageEvidence('Official efficiency provenance'),
-              note,
-            ],
-            expectation,
-          ),
+        () => validateProductionPageEvidence([...overviewPublishedPageEvidence, note], expectation),
         /Invalid production page evidence/,
       );
     }
@@ -254,7 +249,7 @@ void describe('production page evidence', () => {
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [
-          publishedPageEvidence('Run data provenance'),
+          publishedPageEvidence('Data provenance'),
           publishedPageEvidence('Official run efficiency provenance'),
         ],
         expectation,
@@ -265,7 +260,7 @@ void describe('production page evidence', () => {
         () =>
           validateProductionPageEvidence(
             [
-              publishedPageEvidence('Run data provenance'),
+              publishedPageEvidence('Data provenance'),
               { label: 'Official run efficiency status', state },
             ],
             expectation,

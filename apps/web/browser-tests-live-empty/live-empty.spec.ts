@@ -110,7 +110,7 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   const deferredMatrix = page.locator('[data-homepage-analytics="matrix"]');
   await expect(deferredMatrix).toHaveClass(/homepage-analytics-empty/);
   await deferredMatrix.scrollIntoViewIfNeeded();
-  await expect(page.getByRole('heading', { name: 'AIQ index by configuration' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Score by configuration' })).toBeVisible();
   await expect(deferredMatrix.locator('.matrix-chart-frame')).toHaveCount(0);
   await expect(page.getByText(/scored configurations shown/)).toHaveCount(0);
   const emptyMatrixBox = await deferredMatrix.boundingBox();

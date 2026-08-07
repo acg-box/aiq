@@ -65,6 +65,13 @@ await test('schema and synthetic demo data have separate final-state owners', as
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
 });
 
+await test('synthetic score snapshots consume the classified score rows', async () => {
+  const [, syntheticDemo] = await sources();
+  assert.match(syntheticDemo, /when valid_task_count = 72[\s\S]{0,120}then 'synthetic_complete'/);
+  assert.match(syntheticDemo, /join scored score on score\.run_id = run\.run_id/);
+  assert.doesNotMatch(syntheticDemo, /join run_scores score on score\.run_id = run\.run_id/);
+});
+
 await test('checker requires both AIQ Storage buckets to be private and create-new', async () => {
   const [schema, syntheticDemo] = await sources();
   for (const changed of [
@@ -332,7 +339,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
   for (const [changed, expected] of [
     [
       schema.replaceAll(
-        'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05',
+        'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82',
         'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       ),
       /Official provenance must compare the task-set digest/,
@@ -344,7 +351,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
       ),
       /adapter-failure validator must accept workspace_integrity/,
     ],
-    [schema.replace('aiq-core@1.0.5', 'aiq-core@1.0.1'), /expected to not match/],
+    [schema.replace('aiq-core@1.0.6', 'aiq-core@1.0.1'), /expected to not match/],
     [
       schema.replaceAll(
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
@@ -354,7 +361,7 @@ await test('checker rejects stale release, pricing, and adapter-failure contract
     ],
     [
       schema.replace(
-        'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d',
+        'sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c',
         'sha256:b7ddfd5aaeb1861db57a72e03dc7e9497e7b4b81a98800c1e299e995270af7bc',
       ),
       /expected to not match/,
@@ -422,7 +429,7 @@ await test('checker rejects initializer evaluator constants that are not enforce
 
 await test('checker derives the native identity from all reviewed task commitments', async () => {
   const fixture: unknown = JSON.parse(
-    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json'), 'utf8'),
+    await readFile(join(repositoryRoot, 'databases/aiq-core-1.0.6-task-commitments.json'), 'utf8'),
   );
   checkDatabaseTaskCommitmentFixture(fixture);
   const changed = jsonObject(structuredClone(fixture));
@@ -453,7 +460,7 @@ await test('checker rejects readiness that reports but does not enforce evaluato
 await test('checker rejects readiness that reports but does not enforce task-set identity', async () => {
   const [schema, syntheticDemo] = await sources();
   const changed = schema.replace(
-    "      and task_set_identity_sha256 =\n        'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'\n",
+    "      and task_set_identity_sha256 =\n        'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'\n",
     '',
   );
   assert.notEqual(changed, schema);

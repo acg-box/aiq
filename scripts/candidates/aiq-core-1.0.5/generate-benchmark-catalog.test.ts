@@ -22,9 +22,6 @@ const candidateRoot = new URL('../../../benchmarks/candidates/aiq-core-1.0.5/', 
 const catalogPath = fileURLToPath(new URL('catalog.json', candidateRoot));
 const catalogSchemaPath = fileURLToPath(new URL('catalog.schema.json', candidateRoot));
 const taskSchemaPath = fileURLToPath(new URL('task.schema.json', candidateRoot));
-const activeTaskSchemaPath = fileURLToPath(
-  new URL('../../../benchmarks/schema/task.schema.json', import.meta.url),
-);
 const priorCandidateRoot = new URL(
   '../../../benchmarks/candidates/aiq-core-1.0.4/',
   import.meta.url,
@@ -132,7 +129,10 @@ await test('only four calibration tasks are revised while 68 explicitly carry fo
           deterministic: priorTask.evaluator.deterministic,
           partialCredit: priorTask.evaluator.partial_credit,
           passConditions: priorTask.evaluator.pass_conditions,
-          scoringContract: priorTask.evaluator.scoring_contract,
+          scoringContract: {
+            ...priorTask.evaluator.scoring_contract,
+            attributable_runtime_failure_policy: 'task_score_null_excluded_from_semantic_scoring',
+          },
           acceptanceFixtures: priorTask.evaluator.acceptance_fixture_commitments,
           tags: priorTask.tags,
           visibility: priorTask.visibility,
@@ -178,8 +178,7 @@ await test('revised tasks use new public contracts without publishing private co
       positive_weight_gate_rule:
         'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass',
       evaluator_error_policy: 'unscored_invalid_evidence',
-      attributable_runtime_failure_policy:
-        'score_zero_as_defined_by_public_runtime_failure_taxonomy',
+      attributable_runtime_failure_policy: 'task_score_null_excluded_from_semantic_scoring',
       outcome_rule: {
         correct: 'score_equals_one',
         partial: 'score_strictly_between_zero_and_one',
@@ -296,19 +295,19 @@ await test('the closed schemas bind the 1.0.5 release and revision provenance', 
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.4/'), false);
 });
 
-await test('the active task schema accepts only AIQ Core 1.0.5 controlled references', async () => {
-  const source = await readFile(activeTaskSchemaPath, 'utf8');
-  const schema = jsonObject(JSON.parse(source) as unknown, 'active task schema');
-  const properties = jsonObject(schema.properties, 'active task properties');
-  const fixtureRefs = jsonObject(properties.fixture_refs, 'active fixture references');
-  const items = jsonObject(fixtureRefs.items, 'active fixture reference items');
+await test('the frozen task schema accepts only AIQ Core 1.0.5 controlled references', async () => {
+  const source = await readFile(taskSchemaPath, 'utf8');
+  const schema = jsonObject(JSON.parse(source) as unknown, 'frozen task schema');
+  const properties = jsonObject(schema.properties, 'frozen task properties');
+  const fixtureRefs = jsonObject(properties.fixture_refs, 'frozen fixture references');
+  const items = jsonObject(fixtureRefs.items, 'frozen fixture reference items');
 
   if (!Array.isArray(items.oneOf)) throw new TypeError('active fixture references need oneOf');
   const controlledPattern = items.oneOf
-    .map((candidate) => jsonObject(candidate, 'active fixture reference alternative').pattern)
+    .map((candidate) => jsonObject(candidate, 'frozen fixture reference alternative').pattern)
     .find((pattern) => typeof pattern === 'string' && pattern.includes('aiq-controlled'));
   if (typeof controlledPattern !== 'string') {
-    throw new TypeError('active controlled-reference pattern is missing');
+    throw new TypeError('frozen controlled-reference pattern is missing');
   }
   const controlledReference = new RegExp(controlledPattern, 'u');
 

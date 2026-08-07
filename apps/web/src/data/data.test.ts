@@ -19,7 +19,12 @@ import {
   summarizeRunOutcomes,
   TRUST_LEVELS,
 } from './format.ts';
-import { presentLeaderboardEntry } from './leaderboard-presentation.ts';
+import {
+  presentLeaderboardEntry,
+  presentedScoreRange,
+  presentScoreMetric,
+  sortByPresentedScore,
+} from './leaderboard-presentation.ts';
 import {
   CALIBRATION_MODEL_CONFIGURATIONS,
   CALIBRATION_RUN_PAGE_SIZE,
@@ -118,15 +123,70 @@ function canonicalRunId(seed: string): string {
   return `run_${createHash('sha256').update(seed).digest('hex')}`;
 }
 
+const officialLeaderboardRowEvidence = {
+  theta: 0.4,
+  standard_error: 0.2,
+  theta_ci_low: 0.01,
+  theta_ci_high: 0.79,
+  score_ci_low: 50,
+  score_ci_high: 100,
+  information: 24,
+  quality_score: 70,
+  strict_pass_rate: 0.5,
+  strict_pass_low: 0.39,
+  strict_pass_high: 0.61,
+  strict_pass_sample_size: 72,
+  strict_pass_successes: 36,
+  reliability_status: 'single_matrix_information_only' as const,
+  calibration_status: 'calibrated' as const,
+};
+
+const unscoredLeaderboardRowEvidence = {
+  theta: null,
+  standard_error: null,
+  theta_ci_low: null,
+  theta_ci_high: null,
+  score_ci_low: null,
+  score_ci_high: null,
+  information: null,
+  quality_score: null,
+  strict_pass_rate: null,
+  strict_pass_low: null,
+  strict_pass_high: null,
+  strict_pass_sample_size: null,
+  strict_pass_successes: null,
+  reliability_status: null,
+  calibration_status: 'pending' as const,
+};
+
+const officialTrendRowEvidence = {
+  theta: 0.4,
+  standard_error: 0.2,
+  theta_ci_low: 0.01,
+  theta_ci_high: 0.79,
+  score_ci_low: 50,
+  score_ci_high: 80,
+  information: 24,
+  quality_score: 70,
+  strict_pass_rate: 0.5,
+  strict_pass_low: 0.39,
+  strict_pass_high: 0.61,
+  strict_pass_sample_size: 72,
+  strict_pass_successes: 36,
+  reliability_status: 'single_matrix_information_only' as const,
+  calibration_status: 'calibrated' as const,
+};
+
 function trendRow(matrixId: string, recordedAt: string): TrendRow {
   return {
     matrix_id: matrixId,
     run_id: canonicalRunId(`${matrixId}:${recordedAt}`),
-    scoring_version: '1.0.5',
+    scoring_version: '1.0.6',
     recorded_at: recordedAt,
     bucket_started_at: recordedAt,
     bucket_ended_at: new Date(Date.parse(recordedAt) + 1).toISOString(),
     score: 70,
+    ...officialTrendRowEvidence,
     sensitivity_low: 68,
     sensitivity_high: 72,
     sample_size: 72,
@@ -158,8 +218,8 @@ function runSummaryRow(index = 0): RunRow {
     matrix_id: 'sol-low',
     started_at: '2026-08-04T12:00:00.000Z',
     completed_at: '2026-08-04T12:30:00.000Z',
-    benchmark_version: 'aiq-core@1.0.5',
-    scoring_version: '1.0.5',
+    benchmark_version: 'aiq-core@1.0.6',
+    scoring_version: '1.0.6',
     prompt_set_digest: `sha256:${'1'.repeat(64)}`,
     runner_commit: 'abcdef0',
     region: 'us-east-1',
@@ -181,8 +241,8 @@ function runSummaryRow(index = 0): RunRow {
     missing_count: 0,
     not_applicable_count: 0,
     completed_count: 70,
-    observed_count: 72,
-    coverage_percent: 100,
+    observed_count: 70,
+    coverage_percent: 97.2,
     covered_domain_count: 10,
     provisional_domain_count: 10,
   };
@@ -296,7 +356,7 @@ void describe('seed repository', () => {
           entry.sampleSize === 72 &&
           entry.coveragePercent === 100 &&
           entry.missing === 0 &&
-          entry.scoringVersion === '1.0.5',
+          entry.scoringVersion === '1.0.6',
       ),
     );
   });
@@ -452,6 +512,8 @@ void describe('seed repository', () => {
       {
         matrix_id: official.id,
         run_id: canonicalRunId(official.id),
+        ...officialLeaderboardRowEvidence,
+        quality_score: official.qualityScore,
         score: official.score,
         sensitivity_low: official.sensitivityLow,
         sensitivity_high: official.sensitivityHigh,
@@ -466,6 +528,7 @@ void describe('seed repository', () => {
       {
         matrix_id: notApplicable.id,
         run_id: canonicalRunId(notApplicable.id),
+        ...unscoredLeaderboardRowEvidence,
         score: null,
         sensitivity_low: null,
         sensitivity_high: null,
@@ -473,13 +536,14 @@ void describe('seed repository', () => {
         coverage_percent: null,
         runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.5',
+        scoring_version: '1.0.6',
         score_status: 'not_applicable',
         synthetic: false,
       },
       {
         matrix_id: missing.id,
         run_id: canonicalRunId(missing.id),
+        ...unscoredLeaderboardRowEvidence,
         score: null,
         sensitivity_low: null,
         sensitivity_high: null,
@@ -487,7 +551,7 @@ void describe('seed repository', () => {
         coverage_percent: null,
         runtime_issues: null,
         missing: null,
-        scoring_version: '1.0.5',
+        scoring_version: '1.0.6',
         score_status: 'missing',
         synthetic: false,
       },
@@ -554,6 +618,7 @@ void describe('seed repository', () => {
     const baseRow: LeaderboardRow = {
       matrix_id: 'sol-low',
       run_id: 'run_untrusted_status',
+      ...officialLeaderboardRowEvidence,
       score: 99,
       sensitivity_low: 98,
       sensitivity_high: 100,
@@ -561,7 +626,7 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       runtime_issues: 0,
       missing: 0,
-      scoring_version: '1.0.5',
+      scoring_version: '1.0.6',
       score_status: null,
       synthetic: false,
     };
@@ -575,9 +640,17 @@ void describe('seed repository', () => {
         /public_leaderboard/,
       );
     }
+    assert.throws(
+      () =>
+        joinModelMatrixWithLeaderboard(matrix, [
+          Object.assign({}, baseRow, { scoring_version: '1.0.5' }),
+        ]),
+      /public_leaderboard/,
+    );
 
     const unscoredRow = {
       ...baseRow,
+      ...unscoredLeaderboardRowEvidence,
       score: null,
       sensitivity_low: null,
       sensitivity_high: null,
@@ -635,6 +708,7 @@ void describe('seed repository', () => {
     const row: LeaderboardRow = {
       matrix_id: 'sol-low',
       run_id: canonicalRunId('sol-low'),
+      ...officialLeaderboardRowEvidence,
       score: 70,
       sensitivity_low: 68,
       sensitivity_high: 72,
@@ -642,10 +716,17 @@ void describe('seed repository', () => {
       coverage_percent: 100,
       runtime_issues: 1,
       missing: 0,
-      scoring_version: '1.0.5',
+      scoring_version: '1.0.6',
       score_status: 'official',
       synthetic: false,
     };
+    const separatedScales = joinModelMatrixWithLeaderboard(matrix, [
+      { ...row, score: 90, score_ci_low: 80, score_ci_high: 100 },
+    ])[0];
+    assert.equal(separatedScales?.score, 90);
+    assert.equal(separatedScales?.qualityScore, 70);
+    assert.equal(separatedScales?.sensitivityLow, 68);
+    assert.equal(separatedScales?.sensitivityHigh, 72);
     for (const rows of [
       [row, row],
       [{ ...row, matrix_id: 'future-low' }],
@@ -684,14 +765,43 @@ void describe('presentation aggregates', () => {
       },
       { status: 'Complete synthetic fixture · not Official', evidence: 'Synthetic' },
     );
+    assert.deepEqual(presentScoreMetric(syntheticEntry), {
+      official: false,
+      score: syntheticEntry.qualityScore,
+      scoreText: syntheticEntry.qualityScore?.toFixed(1),
+      scoreLabel: 'Quality score',
+      intervalLow: syntheticEntry.sensitivityLow,
+      intervalHigh: syntheticEntry.sensitivityHigh,
+      interval: formatSensitivityInterval(syntheticEntry),
+      intervalLabel: 'Task-mix sensitivity',
+    });
 
     const officialEntry = {
       ...syntheticEntry,
       scoreStatus: 'official' as const,
       synthetic: false as const,
+      theta: 0.4,
+      standardError: 0.2,
+      thetaCiLow: 0.01,
+      thetaCiHigh: 0.79,
+      scoreCiLow: 70,
+      scoreCiHigh: 90,
+      information: 24,
+      reliabilityStatus: 'single_matrix_information_only' as const,
+      calibrationStatus: 'calibrated' as const,
     };
     assert.equal(isScoredLeaderboardEntry(officialEntry), true);
     assert.equal(presentLeaderboardEntry(officialEntry).runtimeIssues, officialEntry.runtimeIssues);
+    assert.deepEqual(presentScoreMetric(officialEntry), {
+      official: true,
+      score: officialEntry.score,
+      scoreText: officialEntry.score.toFixed(1),
+      scoreLabel: 'Calibrated ability',
+      intervalLow: officialEntry.scoreCiLow,
+      intervalHigh: officialEntry.scoreCiHigh,
+      interval: '70.0–90.0',
+      intervalLabel: 'Conditional 95% interval',
+    });
     assert.deepEqual(
       {
         status: presentLeaderboardEntry(officialEntry).status,
@@ -701,14 +811,58 @@ void describe('presentation aggregates', () => {
     );
   });
 
+  void it('orders and summarizes divergent synthetic values on the presented quality scale', () => {
+    const first = seedLeaderboard[0];
+    const second = seedLeaderboard[1];
+    assert.ok(first);
+    assert.ok(second);
+    const higherRawScore = {
+      ...first,
+      score: 95,
+      qualityScore: 20,
+      sensitivityLow: 10,
+      sensitivityHigh: 30,
+    };
+    const higherPresentedQuality = {
+      ...second,
+      score: 5,
+      qualityScore: 80,
+      sensitivityLow: 70,
+      sensitivityHigh: 90,
+    };
+
+    assert.deepEqual(sortByPresentedScore([higherRawScore, higherPresentedQuality]), [
+      higherPresentedQuality,
+      higherRawScore,
+    ]);
+    assert.deepEqual(presentedScoreRange([higherRawScore, higherPresentedQuality]), {
+      minimum: 20,
+      maximum: 80,
+    });
+  });
+
   void it('provides complete synthetic runs and a structured coverage-only run', () => {
     const firstRun = seedRuns[0];
     const coverageOnlyRun = seedRuns.find((run) => run.id.includes('coverage-only'));
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.5');
-    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.5');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.6');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.6');
+    for (const run of seedRuns.filter(
+      (candidate) =>
+        candidate.synthetic &&
+        candidate.tasks.length === 72 &&
+        !candidate.id.includes('coverage-only'),
+    )) {
+      const entry = seedLeaderboard.find((candidate) => candidate.runId === run.id);
+      assert.ok(entry, `synthetic run ${run.id} must have a leaderboard entry`);
+      const validTasks = run.tasks.filter((task) => task.score !== null);
+      const strictPasses = validTasks.filter((task) => task.score === 1).length;
+      assert.equal(validTasks.length, entry.strictPassSampleSize);
+      assert.equal(strictPasses, entry.strictPassSuccesses);
+      assert.equal(entry.strictPassRate, strictPasses / validTasks.length);
+    }
     assert.ok(
       seedRuns
         .flatMap((run) => run.tasks)
@@ -771,7 +925,7 @@ void describe('presentation aggregates', () => {
     assert.equal(classifyRunCompleteness({ ...firstRun, synthetic: false }).label, 'Official');
     assert.deepEqual(classifyRunCompleteness(coverageOnlyRun), {
       label: 'Coverage-only · not ranked',
-      validResults: 58,
+      validResults: 56,
       notApplicable: false,
     });
     const domainSummary = summarizeRunDomains(coverageOnlyRun);
@@ -835,7 +989,7 @@ void describe('presentation aggregates', () => {
           ...template,
           outcome: 'timeout' as const,
           executionStatus: 'runtime_issue' as const,
-          score: 0,
+          score: null,
           explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
         },
         {
@@ -874,6 +1028,17 @@ void describe('presentation aggregates', () => {
       total: 7,
       anyCreditRate: (2 / 3) * 100,
     });
+    const [domain] = summarizeRunDomains(run);
+    assert.ok(domain);
+    assert.equal(domain.score, 50);
+    assert.equal(domain.completed, 3);
+    assert.equal(domain.runtimeIssues, 1);
+    assert.equal(domain.coveragePercent, (3 / 7) * 100);
+    assert.deepEqual(classifyRunCompleteness(run), {
+      label: 'Coverage-only · not ranked',
+      validResults: 3,
+      notApplicable: false,
+    });
   });
 
   void it('does not present an all-runtime run as all failed', () => {
@@ -885,7 +1050,7 @@ void describe('presentation aggregates', () => {
         Object.assign({}, task, {
           outcome: 'timeout' as const,
           executionStatus: 'runtime_issue' as const,
-          score: 0,
+          score: null,
           explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
         }),
       ),
@@ -905,6 +1070,11 @@ void describe('presentation aggregates', () => {
       anyCreditRate: null,
     });
     assert.equal(formatAnyCreditRate(summary.anyCreditRate), '—');
+    assert.deepEqual(classifyRunCompleteness(run), {
+      label: 'Coverage-only · not ranked',
+      validResults: 0,
+      notApplicable: false,
+    });
   });
 
   void it('keeps uniform incorrect, runtime, invalid, and missing matrices distinct', () => {
@@ -931,7 +1101,7 @@ void describe('presentation aggregates', () => {
         task: {
           outcome: 'timeout' as const,
           executionStatus: 'runtime_issue' as const,
-          score: 0,
+          score: null,
           explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
         },
         expected: {
@@ -1005,7 +1175,7 @@ void describe('presentation aggregates', () => {
       modelFamily: 'sol',
       reasoningEffort: 'low',
     });
-    assert.equal(detail?.results[0]?.taskVersion, '1.0.5');
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.6');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -1093,11 +1263,26 @@ void describe('presentation aggregates', () => {
     const row: TrendRow = {
       matrix_id: 'sol-ultra',
       run_id: canonicalRunId('latest-in-bucket'),
-      scoring_version: '0.9.7',
+      scoring_version: '1.0.6',
       recorded_at: '2026-07-24T00:00:00.000Z',
       bucket_started_at: '2026-07-23T12:00:00.000Z',
       bucket_ended_at: '2026-07-24T00:00:00.001Z',
       score: 82.4,
+      theta: 0.8,
+      standard_error: 0.2,
+      theta_ci_low: 0.41,
+      theta_ci_high: 1.19,
+      score_ci_low: 70,
+      score_ci_high: 90,
+      information: 24,
+      quality_score: 82.4,
+      strict_pass_rate: 0.5,
+      strict_pass_low: 0.39,
+      strict_pass_high: 0.61,
+      strict_pass_sample_size: 72,
+      strict_pass_successes: 36,
+      reliability_status: 'single_matrix_information_only',
+      calibration_status: 'calibrated',
       sensitivity_low: 80.1,
       sensitivity_high: 84.7,
       sample_size: 72,
@@ -1123,6 +1308,21 @@ void describe('presentation aggregates', () => {
         bucketStartedAt: row.bucket_started_at,
         bucketEndedAt: row.bucket_ended_at,
         score: row.score,
+        theta: row.theta,
+        standardError: row.standard_error,
+        thetaCiLow: row.theta_ci_low,
+        thetaCiHigh: row.theta_ci_high,
+        scoreCiLow: row.score_ci_low,
+        scoreCiHigh: row.score_ci_high,
+        information: row.information,
+        qualityScore: row.quality_score,
+        strictPassRate: row.strict_pass_rate,
+        strictPassLow: row.strict_pass_low,
+        strictPassHigh: row.strict_pass_high,
+        strictPassSampleSize: row.strict_pass_sample_size,
+        strictPassSuccesses: row.strict_pass_successes,
+        reliabilityStatus: row.reliability_status,
+        calibrationStatus: row.calibration_status,
         sensitivityLow: row.sensitivity_low,
         sensitivityHigh: row.sensitivity_high,
         sampleSize: row.sample_size,
@@ -1171,6 +1371,7 @@ void describe('presentation aggregates', () => {
       [unordered[0], unordered[0]],
       [trendRow('future-low', '2026-07-24T02:00:00.000Z')],
       [{ ...unordered[0], score: Number.NaN }],
+      [{ ...unordered[0], scoring_version: '1.0.5' }],
       [{ ...unordered[0], sample_size: 71 }],
       [{ ...unordered[0], sensitivity_high: 101 }],
       [{ ...unordered[0], run_id: 'run-short' }],
@@ -1256,8 +1457,8 @@ void describe('presentation aggregates', () => {
       invalid_count: 1,
       missing_count: 1,
       completed_count: 1,
-      observed_count: 2,
-      coverage_percent: 50,
+      observed_count: 1,
+      coverage_percent: 25,
       covered_domain_count: 1,
       provisional_domain_count: 0,
     };
@@ -1266,7 +1467,7 @@ void describe('presentation aggregates', () => {
     ).listRunSummaries([empty.id, partial.id]);
     assert.deepEqual(
       summaries.map((run) => run.resultSummary.coveragePercent),
-      [null, 50],
+      [null, 25],
     );
   });
 
@@ -1292,6 +1493,8 @@ void describe('presentation aggregates', () => {
     const malformedRows = [
       { ...row, matrix_id: 'future-low' },
       { ...row, synthetic: 'false' },
+      { ...row, benchmark_version: 'aiq-core@1.0.5' },
+      { ...row, scoring_version: '1.0.5' },
       { ...row, completed_at: 'not-a-timestamp' },
       { ...row, completed_at: '2026-08-04T11:59:59.999Z' },
       { ...row, run_class: 'official' },
@@ -1519,7 +1722,7 @@ void describe('presentation aggregates', () => {
     const run = {
       run_id: runId,
       classification: 'local_calibration_non_official',
-      scoring_version: '1.0.5',
+      scoring_version: '1.0.6',
       selected_task_count: 72,
       selected_model_count: 17,
       result_count: 1_224,
@@ -1547,7 +1750,7 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.5',
+          task_version: '1.0.6',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
@@ -1561,9 +1764,9 @@ void describe('presentation aggregates', () => {
               ? 1
               : outcome === 'partial'
                 ? 0.5
-                : outcome === 'invalid' || outcome === 'missing' || outcome === 'not_applicable'
-                  ? null
-                  : 0,
+                : outcome === 'incorrect'
+                  ? 0
+                  : null,
           latency_ms: null,
           latency_evidence_level: null,
           input_tokens: unavailableContextBand ? 272_001 : null,
@@ -1762,7 +1965,7 @@ void describe('presentation aggregates', () => {
       model_family: 'terra',
       reasoning_effort: 'medium',
       descriptive_status: 'conditional_observed',
-      aiq: 57.5,
+      quality_score: 57.5,
       task_resampling_sensitivity_lower: 45,
       task_resampling_sensitivity_upper: 68,
       task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
@@ -1971,7 +2174,7 @@ void describe('presentation aggregates', () => {
     const runs: PublicCalibrationRunSummary[] = Array.from({ length: 1_001 }, (_, index) => ({
       id: `calibration-${String(index).padStart(4, '0')}`,
       classification: 'local_calibration_non_official',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       selectedTaskCount: 72,
       selectedModelCount: 17,
       resultCount: 1_224,
@@ -2419,8 +2622,8 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.5',
-      scoring_version: '1.0.5',
+      benchmark_version: 'aiq-core@1.0.6',
+      scoring_version: '1.0.6',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
       region: 'us-east-1',
@@ -2517,8 +2720,8 @@ void describe('presentation aggregates', () => {
       missing_count: 0,
       not_applicable_count: 0,
       completed_count: 1,
-      observed_count: 3,
-      coverage_percent: 100,
+      observed_count: 1,
+      coverage_percent: 33.3,
       covered_domain_count: 1,
       provisional_domain_count: 0,
     };
@@ -2557,6 +2760,7 @@ void describe('presentation aggregates', () => {
       task: 'Timed-out result',
       outcome: 'timeout',
       execution_status: 'runtime_issue',
+      score: null,
       explanation_code: 'timeout',
       explanation_summary: 'The task exceeded its time limit.',
       retryable: true,
@@ -2568,6 +2772,7 @@ void describe('presentation aggregates', () => {
       task: 'Budget-exhausted result',
       outcome: 'budget_exhausted',
       execution_status: 'runtime_issue',
+      score: null,
       explanation_code: 'budget_exceeded',
       explanation_summary: 'The task exceeded a resource budget.',
       retryable: false,

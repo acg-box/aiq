@@ -26,9 +26,15 @@ export type CalibrationOutcome = (typeof CALIBRATION_OUTCOMES)[number];
 export type LeaderboardStatus =
   | 'official'
   | 'synthetic_complete'
+  | 'provisional'
+  | 'coverage_only'
   | 'not_applicable'
   | 'missing'
+  | 'failed'
+  | 'infra_failure'
   | 'unpublished';
+export type CalibrationStatus = 'calibrated' | 'pending' | 'failed' | 'not_applicable';
+export type ReliabilityStatus = 'single_matrix_information_only' | 'not_estimated';
 export type TrustLevel =
   | 'unverified'
   | 'signed_community'
@@ -47,6 +53,21 @@ export interface LeaderboardEntry {
   modelName: string;
   reasoningTier: ReasoningTier;
   score: number | null;
+  theta: number | null;
+  standardError: number | null;
+  thetaCiLow: number | null;
+  thetaCiHigh: number | null;
+  scoreCiLow: number | null;
+  scoreCiHigh: number | null;
+  information: number | null;
+  qualityScore: number | null;
+  strictPassRate: number | null;
+  strictPassLow: number | null;
+  strictPassHigh: number | null;
+  strictPassSampleSize: number | null;
+  strictPassSuccesses: number | null;
+  reliabilityStatus: ReliabilityStatus | null;
+  calibrationStatus: CalibrationStatus;
   sensitivityLow: number | null;
   sensitivityHigh: number | null;
   sampleSize: number | null;
@@ -60,7 +81,13 @@ export interface LeaderboardEntry {
 }
 
 type ScoredLeaderboardValues = LeaderboardEntry & {
-  score: number;
+  qualityScore: number;
+  strictPassRate: number;
+  strictPassLow: number;
+  strictPassHigh: number;
+  strictPassSampleSize: number;
+  strictPassSuccesses: number;
+  calibrationStatus: CalibrationStatus;
   sensitivityLow: number;
   sensitivityHigh: number;
   sampleSize: number;
@@ -73,13 +100,38 @@ type ScoredLeaderboardValues = LeaderboardEntry & {
 
 export type ScoredLeaderboardEntry = ScoredLeaderboardValues &
   (
-    | { scoreStatus: 'official'; synthetic: false }
-    | { scoreStatus: 'synthetic_complete'; synthetic: true }
+    | {
+        scoreStatus: 'official';
+        synthetic: false;
+        score: number;
+        theta: number;
+        standardError: number;
+        thetaCiLow: number;
+        thetaCiHigh: number;
+        scoreCiLow: number;
+        scoreCiHigh: number;
+        information: number;
+        reliabilityStatus: 'single_matrix_information_only';
+      }
+    | {
+        scoreStatus: 'synthetic_complete';
+        synthetic: true;
+        score: number;
+        theta: null;
+        standardError: null;
+        thetaCiLow: null;
+        thetaCiHigh: null;
+        scoreCiLow: null;
+        scoreCiHigh: null;
+        information: null;
+        reliabilityStatus: 'not_estimated';
+      }
   );
 
 export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is ScoredLeaderboardEntry {
   return (
     (entry.scoreStatus === 'official' || entry.scoreStatus === 'synthetic_complete') &&
+    entry.qualityScore !== null &&
     entry.score !== null &&
     entry.sensitivityLow !== null &&
     entry.sensitivityHigh !== null &&
@@ -89,8 +141,29 @@ export function isScoredLeaderboardEntry(entry: LeaderboardEntry): entry is Scor
     entry.missing !== null &&
     entry.scoringVersion !== null &&
     entry.runId !== null &&
-    ((entry.scoreStatus === 'official' && entry.synthetic === false) ||
-      (entry.scoreStatus === 'synthetic_complete' && entry.synthetic === true))
+    entry.strictPassRate !== null &&
+    entry.strictPassLow !== null &&
+    entry.strictPassHigh !== null &&
+    entry.strictPassSampleSize !== null &&
+    entry.strictPassSuccesses !== null &&
+    ((entry.scoreStatus === 'official' &&
+      entry.synthetic === false &&
+      entry.score !== null &&
+      entry.theta !== null &&
+      entry.standardError !== null &&
+      entry.thetaCiLow !== null &&
+      entry.thetaCiHigh !== null &&
+      entry.scoreCiLow !== null &&
+      entry.scoreCiHigh !== null &&
+      entry.information !== null &&
+      entry.reliabilityStatus === 'single_matrix_information_only' &&
+      entry.calibrationStatus === 'calibrated') ||
+      (entry.scoreStatus === 'synthetic_complete' &&
+        entry.synthetic === true &&
+        entry.score !== null &&
+        entry.theta === null &&
+        entry.reliabilityStatus === 'not_estimated' &&
+        entry.calibrationStatus === 'not_applicable'))
   );
 }
 
@@ -102,6 +175,21 @@ export interface TrendPoint {
   bucketStartedAt: string;
   bucketEndedAt: string;
   score: number;
+  theta: number | null;
+  standardError: number | null;
+  thetaCiLow: number | null;
+  thetaCiHigh: number | null;
+  scoreCiLow: number | null;
+  scoreCiHigh: number | null;
+  information: number | null;
+  qualityScore: number | null;
+  strictPassRate: number | null;
+  strictPassLow: number | null;
+  strictPassHigh: number | null;
+  strictPassSampleSize: number | null;
+  strictPassSuccesses: number | null;
+  reliabilityStatus: ReliabilityStatus | null;
+  calibrationStatus: CalibrationStatus;
   sensitivityLow: number;
   sensitivityHigh: number;
   sampleSize: number;
@@ -234,7 +322,7 @@ export interface PublicCalibrationScore {
     | 'conditional_observed'
     | 'coverage_only'
     | 'not_applicable';
-  aiq: number | null;
+  qualityScore: number | null;
   taskResamplingSensitivityLower: number | null;
   taskResamplingSensitivityUpper: number | null;
   taskResamplingSensitivityMethod: string | null;

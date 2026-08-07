@@ -14,30 +14,31 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- an active public AIQ Core `aiq-core@1.0.5` candidate, with 72 private-task
-  identities, a public catalog, and scoring `1.0.5`;
+- an active public AIQ Core `aiq-core@1.0.6` candidate, with 72 private-task
+  identities, a public catalog, and scoring `1.0.6`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-The active public candidate, task, and scorer contract is `1.0.5`. It retargets
-four calibration-sensitive tasks and carries forward 68 task designs with new
-bindings. The create-new interaction candidate passed two-candidate
-reproducibility, independent authoring validation, and the Rust 72-task corpus
-validator. Its identities remain calibration candidates. The new targeted
-pilot, full calibration, Contrast generation, native build verification, a real
-Official run, publication, and final deployment are pending. Production
-still publishes the one historical AIQ Core `1.0.2` Official matrix; no `1.0.5`
-Official run or deployment has been accepted.
+The active public candidate, task, and scorer contract is `1.0.6`. It changes
+only the common runtime envelope for four interaction tasks and carries forward
+the other 68 task, evaluator, tool, and budget contracts with new bindings. The
+public catalog is deterministic and identity-frozen. Two controlled generations
+produced one matching tree, and the reviewed 72-task database commitment is
+bound in source. Final clean-commit regeneration, the fresh targeted pilot,
+full calibration, Contrast generation, native build verification, a real
+Official run, publication, and final deployment are pending. The only production
+tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement `2.0.0`. Production
+must not publish an Official matrix until the new real package passes verification.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive
 ceiling failure. It was rejected as unpublished calibration evidence. No hidden
 responses or hidden task details were published. The first `1.0.4` calibration
 completed all 1,224 cells but failed the statistical release gate. Preserve it
 as non-Official evidence; do not describe it as 1,224 failed executions. For
-`1.0.5`, run the four revised tasks across all 17 configurations as a 68-cell
+`1.0.6`, run the four runtime-revised tasks across all 17 configurations as a 68-cell
 pilot before the complete 17-by-72 non-Official calibration. An operator cannot
 override a failed release gate. Real calibration stays non-Official until the
 signed verifier and distinct-publisher admission flow accepts it into the
@@ -45,13 +46,13 @@ calibration register, and it remains non-Official after acceptance.
 
 The first `1.0.5` pilot completed 63 of 68 selected cells and recorded five
 timeouts. Completed means ranged from 0.933 to 0.992, so the pilot rejected the
-task set as saturated. The active public candidate now gives all four tasks
-multiple interacting daily-work requirements: a bounded keyed executor, a
-quoted-record parser, a six-field layered service configuration, and a bounded
-Unicode log preview. Each revised task has a 900-second wall budget while its
-40-step and 28-tool-call limits remain unchanged. Model-free controlled
-generation and validation passed. This candidate still needs a new 68-cell
-pilot.
+task set as saturated. A later interaction pilot exposed seven timeouts and
+three tool-budget failures at the shared 900-second, 40-step, and 28-tool-call
+envelope. AIQ Core `1.0.6` keeps the bounded keyed executor, quoted-record
+parser, six-field layered service configuration, and bounded Unicode log
+preview semantics. It gives each task the same 1,500-second, 48-step, and
+40-tool-call budget for every model configuration. This candidate still needs a
+fresh 68-cell pilot.
 
 ## Deployment status
 
@@ -60,40 +61,29 @@ AIQ production is live at `https://aiq.wiki`. The personal Vercel scope
 hosts project `aiq` on PostgreSQL 17.6 with reference
 `xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
 `aiq.wiki` zone owns DNS handoff. The two production Storage buckets,
-`aiq-submission-packages` and `aiq-runner-artifacts`, are private. The first
-Official launch publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
-evidence, not the identity of every later production deployment. The apex is
+`aiq-submission-packages` and `aiq-runner-artifacts`, are private. The apex is
 canonical; `www.aiq.wiki` preserves paths through a permanent `308` redirect.
 Automatic Vercel project and branch aliases can be removed only transiently
 because a later deployment can recreate or reassign them. A deployment-specific
 URL is intrinsic to its retained deployment. The current generated Vercel
 surfaces emit `noindex`.
 
-The native Apple Silicon macOS runner completed one real `72 × 17` Official
-AIQ Core `1.0.2` benchmark batch, or 1,224 task-level results. This is one
-matrix, not 1,224 separate benchmark runs. The native verifier replayed the deterministic
-evaluators, and the distinct publisher published the matrix as
-`trusted_verified` through the flow described in
-[Architecture and Runtime](architecture-and-runtime.md). Of the results, 1,218
-completed and 6 runtime issues: 329 `correct`, 259 `partial`, 630 `incorrect`, 5
-`timeout`, and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
-(`1:37:24.411`).
+The accepted Official publication must be one real non-synthetic `72 × 17`
+batch, or 1,224 task-level results, under the sole production tuple. The native
+verifier must replay the deterministic evaluators before the distinct publisher
+can publish it as `trusted_verified`. A legacy publication is not a fallback.
 
-Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage` results. The $125.403257240 priced subtotal is a
-Standard API-equivalent estimate for the 1,208 priced results, not actual ChatGPT
-subscription spend or a complete batch total. Missing values are not zero; the
-measurement rules live in [Benchmark Method](benchmark-method.md). Public views
-contain 17 runs, 1,224 results, and 17 rows each for the leaderboard, model
-efficiency, and model matrix. Publication created 4,395 artifact bindings,
-including 19 capability artifacts.
-
-The public site is a professional analysis workbench over this real historical
-evidence. It separates semantic task outcomes from runtime states, shows the
-fixed-fixture task-sensitivity interval, renders ECharts as SVG with ARIA
-descriptions, and supports system, light, and dark themes. Synthetic data is
-limited to explicit development and test paths.
+The public site is a professional analysis workbench over verified production
+evidence. It separates semantic task outcomes from runtime states. Official
+evidence shows calibrated ability with its conditional 95% interval. Explicit
+synthetic fixtures show descriptive quality with task-mix sensitivity and never
+appear as Official. The site also reports strict pass with a Wilson interval,
+renders ECharts as SVG with ARIA descriptions, and supports system, light, and
+dark themes. Synthetic data is limited to explicit development and test paths.
+The scorer-owned browser fixture in
+`benchmarks/fixtures/aiq-2.0-test-generated-public.json` is generated by the
+Rust `generate-test-public-fixture` command. Its outer contract rejects
+production publication, Official eligibility, and ranking eligibility.
 
 Production still has no cloud runner or verifier worker and no recurring
 benchmark or Storage schedule. The twice-daily benchmark schedule and its next
@@ -169,29 +159,27 @@ cargo make init-database
 
 For an empty AIQ namespace, after the controlled corpus passes model-free
 validation and the operator verifies the final native build, the separately
-controlled reference must contain a non-synthetic AIQ Core `1.0.5` corpus
+controlled reference must contain a non-synthetic AIQ Core `1.0.6` corpus
 commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
-Initialization validates those fields and bindings. The expected initialization
-receipt must contain scoring `1.0.5`, 72 tasks, 17 model configurations, three nodes,
+Initialization can start only after one real signed non-synthetic 17-by-72
+package passes native verifier replay. It validates those fields and bindings. The expected initialization
+receipt must contain scoring `1.0.6`, 72 tasks, 17 model configurations, three nodes,
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`;
-the release-policy identity is `aiq-core/1.0.5`, and its public catalog
+`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`;
+the release-policy identity is `aiq-core/1.0.6`, and its public catalog
 release-identity digest is
-`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The controlled interaction candidate has evaluator identity
+`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-scorer-manifest identity
-`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
-generated-task tree identity
-`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
-Core commitment identity
-`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`,
-and public-safe database task-set identity
-`sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`.
-They remain calibration-candidate identities; Contrast is pending. The shared
+the public-safe database task-set identity is
+`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+and the reviewed task-commitment manifest identity is
+`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+Final controlled corpus identities remain calibration candidates; Contrast is
+pending. The shared
 Rust validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent

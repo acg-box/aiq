@@ -884,7 +884,7 @@ void describe('shared result-package contract', () => {
     Object.assign(failedResult, {
       status: 'failed',
       evaluation: 'not_evaluated',
-      task_score: 0,
+      task_score: null,
       response: null,
       response_sha256: null,
       evaluator_result_sha256: null,
@@ -898,6 +898,11 @@ void describe('shared result-package contract', () => {
     });
     rehashResult(failedResult);
     assert.equal(validateSubmission(resignPackage(failed)).ok, true);
+
+    const failedWithSemanticZero = structuredClone(failed);
+    firstResult(failedWithSemanticZero).task_score = 0;
+    rehashResult(firstResult(failedWithSemanticZero));
+    assert.equal(validateSubmission(resignPackage(failedWithSemanticZero)).ok, false);
 
     const subscriptionLimited = officialPackage();
     const subscriptionLimitedResult = firstResult(subscriptionLimited);

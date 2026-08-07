@@ -46,7 +46,7 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 });
 
 void test('runs calibration against the production initializer catalog authority', () => {
-  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.5'\)/);
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.6'\)/);
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
 });
@@ -136,6 +136,11 @@ void test('exposes only published sanitized calibration columns', () => {
     publicResults,
     /'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'[\s\S]{0,40}then 'runtime_issue'/,
   );
+  assert.match(
+    publicResults,
+    /when result\.outcome in \('correct','partial','incorrect'\) then result\.task_score[\s\S]{0,50}else null::numeric[\s\S]{0,20}as task_score/,
+    'Runtime outcomes must be null in the public calibration result score field.',
+  );
   assert.match(publicResults, /when result\.outcome='not_applicable' then 'not_applicable'/);
   assert.doesNotMatch(publicResults, /as status|then 'passed'|then 'failed'/);
 });
@@ -151,7 +156,13 @@ void test('publishes leaderboard runtime issues without merging semantic incorre
   );
   assert.doesNotMatch(leaderboard, /'incorrect'::aiq_private\.result_outcome/);
   assert.doesNotMatch(leaderboard, /failure_count|as failures/);
-  assert.match(leaderboard, /then fixed_fixture_aiq[\s\S]{0,80}as score/);
+  assert.match(leaderboard, /then score[\s\S]{0,80}as score/);
+  assert.match(leaderboard, /as quality_score/);
+  assert.match(leaderboard, /as strict_pass_rate/);
+  assert.match(leaderboard, /task_score is not null\) as strict_pass_sample_size/);
+  assert.match(leaderboard, /task_score = 1\) as strict_pass_successes/);
+  assert.match(leaderboard, /as calibration_status/);
+  assert.match(leaderboard, /as public_score_status/);
   assert.match(leaderboard, /then valid_task_count[\s\S]{0,80}as sample_size/);
   assert.match(
     leaderboard,
@@ -169,8 +180,17 @@ void test('names public task-mix ranges as sensitivity, not confidence intervals
   for (const publicContract of [leaderboard, trend]) {
     assert.match(publicContract, /sensitivity_low/);
     assert.match(publicContract, /sensitivity_high/);
-    assert.doesNotMatch(publicContract, /\bci_low\b|\bci_high\b/);
+    assert.match(publicContract, /theta_ci_low/);
+    assert.match(publicContract, /theta_ci_high/);
+    assert.match(publicContract, /score_ci_low/);
+    assert.match(publicContract, /score_ci_high/);
+    assert.match(
+      publicContract,
+      /outcome in \('correct','partial','incorrect'\)[\s\S]{0,100}task_score is not null/,
+      'Strict-pass public samples must use semantic task outcomes only.',
+    );
   }
+  assert.match(schema, /Sensitivity ranges are not inferential confidence intervals/);
   assert.match(scoringVersions, /confidence_policy as sensitivity_policy/);
   assert.doesNotMatch(scoringVersions, /\n    confidence_policy,/);
   assert.match(
@@ -278,7 +298,7 @@ void test('keeps efficiency evidence nullable, bounded, and non-Official', () =>
   assert.match(schema, /scored_result_count between 0 and result_count/);
   assert.match(
     schema,
-    /\(\(descriptive_status in \('coverage_only','not_applicable'\)\) = \(score is null\)\)/,
+    /\(\(descriptive_status in \('coverage_only','not_applicable'\)\) = \(quality_score is null\)\)/,
   );
   assert.match(
     schema,
@@ -286,7 +306,7 @@ void test('keeps efficiency evidence nullable, bounded, and non-Official', () =>
   );
   assert.match(schema, /candidate->>'provider_tokens_evidence_level'='verifier_recomputed'/);
   assert.match(schema, /task_resampling_sensitivity_method/);
-  assert.match(schema, /score is null or score between 0 and 100/);
+  assert.match(schema, /quality_score is null or quality_score between 0 and 100/);
   assert.match(schema, /processing_tier text not null/);
   assert.match(schema, /processing_tier = 'standard'/);
   assert.match(schema, /pricing\.currency as pricing_currency/);
@@ -476,6 +496,11 @@ void test('publishes narrow Official per-result efficiency without private paylo
     view,
     /'wrong_artifact'::aiq_private\.result_outcome[\s\S]{0,40}then 'runtime_issue'::text/,
   );
+  assert.match(
+    view,
+    /when result\.outcome in \('correct','partial','incorrect'\) then result\.task_score[\s\S]{0,50}else null::numeric[\s\S]{0,20}as score/,
+    'Runtime outcomes must be null in the public run result score field.',
+  );
   assert.match(view, /end as execution_status/);
   assert.doesNotMatch(view, /as status|then 'passed'::text|then 'failed'::text/);
   assert.doesNotMatch(
@@ -560,6 +585,10 @@ void test('binds calibration results to one exact committed catalog task', () =>
   );
   assert.match(schema, /outcome='correct' and task_score is not null and task_score=1/);
   assert.match(schema, /outcome='partial'[\s\S]{0,100}task_score>0 and task_score<1/);
+  assert.match(
+    schema,
+    /outcome in \([\s\S]{0,100}'timeout','budget_exhausted','tool_failure','policy_failure','wrong_artifact'[\s\S]{0,100}task_score is null/,
+  );
   assert.match(schema, /constraint calibration_task_results_failure_binding check/);
   assert.match(
     schema,
@@ -615,6 +644,19 @@ void test('serializes calibration decisions and gates deletion leasing on invent
 });
 
 void test('keeps public grants and pricing lookup indexes narrow', () => {
+  const runGrant =
+    schema.match(
+      /grant select\(run_id,classification,[^;]+calibration_runs to anon, authenticated;/,
+    )?.[0] ?? '';
+  assert.match(runGrant, /task_set_id,task_set_version,scoring_version/);
+  assert.match(
+    schema,
+    /grant select\(micro_accuracy,micro_wilson_low,micro_wilson_high\)[\s\S]{0,80}aiq_score_snapshots to anon, authenticated/,
+  );
+  assert.match(
+    schema,
+    /grant select\(failure_responsibility\)[\s\S]{0,80}aiq_task_results to anon, authenticated/,
+  );
   assert.match(
     schema,
     /grant select\(run_id,official_eligible,ranking_eligible,published_at\)[\s\S]{0,90}calibration_publications/,
@@ -639,6 +681,28 @@ void test('keeps public grants and pricing lookup indexes narrow', () => {
   );
   assert.match(schema, /primary key \(run_id, model_family, reasoning_effort\)/);
   assert.doesNotMatch(schema, /create index calibration_(?:model_scores|task_results)_run_idx/);
+});
+
+void test('binds calibration public pricing joins to one explicit evidence digest', () => {
+  const resultView =
+    schema.match(/CREATE VIEW public\.public_calibration_results[\s\S]*?;\n/)?.[0] ?? '';
+  const scoreView =
+    schema.match(/CREATE VIEW public\.public_calibration_scores[\s\S]*?;\n/)?.[0] ?? '';
+
+  assert.match(
+    resultView,
+    /run\.run_id=result\.run_id and run\.pricing_digest=result\.pricing_digest/,
+  );
+  assert.match(resultView, /pricing\.pricing_digest=result\.pricing_digest/);
+  assert.match(resultView, /publication\.run_id=result\.run_id/);
+  assert.doesNotMatch(resultView, /using \((?:pricing_digest|run_id)\)/);
+  assert.match(
+    scoreView,
+    /run\.run_id=score\.run_id and run\.pricing_digest=score\.pricing_digest/,
+  );
+  assert.match(scoreView, /pricing\.pricing_digest=score\.pricing_digest/);
+  assert.match(scoreView, /publication\.run_id=score\.run_id/);
+  assert.doesNotMatch(scoreView, /using \((?:pricing_digest|run_id)\)/);
 });
 
 void test('exposes the Official prompt-set digest in canonical sha256 form', () => {
@@ -680,11 +744,19 @@ void test('production readiness attests the exact schema and gateway role shape'
   assert.match(schema, /canonical_public_view_count=12/);
   assert.match(
     schema,
+    /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_joint_map"[\s\S]*?"measurement_method":"rasch_fractional_joint_map_v1"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,
+  );
+  assert.doesNotMatch(
+    schema,
+    /scoring\.formula = '\{[\s\S]*?"aggregate":"mean_of_domain_means"[\s\S]*?\}'::jsonb/,
+  );
+  assert.match(
+    schema,
     /where namespace\.nspname='public' and relation\.relkind='v'\s+and relation\.relname in \([\s\S]*?'public_model_efficiency'[\s\S]*?\)/,
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05'/,
+    /task_set_identity_sha256 =\s*'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'/,
   );
   assert.match(
     schema,

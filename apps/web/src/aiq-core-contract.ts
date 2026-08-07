@@ -1,11 +1,11 @@
-export const AIQ_CORE_TASK_SET_VERSION = '1.0.5';
+export const AIQ_CORE_TASK_SET_VERSION = '1.0.6';
 export const AIQ_CORE_BENCHMARK_VERSION = `aiq-core@${AIQ_CORE_TASK_SET_VERSION}`;
-export const AIQ_CORE_SCORING_VERSION = '1.0.5';
+export const AIQ_CORE_SCORING_VERSION = '1.0.6';
 export const AIQ_CORE_RELEASE_IDENTITY = `aiq-core/${AIQ_CORE_TASK_SET_VERSION}`;
 export const AIQ_CORE_TASK_METADATA_IDENTITY =
-  'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
+  'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1';
 export const AIQ_CORE_CATALOG_RELEASE_IDENTITY =
-  'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d';
+  'sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c';
 
 export const AIQ_CORE_TASK_SCORING_CONTRACT = {
   aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
@@ -20,7 +20,7 @@ export const AIQ_CORE_TASK_SCORING_CONTRACT = {
   positive_weight_gate_rule:
     'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass',
   evaluator_error_policy: 'unscored_invalid_evidence',
-  attributable_runtime_failure_policy: 'score_zero_as_defined_by_public_runtime_failure_taxonomy',
+  attributable_runtime_failure_policy: 'task_score_null_excluded_from_semantic_scoring',
   outcome_rule: {
     correct: 'score_equals_one',
     partial: 'score_strictly_between_zero_and_one',

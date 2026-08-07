@@ -332,7 +332,7 @@ impl CalibrationVerifiedStageV1 {
 				score.model != *model
 					|| score.score.model != *model
 					|| score.efficiency.model != *model
-					|| score.score.schema_version != "aiq.calibration-score-report.v1"
+					|| score.score.schema_version != "aiq.calibration-score-report.v2"
 					|| score.score.run_class != "calibration"
 					|| score.score.scoring_version != self.scoring_version
 					|| score.score.coverage.expected_tasks != self.task_ids.len()

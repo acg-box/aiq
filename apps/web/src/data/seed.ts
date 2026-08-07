@@ -49,17 +49,61 @@ const modelConfig: ReadonlyArray<{
   },
 ];
 
+function wilsonInterval(successes: number, sampleSize: number): readonly [number, number] {
+  if (sampleSize === 0) return [0, 1];
+  const z = 1.959963984540054;
+  const proportion = successes / sampleSize;
+  const denominator = 1 + (z * z) / sampleSize;
+  const center = proportion + (z * z) / (2 * sampleSize);
+  const margin =
+    z *
+    Math.sqrt(
+      (proportion * (1 - proportion)) / sampleSize + (z * z) / (4 * sampleSize * sampleSize),
+    );
+  return [(center - margin) / denominator, (center + margin) / denominator];
+}
+
+function syntheticStrictPasses(qualityScore: number, runtimeIssues: number): number {
+  return benchmarkDomainConfig.reduce(
+    (total, domain, domainIndex) =>
+      total +
+      Math.min(
+        Math.floor((qualityScore / 100) * domain.taskCount),
+        domain.taskCount - (domainIndex < runtimeIssues ? 1 : 0),
+      ),
+    0,
+  );
+}
+
 const seedLeaderboardBase = modelConfig
   .flatMap((model, familyIndex) =>
     model.tiers.map((reasoningTier, tierIndex) => {
-      const score = model.base + tierIndex * 3.45 - familyIndex * 0.06;
-      const runtimeIssues = 1 + ((tierIndex + familyIndex) % 3);
+      const score = Number((model.base + tierIndex * 3.45 - familyIndex * 0.06).toFixed(1));
+      const runtimeIssues = 0;
+      const strictPassSuccesses = syntheticStrictPasses(score, runtimeIssues);
+      const strictPassRate = strictPassSuccesses / 72;
+      const [strictPassLow, strictPassHigh] = wilsonInterval(strictPassSuccesses, 72);
       return {
         id: `${model.family.toLowerCase()}-${reasoningTier}`,
         modelFamily: model.family,
         modelName: model.modelName,
         reasoningTier,
-        score: Number(score.toFixed(1)),
+        score,
+        theta: null,
+        standardError: null,
+        thetaCiLow: null,
+        thetaCiHigh: null,
+        scoreCiLow: null,
+        scoreCiHigh: null,
+        information: null,
+        qualityScore: score,
+        strictPassRate,
+        strictPassLow,
+        strictPassHigh,
+        strictPassSampleSize: 72,
+        strictPassSuccesses,
+        reliabilityStatus: 'not_estimated' as const,
+        calibrationStatus: 'not_applicable' as const,
         sensitivityLow: Number((score - 2.1 - familyIndex * 0.1).toFixed(1)),
         sensitivityHigh: Number((score + 2.1 + familyIndex * 0.1).toFixed(1)),
         sampleSize: 72,
@@ -72,7 +116,7 @@ const seedLeaderboardBase = modelConfig
       };
     }),
   )
-  .toSorted((left, right) => right.score - left.score);
+  .toSorted((left, right) => right.qualityScore - left.qualityScore);
 
 export const seedLeaderboard: readonly ScoredLeaderboardEntry[] = seedLeaderboardBase.map(
   (entry, index): ScoredLeaderboardEntry =>
@@ -100,7 +144,22 @@ export const seedTrendPoints: readonly TrendPoint[] = trendEntryIds.flatMap(
         recordedAt: recordedAt.toISOString(),
         bucketStartedAt: recordedAt.toISOString(),
         bucketEndedAt: new Date(recordedAt.getTime() + 1).toISOString(),
-        score: Number((entry.score + drift).toFixed(1)),
+        score: Number((entry.qualityScore + drift).toFixed(1)),
+        theta: null,
+        standardError: null,
+        thetaCiLow: null,
+        thetaCiHigh: null,
+        scoreCiLow: null,
+        scoreCiHigh: null,
+        information: null,
+        qualityScore: Number((entry.qualityScore + drift).toFixed(1)),
+        strictPassRate: entry.strictPassRate,
+        strictPassLow: entry.strictPassLow,
+        strictPassHigh: entry.strictPassHigh,
+        strictPassSampleSize: entry.strictPassSampleSize,
+        strictPassSuccesses: entry.strictPassSuccesses,
+        reliabilityStatus: 'not_estimated',
+        calibrationStatus: 'not_applicable',
         sensitivityLow: Number((entry.sensitivityLow + drift).toFixed(1)),
         sensitivityHigh: Number((entry.sensitivityHigh + drift).toFixed(1)),
         sampleSize: 72,
@@ -141,15 +200,19 @@ function buildSyntheticCompleteTasks(
   entryIndex: number,
 ): readonly TaskResult[] {
   let globalIndex = 0;
-  let failuresRemaining = entry.runtimeIssues;
   return benchmarkDomainConfig.flatMap((domain, domainIndex) => {
-    const domainHasFailure = failuresRemaining > 0;
-    if (domainHasFailure) {
-      failuresRemaining -= 1;
-    }
-    const passedScore = domainHasFailure
-      ? (entry.score / 100) * (domain.taskCount / (domain.taskCount - 1))
-      : entry.score / 100;
+    const domainHasFailure = domainIndex < entry.runtimeIssues;
+    const domainTarget = (entry.qualityScore / 100) * domain.taskCount;
+    const strictPassTarget = Math.min(
+      Math.floor(domainTarget),
+      domain.taskCount - (domainHasFailure ? 1 : 0),
+    );
+    const partialTaskCount = domain.taskCount - (domainHasFailure ? 1 : 0) - strictPassTarget;
+    const partialScore =
+      partialTaskCount === 0
+        ? 0
+        : Number(((domainTarget - strictPassTarget) / partialTaskCount).toFixed(4));
+    let nonFailureIndex = 0;
     return Array.from({ length: domain.taskCount }, (_, taskIndex): TaskResult => {
       const currentIndex = globalIndex;
       globalIndex += 1;
@@ -158,17 +221,28 @@ function buildSyntheticCompleteTasks(
       const failureCode =
         failureCodes[(entryIndex + domainIndex) % failureCodes.length] ?? 'AGENT_TIMEOUT';
       const tools = toolSets[(currentIndex + entryIndex) % toolSets.length] ?? [];
+      const isStrictPass = !isFailure && nonFailureIndex < strictPassTarget;
+      if (!isFailure) {
+        nonFailureIndex += 1;
+      }
+      const score = isFailure ? null : isStrictPass ? 1 : Number(partialScore.toFixed(4));
       return {
-        id: `aiq-v1-${domain.domain}-${String(taskIndex + 1).padStart(2, '0')}-${entry.id}`,
+        id: `aiq-2-${domain.domain}-${String(taskIndex + 1).padStart(2, '0')}-${entry.id}`,
         task: `${domain.domain.replaceAll('_', ' ')} fixture ${taskIndex + 1}`,
         domain: domain.domain,
-        outcome: isFailure ? 'timeout' : passedScore >= 1 ? 'correct' : 'partial',
+        outcome: isFailure
+          ? 'timeout'
+          : score === 1
+            ? 'correct'
+            : (score ?? 0) > 0
+              ? 'partial'
+              : 'incorrect',
         executionStatus: isFailure ? 'runtime_issue' : 'completed',
-        score: isFailure ? 0 : Number(passedScore.toFixed(4)),
+        score,
         explanation: isFailure
           ? {
               code: failureCode,
-              summary: `${failureCode.replaceAll('_', ' ').toLowerCase()} ended the valid task attempt. AIQ v1 assigns zero.`,
+              summary: `${failureCode.replaceAll('_', ' ').toLowerCase()} ended the task attempt. AIQ excludes runtime failures from semantic scores.`,
               retryable: false,
             }
           : null,
@@ -194,7 +268,7 @@ function buildCoverageOnlyTasks(): readonly TaskResult[] {
         domain: domain.domain,
         outcome: isMissing ? 'missing' : isFailed ? 'timeout' : 'partial',
         executionStatus: isMissing ? 'missing' : isFailed ? 'runtime_issue' : 'completed',
-        score: isMissing ? null : isFailed ? 0 : 0.72,
+        score: isMissing || isFailed ? null : 0.72,
         explanation: isMissing
           ? {
               code: 'RESULT_NOT_RECEIVED',
@@ -205,7 +279,8 @@ function buildCoverageOnlyTasks(): readonly TaskResult[] {
           : isFailed
             ? {
                 code: 'TOOL_TIMEOUT',
-                summary: 'The tool timed out during a valid attempt. AIQ v1 assigns zero.',
+                summary:
+                  'The tool timed out during the task attempt. AIQ excludes runtime failures from semantic scores.',
                 retryable: false,
               }
             : null,
@@ -273,17 +348,19 @@ export const seedMethodology: Methodology = {
     taskCount: domain.taskCount,
   })),
   principles: [
-    'Estimate performance on the committed AIQ v1 fixed-fixture set. Do not claim general intelligence or universal capability.',
-    'For non-synthetic Official evidence, score each domain over its frozen tasks, then take an equal-weight macro average across all 10 domains.',
+    'Estimate a one-dimensional latent ability on the committed AIQ Core fixed-fixture set. Do not claim general intelligence or a population IQ norm.',
+    'For non-synthetic Official evidence, jointly estimate model locations and one Rasch task difficulty per task from the complete 17-configuration matrix with weak priors on a centered item scale. The published theta interval is conditional on that released item bank.',
+    'Publish 100 × logistic(theta) as the calibrated average-task ability score. Keep the raw equal-domain fixed-fixture mean as a separate quality diagnostic.',
+    'Strict pass rate is strict successes divided by every attributable task with a semantic task score. Partial scores are non-passes in the denominator; missing, infrastructure-invalid, and unscored tasks are excluded. Wilson bounds use the same denominator.',
     'Keep hidden fixture payloads behind the commitment boundary. Publish versions, counts, outcomes, and provenance.',
     'Do not fabricate or substitute work when a required capability is unavailable.',
   ],
   missingPolicy:
     'Missing and invalid results block Official and remain in completion accounting. A complete synthetic fixture is descriptive, never Official, and not ranked. A Provisional point estimate averages valid observed tasks within each domain; fixed-fixture completion bounds retain every planned task and assign unobserved tasks zero or one. Provisional requires at least 60 results and at least 4 in every domain, and is not ranked.',
   failurePolicy:
-    'Agent, model, tool, timeout, budget, unsupported-runtime, and wrong-artifact failures during a valid attempt score zero. Invalid infrastructure attempts are audited and rerun. A whole configuration can be N/A only when preflight proves it unavailable; partial capability gaps score zero.',
+    'Only completed semantic correct, partial, and incorrect outcomes contribute a task score. Runtime failures have no semantic score and remain visible as runtime issues. Invalid infrastructure attempts are audited and rerun. A whole configuration can be N/A only when preflight proves it unavailable.',
   sensitivityPolicy:
-    'The canonical fixed-fixture interval draws committed clusters with replacement inside each domain, includes all task scores in each drawn cluster, and recomputes the equal-weight ten-domain score. It expands each raw 95-percentile deviation from the observed fixture score by the versioned 1.3 correction and clamps the endpoints to 0 through 100. Development simulations selected the correction for this finite fixture during held-out calibration. It is not a universal confidence interval for model capability.',
+    'The canonical fixed-fixture sensitivity interval draws committed clusters with replacement inside each domain, includes all task scores in each drawn cluster, and recomputes the raw equal-domain diagnostic. It expands each raw 95-percentile deviation from the observed fixture score by the versioned 1.3 correction and clamps the endpoints to 0 through 100. It is not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank.',
   synthetic: true,
 };
 

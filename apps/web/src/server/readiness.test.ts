@@ -560,7 +560,7 @@ void describe('bounded readiness probe', () => {
         view === 'public_task_coverage'
           ? Response.json([
               {
-                scoring_version: '1.0.5',
+                scoring_version: '1.0.6',
                 domain: 'coding',
                 weight: 'not-a-number',
                 task_count: 8,
@@ -576,7 +576,7 @@ void describe('bounded readiness probe', () => {
     assert.deepEqual(REQUIRED_RPC_CONTRACT.public_trend_points, {
       arguments: 'supplied_range text',
       result:
-        'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
+        'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, theta numeric, standard_error numeric, theta_ci_low numeric, theta_ci_high numeric, score_ci_low numeric, score_ci_high numeric, information numeric, quality_score numeric, strict_pass_rate numeric, strict_pass_low numeric, strict_pass_high numeric, strict_pass_sample_size integer, strict_pass_successes integer, reliability_status text, calibration_status text, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
       defaultCount: 0,
       modes: ['i', ...Array<string>(13).fill('t')],
       grants: {

@@ -46,8 +46,8 @@ use aiq_runner::{
 	},
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
-		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, ValidatedCorpusCommitment,
-		ValidatedModelToolchain,
+		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment,
+		ValidatedCorpusCommitment, ValidatedModelToolchain,
 	},
 	isolation::{self, ProtectedBenchmarkPath},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
@@ -59,6 +59,7 @@ use aiq_runner::{
 		self, CALIBRATION_RUN_PAYLOAD_TYPE, ProtocolError, RUN_PAYLOAD_TYPE, SigningIdentity,
 		SubmissionEnvelope, TrustTier,
 	},
+	public_fixture,
 	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
 	runner::{
 		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
@@ -83,6 +84,10 @@ use aiq_runner::{
 const MAX_CORPUS_COMMITMENT_BYTES: usize = 4 * 1_024 * 1_024;
 const MAX_CAPABILITY_MANIFEST_BYTES: usize = 512 * 1_024;
 const FUTURE_PROTECTED_PLACEHOLDER: &[u8] = b"AIQ_DENIED\n";
+const HISTORICAL_DIAGNOSTIC_RESCORE_SCHEMA_VERSION: &str = "aiq.historical-diagnostic-rescore.v1";
+const HISTORICAL_DIAGNOSTIC_CLASSIFICATION: &str =
+	"historical_runtime_zero_normalized_non_official";
+const HISTORICAL_DIAGNOSTIC_NORMALIZATION_RULE: &str = "Only failed runtime or infrastructure results with task_score=0.0 are converted to an unscored result; semantic completed results are unchanged. The source file is read-only and its source hashes are retained.";
 
 /// Local AIQ runner.
 #[derive(Debug, Parser)]
@@ -488,6 +493,30 @@ struct CalibrationScoreBundle {
 	official_eligible: FalseOnly,
 	ranking_eligible: FalseOnly,
 	scores: Vec<CalibrationScoreReport>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(deny_unknown_fields)]
+struct HistoricalDiagnosticRescoreBundle<T> {
+	schema_version: &'static str,
+	classification: &'static str,
+	diagnostic_only: bool,
+	production_publishable: FalseOnly,
+	official_eligible: FalseOnly,
+	ranking_eligible: FalseOnly,
+	source_run_kind: &'static str,
+	source_bytes_sha256: String,
+	source_run_canonical_sha256: String,
+	source_run_id: String,
+	source_schema_version: String,
+	source_scoring_version: String,
+	source_task_set_hash: String,
+	source_provenance: Option<RunProvenanceCommitment>,
+	source_synthetic: bool,
+	source_result_count: usize,
+	normalized_runtime_zero_count: usize,
+	normalization_rule: &'static str,
+	reports: Vec<T>,
 }
 
 #[derive(Serialize)]
@@ -1362,7 +1391,7 @@ enum Command {
 		#[arg(long, default_value = "-")]
 		output: PathBuf,
 	},
-	/// Score a saved run with transparent AIQ v1 rules.
+	/// Score a saved run with the transparent AIQ 2.0 Rasch rules.
 	Score {
 		/// Directory of public-example task JSON files.
 		#[arg(long)]
@@ -1377,7 +1406,7 @@ enum Command {
 		#[arg(long, default_value_t = 10_000)]
 		bootstrap_samples: usize,
 		/// Deterministic bootstrap seed.
-		#[arg(long, default_value_t = 0x41_49_51_5f_56_31_u64)]
+		#[arg(long, default_value_t = 0x41_49_51_5f_56_32_u64)]
 		bootstrap_seed: u64,
 		/// Output JSON file, or `-` for standard output.
 		#[arg(long, default_value = "-")]
@@ -1385,6 +1414,39 @@ enum Command {
 		/// Exact Official admission receipt required for a real Official run.
 		#[arg(long)]
 		official_admission: Option<PathBuf>,
+	},
+	/// Rescore a historical run offline after repairing only legacy runtime-zero cells.
+	///
+	/// This command never produces an `aiq.score-bundle.v2`, never accepts an Official
+	/// admission receipt, and writes a permanently non-publication diagnostic report.
+	HistoricalDiagnosticRescore {
+		/// Directory of public-example task JSON files.
+		#[arg(long)]
+		public_tasks: Option<PathBuf>,
+		/// Controlled directory of hidden task JSON files.
+		#[arg(long)]
+		hidden_tasks: Option<PathBuf>,
+		/// Historical saved run JSON. It is read but never modified.
+		#[arg(long)]
+		results: PathBuf,
+		/// Deterministic cluster-bootstrap replicates.
+		#[arg(long, default_value_t = 10_000)]
+		bootstrap_samples: usize,
+		/// Deterministic bootstrap seed.
+		#[arg(long, default_value_t = 0x41_49_51_5f_56_32_u64)]
+		bootstrap_seed: u64,
+		/// New durable JSON output for the non-publication diagnostic.
+		#[arg(long)]
+		output: PathBuf,
+	},
+	/// Generate a browser-only 1.0.6 public projection from deterministic test observations.
+	///
+	/// The output is explicitly test-generated and cannot be submitted, normalized, or
+	/// published as Official evidence.
+	GenerateTestPublicFixture {
+		/// Output JSON file, or `-` for standard output.
+		#[arg(long, default_value = "benchmarks/fixtures/aiq-2.0-test-generated-public.json")]
+		output: PathBuf,
 	},
 	/// Produce explicitly synthetic data without invoking Codex.
 	Demo {
@@ -1524,6 +1586,7 @@ enum Command {
 		network_sentinel_port: u16,
 	},
 }
+
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum ReplayMode {
 	/// The verifier replayed scoring and commitments only; production is not publishable.
@@ -1545,6 +1608,7 @@ enum OfficialPostrunOutput {
 	Score,
 	Package,
 }
+
 enum CorpusValidationMode {
 	Released,
 	Core,
@@ -1655,6 +1719,25 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			output,
 			official_admission.as_deref(),
 		)?,
+		Command::HistoricalDiagnosticRescore {
+			public_tasks,
+			hidden_tasks,
+			results,
+			bootstrap_samples,
+			bootstrap_seed,
+			output,
+		} => run_historical_diagnostic_rescore(
+			public_tasks,
+			hidden_tasks,
+			results,
+			ScoreOptions { bootstrap_samples, bootstrap_seed },
+			&output,
+		)?,
+		Command::GenerateTestPublicFixture { output } => {
+			let fixture = public_fixture::generate_test_generated_public_fixture()?;
+
+			write_json(&output, &fixture)?;
+		},
 		Command::Demo {
 			slot_date,
 			occurrence,
@@ -2601,7 +2684,7 @@ fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::
 			)?,
 			CorpusValidationMode::Core => {
 				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
-					return Err("tasks do not match the immutable AIQ Core 1.0.5 catalog".into());
+					return Err("tasks do not match the immutable AIQ Core 1.0.6 catalog".into());
 				}
 
 				corpus_commitment::validate_core_corpus_commitment(
@@ -4419,7 +4502,7 @@ fn run_score(
 			write_json(
 				&output,
 				&ScoreBundle {
-					schema_version: "aiq.score-bundle.v1".to_owned(),
+					schema_version: "aiq.score-bundle.v2".to_owned(),
 					synthetic: run.synthetic,
 					scores,
 				},
@@ -4445,7 +4528,7 @@ fn run_score(
 			write_json(
 				&output,
 				&CalibrationScoreBundle {
-					schema_version: "aiq.calibration-score-bundle.v1",
+					schema_version: "aiq.calibration-score-bundle.v2",
 					run_class: "calibration",
 					official_eligible: FalseOnly,
 					ranking_eligible: FalseOnly,
@@ -4455,6 +4538,141 @@ fn run_score(
 		},
 		_ => Err("results schema is missing or unsupported for scoring".into()),
 	}
+}
+
+fn run_historical_diagnostic_rescore(
+	public_tasks: Option<PathBuf>,
+	hidden_tasks: Option<PathBuf>,
+	results: PathBuf,
+	options: ScoreOptions,
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	validate_new_output_set(&[("historical diagnostic output", output)])?;
+
+	let report = load_tasks(public_tasks.as_deref(), hidden_tasks.as_deref())?;
+
+	if !report.issues.is_empty() {
+		write_task_validation_report(&report, public_tasks.as_deref(), hidden_tasks.as_deref())?;
+
+		return Err("task validation failed".into());
+	}
+
+	let source_bytes = fs::read(&results)?;
+	let source_bytes_sha256 = raw_sha256(&source_bytes);
+	let value: serde_json::Value = serde_json::from_slice(&source_bytes)?;
+	let schema = value.get("schema_version").and_then(serde_json::Value::as_str);
+
+	match schema {
+		Some(RUN_SCHEMA_VERSION) => {
+			let run: RunRecord = serde_json::from_value(value)?;
+			let source_run_canonical_sha256 = protocol::canonical_hash(&run)?;
+			let bundle = historical_run_diagnostic_bundle(
+				run,
+				&report.tasks,
+				options,
+				source_bytes_sha256,
+				source_run_canonical_sha256,
+			)?;
+
+			write_json(output, &bundle)
+		},
+		Some(CALIBRATION_RUN_SCHEMA_VERSION) => {
+			let run: CalibrationRunRecord = serde_json::from_value(value)?;
+			let source_run_canonical_sha256 = protocol::canonical_hash(&run)?;
+			let bundle = historical_calibration_diagnostic_bundle(
+				run,
+				&report.tasks,
+				options,
+				source_bytes_sha256,
+				source_run_canonical_sha256,
+			)?;
+
+			write_json(output, &bundle)
+		},
+		_ => {
+			Err("historical results schema is missing or unsupported for diagnostic scoring".into())
+		},
+	}
+}
+
+fn historical_run_diagnostic_bundle(
+	mut run: RunRecord,
+	tasks: &[TaskDefinition],
+	options: ScoreOptions,
+	source_bytes_sha256: String,
+	source_run_canonical_sha256: String,
+) -> Result<HistoricalDiagnosticRescoreBundle<ScoreReport>, Box<dyn std::error::Error>> {
+	let source_result_count = run.results.len();
+	let normalized_runtime_zero_count =
+		scoring::normalize_historical_runtime_zeroes(&mut run.results)?;
+
+	aiq_runner::run_validation::validate_run_record(&run, Some(tasks))?;
+
+	let reports = score_all(tasks, &run, options)?;
+
+	Ok(HistoricalDiagnosticRescoreBundle {
+		schema_version: HISTORICAL_DIAGNOSTIC_RESCORE_SCHEMA_VERSION,
+		classification: HISTORICAL_DIAGNOSTIC_CLASSIFICATION,
+		diagnostic_only: true,
+		production_publishable: FalseOnly,
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		source_run_kind: "run",
+		source_bytes_sha256,
+		source_run_canonical_sha256,
+		source_run_id: run.run_id.clone(),
+		source_schema_version: run.schema_version.clone(),
+		source_scoring_version: run.scoring_version.clone(),
+		source_task_set_hash: run.task_set_hash.clone(),
+		source_provenance: run.provenance.clone(),
+		source_synthetic: run.synthetic,
+		source_result_count,
+		normalized_runtime_zero_count,
+		normalization_rule: HISTORICAL_DIAGNOSTIC_NORMALIZATION_RULE,
+		reports,
+	})
+}
+
+fn historical_calibration_diagnostic_bundle(
+	mut run: CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	options: ScoreOptions,
+	source_bytes_sha256: String,
+	source_run_canonical_sha256: String,
+) -> Result<HistoricalDiagnosticRescoreBundle<CalibrationScoreReport>, Box<dyn std::error::Error>> {
+	let source_result_count = run.results.len();
+	let selected_tasks = select_tasks(tasks, &run.task_ids)?;
+	let normalized_runtime_zero_count =
+		scoring::normalize_historical_runtime_zeroes(&mut run.results)?;
+
+	aiq_runner::run_validation::validate_calibration_run_record_for_historical_diagnostic(
+		&run,
+		&selected_tasks,
+	)?;
+
+	let reports = score_calibration(&selected_tasks, &run, options)?;
+
+	Ok(HistoricalDiagnosticRescoreBundle {
+		schema_version: HISTORICAL_DIAGNOSTIC_RESCORE_SCHEMA_VERSION,
+		classification: HISTORICAL_DIAGNOSTIC_CLASSIFICATION,
+		diagnostic_only: true,
+		production_publishable: FalseOnly,
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		source_run_kind: "calibration_run",
+		source_bytes_sha256,
+		source_run_canonical_sha256,
+		source_run_id: run.run_id.clone(),
+		source_schema_version: run.schema_version.clone(),
+		source_scoring_version: run.scoring_version.clone(),
+		source_task_set_hash: run.task_set_hash.clone(),
+		source_provenance: Some(run.provenance.clone()),
+		source_synthetic: run.results.iter().all(|result| result.provenance.synthetic),
+		source_result_count,
+		normalized_runtime_zero_count,
+		normalization_rule: HISTORICAL_DIAGNOSTIC_NORMALIZATION_RULE,
+		reports,
+	})
 }
 
 fn run_normalize_command(command: Command) -> Result<(), Box<dyn std::error::Error>> {
@@ -4540,7 +4758,7 @@ fn run_normalize(
 
 	let score_bundle = read_json::<ScoreBundle>(scores_path)?;
 
-	if score_bundle.schema_version != "aiq.score-bundle.v1"
+	if score_bundle.schema_version != "aiq.score-bundle.v2"
 		|| score_bundle.synthetic != run.synthetic
 	{
 		return Err("score bundle schema or synthetic policy does not match the signed run".into());
@@ -4808,7 +5026,7 @@ fn run_demo(
 	let scores = score_all(
 		&tasks,
 		&run,
-		ScoreOptions { bootstrap_samples, bootstrap_seed: 0x41_49_51_5f_56_31 },
+		ScoreOptions { bootstrap_samples, bootstrap_seed: 0x41_49_51_5f_56_32 },
 	)?;
 
 	if let Some(path) = outputs.run {
@@ -4818,7 +5036,7 @@ fn run_demo(
 		write_json(
 			path,
 			&ScoreBundle {
-				schema_version: "aiq.score-bundle.v1".to_owned(),
+				schema_version: "aiq.score-bundle.v2".to_owned(),
 				synthetic: true,
 				scores: scores.clone(),
 			},
@@ -5449,6 +5667,7 @@ mod tests {
 	use crate::capacity;
 	use crate::protocol;
 	use crate::resume;
+	use crate::run_validation;
 	use crate::runner;
 	use crate::{
 		adapter::{
@@ -5507,6 +5726,92 @@ mod tests {
 				"{subcommand_name} must not expose a proxy mode"
 			);
 		}
+	}
+
+	#[test]
+	fn historical_diagnostic_rescore_is_non_publication_and_preserves_source_identity() {
+		let tasks = runner::synthetic_demo_tasks();
+		let slot = crate::schedule::ScheduleConfig::default()
+			.slot("2000-01-01", crate::schedule::ScheduleOccurrence::Day)
+			.expect("synthetic diagnostic slot");
+		let mut run = runner::synthetic_demo(slot, &runner::TestArtifactSink)
+			.expect("synthetic diagnostic run");
+		let failed = run.results.first_mut().expect("synthetic result");
+
+		failed.status = runner::ResultStatus::Failed;
+		failed.evaluation = runner::EvaluationOutcome::NotEvaluated;
+		failed.task_score = Some(0.0);
+		failed.response = None;
+		failed.response_sha256 = None;
+		failed.evaluator_result_sha256 = None;
+
+		failed.evaluator_checks.clear();
+
+		failed.failure = Some(runner::ResultFailure {
+			kind: runner::FailureKind::Timeout,
+			message: "historical timeout".to_owned(),
+			exit_code: None,
+			retryable: true,
+		});
+		failed.result_id = format!(
+			"result_{}",
+			failed.content_hash().expect("legacy result hash").trim_start_matches("sha256:")
+		);
+
+		let source_bytes = serde_json::to_vec(&run).expect("source serialization");
+		let source_bytes_sha256 = cli::raw_sha256(&source_bytes);
+		let source_run_canonical_sha256 =
+			protocol::canonical_hash(&run).expect("source canonical hash");
+
+		assert!(
+			run_validation::validate_run_record(&run, Some(&tasks)).is_err(),
+			"the legacy runtime-zero wire shape must fail production validation"
+		);
+
+		let bundle = super::historical_run_diagnostic_bundle(
+			run,
+			&tasks,
+			crate::scoring::ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+			source_bytes_sha256.clone(),
+			source_run_canonical_sha256.clone(),
+		)
+		.expect("offline historical diagnostic");
+
+		assert_eq!(bundle.schema_version, super::HISTORICAL_DIAGNOSTIC_RESCORE_SCHEMA_VERSION);
+		assert!(bundle.diagnostic_only);
+		assert_eq!(bundle.production_publishable, crate::scoring::FalseOnly);
+		assert_eq!(bundle.official_eligible, crate::scoring::FalseOnly);
+		assert_eq!(bundle.ranking_eligible, crate::scoring::FalseOnly);
+		assert_eq!(bundle.source_bytes_sha256, source_bytes_sha256);
+		assert_eq!(bundle.source_run_canonical_sha256, source_run_canonical_sha256);
+		assert_eq!(bundle.source_result_count, 1_224);
+		assert_eq!(bundle.normalized_runtime_zero_count, 1);
+		assert_eq!(bundle.reports.len(), crate::model::MODEL_MATRIX.len());
+
+		let wire = serde_json::to_value(&bundle).expect("diagnostic serialization");
+
+		assert_eq!(wire["schema_version"], "aiq.historical-diagnostic-rescore.v1");
+		assert_eq!(wire["production_publishable"], false);
+		assert!(wire.get("results").is_none());
+		assert!(wire.to_string().contains("source_bytes_sha256"));
+		assert!(
+			serde_json::from_value::<super::ScoreBundle>(wire).is_err(),
+			"diagnostic output must not deserialize as a production score bundle"
+		);
+
+		let parsed = super::Cli::try_parse_from([
+			"aiq-runner",
+			"historical-diagnostic-rescore",
+			"--hidden-tasks",
+			"/controlled/tasks",
+			"--results",
+			"/controlled/pilot-run.json",
+			"--output",
+			"/controlled/pilot-diagnostic.json",
+		])
+		.expect("diagnostic CLI shape");
+
+		assert!(matches!(parsed.command, super::Command::HistoricalDiagnosticRescore { .. }));
 	}
 
 	fn fixture_root(name: &str) -> PathBuf {

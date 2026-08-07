@@ -9,30 +9,13 @@ scope `acgbox` hosts project `aiq`. The personal Supabase organization `ACG Box`
 hosts project `aiq` on PostgreSQL 17.6 with reference
 `xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
 `aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
-`aiq-submission-packages` and `aiq-runner-artifacts`. The first Official launch
-publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
-evidence, not the identity of every later production deployment.
+`aiq-submission-packages` and `aiq-runner-artifacts`.
 
-The live production data is the historical AIQ Core `1.0.2` matrix. The native
-Apple Silicon macOS runner completed this one real, non-synthetic Official
-batch. It contains 17 configuration runs and 72 tasks per run,
-or 1,224 task-level results. This is one Official matrix, not 1,224 benchmark
-runs. The verifier replayed and accepted the evidence. A distinct publisher
-published the matrix as `trusted_verified`. Of the 1,224 results, 1,218
-completed and 6 runtime issues. The outcomes are 329
-`correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
-`budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
-
-Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage` results. The priced subtotal is $125.403257240. It
-is a Standard API-equivalent estimate for the 1,208 priced results. It is not
-actual ChatGPT subscription spend and is not a complete total for the batch.
-Missing cost values are not zero.
-
-The public database exposes 17 runs, 1,224 results, 17 leaderboard rows, 17
-model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
-artifact bindings, including 19 capability artifacts.
+The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement
+`2.0.0`. Do not publish, preserve online, migrate, or display a legacy tuple as
+production evidence. Production must remain without an Official AIQ 2.0
+publication until one real, non-synthetic, signed 17-by-72 package passes the
+native verifier and the release gates described below.
 
 The `1.0.3` Official attempt was interrupted after the calibration evidence had
 already proved a ceiling-policy failure. It was rejected as unpublished
@@ -40,39 +23,56 @@ calibration evidence. No hidden responses or hidden task details were
 published. The first AIQ Core `1.0.4` calibration then completed all 1,224
 cells. It is preserved as non-Official statistical evidence because it failed
 the release policy. This does not mean that all task executions failed. AIQ
-Core `1.0.5` retargets four calibration-sensitive tasks. Run those four tasks
-across all 17 configurations as a 68-cell pilot before a complete 17-by-72
-non-Official calibration. No operator can override a failed release gate. Real
-calibration evidence can enter the public calibration register only after signed
-verifier admission and distinct publication, and it remains non-Official.
+Core `1.0.5` retargeted four calibration-sensitive tasks. Its pilot evidence
+found that the shared 900-second, 40-step, and 28-tool-call envelope was too
+small for those interaction tasks. AIQ Core `1.0.6` preserves their task and
+evaluator semantics and gives every model configuration the same 1,500-second,
+48-step, and 40-tool-call envelope. Run those four tasks across all 17
+configurations as a fresh 68-cell pilot before a complete 17-by-72 non-Official
+calibration. No operator can override a failed release gate. Real calibration
+evidence can enter the public calibration register only after signed verifier
+admission and distinct publication, and it remains non-Official.
 
 The first `1.0.5` 68-cell pilot completed 63 cells and timed out on 5. It was
 rejected because the completed task means were 0.933–0.992 and therefore did
-not distinguish the model configurations. The current create-new candidate
-replaces the four single-dimension repairs with bounded executor, quoted-record
-parser, six-field configuration, and Unicode log-preview interactions. Their
-public wall-time budget is 900 seconds; this is a timeout correction, not a
-score adjustment. The rejected pilot remains immutable evidence.
+not distinguish the model configurations. A later interaction pilot exposed
+seven timeouts and three tool-budget failures at the old common envelope. The
+offline historical diagnostic now treats those ten observed runtime failures as
+runtime-null coverage evidence instead of semantic zero scores. It is
+permanently non-Official and cannot rewrite the preserved package. The rejected
+pilots remain immutable evidence.
 
 ## Product contract
 
-- Repository source targets the public AIQ Core `1.0.5` candidate and scoring
-  `1.0.5`, with 72 private controlled tasks in ten domains.
-- The active public candidate, task, and scorer contract is `1.0.5`. It retargets
-  four calibration-sensitive tasks and carries forward 68 task designs with new
+- Repository source targets the public AIQ Core `1.0.6` candidate and scoring
+  `1.0.6`, with 72 private controlled tasks in ten domains.
+- The active public candidate, task, and scorer contract is `1.0.6`. It changes
+  only the common runtime envelope for four interaction tasks and carries
+  forward the other 68 task, evaluator, tool, and budget contracts with new
   version, provenance, and commitment bindings.
-- The create-new `1.0.5` interaction candidate passed two-candidate
-  reproducibility generation, independent authoring validation, and the Rust
-  72-task corpus validator. Its controlled identities remain calibration
-  candidates, not accepted release or Official identities. The new 68-cell
-  pilot, full calibration, Contrast generation, final native build, real
-  Official run, publication, and deployment are pending. Production remains on
-  the historical `1.0.2` matrix.
+- The public `1.0.6` catalog is deterministic and identity-frozen. Two
+  independently generated controlled candidates produced one matching tree,
+  and the reviewed 72-task database commitment is bound in source. Final
+  regeneration from the final clean commit, the fresh 68-cell pilot, full
+  calibration, Contrast generation, final native build, real Official run,
+  publication, and deployment are pending. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
   passed positive weight by total positive weight. The verifier replays the
   exact committed check identities and weights without rounding.
+- The source-head AIQ measurement contract is `2.0.0`: the Official ranking
+  score is `100 × logistic(theta)` from a jointly calibrated Rasch item bank;
+  theta and its conditional Wald interval are reported separately from the raw
+  equal-domain `qualityScore` diagnostic. This contract is not an IQ norm or a
+  150-point scale.
+- Strict pass is strict successes divided by all attributable tasks with a
+  valid semantic task score. Partial scores remain in that denominator; only
+  missing, infrastructure-invalid, runtime-failed, and unscored tasks are
+  excluded. `invalid_tasks` records observed runtime or infrastructure
+  failures, while `missing_tasks` is reserved for an expected cell with no
+  result record. Runtime failures are not semantic zeros. The Wilson interval
+  uses the same sample.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v3` envelopes.
@@ -95,25 +95,21 @@ score adjustment. The rejected pilot remains immutable evidence.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
+sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
 ```
 
 Its public release digest is
-`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The release-policy identity is `aiq-core/1.0.5`. Do not infer any controlled
-identity from these public digests. The current create-new interaction candidate
-has evaluator identity
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-scorer-manifest identity
-`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
-generated-task tree identity
-`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
-Core commitment identity
-`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`,
-and public-safe database task-set identity
-`sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`.
-These identities remain provisional until calibration accepts this candidate;
-Contrast generation is still pending. The checked Core schema
+`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+The release-policy identity is `aiq-core/1.0.6`. Do not infer any controlled
+identity from these public digests. The reviewed evaluator identity is
+`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+The public-safe database task-set identity is
+`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+and the reviewed task-commitment manifest identity is
+`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+Final controlled corpus identities remain provisional until the clean-commit
+regeneration and calibration accept the candidate; Contrast generation is still
+pending. The checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
 closed on this runner subtree for both Core and Contrast. Contrast does not have
@@ -125,19 +121,22 @@ exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Node.js, and ripgrep executables. This receipt is reproducibility
 evidence, not a product protocol, database input, or published artifact. The
 repository does not validate it. Do not infer a runtime hash from a generated-task
-tree digest. The published historical `1.0.2` Official `72 × 17` matrix is one
-batch of 17 configuration runs and 1,224 task-level executions.
+tree digest. The accepted AIQ 2.0 publication will be one batch of 17
+configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
 
-The Web application is a professional analysis workbench. Scientific score
-context reports the sample count, fixed-fixture task-sensitivity interval, coverage,
-missing cells, runtime state, scoring method, and provenance. It keeps semantic
-task outcomes separate from runtime, invalid, and missing cells. Cost remains an
-estimated Standard API-equivalent comparison, not an actual ChatGPT or Codex
-subscription bill. Charts use ECharts with SVG rendering and ARIA descriptions.
-Users can select system, light, or dark color themes. The production views use
-the real historical matrix, not synthetic data.
+The Web application is a professional analysis workbench. Official evidence
+presents calibrated ability with its conditional 95% interval. Synthetic fixtures
+present descriptive quality with task-mix sensitivity and never appear as Official.
+Scientific context also reports strict pass with a Wilson interval, sample count,
+coverage, missing cells, runtime state, scoring method, and provenance. It keeps
+semantic task outcomes separate from runtime, invalid, and missing cells. Cost
+remains an estimated Standard API-equivalent comparison, not an actual ChatGPT or
+Codex subscription bill. Charts use ECharts with SVG rendering and ARIA
+descriptions. Users can select system, light, or dark color themes. Production
+views must use only real evidence for the sole production tuple, not synthetic
+or legacy data.
 
 ## Repository map
 
@@ -234,14 +233,15 @@ cargo make init-database
 ```
 
 For an empty AIQ namespace, the production reference must contain the real
-controlled, non-synthetic AIQ Core `1.0.5` corpus commitment, its real canonical
+controlled, non-synthetic AIQ Core `1.0.6` corpus commitment, its real canonical
 `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
-only after the controlled corpus passes model-free validation and the operator
-verifies the final native build; the repository contains no substitute
+only after the controlled corpus passes model-free validation, the operator
+verifies the final native build, and one real signed non-synthetic 17-by-72
+package passes native verifier replay; the repository contains no substitute
 production reference. Retain the private final-build audit receipt separately.
 Database initialization does not accept or validate that receipt.
-A successful initialization receipt must report scoring `1.0.5`, both public
+A successful initialization receipt must report scoring `1.0.6`, both public
 catalog identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and
@@ -283,9 +283,9 @@ or to production.
 7. A distinct publisher identity completes publication through the gateway.
 8. Public security-invoker views supply the Web application.
 
-The current production matrix completed this flow and is published as
-`trusted_verified`. Official means a complete, non-synthetic 17-by-72 run with
-valid current bindings. A complete synthetic fixture uses the
+Official means a complete, non-synthetic 17-by-72 run with valid `1.0.6` and
+measurement `2.0.0` bindings that completed this flow and was published as
+`trusted_verified`. A complete synthetic fixture uses the
 `synthetic_complete` classification, has no Official AIQ value, and is never
 ranking eligible. There is one submission, native verification, and publication
 path.

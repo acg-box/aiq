@@ -37,15 +37,16 @@ const identifierPattern = /^[A-Za-z0-9._-]{1,160}(?![\s\S])/;
 const calibrationScoreKeys = [
   'binary_micro_diagnostic',
   'completion_bounds',
-  'conditional_observed_aiq',
   'coverage',
   'descriptive_status',
   'difficulty_coverage',
   'domains',
   'duplicate_results',
-  'fixed_fixture_aiq',
+  'latent_ability',
+  'measurement_version',
   'model',
   'official_eligible',
+  'quality_score',
   'ranking_eligible',
   'rule',
   'run_class',
@@ -487,9 +488,10 @@ function isCalibrationScore(
   return (
     isRecord(value) &&
     hasExactKeys(value, calibrationScoreKeys) &&
-    value.schema_version === 'aiq.calibration-score-report.v1' &&
+    value.schema_version === 'aiq.calibration-score-report.v2' &&
     value.run_class === 'calibration' &&
     value.scoring_version === scoringVersion &&
+    value.measurement_version === '2.0.0' &&
     value.official_eligible === false &&
     value.ranking_eligible === false &&
     typeof value.descriptive_status === 'string' &&
