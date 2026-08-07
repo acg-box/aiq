@@ -49,6 +49,14 @@ interface PublishedResultEvidence {
   score: number;
 }
 
+interface EfficiencyPointState {
+  key: string;
+  fill: string | null;
+  scale: string;
+  x: number;
+  y: number;
+}
+
 const test = base.extend<LivePublishedFixtures>({
   runtimeFailures: [
     async ({ page }, use) => {
@@ -357,6 +365,34 @@ async function expectNoDocumentOverflow(page: Page, testInfo: TestInfo) {
   ).toBeLessThanOrEqual(dimensions.clientWidth);
 }
 
+async function readEfficiencyPoints(plot: Locator): Promise<EfficiencyPointState[]> {
+  const states = await plot
+    .locator('.efficiency-chart svg path')
+    .evaluateAll<EfficiencyPointState[], undefined, SVGPathElement>((paths: SVGPathElement[]) => {
+      const points: EfficiencyPointState[] = [];
+      for (const path of paths) {
+        const transform = path.getAttribute('transform') ?? '';
+        if (path.getAttribute('stroke') !== 'var(--panel)' || !transform.startsWith('matrix')) {
+          continue;
+        }
+        const matrix = /^matrix\(([^,]+),[^,]+,[^,]+,[^,]+,([^,]+),([^)]+)\)$/.exec(transform);
+        const bounds = path.getBoundingClientRect();
+        points.push({
+          key: `${path.getAttribute('d') ?? ''}|${matrix?.[2] ?? ''}|${matrix?.[3] ?? ''}`,
+          fill: path.getAttribute('fill'),
+          scale: matrix?.[1] ?? '',
+          x: bounds.left + bounds.width / 2,
+          y: bounds.top + bounds.height / 2,
+        });
+      }
+      return points;
+    });
+  states.sort((left: EfficiencyPointState, right: EfficiencyPointState) =>
+    left.key.localeCompare(right.key),
+  );
+  return states;
+}
+
 for (const route of routes) {
   test(`${route} renders published live evidence accessibly`, async ({ page }, testInfo) => {
     const response = await page.goto(route);
@@ -451,6 +487,39 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(officialEfficiency).toContainText('unavailable missing usage');
   await expect(officialEfficiency).toContainText('0/72 priced');
   await expect(officialEfficiency).not.toContainText('$0');
+});
+
+test('efficiency points keep stable geometry while the pointer moves between them', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/?efficiencyMetric=duration#results');
+  const plot = page.getByRole('region', { name: 'AIQ score vs total run time' });
+  await plot.scrollIntoViewIfNeeded();
+  await expect(plot.locator('.efficiency-chart svg')).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(300);
+
+  const baseline = await readEfficiencyPoints(plot);
+  expect(baseline.length).toBeGreaterThanOrEqual(3);
+  expect(baseline.every((point) => point.fill?.startsWith('var(--data-'))).toBe(true);
+  const stableGeometry = baseline.map(({ key, fill, scale }) => ({ key, fill, scale }));
+  const targets = [baseline[0], baseline[Math.floor(baseline.length / 2)], baseline.at(-1)];
+
+  const verifyStableTarget = async (target: EfficiencyPointState | undefined) => {
+    if (!target) throw new Error('Expected a representative efficiency point');
+    await page.mouse.move(target.x, target.y, { steps: 8 });
+    await page.waitForTimeout(220);
+    const hovered = await readEfficiencyPoints(plot);
+    expect(hovered.map(({ key, fill, scale }) => ({ key, fill, scale }))).toEqual(stableGeometry);
+    await expect(
+      plot.locator('.efficiency-chart .echarts-host div[style*="position: absolute"]'),
+    ).toBeVisible();
+  };
+
+  await verifyStableTarget(targets[0]);
+  await verifyStableTarget(targets[1]);
+  await verifyStableTarget(targets[2]);
 });
 
 test('the public index reports runtime issues without conflating evaluator outcomes', async ({

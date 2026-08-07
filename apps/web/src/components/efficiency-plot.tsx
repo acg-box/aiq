@@ -361,7 +361,7 @@ export function EfficiencyPlot({
           name: family,
           symbol: ['circle', 'diamond', 'triangle'][index],
           symbolSize: 13,
-          emphasis: { focus: 'series', scale: 1.35 },
+          emphasis: { disabled: true },
           itemStyle: {
             color:
               index === 0
