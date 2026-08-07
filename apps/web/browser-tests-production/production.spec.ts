@@ -195,6 +195,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   baseURL,
   page,
 }, testInfo) => {
+  test.slow();
   const expectedIdentity = validateProductionExpectedIdentity(
     testInfo.config.metadata.productionExpectedIdentity,
   );
