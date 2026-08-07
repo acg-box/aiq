@@ -142,17 +142,19 @@ export default async function CalibrationDetailPage({
             </div>
           </dl>
           <form className="calibration-filter" action={`/calibrations/${id}`} method="get">
-            <label htmlFor="configuration">Model and reasoning configuration</label>
-            <select id="configuration" name="configuration" defaultValue={selectedKey}>
-              {supportedConfigurations.map((configuration) => {
-                const key = calibrationConfigurationKey(configuration);
-                return (
-                  <option key={key} value={key}>
-                    {configuration.modelFamily} · {configuration.reasoningEffort}
-                  </option>
-                );
-              })}
-            </select>
+            <label className="calibration-filter-control" htmlFor="configuration">
+              <span>Model and reasoning configuration</span>
+              <select id="configuration" name="configuration" defaultValue={selectedKey}>
+                {supportedConfigurations.map((configuration) => {
+                  const key = calibrationConfigurationKey(configuration);
+                  return (
+                    <option key={key} value={key}>
+                      {configuration.modelFamily} · {configuration.reasoningEffort}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
             <button type="submit">Show {run.selectedTaskCount}-task subset</button>
           </form>
           <p
