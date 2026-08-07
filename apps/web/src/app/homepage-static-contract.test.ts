@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 const pageSourceUrl = new URL('./page.tsx', import.meta.url);
 const analyticsSourceUrl = new URL('../components/homepage-analytics.tsx', import.meta.url);
 const workspaceStylesUrl = new URL('./workspace.css', import.meta.url);
+const globalStylesUrl = new URL('./globals.css', import.meta.url);
 
 void describe('homepage evidence and loading contract', () => {
   void it('binds the snapshot to exact highlighted-run evidence', async () => {
@@ -54,6 +55,9 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(analyticsSource, /ssr: false/);
     assert.match(analyticsSource, /IntersectionObserver/);
     assert.match(analyticsSource, /rootMargin: '500px 0px'/);
+    assert.match(analyticsSource, /useNearViewport\(eager\)/);
+    assert.match(pageSource, /<DeferredEfficiencyPlot[\s\S]+eager/);
+    assert.match(pageSource, /<DeferredModelMatrixChart entries={leaderboard} eager \/>/);
     assert.match(analyticsSource, /loading: \(\) => <AnalyticsLoading/);
     assert.match(analyticsSource, /role="status"/);
     assert.match(analyticsSource, /aria-live="polite"/);
@@ -82,13 +86,17 @@ void describe('homepage evidence and loading contract', () => {
   });
 
   void it('keeps the answer and compact ranking readable on a narrow viewport', async () => {
-    const workspaceStyles = await readFile(workspaceStylesUrl, 'utf8');
+    const [source, workspaceStyles] = await Promise.all([
+      readFile(pageSourceUrl, 'utf8'),
+      readFile(workspaceStylesUrl, 'utf8'),
+    ]);
 
     assert.match(
       workspaceStyles,
       /@media \(max-width: 760px\)[\s\S]+\.insight-grid \{\s+grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/,
     );
-    assert.match(workspaceStyles, /\.insight-card > svg \{\s+display: none;/);
+    assert.doesNotMatch(source, /TrophyIcon|ChartBarIcon|TargetIcon/);
+    assert.doesNotMatch(workspaceStyles, /\.insight-card > svg/);
     assert.match(workspaceStyles, /\.ranking-list li \{[\s\S]+grid-template-columns:/);
     assert.match(workspaceStyles, /\.ranking-list \.quiet-button \{\s+display: none;/);
   });
@@ -98,7 +106,85 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(source, /const hasEfficiencyEvidence =/);
     assert.match(source, /hasEfficiencyEvidence \? \([\s\S]+<DeferredEfficiencyPlot/);
     assert.match(source, /\) : \([\s\S]+<DeferredModelMatrixChart/);
+    assert.match(source, /id={hasEfficiencyEvidence \? undefined : 'matrix'}/);
+    assert.doesNotMatch(source, /<div id="matrix" className="sr-only"/);
     assert.match(source, /rankedEntries\.length === 0[\s\S]+<LeaderboardTable entries=/);
     assert.doesNotMatch(source, /standardApiEquivalentUsdNanos: [0-9]/);
+  });
+
+  void it('composes the primary product into one anchored workspace', async () => {
+    const source = await readFile(pageSourceUrl, 'utf8');
+
+    assert.match(source, /import ComparePage from '\.\/compare\/page\.tsx'/);
+    assert.match(source, /import TrendsPage from '\.\/trends\/page\.tsx'/);
+    assert.match(source, /import RunsPage from '\.\/runs\/page\.tsx'/);
+    assert.match(source, /import MethodPage from '\.\/method\/page\.tsx'/);
+    assert.match(source, /import RadarPage from '\.\/radar\/page\.tsx'/);
+    for (const section of ['results', 'trends', 'compare', 'runs', 'method', 'radar']) {
+      assert.match(source, new RegExp(`id="${section}"[\\s\\S]+data-workspace-section`));
+    }
+    assert.match(source, /<TrendsPage searchParams={searchParams} \/>/);
+    assert.match(source, /<ComparePage \/>/);
+    assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
+    assert.match(source, /<MethodPage \/>/);
+    assert.match(source, /<RadarPage \/>/);
+    assert.match(source, /href="#method"/);
+  });
+
+  void it('keeps embedded archive pagination inside the one-page workspace', async () => {
+    const [source, archiveSource, detailSource] = await Promise.all([
+      readFile(pageSourceUrl, 'utf8'),
+      readFile(new URL('./runs/page.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('./runs/[id]/page.tsx', import.meta.url), 'utf8'),
+    ]);
+
+    assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
+    assert.match(archiveSource, /`\/\?\$\{parameter}/);
+    assert.match(archiveSource, /#runs`/);
+    assert.match(detailSource, /href="\/#runs"/);
+  });
+
+  void it('uses whitespace and semantic rows instead of nested decorative frames', async () => {
+    const [workspaceStyles, globalStyles] = await Promise.all([
+      readFile(workspaceStylesUrl, 'utf8'),
+      readFile(globalStylesUrl, 'utf8'),
+    ]);
+
+    assert.match(
+      workspaceStyles,
+      /\.analysis-panel \{[\s\S]+border: 0;[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.task-list > article \{[\s\S]+border: 0;[\s\S]+border-bottom: 1px solid var\(--line\);[\s\S]+background: transparent;/,
+    );
+    assert.match(globalStyles, /\.data-note \{[\s\S]+border: 0;[\s\S]+background: transparent;/);
+    assert.doesNotMatch(globalStyles, /\.data-note \{[\s\S]+border-left:/);
+    assert.match(
+      workspaceStyles,
+      /\.evidence-notes \{[\s\S]+border: 0;[\s\S]+background: transparent;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.evidence-status-disclosure \{[\s\S]+border: 0;[\s\S]+background: transparent;/,
+    );
+    assert.doesNotMatch(workspaceStyles, /\.evidence-notes > summary::after/);
+    assert.match(
+      workspaceStyles,
+      /\.chart-switch,[\s\S]+\.range-tabs \{[\s\S]+border: 0;[\s\S]+background: transparent;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.chart-switch button\[aria-pressed='true'\],[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
+    );
+    assert.match(globalStyles, /\.quiet-button \{[\s\S]+border: 0;[\s\S]+background: transparent;/);
+    assert.match(
+      globalStyles,
+      /button \{[\s\S]+appearance: none;[\s\S]+border-radius: 0;[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
+    );
+    assert.match(
+      globalStyles,
+      /\.button\.primary \{[\s\S]+background: transparent;[\s\S]+border-radius: 0;[\s\S]+box-shadow: none;/,
+    );
   });
 });

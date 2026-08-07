@@ -55,7 +55,9 @@ export default async function ComparePage() {
           coverage, reliability, time, and API-equivalent cost.
         </p>
       </div>
-      {result.state === 'unavailable' ? <ReadStateNote result={result} /> : null}
+      {result.state === 'unavailable' ? (
+        <ReadStateNote result={result} subject="Comparison" />
+      ) : null}
       {runSummaries.state === 'unavailable' ? (
         <ReadStateNote result={runSummaries} subject="Selected run context" />
       ) : null}
@@ -75,7 +77,7 @@ export default async function ComparePage() {
           <span>How to interpret time, cost, and uncertainty</span>
         </summary>
         <div className="evidence-note-body">
-          <ReadStateNote result={result} />
+          <ReadStateNote result={result} subject="Comparison" />
           <p className="fine-print">
             AIQ remains the primary score. Adapter elapsed and estimated Standard API-equivalent
             token cost are separate, coverage-qualified dimensions; AIQ does not combine them into
