@@ -19,7 +19,12 @@ import {
   summarizeRunOutcomes,
   TRUST_LEVELS,
 } from './format.ts';
-import { presentLeaderboardEntry, presentScoreMetric } from './leaderboard-presentation.ts';
+import {
+  presentLeaderboardEntry,
+  presentedScoreRange,
+  presentScoreMetric,
+  sortByPresentedScore,
+} from './leaderboard-presentation.ts';
 import {
   CALIBRATION_MODEL_CONFIGURATIONS,
   CALIBRATION_RUN_PAGE_SIZE,
@@ -804,6 +809,36 @@ void describe('presentation aggregates', () => {
       },
       { status: 'Official · 72/72', evidence: 'Published' },
     );
+  });
+
+  void it('orders and summarizes divergent synthetic values on the presented quality scale', () => {
+    const first = seedLeaderboard[0];
+    const second = seedLeaderboard[1];
+    assert.ok(first);
+    assert.ok(second);
+    const higherRawScore = {
+      ...first,
+      score: 95,
+      qualityScore: 20,
+      sensitivityLow: 10,
+      sensitivityHigh: 30,
+    };
+    const higherPresentedQuality = {
+      ...second,
+      score: 5,
+      qualityScore: 80,
+      sensitivityLow: 70,
+      sensitivityHigh: 90,
+    };
+
+    assert.deepEqual(sortByPresentedScore([higherRawScore, higherPresentedQuality]), [
+      higherPresentedQuality,
+      higherRawScore,
+    ]);
+    assert.deepEqual(presentedScoreRange([higherRawScore, higherPresentedQuality]), {
+      minimum: 20,
+      maximum: 80,
+    });
   });
 
   void it('provides complete synthetic runs and a structured coverage-only run', () => {

@@ -91,18 +91,17 @@ The reviewed public-safe `1.0.6` 72-task database binding manifest is
 `aiq-core-1.0.6-task-commitments.json`. Its canonical JCS identity is
 `sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
 
-The pre-release desired state targets AIQ Core `1.0.6`. Production is still on
-the historical published `1.0.2` state. Do not initialize production until the
-controlled `1.0.6` commitments are complete and reviewed.
+The desired state targets the sole production tuple: AIQ Core `1.0.6`, scoring
+`1.0.6`, and measurement `2.0.0`. Do not reset or initialize production until
+the controlled commitments are complete and one real non-synthetic signed
+17-by-72 package passes native verifier replay.
 
 ## AIQ 2.0 cutover order
 
-Keep the live `1.0.2` production database online while the new real evidence is
-created. The repository does not contain the historical private task catalog
-and task-level package needed to replay `1.0.2` under the new scorer. Do not
-recompute it and relabel it as AIQ 2.0. The new `1.0.6` package must be created
-from the current controlled 72-task set, then replay-verified by the native
-verifier before any destructive database action.
+Create the new `1.0.6` package from the current controlled 72-task set, then
+replay-verify it with the native verifier before any destructive database
+action. Do not preserve, migrate, recompute, or relabel a legacy publication.
+It is not a fallback.
 
 The hard pre-reset gate is the real verifier result, not a reset manifest. Run
 `aiq-verifier verify-local` (or the equivalent controlled production verifier)
@@ -114,19 +113,8 @@ receipt, a synthetic fixture, or a self-authored JSON summary does not satisfy
 this gate. The complete command template is in
 [Deployment Handoff](../openwiki/deployment-handoff.md#aiq-20-cutover).
 
-An ordinary historical backup is optional and is not a release gate. If it is
-useful for retention, take it before reset with provider tools, for example:
-
-```sh
-AIQ_BACKUP_DIR='/controlled/backups/aiq-1.0.2-2026-08-06'
-mkdir -p "$AIQ_BACKUP_DIR"
-pg_dump "$AIQ_DATABASE_URL" --format=custom --no-owner --no-acl \
-  --file "$AIQ_BACKUP_DIR/aiq-1.0.2.dump"
-supabase storage cp --project-ref xxnszykaeapolqdnhalx \
-  'ss://aiq-submission-packages' "$AIQ_BACKUP_DIR/aiq-submission-packages" --recursive
-supabase storage cp --project-ref xxnszykaeapolqdnhalx \
-  'ss://aiq-runner-artifacts' "$AIQ_BACKUP_DIR/aiq-runner-artifacts" --recursive
-```
+An ordinary provider backup is optional. It is not a release gate, reset input,
+migration input, compatibility source, or reason to delay the reset.
 
 After the new package passes verification, perform one read-only reset
 inventory, then one greenfield reset/init window. The reset command has no
@@ -137,8 +125,8 @@ publisher, and publish only after all 17 Official scores are accepted.
 Finally run `cargo make check-aiq-2-cutover`. It must report exactly one
 non-synthetic `1.0.6` matrix, 17 runs, 17 Official scores, 1,224 task results,
 one calibration digest, and zero synthetic Official/public rows. If either
-hard gate fails, keep the existing production deployment and do not deploy the
-new Web build.
+hard gate fails, do not publish or deploy the new Web build. Do not fall back to
+a legacy publication.
 
 ## Greenfield replacement
 
@@ -342,6 +330,12 @@ gate, starts all six artifact resolutions for one verifier claim, and then
 releases the gate. It requires every resolver to complete without SQLSTATE
 `40P01`. Three parallel replay waves must leave exactly six immutable claim
 bindings, six activation events, and six active claim Storage references.
+
+CI also runs `reset-postgres.integration.test.ts` against an exact loopback
+`aiq_reset_*` database. It proves that reset rejects changed dependencies,
+serializes concurrent objects at the cleanup boundary, removes only AIQ-owned
+state, preserves unrelated database and Storage objects, and permits one fresh
+desired-state application.
 
 Run the rollback-only calibration publication proof against the same freshly
 initialized disposable database. It uses the initializer-owned exact catalog

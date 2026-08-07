@@ -212,6 +212,32 @@ jobs:
             drop role if exists authenticated;
             drop role if exists anon;"
 
+      - name: Create disposable reset test database
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          createdb --username postgres aiq_reset_fixture
+
+      - name: Exercise the native greenfield reset boundary
+        env:
+          AIQ_RESET_POSTGRES_CONFIRM: delete-loopback-aiq-reset-fixture
+          AIQ_RESET_POSTGRES_URL: postgresql://postgres:aiq-contract-local-only@127.0.0.1:5432/aiq_reset_fixture
+        run: node --test databases/reset-postgres.integration.test.ts
+
+      - name: Remove reset test database and roles
+        if: always()
+        run: |
+          docker exec "${{ job.services.postgres.id }}" \
+            dropdb --if-exists --username postgres aiq_reset_fixture
+          docker exec "${{ job.services.postgres.id }}" \
+            psql --username postgres --dbname postgres --set ON_ERROR_STOP=1 \
+            --command \
+            "drop role if exists aiq_publisher;
+            drop role if exists aiq_verifier;
+            drop role if exists service_role;
+            drop role if exists authenticator;
+            drop role if exists authenticated;
+            drop role if exists anon;"
+
       - name: Create database roles and Storage catalog
         run: >-
           docker exec "${{ job.services.postgres.id }}"

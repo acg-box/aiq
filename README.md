@@ -9,30 +9,13 @@ scope `acgbox` hosts project `aiq`. The personal Supabase organization `ACG Box`
 hosts project `aiq` on PostgreSQL 17.6 with reference
 `xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
 `aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
-`aiq-submission-packages` and `aiq-runner-artifacts`. The first Official launch
-publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
-evidence, not the identity of every later production deployment.
+`aiq-submission-packages` and `aiq-runner-artifacts`.
 
-The live production data is the historical AIQ Core `1.0.2` matrix. The native
-Apple Silicon macOS runner completed this one real, non-synthetic Official
-batch. It contains 17 configuration runs and 72 tasks per run,
-or 1,224 task-level results. This is one Official matrix, not 1,224 benchmark
-runs. The verifier replayed and accepted the evidence. A distinct publisher
-published the matrix as `trusted_verified`. Of the 1,224 results, 1,218
-completed and 6 runtime issues. The outcomes are 329
-`correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
-`budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
-
-Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage` results. The priced subtotal is $125.403257240. It
-is a Standard API-equivalent estimate for the 1,208 priced results. It is not
-actual ChatGPT subscription spend and is not a complete total for the batch.
-Missing cost values are not zero.
-
-The public database exposes 17 runs, 1,224 results, 17 leaderboard rows, 17
-model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
-artifact bindings, including 19 capability artifacts.
+The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement
+`2.0.0`. Do not publish, preserve online, migrate, or display a legacy tuple as
+production evidence. Production must remain without an Official AIQ 2.0
+publication until one real, non-synthetic, signed 17-by-72 package passes the
+native verifier and the release gates described below.
 
 The `1.0.3` Official attempt was interrupted after the calibration evidence had
 already proved a ceiling-policy failure. It was rejected as unpublished
@@ -72,8 +55,7 @@ pilots remain immutable evidence.
   and the reviewed 72-task database commitment is bound in source. Final
   regeneration from the final clean commit, the fresh 68-cell pilot, full
   calibration, Contrast generation, final native build, real Official run,
-  publication, and deployment are pending. Production remains on the historical
-  `1.0.2` matrix.
+  publication, and deployment are pending. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -139,8 +121,8 @@ exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Node.js, and ripgrep executables. This receipt is reproducibility
 evidence, not a product protocol, database input, or published artifact. The
 repository does not validate it. Do not infer a runtime hash from a generated-task
-tree digest. The published historical `1.0.2` Official `72 × 17` matrix is one
-batch of 17 configuration runs and 1,224 task-level executions.
+tree digest. The accepted AIQ 2.0 publication will be one batch of 17
+configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
 
@@ -153,7 +135,8 @@ semantic task outcomes separate from runtime, invalid, and missing cells. Cost
 remains an estimated Standard API-equivalent comparison, not an actual ChatGPT or
 Codex subscription bill. Charts use ECharts with SVG rendering and ARIA
 descriptions. Users can select system, light, or dark color themes. Production
-views use real historical evidence, not synthetic data.
+views must use only real evidence for the sole production tuple, not synthetic
+or legacy data.
 
 ## Repository map
 
@@ -253,8 +236,9 @@ For an empty AIQ namespace, the production reference must contain the real
 controlled, non-synthetic AIQ Core `1.0.6` corpus commitment, its real canonical
 `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
-only after the controlled corpus passes model-free validation and the operator
-verifies the final native build; the repository contains no substitute
+only after the controlled corpus passes model-free validation, the operator
+verifies the final native build, and one real signed non-synthetic 17-by-72
+package passes native verifier replay; the repository contains no substitute
 production reference. Retain the private final-build audit receipt separately.
 Database initialization does not accept or validate that receipt.
 A successful initialization receipt must report scoring `1.0.6`, both public
@@ -299,9 +283,9 @@ or to production.
 7. A distinct publisher identity completes publication through the gateway.
 8. Public security-invoker views supply the Web application.
 
-The current production matrix completed this flow and is published as
-`trusted_verified`. Official means a complete, non-synthetic 17-by-72 run with
-valid current bindings. A complete synthetic fixture uses the
+Official means a complete, non-synthetic 17-by-72 run with valid `1.0.6` and
+measurement `2.0.0` bindings that completed this flow and was published as
+`trusted_verified`. A complete synthetic fixture uses the
 `synthetic_complete` classification, has no Official AIQ value, and is never
 ranking eligible. There is one submission, native verification, and publication
 path.

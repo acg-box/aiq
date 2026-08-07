@@ -64,8 +64,8 @@ this reproducibility evidence.
 
 ## Published Official evidence
 
-Production publishes one historical AIQ Core `1.0.2`, non-synthetic Official
-`72 × 17` matrix, or 1,224 results. The `1.0.6` release gate checks all
+Production can publish only one AIQ Core `1.0.6`, scoring `1.0.6`, measurement
+`2.0.0`, non-synthetic Official `72 × 17` matrix, or 1,224 results. The release gate checks all
 72 Core task definitions and 432 fixed evaluator bindings: gold,
 alternate-correct, partial, adversarial-format, empty, and timeout for every
 task. The separate six-task Contrast calibration checks 36 bindings. Both
@@ -129,25 +129,14 @@ Replay alone does not make real calibration Official: signed verifier admission
 and the distinct publisher transition must accept it, and calibration remains
 permanently non-Official.
 
-The native macOS runner completed the first real Official benchmark batch. Its
-17 configurations each attempted all 72 tasks, for 1,224 terminal task-level
-results: 1,218 completed and 6 runtime issues. The native verifier replayed the
-committed evaluators, and the distinct publisher published the matrix as
-`trusted_verified` through the [Architecture and Runtime](architecture-and-runtime.md)
-verification flow. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`,
-5 `timeout`, and 1 `budget_exhausted`.
-
-Signed batch wall time is 5,844,411 ms (`1:37:24.411`). Public views contain 17
-runs, 1,224 results, 17 leaderboard rows, 17 model-efficiency rows, and 17
-model-matrix rows.
-
-Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage` results. The $125.403257240 priced subtotal is a
-Standard API-equivalent estimate for only the 1,208 priced results; it is neither
-actual ChatGPT subscription spend nor a complete matrix total. Publication
-created 4,395 artifact bindings, including 19 capability artifacts. The method
-preserves unsupported or unavailable capability and cost states instead of
-replacing them with fabricated output or zero.
+The accepted batch must contain 17 configurations with 72 terminal task-level
+results each. The native verifier must replay the committed evaluators before
+the distinct publisher can publish the matrix as `trusted_verified` through the
+[Architecture and Runtime](architecture-and-runtime.md) verification flow.
+Public views then expose exactly 17 runs, 1,224 results, and 17 rows each for the
+leaderboard, model-efficiency, and model-matrix projections. The method preserves
+unsupported or unavailable capability and cost states instead of replacing them
+with fabricated output or zero.
 
 ## Model matrix
 
