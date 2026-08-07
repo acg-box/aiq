@@ -425,6 +425,7 @@ export function EfficiencyPlot({
     <section className="efficiency-plot" aria-labelledby="efficiency-plot-heading">
       <header className="chart-header">
         <div>
+          <span className="eyebrow">Efficiency frontier</span>
           <h2 id="efficiency-plot-heading">
             AIQ score vs {metric === 'cost' ? 'API-equivalent cost' : 'total run time'}
           </h2>
@@ -433,7 +434,10 @@ export function EfficiencyPlot({
             sensitivity.
           </p>
         </div>
-        <div className="chart-controls">
+      </header>
+      <div className="chart-controls chart-controls-compact" aria-label="Efficiency controls">
+        <div className="chart-control">
+          <span>Measure</span>
           <div className="chart-switch" role="group" aria-label="Efficiency metric">
             <button
               type="button"
@@ -460,23 +464,23 @@ export function EfficiencyPlot({
               Cost
             </button>
           </div>
-          {points.length > 0 ? (
-            <label>
-              Read configuration
-              <select
-                value={selectedId}
-                onChange={(event) => pushAnalyticalUrl({ efficiencySelection: event.target.value })}
-              >
-                {points.map(({ entry }) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.modelFamily} · {entry.reasoningTier}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
         </div>
-      </header>
+        {points.length > 0 ? (
+          <label className="chart-control">
+            Read configuration
+            <select
+              value={selectedId}
+              onChange={(event) => pushAnalyticalUrl({ efficiencySelection: event.target.value })}
+            >
+              {points.map(({ entry }) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.modelFamily} · {entry.reasoningTier}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
       {points.length === 0 ? (
         <p className="empty-note">
           No coverage-qualified {metric} observations are available. Missing values are not zero.

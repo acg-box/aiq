@@ -17,6 +17,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
     <section className="compact-ranking analysis-panel" aria-labelledby="compact-ranking-heading">
       <header className="panel-heading">
         <div>
+          <span className="eyebrow">Ranking</span>
           <h2 id="compact-ranking-heading">Top configurations</h2>
           <p>
             {isOfficial ? 'Ordered by published AIQ score' : 'Synthetic preview · not Official'}
@@ -32,8 +33,8 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
             const presentation = presentLeaderboardEntry(entry);
             const compareWith = visibleEntries.find((candidate) => candidate.id !== entry.id);
             const compareHref = compareWith
-              ? `/compare?compareFirst=${encodeURIComponent(entry.id)}&compareSecond=${encodeURIComponent(compareWith.id)}`
-              : '/compare';
+              ? `/?compareFirst=${encodeURIComponent(entry.id)}&compareSecond=${encodeURIComponent(compareWith.id)}#compare`
+              : '/#compare';
             return (
               <li key={entry.id}>
                 <span className="ranking-position" aria-label={`Position ${index + 1}`}>

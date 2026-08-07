@@ -329,7 +329,7 @@ for (const route of routes) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
     expectNotPubliclyCacheable(response);
-    await expect(page.locator('main h1')).toBeVisible();
+    await expect(page.locator('main h1').first()).toBeVisible();
     await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
     if (route.startsWith('/trends')) {
       const evidenceDisclosure = page.locator('details.evidence-status-disclosure');
@@ -338,7 +338,7 @@ for (const route of routes) {
       await expect(evidenceDisclosure).toHaveAttribute('open', '');
     }
     if (route === '/compare') {
-      await page.locator('details.evidence-notes > summary').click();
+      await page.locator('main details.evidence-notes > summary').first().click();
     }
     await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
@@ -386,7 +386,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(
     page.getByRole('region', { name: 'AIQ score vs API-equivalent cost' }),
   ).toContainText('1/17 configurations plotted in the canonical matrix');
-  await page.locator('details.evidence-notes > summary').click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
   await expect(
     page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),

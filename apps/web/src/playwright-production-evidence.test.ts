@@ -205,7 +205,7 @@ void describe('production page evidence', () => {
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [
-          publishedPageEvidence('Data provenance'),
+          publishedPageEvidence('Overview provenance'),
           emptyPageEvidence('Latest calibration status'),
           emptyPageEvidence('Calibration score matrix status'),
           publishedPageEvidence('Official efficiency provenance'),
@@ -217,7 +217,7 @@ void describe('production page evidence', () => {
       () =>
         validateProductionPageEvidence(
           [
-            publishedPageEvidence('Data provenance'),
+            publishedPageEvidence('Overview provenance'),
             emptyPageEvidence('Latest calibration status'),
             emptyPageEvidence('Official efficiency status'),
           ],
@@ -238,7 +238,7 @@ void describe('production page evidence', () => {
         () =>
           validateProductionPageEvidence(
             [
-              publishedPageEvidence('Data provenance'),
+              publishedPageEvidence('Overview provenance'),
               publishedPageEvidence('Official efficiency provenance'),
               note,
             ],
@@ -254,7 +254,7 @@ void describe('production page evidence', () => {
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [
-          publishedPageEvidence('Data provenance'),
+          publishedPageEvidence('Run data provenance'),
           publishedPageEvidence('Official run efficiency provenance'),
         ],
         expectation,
@@ -265,7 +265,7 @@ void describe('production page evidence', () => {
         () =>
           validateProductionPageEvidence(
             [
-              publishedPageEvidence('Data provenance'),
+              publishedPageEvidence('Run data provenance'),
               { label: 'Official run efficiency status', state },
             ],
             expectation,
