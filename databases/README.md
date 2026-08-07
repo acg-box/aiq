@@ -43,18 +43,18 @@ cargo make init-database
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
 controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.5`, its real `published_at` timestamp, and exactly three public identities:
+`1.0.6`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
 final native binaries pass validation. The controlled production reference is
 still pending. The reviewed 72-task database commitment is frozen in
-`aiq-core-1.0.5-task-commitments.json`. The repository does not contain a
+`aiq-core-1.0.6-task-commitments.json`. The repository does not contain a
 substitute production commitment or benchmark results. Supply the controlled
 production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.5` with benchmark identifier `aiq-core@1.0.5`;
-- scoring version `1.0.5`;
+- AIQ Core task release `1.0.6` with benchmark identifier `aiq-core@1.0.6`;
+- scoring version `1.0.6`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
@@ -63,13 +63,13 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`;
+  `sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`;
 - catalog release identity
-  `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`;
+  `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`;
 - reviewed runtime task-set identity
-  `sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05`;
+  `sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`;
 - reviewed task-commitment manifest identity
-  `sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94`;
+  `sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`;
 - reviewed evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
@@ -84,16 +84,61 @@ evaluator identity in signed `evaluator_digest` provenance and in the frozen
 task-set metadata that production readiness checks. It does not copy the
 scorer-manifest identity into an unrelated field.
 The native corpus commitment owns the scorer-manifest identity. The
-database binds its output through scoring version `1.0.5` and recomputes
+database binds its output through scoring version `1.0.6` and recomputes
 the score from normalized result evidence.
 
-The reviewed public-safe `1.0.5` 72-task database binding manifest is
-`aiq-core-1.0.5-task-commitments.json`. Its canonical JCS identity is
-`sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94`.
+The reviewed public-safe `1.0.6` 72-task database binding manifest is
+`aiq-core-1.0.6-task-commitments.json`. Its canonical JCS identity is
+`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
 
-The pre-release desired state targets AIQ Core `1.0.5`. Production is still on
+The pre-release desired state targets AIQ Core `1.0.6`. Production is still on
 the historical published `1.0.2` state. Do not initialize production until the
-controlled `1.0.5` commitments are complete and reviewed.
+controlled `1.0.6` commitments are complete and reviewed.
+
+## AIQ 2.0 cutover order
+
+Keep the live `1.0.2` production database online while the new real evidence is
+created. The repository does not contain the historical private task catalog
+and task-level package needed to replay `1.0.2` under the new scorer. Do not
+recompute it and relabel it as AIQ 2.0. The new `1.0.6` package must be created
+from the current controlled 72-task set, then replay-verified by the native
+verifier before any destructive database action.
+
+The hard pre-reset gate is the real verifier result, not a reset manifest. Run
+`aiq-verifier verify-local` (or the equivalent controlled production verifier)
+against the new signed package, private artifacts, current tasks, evaluator
+registry, corpus commitment, and production verifier environment. Require exit
+status zero and retain the newly written normalized stage, verifier attestation,
+and, for the full Official matrix, the verifier admission output. A queue
+receipt, a synthetic fixture, or a self-authored JSON summary does not satisfy
+this gate. The complete command template is in
+[Deployment Handoff](../openwiki/deployment-handoff.md#aiq-20-cutover).
+
+An ordinary historical backup is optional and is not a release gate. If it is
+useful for retention, take it before reset with provider tools, for example:
+
+```sh
+AIQ_BACKUP_DIR='/controlled/backups/aiq-1.0.2-2026-08-06'
+mkdir -p "$AIQ_BACKUP_DIR"
+pg_dump "$AIQ_DATABASE_URL" --format=custom --no-owner --no-acl \
+  --file "$AIQ_BACKUP_DIR/aiq-1.0.2.dump"
+supabase storage cp --project-ref xxnszykaeapolqdnhalx \
+  'ss://aiq-submission-packages' "$AIQ_BACKUP_DIR/aiq-submission-packages" --recursive
+supabase storage cp --project-ref xxnszykaeapolqdnhalx \
+  'ss://aiq-runner-artifacts' "$AIQ_BACKUP_DIR/aiq-runner-artifacts" --recursive
+```
+
+After the new package passes verification, perform one read-only reset
+inventory, then one greenfield reset/init window. The reset command has no
+`AIQ_PRE_RESET_EVIDENCE_ARCHIVE` manifest dependency and does not pretend to
+archive or validate old private evidence. Submit the already verified new
+package to the fresh database, run the controlled verifier and distinct
+publisher, and publish only after all 17 Official scores are accepted.
+Finally run `cargo make check-aiq-2-cutover`. It must report exactly one
+non-synthetic `1.0.6` matrix, 17 runs, 17 Official scores, 1,224 task results,
+one calibration digest, and zero synthetic Official/public rows. If either
+hard gate fails, keep the existing production deployment and do not deploy the
+new Web build.
 
 ## Greenfield replacement
 

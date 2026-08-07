@@ -9,7 +9,7 @@
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7",
+    "digest": "sha256:5a9337305d5a4a8671927290a79bf831b010d94ad42e05983cb8e985bdbd20fb",
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
@@ -18,12 +18,12 @@
     "task_metadata_identity": {
       "algorithm": "sha256",
       "canonicalization": "aiq.sorted-key-json.v1",
-      "digest": "sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7",
+      "digest": "sha256:5a9337305d5a4a8671927290a79bf831b010d94ad42e05983cb8e985bdbd20fb",
       "scope": "ordered_full_task_metadata"
     },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d",
+    "digest": "sha256:113e28ab4414dddb1064f6bdbac551f186d5906310cbb0d0e783e5b0e3a4ca71",
     "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
@@ -163,7 +163,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -283,7 +283,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -403,7 +403,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -523,7 +523,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -643,7 +643,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -763,7 +763,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -883,7 +883,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1003,7 +1003,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1123,7 +1123,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1243,7 +1243,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1363,7 +1363,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1483,7 +1483,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1603,7 +1603,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1723,7 +1723,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1843,7 +1843,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -1963,7 +1963,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2083,7 +2083,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2202,7 +2202,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2321,7 +2321,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2440,7 +2440,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2559,7 +2559,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2678,7 +2678,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2797,7 +2797,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -2917,7 +2917,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3037,7 +3037,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3157,7 +3157,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3277,7 +3277,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3397,7 +3397,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3517,7 +3517,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3637,7 +3637,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3757,7 +3757,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3877,7 +3877,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -3997,7 +3997,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4117,7 +4117,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4237,7 +4237,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4357,7 +4357,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4477,7 +4477,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4597,7 +4597,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4717,7 +4717,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4837,7 +4837,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -4957,7 +4957,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5077,7 +5077,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5197,7 +5197,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5317,7 +5317,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5437,7 +5437,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5557,7 +5557,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5677,7 +5677,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5797,7 +5797,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -5917,7 +5917,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6037,7 +6037,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6157,7 +6157,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6277,7 +6277,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6399,7 +6399,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6522,7 +6522,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6645,7 +6645,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6768,7 +6768,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -6890,7 +6890,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7012,7 +7012,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7134,7 +7134,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7254,7 +7254,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7374,7 +7374,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7494,7 +7494,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7614,7 +7614,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7734,7 +7734,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7854,7 +7854,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -7974,7 +7974,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -8095,7 +8095,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -8215,7 +8215,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -8335,7 +8335,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -8455,7 +8455,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -8576,7 +8576,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",
@@ -8696,7 +8696,7 @@
           "zero_weight_rule": "only_committed_hard_gates_may_have_zero_weight",
           "positive_weight_gate_rule": "positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass",
           "evaluator_error_policy": "unscored_invalid_evidence",
-          "attributable_runtime_failure_policy": "score_zero_as_defined_by_public_runtime_failure_taxonomy",
+          "attributable_runtime_failure_policy": "task_score_null_excluded_from_semantic_scoring",
           "outcome_rule": {
             "correct": "score_equals_one",
             "partial": "score_strictly_between_zero_and_one",

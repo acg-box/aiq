@@ -17,7 +17,7 @@ void describe('public calibration evidence boundary', () => {
   void it('publishes separate exact schemas and one non-secret calibration fixture', () => {
     const files = [
       'calibration-run-v3.schema.json',
-      'calibration-score-report-v1.schema.json',
+      'calibration-score-report-v2.schema.json',
       'calibration-verified-stage-v1.schema.json',
       'calibration-verifier-attestation-v1.schema.json',
       'calibration-result-package-v3.schema.json',
@@ -37,7 +37,7 @@ void describe('public calibration evidence boundary', () => {
     assert.equal(payload.official_eligible, false);
     assert.equal(
       (payload.provenance as Record<string, unknown>).catalog_digest,
-      'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7',
+      'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1',
     );
   });
 

@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.5' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.5/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_5_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
+  'sha256:5a9337305d5a4a8671927290a79bf831b010d94ad42e05983cb8e985bdbd20fb';
 export const AIQ_CORE_1_0_5_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d';
+  'sha256:113e28ab4414dddb1064f6bdbac551f186d5906310cbb0d0e783e5b0e3a4ca71';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -45,7 +45,7 @@ interface ScoringContract105 {
   readonly zero_weight_rule: 'only_committed_hard_gates_may_have_zero_weight';
   readonly positive_weight_gate_rule: 'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass';
   readonly evaluator_error_policy: 'unscored_invalid_evidence';
-  readonly attributable_runtime_failure_policy: 'score_zero_as_defined_by_public_runtime_failure_taxonomy';
+  readonly attributable_runtime_failure_policy: 'task_score_null_excluded_from_semantic_scoring';
   readonly outcome_rule: {
     readonly correct: 'score_equals_one';
     readonly partial: 'score_strictly_between_zero_and_one';
@@ -210,7 +210,7 @@ const SCORING_CONTRACT = Object.freeze({
   positive_weight_gate_rule:
     'positive_weight_hard_gate_also_participates_in_weighted_fraction_when_all_hard_gates_pass',
   evaluator_error_policy: 'unscored_invalid_evidence',
-  attributable_runtime_failure_policy: 'score_zero_as_defined_by_public_runtime_failure_taxonomy',
+  attributable_runtime_failure_policy: 'task_score_null_excluded_from_semantic_scoring',
   outcome_rule: {
     correct: 'score_equals_one',
     partial: 'score_strictly_between_zero_and_one',
@@ -454,7 +454,7 @@ function reviseCatalogSchema(priorSchema: unknown): unknown {
   acceptanceFixtureProperties.handle = {
     type: 'string',
     pattern:
-      '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
+      '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
   };
   evaluatorProperties.scoring_contract = {
     type: 'object',
@@ -521,6 +521,8 @@ export function assertCatalogInvariants(catalog: Catalog105): void {
       task.evaluator.pass_conditions.length < 4 ||
       task.evaluator.scoring_contract.aggregation !== SCORING_CONTRACT.aggregation ||
       task.evaluator.scoring_contract.formula !== SCORING_CONTRACT.formula ||
+      task.evaluator.scoring_contract.attributable_runtime_failure_policy !==
+        SCORING_CONTRACT.attributable_runtime_failure_policy ||
       task.evaluator.scoring_contract.public_criteria_role !==
         'coverage_summary_not_weight_partition' ||
       task.design_revision.controlled_corpus_requirements.join('\n') !==

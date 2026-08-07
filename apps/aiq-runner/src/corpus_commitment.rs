@@ -31,8 +31,9 @@ use crate::{
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
 	"sha256:b1f898af34153b3814c02476c970970e3cf1947d0456226e5496c9bb6aa871b2";
 
+const CONTROLLED_CONTRAST_TASK_SET_VERSION: &str = "1.0.5";
 const CORE_CATALOG_JSON: &str =
-	include_str!("../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json");
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -52,7 +53,7 @@ const CONTRAST_TASK_IDS: [&str; 6] = [
 const CONTRAST_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.contrast-corpus.v1",
 	task_set_id: "aiq-core-contrast",
-	task_set_version: AIQ_TASK_SET_VERSION,
+	task_set_version: CONTROLLED_CONTRAST_TASK_SET_VERSION,
 	identity_sha256: CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
 	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::FixedOrderedIds(&CONTRAST_TASK_IDS),
@@ -678,7 +679,7 @@ pub fn validate_corpus_commitment(
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
 }
 
-/// Loads and validates the immutable 72-task AIQ Core 1.0.5 corpus.
+/// Loads and validates the immutable 72-task AIQ Core 1.0.6 corpus.
 pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -731,13 +732,74 @@ pub fn validate_run_provenance(
 	task_set_hash: &str,
 	preflight_digest: &str,
 ) -> Result<(), CorpusCommitmentError> {
-	let catalog_allowed = match provenance.run_class {
-		RunClass::Official => provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256,
-		RunClass::Calibration => {
-			provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256
-				|| provenance.catalog_digest == CONTRAST_CATALOG.identity_sha256
-		},
+	validate_run_provenance_inner(provenance, task_set_hash, preflight_digest, false)
+}
+
+/// Validates retained calibration provenance for an offline diagnostic.
+///
+/// Historical catalog identities are accepted only for calibration records.
+/// The normal production validator remains strict, and diagnostic output is
+/// never an Official or ranking input.
+pub fn validate_historical_calibration_provenance(
+	provenance: &RunProvenanceCommitment,
+	task_set_hash: &str,
+	preflight_digest: &str,
+) -> Result<(), CorpusCommitmentError> {
+	validate_run_provenance_inner(provenance, task_set_hash, preflight_digest, true)
+}
+
+/// Hashes the actual runner executable without recording its path.
+pub fn runner_executable_digest() -> Result<String, CorpusCommitmentError> {
+	current_executable_digest("runner executable")
+}
+
+/// Hashes the executable for the current process without recording its path.
+pub fn current_executable_digest(label: &str) -> Result<String, CorpusCommitmentError> {
+	let path = env::current_exe()
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be resolved")))?;
+
+	hash_executable(&path, label)
+}
+
+/// Resolves and hashes the exact Codex selector without recording its path.
+pub fn codex_executable_digest(selector: &str) -> Result<String, CorpusCommitmentError> {
+	if selector.trim().is_empty() {
+		return Err(CorpusCommitmentError::new("Codex executable selector is empty"));
+	}
+
+	let candidate = if Path::new(selector).components().count() > 1 {
+		Path::new(selector).to_path_buf()
+	} else {
+		env::split_paths(
+			&env::var_os("PATH")
+				.ok_or_else(|| CorpusCommitmentError::new("PATH is unavailable"))?,
+		)
+		.map(|directory| directory.join(selector))
+		.find(|candidate| candidate.exists())
+		.ok_or_else(|| CorpusCommitmentError::new("Codex executable cannot be resolved"))?
 	};
+
+	hash_executable(&candidate, "Codex executable")
+}
+
+fn validate_run_provenance_inner(
+	provenance: &RunProvenanceCommitment,
+	task_set_hash: &str,
+	preflight_digest: &str,
+	allow_historical_calibration_catalog: bool,
+) -> Result<(), CorpusCommitmentError> {
+	let catalog_allowed =
+		if allow_historical_calibration_catalog && provenance.run_class == RunClass::Calibration {
+			valid_digest(&provenance.catalog_digest)
+		} else {
+			match provenance.run_class {
+				RunClass::Official => provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256,
+				RunClass::Calibration => {
+					provenance.catalog_digest == AIQ_CORE_TASK_IDENTITY_SHA256
+						|| provenance.catalog_digest == CONTRAST_CATALOG.identity_sha256
+				},
+			}
+		};
 
 	if provenance.schema_version != "aiq.run-provenance.v2"
 		|| !catalog_allowed
@@ -773,40 +835,6 @@ pub fn validate_run_provenance(
 	}
 
 	Ok(())
-}
-
-/// Hashes the actual runner executable without recording its path.
-pub fn runner_executable_digest() -> Result<String, CorpusCommitmentError> {
-	current_executable_digest("runner executable")
-}
-
-/// Hashes the executable for the current process without recording its path.
-pub fn current_executable_digest(label: &str) -> Result<String, CorpusCommitmentError> {
-	let path = env::current_exe()
-		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be resolved")))?;
-
-	hash_executable(&path, label)
-}
-
-/// Resolves and hashes the exact Codex selector without recording its path.
-pub fn codex_executable_digest(selector: &str) -> Result<String, CorpusCommitmentError> {
-	if selector.trim().is_empty() {
-		return Err(CorpusCommitmentError::new("Codex executable selector is empty"));
-	}
-
-	let candidate = if Path::new(selector).components().count() > 1 {
-		Path::new(selector).to_path_buf()
-	} else {
-		env::split_paths(
-			&env::var_os("PATH")
-				.ok_or_else(|| CorpusCommitmentError::new("PATH is unavailable"))?,
-		)
-		.map(|directory| directory.join(selector))
-		.find(|candidate| candidate.exists())
-		.ok_or_else(|| CorpusCommitmentError::new("Codex executable cannot be resolved"))?
-	};
-
-	hash_executable(&candidate, "Codex executable")
 }
 
 fn validate_model_toolchain_impl(
@@ -2328,7 +2356,7 @@ mod tests {
 			"model_toolchain": policy,
 		});
 		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json"
 		))
 		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
@@ -2533,7 +2561,7 @@ mod tests {
 
 		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
 		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
-		assert_eq!(contrast.catalog.task_set_version, "1.0.5");
+		assert_eq!(contrast.catalog.task_set_version, super::CONTROLLED_CONTRAST_TASK_SET_VERSION);
 		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
@@ -2549,7 +2577,7 @@ mod tests {
 		contrast.catalog.identity_sha256 =
 			"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32".to_owned();
 
-		assert_eq!(contrast.catalog.task_set_version, "1.0.5");
+		assert_eq!(contrast.catalog.task_set_version, super::CONTROLLED_CONTRAST_TASK_SET_VERSION);
 		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG).is_err());
 		assert!(super::catalog_contract(&contrast.catalog).is_err());
 
@@ -2628,6 +2656,32 @@ mod tests {
 
 		assert!(
 			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()
+		);
+
+		provenance.run_class = super::RunClass::Calibration;
+		provenance.catalog_digest = format!("sha256:{}", "f".repeat(64));
+
+		assert!(
+			corpus_commitment::validate_run_provenance(&provenance, &task_set, &preflight).is_err()
+		);
+		assert!(
+			corpus_commitment::validate_historical_calibration_provenance(
+				&provenance,
+				&task_set,
+				&preflight,
+			)
+			.is_ok()
+		);
+
+		provenance.run_class = super::RunClass::Official;
+
+		assert!(
+			corpus_commitment::validate_historical_calibration_provenance(
+				&provenance,
+				&task_set,
+				&preflight,
+			)
+			.is_err()
 		);
 	}
 

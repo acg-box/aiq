@@ -66,109 +66,7 @@ impl Display for RunValidationError {
 pub fn validate_calibration_run_record(
 	run: &CalibrationRunRecord,
 ) -> Result<(), RunValidationError> {
-	if run.schema_version != CALIBRATION_RUN_SCHEMA_VERSION
-		|| run.official_eligible
-		|| run.classification != "local_calibration_non_official"
-		|| run.scoring_version != AIQ_SCORING_VERSION
-		|| run.models.is_empty()
-		|| run.execution_concurrency.is_some_and(|jobs| !(1..=MAX_RUN_JOBS).contains(&jobs))
-		|| run.task_ids.is_empty()
-		|| run.finished_unix_ms < run.started_unix_ms
-		|| run.started_unix_ms > MAX_JCS_SAFE_INTEGER
-		|| run.finished_unix_ms > MAX_JCS_SAFE_INTEGER
-	{
-		return Err(RunValidationError::new(
-			"calibration run identity or classification is invalid",
-		));
-	}
-
-	validate_evaluator_results_artifact(&run.evaluator_results_artifact)?;
-
-	run.schedule_slot.validate().map_err(|error| {
-		RunValidationError::new(format!("invalid calibration schedule slot: {error}"))
-	})?;
-
-	validate_preflight_report(&run.capability_validation, true)?;
-
-	let model_set = run.models.iter().copied().collect::<BTreeSet<_>>();
-	let task_set = run.task_ids.iter().collect::<BTreeSet<_>>();
-	let canonical_models =
-		MODEL_MATRIX.into_iter().filter(|model| model_set.contains(model)).collect::<Vec<_>>();
-
-	if model_set.len() != run.models.len()
-		|| !model_set.iter().all(|model| MODEL_MATRIX.contains(model))
-		|| run.models != canonical_models
-		|| task_set.len() != run.task_ids.len()
-		|| run.results.len()
-			!= run.models.len().checked_mul(run.task_ids.len()).ok_or_else(|| {
-				RunValidationError::new("calibration result cardinality overflows")
-			})? {
-		return Err(RunValidationError::new("calibration selection or cardinality is invalid"));
-	}
-
-	let preflight_model_set =
-		run.capability_validation.models.iter().map(|entry| entry.model).collect::<BTreeSet<_>>();
-
-	if !calibration_preflight_covers_models(&preflight_model_set, &model_set) {
-		return Err(RunValidationError::new(
-			"calibration preflight does not cover the selected model set",
-		));
-	}
-
-	let preflight_digest =
-		protocol::canonical_hash(&run.capability_validation).map_err(|error| {
-			RunValidationError::new(format!("capability commitment failed: {error}"))
-		})?;
-
-	corpus_commitment::validate_run_provenance(
-		&run.provenance,
-		&run.task_set_hash,
-		&preflight_digest,
-	)
-	.map_err(|error| RunValidationError::new(error.to_string()))?;
-
-	if run.provenance.run_class != RunClass::Calibration {
-		return Err(RunValidationError::new(
-			"calibration run provenance is not classified as calibration",
-		));
-	}
-
-	let mut task_hashes = BTreeMap::new();
-
-	for result in &run.results {
-		if task_hashes
-			.insert(result.task_id.as_str(), result.task_hash.as_str())
-			.is_some_and(|hash| hash != result.task_hash.as_str())
-		{
-			return Err(RunValidationError::new("calibration task hashes are inconsistent"));
-		}
-	}
-
-	let mut addresses = task_hashes.values().copied().collect::<Vec<_>>();
-
-	addresses.sort_unstable();
-
-	let task_set_hash = protocol::canonical_hash(&addresses).map_err(|error| {
-		RunValidationError::new(format!("calibration task-set hash failed: {error}"))
-	})?;
-
-	if task_set_hash != run.task_set_hash
-		|| resume::classified_run_id(
-			&run.schedule_slot,
-			&run.task_set_hash,
-			&run.provenance.corpus_commitment_sha256,
-			&run.models,
-			RunClass::Calibration,
-		)
-		.map_err(|error| RunValidationError::new(error.to_string()))?
-			!= run.run_id
-	{
-		return Err(RunValidationError::new(
-			"calibration task set or class-domain-separated run identity is invalid",
-		));
-	}
-
-	validate_calibration_results(run, &model_set, &task_set)
+	validate_calibration_run_record_inner(run, false)
 }
 
 /// Validates a calibration against the exact supplied task definitions and frozen catalog bindings.
@@ -314,6 +212,18 @@ pub fn validate_calibration_evaluator_results_bundle(
 	validate_evaluator_results_bundle_parts(&run.evaluator_results_artifact, &run.results, bytes)
 }
 
+/// Validates an immutable calibration for the non-publication historical
+/// diagnostic path. It retains result, task-set, and run-local bindings but
+/// does not require the source catalog identity to equal the current catalog.
+pub(crate) fn validate_calibration_run_record_for_historical_diagnostic(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<(), RunValidationError> {
+	validate_calibration_run_record_inner(run, true)?;
+
+	validate_calibration_task_content(run, tasks)
+}
+
 pub(crate) fn valid_artifact_reference(artifact: &ArtifactReference) -> bool {
 	let Some(digest) = artifact.content_hash.strip_prefix("sha256:") else {
 		return false;
@@ -339,6 +249,123 @@ pub(crate) fn valid_normalized_artifact_reference(artifact: &ArtifactReference) 
 			artifact.kind.as_str(),
 			"stdout.jsonl" | "stderr.txt" | "final-response.txt" | "workspace-snapshot.json"
 		)
+}
+
+fn validate_calibration_run_record_inner(
+	run: &CalibrationRunRecord,
+	allow_historical_catalog: bool,
+) -> Result<(), RunValidationError> {
+	if run.schema_version != CALIBRATION_RUN_SCHEMA_VERSION
+		|| run.official_eligible
+		|| run.classification != "local_calibration_non_official"
+		|| run.scoring_version != AIQ_SCORING_VERSION
+		|| run.models.is_empty()
+		|| run.execution_concurrency.is_some_and(|jobs| !(1..=MAX_RUN_JOBS).contains(&jobs))
+		|| run.task_ids.is_empty()
+		|| run.finished_unix_ms < run.started_unix_ms
+		|| run.started_unix_ms > MAX_JCS_SAFE_INTEGER
+		|| run.finished_unix_ms > MAX_JCS_SAFE_INTEGER
+	{
+		return Err(RunValidationError::new(
+			"calibration run identity or classification is invalid",
+		));
+	}
+
+	validate_evaluator_results_artifact(&run.evaluator_results_artifact)?;
+
+	run.schedule_slot.validate().map_err(|error| {
+		RunValidationError::new(format!("invalid calibration schedule slot: {error}"))
+	})?;
+
+	validate_preflight_report(&run.capability_validation, true)?;
+
+	let model_set = run.models.iter().copied().collect::<BTreeSet<_>>();
+	let task_set = run.task_ids.iter().collect::<BTreeSet<_>>();
+	let canonical_models =
+		MODEL_MATRIX.into_iter().filter(|model| model_set.contains(model)).collect::<Vec<_>>();
+
+	if model_set.len() != run.models.len()
+		|| !model_set.iter().all(|model| MODEL_MATRIX.contains(model))
+		|| run.models != canonical_models
+		|| task_set.len() != run.task_ids.len()
+		|| run.results.len()
+			!= run.models.len().checked_mul(run.task_ids.len()).ok_or_else(|| {
+				RunValidationError::new("calibration result cardinality overflows")
+			})? {
+		return Err(RunValidationError::new("calibration selection or cardinality is invalid"));
+	}
+
+	let preflight_model_set =
+		run.capability_validation.models.iter().map(|entry| entry.model).collect::<BTreeSet<_>>();
+
+	if !calibration_preflight_covers_models(&preflight_model_set, &model_set) {
+		return Err(RunValidationError::new(
+			"calibration preflight does not cover the selected model set",
+		));
+	}
+
+	let preflight_digest =
+		protocol::canonical_hash(&run.capability_validation).map_err(|error| {
+			RunValidationError::new(format!("capability commitment failed: {error}"))
+		})?;
+	let provenance_validation = if allow_historical_catalog {
+		corpus_commitment::validate_historical_calibration_provenance(
+			&run.provenance,
+			&run.task_set_hash,
+			&preflight_digest,
+		)
+	} else {
+		corpus_commitment::validate_run_provenance(
+			&run.provenance,
+			&run.task_set_hash,
+			&preflight_digest,
+		)
+	};
+
+	provenance_validation.map_err(|error| RunValidationError::new(error.to_string()))?;
+
+	if run.provenance.run_class != RunClass::Calibration {
+		return Err(RunValidationError::new(
+			"calibration run provenance is not classified as calibration",
+		));
+	}
+
+	let mut task_hashes = BTreeMap::new();
+
+	for result in &run.results {
+		if task_hashes
+			.insert(result.task_id.as_str(), result.task_hash.as_str())
+			.is_some_and(|hash| hash != result.task_hash.as_str())
+		{
+			return Err(RunValidationError::new("calibration task hashes are inconsistent"));
+		}
+	}
+
+	let mut addresses = task_hashes.values().copied().collect::<Vec<_>>();
+
+	addresses.sort_unstable();
+
+	let task_set_hash = protocol::canonical_hash(&addresses).map_err(|error| {
+		RunValidationError::new(format!("calibration task-set hash failed: {error}"))
+	})?;
+
+	if task_set_hash != run.task_set_hash
+		|| resume::classified_run_id(
+			&run.schedule_slot,
+			&run.task_set_hash,
+			&run.provenance.corpus_commitment_sha256,
+			&run.models,
+			RunClass::Calibration,
+		)
+		.map_err(|error| RunValidationError::new(error.to_string()))?
+			!= run.run_id
+	{
+		return Err(RunValidationError::new(
+			"calibration task set or class-domain-separated run identity is invalid",
+		));
+	}
+
+	validate_calibration_results(run, &model_set, &task_set)
 }
 
 fn validate_calibration_task_bindings(
@@ -1098,8 +1125,8 @@ fn validate_result_status(
 				| FailureKind::NonZeroExit
 				| FailureKind::MissingResponse
 				| FailureKind::BudgetExceeded
-				| FailureKind::OutputTruncated => Some(0.0),
-				FailureKind::Spawn
+				| FailureKind::OutputTruncated
+				| FailureKind::Spawn
 				| FailureKind::Authentication
 				| FailureKind::SubscriptionLimit
 				| FailureKind::CapabilityValidationFailed

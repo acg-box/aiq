@@ -9,8 +9,8 @@ tags: ['benchmark', 'method', 'scoring']
 
 ## Fixture
 
-Repository source targets the public AIQ Core `1.0.5` candidate, benchmark
-release `aiq-core@1.0.5`, and scoring implementation `1.0.5`. It contains 72 fixed
+Repository source targets the public AIQ Core `1.0.6` candidate, benchmark
+release `aiq-core@1.0.6`, and scoring implementation `1.0.6`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -32,24 +32,21 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
+sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
 ```
 
-The release-policy identity is `aiq-core/1.0.5`. Its public catalog
+The release-policy identity is `aiq-core/1.0.6`. Its public catalog
 release-identity digest is
-`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The create-new interaction candidate passed two-candidate reproducibility,
-independent authoring validation, and the Rust 72-task corpus validator. Its
-evaluator identity is
+`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+The public catalog is deterministic and identity-frozen. Two controlled
+generations produced one matching tree. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-its scorer-manifest identity is
-`sha256:bf6a623e7d76967fa214e9540124c227b4cc53c0288b0661ef89a0edc741ffa0`,
-its generated-task tree identity is
-`sha256:0fb855414e626692346e74cb7326a4cf85b2be219776a419c9a723bdbdc18505`,
-and its Core commitment identity is
-`sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612`.
-These are calibration-candidate identities, not accepted release identities.
-Contrast generation remains pending. Each final
+the public-safe database task-set identity is
+`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+and the reviewed task-commitment manifest identity is
+`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+Final controlled corpus identities are calibration candidates, not accepted
+release identities. Contrast generation remains pending. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The
@@ -68,7 +65,7 @@ this reproducibility evidence.
 ## Published Official evidence
 
 Production publishes one historical AIQ Core `1.0.2`, non-synthetic Official
-`72 × 17` matrix, or 1,224 results. The `1.0.5` release gate checks all
+`72 × 17` matrix, or 1,224 results. The `1.0.6` release gate checks all
 72 Core task definitions and 432 fixed evaluator bindings: gold,
 alternate-correct, partial, adversarial-format, empty, and timeout for every
 task. The separate six-task Contrast calibration checks 36 bindings. Both
@@ -99,20 +96,29 @@ The public `1.0.5` redesign retargets four calibration-sensitive tasks:
 68-cell `1.0.5` pilot completed 63 cells and timed out on 5. It was rejected:
 completed task means ranged from 0.933 to 0.992, all four task means exceeded
 their release ceilings, and projected debugging facility was 0.9369. The five
-timeouts remain missing evaluations, never semantic zeros.
+timeouts are observed runtime failures, never semantic zeros. In score
+coverage, `invalid_tasks` counts an observed result record that failed at
+runtime or infrastructure validation; `missing_tasks` is reserved for an
+expected cell with no result record. Neither state contributes to a semantic
+aggregate.
 
-The active create-new revision replaces the saturated single-dimension repairs
-with interacting daily-work contracts. `coding-06` combines a bounded keyed
+The accepted `1.0.5` task redesign replaced the saturated single-dimension
+repairs with interacting daily-work contracts. `coding-06` combines a bounded keyed
 executor with priority, dynamic concurrency, AbortSignal, close, cancellation,
 and idle epochs. `debugging-01` combines quoted records, constrained escapes,
 independent UTF-16 limits, and indexed syntax errors. `debugging-02` resolves a
 six-field layered service configuration with normalization, typed bounds,
 built-ins, an atomic disable sentinel, and exact provenance. `debugging-04`
 combines line-ending normalization, head and tail windows, grapheme-safe line
-budgets, complete ellipses, and omission metadata. The revised tasks use a
-900-second wall budget with the existing 40-step and 28-tool-call limits. This
-budget responds to observed wall-time exhaustion; it does not alter scoring.
-The other 68 task designs carry forward with new release bindings. Run a new
+budgets, complete ellipses, and omission metadata. A later `1.0.5` pilot exposed
+seven timeouts and three tool-budget failures at the common 900-second,
+40-step, and 28-tool-call envelope. The offline historical diagnostic excludes
+those runtime-null cells from semantic scoring without changing the preserved
+package or producing Official evidence. AIQ Core `1.0.6` preserves the task,
+fixture, evaluator, tool, and scoring semantics and gives each of the four tasks
+the same 1,500-second, 48-step, and 40-tool-call budget for every model
+configuration. This budget revision does not alter scoring. The other 68 task
+contracts carry forward with new release bindings. Run a fresh
 17-by-4, 68-cell non-Official pilot before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
@@ -237,21 +243,24 @@ unknown. Distributed contributions remain non-Official until an independent
 verifier reproduces the deterministic evaluator result and a separate publisher
 accepts the signed package.
 
-Scientific reporting exposes the observation count, fixed-fixture
-task-sensitivity interval, coverage, missing cells, runtime state, scoring
-method, and provenance needed to interpret a score. Score and efficiency charts,
-tooltips, and accessible data tables retain this context; when an aggregate
-missing-state value is unavailable, the UI says so rather than inventing it.
-These fields must remain explicit when evidence is partial. Efficiency plots
-include only coverage-qualified measures. Their descriptive Pareto rings compare
-nondominated points only within matching matrix batch, scoring version,
-concurrency, and evidence-method bindings, plus matching pricing bindings for
-cost; they never create a combined rank. Estimated Standard API-equivalent cost
-is a comparison method, not an actual ChatGPT or Codex subscription bill.
+Scientific reporting keeps each metric on the scale of its matching interval.
+Official rows show calibrated ability with the conditional 95% score interval.
+Synthetic rows show descriptive quality with task-mix sensitivity and never appear
+as Official. Strict pass and its Wilson interval remain separate diagnostics.
+Reports also expose observation count, coverage, missing cells, runtime state,
+scoring method, and provenance. Score and efficiency charts, tooltips, and
+accessible data tables retain this context; when an aggregate missing-state value
+is unavailable, the UI says so rather than inventing it. These fields must remain
+explicit when evidence is partial. Efficiency plots include only
+coverage-qualified measures. Their descriptive Pareto rings compare nondominated
+points only within matching matrix batch, scoring version, concurrency, and
+evidence-method bindings, plus matching pricing bindings for cost; they never
+create a combined rank. Estimated Standard API-equivalent cost is a comparison
+method, not an actual ChatGPT or Codex subscription bill.
 
 ## Outcomes and scoring
 
-AIQ Core `1.0.5` uses the public task-score description before any `1.0.5`
+AIQ Core `1.0.6` uses the public task-score description before any `1.0.6`
 model evidence is accepted. Each controlled evaluator contains at most 16
 binary checks. Its content-addressed configuration binds every check identifier,
 nonnegative integer weight, type, and hard-gate status. The task score is:
@@ -267,34 +276,57 @@ is `partial`, and `0` is `incorrect`. The evaluator does not round before exact
 runner and verifier replay. The public pass conditions summarize what the
 private checks cover. They are not separately weighted score components.
 
-Correct and partial outcomes contribute their evaluator score. Attributable
-incorrect, timeout, budget, tool, policy, and wrong-artifact outcomes contribute
-zero. Infrastructure-invalid and missing outcomes block an Official score.
-Unsupported configurations use `not_applicable` and remain visible.
+Correct, partial, and semantic incorrect outcomes contribute their evaluator
+score, including a semantic incorrect score of zero. Timeout, budget, tool,
+policy, and wrong-artifact outcomes have no semantic score and are disclosed as
+runtime issues. Observed infrastructure failures are invalid evidence and
+missing cells have no result record; both block an Official score but remain
+separately countable. Unsupported configurations use `not_applicable` and
+remain visible.
 
 The overview's outcome card derives its presentation from immutable task scores
-in `apps/web/src/data/format.ts`. A score of at least `1` is correct, a score
-strictly between `0` and `1` is partial, and a scored zero is evaluator-incorrect
-unless its public explanation code is `timeout`, `budget_exceeded`,
-`unsupported_model`, `output_truncated`, or `missing_response`; those five codes
-are grouped as execution failures. Null scores and `invalid`, `missing`, or
-`not_applicable` statuses are unscored. “Completed tasks earning any credit”
-counts correct plus partial cells; it is a descriptive task-cell rate, neither a
-score-weighted percentage nor the domain-weighted AIQ index. The outcome and
-domain views in the [public application](architecture-and-runtime.md#public-application)
-keep runtime, invalid, missing, and not-applicable states separate.
+in `apps/web/src/data/format.ts`. A score of `1` is correct, a score strictly
+between `0` and `1` is partial, and a semantic scored zero is evaluator-
+incorrect. Runtime outcomes carry a null score and are grouped as execution
+failures. Null scores and `invalid`, `missing`, or `not_applicable` statuses are
+unscored. “Completed tasks earning any credit” counts correct plus partial
+cells; it is a descriptive task-cell rate, neither a score-weighted percentage
+nor calibrated ability. The outcome and domain views in the [public
+application](architecture-and-runtime.md#public-application) keep runtime,
+invalid, missing, and not-applicable states separate.
 
-AIQ v1 computes each domain mean and then gives each of the ten domains weight
-`0.1`. It does not multiply the score by coverage. The reported interval is a
-fixed-fixture task-resampling sensitivity interval with 10,000 deterministic
-bootstrap samples and the checked-in correction factor.
+AIQ measurement `2.0.0` separates the ranking estimand from the raw fixture
+diagnostics. The raw equal-domain fixed-fixture mean remains a criterion-
+referenced `qualityScore`; it is not the ranking score. A complete 17-by-72
+calibration matrix jointly estimates model locations (`theta`) and task
+difficulties (`beta`) with weak `N(0, 3²)` priors and a centered item scale. The
+released Official score is bounded to 0–100 as
+`100 × logistic(theta)` for the average calibrated task. It is a calibrated
+ability index, not an IQ norm, percentile, or claim of general intelligence.
+
+The model estimate uses the MAP score equation, including the normal-prior
+derivative, and the observed information includes prior precision. A failed or
+non-converged joint calibration is a structured error: it cannot create a
+calibration bank or an Official score. The displayed theta standard error and
+the transformed theta/score Wald intervals are conditional on the released
+item bank. They do not include item-bank calibration uncertainty. The
+`reliabilityStatus` is therefore explicitly
+`single_matrix_information_only`, not test-retest reliability.
+
+The raw strict-pass diagnostic is strict successes divided by every attributable
+task with a valid semantic task score. Partial scores are non-passes but remain
+in the denominator. Runtime-failed, infrastructure-invalid, and unscored tasks
+are excluded and reported through coverage and status. The Wilson interval and
+`strictPassSampleSize` use this same denominator. The fixed-fixture
+task-resampling interval remains a calibrated sensitivity interval for task-mix
+sensitivity, not a universal confidence interval for model capability.
 
 An Official result requires non-synthetic evidence for all 72 tasks in one model
-configuration and valid evidence for the complete 17-configuration batch. A
-complete synthetic score uses `synthetic_complete`: it retains the descriptive
-conditional AIQ, completion bounds, and sensitivity interval, but its Official
-AIQ is null and it is never ranking eligible. Partial data can be shown as
-Provisional or coverage-only but is not ranked as Official.
+configuration, valid evidence for the complete 17-configuration batch, and a
+passed calibration release gate. A complete synthetic score uses
+`synthetic_complete`: it has no latent Official score, is descriptive only, and
+is never ranking eligible. Partial data can be shown as Provisional or
+coverage-only but is not ranked as Official.
 
 ## Verification
 
@@ -318,12 +350,38 @@ validates the signed source package and completes the source evaluator replay.
 It then replays the same retained cells against a candidate source, controlled
 tasks, evaluators, runtime, and toolchain. Its create-new report is permanently
 non-Official and non-ranking. It does not create a stage or attestation and has
-no publication path.
+no publication path. For an older runner JSON that encoded failed runtime or
+infrastructure cells as `task_score: 0`, the runner's
+`historical-diagnostic-rescore` command instead reads the source without
+rewriting it, normalizes only those runtime-zero cells in memory, retains raw
+and canonical source hashes, and emits a diagnostic with publication, Official,
+and ranking eligibility fixed to false.
 
 The runner and verifier identities must differ. A third publisher identity
 completes either publication transition. The separate calibration register
 surfaces this evidence without mixing it into the Official leaderboard, compare,
 or trends data described by [Architecture and Runtime](architecture-and-runtime.md).
+
+## Scorer-owned browser fixture
+
+The runner's `generate-test-public-fixture` command writes
+`benchmarks/fixtures/aiq-2.0-test-generated-public.json` through the normal Rust
+scoring path. It is a browser-contract projection, not a result package or a
+database publication format. The fixture is explicitly `test_generated` and
+synthetic, and its outer contract fixes `production_publishable`,
+`official_eligible`, and `ranking_eligible` to false. It contains a complete
+72-task by 17-configuration public shape so browser tests can exercise
+leaderboard, trend, and task-cell contracts without treating test observations
+as evidence. The checked-in
+`benchmarks/schema/test-generated-public-fixture-v1.schema.json` validates this
+boundary; regenerate it only with the runner command, not by hand.
+
+This fixture is separate from [Architecture and Runtime](architecture-and-runtime.md)'s
+real submission, verification, and publication flow. It is also distinct from
+the historical runtime-zero diagnostic above: that diagnostic preserves source
+hashes while normalizing legacy runtime encoding, whereas this fixture creates
+fresh deterministic test observations. Neither path can produce Official or
+ranking evidence.
 
 ## Synthetic data
 
