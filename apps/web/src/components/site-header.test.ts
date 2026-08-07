@@ -26,6 +26,8 @@ void describe('site header one-page navigation', () => {
     assert.match(source, /setActiveSection\(visibleSection\)/);
     assert.match(source, /onClick=\{\(event\) =>/);
     assert.match(source, /activateNavigationTarget\(navigationSection\)/);
+    assert.match(source, /event\.preventDefault\(\)/);
+    assert.match(source, /window\.history\.pushState\(null, '', destination\)/);
     assert.match(source, /document\.getElementById\(section\)/);
     assert.match(source, /section === 'trends' && pathname === '\/trends'/);
     assert.match(source, /section === 'compare' && pathname === '\/compare'/);

@@ -163,6 +163,7 @@ test('workspace navigation keeps the selected destination active while scrolling
         .evaluate((section) => Math.round(section.getBoundingClientRect().top)),
     )
     .toBeLessThanOrEqual(85);
+  await expect(page).toHaveURL('/#compare');
   await expect(compare).toHaveAttribute('aria-current', 'page');
 });
 
