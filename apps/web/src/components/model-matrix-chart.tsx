@@ -255,7 +255,13 @@ export function ModelMatrixChart({
         kind === 'dots'
           ? [
               verticalIntervalSeries,
-              { type: 'scatter', name: 'Point estimate', symbolSize: 11, data: values },
+              {
+                type: 'scatter',
+                name: 'Point estimate',
+                symbolSize: 11,
+                data: values,
+                emphasis: { disabled: true },
+              },
             ]
           : [
               { type: 'bar', name: 'Point estimate', data: values, barMaxWidth: 34 },
