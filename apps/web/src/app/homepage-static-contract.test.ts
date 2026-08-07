@@ -30,13 +30,14 @@ void describe('homepage evidence and loading contract', () => {
       'utf8',
     );
 
-    assert.match(source, /Top score/);
+    assert.match(source, /highlightedMetric\?\.scoreLabel/);
     assert.match(source, /Top five spread/);
-    assert.match(source, /Sensitivity/);
+    assert.match(source, /conditional\s+95%\s+interval/i);
     assert.doesNotMatch(source, /general intelligence/);
-    assert.match(rankingSource, /presentation\.sensitivityInterval/);
+    assert.match(rankingSource, /presentation\.intervalLabel/);
+    assert.match(rankingSource, /presentation\.interval/);
     assert.match(rankingSource, /sortLeaderboardByPointEstimate/);
-    assert.match(rankingSource, /Synthetic preview · not Official/);
+    assert.match(rankingSource, /Synthetic quality preview · not Official/);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
     assert.match(outcomeSource, /A zero\s+is a scored outcome, not missing data/);

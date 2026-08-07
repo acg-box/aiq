@@ -65,6 +65,13 @@ await test('schema and synthetic demo data have separate final-state owners', as
   assert.match(syntheticDemo, /^\s*insert\s+into\s+aiq_private\./m);
 });
 
+await test('synthetic score snapshots consume the classified score rows', async () => {
+  const [, syntheticDemo] = await sources();
+  assert.match(syntheticDemo, /when valid_task_count = 72[\s\S]{0,120}then 'synthetic_complete'/);
+  assert.match(syntheticDemo, /join scored score on score\.run_id = run\.run_id/);
+  assert.doesNotMatch(syntheticDemo, /join run_scores score on score\.run_id = run\.run_id/);
+});
+
 await test('checker requires both AIQ Storage buckets to be private and create-new', async () => {
   const [schema, syntheticDemo] = await sources();
   for (const changed of [

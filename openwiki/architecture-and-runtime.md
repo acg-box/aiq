@@ -61,17 +61,13 @@ failed. The `1.0.6` sequence is a 17-configuration by four-runtime-revised-task 
 followed by the complete 17-by-72 non-Official calibration. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
-The first published real Official benchmark batch completed on the native macOS
-runner. The batch is non-synthetic. Its 1,224
-task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
-The native verifier replayed the committed evaluators, and the distinct
-publisher completed the database transition. Production exposes the matrix as
-`trusted_verified` under the historical AIQ Core `1.0.2` contract. The first
-Official launch publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
-historical launch evidence, not the identity of every later production
-deployment. The published outcome and efficiency semantics are detailed in
-[Benchmark Method](benchmark-method.md).
+The accepted production package must be non-synthetic. Its 1,224 task-level
+results are one 17-by-72 matrix, not 1,224 separate benchmark runs. The native
+verifier must replay the committed evaluators before the distinct publisher can
+complete publication. Production exposes only the AIQ Core `1.0.6`, scoring
+`1.0.6`, measurement `2.0.0` matrix as `trusted_verified`. No legacy matrix is a
+fallback. The outcome and efficiency semantics are detailed in [Benchmark
+Method](benchmark-method.md).
 
 ## Identity boundary
 
@@ -250,8 +246,9 @@ The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,
 [Deployment Handoff](deployment-handoff.md) requires model-free validation of
-the controlled corpus and a verified final native build before preparing that
-reference. The operator retains the private final-build audit receipt separately;
+the controlled corpus, a verified final native build, and successful native
+verifier replay of one real signed non-synthetic 17-by-72 package before
+preparing that reference. The operator retains the private final-build audit receipt separately;
 the initializer does not consume or validate it. The initializer validates the
 reference shape and bindings. It inserts the reference with the model matrix as
 the one greenfield desired state.
@@ -273,7 +270,7 @@ production path requires both browser-safe Supabase values and serves only live
 public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
-The public site is a professional analysis workbench backed by real historical
+The public site is a professional analysis workbench backed by verified
 production evidence. Official rows present calibrated ability with its conditional
 95% interval. Explicit synthetic fixtures present descriptive quality with
 task-mix sensitivity and never appear as Official. Scientific context also
