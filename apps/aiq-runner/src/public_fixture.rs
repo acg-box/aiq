@@ -37,6 +37,10 @@ pub const TEST_GENERATED_BOOTSTRAP_SAMPLES: usize = 256;
 /// Fixed non-zero bootstrap seed used by the committed browser fixture.
 pub const TEST_GENERATED_BOOTSTRAP_SEED: u64 = 0x41_49_51_5f_54_45_53_54;
 
+// Keep latent values in the committed browser projection byte-stable across
+// the macOS runner used to generate it and Linux CI. The production scorer
+// intentionally keeps full f64 precision; only this test projection is normalized.
+const TEST_GENERATED_LATENT_FLOAT_SCALE: f64 = 100_000_000_000_000.0;
 const RECORDED_AT: &str = "2026-01-01T00:00:00.000Z";
 const BUCKET_STARTED_AT: &str = "2025-12-31T23:59:59.000Z";
 const BUCKET_ENDED_AT: &str = "2026-01-01T00:00:01.000Z";
@@ -547,14 +551,14 @@ fn public_leaderboard_row(
 	Ok(PublicLeaderboardRow {
 		matrix_id,
 		run_id,
-		score,
-		theta: latent.theta,
-		standard_error: latent.standard_error,
-		theta_ci_low: latent.theta_ci_low,
-		theta_ci_high: latent.theta_ci_high,
-		score_ci_low: latent.score_ci_low,
-		score_ci_high: latent.score_ci_high,
-		information: latent.observed_information,
+		score: stable_fixture_latent_float(score),
+		theta: stable_fixture_latent_float(latent.theta),
+		standard_error: stable_fixture_latent_float(latent.standard_error),
+		theta_ci_low: stable_fixture_latent_float(latent.theta_ci_low),
+		theta_ci_high: stable_fixture_latent_float(latent.theta_ci_high),
+		score_ci_low: stable_fixture_latent_float(latent.score_ci_low),
+		score_ci_high: stable_fixture_latent_float(latent.score_ci_high),
+		information: stable_fixture_latent_float(latent.observed_information),
 		quality_score,
 		strict_pass_rate,
 		strict_pass_low,
@@ -573,6 +577,10 @@ fn public_leaderboard_row(
 		score_status: "official".to_owned(),
 		synthetic: false,
 	})
+}
+
+fn stable_fixture_latent_float(value: f64) -> f64 {
+	(value * TEST_GENERATED_LATENT_FLOAT_SCALE).round() / TEST_GENERATED_LATENT_FLOAT_SCALE
 }
 
 fn public_trend_row(row: &PublicLeaderboardRow) -> PublicTrendRow {
@@ -755,6 +763,18 @@ mod tests {
 			assert_eq!(row.sample_size, 72);
 			assert_eq!(row.scoring_version, AIQ_SCORING_VERSION);
 		}
+	}
+
+	#[test]
+	fn fixture_float_normalization_absorbs_cross_platform_ulp_differences() {
+		let baseline = -0.766_030_057_034_348_f64;
+		let adjacent = f64::from_bits(baseline.to_bits() + 1);
+
+		assert_ne!(baseline, adjacent);
+		assert_eq!(
+			public_fixture::stable_fixture_latent_float(baseline),
+			public_fixture::stable_fixture_latent_float(adjacent)
+		);
 	}
 
 	#[test]
