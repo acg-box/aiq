@@ -20,13 +20,28 @@ function scoredEntry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntr
     modelName: 'model',
     reasoningTier: 'low',
     score: 50,
+    theta: 0.4,
+    standardError: 0.2,
+    thetaCiLow: 0.01,
+    thetaCiHigh: 0.79,
+    scoreCiLow: 40,
+    scoreCiHigh: 60,
+    information: 24,
+    qualityScore: 50,
+    strictPassRate: 0.5,
+    strictPassLow: 0.39,
+    strictPassHigh: 0.61,
+    strictPassSampleSize: 72,
+    strictPassSuccesses: 36,
+    reliabilityStatus: 'single_matrix_information_only',
+    calibrationStatus: 'calibrated',
     sensitivityLow: 40,
     sensitivityHigh: 60,
     sampleSize: 72,
     coveragePercent: 100,
     runtimeIssues: 0,
     missing: 0,
-    scoringVersion: '1.0.5',
+    scoringVersion: '1.0.6',
     scoreStatus: 'official',
     runId: 'run-exact',
     synthetic: false,
@@ -98,10 +113,10 @@ void describe('scientific score context', () => {
         runtime: '2 issues',
         missing: '1',
         status: 'official',
-        scoringVersion: '1.0.5',
+        scoringVersion: '1.0.6',
         provenance: 'published',
       }),
-      'score n=72 · coverage 98.6%<br/>runtime 2 issues · missing 1<br/>status official · scoring 1.0.5 · published',
+      'score n=72 · coverage 98.6%<br/>runtime 2 issues · missing 1<br/>status official · scoring 1.0.6 · published',
     );
   });
 
@@ -112,7 +127,7 @@ void describe('scientific score context', () => {
       runtime: 'adapter invoked 0/0 attempted',
       missing: 'unavailable in aggregate',
       status: 'conditional observed',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       provenance: 'synthetic',
     });
 
@@ -125,7 +140,7 @@ void describe('scientific score context', () => {
       run: {
         id: 'run-exact',
         entryId: 'sol-low',
-        scoringVersion: '1.0.5',
+        scoringVersion: '1.0.6',
         synthetic: false,
       },
       resultSummary: {
@@ -149,20 +164,35 @@ void describe('scientific score context', () => {
         modelName: 'model',
         reasoningTier: 'low',
         score: 50,
+        theta: 0.4,
+        standardError: 0.2,
+        thetaCiLow: 0.01,
+        thetaCiHigh: 0.79,
+        scoreCiLow: 40,
+        scoreCiHigh: 60,
+        information: 24,
+        qualityScore: 50,
+        strictPassRate: 0.5,
+        strictPassLow: 0.39,
+        strictPassHigh: 0.61,
+        strictPassSampleSize: 72,
+        strictPassSuccesses: 36,
+        reliabilityStatus: 'single_matrix_information_only',
+        calibrationStatus: 'calibrated',
         sensitivityLow: 40,
         sensitivityHigh: 60,
         sampleSize: 72,
         coveragePercent: 100,
         runtimeIssues: 0,
         missing: 0,
-        scoringVersion: '1.0.5',
+        scoringVersion: '1.0.6',
         scoreStatus: 'official',
         runId: 'run-other',
         synthetic: false,
       },
     });
 
-    assert.equal(summary.aiq, 'Unavailable');
+    assert.equal(summary.score, 'Unavailable');
     assert.equal(summary.interval, 'Unavailable');
     assert.equal(summary.sampleSize, 'Unavailable');
     assert.equal(summary.coverage, '97.2%');
@@ -177,7 +207,7 @@ void describe('scientific score context', () => {
       run: {
         id: 'run-exact',
         entryId: 'sol-low',
-        scoringVersion: '1.0.5',
+        scoringVersion: '1.0.6',
         synthetic: false,
       },
       resultSummary: {
@@ -199,7 +229,7 @@ void describe('scientific score context', () => {
       efficiency: efficiencyIdentity({ modelFamily: 'terra' }),
     });
 
-    assert.equal(summary.aiq, 'Unavailable');
+    assert.equal(summary.score, 'Unavailable');
     assert.equal(summary.interval, 'Unavailable');
     assert.equal(summary.sampleSize, 'Unavailable');
     assert.equal(summary.adapterDuration, 'Unavailable');
@@ -213,23 +243,23 @@ void describe('scientific score context', () => {
     const run = {
       id: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     assert.equal(
       hasExactScientificIdentity(run, {
         runId: 'run-exact',
         entryId: 'sol-low',
-        scoringVersion: '1.0.5',
+        scoringVersion: '1.0.6',
         synthetic: false,
       }),
       true,
     );
     for (const candidate of [
-      { runId: 'run-other', entryId: 'sol-low', scoringVersion: '1.0.5', synthetic: false },
-      { runId: 'run-exact', entryId: 'terra-low', scoringVersion: '1.0.5', synthetic: false },
+      { runId: 'run-other', entryId: 'sol-low', scoringVersion: '1.0.6', synthetic: false },
+      { runId: 'run-exact', entryId: 'terra-low', scoringVersion: '1.0.6', synthetic: false },
       { runId: 'run-exact', entryId: 'sol-low', scoringVersion: '1.0.2', synthetic: false },
-      { runId: 'run-exact', entryId: 'sol-low', scoringVersion: '1.0.5', synthetic: true },
+      { runId: 'run-exact', entryId: 'sol-low', scoringVersion: '1.0.6', synthetic: true },
     ]) {
       assert.equal(hasExactScientificIdentity(run, candidate), false);
     }
@@ -239,7 +269,7 @@ void describe('scientific score context', () => {
     const run = {
       id: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     for (const entry of [
@@ -268,7 +298,7 @@ void describe('scientific score context', () => {
     const run = {
       id: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     const exact = joinExactRunScientificEvidence({
@@ -320,13 +350,13 @@ void describe('scientific score context', () => {
     const run = {
       id: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     const candidate = {
       runId: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     const exact = resolveExactScientificEvidence({
@@ -362,13 +392,13 @@ void describe('scientific score context', () => {
     const run = {
       id: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     const candidate = {
       runId: 'run-exact',
       entryId: 'sol-low',
-      scoringVersion: '1.0.5',
+      scoringVersion: '1.0.6',
       synthetic: false,
     };
     const wrongConfiguration = efficiencyIdentity({ modelFamily: 'terra' });

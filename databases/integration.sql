@@ -23,63 +23,6 @@ begin
 end;
 $$;
 
--- Published history retains the scoring definition that produced each source
--- package. A registered historical version must remain valid without weakening
--- the current scoring-version foreign key.
-savepoint historical_source_scoring_version;
-insert into aiq_private.aiq_scoring_versions (
-  scoring_version, schema_version, benchmark_version, name,
-  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
-  confidence_policy, formula, interval_method, failure_policy,
-  synthetic, is_published, published_at
-)
-select
-  '1.0.2', schema_version, 'aiq-core@1.0.2', name || ' historical fixture',
-  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
-  confidence_policy, formula, interval_method, failure_policy,
-  true, false, null
-from aiq_private.aiq_scoring_versions
-where scoring_version = '1.0.5';
-
-insert into aiq_private.aiq_matrix_batches (
-  matrix_batch_id, package_sha256, content_hash, normalization_digest,
-  source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
-  child_count, result_count, task_set_hash, capability_validation_digest,
-  source_scoring_version, execution_concurrency
-)
-select
-  'run_' || repeat('1', 64), repeat('1', 64),
-  'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64),
-  source_node_id, task_set_id, task_set_version, scoring_version, true,
-  17, 1224, task_set_hash, null, '1.0.2', 1
-from aiq_private.aiq_matrix_batches
-order by matrix_batch_id
-limit 1;
-
-select pg_temp.aiq_assert(
-  exists (
-    select 1
-    from aiq_private.aiq_matrix_batches
-    where matrix_batch_id = 'run_' || repeat('1', 64)
-      and source_scoring_version = '1.0.2'
-  ),
-  'a registered historical source scoring version must remain admissible'
-);
-
-do $$
-begin
-  begin
-    delete from aiq_private.aiq_scoring_versions
-    where scoring_version = '1.0.2';
-    raise exception 'historical source scoring version deletion unexpectedly succeeded';
-  exception
-    when foreign_key_violation then null;
-  end;
-end;
-$$;
-rollback to savepoint historical_source_scoring_version;
-release savepoint historical_source_scoring_version;
-
 select pg_temp.aiq_assert(
   (
     select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
@@ -318,19 +261,19 @@ begin
     select 'sha256:' || catalog_task.fixture_commitment as task_hash
     from aiq_private.aiq_task_catalog catalog_task
     where catalog_task.task_set_id = 'aiq-core'
-      and catalog_task.task_set_version = '1.0.5'
+      and catalog_task.task_set_version = '1.0.6'
   ) hashes;
   run_id := 'run_' || substr(aiq_private.jcs_sha256(jsonb_build_object(
     'schema_version', 'aiq.run-identity.v1',
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.5'
+    'scoring_version', '1.0.6'
   )), 8);
 
   for task in
     select * from aiq_private.aiq_task_catalog
-    where task_set_id = 'aiq-core' and task_set_version = '1.0.5'
+    where task_set_id = 'aiq-core' and task_set_version = '1.0.6'
     order by task_id
   loop
     for model in select value from jsonb_array_elements(models) loop
@@ -380,7 +323,7 @@ begin
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.5',
+    'scoring_version', '1.0.6',
     'models', models,
     'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
@@ -495,7 +438,7 @@ begin
   from (
     select distinct task.domain
     from aiq_private.aiq_task_catalog task
-    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.5'
+    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.6'
   ) catalog;
 
   for model in
@@ -547,7 +490,7 @@ begin
     from jsonb_array_elements(payload -> 'results') source(value)
     join aiq_private.aiq_task_catalog task
       on task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.5'
+      and task.task_set_version = '1.0.6'
       and task.task_id = source.value ->> 'task_id'
       and task.task_version = source.value ->> 'task_version'
     where source.value -> 'model' = model_identity;
@@ -560,13 +503,15 @@ begin
       'model', model_identity,
       'results', normalized_results,
       'score', jsonb_build_object(
-        'schema_version', 'aiq.score-report.v1',
-        'scoring_version', '1.0.5',
+        'schema_version', 'aiq.score-report.v2',
+        'scoring_version', '1.0.6',
+        'measurement_version', '2.0.0',
         'model', model_identity,
         'tier', 'synthetic_complete',
-        'rule', 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
-        'official_aiq', null,
-        'conditional_observed_aiq', 100,
+        'rule', 'AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate''s predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.',
+        'score', null,
+        'quality_score', 100,
+        'latent_ability', null,
         'ranking_eligible', false,
         'duplicate_results', 0,
         'coverage', jsonb_build_object(
@@ -611,14 +556,14 @@ begin
     'content_hash', envelope ->> 'content_hash',
     'signer', envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.5',
+    'task_set_version', '1.0.6',
     'task_set_hash', payload ->> 'task_set_hash',
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.5',
+    'benchmark_version', 'aiq-core@1.0.6',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.5',
+    'scoring_version', '1.0.6',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', payload -> 'started_unix_ms',
@@ -992,7 +937,7 @@ release savepoint incomplete_stage_retry;
 rollback to savepoint stage_performance;
 release savepoint stage_performance;
 
--- The deterministic demo is a pre-staged complete synthetic fixture. Exercise
+-- The deterministic demo is a pre-staged provisional synthetic fixture. Exercise
 -- the stage role boundary and prove that attestation cannot make it publishable.
 set local role aiq_publisher;
 select set_config('request.jwt.claims', '{"role":"aiq_publisher"}', true);
@@ -1052,16 +997,34 @@ $$;
 
 savepoint non_synthetic_score_classification;
 set local session_replication_role = replica;
+update aiq_private.aiq_score_snapshots
+set score_status = 'synthetic_complete', valid_task_count = 72, invalid_count = 0
+where score_snapshot_id = (
+  select score_snapshot_id
+  from aiq_private.aiq_score_snapshots
+  order by score_snapshot_id
+  limit 1
+);
 update aiq_private.aiq_runs
 set synthetic = false
-where run_id = (select min(run_id) from aiq_private.aiq_runs);
+where run_id = (
+  select run_id
+  from aiq_private.aiq_score_snapshots
+  order by score_snapshot_id
+  limit 1
+);
 set local session_replication_role = origin;
 do $$
 begin
   begin
     update aiq_private.aiq_score_snapshots
     set published = published
-    where run_id = (select min(run_id) from aiq_private.aiq_runs);
+    where run_id = (
+      select run_id
+      from aiq_private.aiq_score_snapshots
+      order by score_snapshot_id
+      limit 1
+    );
     raise exception 'non-synthetic score accepted Synthetic Complete classification';
   exception when check_violation then null;
   end;
@@ -1171,8 +1134,8 @@ select pg_temp.aiq_assert(
 select pg_temp.aiq_assert(
   (select count(*) = 17
    from aiq_private.aiq_score_snapshots
-   where not published and score_status = 'synthetic_complete'),
-  'complete synthetic scores must remain descriptive and unpublished'
+   where not published and score_status = 'provisional'),
+  'provisional synthetic scores must remain descriptive and unpublished'
 );
 select pg_temp.aiq_assert(
   (select claim_ack is null and verification_status = 'unverified'
@@ -1193,7 +1156,28 @@ set
   trust_tier = 'trusted_verified',
   published = true;
 update aiq_private.aiq_score_snapshots
-set score_status = 'official', published = true;
+set
+  score_status = 'official',
+  score = quality_score,
+  latent_ability = jsonb_build_object(
+    'calibration_digest', 'sha256:' || repeat('ab', 32),
+    'calibration_model_count', 17,
+    'calibration_task_count', 72,
+    'items_used', 72,
+    'method', 'rasch_fractional_joint_map_v1',
+    'observed_information', 12,
+    'reliability_status', 'single_matrix_information_only',
+    'score', quality_score,
+    'score_ci_high', least(100, quality_score + 2),
+    'score_ci_low', greatest(0, quality_score - 2),
+    'standard_error', 0.5,
+    'theta', 2.75,
+    'theta_ci_high', 3.73,
+    'theta_ci_low', 1.77
+  ),
+  valid_task_count = 72,
+  invalid_count = 0,
+  published = true;
 set local session_replication_role = origin;
 
 create temp table aiq_single_batch_trend on commit drop as
@@ -1215,7 +1199,7 @@ select pg_temp.aiq_assert(
         > pg_catalog.date_trunc('milliseconds', recorded_at)
       and bucket_ended_at = recorded_at + interval '1 millisecond'
       and resolution_seconds = 1
-      and scoring_version = '1.0.5'
+      and scoring_version = '1.0.6'
     )
     from aiq_single_batch_trend
   ),

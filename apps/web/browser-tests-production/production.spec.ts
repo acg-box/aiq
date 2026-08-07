@@ -46,10 +46,13 @@ async function expectPublishedPage(
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
   expect(new URL(page.url()).origin).toBe(expectedOrigin);
-  const mainHeading = heading
-    ? page.locator('main h1').filter({ hasText: heading }).first()
-    : page.locator('main h1').first();
-  await expect(mainHeading).toBeVisible();
+  await expect(page.locator('main h1').first()).toBeVisible();
+  if (heading) {
+    const expectedHeading = page.getByRole('heading', { level: 1, name: heading });
+    await expect(expectedHeading).toHaveCount(1);
+    await expectedHeading.scrollIntoViewIfNeeded();
+    await expect(expectedHeading).toBeVisible();
+  }
   await expectProductionPageEvidence(page, path);
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
@@ -224,20 +227,22 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 
   for (const row of await leaderboardRows.all()) {
     const cells = row.getByRole('cell');
-    await expect(cells).toHaveCount(9);
+    await expect(cells).toHaveCount(10);
     configurations.add((await row.getByRole('rowheader').innerText()).trim());
 
-    const score = Number((await cells.nth(0).innerText()).trim());
+    const score = Number((await cells.nth(0).innerText()).split('\n')[0]?.trim());
     expect(Number.isFinite(score)).toBe(true);
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
-    await expect(cells.nth(2)).toHaveText('72');
-    await expect(cells.nth(3)).toHaveText('100.0%');
-    await expect(cells.nth(5)).not.toHaveText('—');
-    await expect(cells.nth(6)).toHaveText('Official · 72/72');
-    await expect(cells.nth(7)).toHaveText('Published');
+    await expect(cells.nth(1)).toContainText('Conditional 95% interval');
+    await expect(cells.nth(2)).toContainText('Wilson 95%');
+    await expect(cells.nth(3)).toHaveText('72');
+    await expect(cells.nth(4)).toHaveText('100.0%');
+    await expect(cells.nth(6)).not.toHaveText('—');
+    await expect(cells.nth(7)).toHaveText('Official · 72/72');
+    await expect(cells.nth(8)).toHaveText('Published');
 
-    const href = await cells.nth(8).getByRole('link', { name: 'Inspect' }).getAttribute('href');
+    const href = await cells.nth(9).getByRole('link', { name: 'Inspect' }).getAttribute('href');
     expect(href).toMatch(/^\/runs\/[A-Za-z0-9._:-]+$/);
     runHrefs.add(href ?? '');
   }
@@ -439,7 +444,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
   await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
-  await expect(page.getByRole('img', { name: 'AIQ score history' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Calibrated ability history' })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
   ).toHaveCount(6);
@@ -466,8 +471,9 @@ test('production method, trends, and radar preserve transparent evidence semanti
     await expect(cells.nth(5)).not.toHaveText('Unavailable');
     await expect(cells.nth(6)).not.toHaveText('Unavailable');
     await expect(cells.nth(7)).not.toHaveText('Unavailable');
-    await expect(cells.nth(8)).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
-    await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\$\d+\.\d{4})$/);
+    await expect(cells.nth(8)).toHaveText(/^\d+$/);
+    await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
+    await expect(cells.nth(10)).toHaveText(/^(?:Unavailable|\$\d+\.\d{4})$/);
   }
 
   await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner network');

@@ -58,9 +58,11 @@ order, independent of this setting.
 
 Before the verifier creates Official publication evidence, it applies
 `aiq.official-calibration-policy.v1` to the complete fixed `17 × 72` matrix.
-This empirical diagnostic does not change the public AIQ formula or task
-weights. It does not fit an item-response model. The 17 configurations are
-correlated and are not sufficient for that claim.
+This auxiliary empirical release diagnostic does not change the public AIQ 2.0
+formula or task weights. It does not fit an item-response model; the separate
+AIQ 2.0 scorer fits the joint Rasch bank and fails closed when that calibration
+does not converge. The 17 configurations are correlated, so this verifier
+policy is not a substitute for the released bank or its conditional uncertainty.
 
 For each task, facility is the mean task credit across the 17 configurations.
 The inclusive facility band is `0.10` through `0.90`. A task is informative

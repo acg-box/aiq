@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-planning-execution-01",
-  "task_version": "1.0.5",
+  "task_version": "1.0.6",
   "title": "Choose the first validation step",
   "domain": "planning_execution",
   "difficulty": "easy",
@@ -9,7 +9,7 @@
   "allowed_tools": ["none"],
   "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
   "tags": ["synthetic", "validation"],
-  "scorer_version": "1.0.5",
+  "scorer_version": "1.0.6",
   "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
   "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-planning-execution.json"],
   "visibility": "public_example",

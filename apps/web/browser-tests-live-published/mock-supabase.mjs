@@ -1,6 +1,40 @@
 import { createServer } from 'node:http';
 
+import activeCatalog from '../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json' with { type: 'json' };
+import generatedPublicFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
 import { REQUIRED_RPC_CONTRACT } from '../src/server/readiness.ts';
+
+if (
+  generatedPublicFixture.schema_version !== 'aiq.test-generated-public-fixture.v1' ||
+  generatedPublicFixture.fixture_provenance !== 'test_generated' ||
+  !generatedPublicFixture.test_generated ||
+  generatedPublicFixture.production_publishable ||
+  generatedPublicFixture.official_eligible ||
+  generatedPublicFixture.ranking_eligible ||
+  !generatedPublicFixture.synthetic ||
+  generatedPublicFixture.benchmark_version !== 'aiq-core@1.0.6' ||
+  generatedPublicFixture.scoring_version !== '1.0.6' ||
+  generatedPublicFixture.measurement_version !== '2.0.0' ||
+  generatedPublicFixture.task_count !== 72 ||
+  generatedPublicFixture.configuration_count !== 17 ||
+  generatedPublicFixture.cell_count !== 1_224 ||
+  !generatedPublicFixture.calibration_gate.passed ||
+  generatedPublicFixture.calibration_gate.violations.length !== 0 ||
+  generatedPublicFixture.leaderboard.length !== 17 ||
+  generatedPublicFixture.trend.length !== 17 ||
+  generatedPublicFixture.task_cells.length !== 1_224
+) {
+  throw new Error('The scorer-owned browser fixture is not isolated and complete.');
+}
+
+if (
+  `${activeCatalog.task_set_id}@${activeCatalog.task_set_version}` !==
+    generatedPublicFixture.benchmark_version ||
+  activeCatalog.scoring_version !== generatedPublicFixture.scoring_version ||
+  activeCatalog.tasks.length !== generatedPublicFixture.task_count
+) {
+  throw new Error('The scorer-owned browser fixture does not match the active public catalog.');
+}
 
 const port = Number.parseInt(process.argv[2] ?? '', 10);
 if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
@@ -47,445 +81,40 @@ const matrix = [
   })),
 );
 
-/**
- * Exact public aggregates from the hash-verified production public backup RSC payload.
- * These fields were already public and contain no private task material.
- *
- * @type {Readonly<Record<string, {runId: string; score: number; sensitivityLow: number; sensitivityHigh: number}>>}
- */
-const verifiedPublishedAggregates = {
-  'sol-low': {
-    runId: 'run_441adf403347a1f32c3176e2ca837341e236a8db5ef5ee3059cdc7baa3cac1d7',
-    score: 41.959,
-    sensitivityLow: 31.377,
-    sensitivityHigh: 52.066,
-  },
-  'sol-medium': {
-    runId: 'run_fa605028cfc2d6c94d2ee0769a75d0f5c7bfddfc3b32b0106f525cc328e68930',
-    score: 42.801,
-    sensitivityLow: 32.474,
-    sensitivityHigh: 52.45,
-  },
-  'sol-high': {
-    runId: 'run_37c17d1683b14473966cfc9c4ac8fb97ea16b7f9a0bf2948bd8b234220f6240f',
-    score: 42.26,
-    sensitivityLow: 32.472,
-    sensitivityHigh: 51.524,
-  },
-  'sol-xhigh': {
-    runId: 'run_17b245b7a4b7c46348864a100e70cb0ce47d8f961e4d762ef4b4610e620bee5c',
-    score: 42.865,
-    sensitivityLow: 31.708,
-    sensitivityHigh: 53.996,
-  },
-  'sol-max': {
-    runId: 'run_87c706c0bdc9e7cdfd52eebc9f55661d3cb6c2f2606721dd68fd869df8723093',
-    score: 42.397,
-    sensitivityLow: 31.196,
-    sensitivityHigh: 53.282,
-  },
-  'sol-ultra': {
-    runId: 'run_f43f06eefb714c86d413a802587ba303b16e9a0ddc3de9f4cc01b8ff9e8d3f14',
-    score: 40.803,
-    sensitivityLow: 28.825,
-    sensitivityHigh: 52.294,
-  },
-  'terra-low': {
-    runId: 'run_a8358a9ea1ee1fb19edc9b2c0a3f8909764503d5f1d2c4f2a7161debaac610c4',
-    score: 37.299,
-    sensitivityLow: 27.509,
-    sensitivityHigh: 47.286,
-  },
-  'terra-medium': {
-    runId: 'run_130c49d83c7816a4939cf9851d936e8fa578d2b1d3dcedff5a6c9bbbfae53684',
-    score: 40.571,
-    sensitivityLow: 29.572,
-    sensitivityHigh: 51.103,
-  },
-  'terra-high': {
-    runId: 'run_0f873d71f76b85a0670444fec79be29fb0102e7435b1c1bcb3f0b2d8f50387b4',
-    score: 39.117,
-    sensitivityLow: 29.328,
-    sensitivityHigh: 48.561,
-  },
-  'terra-xhigh': {
-    runId: 'run_834fdafb3146ead1d05f146388e68b99a0f2569a19d92bd2fb9f3de25f93fcc7',
-    score: 39.67,
-    sensitivityLow: 29.983,
-    sensitivityHigh: 48.929,
-  },
-  'terra-max': {
-    runId: 'run_b7415ac6300414b294a668149710c4fecb7a7bec368d25361e4fcc961db7cac4',
-    score: 42.432,
-    sensitivityLow: 32,
-    sensitivityHigh: 52.211,
-  },
-  'terra-ultra': {
-    runId: 'run_db0ba87f356c60ee87a93df4cf730c44b3d511ca65c3310d00acb193686fa685',
-    score: 42.347,
-    sensitivityLow: 32.279,
-    sensitivityHigh: 51.96,
-  },
-  'luna-low': {
-    runId: 'run_ff1d6d7ac0b68f652e28a4437baa9417fbab23789dc60c2b0bb6c6fee4eac71c',
-    score: 37.314,
-    sensitivityLow: 26.628,
-    sensitivityHigh: 47.616,
-  },
-  'luna-medium': {
-    runId: 'run_f4bfbadc40f66cfd7bdd279a9ac025c4fdf6951e61e2f58ccb90b0988090a363',
-    score: 39.083,
-    sensitivityLow: 29.548,
-    sensitivityHigh: 48.834,
-  },
-  'luna-high': {
-    runId: 'run_34f3e4bdea2d80922c016d17f0fb8005ae4a4bfbd7724c0e841384466666dc82',
-    score: 41.879,
-    sensitivityLow: 31.824,
-    sensitivityHigh: 51.618,
-  },
-  'luna-xhigh': {
-    runId: 'run_5b896428917c276cc7aec28f91f48a3572b2b62e1266a89fd568cf8ac3983c8b',
-    score: 38.781,
-    sensitivityLow: 29.728,
-    sensitivityHigh: 48.172,
-  },
-  'luna-max': {
-    runId: 'run_03c1830225ab52b741137eb34847d4432b08f3f57c7e562df4288999f1b48f0d',
-    score: 41.39,
-    sensitivityLow: 31.042,
-    sensitivityHigh: 51.324,
-  },
-};
-
-/**
- * Anonymous result distributions extracted from the verified production result package.
- *
- * Domains use `domainCounts` order. Each tuple is
- * `[correct count, partial score multiset, incorrect count, timeout count, budget count]`.
- * It contains no task identifiers, prompts, responses, artifacts, or credentials.
- *
- * @type {Readonly<Record<string, ReadonlyArray<readonly [number, readonly number[], number, number, number]>>>}
- */
-const officialDomainEvidence = {
-  'sol-low': [
-    [6, [], 2, 0, 0],
-    [6, [], 2, 0, 0],
-    [2, [], 5, 0, 0],
-    [2, [0.6125, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.425, 0.7], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.6875, 0.8], 4, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.5375, 0.625, 0.7875, 0.8875, 0.8875], 2, 0, 0],
-  ],
-  'sol-medium': [
-    [7, [], 1, 0, 0],
-    [6, [], 2, 0, 0],
-    [2, [], 5, 0, 0],
-    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.425, 0.525], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.55, 0.8], 4, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'sol-high': [
-    [6, [], 2, 0, 0],
-    [5, [0.875], 2, 0, 0],
-    [2, [], 5, 0, 0],
-    [1, [0.5, 0.75, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.425, 0.525], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [2, [0.55, 0.8], 3, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.3625, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'sol-xhigh': [
-    [7, [], 1, 0, 0],
-    [6, [], 2, 0, 0],
-    [3, [], 4, 0, 0],
-    [2, [0.5, 0.6625, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.55, 0.8], 5, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'sol-max': [
-    [6, [], 2, 0, 0],
-    [6, [], 2, 0, 0],
-    [3, [], 4, 0, 0],
-    [2, [0.4875, 0.5, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.425, 0.525], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.4375, 0.8], 3, 1, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'sol-ultra': [
-    [6, [], 1, 1, 0],
-    [5, [], 2, 1, 0],
-    [3, [], 4, 0, 0],
-    [1, [0.5, 0.6625, 0.75, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.425, 0.525], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.4375, 0.8], 4, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.5375, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'terra-low': [
-    [7, [], 1, 0, 0],
-    [5, [], 3, 0, 0],
-    [0, [], 7, 0, 0],
-    [3, [0.5, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.75, 0.8], 4, 0, 0],
-    [2, [0.6625], 3, 0, 0],
-    [0, [0.3625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'terra-medium': [
-    [7, [], 1, 0, 0],
-    [6, [], 2, 0, 0],
-    [1, [], 6, 0, 0],
-    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.75, 0.8], 4, 0, 0],
-    [3, [], 3, 0, 0],
-    [0, [0.3625, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'terra-high': [
-    [7, [], 1, 0, 0],
-    [6, [], 2, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.5, 0.6625, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.6125, 0.7], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.6875, 0.8], 4, 0, 0],
-    [2, [0.6625, 0.8], 2, 0, 0],
-    [0, [0.1625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'terra-xhigh': [
-    [8, [], 0, 0, 0],
-    [6, [], 2, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.5, 0.75, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.6375, 0.8], 4, 0, 0],
-    [3, [], 3, 0, 0],
-    [0, [0.3625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'terra-max': [
-    [7, [], 1, 0, 0],
-    [6, [], 2, 0, 0],
-    [2, [], 5, 0, 0],
-    [1, [0.5, 0.6625, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.75, 0.8], 4, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.3625, 0.625, 0.7875, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'terra-ultra': [
-    [8, [], 0, 0, 0],
-    [5, [0.875], 2, 0, 0],
-    [1, [], 6, 0, 0],
-    [1, [0.5, 0.6625, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.75, 0.8], 4, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.3625, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'luna-low': [
-    [7, [], 1, 0, 0],
-    [4, [], 4, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.5, 0.6875, 0.825, 0.825, 0.8625, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.425], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.375, 0.8], 4, 0, 0],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.3375, 0.7875, 0.8, 0.8875, 0.8875], 2, 0, 0],
-  ],
-  'luna-medium': [
-    [7, [], 1, 0, 0],
-    [5, [], 3, 0, 0],
-    [0, [], 7, 0, 0],
-    [3, [0.6125, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.6125, 0.7], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [2, [0.575, 0.8], 3, 0, 0],
-    [2, [0.6625], 3, 0, 0],
-    [0, [0.5375, 0.6875, 0.7875, 0.8, 0.8375], 2, 0, 0],
-  ],
-  'luna-high': [
-    [8, [], 0, 0, 0],
-    [4, [0.875], 3, 0, 0],
-    [1, [], 6, 0, 0],
-    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.6125, 0.7], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [2, [0.575, 0.8], 3, 0, 0],
-    [3, [], 3, 0, 0],
-    [0, [0.3375, 0.7875, 0.8, 0.8875, 0.8875], 2, 0, 0],
-  ],
-  'luna-xhigh': [
-    [7, [], 1, 0, 0],
-    [5, [], 3, 0, 0],
-    [1, [], 6, 0, 0],
-    [3, [0.5, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.4375, 0.8], 4, 0, 0],
-    [2, [0.6625], 3, 0, 0],
-    [0, [0.5375, 0.7875, 0.8, 0.8375, 0.8875], 2, 0, 0],
-  ],
-  'luna-max': [
-    [8, [], 0, 0, 0],
-    [4, [], 3, 1, 0],
-    [2, [], 5, 0, 0],
-    [2, [0.5, 0.825, 0.825, 0.825, 0.925], 1, 0, 0],
-    [0, [], 7, 0, 0],
-    [0, [0.525, 0.6125], 5, 0, 0],
-    [0, [], 7, 0, 0],
-    [1, [0.375, 0.8], 2, 1, 1],
-    [3, [0.6625], 2, 0, 0],
-    [0, [0.5375, 0.625, 0.7875, 0.8875, 0.8875], 2, 0, 0],
-  ],
-};
-
-/**
- * @param {{id: string}} entry
- * @param {number} index
- */
-function officialRunId(entry, index) {
-  const published = verifiedPublishedAggregates[entry.id];
-  if (!published) throw new Error(`Missing published run identity for matrix entry ${index}.`);
-  return published.runId;
-}
-
-const canonicalPublicExecutionFailures = {
-  timeout: {
-    code: 'timeout',
-    summary: 'The task exceeded its time limit.',
-    retryable: true,
-  },
-  budgetExceeded: {
-    code: 'budget_exceeded',
-    summary: 'The task exceeded a resource budget.',
-    retryable: false,
-  },
-};
-
 const provenanceHash = `sha256:${'1'.repeat(64)}`;
-const currentRunStartedAt = '2026-08-03T12:00:00.000Z';
-const currentRunCompletedAt = '2026-08-03T13:37:24.411Z';
+const currentRunStartedAt = '2025-12-31T23:00:00.000Z';
+const currentRunCompletedAt = '2025-12-31T23:59:59.000Z';
 
 /**
- * Expand one anonymous per-domain distribution into public result rows.
+ * Build public result-row shape from the active catalog only.
  *
- * @param {{id: string}} entry
+ * The formal scorer-generated task cells below replace every value in these
+ * templates. The templates provide transport fields only and contain no
+ * historical scores or hand-authored latent values.
  */
-function officialResultsForEntry(entry) {
-  const distributions = officialDomainEvidence[entry.id];
-  if (!distributions || distributions.length !== domainCounts.length) {
-    throw new Error(`Missing complete Official domain evidence for ${entry.id}.`);
-  }
-
-  return domainCounts.flatMap(([domain, expectedTaskCount], domainIndex) => {
-    const distribution = distributions[domainIndex];
-    if (!distribution) throw new Error(`Missing Official ${domain} evidence for ${entry.id}.`);
-    const [correctCount, partialScores, incorrectCount, timeoutCount, budgetCount] = distribution;
-    if (
-      ![correctCount, incorrectCount, timeoutCount, budgetCount].every(Number.isSafeInteger) ||
-      partialScores.some((score) => !Number.isFinite(score) || score <= 0 || score >= 1) ||
-      correctCount + partialScores.length + incorrectCount + timeoutCount + budgetCount !==
-        expectedTaskCount
-    ) {
-      throw new Error(`Invalid Official ${domain} evidence for ${entry.id}.`);
-    }
-
-    const results = [
-      ...Array.from({ length: correctCount }, () => ({
-        outcome: 'correct',
-        execution_status: 'completed',
-        score: 1,
-        explanation_code: null,
-        explanation_summary: null,
-        retryable: null,
-      })),
-      ...partialScores.map((score) => ({
-        outcome: 'partial',
-        execution_status: 'completed',
-        score,
-        explanation_code: null,
-        explanation_summary: null,
-        retryable: null,
-      })),
-      ...Array.from({ length: incorrectCount }, () => ({
-        outcome: 'incorrect',
-        execution_status: 'completed',
-        score: 0,
-        explanation_code: null,
-        explanation_summary: 'The evaluator rejected the response.',
-        retryable: null,
-      })),
-      ...Array.from({ length: timeoutCount }, () => ({
-        outcome: 'timeout',
-        execution_status: 'runtime_issue',
-        score: 0,
-        explanation_code: canonicalPublicExecutionFailures.timeout.code,
-        explanation_summary: canonicalPublicExecutionFailures.timeout.summary,
-        retryable: canonicalPublicExecutionFailures.timeout.retryable,
-      })),
-      ...Array.from({ length: budgetCount }, () => ({
-        outcome: 'budget_exhausted',
-        execution_status: 'runtime_issue',
-        score: 0,
-        explanation_code: canonicalPublicExecutionFailures.budgetExceeded.code,
-        explanation_summary: canonicalPublicExecutionFailures.budgetExceeded.summary,
-        retryable: canonicalPublicExecutionFailures.budgetExceeded.retryable,
-      })),
-    ];
-
-    return results.map((result, taskIndex) =>
-      Object.assign(result, {
-        id: `00000000-0000-4000-8000-${String(domainIndex * 10 + taskIndex + 1).padStart(12, '0')}`,
-        task_id: `${domain.replaceAll('_', '-')}-${String(taskIndex + 1).padStart(2, '0')}`,
-        task: `${domain.replaceAll('_', ' ')} anonymous result ${taskIndex + 1}`,
-        domain,
-      }),
-    );
-  });
+function generatedResultTemplates() {
+  return activeCatalog.tasks.map((task, taskIndex) => ({
+    id: `00000000-0000-4000-8000-${String(taskIndex + 1).padStart(12, '0')}`,
+    task_id: task.task_id,
+    task: task.title,
+    domain: task.domain,
+    outcome: 'incorrect',
+    execution_status: 'completed',
+    score: 0,
+    explanation_code: null,
+    explanation_summary: 'The evaluator rejected the response.',
+    retryable: null,
+  }));
 }
 
 /**
- * AIQ v1: compute each domain's task-score mean, then give all ten domains equal weight.
+ * Recompute the descriptive quality score: average within each domain, then
+ * give all ten domains equal weight.
  *
  * @param {ReadonlyArray<{domain: string; score: number}>} results
  */
-function equalDomainAiq(results) {
-  if (results.length !== 72) throw new Error('Official AIQ requires exactly 72 result rows.');
+function equalDomainQualityScore(results) {
+  if (results.length !== 72) throw new Error('Quality evidence requires exactly 72 result rows.');
   const domainMeans = domainCounts.map(([domain, expectedTaskCount]) => {
     const scores = results
       .filter((result) => result.domain === domain)
@@ -494,7 +123,7 @@ function equalDomainAiq(results) {
       scores.length !== expectedTaskCount ||
       scores.some((score) => !Number.isFinite(score) || score < 0 || score > 1)
     ) {
-      throw new Error(`Official AIQ requires ${expectedTaskCount} valid ${domain} scores.`);
+      throw new Error(`Quality evidence requires ${expectedTaskCount} valid ${domain} scores.`);
     }
     return scores.reduce((total, score) => total + score, 0) / scores.length;
   });
@@ -515,49 +144,72 @@ function summarizeOfficialOutcomes(results) {
   };
 }
 
-if (
-  Object.keys(officialDomainEvidence).length !== matrix.length ||
-  Object.keys(verifiedPublishedAggregates).length !== matrix.length ||
-  matrix.some(
-    (entry) => !officialDomainEvidence[entry.id] || !verifiedPublishedAggregates[entry.id],
-  )
-) {
-  throw new Error('Official evidence must cover the exact 17-entry model matrix.');
-}
-const verifiedPublishedRuns = Object.values(verifiedPublishedAggregates).map(({ runId }) => runId);
-if (
-  new Set(verifiedPublishedRuns).size !== matrix.length ||
-  verifiedPublishedRuns.some((runId) => !/^run_[0-9a-f]{64}$/.test(runId))
-) {
-  throw new Error('Verified public run identities must be unique canonical digests.');
-}
+const generatedLeaderboardByMatrix = new Map(
+  generatedPublicFixture.leaderboard.map((row) => [row.matrix_id, row]),
+);
+const catalogByTaskId = new Map(activeCatalog.tasks.map((task) => [task.task_id, task]));
 
-const currentRunEvidence = matrix.map((entry, entryIndex) => {
-  const results = officialResultsForEntry(entry);
+const currentRunEvidence = matrix.map((entry) => {
+  const generatedRow = generatedLeaderboardByMatrix.get(entry.id);
+  const generatedCells = generatedPublicFixture.task_cells.filter(
+    (cell) => cell.matrix_id === entry.id,
+  );
+  const resultTemplates = generatedResultTemplates();
+  const resultTemplatesByTaskId = new Map(
+    resultTemplates.map((template) => [template.task_id, template]),
+  );
+  if (!generatedRow || generatedCells.length !== 72 || resultTemplates.length !== 72) {
+    throw new Error(`Missing complete scorer-generated evidence for ${entry.id}.`);
+  }
+  const results = generatedCells.map((cell) => {
+    const task = catalogByTaskId.get(cell.task_id);
+    const template = resultTemplatesByTaskId.get(cell.task_id);
+    if (
+      !task ||
+      !template ||
+      task.task_version !== cell.task_version ||
+      task.domain !== template.domain ||
+      cell.provenance !== 'test_generated' ||
+      !['correct', 'partial', 'incorrect'].includes(cell.evaluation)
+    ) {
+      throw new Error(`Invalid scorer-generated task evidence for ${entry.id}.`);
+    }
+    return Object.assign({}, template, {
+      task_id: cell.task_id,
+      task: task.title,
+      domain: task.domain,
+      outcome: cell.evaluation,
+      execution_status: 'completed',
+      score: cell.task_score,
+      explanation_code: null,
+      explanation_summary:
+        cell.evaluation === 'incorrect' ? 'The evaluator rejected the response.' : null,
+      retryable: null,
+    });
+  });
   const outcomes = summarizeOfficialOutcomes(results);
-  const published = verifiedPublishedAggregates[entry.id];
-  if (!published) throw new Error(`Missing published aggregates for ${entry.id}.`);
-  const recomputedScore = Number(equalDomainAiq(results).toFixed(3));
+  const recomputedQuality = equalDomainQualityScore(results);
+  const strictPassSuccesses = results.filter((result) => result.score === 1).length;
   if (
-    recomputedScore !== published.score ||
-    published.sensitivityLow > recomputedScore ||
-    published.sensitivityHigh < recomputedScore
+    Math.abs(recomputedQuality - generatedRow.quality_score) > Number.EPSILON * 100 ||
+    generatedRow.strict_pass_sample_size !== 72 ||
+    generatedRow.strict_pass_successes !== strictPassSuccesses ||
+    Math.abs(generatedRow.strict_pass_rate - strictPassSuccesses / 72) > Number.EPSILON ||
+    generatedRow.sensitivity_low > generatedRow.quality_score ||
+    generatedRow.sensitivity_high < generatedRow.quality_score ||
+    generatedRow.score_ci_low > generatedRow.score ||
+    generatedRow.score_ci_high < generatedRow.score
   ) {
-    throw new Error(`Published aggregates do not match ${entry.id} task evidence.`);
+    throw new Error(`Scorer-generated aggregates do not match ${entry.id} task evidence.`);
   }
   return {
     entry,
-    entryIndex,
-    runId: officialRunId(entry, entryIndex),
+    runId: generatedRow.run_id,
     startedAt: currentRunStartedAt,
     completedAt: currentRunCompletedAt,
     outcomes,
     results,
-    interval: {
-      center: recomputedScore,
-      lower: published.sensitivityLow,
-      upper: published.sensitivityHigh,
-    },
+    generatedRow,
   };
 });
 
@@ -582,32 +234,19 @@ const officialOutcomeTotals = currentRunEvidence.reduce(
   },
 );
 if (
-  officialOutcomeTotals.correct !== 329 ||
-  officialOutcomeTotals.partial !== 259 ||
-  officialOutcomeTotals.evaluatorIncorrect !== 630 ||
-  officialOutcomeTotals.timeouts !== 5 ||
-  officialOutcomeTotals.budgetExceeded !== 1 ||
-  officialOutcomeTotals.executionFailures !== 6 ||
-  officialOutcomeTotals.completed !== 1_218 ||
+  officialOutcomeTotals.timeouts !== 0 ||
+  officialOutcomeTotals.budgetExceeded !== 0 ||
+  officialOutcomeTotals.executionFailures !== 0 ||
+  officialOutcomeTotals.completed !== 1_224 ||
   currentRunEvidence.reduce((total, evidence) => total + evidence.results.length, 0) !== 1_224
 ) {
-  throw new Error('The live-published fixture does not match verified Official outcome totals.');
+  throw new Error('The live-published fixture does not match scorer-generated outcome totals.');
 }
 
-const leaderboard = currentRunEvidence.map(({ entry, runId, outcomes, interval }) => ({
-  matrix_id: entry.id,
-  run_id: runId,
-  score: interval.center,
-  sensitivity_low: interval.lower,
-  sensitivity_high: interval.upper,
-  sample_size: 72,
-  coverage_percent: 100,
-  runtime_issues: outcomes.executionFailures,
-  missing: 0,
-  scoring_version: '1.0.2',
-  score_status: 'official',
-  synthetic: false,
-}));
+// This test server projects the scorer-generated nested rows into an Official-shaped
+// public-view contract only after the fail-closed outer fixture flags above are checked.
+// The module is browser-test-only and is not an ingestion or publication path.
+const leaderboard = generatedPublicFixture.leaderboard;
 
 const runEvidence = currentRunEvidence;
 const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcomes }) => {
@@ -616,17 +255,17 @@ const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcome
     matrix_id: entry.id,
     started_at: startedAt,
     completed_at: completedAt,
-    benchmark_version: 'aiq-core@1.0.2',
-    scoring_version: '1.0.2',
-    prompt_set_digest: 'sha256:a6aead1a94c0e6dc6e9f80fe2057ab46c60fa9ce287e8db1c6000f8000541105',
-    runner_commit: '7a0c4d1',
-    region: 'us-east-1',
+    benchmark_version: generatedPublicFixture.benchmark_version,
+    scoring_version: generatedPublicFixture.scoring_version,
+    prompt_set_digest: `sha256:${'2'.repeat(64)}`,
+    runner_commit: 'b76148cd419ab4ebb491cdb9f6a00555059eab67',
+    region: 'test-generated',
     synthetic: false,
-    corpus_release_id: 'corpus_2026.08.02-aiq-core-1.0.2-controlled.1',
+    corpus_release_id: 'corpus_test-generated-aiq-core-1.0.6',
     corpus_commitment_sha256:
-      'sha256:5b8cfddaacefcd58274b880815fd3f955bd319396755d041f2f30d000555624f',
-    catalog_digest: 'sha256:2c5efe162b49e710e6e52b0f3a4e33d1127d0dd54d4f15694f88911bcb7fc937',
-    task_set_digest: 'sha256:d5463bf713a83d07fdb43c2bf16093779096bcdeb17682ca68952060d71b7e10',
+      'sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612',
+    catalog_digest: 'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1',
+    task_set_digest: 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82',
     preflight_digest: `sha256:${'6'.repeat(64)}`,
     runtime_digest: `sha256:${'7'.repeat(64)}`,
     run_class: 'official',
@@ -681,7 +320,7 @@ const pricingRates = [
 const calibrationRun = {
   run_id: calibrationRunId,
   classification: 'local_calibration_non_official',
-  scoring_version: '1.0.2',
+  scoring_version: generatedPublicFixture.scoring_version,
   selected_task_count: 72,
   selected_model_count: 17,
   result_count: 1_224,
@@ -709,7 +348,7 @@ const subsetCalibrationRun = {
 };
 
 const calibrationScores = matrix.map((entry, index) => {
-  const aiq = Number((82.5 - index * 0.6).toFixed(2));
+  const qualityScore = Number((82.5 - index * 0.6).toFixed(2));
   const unavailableContextBand = index === 1;
   const inputTokens = unavailableContextBand ? 344_001 : 72_000 + index * 1_000;
   const outputTokens = 36_000 + index * 800;
@@ -718,9 +357,9 @@ const calibrationScores = matrix.map((entry, index) => {
     model_family: entry.model_family.toLowerCase(),
     reasoning_effort: entry.reasoning_tier,
     descriptive_status: index === 0 ? 'conditional_observed' : 'complete_fixture',
-    aiq,
-    task_resampling_sensitivity_lower: Number((aiq - 1.5).toFixed(2)),
-    task_resampling_sensitivity_upper: Number((aiq + 1.5).toFixed(2)),
+    quality_score: qualityScore,
+    task_resampling_sensitivity_lower: Number((qualityScore - 1.5).toFixed(2)),
+    task_resampling_sensitivity_upper: Number((qualityScore + 1.5).toFixed(2)),
     task_resampling_sensitivity_method: 'finite_cluster_calibrated_percentile_sensitivity_v1',
     result_count: 72,
     sample_size: index === 0 ? 71 : 72,
@@ -795,7 +434,7 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
       run_id: calibrationRunId,
       task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
-      task_version: '1.0.2',
+      task_version: generatedPublicFixture.scoring_version,
       domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
@@ -853,9 +492,10 @@ const modelEfficiency = calibrationScores.map((score, index) => {
   const tokenCoveragePercent = tokenCount === 0 ? null : (tokenCount / 72) * 100;
   const tokensAvailable = tokenCount > 0;
   const durationAvailable = index !== 3;
+  const runId = leaderboard[index]?.run_id;
+  if (!runId) throw new Error(`Missing generated run identity for matrix index ${index}.`);
   return {
-    run_id:
-      leaderboard[index]?.run_id ?? officialRunId(matrix[index] ?? { id: String(index) }, index),
+    run_id: runId,
     matrix_batch_id: `run_${'b'.repeat(64)}`,
     model_family: score.model_family,
     reasoning_effort: score.reasoning_effort,
@@ -929,7 +569,8 @@ for (const evidence of runEvidence) {
     publishedResultIndex += 1;
     const runtimeIssue = result.execution_status === 'runtime_issue';
     const unavailableContextBand = !runtimeIssue && publishedResultIndex <= 10;
-    const estimatedCost = !runtimeIssue && !unavailableContextBand;
+    const unavailableMissingUsage = !runtimeIssue && publishedResultIndex > 1_218;
+    const estimatedCost = !runtimeIssue && !unavailableContextBand && !unavailableMissingUsage;
     const tokensAvailable = estimatedCost || unavailableContextBand;
     const inputTokens = tokensAvailable
       ? unavailableContextBand
@@ -999,24 +640,24 @@ if (
 }
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.2',
-  scoring_version: '1.0.2',
-  published_at: '2026-07-29T16:00:00.000Z',
+  benchmark_version: generatedPublicFixture.benchmark_version,
+  scoring_version: generatedPublicFixture.scoring_version,
+  published_at: '2026-01-01T00:00:00.000Z',
   principles: [
-    'Estimate performance on the committed AIQ v1 fixed-fixture set.',
-    'Score every frozen domain with equal weight.',
-    'Publish outcome counts and provenance without exposing hidden payloads.',
-    'Keep missing or invalid work visible.',
+    'Calibrate latent ability from one complete fixed 17-by-72 matrix.',
+    'Keep descriptive quality score separate from calibrated ability.',
+    'Publish strict-pass Wilson uncertainty and task-mix sensitivity separately.',
+    'Keep missing, invalid, and runtime evidence visible.',
   ],
   missing_policy: 'Missing and invalid results block Official publication.',
   failure_policy: 'A valid failed attempt scores zero and remains visible.',
   sensitivity_policy:
-    'The interval is a fixed-fixture task-resampling sensitivity interval, not a universal capability claim.',
+    'Task-mix sensitivity surrounds descriptive quality score; the conditional interval surrounds calibrated ability.',
   synthetic: false,
 };
 
 const taskCoverage = domainCounts.map(([domain, task_count]) => ({
-  scoring_version: '1.0.2',
+  scoring_version: generatedPublicFixture.scoring_version,
   domain,
   weight: 0.1,
   task_count,
@@ -1064,39 +705,8 @@ const radar = [
   },
 ];
 
-/**
- * @param {string} recordedAt
- */
-function trendBucket(recordedAt) {
-  const bucketStartedAt = new Date(recordedAt);
-  bucketStartedAt.setUTCMinutes(0, 0, 0);
-  return {
-    bucketStartedAt: bucketStartedAt.toISOString(),
-    bucketEndedAt: new Date(bucketStartedAt.getTime() + 3_600_000).toISOString(),
-  };
-}
-
-const currentTrends = leaderboard.map((current) => {
-  const { bucketStartedAt, bucketEndedAt } = trendBucket(currentRunCompletedAt);
-  return {
-    matrix_id: current.matrix_id,
-    run_id: current.run_id,
-    scoring_version: current.scoring_version,
-    recorded_at: currentRunCompletedAt,
-    bucket_started_at: bucketStartedAt,
-    bucket_ended_at: bucketEndedAt,
-    score: current.score,
-    sensitivity_low: current.sensitivity_low,
-    sensitivity_high: current.sensitivity_high,
-    sample_size: current.sample_size,
-    represented_run_count: 1,
-    resolution_seconds: 3_600,
-    synthetic: false,
-  };
-});
-
-const trendDates = [currentRunCompletedAt];
-const trends = currentTrends;
+const trends = generatedPublicFixture.trend;
+const trendDates = [...new Set(trends.map((point) => point.recorded_at))];
 
 if (new Set(trends.map((point) => point.run_id)).size !== trends.length) {
   throw new Error('Every retained trend point must have one independent run identity.');
@@ -1115,10 +725,10 @@ for (const point of trends) {
   }
 }
 for (const current of leaderboard) {
-  const retained = trends.filter((point) => point.matrix_id === current.matrix_id);
-  retained.sort((left, right) => right.recorded_at.localeCompare(left.recorded_at));
-  const latest = retained[0];
+  const retainedCount = trends.filter((point) => point.matrix_id === current.matrix_id).length;
+  const latest = trends.find((point) => point.matrix_id === current.matrix_id);
   if (
+    retainedCount !== 1 ||
     !latest ||
     latest.run_id !== current.run_id ||
     latest.score !== current.score ||
@@ -1132,14 +742,19 @@ for (const current of leaderboard) {
 
 for (const evidence of currentRunEvidence) {
   const current = leaderboard.find((row) => row.run_id === evidence.runId);
+  const recomputedQuality = equalDomainQualityScore(evidence.results);
+  const strictPassSuccesses = evidence.results.filter((result) => result.score === 1).length;
   if (
     !current ||
-    current.score !== Number(equalDomainAiq(evidence.results).toFixed(3)) ||
-    current.score !== evidence.interval.center ||
-    current.sensitivity_low !== evidence.interval.lower ||
-    current.sensitivity_high !== evidence.interval.upper ||
-    current.sensitivity_low > current.score ||
-    current.sensitivity_high < current.score
+    Math.abs(current.quality_score - recomputedQuality) > Number.EPSILON * 100 ||
+    current.strict_pass_sample_size !== evidence.results.length ||
+    current.strict_pass_successes !== strictPassSuccesses ||
+    Math.abs(current.strict_pass_rate - strictPassSuccesses / evidence.results.length) >
+      Number.EPSILON ||
+    current.sensitivity_low > current.quality_score ||
+    current.sensitivity_high < current.quality_score ||
+    current.score_ci_low > current.score ||
+    current.score_ci_high < current.score
   ) {
     throw new Error('Current leaderboard values must derive from their exact task evidence.');
   }

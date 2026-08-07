@@ -21,24 +21,25 @@ The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
-AIQ Core `1.0.5` with task-metadata digest
-`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
-release-policy identity `aiq-core/1.0.5`, and public release digest
-`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-This public candidate retargets four calibration-sensitive tasks and carries
-forward 68 task designs with new bindings. The latest catalog revision uses a
-bounded keyed executor, a quoted-record parser, a six-field layered service
-configuration loader, and a bounded Unicode log preview. Each task composes
-multiple public requirements and uses a 900-second wall budget with unchanged
-step and tool-call limits. The preceding 63-complete, 5-timeout pilot was
-rejected for 0.933–0.992 completed means and remains immutable non-Official
-evidence. The current task semantics and calibration implications are
+AIQ Core `1.0.6` with task-metadata digest
+`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+release-policy identity `aiq-core/1.0.6`, and public release digest
+`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+This public candidate changes only the common runtime envelope for the bounded
+keyed executor, quoted-record parser, six-field layered service configuration
+loader, and bounded Unicode log preview. Every model configuration gets the
+same 1,500-second, 48-step, and 40-tool-call budget. The other 68 task,
+evaluator, tool, and budget contracts carry forward with new bindings. The
+preceding `1.0.5` pilots remain immutable non-Official evidence. The first had
+63 completed cells, five timeouts, and saturated completed means. A later pilot
+exposed seven timeouts and three tool-budget failures at the old common
+envelope. The current task semantics and calibration implications are
 canonicalized in [Benchmark Method](benchmark-method.md).
-The create-new interaction candidate passed reproducibility generation,
-independent authoring validation, and the Rust 72-task corpus validator. Its
-controlled Core, scorer-manifest, evaluator, runtime task-set, generated-task
-tree, and database commitment identities remain calibration candidates rather
-than accepted release identities. Contrast generation remains pending. The
+The public catalog is deterministic and identity-frozen. Two controlled
+generations produced one matching tree, and the reviewed 72-task database
+commitment is bound in source. Final controlled corpus identities remain
+calibration candidates rather than accepted release identities. Contrast
+generation remains pending. The
 shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
@@ -51,26 +52,22 @@ exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Node.js, and ripgrep executables. The repository does not validate or
 publish this reproducibility evidence. Full calibration, native build
 verification, real Official execution, publication, and final deployment of
-`1.0.5` are pending. The `1.0.3` Official attempt was interrupted after an
+`1.0.6` are pending. The `1.0.3` Official attempt was interrupted after an
 already-conclusive ceiling failure and was rejected as unpublished calibration
 evidence. No hidden responses or hidden task details were published. The first
 `1.0.4` calibration completed all 1,224 cells but failed the statistical release
 gate. It remains non-Official evidence; this does not mean every task execution
-failed. The `1.0.5` sequence is a 17-configuration by four-revised-task pilot,
+failed. The `1.0.6` sequence is a 17-configuration by four-runtime-revised-task pilot,
 followed by the complete 17-by-72 non-Official calibration. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
-The first published real Official benchmark batch completed on the native macOS
-runner. The batch is non-synthetic. Its 1,224
-task-level results are one 17-by-72 matrix, not 1,224 separate benchmark runs.
-The native verifier replayed the committed evaluators, and the distinct
-publisher completed the database transition. Production exposes the matrix as
-`trusted_verified` under the historical AIQ Core `1.0.2` contract. The first
-Official launch publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is
-historical launch evidence, not the identity of every later production
-deployment. The published outcome and efficiency semantics are detailed in
-[Benchmark Method](benchmark-method.md).
+The accepted production package must be non-synthetic. Its 1,224 task-level
+results are one 17-by-72 matrix, not 1,224 separate benchmark runs. The native
+verifier must replay the committed evaluators before the distinct publisher can
+complete publication. Production exposes only the AIQ Core `1.0.6`, scoring
+`1.0.6`, measurement `2.0.0` matrix as `trusted_verified`. No legacy matrix is a
+fallback. The outcome and efficiency semantics are detailed in [Benchmark
+Method](benchmark-method.md).
 
 ## Identity boundary
 
@@ -244,13 +241,14 @@ Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
 AIQ database. There is no migration chain. The pre-release desired state
-targets the public AIQ Core `1.0.5` catalog and scoring `1.0.5`.
+targets the public AIQ Core `1.0.6` catalog and scoring `1.0.6`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,
 [Deployment Handoff](deployment-handoff.md) requires model-free validation of
-the controlled corpus and a verified final native build before preparing that
-reference. The operator retains the private final-build audit receipt separately;
+the controlled corpus, a verified final native build, and successful native
+verifier replay of one real signed non-synthetic 17-by-72 package before
+preparing that reference. The operator retains the private final-build audit receipt separately;
 the initializer does not consume or validate it. The initializer validates the
 reference shape and bindings. It inserts the reference with the model matrix as
 the one greenfield desired state.
@@ -272,12 +270,15 @@ production path requires both browser-safe Supabase values and serves only live
 public evidence. Development uses checked-in synthetic fixtures only when both
 values are absent. Partial or malformed configuration fails closed.
 
-The public site is a professional analysis workbench backed by real historical
-production evidence. Its scientific score context identifies the observation
-count, fixed-fixture task-sensitivity interval, coverage, missing cells, runtime
-status, scoring method, and provenance. Cost is an estimated Standard
-API-equivalent comparison, not an actual ChatGPT or Codex subscription bill. The
-public-data repository validates each live public-view response before rendering:
+The public site is a professional analysis workbench backed by verified
+production evidence. Official rows present calibrated ability with its conditional
+95% interval. Explicit synthetic fixtures present descriptive quality with
+task-mix sensitivity and never appear as Official. Scientific context also
+identifies strict pass with its Wilson interval, observation count, coverage,
+missing cells, runtime status, scoring method, and provenance. Cost is an
+estimated Standard API-equivalent comparison, not an actual ChatGPT or Codex
+subscription bill. The public-data repository validates each live public-view
+response before rendering:
 it requires canonical run and task identities, expected field sets, internally
 consistent task counts and status totals, valid timing and token evidence, and
 verifier-recomputed cost consistent with the published pricing digest. The
@@ -286,11 +287,12 @@ readiness probe verifies the same expanded result-view contract.
 The overview leads with the publication identity, three compact benchmark
 insights, and the top five configurations. On narrow screens the complete top
 five precedes analytical charts in the first viewport. When exact Official
-efficiency evidence exists, the primary chart compares descriptive AIQ with
+efficiency evidence exists, the primary chart compares calibrated ability with
 either summed adapter time or estimated Standard API-equivalent cost. When that
 evidence does not exist, the primary chart falls back to the scored
 17-configuration matrix. The full matrix still supports dot, bar, and
-ordered-horizontal presentations with task-sensitivity intervals. If the live
+ordered-horizontal presentations with the interval that matches its primary
+metric. If the live
 matrix has identities but no scores, the page preserves all 17 identities in an
 explicit unavailable-values table instead of displaying zeros or removing the
 matrix contract.
@@ -307,14 +309,15 @@ efficiency, calibration, and provenance tables remain available through
 progressive disclosures rather than competing with the first-read results.
 
 These views preserve the scoring and evidence distinctions defined by
-[Benchmark Method](benchmark-method.md): the AIQ index is not an IQ estimate,
+[Benchmark Method](benchmark-method.md): calibrated ability is not an IQ estimate,
 coverage is not correctness, and API-equivalent cost is not subscription spend.
 Semantic outcomes remain separate from runtime, invalid, and missing states.
 Charts use ECharts with SVG rendering. The chart wrapper exposes the generated
 ECharts description to assistive technology and each chart has a complete data
-table. Charts expose the fixed-fixture task-sensitivity interval and support
-explicit System, Light, and Dark themes. Synthetic fixtures remain confined to
-explicit development and test paths. Source anchors are
+table. Official charts expose the conditional score interval. Synthetic and raw
+quality diagnostics expose task-mix sensitivity. Charts support explicit System,
+Light, and Dark themes. Synthetic fixtures remain confined to explicit
+development and test paths. Source anchors are
 `apps/web/src/app/page.tsx`, `apps/web/src/components/scientific-evidence-resolution.ts`,
 `apps/web/src/components/model-matrix-chart.tsx`, and
 `apps/web/src/components/run-outcome-card.tsx`.

@@ -8,11 +8,15 @@ import {
 async function expectPublishedEvidenceLabel(page: Page, label: string): Promise<void> {
   const note = page.getByLabel(label, { exact: true });
   await expect(note).toHaveCount(1);
-  if (await note.isVisible()) return;
+  await expect(note).toContainText('Published evidence');
 
   const disclosure = note.locator('xpath=ancestor::details[1]');
-  await expect(disclosure).toHaveCount(1);
-  await expect(disclosure.locator(':scope > summary')).toBeVisible();
+  if ((await disclosure.count()) === 1) {
+    await expect(disclosure.locator(':scope > summary')).toBeVisible();
+    return;
+  }
+  await expect(disclosure).toHaveCount(0);
+  await expect(note).toBeVisible();
 }
 
 export async function expectProductionPageEvidence(page: Page, path: string): Promise<void> {
