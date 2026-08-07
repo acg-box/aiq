@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AiqRepository } from '../data/types.ts';
 import { ThemeControl } from './theme-control.tsx';
@@ -17,12 +17,26 @@ const workspaceNavigation = [
 export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
   const [activeSection, setActiveSection] = useState('results');
+  const navigationTarget = useRef<string | null>(null);
+  const navigationTargetFallback = useRef<number | null>(null);
   const statusClass =
     configuration === 'live'
       ? 'status-public'
       : configuration === 'invalid'
         ? 'status-invalid'
         : 'status-seed';
+
+  const activateNavigationTarget = useCallback((section: string) => {
+    navigationTarget.current = section;
+    setActiveSection(section);
+    if (navigationTargetFallback.current !== null) {
+      window.clearTimeout(navigationTargetFallback.current);
+    }
+    navigationTargetFallback.current = window.setTimeout(() => {
+      navigationTarget.current = null;
+      navigationTargetFallback.current = null;
+    }, 3000);
+  }, []);
 
   useEffect(() => {
     if (pathname !== '/') return undefined;
@@ -35,7 +49,18 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
           .toSorted((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
         const section = visible?.target;
         if (section instanceof HTMLElement && section.dataset.navSection) {
-          setActiveSection(section.dataset.navSection);
+          const visibleSection = section.dataset.navSection;
+          if (navigationTarget.current !== null && navigationTarget.current !== visibleSection) {
+            return;
+          }
+          if (navigationTarget.current === visibleSection) {
+            navigationTarget.current = null;
+            if (navigationTargetFallback.current !== null) {
+              window.clearTimeout(navigationTargetFallback.current);
+              navigationTargetFallback.current = null;
+            }
+          }
+          setActiveSection(visibleSection);
         }
       },
       { rootMargin: '-24% 0px -62% 0px', threshold: [0, 0.05, 0.2] },
@@ -52,11 +77,11 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
     const alignToHash = () => {
       alignmentTimers.forEach((timer) => window.clearTimeout(timer));
       alignmentTimers.length = 0;
+      const id = window.location.hash.slice(1);
+      const section = id ? document.getElementById(id) : null;
+      if (!section) return;
+      if (section.dataset.navSection) activateNavigationTarget(section.dataset.navSection);
       const align = () => {
-        const id = window.location.hash.slice(1);
-        const section = id ? document.getElementById(id) : null;
-        if (!section) return;
-        if (section.dataset.navSection) setActiveSection(section.dataset.navSection);
         window.requestAnimationFrame(() => section.scrollIntoView({ block: 'start' }));
       };
       align();
@@ -72,11 +97,16 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
     window.addEventListener('hashchange', alignToHash);
     return () => {
       alignmentTimers.forEach((timer) => window.clearTimeout(timer));
+      if (navigationTargetFallback.current !== null) {
+        window.clearTimeout(navigationTargetFallback.current);
+        navigationTargetFallback.current = null;
+      }
+      navigationTarget.current = null;
       mutationObserver.disconnect();
       observer.disconnect();
       window.removeEventListener('hashchange', alignToHash);
     };
-  }, [pathname]);
+  }, [activateNavigationTarget, pathname]);
 
   return (
     <header className="site-header">
@@ -85,9 +115,10 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
       </Link>
       <nav aria-label="Main navigation">
         {workspaceNavigation.map(([label, section]) => {
+          const navigationSection = section === 'runs' ? 'evidence' : section;
           const current =
             pathname === '/'
-              ? activeSection === (section === 'runs' ? 'evidence' : section)
+              ? activeSection === navigationSection
               : (section === 'trends' && pathname === '/trends') ||
                 (section === 'compare' && pathname === '/compare') ||
                 (section === 'runs' &&
@@ -102,6 +133,24 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
               href={`/#${section}`}
               aria-current={current ? 'page' : undefined}
               prefetch={false}
+              onClick={(event) => {
+                if (
+                  event.button !== 0 ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.shiftKey
+                ) {
+                  return;
+                }
+                activateNavigationTarget(navigationSection);
+                if (pathname === '/') {
+                  const target = document.getElementById(section);
+                  if (target) {
+                    window.requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+                  }
+                }
+              }}
             >
               {label}
             </Link>

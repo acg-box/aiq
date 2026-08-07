@@ -116,6 +116,56 @@ for (const route of routes) {
   });
 }
 
+test('workspace navigation keeps the selected destination active while scrolling', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+
+  const navigation = page.getByRole('navigation', { name: 'Main navigation' });
+  const compare = navigation.getByRole('link', { name: 'Compare', exact: true });
+  await compare.click();
+  const activeLinks = await page.evaluate(async () => {
+    const observed: string[] = [];
+    for (let frame = 0; frame < 150; frame += 1) {
+      observed.push(
+        document.querySelector<HTMLElement>(
+          'nav[aria-label="Main navigation"] a[aria-current="page"]',
+        )?.innerText ?? '',
+      );
+      // oxlint-disable-next-line no-await-in-loop -- consecutive frames record the transition order.
+      await new Promise(requestAnimationFrame);
+    }
+    return observed;
+  });
+
+  await expect(page).toHaveURL('/#compare');
+  await expect(compare).toHaveAttribute('aria-current', 'page');
+  expect(new Set(activeLinks.filter(Boolean))).toEqual(new Set(['Compare']));
+
+  await page.locator('#results').evaluate((section) =>
+    section.scrollIntoView({
+      behavior: 'instant',
+      block: 'start',
+    }),
+  );
+  await expect(navigation.getByRole('link', { name: 'Results', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+
+  await compare.click();
+  await expect
+    .poll(() =>
+      page
+        .locator('#compare')
+        .evaluate((section) => Math.round(section.getBoundingClientRect().top)),
+    )
+    .toBeLessThanOrEqual(85);
+  await expect(compare).toHaveAttribute('aria-current', 'page');
+});
+
 test('crawler metadata routes expose only the public surface', async ({ request }) => {
   const robotsResponse = await request.get('/robots.txt');
   expect(robotsResponse.status()).toBe(200);

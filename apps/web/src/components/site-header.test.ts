@@ -22,7 +22,11 @@ void describe('site header one-page navigation', () => {
     assert.match(source, /new IntersectionObserver/);
     assert.match(source, /\[data-workspace-section\]/);
     assert.match(source, /section\.dataset\.navSection/);
-    assert.match(source, /setActiveSection\(section\.dataset\.navSection\)/);
+    assert.match(source, /navigationTarget\.current !== visibleSection/);
+    assert.match(source, /setActiveSection\(visibleSection\)/);
+    assert.match(source, /onClick=\{\(event\) =>/);
+    assert.match(source, /activateNavigationTarget\(navigationSection\)/);
+    assert.match(source, /document\.getElementById\(section\)/);
     assert.match(source, /section === 'trends' && pathname === '\/trends'/);
     assert.match(source, /section === 'compare' && pathname === '\/compare'/);
   });
