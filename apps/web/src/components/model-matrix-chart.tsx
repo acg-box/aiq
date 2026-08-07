@@ -327,7 +327,7 @@ export function ModelMatrixChart({
         </div>
         {scored.length > 0 ? (
           <label className="chart-control">
-            Read configuration
+            <span>Read configuration</span>
             <select
               value={selectedId}
               onChange={(event) => pushAnalyticalUrl({ matrixSelection: event.target.value })}
