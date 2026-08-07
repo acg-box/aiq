@@ -29,11 +29,14 @@ use crate::{
 
 /// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:221931b2719348e418e067886ba46e4cebc6162927ea31ae0035ab6a8dc2dd82";
+	"sha256:47d72e328ba772d9856dfaeaf7775d90dd8c7a303f483fbc04237d1f0587e32b";
 
 const CONTROLLED_CONTRAST_TASK_SET_VERSION: &str = "1.0.6";
 const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json");
+#[cfg(test)]
+const CONTRAST_PUBLIC_CATALOG_JSON: &str =
+	include_str!("../../../benchmarks/candidates/aiq-core-1.0.6/contrast-catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -2565,7 +2568,7 @@ mod tests {
 		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
-			"sha256:221931b2719348e418e067886ba46e4cebc6162927ea31ae0035ab6a8dc2dd82"
+			"sha256:47d72e328ba772d9856dfaeaf7775d90dd8c7a303f483fbc04237d1f0587e32b"
 		);
 		assert_eq!(
 			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
@@ -2592,6 +2595,57 @@ mod tests {
 		uncontrolled.controlled = false;
 
 		assert!(corpus_commitment::validate_header(&uncontrolled, super::CORE_CATALOG).is_err());
+	}
+
+	#[test]
+	fn contrast_identity_is_derived_from_generated_current_catalog() {
+		let catalog: serde_json::Value = serde_json::from_str(super::CONTRAST_PUBLIC_CATALOG_JSON)
+			.expect("generated Contrast public catalog");
+
+		assert_eq!(
+			catalog.get("schema_version").and_then(serde_json::Value::as_str),
+			Some("aiq.contrast-corpus.v1")
+		);
+		assert_eq!(
+			catalog.get("task_set_id").and_then(serde_json::Value::as_str),
+			Some("aiq-core-contrast")
+		);
+		assert_eq!(
+			catalog.get("task_set_version").and_then(serde_json::Value::as_str),
+			Some(super::CONTROLLED_CONTRAST_TASK_SET_VERSION)
+		);
+		assert_eq!(
+			catalog.get("scoring_version").and_then(serde_json::Value::as_str),
+			Some(super::CONTROLLED_CONTRAST_TASK_SET_VERSION)
+		);
+		assert_eq!(
+			catalog.get("calibration_only").and_then(serde_json::Value::as_bool),
+			Some(true)
+		);
+
+		let tasks = catalog
+			.get("tasks")
+			.and_then(serde_json::Value::as_array)
+			.expect("six generated Contrast tasks");
+
+		assert_eq!(tasks.len(), super::CONTRAST_TASK_IDS.len());
+
+		for (task, expected_id) in tasks.iter().zip(super::CONTRAST_TASK_IDS) {
+			assert_eq!(task.get("task_id").and_then(serde_json::Value::as_str), Some(expected_id));
+			assert_eq!(
+				task.get("task_version").and_then(serde_json::Value::as_str),
+				Some(super::CONTROLLED_CONTRAST_TASK_SET_VERSION)
+			);
+		}
+
+		let derived = protocol::canonical_hash(catalog.get("tasks").expect("task metadata"))
+			.expect("canonical generated Contrast catalog identity");
+
+		assert_eq!(derived, super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256);
+		assert_eq!(
+			catalog.get("identity_sha256").and_then(serde_json::Value::as_str),
+			Some(derived.as_str())
+		);
 	}
 
 	#[test]
