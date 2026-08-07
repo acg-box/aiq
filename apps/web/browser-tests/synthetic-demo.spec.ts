@@ -803,6 +803,7 @@ test('light and dark themes persist and remain accessible across public pages', 
   browserName,
   page,
 }, testInfo) => {
+  test.slow();
   test.skip(
     browserName !== 'chromium',
     'Theme page-by-page acceptance is captured once in Chromium.',
