@@ -1452,6 +1452,10 @@ dd {
 	margin-block: 16px;
 }
 
+.calibration-facts dd {
+	overflow-wrap: anywhere;
+}
+
 .calibration-filter {
 	display: grid;
 	grid-template-columns: minmax(220px, 1fr) auto;
@@ -1576,7 +1580,7 @@ dd {
 	}
 
 	.efficiency-panel > .homepage-analytics-matrix {
-		min-height: 750px;
+		min-height: 930px;
 	}
 
 	.efficiency-panel > .homepage-analytics-matrix.homepage-analytics-empty {

@@ -77,7 +77,7 @@ for (const route of routes) {
     await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
     await expect(page.locator('.live-pill')).toHaveAttribute('title', 'Published public data');
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-    await expect(page.locator('main h1')).toBeVisible();
+    await expect(page.locator('main h1').first()).toBeVisible();
     expect(await new AxeBuilder({ page }).analyze()).toMatchObject({ violations: [] });
     await expectNoDocumentOverflow(page, testInfo);
   });
@@ -88,7 +88,7 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
 }) => {
   const response = await page.goto('/');
   expectPrivateNoStore(response);
-  await page.getByText('Evidence notes', { exact: true }).click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await expect(page.getByText('No published evidence', { exact: true }).first()).toBeVisible();
   await page.getByText('Read all configuration values as a table', { exact: true }).click();
   const table = page.getByRole('region', {

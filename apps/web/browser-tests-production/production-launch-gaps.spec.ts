@@ -31,7 +31,7 @@ function expectNoStore(response: APIResponse) {
 async function expectPublishedNonSyntheticPage(page: Page, path: string) {
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
-  await expect(page.locator('main h1')).toBeVisible();
+  await expect(page.locator('main h1').first()).toBeVisible();
   await expectProductionPageEvidence(page, path);
 }
 

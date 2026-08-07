@@ -378,7 +378,7 @@ export default async function OverviewPage({
                 </div>
               </dl>
             </div>
-            <DataNote provenance={overviewProvenance} />
+            <DataNote provenance={overviewProvenance} subject="Overview" />
             <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
             {selectedEstimateIdentityUnavailable ? (
               <ReadStateNote

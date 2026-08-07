@@ -178,5 +178,13 @@ void describe('homepage evidence and loading contract', () => {
       /\.chart-switch button\[aria-pressed='true'\],[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
     );
     assert.match(globalStyles, /\.quiet-button \{[\s\S]+border: 0;[\s\S]+background: transparent;/);
+    assert.match(
+      globalStyles,
+      /button \{[\s\S]+appearance: none;[\s\S]+border-radius: 0;[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
+    );
+    assert.match(
+      globalStyles,
+      /\.button\.primary \{[\s\S]+background: transparent;[\s\S]+border-radius: 0;[\s\S]+box-shadow: none;/,
+    );
   });
 });

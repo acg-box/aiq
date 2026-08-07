@@ -73,7 +73,7 @@ export default async function RunsPage({
           tasks: 1,224 task attempts, not 1,224 benchmark runs.
         </p>
       </div>
-      <ReadStateNote result={runsResult} />
+      <ReadStateNote result={runsResult} subject="Run archive" />
       {runsResult.state === 'unavailable' || runsResult.state === 'empty' ? null : (
         <div
           className="table-scroll run-history"
