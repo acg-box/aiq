@@ -904,7 +904,7 @@ mod tests {
 	#[test]
 	fn shared_stdout_parser_recomputes_tool_evidence_for_replay() {
 		let stdout = [
-			r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
+			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
 			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"OK"}}"#,
 		]
 		.join("\n");
@@ -912,7 +912,12 @@ mod tests {
 
 		fixture.replace_artifact("stdout.jsonl", stdout.as_bytes().to_vec());
 
-		fixture.run.results[0].tool_usage = runner::parse_codex_tool_usage(&stdout);
+		let expected = runner::parse_codex_tool_usage(&stdout);
+
+		assert_eq!(expected.steps, 1);
+		assert_eq!(expected.total_calls, 0);
+
+		fixture.run.results[0].tool_usage = expected;
 
 		fixture.verify().expect("shared parser replay");
 	}
