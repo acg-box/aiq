@@ -145,6 +145,12 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
                 }
                 activateNavigationTarget(navigationSection);
                 if (pathname === '/') {
+                  event.preventDefault();
+                  const destination = `/#${section}`;
+                  const currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                  if (currentLocation !== destination) {
+                    window.history.pushState(null, '', destination);
+                  }
                   const target = document.getElementById(section);
                   if (target) {
                     window.requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
