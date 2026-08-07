@@ -334,18 +334,17 @@ code {
 	cursor: pointer;
 	transition:
 		color 140ms ease,
-		background 140ms ease,
-		transform 140ms ease;
+		opacity 140ms ease;
 }
 
 .theme-control button:hover {
 	color: var(--ink);
-	transform: translateY(-1px);
 }
 
 .theme-control button[aria-pressed='true'] {
 	color: var(--ink);
-	background: var(--panel-soft);
+	background: transparent;
+	opacity: 1;
 }
 
 .live-pill {
@@ -494,48 +493,74 @@ h3 {
 }
 
 .button,
-.quiet-button,
 form button {
 	display: inline-flex;
 	min-height: 36px;
-	padding: 0 13px;
+	padding: 0 4px;
 	align-items: center;
 	justify-content: center;
-	color: var(--ink);
+	color: var(--accent);
 	font-size: 0.78rem;
 	font-weight: 620;
 	text-decoration: none;
-	border: 1px solid var(--line);
-	border-radius: var(--radius-small);
+	border: 0;
+	border-radius: 0;
 	background: transparent;
 	cursor: pointer;
-	transition:
-		border-color 140ms ease,
-		background 140ms ease,
-		transform 140ms ease;
+	transition: color 140ms ease;
 }
 
 .button:hover,
-.quiet-button:hover,
 form button:hover {
-	border-color: var(--line-bright);
-	background: var(--panel-soft);
+	color: var(--ink);
+	text-decoration: underline;
+	text-underline-offset: 4px;
+}
+
+.quiet-button {
+	display: inline-flex;
+	min-height: 30px;
+	padding: 0;
+	align-items: center;
+	justify-content: center;
+	color: var(--muted);
+	font-size: 0.74rem;
+	font-weight: 620;
+	text-decoration: none;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	transition: color 140ms ease;
+}
+
+.quiet-button:hover {
+	color: var(--ink);
+	text-decoration: underline;
+	text-underline-offset: 4px;
 }
 
 .button.primary {
 	color: var(--accent-ink);
 	background: var(--accent);
-	border-color: var(--accent);
+	border-radius: 4px;
+	padding-inline: 13px;
 }
 
 select,
 input {
 	min-height: 38px;
-	padding: 7px 32px 7px 10px;
+	padding: 7px 28px 7px 0;
 	color: var(--ink);
-	border: 1px solid var(--line);
-	border-radius: var(--radius-small);
+	border: 0;
+	border-bottom: 1px solid var(--line);
+	border-radius: 0;
 	background: transparent;
+	transition: border-color 140ms ease;
+}
+
+select:hover,
+input:hover {
+	border-bottom-color: var(--line-bright);
 }
 
 label {

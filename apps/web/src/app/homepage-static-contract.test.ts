@@ -55,6 +55,9 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(analyticsSource, /ssr: false/);
     assert.match(analyticsSource, /IntersectionObserver/);
     assert.match(analyticsSource, /rootMargin: '500px 0px'/);
+    assert.match(analyticsSource, /useNearViewport\(eager\)/);
+    assert.match(pageSource, /<DeferredEfficiencyPlot[\s\S]+eager/);
+    assert.match(pageSource, /<DeferredModelMatrixChart entries={leaderboard} eager \/>/);
     assert.match(analyticsSource, /loading: \(\) => <AnalyticsLoading/);
     assert.match(analyticsSource, /role="status"/);
     assert.match(analyticsSource, /aria-live="polite"/);
@@ -83,13 +86,17 @@ void describe('homepage evidence and loading contract', () => {
   });
 
   void it('keeps the answer and compact ranking readable on a narrow viewport', async () => {
-    const workspaceStyles = await readFile(workspaceStylesUrl, 'utf8');
+    const [source, workspaceStyles] = await Promise.all([
+      readFile(pageSourceUrl, 'utf8'),
+      readFile(workspaceStylesUrl, 'utf8'),
+    ]);
 
     assert.match(
       workspaceStyles,
       /@media \(max-width: 760px\)[\s\S]+\.insight-grid \{\s+grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/,
     );
-    assert.match(workspaceStyles, /\.insight-card > svg \{\s+display: none;/);
+    assert.doesNotMatch(source, /TrophyIcon|ChartBarIcon|TargetIcon/);
+    assert.doesNotMatch(workspaceStyles, /\.insight-card > svg/);
     assert.match(workspaceStyles, /\.ranking-list li \{[\s\S]+grid-template-columns:/);
     assert.match(workspaceStyles, /\.ranking-list \.quiet-button \{\s+display: none;/);
   });
@@ -99,6 +106,8 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(source, /const hasEfficiencyEvidence =/);
     assert.match(source, /hasEfficiencyEvidence \? \([\s\S]+<DeferredEfficiencyPlot/);
     assert.match(source, /\) : \([\s\S]+<DeferredModelMatrixChart/);
+    assert.match(source, /id={hasEfficiencyEvidence \? undefined : 'matrix'}/);
+    assert.doesNotMatch(source, /<div id="matrix" className="sr-only"/);
     assert.match(source, /rankedEntries\.length === 0[\s\S]+<LeaderboardTable entries=/);
     assert.doesNotMatch(source, /standardApiEquivalentUsdNanos: [0-9]/);
   });
@@ -151,5 +160,23 @@ void describe('homepage evidence and loading contract', () => {
     );
     assert.match(globalStyles, /\.data-note \{[\s\S]+border: 0;[\s\S]+background: transparent;/);
     assert.doesNotMatch(globalStyles, /\.data-note \{[\s\S]+border-left:/);
+    assert.match(
+      workspaceStyles,
+      /\.evidence-notes \{[\s\S]+border: 0;[\s\S]+background: transparent;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.evidence-status-disclosure \{[\s\S]+border: 0;[\s\S]+background: transparent;/,
+    );
+    assert.doesNotMatch(workspaceStyles, /\.evidence-notes > summary::after/);
+    assert.match(
+      workspaceStyles,
+      /\.chart-switch,[\s\S]+\.range-tabs \{[\s\S]+border: 0;[\s\S]+background: transparent;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.chart-switch button\[aria-pressed='true'\],[\s\S]+background: transparent;[\s\S]+box-shadow: none;/,
+    );
+    assert.match(globalStyles, /\.quiet-button \{[\s\S]+border: 0;[\s\S]+background: transparent;/);
   });
 });
