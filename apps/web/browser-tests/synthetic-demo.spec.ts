@@ -261,6 +261,43 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expectNoDocumentOverflow(page, testInfo);
 });
 
+test('matrix points remain visible while the pointer moves across them', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/?matrixEncoding=dots#results');
+  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
+  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  await expect(chart.locator('.matrix-chart-svg svg')).toBeVisible();
+
+  const pointPositions = await chart.locator('.matrix-chart-svg svg path').evaluateAll((paths) => {
+    return paths
+      .filter((path) => path.getAttribute('fill')?.startsWith('var(--data-'))
+      .slice(0, 3)
+      .map((path) => {
+        const bounds = path.getBoundingClientRect();
+        return { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 };
+      });
+  });
+  const [first, second, third] = pointPositions;
+  if (!first || !second || !third) throw new Error('Expected at least three matrix points');
+
+  const expectEveryPointVisible = async () => {
+    const pointFills = await chart.locator('.matrix-chart-svg svg path').evaluateAll((paths) => {
+      return paths
+        .filter((path) => path.getAttribute('d')?.startsWith('M1 0A1 1'))
+        .map((path) => path.getAttribute('fill'));
+    });
+    expect(pointFills).toHaveLength(17);
+    expect(pointFills).not.toContain('none');
+  };
+
+  await page.mouse.move(first.x, first.y);
+  await expectEveryPointVisible();
+  await page.mouse.move(second.x, second.y);
+  await expectEveryPointVisible();
+  await page.mouse.move(third.x, third.y);
+  await expectEveryPointVisible();
+});
+
 test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
   await page.goto('/');
   await page.locator('#results > details.evidence-notes > summary').click();
