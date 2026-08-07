@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-reliability-recovery-01",
-  "task_version": "1.0.5",
+  "task_version": "1.0.6",
   "title": "Classify an unavailable capability",
   "domain": "reliability_recovery",
   "difficulty": "easy",
@@ -9,7 +9,7 @@
   "allowed_tools": ["none"],
   "budgets": { "wall_seconds": 60, "max_steps": 5, "max_tool_calls": 0 },
   "tags": ["synthetic", "capability"],
-  "scorer_version": "1.0.5",
+  "scorer_version": "1.0.6",
   "leakage_notes": ["This public synthetic example does not contribute to an official AIQ score."],
   "fixture_refs": ["repo://benchmarks/examples/tasks/public-example-reliability-recovery.json"],
   "visibility": "public_example",

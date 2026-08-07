@@ -6,14 +6,14 @@ import { pathToFileURL } from 'node:url';
 
 type JsonObject = Record<string, unknown>;
 
-const CATALOG_IDENTITY = 'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
+const CATALOG_IDENTITY = 'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1';
 const CATALOG_RELEASE_IDENTITY =
-  'sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d';
+  'sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c';
 const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
 const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
-const TASK_SET_IDENTITY = 'sha256:f6fc21fa2deb3788c186437c45f8e1c8d5d1e366d32bc81e3b5f847e9844cf05';
+const TASK_SET_IDENTITY = 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82';
 const REVIEWED_TASK_COMMITMENTS_IDENTITY =
-  'sha256:503b19156c545535faf4c24f463b96ad5ba10c12b3fc235f832c27077efb4b94';
+  'sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211';
 const EVALUATOR_IDENTITY =
   'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 const DIGEST_PATTERN = /^sha256:(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
@@ -85,7 +85,8 @@ interface ValidatedReference {
 export interface InitializationReceipt {
   readonly schema_version: 'aiq.production-initialization-receipt.v1';
   readonly initialized: true;
-  readonly scoring_version: '1.0.5';
+  readonly scoring_version: '1.0.6';
+  readonly measurement_version: '2.0.0';
   readonly catalog_identity_sha256: string;
   readonly catalog_release_identity_sha256: string;
   readonly corpus_commitment_sha256: string;
@@ -373,7 +374,7 @@ function validateCommitment(
   if (
     bindingCatalog.schema_version !== 'aiq.catalog.v1' ||
     bindingCatalog.task_set_id !== 'aiq-core' ||
-    bindingCatalog.task_set_version !== '1.0.5' ||
+    bindingCatalog.task_set_version !== '1.0.6' ||
     bindingCatalog.identity_sha256 !== CATALOG_IDENTITY ||
     bindingCatalog.identity_scope !== 'ordered_full_task_metadata'
   ) {
@@ -510,7 +511,7 @@ function validateReviewedTaskCommitments(
   if (
     manifest.schema_version !== 'aiq.production-task-commitments.v1' ||
     manifest.task_set_id !== 'aiq-core' ||
-    manifest.task_set_version !== '1.0.5' ||
+    manifest.task_set_version !== '1.0.6' ||
     digest(manifest.task_set_identity_sha256, 'reviewed task-set identity') !== TASK_SET_IDENTITY ||
     documentDigest(manifest) !== REVIEWED_TASK_COMMITMENTS_IDENTITY
   ) {
@@ -751,35 +752,44 @@ function orderedJsonLiteral(value: unknown): string {
 function scoringRows(reviewedAt: string): JsonObject[] {
   return [
     {
-      scoring_version: '1.0.5',
-      schema_version: 'aiq.score-snapshot.v1',
-      benchmark_version: 'aiq-core@1.0.5',
-      name: 'AIQ fixed-fixture score 1.0.5',
+      scoring_version: '1.0.6',
+      schema_version: 'aiq.score-snapshot.v2',
+      benchmark_version: 'aiq-core@1.0.6',
+      name: 'AIQ calibrated latent score 2.0',
       fixed_fixture_estimand:
-        'The unscaled mean of ten equally weighted domain means over the frozen 72-task fixture.',
+        'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is retained as a diagnostic and is not the Official ranking score.',
       principles: [
-        'Give each of the ten domains weight 0.1.',
-        'Keep the frozen domain and difficulty quotas.',
+        'Jointly estimate one Rasch item difficulty per task and one model location per configuration from the complete 17-configuration by 72-task calibration matrix, with a centered item scale.',
+        'Estimate each model theta with fractional task credit and a weak N(0, 3²) MAP prior; report conditional Wald uncertainty given the released item bank.',
+        'Publish 100 × logistic(theta) as predicted success on an average calibrated task; do not call it an IQ norm or a 150-point scale.',
+        'Retain the equal-domain criterion score, item information, theta, and standard error as separate evidence.',
+        'Keep the frozen domain and difficulty quotas until a new calibration pilot proves a task-set replacement is needed.',
         'Keep missing and invalid tasks in completion accounting and block Official publication.',
         'Classify complete synthetic fixtures as descriptive Synthetic Complete, never Official or ranking eligible.',
-        'Treat attributable agent, model, tool, timeout, budget, and wrong-artifact failures as valid zero scores.',
-        'Treat benchmark infrastructure failures as invalid and audit a rerun.',
+        'Exclude agent, model, tool, timeout, budget, and wrong-artifact runtime failures from semantic scores; disclose them as observed runtime issues.',
+        'Treat benchmark infrastructure failures as invalid observed results and audit a rerun; reserve missing for cells with no result record.',
+        'Define strict pass rate as strict successes divided by all attributable tasks with a semantic task score; partial scores remain in the denominator and Wilson bounds use the same sample.',
       ],
       missing_policy:
         'Missing and invalid tasks block Official. Synthetic Complete and Provisional output use descriptive observed domain means and fixed-fixture completion bounds without ranking eligibility.',
       failure_policy_text:
-        'Attributable failures are valid zero scores. Infrastructure failures are invalid and require an audited rerun.',
+        'Observed runtime and infrastructure failures have no semantic task score. They are disclosed separately, while missing cells have no result record and require an audited rerun before Official publication.',
       confidence_policy:
-        'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+        'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank and is not a population confidence interval.',
       formula: {
-        aggregate: 'mean_of_domain_means',
+        aggregate: 'rasch_fractional_joint_map',
+        measurement_version: '2.0.0',
+        measurement_method: 'rasch_fractional_joint_map_v1',
+        official_score: '100 * logistic(theta)',
+        calibration_matrix: '17_model_configurations_by_72_tasks',
+        criterion_diagnostic: '100 * mean_of_equal_domain_means',
         coverage_multiplier: false,
         domain_weight: 0.1,
         official_valid_task_count: 72,
         official_covered_domain_count: 10,
         synthetic_complete: {
           covered_domain_count: 10,
-          official_aiq: null,
+          score: null,
           ranking_eligible: false,
           valid_task_count: 72,
         },
@@ -794,7 +804,7 @@ function scoringRows(reviewedAt: string): JsonObject[] {
         universal_confidence_interval: false,
       },
       failure_policy: {
-        attributable_failure_score: 0,
+        runtime_failure_score: null,
         infrastructure_failure_score: null,
         missing_blocks_official: true,
         provisional_ranked: false,
@@ -826,7 +836,7 @@ function referenceRows(
     taskSets: [
       {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.5',
+        task_set_version: '1.0.6',
         title: 'AIQ Core 72',
         task_count: 72,
         domain_count: 10,
@@ -855,7 +865,7 @@ function referenceRows(
       if (binding === undefined) throw new Error('task binding is missing');
       return {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.5',
+        task_set_version: '1.0.6',
         task_id: task.task_id,
         task_version: task.task_version,
         title: task.title,
@@ -1004,7 +1014,7 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.5', '1.0.5')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.6', '1.0.6')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
@@ -1086,7 +1096,7 @@ export function prepareInitialization(
   if (
     catalog.schema_version !== 'aiq.catalog.v1' ||
     catalog.task_set_id !== 'aiq-core' ||
-    catalog.task_set_version !== '1.0.5' ||
+    catalog.task_set_version !== '1.0.6' ||
     object(catalog.task_metadata_identity, 'catalog.task_metadata_identity').digest !==
       CATALOG_IDENTITY ||
     object(catalog.catalog_release_identity, 'catalog.catalog_release_identity').digest !==
@@ -1180,7 +1190,8 @@ commit;
     receipt: {
       schema_version: 'aiq.production-initialization-receipt.v1',
       initialized: true,
-      scoring_version: '1.0.5',
+      scoring_version: '1.0.6',
+      measurement_version: '2.0.0',
       catalog_identity_sha256: CATALOG_IDENTITY,
       catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,
       corpus_commitment_sha256: reference.corpusCommitmentSha256,
@@ -1230,9 +1241,9 @@ export async function prepareInitializationFromFiles(
   const [schema, catalogBytes, corpusSchemaBytes, reviewedTaskCommitmentsBytes] = await Promise.all(
     [
       readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
-      readFile(resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.5/catalog.json')),
+      readFile(resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.6/catalog.json')),
       readFile(resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v2.schema.json')),
-      readFile(resolve(repositoryRoot, 'databases/aiq-core-1.0.5-task-commitments.json')),
+      readFile(resolve(repositoryRoot, 'databases/aiq-core-1.0.6-task-commitments.json')),
     ],
   );
   return prepareInitialization(

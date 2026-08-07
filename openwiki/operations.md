@@ -43,15 +43,16 @@ model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
 artifact bindings, including 19 capability artifacts.
 
 Repository source now targets the public AIQ Core candidate and scoring
-`1.0.5`. Its public metadata digest is
-`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
+`1.0.6`. Its public metadata digest is
+`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
 and its public release digest is
-`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The interaction candidate passed model-free controlled generation and
-validation. Its identities remain calibration candidates. The new targeted
-pilot, Contrast generation, full calibration, a real Official run, publication,
-and final deployment are pending. This pre-release state does not claim that
-`1.0.5` is live.
+`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+The public catalog is deterministic and identity-frozen. Two controlled
+generations produced one matching tree, and the reviewed 72-task database
+commitment is bound in source. Final clean-commit regeneration, the fresh
+targeted pilot, Contrast generation, full calibration, a real Official run,
+publication, and final deployment are pending. This pre-release state does not
+claim that `1.0.6` is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -119,14 +120,15 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
-   the release-policy identity is `aiq-core/1.0.5`, and the public catalog
+   `sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+   the release-policy identity is `aiq-core/1.0.6`, and the public catalog
    release-identity digest is
-   `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-   Use the model-free-validated interaction candidate for the targeted pilot.
+   `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+   Use the final clean-commit controlled regeneration for the targeted pilot.
    Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
-   and Core corpus identities distinct. Generate the separate Contrast corpus
-   before release admission. Do not substitute one identity for another.
+   task-commitment manifest, and Core corpus identities distinct. Generate the
+   separate Contrast corpus before release admission. Do not substitute one
+   identity for another.
    Create new source-only Core and Contrast corpus commitments from the final
    clean source. Keep `runner.identity_kind` as `source_only` and
    `runner.built_binary_sha256` as null. Keep the Node.js and ripgrep identities
@@ -213,17 +215,19 @@ eligible. Use `run --help` for the complete controlled input contract.
 
 The first `1.0.4` calibration completed all 1,224 cells but failed the
 statistical release gate. Preserve it as non-Official evidence; do not report it
-as 1,224 failed task executions. For `1.0.5`, first run the four revised tasks
+as 1,224 failed task executions. For `1.0.6`, first run the four runtime-revised tasks
 (`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
 configurations. The current `coding-06` revision is a priority keyed async
 executor repair with stable eligible-head scheduling, dynamic concurrency,
 bounded waiting work, AbortSignal, cancellation, close, and idle epochs. The
 other three targets are a quoted-record parser, a six-field layered service
-configuration loader, and a bounded Unicode log preview. All four use a
-900-second wall budget, 40 steps, and 28 tool calls. The prior pilot completed
-63 cells, timed out on 5, and was rejected because its completed task means were
-0.933–0.992. Regenerate and revalidate the controlled catalog and evaluator
-bindings before paying for a new pilot. Review the new 68-cell pilot
+configuration loader, and a bounded Unicode log preview. All four use the same
+1,500-second wall budget, 48 steps, and 40 tool calls for every model
+configuration. The first `1.0.5` pilot completed 63 cells, timed out on 5, and
+was rejected because its completed task means were 0.933–0.992. A later pilot
+exposed seven timeouts and three tool-budget failures at the old common
+envelope. Regenerate and revalidate the controlled catalog and evaluator
+bindings before the fresh pilot. Review the new 68-cell pilot
 before the full non-Official 17-by-72
 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
@@ -345,9 +349,15 @@ toolchain. Its output is one create-new, permanently non-Official and
 non-ranking diagnostic. The command cannot publish and does not create a stage
 or attestation.
 
+Use `aiq-runner historical-diagnostic-rescore --help` only for preserved
+legacy result arrays whose runtime failures incorrectly carried a zero task
+score. It normalizes those cells in memory, recomputes coverage-only reports,
+and writes an explicitly non-Official, non-ranking diagnostic. It never mutates
+the source file, signs evidence, or enters a publication path.
+
 ## Fresh database initialization
 
-AIQ Core `1.0.5` uses one greenfield desired state with no migration chain. Use
+AIQ Core `1.0.6` uses one greenfield desired state with no migration chain. Use
 this flow with the existing target Supabase project after its AIQ namespace is
 empty. If residue exists, remove only `aiq_private`, the AIQ-owned roles, and the
 exact AIQ-owned public views and RPC overloads. Preserve all Supabase-managed and
@@ -365,12 +375,12 @@ The command uses one connection and one transaction. It rejects existing AIQ
 schema or roles. After the controlled corpus passes the model-free checks and
 the operator verifies the final native build as specified in
 [Deployment Handoff](deployment-handoff.md), prepare a separately controlled
-production reference containing a non-synthetic AIQ Core `1.0.5` corpus
+production reference containing a non-synthetic AIQ Core `1.0.6` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Retain the private final-build audit receipt separately; database
 initialization does not consume or validate it. Initialization validates the
 production-reference fields and bindings. The repository defines one greenfield
-desired state. The initialization receipt must report scoring `1.0.5`,
+desired state. The initialization receipt must report scoring `1.0.6`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the

@@ -499,7 +499,7 @@
                   "const": "unscored_invalid_evidence"
                 },
                 "attributable_runtime_failure_policy": {
-                  "const": "score_zero_as_defined_by_public_runtime_failure_taxonomy"
+                  "const": "task_score_null_excluded_from_semantic_scoring"
                 },
                 "outcome_rule": {
                   "const": {

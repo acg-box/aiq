@@ -326,16 +326,7 @@ mod tests {
 
 			result.status = ResultStatus::Failed;
 			result.evaluation = EvaluationOutcome::NotEvaluated;
-			result.task_score = matches!(
-				kind,
-				FailureKind::Timeout
-					| FailureKind::UnsupportedModel
-					| FailureKind::NonZeroExit
-					| FailureKind::MissingResponse
-					| FailureKind::BudgetExceeded
-					| FailureKind::OutputTruncated
-			)
-			.then_some(0.0);
+			result.task_score = None;
 			result.response = None;
 			result.response_sha256 = None;
 			result.evaluator_result_sha256 = None;
@@ -1331,26 +1322,46 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 
 	#[test]
 	fn attempted_model_failure_verifies_artifacts_without_claiming_model_reexecution() {
-		let mut fixture = Fixture::completed("OK");
-		let result = &mut fixture.run.results[0];
+		for kind in [
+			FailureKind::Timeout,
+			FailureKind::UnsupportedModel,
+			FailureKind::NonZeroExit,
+			FailureKind::MissingResponse,
+			FailureKind::BudgetExceeded,
+			FailureKind::OutputTruncated,
+		] {
+			let mut fixture = Fixture::completed("OK");
+			let result = &mut fixture.run.results[0];
 
-		result.status = ResultStatus::Failed;
-		result.evaluation = EvaluationOutcome::NotEvaluated;
-		result.task_score = Some(0.0);
-		result.response = None;
-		result.response_sha256 = None;
+			result.status = ResultStatus::Failed;
+			result.evaluation = EvaluationOutcome::NotEvaluated;
+			result.task_score = None;
+			result.response = None;
+			result.response_sha256 = None;
 
-		result.evaluator_checks.clear();
+			result.evaluator_checks.clear();
 
-		result.failure = Some(ResultFailure {
-			kind: FailureKind::MissingResponse,
-			message: "fixture model produced no response".to_owned(),
-			exit_code: Some(1),
-			retryable: true,
-		});
+			result.failure = Some(ResultFailure {
+				kind,
+				message: "fixture model produced no response".to_owned(),
+				exit_code: Some(1),
+				retryable: true,
+			});
 
-		fixture.replace_evaluator_result(None);
-		fixture.verify().expect("failed model evidence policy");
+			fixture.replace_evaluator_result(None);
+			fixture.verify().expect("failed model evidence policy");
+		}
+	}
+
+	#[test]
+	fn unattempted_capability_and_workspace_failures_are_null_runtime_evidence() {
+		for kind in [FailureKind::CapabilityValidationFailed, FailureKind::WorkspaceUnavailable] {
+			let mut fixture = Fixture::completed("OK");
+
+			fixture.make_failed(kind);
+			super::verify_failed_result_policy(&fixture.run.results[0])
+				.expect("unattempted capability/workspace evidence must use null task score");
+		}
 	}
 
 	#[test]
@@ -1360,7 +1371,7 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 
 		result.status = ResultStatus::Failed;
 		result.evaluation = EvaluationOutcome::NotEvaluated;
-		result.task_score = Some(0.0);
+		result.task_score = None;
 		result.response = None;
 		result.response_sha256 = None;
 
@@ -1386,7 +1397,7 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 
 		result.status = ResultStatus::Failed;
 		result.evaluation = EvaluationOutcome::NotEvaluated;
-		result.task_score = None;
+		result.task_score = Some(0.0);
 		result.response = None;
 		result.response_sha256 = None;
 
@@ -3071,16 +3082,15 @@ fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {
 		| FailureKind::NonZeroExit
 		| FailureKind::MissingResponse
 		| FailureKind::BudgetExceeded
-		| FailureKind::OutputTruncated => Some(0.0),
+		| FailureKind::OutputTruncated => None,
 		FailureKind::Spawn
 		| FailureKind::Authentication
 		| FailureKind::SubscriptionLimit
 		| FailureKind::EvaluatorFailure
-		| FailureKind::WorkspaceIntegrity => None,
-		FailureKind::CapabilityUnavailable
+		| FailureKind::WorkspaceIntegrity
 		| FailureKind::CapabilityValidationFailed
-		| FailureKind::MissingEvaluator
-		| FailureKind::WorkspaceUnavailable => {
+		| FailureKind::WorkspaceUnavailable => None,
+		FailureKind::CapabilityUnavailable | FailureKind::MissingEvaluator => {
 			return Err(WorkerError::terminal(
 				ReasonCode::InvalidReplayEvidence,
 				"attempted result uses an incompatible failure taxonomy",
