@@ -22,12 +22,23 @@ const provenanceCopy: Record<DataProvenance, { label: string; detail: string }> 
   },
 };
 
-export function DataNote({ provenance }: { provenance: DataProvenance }) {
+export function DataNote({
+  provenance,
+  subject = 'Data',
+}: {
+  provenance: DataProvenance;
+  subject?: string;
+}) {
   const copy = provenanceCopy[provenance];
   return (
-    <aside className="data-note" data-state={provenance} aria-label="Data provenance">
+    <div
+      className="data-note"
+      data-state={provenance}
+      aria-label={`${subject} provenance`}
+      role="note"
+    >
       <span className="eyebrow">{copy.label}</span>
       <p>{copy.detail}</p>
-    </aside>
+    </div>
   );
 }

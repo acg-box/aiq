@@ -151,7 +151,7 @@ export default async function MethodPage() {
           benchmark score, not a claim about general intelligence.
         </p>
       </div>
-      <ReadStateNote result={result} />
+      <ReadStateNote result={result} subject="Benchmark method" />
       {result.state === 'unavailable' ? null : (
         <>
           <div className="version-banner">
