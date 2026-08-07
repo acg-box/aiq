@@ -46,9 +46,10 @@ async function expectPublishedPage(
   const response = await page.goto(path, { waitUntil: 'domcontentloaded' });
   expect(response?.status(), `${path} response status`).toBe(200);
   expect(new URL(page.url()).origin).toBe(expectedOrigin);
-  const mainHeading = page.locator('main h1');
+  const mainHeading = heading
+    ? page.locator('main h1').filter({ hasText: heading }).first()
+    : page.locator('main h1').first();
   await expect(mainHeading).toBeVisible();
-  if (heading) await expect(mainHeading).toContainText(heading);
   await expectProductionPageEvidence(page, path);
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
@@ -194,6 +195,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   baseURL,
   page,
 }, testInfo) => {
+  test.slow();
   const expectedIdentity = validateProductionExpectedIdentity(
     testInfo.config.metadata.productionExpectedIdentity,
   );
@@ -209,7 +211,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await page.getByText('Read all configuration values as a table', { exact: true }).click();
-  await page.locator('details.evidence-notes > summary').click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Time, token, and cost table', { exact: true }).click();
 
   const leaderboard = page.getByRole('region', {

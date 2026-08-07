@@ -50,7 +50,7 @@ export function productionPageEvidenceExpectation(path: string): ProductionPageE
   const pathname = new URL(path, 'https://aiq.invalid').pathname;
   if (pathname === '/') {
     return {
-      requiredPublishedLabels: ['Data provenance', 'Official efficiency provenance'],
+      requiredPublishedLabels: ['Overview provenance', 'Official efficiency provenance'],
       allowedEmptyLabels: ['Latest calibration status', 'Calibration score matrix status'],
     };
   }
@@ -72,11 +72,20 @@ export function productionPageEvidenceExpectation(path: string): ProductionPageE
   }
   if (/^\/runs\/[^/]+$/.test(pathname)) {
     return {
-      requiredPublishedLabels: ['Data provenance', 'Official run efficiency provenance'],
+      requiredPublishedLabels: ['Run data provenance', 'Official run efficiency provenance'],
       allowedEmptyLabels: [],
     };
   }
-  return { requiredPublishedLabels: ['Data provenance'], allowedEmptyLabels: [] };
+  const pageLabels: Readonly<Record<string, string>> = {
+    '/compare': 'Comparison provenance',
+    '/method': 'Benchmark method provenance',
+    '/radar': 'Runner network provenance',
+    '/runs': 'Run archive provenance',
+  };
+  return {
+    requiredPublishedLabels: [pageLabels[pathname] ?? 'Data provenance'],
+    allowedEmptyLabels: [],
+  };
 }
 
 export function validateProductionPageEvidence(

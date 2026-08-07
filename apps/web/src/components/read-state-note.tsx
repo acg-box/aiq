@@ -10,43 +10,46 @@ export function ReadStateNote({
   const subjectPrefix = subject ? <strong>{subject}: </strong> : null;
   if (result.state === 'synthetic') {
     return (
-      <aside
+      <div
         className="data-note"
         data-state="synthetic"
         aria-label={`${subject ?? 'Data'} provenance`}
+        role="note"
       >
         <span className="eyebrow">Synthetic / seed data</span>
         <p>
           {subjectPrefix}Values demonstrate the AIQ v1 product contract. They are not measured model
           claims.
         </p>
-      </aside>
+      </div>
     );
   }
   if (result.state === 'published') {
     return (
-      <aside
+      <div
         className="data-note"
         data-state="published"
         aria-label={`${subject ?? 'Data'} provenance`}
+        role="note"
       >
         <span className="eyebrow">Published evidence</span>
         <p>{subjectPrefix}Values come from RLS-protected public reads.</p>
-      </aside>
+      </div>
     );
   }
   if (result.state === 'mixed') {
     return (
-      <aside
+      <div
         className="data-note"
         data-state="mixed"
         aria-label={`${subject ?? 'Data'} provenance`}
+        role="note"
       >
         <span className="eyebrow">Mixed evidence</span>
         <p>
           {subjectPrefix}This read contains synthetic demonstration rows and published evidence.
         </p>
-      </aside>
+      </div>
     );
   }
   if (result.state === 'empty') {

@@ -2,6 +2,7 @@
 
 import type { EChartsCoreOption } from 'echarts/core';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useMemo, useTransition } from 'react';
 
 import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
@@ -183,6 +184,7 @@ export function TrendExplorer({
   range: TrendRange;
 }) {
   const searchParams = useAnalyticalSearchParams();
+  const pathname = usePathname();
   const mode = readEnumParam(searchParams, 'trendEncoding', ['line', 'bar'], 'line');
   const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'Sol');
   const [isPending, startTransition] = useTransition();
@@ -391,60 +393,67 @@ export function TrendExplorer({
 
   return (
     <>
-      <nav className="range-tabs" aria-label="Trend time range">
-        {ranges.map((candidate) => (
-          <Link
-            key={candidate.value}
-            aria-current={range === candidate.value ? 'page' : undefined}
-            href={hrefWithParams('/trends', searchParams, {
-              range: candidate.value,
-              trendZoom: null,
-            })}
-          >
-            {candidate.label}
-          </Link>
-        ))}
-      </nav>
-      <div className="trend-mode-control">
-        <span>Series</span>
-        <div className="chart-switch" role="group" aria-label="Trend series filter">
-          {seriesFilters.map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              aria-pressed={seriesFilter === candidate}
-              onClick={() =>
-                startTransition(() =>
-                  pushAnalyticalUrl(
-                    { trendFamily: candidate, trendZoom: null },
-                    { hasSemanticChange: candidate !== seriesFilter },
-                  ),
-                )
-              }
-            >
-              {candidate}
-            </button>
-          ))}
+      <div className="trend-mode-control" aria-label="Trend controls">
+        <div className="chart-control">
+          <span>Period</span>
+          <nav className="range-tabs" aria-label="Trend time range">
+            {ranges.map((candidate) => (
+              <Link
+                key={candidate.value}
+                aria-current={range === candidate.value ? 'page' : undefined}
+                href={`${hrefWithParams(pathname === '/' ? '/' : '/trends', searchParams, {
+                  range: candidate.value,
+                  trendZoom: null,
+                })}${pathname === '/' ? '#trends' : ''}`}
+              >
+                {candidate.label}
+              </Link>
+            ))}
+          </nav>
         </div>
-        <span>Encoding</span>
-        <div className="chart-switch" role="group" aria-label="Trend chart mode">
-          {(['line', 'bar'] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              aria-pressed={mode === candidate}
-              onClick={() =>
-                startTransition(() =>
-                  pushAnalyticalUrl(
-                    { trendEncoding: candidate },
-                    { hasSemanticChange: candidate !== mode },
-                  ),
-                )
-              }
-            >
-              {candidate === 'line' ? 'Line' : 'Bar'}
-            </button>
-          ))}
+        <div className="chart-control">
+          <span>Family</span>
+          <div className="chart-switch" role="group" aria-label="Trend series filter">
+            {seriesFilters.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                aria-pressed={seriesFilter === candidate}
+                onClick={() =>
+                  startTransition(() =>
+                    pushAnalyticalUrl(
+                      { trendFamily: candidate, trendZoom: null },
+                      { hasSemanticChange: candidate !== seriesFilter },
+                    ),
+                  )
+                }
+              >
+                {candidate}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="chart-control">
+          <span>View</span>
+          <div className="chart-switch" role="group" aria-label="Trend chart mode">
+            {(['line', 'bar'] as const).map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                aria-pressed={mode === candidate}
+                onClick={() =>
+                  startTransition(() =>
+                    pushAnalyticalUrl(
+                      { trendEncoding: candidate },
+                      { hasSemanticChange: candidate !== mode },
+                    ),
+                  )
+                }
+              >
+                {candidate === 'line' ? 'Line' : 'Bar'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       {allTimes.length > TREND_ZOOM_DATE_COUNT ? (
@@ -457,7 +466,6 @@ export function TrendExplorer({
           <div className="chart-switch" role="group" aria-label="Trend date window">
             <button
               type="button"
-              style={{ minHeight: 44 }}
               onClick={() =>
                 pushAnalyticalUrl(
                   { trendZoom: String(maximumZoomStart) },
@@ -469,7 +477,6 @@ export function TrendExplorer({
             </button>
             <button
               type="button"
-              style={{ minHeight: 44 }}
               disabled={zoomStart === null || zoomStart === 0}
               onClick={() =>
                 pushAnalyticalUrl({
@@ -481,7 +488,6 @@ export function TrendExplorer({
             </button>
             <button
               type="button"
-              style={{ minHeight: 44 }}
               disabled={zoomStart === null || zoomStart === maximumZoomStart}
               onClick={() =>
                 pushAnalyticalUrl({
@@ -495,7 +501,6 @@ export function TrendExplorer({
             </button>
             <button
               type="button"
-              style={{ minHeight: 44 }}
               disabled={zoomStart === null}
               onClick={() => pushAnalyticalUrl({ trendZoom: null })}
             >

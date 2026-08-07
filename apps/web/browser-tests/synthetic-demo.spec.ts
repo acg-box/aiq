@@ -5,28 +5,26 @@ const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
 
 const routes = [
   { path: '/', heading: 'Synthetic benchmark', navigation: 'Results' },
-  { path: '/runs', heading: 'Run archive', navigation: 'History' },
+  { path: '/runs', heading: 'Run archive', navigation: 'Evidence' },
   {
     path: '/calibrations',
     heading: 'Calibration evidence',
-    navigation: 'Calibration',
+    navigation: 'Evidence',
   },
   {
     path: `/calibrations/${seedCalibrationRunId}`,
     heading: 'Calibration run',
-    navigation: 'Calibration',
+    navigation: 'Evidence',
   },
   { path: '/compare', heading: 'Compare configurations', navigation: 'Compare' },
-  { path: '/trends', heading: 'AIQ over time', navigation: 'History' },
-  { path: '/radar', heading: 'Runner network', navigation: 'Radar' },
+  { path: '/trends', heading: 'AIQ over time', navigation: 'Trends' },
+  { path: '/radar', heading: 'Runner network', navigation: 'Evidence' },
   {
     path: '/method',
     heading: 'How AIQ is scored',
-    navigation: 'Method',
+    navigation: 'Evidence',
   },
 ] as const;
-
-const secondaryNavigation = new Set(['Calibration', 'Radar']);
 
 function monitorErrors(page: Page) {
   const failures: string[] = [];
@@ -70,7 +68,13 @@ async function expectTextContrast(locator: Locator) {
     };
     const style = getComputedStyle(element);
     const foreground = luminance(style.color);
-    const background = luminance(style.backgroundColor);
+    let backgroundElement: Element | null = element;
+    let backgroundColor = style.backgroundColor;
+    while (backgroundElement.parentElement && /rgba?\([^)]*,\s*0\s*\)$/.test(backgroundColor)) {
+      backgroundElement = backgroundElement.parentElement;
+      backgroundColor = getComputedStyle(backgroundElement).backgroundColor;
+    }
+    const background = luminance(backgroundColor);
     return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
   });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
@@ -99,9 +103,6 @@ for (const route of routes) {
     ).toBeVisible();
     await expect(page.locator('.live-pill')).toHaveClass(/status-seed/);
     const navigation = page.getByRole('navigation', { name: 'Main navigation' });
-    if (secondaryNavigation.has(route.navigation)) {
-      await navigation.locator('.site-more > summary').click();
-    }
     await expect(
       navigation.getByRole('link', {
         name: route.navigation,
@@ -161,7 +162,7 @@ test('the index exposes the fixed 17-configuration matrix and a complete run', a
   expect(runResponse?.headers()['cache-control']).toContain('no-store');
   await expect(page).toHaveURL(/\/runs\/run-2026-07-\d{2}-/);
   await expect(page).toHaveTitle(/Run detail · AIQ/);
-  await expect(page.getByRole('link', { name: 'History', exact: true })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: 'Evidence', exact: true })).toHaveAttribute(
     'aria-current',
     'page',
   );
@@ -253,7 +254,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expect(outcomeCard.getByText('Runtime / invalid', { exact: true })).toBeVisible();
   await expect(outcomeCard.getByText('Missing / N/A', { exact: true })).toBeVisible();
   await expect(outcomeCard).toContainText('A zero is a scored outcome, not missing data.');
-  await page.locator('details.evidence-notes > summary').click();
+  await page.locator('#results > details.evidence-notes > summary').click();
   await expect(page.getByText('Summed adapter time', { exact: true })).toBeVisible();
   await expect(page.getByText('API-equivalent cost', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Synthetic / seed data', { exact: true }).first()).toBeVisible();
@@ -262,8 +263,8 @@ test('the overview workspace exposes evidence and switches chart modes and famil
 
 test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
   await page.goto('/');
-  await page.locator('details.evidence-notes > summary').click();
-  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
+  await page.locator('#results > details.evidence-notes > summary').click();
+  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).press('Enter');
   await expect(
     page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
   ).toBeVisible();
@@ -343,12 +344,8 @@ test('a user can discover and inspect a missing-result run from history', async 
 }, testInfo) => {
   const runtimeFailures = monitorErrors(page);
   await page.goto('/');
-  await page.getByLabel('More pages').click();
-  await page
-    .getByLabel('More navigation')
-    .getByRole('link', { name: 'Run archive', exact: true })
-    .click();
-  await expect(page).toHaveURL('/runs');
+  await page.getByRole('link', { name: 'Evidence', exact: true }).click();
+  await expect(page).toHaveURL('/#runs');
   await expect(page.getByText('17 runs × 72 tasks', { exact: false })).toBeVisible();
   await expect(page.getByText('1,224 task attempts', { exact: false })).toBeVisible();
   await expect(page.getByText('not 1,224 benchmark runs', { exact: false })).toBeVisible();
@@ -356,7 +353,7 @@ test('a user can discover and inspect a missing-result run from history', async 
   const history = page.getByRole('region', { name: 'Public run history' });
   await expect(history.getByRole('row')).toHaveCount(11);
   await page.getByRole('link', { name: 'Older runs' }).click();
-  await expect(page).toHaveURL(/\/runs\?before=/);
+  await expect(page).toHaveURL(/\/?\?before=.*#runs/);
   await expect(history.getByRole('row')).toHaveCount(9);
   const missingRun = history.getByRole('row').filter({ hasText: 'Coverage-only · not ranked' });
   await expect(missingRun).toHaveCount(1);
@@ -411,7 +408,7 @@ test('a user can discover and inspect a missing-result run from history', async 
   );
 
   await page.getByRole('link', { name: 'Back to run history' }).click();
-  await expect(page).toHaveURL('/runs');
+  await expect(page).toHaveURL('/#runs');
   await expectNoDocumentOverflow(page, testInfo);
   await expectAccessible(page);
   expect(runtimeFailures).toEqual([]);
@@ -464,7 +461,7 @@ test('time range and comparison filters update the visible result', async ({ pag
   runtimeFailures.length = 0;
 
   await page.getByRole('link', { name: 'Compare', exact: true }).click();
-  await expect(page).toHaveURL('/compare');
+  await expect(page).toHaveURL('/#compare');
   await expect(page.getByLabel('Selected run context status')).toHaveCount(0);
   const firstModel = page.getByLabel('First configuration');
   const difference = page.getByRole('heading', { name: /AIQ points apart/ });
@@ -486,7 +483,7 @@ test('time range and comparison filters update the visible result', async ({ pag
     ),
   );
   await expect(page.getByLabel('Comparison compatibility checks')).toContainText('Scoring');
-  await expect(page.getByRole('note')).toContainText('Aggregate rows are not enough');
+  await expect(page.locator('.comparison-caution')).toContainText('Aggregate rows are not enough');
   expect(runtimeFailures).toEqual([]);
 });
 
@@ -684,7 +681,7 @@ for (const route of [
     await page.setViewportSize({ width: 320, height: 800 });
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
-    await expect(page.locator('main h1')).toBeVisible();
+    await expect(page.locator('main h1').first()).toBeVisible();
     await expectNoDocumentOverflow(page, testInfo);
     expect(runtimeFailures).toEqual([]);
   });
@@ -697,8 +694,8 @@ test('the index remains usable in a compact landscape viewport', async ({ page }
 
   expect(await page.evaluate(() => matchMedia('(orientation: landscape)').matches)).toBe(true);
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'History', exact: true })).toBeVisible();
-  await expect(page.getByLabel('More pages')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Trends', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Evidence', exact: true })).toBeVisible();
   await expectNoDocumentOverflow(page, testInfo);
   expect(runtimeFailures).toEqual([]);
 });
