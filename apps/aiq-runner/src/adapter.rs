@@ -110,7 +110,7 @@ pub const MAX_CODEX_VERSION_BYTES: usize = 32;
 pub const MAX_STDIN_BYTES: usize = 256 * 1_024;
 
 /// Normalization contract for Codex `exec --json` item events.
-pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v1";
+pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v2";
 
 // Current ChatGPT-bundled Codex 5.6 requires this host transport; aiq_benchmark,
 // denied roots, no-network policy, and the remaining disabled features stay the security boundary.
@@ -1474,6 +1474,7 @@ pub(crate) struct NormalizedCodexItem {
 	pub item_id: Option<String>,
 	pub raw_type: String,
 	pub is_tool_call: bool,
+	pub counts_as_step: bool,
 }
 
 struct SystemPipes {
@@ -1991,7 +1992,7 @@ impl LiveItemAccounting {
 			return;
 		};
 
-		if item.phase == CodexItemPhase::Completed {
+		if item.counts_as_step {
 			self.steps = self.steps.saturating_add(1);
 		}
 		if !item.is_tool_call {
@@ -2259,10 +2260,12 @@ pub(crate) fn normalize_codex_item(line: &[u8]) -> Option<NormalizedCodexItem> {
 		return None;
 	}
 
-	// Known presentation/reasoning items are not tools. A future item type is
-	// conservatively a tool so a Codex format addition cannot bypass a task budget.
+	// Known presentation/reasoning items are not tools. Error items remain in the
+	// raw evidence but are not agent steps; unknown completed items stay bounded
+	// conservatively as both steps and tools.
 	let is_tool_call =
 		!matches!(raw_type, "agent_message" | "message" | "error" | "reasoning" | "todo_list");
+	let counts_as_step = phase == CodexItemPhase::Completed && raw_type != "error";
 
 	Some(NormalizedCodexItem {
 		version: CODEX_ITEM_ACCOUNTING_VERSION,
@@ -2270,6 +2273,7 @@ pub(crate) fn normalize_codex_item(line: &[u8]) -> Option<NormalizedCodexItem> {
 		item_id: item.get("id").and_then(Value::as_str).map(ToOwned::to_owned),
 		raw_type: raw_type.to_owned(),
 		is_tool_call,
+		counts_as_step,
 	})
 }
 
@@ -5310,6 +5314,7 @@ mod tests {
 	#[cfg(target_os = "linux")]
 	use crate::adapter::process_group;
 	use crate::pinned_path;
+	use crate::runner;
 	use crate::{
 		adapter::{
 			AdapterFailureKind, ArtifactReference, ArtifactSink, CODEX_ITEM_ACCOUNTING_VERSION,
@@ -7089,8 +7094,13 @@ mod tests {
 		captures.extend((0..MODEL_MATRIX.len()).map(|_| {
 			Ok(capture(
 				0,
-				br#"{"type":"item.completed","item":{"type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#
-					.to_vec(),
+				concat!(
+					r#"{"type":"item.completed","item":{"type":"error","message":"redacted"}}"#,
+					"\n",
+					r#"{"type":"item.completed","item":{"type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#,
+				)
+				.as_bytes()
+				.to_vec(),
 				Vec::new(),
 			))
 		}));
@@ -7186,6 +7196,19 @@ mod tests {
 		}
 
 		println!();
+
+		if env::var("AIQ_CHILD_ERROR_AND_MESSAGE").as_deref() == Ok("1") {
+			println!(
+				r#"{{"type":"item.completed","item":{{"id":"error-1","type":"error","message":"redacted"}}}}"#
+			);
+			println!(
+				r#"{{"type":"item.completed","item":{{"id":"message-1","type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}}}"#
+			);
+
+			io::stdout().flush().expect("child output must flush");
+
+			return;
+		}
 
 		let item_type =
 			env::var("AIQ_CHILD_ITEM_TYPE").unwrap_or_else(|_| "command_execution".to_owned());
@@ -7387,31 +7410,31 @@ mod tests {
 		let cases = [
 			(
 				r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"pwd"}}"#,
-				Some((CodexItemPhase::Started, "command_execution", true)),
+				Some((CodexItemPhase::Started, "command_execution", true, false)),
 			),
 			(
 				r#"{"type":"item.completed","item":{"id":"patch-1","type":"file_change","changes":[{"path":"src/lib.rs","kind":"update"}],"status":"completed"}}"#,
-				Some((CodexItemPhase::Completed, "file_change", true)),
+				Some((CodexItemPhase::Completed, "file_change", true, true)),
 			),
 			(
 				r#"{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"docs","tool":"search","status":"completed"}}"#,
-				Some((CodexItemPhase::Completed, "mcp_tool_call", true)),
+				Some((CodexItemPhase::Completed, "mcp_tool_call", true, true)),
 			),
 			(
 				r#"{"type":"item.completed","item":{"id":"web-1","type":"web_search","query":"Rust process groups"}}"#,
-				Some((CodexItemPhase::Completed, "web_search", true)),
+				Some((CodexItemPhase::Completed, "web_search", true, true)),
 			),
 			(
 				r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"done"}}"#,
-				Some((CodexItemPhase::Completed, "agent_message", false)),
+				Some((CodexItemPhase::Completed, "agent_message", false, true)),
 			),
 			(
 				r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
-				Some((CodexItemPhase::Completed, "error", false)),
+				Some((CodexItemPhase::Completed, "error", false, false)),
 			),
 			(
 				r#"{"type":"item.completed","item":{"id":"future-1","type":"future_tool","payload":{}}}"#,
-				Some((CodexItemPhase::Completed, "future_tool", true)),
+				Some((CodexItemPhase::Completed, "future_tool", true, true)),
 			),
 			(r#"{"type":"turn.completed","usage":{"input_tokens":1}}"#, None),
 			(r#"{"type":"item.completed","item":{"text":"missing type"}}"#, None),
@@ -7422,7 +7445,9 @@ mod tests {
 			let actual = crate::adapter::normalize_codex_item(line.as_bytes());
 
 			assert_eq!(
-				actual.as_ref().map(|item| (item.phase, item.raw_type.as_str(), item.is_tool_call)),
+				actual.as_ref().map(|item| {
+					(item.phase, item.raw_type.as_str(), item.is_tool_call, item.counts_as_step)
+				}),
 				expected,
 				"{line}"
 			);
@@ -7458,6 +7483,21 @@ mod tests {
 			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#
 				.as_bytes(),
 		);
+
+		assert_eq!(accounting.steps, 0);
+		assert_eq!(accounting.tool_calls, 0);
+	}
+
+	#[test]
+	fn live_accounting_counts_agent_message_after_error_as_one_step_without_a_tool() {
+		let mut accounting = LiveItemAccounting::default();
+
+		for line in [
+			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
+			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#,
+		] {
+			accounting.observe(line.as_bytes());
+		}
 
 		assert_eq!(accounting.steps, 1);
 		assert_eq!(accounting.tool_calls, 0);
@@ -8113,6 +8153,39 @@ mod tests {
 
 		assert_eq!(capture.budget_exceeded, Some(LiveBudgetKind::ToolCalls));
 		assert!(!capture.timed_out);
+	}
+
+	#[test]
+	fn system_executor_does_not_breach_steps_for_error_then_message() {
+		let executable = env::current_exe().expect("test executable");
+		let capture = SystemExecutor
+			.execute(&CommandRequest {
+				program: executable.display().to_string(),
+				args: vec![
+					"--exact".to_owned(),
+					"adapter::tests::child_event_emitter".to_owned(),
+					"--nocapture".to_owned(),
+				],
+				stdin: Vec::new(),
+				timeout: Duration::from_secs(5),
+				max_capture_bytes: 16 * 1_024,
+				max_steps: 1,
+				max_tool_calls: 0,
+				clear_environment: true,
+				environment: BTreeMap::from([
+					("AIQ_CHILD_EVENT_EMITTER".to_owned(), "1".to_owned()),
+					("AIQ_CHILD_ERROR_AND_MESSAGE".to_owned(), "1".to_owned()),
+				]),
+			})
+			.expect("presentation error must not breach the step budget");
+
+		assert_eq!(capture.budget_exceeded, None);
+
+		let stdout = String::from_utf8(capture.stdout).expect("fixture stdout must be UTF-8");
+		let usage = runner::parse_codex_tool_usage(&stdout);
+
+		assert_eq!(usage.steps, 1);
+		assert_eq!(usage.total_calls, 0);
 	}
 
 	#[test]

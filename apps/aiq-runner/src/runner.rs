@@ -1723,9 +1723,9 @@ pub fn parse_codex_tool_usage(stdout: &str) -> ToolUsage {
 		if item.phase != CodexItemPhase::Completed {
 			continue;
 		}
-
-		usage.steps = usage.steps.saturating_add(1);
-
+		if item.counts_as_step {
+			usage.steps = usage.steps.saturating_add(1);
+		}
 		if !item.is_tool_call {
 			continue;
 		}
@@ -5656,6 +5656,7 @@ mod tests {
 			r#"{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"docs","tool":"search","status":"completed"}}"#,
 			r#"{"type":"item.completed","item":{"id":"web-1","type":"web_search","query":"Rust process groups"}}"#,
 			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"done"}}"#,
+			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
 			r#"{"type":"item.completed","item":{"id":"future-1","type":"future_tool","payload":{}}}"#,
 			r#"{"type":"turn.completed","usage":{"input_tokens":1}}"#,
 			r#"not-json"#,
