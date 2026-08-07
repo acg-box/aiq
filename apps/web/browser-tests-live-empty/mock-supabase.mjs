@@ -31,8 +31,8 @@ const matrix = [
 );
 
 const scoringVersion = {
-  benchmark_version: 'aiq-core@1.0.5',
-  scoring_version: '1.0.5',
+  benchmark_version: 'aiq-core@1.0.6',
+  scoring_version: '1.0.6',
   published_at: '2026-07-30T12:00:00Z',
   principles: [
     'Give each of the ten domains weight 0.1.',
@@ -62,7 +62,7 @@ const taskCoverage = [
   ['instruction_following', 6],
   ['reliability_recovery', 7],
 ].map(([domain, task_count]) => ({
-  scoring_version: '1.0.5',
+  scoring_version: '1.0.6',
   domain,
   weight: 0.1,
   task_count,

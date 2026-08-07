@@ -812,15 +812,13 @@ function resultHasValidStatus(
     if (result.evaluation !== 'not_evaluated' || failure === null) {
       return false;
     }
-    const zeroScoreKinds = new Set([
+    const runtimeFailureKinds = new Set([
       'timeout',
       'unsupported_model',
       'non_zero_exit',
       'missing_response',
       'budget_exceeded',
       'output_truncated',
-    ]);
-    const nullScoreKinds = new Set([
       'spawn',
       'authentication',
       'subscription_limit',
@@ -830,10 +828,8 @@ function resultHasValidStatus(
       'workspace_integrity',
     ]);
     if (
-      (zeroScoreKinds.has(failure.kind as string) && result.task_score !== 0) ||
-      (nullScoreKinds.has(failure.kind as string) && result.task_score !== null) ||
-      (!zeroScoreKinds.has(failure.kind as string) &&
-        !nullScoreKinds.has(failure.kind as string)) ||
+      !runtimeFailureKinds.has(failure.kind as string) ||
+      result.task_score !== null ||
       (typeof result.response === 'string') !== (failure.kind === 'evaluator_failure')
     ) {
       return false;

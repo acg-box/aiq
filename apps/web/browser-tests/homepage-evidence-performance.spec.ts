@@ -13,7 +13,7 @@ test('the homepage keeps exact evidence in server markup and defers analytics', 
   expect(serverMarkup).toContain('Domain profile');
   expect(serverMarkup).toContain('data-homepage-analytics-loading="matrix"');
   expect(serverMarkup).toContain('Loading interactive configuration matrix');
-  expect(serverMarkup).not.toContain('AIQ index by configuration');
+  expect(serverMarkup).not.toContain('Quality score by configuration');
 
   const ranking = page.getByRole('region', { name: 'Top configurations' });
   await expect(ranking.getByRole('listitem')).toHaveCount(5);
@@ -28,10 +28,10 @@ test('the homepage keeps exact evidence in server markup and defers analytics', 
   });
   const preloadedBox = await analytics.boundingBox();
   expect(preloadedBox?.y ?? 0).toBeGreaterThanOrEqual(400);
-  await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toHaveCount(1);
+  await expect(page.getByRole('region', { name: 'Quality score by configuration' })).toHaveCount(1);
 
   await analytics.scrollIntoViewIfNeeded();
-  await expect(page.getByRole('region', { name: 'AIQ index by configuration' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Quality score by configuration' })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Ordered + interval', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');

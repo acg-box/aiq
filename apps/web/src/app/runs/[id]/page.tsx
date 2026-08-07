@@ -192,7 +192,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
           <span>Identity, completeness, and provenance</span>
         </summary>
         <div className="evidence-note-body">
-          <DataNote provenance={run.synthetic ? 'synthetic' : 'published'} subject="Run data" />
+          <DataNote provenance={run.synthetic ? 'synthetic' : 'published'} />
           <dl className="run-evidence-facts">
             <div>
               <dt>Run ID</dt>

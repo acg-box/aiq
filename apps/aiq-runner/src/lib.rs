@@ -12,6 +12,7 @@ pub mod isolation;
 pub mod model;
 pub mod normalization;
 pub mod protocol;
+pub mod public_fixture;
 pub mod resume;
 pub mod run_validation;
 pub mod runner;
@@ -26,8 +27,9 @@ mod pinned_path;
 pub use self::{
 	model::{MODEL_MATRIX, ModelConfig},
 	scoring::{
-		AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
-		ScoreContext, ScoreReport, score_model, score_model_with_context,
+		AIQ_BENCHMARK_VERSION, AIQ_MEASUREMENT_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID,
+		AIQ_TASK_SET_VERSION, LatentAbilityEstimate, ScoreContext, ScoreReport, score_model,
+		score_model_with_context,
 	},
 };
 

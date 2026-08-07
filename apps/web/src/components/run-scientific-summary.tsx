@@ -1,20 +1,5 @@
 import type { RunScientificSummary } from './scientific-score-context.ts';
 
-const fields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
-  ['aiq', 'AIQ'],
-  ['interval', 'Task-sensitivity interval'],
-  ['sampleSize', 'n'],
-  ['coverage', 'Coverage'],
-  ['runtime', 'Runtime issues'],
-  ['missing', 'Missing'],
-  ['scoring', 'Scoring'],
-  ['provenance', 'Provenance'],
-  ['adapterDuration', 'Summed adapter duration'],
-  ['batchWallClock', 'Batch wall-clock'],
-  ['cost', 'API-equivalent cost'],
-  ['metricCoverage', 'Time / cost coverage'],
-];
-
 export function RunScientificSummaryPanel({
   summary,
   compact = false,
@@ -22,10 +7,28 @@ export function RunScientificSummaryPanel({
   summary: RunScientificSummary;
   compact?: boolean;
 }) {
+  const fields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
+    ['score', summary.scoreLabel],
+    ['interval', summary.intervalLabel],
+    ['strictPass', 'Strict pass'],
+    ['qualityScore', 'Quality score'],
+    ['sensitivityInterval', 'Task-mix sensitivity'],
+    ['sampleSize', 'n'],
+    ['coverage', 'Coverage'],
+    ['runtime', 'Runtime issues'],
+    ['missing', 'Missing'],
+    ['scoring', 'Scoring'],
+    ['provenance', 'Provenance'],
+    ['adapterDuration', 'Summed adapter duration'],
+    ['batchWallClock', 'Batch wall-clock'],
+    ['cost', 'API-equivalent cost'],
+    ['metricCoverage', 'Time / cost coverage'],
+  ];
   if (compact) {
     const primaryFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
-      ['aiq', 'AIQ'],
-      ['interval', 'Task sensitivity'],
+      ['score', summary.scoreLabel],
+      ['interval', summary.intervalLabel],
+      ['strictPass', 'Strict pass'],
       ['sampleSize', 'n'],
       ['coverage', 'Coverage'],
       ['runtime', 'Runtime issues'],
@@ -38,6 +41,8 @@ export function RunScientificSummaryPanel({
       ['batchWallClock', 'Batch wall-clock'],
       ['cost', 'API-equivalent cost'],
       ['metricCoverage', 'Time / cost coverage'],
+      ['qualityScore', 'Quality score'],
+      ['sensitivityInterval', 'Task-mix sensitivity'],
     ];
     return (
       <div className="run-history-summary">
@@ -64,8 +69,9 @@ export function RunScientificSummaryPanel({
     );
   }
   const primaryFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
-    ['aiq', 'AIQ'],
-    ['interval', 'Task sensitivity'],
+    ['score', summary.scoreLabel],
+    ['interval', summary.intervalLabel],
+    ['strictPass', 'Strict pass'],
     ['coverage', 'Coverage'],
     ['runtime', 'Runtime issues'],
     ['adapterDuration', 'Adapter time'],

@@ -323,7 +323,7 @@ const resultId = (value: number) => `result_${hex(value)}`;
 const nodeId = `node_${'a'.repeat(64)}`;
 const publicKey = 'b'.repeat(64);
 const syntheticSourceNodeId = 'node_synthetic_demo';
-const catalogDigest = 'sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7';
+const catalogDigest = 'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1';
 const controlledGeneratedTaskTreeDigest =
   'sha256:e46f743a8f56b87cadcb4cd216a7b2ae679138a3259b42e8870a631f9ea31da4';
 
@@ -364,12 +364,14 @@ const domainCounts = [8, 8, 7, 8, 7, 7, 7, 7, 6, 7] as const;
 
 function score(model: { family: string; reasoning_effort: string }): JsonObject {
   return {
-    schema_version: 'aiq.score-report.v1',
-    scoring_version: '1.0.5',
+    schema_version: 'aiq.score-report.v2',
+    scoring_version: '1.0.6',
+    measurement_version: '2.0.0',
     model,
     tier: 'synthetic_complete',
-    official_aiq: null,
-    conditional_observed_aiq: 100,
+    score: null,
+    quality_score: 100,
+    latent_ability: null,
     ranking_eligible: false,
     completion_bounds: { lower: 100, upper: 100 },
     task_resampling_sensitivity_interval: {
@@ -412,7 +414,7 @@ function score(model: { family: string; reasoning_effort: string }): JsonObject 
       zero_failure_tasks: 0,
       score: 1,
     })),
-    rule: 'AIQ v1: 100 × the equal-weight mean of 10 domain scores; each domain is the equal-weight mean of valid task scores. Coverage and difficulty do not alter weights. Official requires non-synthetic 72/72 coverage and 10/10 domains. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability.',
+    rule: "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.",
   };
 }
 
@@ -427,10 +429,10 @@ function normalizedResult(
     matrix_batch_id: runId(1),
     run_id: runId(modelIndex + 2),
     task_id: `task-${String(taskIndex + 1).padStart(2, '0')}`,
-    task_version: '1.0.5',
+    task_version: '1.0.6',
     task_hash: sha256(taskIndex + 1),
     domain: domains[taskIndex % domains.length],
-    scorer_version: '1.0.5',
+    scorer_version: '1.0.6',
     model,
     source_status: 'completed',
     source_evaluation: 'correct',
@@ -546,14 +548,14 @@ function normalizedBatch(): JsonObject {
     content_hash: sha256(2),
     signer: { node_id: nodeId, public_key: publicKey },
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.5',
+    task_set_version: '1.0.6',
     task_set_hash: sha256(3),
     capability_validation_digest: null,
     provenance: null,
     run_class: null,
-    benchmark_version: 'aiq-core@1.0.5',
+    benchmark_version: 'aiq-core@1.0.6',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.5',
+    scoring_version: '1.0.6',
     runner_commit: 'd'.repeat(40),
     region: 'local-test',
     scheduled_unix_ms: 0,
@@ -658,7 +660,7 @@ function productionBatch(): JsonObject {
     const run = requireObject(runValue, 'run');
     const report = requireObjectProperty(run, 'score');
     report.tier = 'official';
-    report.official_aiq = report.conditional_observed_aiq;
+    report.score = report.quality_score;
     for (const resultValue of requireArrayProperty(run, 'results')) {
       const result = requireObject(resultValue, 'result');
       requireObjectProperty(result, 'provenance').synthetic = false;
@@ -680,9 +682,9 @@ function attestation(): JsonObject {
     task_set_hash: sha256(3),
     capability_validation_digest: null,
     provenance: null,
-    benchmark_version: 'aiq-core@1.0.5',
+    benchmark_version: 'aiq-core@1.0.6',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.5',
+    scoring_version: '1.0.6',
     verifier: { node_id: nodeId, public_key: publicKey },
     observed_unix_ms: 3,
     replay_status: 'commitments_verified',
@@ -743,14 +745,14 @@ await test('synthetic-complete scores are descriptive and never Official', async
   const report = requireObjectProperty(firstRun, 'score');
 
   strictEqual(report.tier, 'synthetic_complete');
-  strictEqual(report.official_aiq, null);
-  strictEqual(report.conditional_observed_aiq, 100);
+  strictEqual(report.score, null);
+  strictEqual(report.quality_score, 100);
   strictEqual(report.ranking_eligible, false);
   strictEqual(matchesSchema(batch, schema, schema), true);
 
   const falseOfficial = structuredClone(batch);
   const falseOfficialRun = requireObjectAt(requireArrayProperty(falseOfficial, 'runs'), 0, 'runs');
-  requireObjectProperty(falseOfficialRun, 'score').official_aiq = 100;
+  requireObjectProperty(falseOfficialRun, 'score').score = 100;
   strictEqual(matchesSchema(falseOfficial, schema, schema), false);
 
   const missingDescriptive = structuredClone(batch);
@@ -759,7 +761,7 @@ await test('synthetic-complete scores are descriptive and never Official', async
     0,
     'runs',
   );
-  requireObjectProperty(missingDescriptiveRun, 'score').conditional_observed_aiq = null;
+  requireObjectProperty(missingDescriptiveRun, 'score').quality_score = null;
   strictEqual(matchesSchema(missingDescriptive, schema, schema), false);
 
   const incompleteMutations: ReadonlyArray<readonly [string, (report: JsonObject) => void]> = [
@@ -850,7 +852,7 @@ await test('batch provenance rejects contradictory score tiers and permits parti
   );
   const syntheticOfficialReport = requireObjectProperty(syntheticOfficialRun, 'score');
   syntheticOfficialReport.tier = 'official';
-  syntheticOfficialReport.official_aiq = syntheticOfficialReport.conditional_observed_aiq;
+  syntheticOfficialReport.score = syntheticOfficialReport.quality_score;
   strictEqual(matchesSchema(syntheticOfficial, schema, schema), false);
 
   const productionSyntheticComplete = productionBatch();
@@ -864,7 +866,7 @@ await test('batch provenance rejects contradictory score tiers and permits parti
     'score',
   );
   productionSyntheticCompleteReport.tier = 'synthetic_complete';
-  productionSyntheticCompleteReport.official_aiq = null;
+  productionSyntheticCompleteReport.score = null;
   strictEqual(matchesSchema(productionSyntheticComplete, schema, schema), false);
 
   for (const tier of ['provisional', 'coverage_only', 'not_applicable']) {
@@ -877,7 +879,7 @@ await test('batch provenance rejects contradictory score tiers and permits parti
     const partialSyntheticReport = requireObjectProperty(partialSyntheticRun, 'score');
     partialSyntheticReport.tier = tier;
     if (tier !== 'provisional') {
-      partialSyntheticReport.conditional_observed_aiq = null;
+      partialSyntheticReport.quality_score = null;
       partialSyntheticReport.completion_bounds = null;
       partialSyntheticReport.task_resampling_sensitivity_interval = null;
     }
@@ -909,7 +911,7 @@ await test('the current corpus commitment has one direct state', async () => {
       requireObjectProperty(requireObjectProperty(properties, 'catalog'), 'properties'),
       'task_set_version',
     ).const,
-    '1.0.5',
+    '1.0.6',
   );
   strictEqual(schema.additionalProperties, false);
 
@@ -954,7 +956,7 @@ await test('corpus runtime components keep stable fields and bounded diagnostics
   strictEqual(additionalVersion.pattern, '^[A-Za-z0-9.+_-]{0,80}(?![\\s\\S])');
 });
 
-await test('public wire schemas bind only the active AIQ Core 1.0.5 release', async () => {
+await test('public wire schemas bind only the active AIQ Core 1.0.6 release', async () => {
   const schemas = await Promise.all(
     [
       'benchmarks/schema/result-package-v3.schema.json',
@@ -973,14 +975,14 @@ await test('public wire schemas bind only the active AIQ Core 1.0.5 release', as
     'payload',
   );
   const resultPayloadProperties = requireObjectProperty(resultPayload, 'properties');
-  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.5');
+  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.6');
   const resultDefinitions = requireObjectProperty(resultPackage, '$defs');
   strictEqual(
     requireObjectProperty(
       requireObjectProperty(requireObjectProperty(resultDefinitions, 'taskResult'), 'properties'),
       'task_version',
     ).const,
-    '1.0.5',
+    '1.0.6',
   );
   strictEqual(
     requireObjectProperty(
@@ -995,12 +997,12 @@ await test('public wire schemas bind only the active AIQ Core 1.0.5 release', as
 
   const normalizedProperties = requireObjectProperty(normalizedBatchSchema, 'properties');
   strictEqual(requireObjectProperty(normalizedProperties, 'task_set_id').const, 'aiq-core');
-  strictEqual(requireObjectProperty(normalizedProperties, 'task_set_version').const, '1.0.5');
+  strictEqual(requireObjectProperty(normalizedProperties, 'task_set_version').const, '1.0.6');
   strictEqual(
     requireObjectProperty(normalizedProperties, 'benchmark_version').const,
-    'aiq-core@1.0.5',
+    'aiq-core@1.0.6',
   );
-  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.5');
+  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.6');
   const normalizedDefinitions = requireObjectProperty(normalizedBatchSchema, '$defs');
   strictEqual(
     requireObjectProperty(
@@ -1010,7 +1012,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.5 release', as
       ),
       'task_version',
     ).const,
-    '1.0.5',
+    '1.0.6',
   );
   strictEqual(
     requireObjectProperty(
@@ -1020,7 +1022,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.5 release', as
       ),
       'scorer_version',
     ).const,
-    '1.0.5',
+    '1.0.6',
   );
   strictEqual(
     requireObjectProperty(
@@ -1030,15 +1032,15 @@ await test('public wire schemas bind only the active AIQ Core 1.0.5 release', as
       ),
       'scoring_version',
     ).const,
-    '1.0.5',
+    '1.0.6',
   );
 
   const attestationProperties = requireObjectProperty(attestationSchema, 'properties');
   strictEqual(
     requireObjectProperty(attestationProperties, 'benchmark_version').const,
-    'aiq-core@1.0.5',
+    'aiq-core@1.0.6',
   );
-  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.5');
+  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.6');
 
   const corpusProperties = requireObjectProperty(corpusCommitment, 'properties');
   const corpusCatalogProperties = requireObjectProperty(
@@ -1055,7 +1057,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.5 release', as
       requireObjectProperty(requireObjectProperty(corpusDefinitions, 'task'), 'properties'),
       'task_version',
     ).const,
-    '1.0.5',
+    '1.0.6',
   );
 });
 
@@ -1263,6 +1265,50 @@ await test('result package v3 schema accepts the golden fixture and rejects a no
   }
 });
 
+await test('runtime failures require a null task score while semantic incorrect remains zero', async () => {
+  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const fixture = requireObject(
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    'result package fixture',
+  );
+  const taskResultSchema = resolveReference(schema, '#/$defs/taskResult');
+  const result = structuredClone(
+    requireObjectAt(
+      requireArrayProperty(requireObjectProperty(fixture, 'payload'), 'results'),
+      0,
+      'results',
+    ),
+  );
+
+  result.status = 'failed';
+  result.evaluation = 'not_evaluated';
+  result.task_score = null;
+  result.response = null;
+  result.response_sha256 = null;
+  result.evaluator_result_sha256 = null;
+  result.failure = {
+    kind: 'timeout',
+    message: 'runner timeout',
+    exit_code: null,
+    retryable: true,
+  };
+  strictEqual(matchesSchema(result, taskResultSchema, schema), true);
+
+  const runtimeZero = structuredClone(result);
+  runtimeZero.task_score = 0;
+  strictEqual(matchesSchema(runtimeZero, taskResultSchema, schema), false);
+
+  const semanticIncorrect = structuredClone(result);
+  semanticIncorrect.status = 'completed';
+  semanticIncorrect.evaluation = 'incorrect';
+  semanticIncorrect.task_score = 0;
+  semanticIncorrect.response = 'synthetic response';
+  semanticIncorrect.response_sha256 = sha256(100);
+  semanticIncorrect.evaluator_result_sha256 = sha256(101);
+  semanticIncorrect.failure = null;
+  strictEqual(matchesSchema(semanticIncorrect, taskResultSchema, schema), true);
+});
+
 await test('capability validation accepts the serialized workspace-integrity adapter failure', async () => {
   const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
   const report = capabilityValidation();
@@ -1410,13 +1456,18 @@ await test('workspace integrity is a failed post-invocation result taxonomy', as
   normalized.response_sha256 = null;
   requireObjectProperty(normalized, 'provenance').synthetic = false;
 
+  const normalizedTaskResultSchema = resolveReference(
+    normalizedSchema,
+    '#/$defs/normalizedTaskResult',
+  );
+  strictEqual(matchesSchema(normalized, normalizedTaskResultSchema, normalizedSchema), true);
+
+  const normalizedRuntimeZero = structuredClone(normalized);
+  normalizedRuntimeZero.task_score = 0;
   strictEqual(
-    matchesSchema(
-      normalized,
-      resolveReference(normalizedSchema, '#/$defs/normalizedTaskResult'),
-      normalizedSchema,
-    ),
-    true,
+    matchesSchema(normalizedRuntimeZero, normalizedTaskResultSchema, normalizedSchema),
+    false,
+    'Observed runtime failures cannot be normalized as semantic zero scores.',
   );
 });
 
@@ -1875,10 +1926,10 @@ await test('calibration stage pricing and context-band evidence mirror the norma
 
   for (const [field, expected, changed] of [
     ['task_set_id', 'aiq-core', 'other'],
-    ['task_set_version', '1.0.5', '1.0.4'],
-    ['task_set_version', '1.0.5', '1.0.2'],
-    ['benchmark_version', 'aiq-core@1.0.5', 'aiq-core@1.0.4'],
-    ['benchmark_version', 'aiq-core@1.0.5', 'aiq-core@1.0.2'],
+    ['task_set_version', '1.0.6', '1.0.4'],
+    ['task_set_version', '1.0.6', '1.0.2'],
+    ['benchmark_version', 'aiq-core@1.0.6', 'aiq-core@1.0.4'],
+    ['benchmark_version', 'aiq-core@1.0.6', 'aiq-core@1.0.2'],
   ] as const) {
     const fieldSchema = requireObject(properties[field], `${field} schema`);
     strictEqual(matchesSchema(expected, fieldSchema, schema), true, `${field} current value`);
@@ -1976,8 +2027,8 @@ await test('verifier environment example binds the current public task release',
   );
 
   strictEqual(environment.task_set_id, 'aiq-core');
-  strictEqual(environment.task_set_version, '1.0.5');
-  strictEqual(environment.benchmark_version, 'aiq-core@1.0.5');
+  strictEqual(environment.task_set_version, '1.0.6');
+  strictEqual(environment.benchmark_version, 'aiq-core@1.0.6');
   strictEqual(
     requireObjectProperty(environment, 'expected_provenance').catalog_digest,
     catalogDigest,
@@ -2182,8 +2233,8 @@ await test('score payload permits non-frozen task domain and difficulty coverage
     const run = requireObject(runValue, 'run');
     const report = requireObjectProperty(run, 'score');
     report.tier = 'coverage_only';
-    report.official_aiq = null;
-    report.conditional_observed_aiq = null;
+    report.score = null;
+    report.quality_score = null;
     report.completion_bounds = null;
     report.task_resampling_sensitivity_interval = null;
     report.coverage = {

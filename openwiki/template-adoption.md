@@ -32,19 +32,19 @@ Review each result against source authority. Do not replace real product values
 with generic examples. Do not add deployment resources, secrets, schedules, or
 automation only to remove a marker.
 
-The source-head public constants include AIQ Core and scoring version `1.0.5`,
+The source-head public constants include AIQ Core and scoring version `1.0.6`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7`,
-release-policy identity `aiq-core/1.0.5`, and public release digest
-`sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The interaction candidate's controlled Core, scorer-manifest, evaluator,
-runtime task-set, generated-task tree, and database commitment identities
-passed model-free validation but remain calibration candidates. Contrast
-generation is pending. The first
+`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+release-policy identity `aiq-core/1.0.6`, and public release digest
+`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+The public catalog is deterministic and identity-frozen. Two controlled
+generations produced one matching tree, and the reviewed 72-task database
+commitment is bound in source. Final controlled corpus identities remain
+calibration candidates. Contrast generation is pending. The first
 `1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
-evidence, not as an all-execution failure. The `1.0.5` sequence requires a
-17-by-4 targeted pilot before the full 17-by-72 non-Official calibration. Final
+evidence, not as an all-execution failure. The `1.0.6` sequence requires a
+17-by-4 runtime-budget pilot before the full 17-by-72 non-Official calibration. Final
 native build verification, a real Official run, publication, and final
-deployment remain pending. Live production retains the historical AIQ Core
-`1.0.2` matrix.
+deployment remain pending. The sole production tuple is AIQ Core `1.0.6`,
+scoring `1.0.6`, and measurement `2.0.0`; no legacy fallback is supported.

@@ -71,7 +71,7 @@ async function expectMobileMatrixLegibility(page: Page) {
     analyticsBox?.y ?? Number.NEGATIVE_INFINITY,
   );
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'AIQ index by configuration' });
+  const chart = page.getByRole('region', { name: 'Calibrated ability by configuration' });
   await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
