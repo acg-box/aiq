@@ -94,6 +94,31 @@ export function presentScoreMetric(entry: ScoreMetricDatum): ScoreMetricPresenta
   };
 }
 
+/**
+ * Order rows by the metric that the UI actually presents.
+ *
+ * This differs from ordering by the raw calibrated score for synthetic evidence,
+ * where the public primary metric is descriptive quality.
+ */
+export function sortByPresentedScore<T extends ScoreMetricDatum>(entries: readonly T[]): T[] {
+  return entries.toSorted((left, right) => {
+    const leftScore = presentScoreMetric(left).score ?? Number.NEGATIVE_INFINITY;
+    const rightScore = presentScoreMetric(right).score ?? Number.NEGATIVE_INFINITY;
+    return rightScore - leftScore;
+  });
+}
+
+export function presentedScoreRange(
+  entries: readonly ScoreMetricDatum[],
+): { minimum: number; maximum: number } | null {
+  const scores = entries.flatMap((entry) => {
+    const score = presentScoreMetric(entry).score;
+    return score === null ? [] : [score];
+  });
+  if (scores.length === 0) return null;
+  return { minimum: Math.min(...scores), maximum: Math.max(...scores) };
+}
+
 export function presentLeaderboardEntry(entry: LeaderboardEntry): LeaderboardPresentation {
   const metric = presentScoreMetric(entry);
   return {

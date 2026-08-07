@@ -1359,6 +1359,7 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 			let mut fixture = Fixture::completed("OK");
 
 			fixture.make_failed(kind);
+
 			super::verify_failed_result_policy(&fixture.run.results[0])
 				.expect("unattempted capability/workspace evidence must use null task score");
 		}

@@ -19,6 +19,7 @@ import {
   resolveExactScientificEvidence,
 } from '../components/scientific-evidence-resolution.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
+import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
 import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
@@ -171,6 +172,10 @@ export default async function OverviewPage({
     selectedEstimateEvidence?.state === 'exact'
       ? selectedEstimateEvidence.evidence.efficiency
       : undefined;
+  const highlightedMetric = highlightedScore ? presentScoreMetric(highlightedScore) : null;
+  const highlightedPresentation = highlightedScore
+    ? presentLeaderboardEntry(highlightedScore)
+    : null;
   const exactOfficialEfficiency = resolveExactEfficiencyRowsWithAvailability({
     runs: officialRunSummariesResult.data,
     entries: leaderboard,
@@ -228,15 +233,15 @@ export default async function OverviewPage({
         <section className="insight-grid" aria-label="Latest benchmark highlights">
           <article className="insight-card">
             <div>
-              <span>Top score</span>
+              <span>Top {highlightedMetric?.scoreLabel.toLowerCase() ?? 'score'}</span>
               <strong>
                 {highlightedScore
-                  ? `${highlightedScore.modelFamily} ${highlightedScore.reasoningTier} ${highlightedScore.score.toFixed(1)}`
+                  ? `${highlightedScore.modelFamily} ${highlightedScore.reasoningTier} ${highlightedMetric?.scoreText ?? '—'}`
                   : 'Unavailable'}
               </strong>
               <small>
-                {highlightedScore
-                  ? `Sensitivity ${highlightedScore.sensitivityLow.toFixed(1)}–${highlightedScore.sensitivityHigh.toFixed(1)}`
+                {highlightedMetric
+                  ? `${highlightedMetric.intervalLabel} ${highlightedMetric.interval}`
                   : 'Exact run evidence is unavailable'}
               </small>
             </div>
@@ -249,7 +254,7 @@ export default async function OverviewPage({
               </strong>
               <small>
                 {topFive.length > 1
-                  ? `${topFive.at(-1)?.score.toFixed(1)}–${topFive[0]?.score.toFixed(1)} AIQ`
+                  ? `${topFive.at(-1)?.score.toFixed(1)}–${topFive[0]?.score.toFixed(1)} ${highlightedMetric?.scoreLabel.toLowerCase() ?? 'score'}`
                   : 'At least two scored configurations are required'}
               </small>
             </div>
@@ -344,15 +349,32 @@ export default async function OverviewPage({
               <div>
                 <h2>What this page claims</h2>
                 <p>
-                  AIQ is a fixed-task descriptive score on a 0–100 scale. Sensitivity intervals show
-                  how the point estimate changes when the task set is resampled. They are not model
-                  confidence intervals and do not establish a winner.
+                  Official AIQ is a versioned 0–100 calibrated ability estimate. Its conditional 95%
+                  interval holds the estimated item bank fixed. Quality score, task-mix sensitivity,
+                  strict pass, time, and cost remain separate diagnostics. Synthetic previews expose
+                  quality only and are never ranked as Official.
                 </p>
               </div>
               <dl>
                 <div>
                   <dt>Scoring version</dt>
                   <dd>{highlightedScore?.scoringVersion ?? 'Unavailable'}</dd>
+                </div>
+                <div>
+                  <dt>Strict pass</dt>
+                  <dd>
+                    {highlightedPresentation
+                      ? `${highlightedPresentation.strictPassRate} · Wilson 95% ${highlightedPresentation.strictPassInterval}`
+                      : 'Unavailable'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Quality / task mix</dt>
+                  <dd>
+                    {highlightedPresentation
+                      ? `${highlightedPresentation.qualityScore} · ${highlightedPresentation.sensitivityInterval}`
+                      : 'Unavailable'}
+                  </dd>
                 </div>
                 <div>
                   <dt>Summed adapter time</dt>
@@ -378,7 +400,7 @@ export default async function OverviewPage({
                 </div>
               </dl>
             </div>
-            <DataNote provenance={overviewProvenance} subject="Overview" />
+            <DataNote provenance={overviewProvenance} />
             <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
             {selectedEstimateIdentityUnavailable ? (
               <ReadStateNote

@@ -15,14 +15,15 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
     >
       <table>
         <caption>
-          Descriptive order by fixed-fixture AIQ index, high to low. This is a task index, not an IQ
-          estimate, and the order does not identify a statistical winner.
+          Official rows are ordered by calibrated ability. Synthetic rows use descriptive quality
+          and are not Official. Point-estimate order alone does not identify a statistical winner.
         </caption>
         <thead>
           <tr>
             <th scope="col">Model / reasoning</th>
-            <th scope="col">AIQ index</th>
-            <th scope="col">Task sensitivity</th>
+            <th scope="col">Primary metric</th>
+            <th scope="col">Primary interval</th>
+            <th scope="col">Strict pass</th>
             <th scope="col">Samples</th>
             <th scope="col">Coverage</th>
             <th scope="col">Runtime issues</th>
@@ -43,8 +44,18 @@ export function LeaderboardTable({ entries }: { entries: readonly LeaderboardEnt
                     {entry.modelName} · {entry.reasoningTier}
                   </span>
                 </th>
-                <td className="score">{presentation.score}</td>
-                <td>{presentation.sensitivityInterval}</td>
+                <td className="score">
+                  {presentation.score}
+                  <small>{presentation.scoreLabel}</small>
+                </td>
+                <td>
+                  {presentation.interval}
+                  <small>{presentation.intervalLabel}</small>
+                </td>
+                <td>
+                  {presentation.strictPassRate}
+                  <small>Wilson 95% {presentation.strictPassInterval}</small>
+                </td>
                 <td>{presentation.samples}</td>
                 <td>{presentation.coverage}</td>
                 <td>{presentation.runtimeIssues ?? '—'}</td>

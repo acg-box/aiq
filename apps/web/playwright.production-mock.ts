@@ -30,7 +30,7 @@ export default defineConfig({
       benchmarkVersion: 'aiq-core@1.0.6',
       scoringVersion: '1.0.6',
       matrixBatchId: `run_${'b'.repeat(64)}`,
-      runnerCommit: '4566388',
+      runnerCommit: 'b76148cd419ab4ebb491cdb9f6a00555059eab67',
       corpusReleaseId: 'corpus_test-generated-aiq-core-1.0.6',
       corpusCommitment: 'sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612',
       catalogDigest: 'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1',

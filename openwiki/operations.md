@@ -13,34 +13,19 @@ AIQ production is live at `https://aiq.wiki` from the approved source. Vercel
 scope `acgbox` hosts project `aiq`; Supabase organization `ACG Box` hosts project
 `aiq` on PostgreSQL 17.6 with reference `xxnszykaeapolqdnhalx` and private
 `aiq-submission-packages` and `aiq-runner-artifacts` buckets. DNS handoff remains
-in the personal Cloudflare account that owns `aiq.wiki`. The first Official
-launch publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
-evidence, not the identity of every later production deployment. The apex is
+in the personal Cloudflare account that owns `aiq.wiki`. The apex is
 canonical, and `www.aiq.wiki` returns a path-preserving permanent `308`
 redirect. Automatic Vercel project and branch aliases can be removed only
 transiently because a later deployment can recreate or reassign them. A
 deployment-specific URL is intrinsic to its retained deployment. The current
 generated Vercel surfaces emit `noindex`.
 
-The live production data remains one real, non-synthetic historical Official
-AIQ Core `1.0.2` matrix. The native Apple Silicon macOS runner completed its 17
-configurations and 72 tasks each, or 1,224
-task-level results. The native verifier replayed it, and the distinct publisher
-published it as `trusted_verified`. Of the results, 1,218 completed and 6
-runtime issues. Outcomes are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`,
-and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
-(`1:37:24.411`). Cost coverage is 1,208
-`estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage`. The $125.403257240 subtotal is a Standard
-API-equivalent estimate for priced results, not actual ChatGPT subscription
-spend or a complete matrix total. Missing values are not zero. See
-[Benchmark Method](benchmark-method.md) for evidence semantics and
-[Deployment Handoff](deployment-handoff.md) for production acceptance checks.
-
-Public views contain 17 runs, 1,224 results, 17 leaderboard rows, 17
-model-efficiency rows, and 17 model-matrix rows. Publication created 4,395
-artifact bindings, including 19 capability artifacts.
+The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement
+`2.0.0`. Production must remain without an Official AIQ 2.0 publication until a
+real non-synthetic signed 17-by-72 package passes native verifier replay. A
+legacy publication is not a compatibility source or fallback. See [Benchmark
+Method](benchmark-method.md) for evidence semantics and [Deployment
+Handoff](deployment-handoff.md) for production acceptance checks.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.6`. Its public metadata digest is
@@ -52,7 +37,7 @@ generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final clean-commit regeneration, the fresh
 targeted pilot, Contrast generation, full calibration, a real Official run,
 publication, and final deployment are pending. This pre-release state does not
-claim that `1.0.6` is live.
+claim that an Official production matrix is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -296,8 +281,8 @@ exact configuration probes and runnable task cells in `run` invoke models.
 Pass the same private admission receipt through preflight, run, score, and
 package. Keep the checkpoint, run reservation, artifacts, and preflight cache
 after an interruption; resume the unchanged run instead of creating another
-paid run. The current production publication used one complete 17-by-72
-Official matrix.
+paid run. The accepted production publication must use one complete 17-by-72
+Official matrix under the sole production tuple.
 
 ## Verifier worker
 
@@ -363,7 +348,9 @@ empty. If residue exists, remove only `aiq_private`, the AIQ-owned roles, and th
 exact AIQ-owned public views and RPC overloads. Preserve all Supabase-managed and
 non-AIQ objects. This cleanup is a deployment prerequisite, not a migration or
 compatibility path. Do not apply AIQ objects or create AIQ Storage buckets
-before initialization. Use a direct PostgreSQL URL, not the public Data API URL.
+before initialization. Do not reset or initialize until the new real signed
+17-by-72 package passes native verifier replay. Use a direct PostgreSQL URL, not
+the public Data API URL.
 
 ```sh
 AIQ_DATABASE_URL='<direct-connection-url>' \

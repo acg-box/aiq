@@ -29,9 +29,9 @@ public catalog is deterministic and identity-frozen. Two controlled generations
 produced one matching tree, and the reviewed 72-task database commitment is
 bound in source. Final clean-commit regeneration, the fresh targeted pilot,
 full calibration, Contrast generation, native build verification, a real
-Official run, publication, and final deployment are pending. Production still
-publishes the one historical AIQ Core `1.0.2` Official matrix; no `1.0.6`
-Official run or deployment has been accepted.
+Official run, publication, and final deployment are pending. The only production
+tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement `2.0.0`. Production
+must not publish an Official matrix until the new real package passes verification.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive
 ceiling failure. It was rejected as unpublished calibration evidence. No hidden
@@ -61,36 +61,19 @@ AIQ production is live at `https://aiq.wiki`. The personal Vercel scope
 hosts project `aiq` on PostgreSQL 17.6 with reference
 `xxnszykaeapolqdnhalx`. The personal Cloudflare account that owns the
 `aiq.wiki` zone owns DNS handoff. The two production Storage buckets,
-`aiq-submission-packages` and `aiq-runner-artifacts`, are private. The first
-Official launch publication was deployed from merge commit
-`725b88954359ab8f0950f896674b3e8684d3ae85`. This commit is historical launch
-evidence, not the identity of every later production deployment. The apex is
+`aiq-submission-packages` and `aiq-runner-artifacts`, are private. The apex is
 canonical; `www.aiq.wiki` preserves paths through a permanent `308` redirect.
 Automatic Vercel project and branch aliases can be removed only transiently
 because a later deployment can recreate or reassign them. A deployment-specific
 URL is intrinsic to its retained deployment. The current generated Vercel
 surfaces emit `noindex`.
 
-The native Apple Silicon macOS runner completed one real `72 × 17` Official
-AIQ Core `1.0.2` benchmark batch, or 1,224 task-level results. This is one
-matrix, not 1,224 separate benchmark runs. The native verifier replayed the deterministic
-evaluators, and the distinct publisher published the matrix as
-`trusted_verified` through the flow described in
-[Architecture and Runtime](architecture-and-runtime.md). Of the results, 1,218
-completed and 6 runtime issues: 329 `correct`, 259 `partial`, 630 `incorrect`, 5
-`timeout`, and 1 `budget_exhausted`. Signed batch wall time is 5,844,411 ms
-(`1:37:24.411`).
+The accepted Official publication must be one real non-synthetic `72 × 17`
+batch, or 1,224 task-level results, under the sole production tuple. The native
+verifier must replay the deterministic evaluators before the distinct publisher
+can publish it as `trusted_verified`. A legacy publication is not a fallback.
 
-Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage` results. The $125.403257240 priced subtotal is a
-Standard API-equivalent estimate for the 1,208 priced results, not actual ChatGPT
-subscription spend or a complete batch total. Missing values are not zero; the
-measurement rules live in [Benchmark Method](benchmark-method.md). Public views
-contain 17 runs, 1,224 results, and 17 rows each for the leaderboard, model
-efficiency, and model matrix. Publication created 4,395 artifact bindings,
-including 19 capability artifacts.
-
-The public site is a professional analysis workbench over this real historical
+The public site is a professional analysis workbench over verified production
 evidence. It separates semantic task outcomes from runtime states. Official
 evidence shows calibrated ability with its conditional 95% interval. Explicit
 synthetic fixtures show descriptive quality with task-mix sensitivity and never
@@ -179,7 +162,8 @@ validation and the operator verifies the final native build, the separately
 controlled reference must contain a non-synthetic AIQ Core `1.0.6` corpus
 commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
-Initialization validates those fields and bindings. The expected initialization
+Initialization can start only after one real signed non-synthetic 17-by-72
+package passes native verifier replay. It validates those fields and bindings. The expected initialization
 receipt must contain scoring `1.0.6`, 72 tasks, 17 model configurations, three nodes,
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the

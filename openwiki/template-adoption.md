@@ -46,5 +46,5 @@ calibration candidates. Contrast generation is pending. The first
 evidence, not as an all-execution failure. The `1.0.6` sequence requires a
 17-by-4 runtime-budget pilot before the full 17-by-72 non-Official calibration. Final
 native build verification, a real Official run, publication, and final
-deployment remain pending. Live production retains the historical AIQ Core
-`1.0.2` matrix.
+deployment remain pending. The sole production tuple is AIQ Core `1.0.6`,
+scoring `1.0.6`, and measurement `2.0.0`; no legacy fallback is supported.

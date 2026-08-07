@@ -108,12 +108,13 @@ function generatedResultTemplates() {
 }
 
 /**
- * AIQ v1: compute each domain's task-score mean, then give all ten domains equal weight.
+ * Recompute the descriptive quality score: average within each domain, then
+ * give all ten domains equal weight.
  *
  * @param {ReadonlyArray<{domain: string; score: number}>} results
  */
-function equalDomainAiq(results) {
-  if (results.length !== 72) throw new Error('Official AIQ requires exactly 72 result rows.');
+function equalDomainQualityScore(results) {
+  if (results.length !== 72) throw new Error('Quality evidence requires exactly 72 result rows.');
   const domainMeans = domainCounts.map(([domain, expectedTaskCount]) => {
     const scores = results
       .filter((result) => result.domain === domain)
@@ -122,7 +123,7 @@ function equalDomainAiq(results) {
       scores.length !== expectedTaskCount ||
       scores.some((score) => !Number.isFinite(score) || score < 0 || score > 1)
     ) {
-      throw new Error(`Official AIQ requires ${expectedTaskCount} valid ${domain} scores.`);
+      throw new Error(`Quality evidence requires ${expectedTaskCount} valid ${domain} scores.`);
     }
     return scores.reduce((total, score) => total + score, 0) / scores.length;
   });
@@ -187,7 +188,7 @@ const currentRunEvidence = matrix.map((entry) => {
     });
   });
   const outcomes = summarizeOfficialOutcomes(results);
-  const recomputedQuality = equalDomainAiq(results);
+  const recomputedQuality = equalDomainQualityScore(results);
   const strictPassSuccesses = results.filter((result) => result.score === 1).length;
   if (
     Math.abs(recomputedQuality - generatedRow.quality_score) > Number.EPSILON * 100 ||
@@ -242,6 +243,9 @@ if (
   throw new Error('The live-published fixture does not match scorer-generated outcome totals.');
 }
 
+// This test server projects the scorer-generated nested rows into an Official-shaped
+// public-view contract only after the fail-closed outer fixture flags above are checked.
+// The module is browser-test-only and is not an ingestion or publication path.
 const leaderboard = generatedPublicFixture.leaderboard;
 
 const runEvidence = currentRunEvidence;
@@ -738,7 +742,7 @@ for (const current of leaderboard) {
 
 for (const evidence of currentRunEvidence) {
   const current = leaderboard.find((row) => row.run_id === evidence.runId);
-  const recomputedQuality = equalDomainAiq(evidence.results);
+  const recomputedQuality = equalDomainQualityScore(evidence.results);
   const strictPassSuccesses = evidence.results.filter((result) => result.score === 1).length;
   if (
     !current ||

@@ -97,14 +97,14 @@ function Scatter({
 }) {
   const points = scores.flatMap((score) => {
     const x = calibrationMetricValue(score, metric);
-    return score.aiq === null || x === null ? [] : [{ score, x, y: score.aiq }];
+    return score.qualityScore === null || x === null ? [] : [{ score, x, y: score.qualityScore }];
   });
   const label = `${calibrationMetricLabel(metric)} (${metric === 'cost' ? 'USD' : 'seconds'})`;
   if (points.length === 0)
     return (
       <p className="empty-note">
-        No model configuration has both descriptive AIQ and {label}. Missing values are not plotted
-        as zero.
+        No model configuration has both a descriptive quality score and {label}. Missing values are
+        not plotted as zero.
       </p>
     );
   const groups = new Map<string, number>();
@@ -150,7 +150,7 @@ function Scatter({
           scoringVersion: scoringVersion ?? 'unavailable',
           provenance: String(data[7]),
         });
-        return `${data[2]}<br/>Descriptive AIQ ${Number(data[1]).toFixed(2)} · interval ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 2)}${metric === 'time' ? ' s' : ''}<br/>adapter invocation ${data[10]}/${data[9]} attempted<br/>${scientificContext}`;
+        return `${data[2]}<br/>Descriptive quality ${Number(data[1]).toFixed(2)} · task-mix sensitivity ${Number(data[5]).toFixed(2)}–${Number(data[6]).toFixed(2)}<br/>${label}: ${x.toFixed(metric === 'cost' ? 4 : 2)}${metric === 'time' ? ' s' : ''}<br/>adapter invocation ${data[10]}/${data[9]} attempted<br/>${scientificContext}`;
       },
     },
     xAxis: {
@@ -168,7 +168,7 @@ function Scatter({
       type: 'value',
       min: 0,
       max: 100,
-      name: 'AIQ index (0–100)',
+      name: 'Quality score (0–100)',
       nameLocation: 'middle',
       nameGap: 42,
       axisLabel: { color: 'var(--muted)' },
@@ -253,11 +253,11 @@ function Scatter({
       <EChartsChart
         className="calibration-chart"
         option={option}
-        label={`Calibration scatter of descriptive AIQ against ${label} for ${points.length} configurations, with visible fixed-fixture task-sensitivity intervals; scoring ${scoringVersion ?? 'unavailable'}.`}
+        label={`Calibration scatter of descriptive quality against ${label} for ${points.length} configurations, with visible task-mix sensitivity intervals; scoring ${scoringVersion ?? 'unavailable'}.`}
       />
       <figcaption>
-        Higher descriptive AIQ and a smaller horizontal value are preferable. Vertical bars show
-        fixed-fixture task-resampling sensitivity intervals. They are not universal model-capability
+        Higher descriptive quality and a smaller horizontal value are preferable. Vertical bars show
+        fixed-fixture task-resampling sensitivity intervals. They are not calibrated ability
         intervals. Rings mark a descriptive frontier only inside one calibration run, which fixes
         the fixture, scoring, runtime, and concurrency. Cost also requires identical pricing and
         evidence bindings. Incomplete usage is excluded. This is not a combined ranking or an
@@ -293,7 +293,7 @@ export function CalibrationEfficiency({
       <div className="section-heading">
         <span className="eyebrow">Transparent efficiency context</span>
         <h2 id="calibration-efficiency-heading">
-          Descriptive AIQ versus {calibrationMetricLabel(metric)}
+          Descriptive quality versus {calibrationMetricLabel(metric)}
         </h2>
       </div>
       <p className="calibration-warning">
@@ -309,28 +309,19 @@ export function CalibrationEfficiency({
         {scoringVersion ?? 'Unavailable'}
       </p>
       <div className="chart-controls calibration-metric-control">
-        <div className="chart-control">
-          <span id="calibration-metric-label">Horizontal metric</span>
-          <div className="chart-switch" role="group" aria-labelledby="calibration-metric-label">
-            <button
-              type="button"
-              aria-pressed={metric === 'cost'}
-              onClick={() => setMetric('cost')}
-            >
-              Estimated cost
-            </button>
-            <button
-              type="button"
-              aria-pressed={metric === 'time'}
-              onClick={() => setMetric('time')}
-            >
-              Observed time
-            </button>
-          </div>
+        <span id="calibration-metric-label">Horizontal metric</span>
+        <div className="chart-switch" role="group" aria-labelledby="calibration-metric-label">
+          <button type="button" aria-pressed={metric === 'cost'} onClick={() => setMetric('cost')}>
+            Estimated cost
+          </button>
+          <button type="button" aria-pressed={metric === 'time'} onClick={() => setMetric('time')}>
+            Observed time
+          </button>
         </div>
       </div>
       <p className="sr-only" aria-live="polite">
-        Showing descriptive AIQ against {metric === 'cost' ? 'estimated cost' : 'observed time'}.
+        Showing descriptive quality against {metric === 'cost' ? 'estimated cost' : 'observed time'}
+        .
       </p>
       <div className="plot-grid calibration-plot-grid">
         <Scatter
@@ -354,7 +345,7 @@ export function CalibrationEfficiency({
             <tr>
               <th scope="col">Run</th>
               <th scope="col">Model / effort</th>
-              <th scope="col">AIQ</th>
+              <th scope="col">Quality score</th>
               <th scope="col">Sample / coverage</th>
               <th scope="col">Observed Codex adapter elapsed time</th>
               <th scope="col">Estimated Standard API equivalent token cost</th>
@@ -371,7 +362,7 @@ export function CalibrationEfficiency({
                   {score.synthetic ? <small>Synthetic seed</small> : null}
                 </td>
                 <td>
-                  {score.aiq === null ? 'Unavailable' : score.aiq.toFixed(2)}
+                  {score.qualityScore === null ? 'Unavailable' : score.qualityScore.toFixed(2)}
                   {score.taskResamplingSensitivityLower !== null &&
                   score.taskResamplingSensitivityUpper !== null ? (
                     <small>
@@ -451,10 +442,10 @@ export function CalibrationEfficiency({
         </table>
       </div>
       <p className="formula-note">
-        No score/$ or score/hour aggregate is used. If derived externally: score/$ = descriptive AIQ
-        ÷ estimated API-equivalent USD; score/hour = descriptive AIQ ÷ observed hours. The
-        denominator and token coverage must accompany the value. Runtime-issue attempts remain in
-        observed usage totals; missing or non-invoked cells do not. Adapter elapsed time measures
+        No score/$ or score/hour aggregate is used. If derived externally: score/$ = descriptive
+        quality ÷ estimated API-equivalent USD; score/hour = descriptive quality ÷ observed hours.
+        The denominator and token coverage must accompany the value. Runtime-issue attempts remain
+        in observed usage totals; missing or non-invoked cells do not. Adapter elapsed time measures
         model and allowed-tool invocation only. It excludes workspace setup, artifact sealing, and
         evaluator replay. Concurrent model order and local contention affect the observed resource
         profile. Missing usage makes cost unavailable and excludes it from the frontier; it is not

@@ -644,6 +644,19 @@ void test('serializes calibration decisions and gates deletion leasing on invent
 });
 
 void test('keeps public grants and pricing lookup indexes narrow', () => {
+  const runGrant =
+    schema.match(
+      /grant select\(run_id,classification,[^;]+calibration_runs to anon, authenticated;/,
+    )?.[0] ?? '';
+  assert.match(runGrant, /task_set_id,task_set_version,scoring_version/);
+  assert.match(
+    schema,
+    /grant select\(micro_accuracy,micro_wilson_low,micro_wilson_high\)[\s\S]{0,80}aiq_score_snapshots to anon, authenticated/,
+  );
+  assert.match(
+    schema,
+    /grant select\(failure_responsibility\)[\s\S]{0,80}aiq_task_results to anon, authenticated/,
+  );
   assert.match(
     schema,
     /grant select\(run_id,official_eligible,ranking_eligible,published_at\)[\s\S]{0,90}calibration_publications/,
@@ -668,6 +681,28 @@ void test('keeps public grants and pricing lookup indexes narrow', () => {
   );
   assert.match(schema, /primary key \(run_id, model_family, reasoning_effort\)/);
   assert.doesNotMatch(schema, /create index calibration_(?:model_scores|task_results)_run_idx/);
+});
+
+void test('binds calibration public pricing joins to one explicit evidence digest', () => {
+  const resultView =
+    schema.match(/CREATE VIEW public\.public_calibration_results[\s\S]*?;\n/)?.[0] ?? '';
+  const scoreView =
+    schema.match(/CREATE VIEW public\.public_calibration_scores[\s\S]*?;\n/)?.[0] ?? '';
+
+  assert.match(
+    resultView,
+    /run\.run_id=result\.run_id and run\.pricing_digest=result\.pricing_digest/,
+  );
+  assert.match(resultView, /pricing\.pricing_digest=result\.pricing_digest/);
+  assert.match(resultView, /publication\.run_id=result\.run_id/);
+  assert.doesNotMatch(resultView, /using \((?:pricing_digest|run_id)\)/);
+  assert.match(
+    scoreView,
+    /run\.run_id=score\.run_id and run\.pricing_digest=score\.pricing_digest/,
+  );
+  assert.match(scoreView, /pricing\.pricing_digest=score\.pricing_digest/);
+  assert.match(scoreView, /publication\.run_id=score\.run_id/);
+  assert.doesNotMatch(scoreView, /using \((?:pricing_digest|run_id)\)/);
 });
 
 void test('exposes the Official prompt-set digest in canonical sha256 form', () => {
@@ -707,6 +742,14 @@ void test('production readiness attests the exact schema and gateway role shape'
   assert.match(schema, /private_table_count=40 and forced_rls_table_count=40/);
   assert.match(schema, /public_view_count=12 and security_invoker_view_count=12/);
   assert.match(schema, /canonical_public_view_count=12/);
+  assert.match(
+    schema,
+    /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_joint_map"[\s\S]*?"measurement_method":"rasch_fractional_joint_map_v1"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,
+  );
+  assert.doesNotMatch(
+    schema,
+    /scoring\.formula = '\{[\s\S]*?"aggregate":"mean_of_domain_means"[\s\S]*?\}'::jsonb/,
+  );
   assert.match(
     schema,
     /where namespace\.nspname='public' and relation\.relkind='v'\s+and relation\.relname in \([\s\S]*?'public_model_efficiency'[\s\S]*?\)/,

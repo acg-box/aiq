@@ -579,7 +579,7 @@ select pg_temp.aiq_assert(
      and bool_and(standard_api_equivalent_usd_nanos is null)
    from public.public_calibration_results)
   and (select count(*)=17 and bool_and(descriptive_status='coverage_only')
-     and bool_and(aiq is null) and bool_and(sample_size=0)
+     and bool_and(quality_score is null) and bool_and(sample_size=0)
      and bool_and(adapter_elapsed_observed_result_count=0)
      and bool_and(token_observed_result_count=0) and bool_and(priced_result_count=0)
      and bool_and(cost_estimator_status='unavailable_missing_usage')

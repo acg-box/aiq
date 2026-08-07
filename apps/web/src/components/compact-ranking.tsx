@@ -12,6 +12,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
   const source = official.length > 0 ? official : scored;
   const visibleEntries = sortLeaderboardByPointEstimate(source).slice(0, visibleRankingCount);
   const isOfficial = official.length > 0;
+  const metricLabel = isOfficial ? 'Calibrated ability' : 'Quality score';
 
   return (
     <section className="compact-ranking analysis-panel" aria-labelledby="compact-ranking-heading">
@@ -20,10 +21,12 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
           <span className="eyebrow">Ranking</span>
           <h2 id="compact-ranking-heading">Top configurations</h2>
           <p>
-            {isOfficial ? 'Ordered by published AIQ score' : 'Synthetic preview · not Official'}
+            {isOfficial
+              ? 'Official calibrated estimates'
+              : 'Synthetic quality preview · not Official'}
           </p>
         </div>
-        <span className="panel-meta">AIQ score ↓</span>
+        <span className="panel-meta">{metricLabel} ↓</span>
       </header>
       {visibleEntries.length === 0 ? (
         <p className="empty-note">No scored configurations are available.</p>
@@ -56,7 +59,9 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
                       {entry.modelFamily} {entry.reasoningTier}
                     </strong>
                   )}
-                  <small>Sensitivity {presentation.sensitivityInterval}</small>
+                  <small>
+                    {presentation.intervalLabel} {presentation.interval}
+                  </small>
                 </div>
                 <strong className="ranking-score">{presentation.score}</strong>
                 <Link className="quiet-button" href={compareHref}>

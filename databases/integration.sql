@@ -23,63 +23,6 @@ begin
 end;
 $$;
 
--- Published history retains the scoring definition that produced each source
--- package. A registered historical version must remain valid without weakening
--- the current scoring-version foreign key.
-savepoint historical_source_scoring_version;
-insert into aiq_private.aiq_scoring_versions (
-  scoring_version, schema_version, benchmark_version, name,
-  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
-  confidence_policy, formula, interval_method, failure_policy,
-  synthetic, is_published, published_at
-)
-select
-  '1.0.2', schema_version, 'aiq-core@1.0.2', name || ' historical fixture',
-  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
-  confidence_policy, formula, interval_method, failure_policy,
-  true, false, null
-from aiq_private.aiq_scoring_versions
-where scoring_version = '1.0.6';
-
-insert into aiq_private.aiq_matrix_batches (
-  matrix_batch_id, package_sha256, content_hash, normalization_digest,
-  source_node_id, task_set_id, task_set_version, scoring_version, synthetic,
-  child_count, result_count, task_set_hash, capability_validation_digest,
-  source_scoring_version, execution_concurrency
-)
-select
-  'run_' || repeat('1', 64), repeat('1', 64),
-  'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64),
-  source_node_id, task_set_id, task_set_version, scoring_version, true,
-  17, 1224, task_set_hash, null, '1.0.2', 1
-from aiq_private.aiq_matrix_batches
-order by matrix_batch_id
-limit 1;
-
-select pg_temp.aiq_assert(
-  exists (
-    select 1
-    from aiq_private.aiq_matrix_batches
-    where matrix_batch_id = 'run_' || repeat('1', 64)
-      and source_scoring_version = '1.0.2'
-  ),
-  'a registered historical source scoring version must remain admissible'
-);
-
-do $$
-begin
-  begin
-    delete from aiq_private.aiq_scoring_versions
-    where scoring_version = '1.0.2';
-    raise exception 'historical source scoring version deletion unexpectedly succeeded';
-  exception
-    when foreign_key_violation then null;
-  end;
-end;
-$$;
-rollback to savepoint historical_source_scoring_version;
-release savepoint historical_source_scoring_version;
-
 select pg_temp.aiq_assert(
   (
     select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
@@ -994,7 +937,7 @@ release savepoint incomplete_stage_retry;
 rollback to savepoint stage_performance;
 release savepoint stage_performance;
 
--- The deterministic demo is a pre-staged complete synthetic fixture. Exercise
+-- The deterministic demo is a pre-staged provisional synthetic fixture. Exercise
 -- the stage role boundary and prove that attestation cannot make it publishable.
 set local role aiq_publisher;
 select set_config('request.jwt.claims', '{"role":"aiq_publisher"}', true);
@@ -1054,16 +997,34 @@ $$;
 
 savepoint non_synthetic_score_classification;
 set local session_replication_role = replica;
+update aiq_private.aiq_score_snapshots
+set score_status = 'synthetic_complete', valid_task_count = 72, invalid_count = 0
+where score_snapshot_id = (
+  select score_snapshot_id
+  from aiq_private.aiq_score_snapshots
+  order by score_snapshot_id
+  limit 1
+);
 update aiq_private.aiq_runs
 set synthetic = false
-where run_id = (select min(run_id) from aiq_private.aiq_runs);
+where run_id = (
+  select run_id
+  from aiq_private.aiq_score_snapshots
+  order by score_snapshot_id
+  limit 1
+);
 set local session_replication_role = origin;
 do $$
 begin
   begin
     update aiq_private.aiq_score_snapshots
     set published = published
-    where run_id = (select min(run_id) from aiq_private.aiq_runs);
+    where run_id = (
+      select run_id
+      from aiq_private.aiq_score_snapshots
+      order by score_snapshot_id
+      limit 1
+    );
     raise exception 'non-synthetic score accepted Synthetic Complete classification';
   exception when check_violation then null;
   end;
@@ -1173,8 +1134,8 @@ select pg_temp.aiq_assert(
 select pg_temp.aiq_assert(
   (select count(*) = 17
    from aiq_private.aiq_score_snapshots
-   where not published and score_status = 'synthetic_complete'),
-  'complete synthetic scores must remain descriptive and unpublished'
+   where not published and score_status = 'provisional'),
+  'provisional synthetic scores must remain descriptive and unpublished'
 );
 select pg_temp.aiq_assert(
   (select claim_ack is null and verification_status = 'unverified'
@@ -1195,7 +1156,28 @@ set
   trust_tier = 'trusted_verified',
   published = true;
 update aiq_private.aiq_score_snapshots
-set score_status = 'official', published = true;
+set
+  score_status = 'official',
+  score = quality_score,
+  latent_ability = jsonb_build_object(
+    'calibration_digest', 'sha256:' || repeat('ab', 32),
+    'calibration_model_count', 17,
+    'calibration_task_count', 72,
+    'items_used', 72,
+    'method', 'rasch_fractional_joint_map_v1',
+    'observed_information', 12,
+    'reliability_status', 'single_matrix_information_only',
+    'score', quality_score,
+    'score_ci_high', least(100, quality_score + 2),
+    'score_ci_low', greatest(0, quality_score - 2),
+    'standard_error', 0.5,
+    'theta', 2.75,
+    'theta_ci_high', 3.73,
+    'theta_ci_low', 1.77
+  ),
+  valid_task_count = 72,
+  invalid_count = 0,
+  published = true;
 set local session_replication_role = origin;
 
 create temp table aiq_single_batch_trend on commit drop as

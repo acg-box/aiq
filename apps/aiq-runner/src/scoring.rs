@@ -851,13 +851,9 @@ pub fn score_model_with_context(
 	let expected = validated_expected_tasks(tasks, options)?;
 	let matching = matching_model_results(results, model);
 	let has_synthetic_results = selected_model_uses_synthetic_results(&matching)?;
-	let has_synthetic_inputs = results.iter().any(|result| result.provenance.synthetic);
-	let has_non_synthetic_inputs = results.iter().any(|result| !result.provenance.synthetic);
-	if has_synthetic_inputs && has_non_synthetic_inputs {
-		return Err(ScoreError::new(
-			"score inputs mix synthetic and non-synthetic result provenance",
-		));
-	}
+
+	ensure_uniform_result_provenance(results)?;
+
 	let uniform_capability_unavailable = expected.len() == matching.len()
 		&& expected.keys().all(|key| {
 			matching.get(key).is_some_and(
@@ -901,25 +897,9 @@ pub fn score_model_with_context(
 
 	let coverage = coverage_summary(&accumulators);
 	let coverage_tier = publication_tier(&coverage, &accumulators, frozen_catalog);
-	let calibration_matrix_shape = tasks
-		.len()
-		.checked_mul(MODEL_MATRIX.len())
-		.is_some_and(|expected_cells| results.len() == expected_cells);
-	let calibration_gate_passed = if coverage_tier == ScoreTier::Official
-		&& !has_synthetic_results
-		&& calibration_matrix_shape
-	{
-		diagnose_official_calibration(tasks, results)?.passed()
-	} else {
-		false
-	};
-	let tier = if coverage_tier == ScoreTier::Official && has_synthetic_results {
-		ScoreTier::SyntheticComplete
-	} else if coverage_tier == ScoreTier::Official && !calibration_gate_passed {
-		ScoreTier::CoverageOnly
-	} else {
-		coverage_tier
-	};
+	let calibration_gate_passed =
+		official_calibration_gate_passed(tasks, results, coverage_tier, has_synthetic_results)?;
+	let tier = resolved_score_tier(coverage_tier, has_synthetic_results, calibration_gate_passed);
 	let domain_scores = domain_scores(&accumulators);
 	let quality_score = if matches!(
 		tier,
@@ -1027,6 +1007,51 @@ pub fn score_calibration_model_with_context(
 		domains: report.domains,
 		rule: CALIBRATION_SCORE_RULE.to_owned(),
 	})
+}
+
+fn ensure_uniform_result_provenance(results: &[TaskResult]) -> Result<(), ScoreError> {
+	let has_synthetic_inputs = results.iter().any(|result| result.provenance.synthetic);
+	let has_non_synthetic_inputs = results.iter().any(|result| !result.provenance.synthetic);
+
+	if has_synthetic_inputs && has_non_synthetic_inputs {
+		return Err(ScoreError::new(
+			"score inputs mix synthetic and non-synthetic result provenance",
+		));
+	}
+
+	Ok(())
+}
+
+fn official_calibration_gate_passed(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+	coverage_tier: ScoreTier,
+	has_synthetic_results: bool,
+) -> Result<bool, ScoreError> {
+	let has_complete_matrix = tasks
+		.len()
+		.checked_mul(MODEL_MATRIX.len())
+		.is_some_and(|expected_cells| results.len() == expected_cells);
+
+	if coverage_tier == ScoreTier::Official && !has_synthetic_results && has_complete_matrix {
+		return Ok(diagnose_official_calibration(tasks, results)?.passed());
+	}
+
+	Ok(false)
+}
+
+fn resolved_score_tier(
+	coverage_tier: ScoreTier,
+	has_synthetic_results: bool,
+	calibration_gate_passed: bool,
+) -> ScoreTier {
+	if coverage_tier == ScoreTier::Official && has_synthetic_results {
+		ScoreTier::SyntheticComplete
+	} else if coverage_tier == ScoreTier::Official && !calibration_gate_passed {
+		ScoreTier::CoverageOnly
+	} else {
+		coverage_tier
+	}
 }
 
 fn validated_expected_tasks(

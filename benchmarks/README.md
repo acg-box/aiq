@@ -15,20 +15,10 @@ identity-frozen. Two controlled generations produced one matching tree, and the
 reviewed 72-task database commitment is bound in source. Final clean-commit
 regeneration, a fresh 68-cell pilot, Contrast generation, full calibration,
 final native build verification, a real Official run, publication, and final
-deployment are pending. Live production remains the historical
-`1.0.2` contract: the native macOS runner
-completed its real, non-synthetic Official benchmark matrix with 17
-configurations by 72 tasks, or 1,224 task-level results. The verifier replayed
-and accepted its evidence. The distinct publisher published the matrix as
-`trusted_verified`. Of the 1,224 results, 1,218 completed and 6 runtime issues. Outcomes
-are 329 `correct`, 259 `partial`, 630 `incorrect`, 5 `timeout`, and 1
-`budget_exhausted`. Signed batch wall time is 5,844,411 ms (`1:37:24.411`).
-
-Cost coverage is 1,208 `estimated`, 10 `unavailable_context_band`, and 6
-`unavailable_missing_usage` results. The $125.403257240 priced subtotal is a
-Standard API-equivalent estimate for the 1,208 priced results. It is not actual
-ChatGPT subscription spend and is not a complete batch total. The publication
-has 4,395 artifact bindings, including 19 capability artifacts.
+deployment are pending. The only production tuple is AIQ Core `1.0.6`, scoring
+`1.0.6`, and measurement `2.0.0`. Do not reset, initialize, or publish until a
+real non-synthetic signed 17-by-72 package passes native verifier replay. No
+earlier publication is a compatibility source or fallback.
 
 The `1.0.3` Official attempt was interrupted after its calibration evidence had
 already proved a ceiling-policy failure. It was rejected and remains
@@ -130,9 +120,8 @@ Model-free validation replays each task's gold, alternate-correct, partial,
 adversarial-format, empty, and timeout fixtures twice and requires byte-identical
 expected results. Near-miss and paired-contrast evidence is validated in the
 independent six-task AIQ Core Contrast calibration suite; it is not a per-task
-Core fixture commitment. The historical `1.0.2` production publication is one complete
-Official `72 × 17` matrix with 1,224 results. Public views contain 17 runs, 1,224
-results, 17 leaderboard rows, 17 model-efficiency rows, and 17 model-matrix rows.
+Core fixture commitment. The accepted production publication must be one complete
+Official `72 × 17` matrix with 1,224 results under the sole production tuple.
 
 Regenerate and test the active source catalog with:
 

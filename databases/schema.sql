@@ -7541,9 +7541,14 @@ begin
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
-            "aggregate":"mean_of_domain_means",
+            "aggregate":"rasch_fractional_joint_map",
+            "calibration_matrix":"17_model_configurations_by_72_tasks",
             "coverage_multiplier":false,
+            "criterion_diagnostic":"100 * mean_of_equal_domain_means",
             "domain_weight":0.1,
+            "measurement_method":"rasch_fractional_joint_map_v1",
+            "measurement_version":"2.0.0",
+            "official_score":"100 * logistic(theta)",
             "official_valid_task_count":72,
             "official_covered_domain_count":10,
             "synthetic_complete":{
@@ -15837,9 +15842,12 @@ select result.result_id,
   pricing.rates as pricing_rates,
   pricing.formula as cost_formula
 from aiq_private.calibration_task_results result
-join aiq_private.calibration_runs run using (run_id)
-join aiq_private.calibration_publications publication using (run_id)
-join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
+join aiq_private.calibration_runs run
+  on run.run_id=result.run_id and run.pricing_digest=result.pricing_digest
+join aiq_private.calibration_publications publication
+  on publication.run_id=result.run_id
+join aiq_private.efficiency_pricing_methods pricing
+  on pricing.pricing_digest=result.pricing_digest
 where run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.6'
   and run.scoring_version = '1.0.6'
@@ -15895,9 +15903,12 @@ select score.run_id,
   pricing.rates as pricing_rates,
   pricing.formula as cost_formula
 from aiq_private.calibration_model_scores score
-join aiq_private.calibration_runs run using (run_id)
-join aiq_private.calibration_publications publication using (run_id)
-join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
+join aiq_private.calibration_runs run
+  on run.run_id=score.run_id and run.pricing_digest=score.pricing_digest
+join aiq_private.calibration_publications publication
+  on publication.run_id=score.run_id
+join aiq_private.efficiency_pricing_methods pricing
+  on pricing.pricing_digest=score.pricing_digest
 where run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.6'
   and run.scoring_version = '1.0.6'
@@ -15994,7 +16005,8 @@ grant select on table public.public_calibration_runs to anon, authenticated;
 grant select on table public.public_calibration_results to anon, authenticated;
 grant select on table public.public_calibration_scores to anon, authenticated;
 grant select on table public.public_model_efficiency to anon, authenticated;
-grant select(run_id,classification,scoring_version,selected_task_count,selected_model_count,
+grant select(run_id,classification,task_set_id,task_set_version,scoring_version,
+  selected_task_count,selected_model_count,
   result_count,execution_concurrency,attempted_result_count,invoked_result_count,
   observed_duration_total_ms,observed_duration_median_ms,
   observed_duration_p95_ms,duration_evidence_level,duration_coverage_count,
@@ -16032,6 +16044,10 @@ grant select(latency_evidence_level,input_tokens,cached_input_tokens,cache_write
   reasoning_output_tokens,total_tokens,token_usage_evidence_level,
   standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,pricing_digest)
   on aiq_private.aiq_task_results to anon, authenticated;
+grant select(failure_responsibility)
+  on aiq_private.aiq_task_results to anon, authenticated;
+grant select(micro_accuracy,micro_wilson_low,micro_wilson_high)
+  on aiq_private.aiq_score_snapshots to anon, authenticated;
 grant select(pricing_digest,method,version,as_of,source,currency,processing_tier,rates,formula,limitations)
   on aiq_private.efficiency_pricing_methods to anon, authenticated;
 grant select(run_id,result_count,attempted_result_count,execution_concurrency,

@@ -257,7 +257,7 @@ runs as (
         convert_to(
           'aiq.model-run-identity.v1' || chr(10)
           || 'run_' || encode(
-            extensions.digest('synthetic-complete-batch', 'sha256'),
+            extensions.digest('synthetic-provisional-batch', 'sha256'),
             'hex'
           ) || chr(10)
           || model.model_config_id,
@@ -280,7 +280,7 @@ insert into aiq_private.aiq_runs (
 )
 select
   run.run_id,
-  'run_' || encode(extensions.digest('synthetic-complete-batch', 'sha256'), 'hex'),
+  'run_' || encode(extensions.digest('synthetic-provisional-batch', 'sha256'), 'hex'),
   run.run_id,
   'manual',
   run.scheduled_for,
@@ -376,7 +376,7 @@ cross join ordered_tasks task;
 
 with constants as (
   select
-    'run_' || encode(extensions.digest('synthetic-complete-batch', 'sha256'), 'hex')
+    'run_' || encode(extensions.digest('synthetic-provisional-batch', 'sha256'), 'hex')
       as batch_id,
     encode(extensions.digest('synthetic-full-matrix-package', 'sha256'), 'hex')
       as package_sha256,
@@ -671,9 +671,17 @@ run_scores as (
 scored as (
   select
     run_scores.*,
-    case when valid_task_count between 60 and 71
-      and covered_domain_count = 10 and minimum_domain_count >= 4
-      then 'provisional' else 'coverage_only' end as score_status
+    case
+      when valid_task_count = 72
+        and covered_domain_count = 10
+        and invalid_task_count = 0
+        then 'synthetic_complete'
+      when valid_task_count between 60 and 71
+        and covered_domain_count = 10
+        and minimum_domain_count >= 4
+        then 'provisional'
+      else 'coverage_only'
+    end as score_status
   from run_scores
 ),
 binary_inputs as (
@@ -765,7 +773,7 @@ select
     'hex'
   )
 from aiq_private.aiq_runs run
-join run_scores score on score.run_id = run.run_id
+join scored score on score.run_id = run.run_id
 join binary_diagnostics diagnostic on diagnostic.run_id = run.run_id;
 
 insert into aiq_private.aiq_submission_inbox (
@@ -835,7 +843,7 @@ cross join (
 ) event(event_type)
 where false;
 
--- The complete synthetic demonstration remains populated as terminal,
+-- The provisional synthetic demonstration remains populated as terminal,
 -- unverified seed history. It is not claimable work, and no fake signature,
 -- verifier attestation, package, run, or score is marked verified or published.
 
