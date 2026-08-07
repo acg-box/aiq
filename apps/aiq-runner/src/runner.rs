@@ -1640,7 +1640,7 @@ pub fn synthetic_tasks() -> Vec<TaskDefinition> {
 #[must_use]
 pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 	let catalog = serde_json::from_str::<SyntheticCatalog>(include_str!(
-		"../../../benchmarks/candidates/aiq-core-1.0.5/catalog.json"
+		"../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json"
 	))
 	.expect("checked-in benchmark catalog must deserialize");
 	let catalog_entry_digests = scoring::frozen_catalog_entry_digests()
@@ -3185,7 +3185,9 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 		return Ok(ResultEvaluation {
 			status: ResultStatus::Failed,
 			outcome: EvaluationOutcome::NotEvaluated,
-			score: Some(0.0),
+			// Runtime budget exhaustion is not evaluator evidence. Keep the
+			// failure visible, but leave the semantic task score absent.
+			score: None,
 			checks: Vec::new(),
 			raw_stdout_sha256: None,
 			failure: Some(ResultFailure {
@@ -3201,7 +3203,8 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 		return Ok(ResultEvaluation {
 			status: ResultStatus::Failed,
 			outcome: EvaluationOutcome::NotEvaluated,
-			score: Some(0.0),
+			// A missing final response is not a semantic incorrect answer.
+			score: None,
 			checks: Vec::new(),
 			raw_stdout_sha256: None,
 			failure: Some(ResultFailure {
@@ -3487,18 +3490,10 @@ fn failed_result(
 		model,
 		status: ResultStatus::Failed,
 		evaluation: EvaluationOutcome::NotEvaluated,
-		task_score: if matches!(
-			failure.kind,
-			AdapterFailureKind::Timeout
-				| AdapterFailureKind::Unsupported
-				| AdapterFailureKind::NonZeroExit
-				| AdapterFailureKind::BudgetExceeded
-				| AdapterFailureKind::OutputTruncated
-		) {
-			Some(0.0)
-		} else {
-			None
-		},
+		// Adapter/runtime failure is not a scored semantic outcome. Older
+		// bundles may still contain `0`; the scorer treats those defensively
+		// as invalid runtime observations.
+		task_score: None,
 		response: None,
 		response_sha256: None,
 		evaluator_result_sha256: None,
@@ -4258,14 +4253,13 @@ mod tests {
 			let serialized =
 				serde_json::to_string(&analysis).expect("calibration analysis serialization");
 
-			assert_eq!(analysis.schema_version, "aiq.calibration-score-report.v1");
+			assert_eq!(analysis.schema_version, "aiq.calibration-score-report.v2");
 			assert_eq!(analysis.run_class, "calibration");
 			assert_eq!(analysis.descriptive_status, CalibrationDescriptiveStatus::CompleteFixture);
 			assert_eq!(analysis.official_eligible, FalseOnly);
 			assert_eq!(analysis.ranking_eligible, FalseOnly);
-			assert!(analysis.fixed_fixture_aiq.is_some());
+			assert!(analysis.quality_score.is_some());
 			assert!(!serialized.contains("\"tier\""));
-			assert!(!serialized.contains("official_aiq"));
 			assert!(!serialized.contains("Official"));
 			assert!(!serialized.contains("Provisional"));
 		}
@@ -4335,8 +4329,8 @@ mod tests {
 		.expect("synthetic fixed-fixture score");
 
 		assert_eq!(score.tier, ScoreTier::SyntheticComplete);
-		assert!(score.official_aiq.is_none());
-		assert!(score.conditional_observed_aiq.is_some());
+		assert!(score.score.is_none());
+		assert!(score.quality_score.is_some());
 		assert!(!score.ranking_eligible);
 	}
 
@@ -5835,7 +5829,7 @@ mod tests {
 
 		assert_eq!(result.status, ResultStatus::Failed);
 		assert_eq!(result.evaluation, EvaluationOutcome::NotEvaluated);
-		assert_eq!(result.task_score, Some(0.0));
+		assert_eq!(result.task_score, None);
 		assert!(result.response.is_none());
 		assert!(result.response_sha256.is_none());
 		assert_eq!(result.tool_usage.steps, 2);
@@ -5970,7 +5964,7 @@ mod tests {
 
 		assert_eq!(result.status, ResultStatus::Failed);
 		assert_eq!(result.evaluation, EvaluationOutcome::NotEvaluated);
-		assert_eq!(result.task_score, Some(0.0));
+		assert_eq!(result.task_score, None);
 		assert!(result.evaluator_checks.is_empty());
 		assert_eq!(result.failure.as_ref().map(|failure| failure.kind), Some(FailureKind::Timeout));
 		assert!(result.workspace_manifest.is_some());

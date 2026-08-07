@@ -46,6 +46,7 @@ cargo run -p aiq-runner -- preflight --help
 cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- run --help
 cargo run -p aiq-runner -- score --help
+cargo run -p aiq-runner -- historical-diagnostic-rescore --help
 cargo run -p aiq-runner -- package --help
 cargo run -p aiq-runner -- submit --help
 cargo run -p aiq-runner -- normalize --help
@@ -92,15 +93,15 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:46ab8d9d6aac8077e917ecb3718392d913c95fcc4a24c2cbc6435203512851c7
+sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
 ```
 
-This is the active public `1.0.5` metadata identity. Its public release digest
-is `sha256:496b40f54dc7c3dc92d8880201373344c723001a0570a4debd28e539cfe4030d`.
-The create-new interaction candidate passed reproducible generation,
-independent authoring validation, and the 72-task Rust corpus validator. Its
-Core, runtime, evaluator, generated-task tree, and database commitments remain
-calibration candidates; Contrast generation and release acceptance are pending.
+This is the active public `1.0.6` metadata identity. Its public release digest
+is `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+The public catalog is deterministic and identity-frozen. Two controlled
+generations produced one matching tree, and the reviewed 72-task database
+commitment is bound in source. Final clean-commit regeneration, the fresh pilot,
+Contrast generation, and release acceptance remain pending.
 
 ## Execution and evidence
 
@@ -108,12 +109,14 @@ The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
 
-For the `1.0.5` release, run one complete 17-by-72 calibration before any real
-Official publication path. This non-Official calibration must try to falsify
-fixture discrimination and must pass the release policy without an operator
-override. The interrupted `1.0.3` Official attempt was rejected as unpublished
-calibration evidence after an already-conclusive ceiling failure. No hidden
-responses or hidden task details were published.
+For the `1.0.6` release, first run the four runtime-revised tasks across all 17
+configurations, then run one complete 17-by-72 calibration before any real
+Official publication path. Both use the same per-task budget for every model
+configuration. The non-Official calibration must try to falsify fixture
+discrimination and must pass the release policy without an operator override.
+The interrupted `1.0.3` Official attempt was rejected as unpublished calibration
+evidence after an already-conclusive ceiling failure. No hidden responses or
+hidden task details were published.
 
 Capability preflight records the exact local model support state. The run binds
 the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,
@@ -143,9 +146,30 @@ primitives and fail closed when those primitives are unavailable.
 
 ## Scoring, packaging, and submission
 
-`score` applies the checked-in AIQ v1 scoring rules to a saved run. `package`
+`score` applies the checked-in AIQ 2.0 Rasch scoring rules to a saved run. The
+score and calibration bundle wrappers use their v2 schema identifiers.
+`package`
 binds the run and its artifacts into one signed `aiq.result-package.v3` envelope.
 The runner key must match the run's preflight node identity.
+
+For an immutable historical pilot whose legacy runner JSON encoded a runtime
+failure as `task_score: 0`, use the explicitly non-publication diagnostic path:
+
+```sh
+cargo run -p aiq-runner -- historical-diagnostic-rescore \
+  --hidden-tasks /absolute/controlled/tasks \
+  --results /absolute/controlled/pilot-run.json \
+  --output /absolute/new/pilot-diagnostic.json
+```
+
+This command reads the source once, retains its raw and canonical hashes, and
+normalizes only failed runtime or infrastructure results with
+`evaluation: not_evaluated` and `task_score: 0` to an unscored result in memory.
+It then applies the formal scorer and writes
+`aiq.historical-diagnostic-rescore.v1`. The output has publication, Official,
+and ranking flags fixed to false, contains no raw result content, and is not
+accepted by `score`, `package`, `normalize`, or production publication paths.
+The source file is never rewritten.
 
 File outputs are create-new protected outputs. Existing regular files,
 hard-link aliases, and symbolic links are rejected without changing their

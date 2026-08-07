@@ -235,6 +235,11 @@ workspace = false
 command = "node"
 args = ["databases/reset.ts", "${@}"]
 
+[tasks.check-aiq-2-cutover]
+workspace = false
+command = "node"
+args = ["scripts/check-aiq-2-cutover.ts"]
+
 # Smoke
 # | task                      | type    | cwd |
 # | ------------------------- | ------- | --- |

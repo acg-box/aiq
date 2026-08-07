@@ -343,7 +343,7 @@ impl NormalizedBatchStage {
 				|| task_keys.len() != NORMALIZED_TASK_COUNT
 				|| task_keys != expected_task_keys
 				|| child.score.model != *expected_model
-				|| child.score.schema_version != "aiq.score-report.v1"
+				|| child.score.schema_version != "aiq.score-report.v2"
 				|| child.score.scoring_version != self.scoring_version
 				|| child.score.coverage.expected_tasks != NORMALIZED_TASK_COUNT
 				|| !ids.insert(child.run_id.clone())
@@ -741,15 +741,15 @@ pub enum NormalizedOutcome {
 	Partial,
 	/// The evaluator rejected the response.
 	Incorrect,
-	/// A task-level timeout produced a valid zero.
+	/// A task-level timeout was observed; it is excluded from semantic scores.
 	Timeout,
-	/// A task-level budget limit produced a valid zero.
+	/// A task-level budget limit was observed; it is excluded from semantic scores.
 	BudgetExhausted,
-	/// A model or tool execution failure produced a valid zero.
+	/// A model or tool execution failure was observed; it is excluded from semantic scores.
 	ToolFailure,
-	/// A policy or controlled-output failure produced a valid zero.
+	/// A policy or controlled-output failure was observed; it is excluded from semantic scores.
 	PolicyFailure,
-	/// The expected artifact was not produced and the result is a valid zero.
+	/// The expected artifact was not produced; it is excluded from semantic scores.
 	WrongArtifact,
 	/// Benchmark infrastructure or platform evidence is invalid and requires rerun.
 	Invalid,
@@ -935,6 +935,7 @@ fn normalized_model_runs(
 				NormalizationError::new("result task is absent from task sources")
 			})?;
 			let (outcome, responsibility) = map_outcome(result, supplied.tier)?;
+			let task_score = semantic_task_score(result, outcome);
 
 			results.push(NormalizedTaskResult {
 				schema_version: NORMALIZED_RESULT_SCHEMA_VERSION.to_owned(),
@@ -950,7 +951,7 @@ fn normalized_model_runs(
 				source_status: result.status,
 				source_evaluation: result.evaluation,
 				outcome,
-				task_score: result.task_score,
+				task_score,
 				failure_responsibility: responsibility,
 				failure: result.failure.clone(),
 				response: result.response.clone(),
@@ -1113,22 +1114,22 @@ fn validate_score_report(
 	match supplied.tier {
 		ScoreTier::Official
 			if supplied.coverage.valid_tasks != NORMALIZED_TASK_COUNT
-				|| supplied.official_aiq.is_none() =>
+				|| supplied.score.is_none() =>
 		{
 			Err(NormalizationError::new("official score tier is inconsistent"))
 		},
 		ScoreTier::SyntheticComplete
 			if supplied.coverage.valid_tasks != NORMALIZED_TASK_COUNT
-				|| supplied.official_aiq.is_some()
-				|| supplied.conditional_observed_aiq.is_none()
+				|| supplied.score.is_some()
+				|| supplied.quality_score.is_none()
 				|| supplied.ranking_eligible =>
 		{
 			Err(NormalizationError::new("synthetic-complete score tier is inconsistent"))
 		},
 		ScoreTier::NotApplicable
 			if supplied.coverage.not_applicable_tasks != NORMALIZED_TASK_COUNT
-				|| supplied.official_aiq.is_some()
-				|| supplied.conditional_observed_aiq.is_some() =>
+				|| supplied.score.is_some()
+				|| supplied.quality_score.is_some() =>
 		{
 			Err(NormalizationError::new("not-applicable score tier is inconsistent"))
 		},
@@ -1236,6 +1237,24 @@ fn map_outcome(
 			Err(NormalizationError::new("partial capability failure cannot map to not_applicable"))
 		},
 		_ => Err(NormalizationError::new("source result has no lossless outcome mapping")),
+	}
+}
+
+/// Preserve scores only for evaluator-completed semantic outcomes.
+///
+/// Runtime failures from older result packages can carry `task_score: 0`.
+/// Normalization must remove that stale value so SQL and public projections
+/// cannot mistake an execution failure for a semantic incorrect answer.
+fn semantic_task_score(result: &TaskResult, outcome: NormalizedOutcome) -> Option<f64> {
+	if matches!(
+		outcome,
+		NormalizedOutcome::Correct | NormalizedOutcome::Partial | NormalizedOutcome::Incorrect
+	) && result.status == ResultStatus::Completed
+		&& result.failure.is_none()
+	{
+		result.task_score
+	} else {
+		None
 	}
 }
 
@@ -1939,7 +1958,7 @@ mod tests {
 
 		let (run, tasks, mut scores, package, metadata) = fixture();
 
-		scores[0].official_aiq = Some(99.0);
+		scores[0].score = Some(99.0);
 
 		assert!(
 			normalization::normalize_verified_batch(&run, &tasks, &scores, &package, &metadata)
@@ -1961,8 +1980,8 @@ mod tests {
 		let (_, _, scores, _, _) = fixture();
 
 		assert_eq!(scores[0].tier, ScoreTier::SyntheticComplete);
-		assert!(scores[0].official_aiq.is_none());
-		assert!(scores[0].conditional_observed_aiq.is_some());
+		assert!(scores[0].score.is_none());
+		assert!(scores[0].quality_score.is_some());
 
 		let mut result = crate::runner::TaskResult {
 			schema_version: String::new(),
@@ -2020,6 +2039,30 @@ mod tests {
 		assert_eq!(
 			normalization::map_outcome(&result, ScoreTier::CoverageOnly).expect("incorrect").0,
 			NormalizedOutcome::Incorrect
+		);
+		assert_eq!(
+			normalization::semantic_task_score(&result, NormalizedOutcome::Incorrect),
+			Some(0.0),
+			"a completed semantic incorrect result remains a valid zero"
+		);
+
+		result.status = crate::runner::ResultStatus::Failed;
+		result.evaluation = crate::runner::EvaluationOutcome::NotEvaluated;
+		result.failure = Some(crate::runner::ResultFailure {
+			kind: crate::runner::FailureKind::Timeout,
+			message: "timeout".to_owned(),
+			exit_code: None,
+			retryable: true,
+		});
+
+		assert_eq!(
+			normalization::map_outcome(&result, ScoreTier::CoverageOnly).expect("timeout").0,
+			NormalizedOutcome::Timeout
+		);
+		assert_eq!(
+			normalization::semantic_task_score(&result, NormalizedOutcome::Timeout),
+			None,
+			"a historical runtime zero must not survive normalization"
 		);
 
 		result.status = crate::runner::ResultStatus::Unsupported;
