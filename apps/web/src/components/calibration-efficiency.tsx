@@ -309,14 +309,24 @@ export function CalibrationEfficiency({
         {scoringVersion ?? 'Unavailable'}
       </p>
       <div className="chart-controls calibration-metric-control">
-        <span id="calibration-metric-label">Horizontal metric</span>
-        <div className="chart-switch" role="group" aria-labelledby="calibration-metric-label">
-          <button type="button" aria-pressed={metric === 'cost'} onClick={() => setMetric('cost')}>
-            Estimated cost
-          </button>
-          <button type="button" aria-pressed={metric === 'time'} onClick={() => setMetric('time')}>
-            Observed time
-          </button>
+        <div className="chart-control">
+          <span id="calibration-metric-label">Horizontal metric</span>
+          <div className="chart-switch" role="group" aria-labelledby="calibration-metric-label">
+            <button
+              type="button"
+              aria-pressed={metric === 'cost'}
+              onClick={() => setMetric('cost')}
+            >
+              Estimated cost
+            </button>
+            <button
+              type="button"
+              aria-pressed={metric === 'time'}
+              onClick={() => setMetric('time')}
+            >
+              Observed time
+            </button>
+          </div>
         </div>
       </div>
       <p className="sr-only" aria-live="polite">

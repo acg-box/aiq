@@ -205,7 +205,13 @@
 .trend-mode-control,
 .trend-window-control {
 	display: grid;
-	align-items: end;
+	align-items: start;
+}
+
+.chart-controls,
+.trend-mode-control {
+	--control-label-height: 14px;
+	--control-row-height: 38px;
 }
 
 .chart-controls {
@@ -220,19 +226,26 @@
 
 .chart-control {
 	display: grid;
-	gap: 5px;
+	grid-template-rows: var(--control-label-height) minmax(var(--control-row-height), auto);
+	gap: 6px;
+	align-content: start;
 	min-width: 0;
 	color: var(--muted);
 	font-size: 0.68rem;
 	font-weight: 600;
+	line-height: var(--control-label-height);
 }
 
 .chart-control > span {
-	line-height: 1.2;
+	display: flex;
+	align-items: flex-end;
+	min-height: var(--control-label-height);
+	line-height: var(--control-label-height);
 }
 
 .chart-control select {
 	width: 100%;
+	min-height: var(--control-row-height);
 }
 
 .chart-switch,
@@ -240,6 +253,7 @@
 	display: inline-flex;
 	gap: 16px;
 	align-items: center;
+	min-height: var(--control-row-height, 38px);
 	padding: 0;
 	border: 0;
 	border-radius: 0;
@@ -248,8 +262,10 @@
 
 .chart-switch button,
 .range-tabs a {
-	min-height: 30px;
+	display: inline-flex;
+	min-height: var(--control-row-height, 38px);
 	padding: 0;
+	align-items: center;
 	color: var(--muted);
 	font-size: 0.72rem;
 	font-weight: 620;
@@ -667,6 +683,9 @@ dd {
 
 /* Compare */
 .compare-controls {
+	--control-label-height: 14px;
+	--control-row-height: 38px;
+
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 	gap: 32px;
@@ -678,8 +697,26 @@ dd {
 	background: transparent;
 }
 
+.compare-controls label,
+.calibration-filter-control {
+	grid-template-rows: var(--control-label-height) minmax(var(--control-row-height), auto);
+	gap: 6px;
+	align-content: start;
+}
+
+.compare-controls label > span,
+.calibration-filter-control > span {
+	display: flex;
+	align-items: flex-end;
+	min-height: var(--control-label-height);
+	line-height: var(--control-label-height);
+}
+
 .compare-controls > span {
-	padding-bottom: 9px;
+	display: flex;
+	min-height: var(--control-row-height);
+	padding: 0;
+	align-items: center;
 	color: var(--muted);
 	font-size: 0.72rem;
 }
@@ -1457,6 +1494,9 @@ dd {
 }
 
 .calibration-filter {
+	--control-label-height: 14px;
+	--control-row-height: 38px;
+
 	display: grid;
 	grid-template-columns: minmax(220px, 1fr) auto;
 	gap: 16px;
@@ -1466,6 +1506,16 @@ dd {
 	border: 0;
 	border-radius: 0;
 	background: transparent;
+}
+
+.compare-controls select,
+.calibration-filter select,
+.calibration-filter button {
+	min-height: var(--control-row-height);
+}
+
+.calibration-metric-control {
+	grid-template-columns: max-content;
 }
 
 .calibration-slice-count,
@@ -1865,6 +1915,13 @@ dd {
 }
 
 @media (pointer: coarse) {
+	.chart-controls,
+	.trend-mode-control,
+	.compare-controls,
+	.calibration-filter {
+		--control-row-height: 44px;
+	}
+
 	.chart-switch button,
 	.chart-controls select,
 	.range-tabs a {

@@ -3,6 +3,7 @@ import {
   expect,
   test as base,
   type APIResponse,
+  type Locator,
   type Page,
   type Response,
   type TestInfo,
@@ -181,6 +182,38 @@ function verifiedPublishedAggregate(matrixId: string) {
   const aggregate = verifiedPublishedAggregates[matrixId];
   if (!aggregate) throw new Error(`Missing verified public aggregate for ${matrixId}.`);
   return aggregate;
+}
+
+async function expectAlignedControlGroup(group: Locator) {
+  await expect(group).toBeAttached();
+  const controls = await group.locator(':scope > .chart-control').evaluateAll((elements) =>
+    elements.map((control) => {
+      const label = control.children[0];
+      const action = control.children[1];
+      if (!(label instanceof HTMLElement) || !(action instanceof HTMLElement)) {
+        throw new Error('Expected each analytical control to contain one label and one action');
+      }
+      const labelBox = label.getBoundingClientRect();
+      const actionBox = action.getBoundingClientRect();
+      return {
+        labelTop: labelBox.top,
+        labelBottom: labelBox.bottom,
+        actionTop: actionBox.top,
+        actionHeight: actionBox.height,
+      };
+    }),
+  );
+  expect(controls.length).toBeGreaterThan(1);
+  const labelTops = controls.map(({ labelTop }) => labelTop);
+  const actionTops = controls.map(({ actionTop }) => actionTop);
+  expect(Math.max(...labelTops) - Math.min(...labelTops)).toBeLessThanOrEqual(0.5);
+  expect(Math.max(...actionTops) - Math.min(...actionTops)).toBeLessThanOrEqual(0.5);
+  expect(
+    controls.every(
+      ({ actionHeight, actionTop, labelBottom }) =>
+        actionHeight >= 38 && Math.abs(actionTop - labelBottom - 6) <= 0.5,
+    ),
+  ).toBe(true);
 }
 
 const routes = [
@@ -379,6 +412,11 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(efficiencyPlot).toContainText(
     '16/17 configurations plotted in the canonical matrix',
   );
+  await Promise.all([
+    expectAlignedControlGroup(efficiencyPlot.locator('.chart-controls')),
+    expectAlignedControlGroup(page.locator('.matrix-chart .chart-controls')),
+    expectAlignedControlGroup(page.locator('.trend-mode-control')),
+  ]);
   await efficiencyPlot.getByRole('button', { name: 'Cost', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'AIQ score vs API-equivalent cost' }),

@@ -148,7 +148,7 @@ export function CompareExplorer({
     <>
       <div className="compare-controls">
         <label>
-          First configuration
+          <span>First configuration</span>
           <select
             value={leftId}
             onChange={(event) =>
@@ -164,7 +164,7 @@ export function CompareExplorer({
         </label>
         <span aria-hidden="true">vs</span>
         <label>
-          Second configuration
+          <span>Second configuration</span>
           <select
             value={rightId}
             onChange={(event) =>

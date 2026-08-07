@@ -467,7 +467,7 @@ export function EfficiencyPlot({
         </div>
         {points.length > 0 ? (
           <label className="chart-control">
-            Read configuration
+            <span>Read configuration</span>
             <select
               value={selectedId}
               onChange={(event) => pushAnalyticalUrl({ efficiencySelection: event.target.value })}
