@@ -15,6 +15,16 @@
 	border: 0;
 }
 
+.compact-ranking > .panel-heading {
+	align-items: flex-start;
+}
+
+.compact-ranking .eyebrow,
+.chart-header .eyebrow {
+	display: block;
+	margin-bottom: 4px;
+}
+
 .panel-meta {
 	color: var(--muted);
 	font-size: 0.72rem;
@@ -90,7 +100,7 @@
 .insight-grid {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 48px;
+	gap: 32px;
 	margin: 12px 0 48px;
 	border: 0;
 	background: transparent;
@@ -98,10 +108,9 @@
 
 .insight-card {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr);
-	gap: 14px;
-	align-items: center;
-	min-height: 72px;
+	grid-template-columns: minmax(0, 1fr);
+	align-items: start;
+	min-height: 68px;
 	padding: 0;
 }
 
@@ -109,13 +118,9 @@
 	border: 0;
 }
 
-.insight-card > svg {
-	color: var(--accent);
-}
-
 .insight-card div {
 	display: grid;
-	gap: 1px;
+	gap: 2px;
 }
 
 .insight-card span,
@@ -126,7 +131,7 @@
 }
 
 .insight-card strong {
-	font-size: 1.12rem;
+	font-size: 1.18rem;
 	font-weight: 640;
 	letter-spacing: -0.025em;
 }
@@ -176,12 +181,8 @@
 }
 
 .chart-header {
-	display: flex;
-	gap: 20px;
-	align-items: flex-start;
-	justify-content: space-between;
-	align-items: baseline;
-	margin-bottom: 16px;
+	display: block;
+	margin-bottom: 20px;
 }
 
 .chart-header h2,
@@ -203,51 +204,76 @@
 .chart-controls,
 .trend-mode-control,
 .trend-window-control {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px 12px;
+	display: grid;
 	align-items: end;
 }
 
-.chart-controls label {
-	min-width: 155px;
+.chart-controls {
+	grid-template-columns: max-content max-content minmax(155px, 220px);
+	gap: 18px 28px;
+	margin-bottom: 14px;
+}
+
+.chart-controls-compact {
+	grid-template-columns: max-content minmax(155px, 220px);
+}
+
+.chart-control {
+	display: grid;
+	gap: 5px;
+	min-width: 0;
+	color: var(--muted);
+	font-size: 0.68rem;
+	font-weight: 600;
+}
+
+.chart-control > span {
+	line-height: 1.2;
+}
+
+.chart-control select {
+	width: 100%;
 }
 
 .chart-switch,
 .range-tabs {
 	display: inline-flex;
-	gap: 2px;
-	padding: 2px;
+	gap: 16px;
+	align-items: center;
+	padding: 0;
 	border: 0;
-	border-radius: 6px;
-	background: color-mix(in srgb, var(--panel-soft) 72%, transparent);
+	border-radius: 0;
+	background: transparent;
 }
 
 .chart-switch button,
 .range-tabs a {
-	min-height: 32px;
-	padding: 0 10px;
+	min-height: 30px;
+	padding: 0;
 	color: var(--muted);
 	font-size: 0.72rem;
 	font-weight: 620;
 	text-decoration: none;
 	border: 0;
-	border-radius: 4px;
+	border-radius: 0;
 	background: transparent;
 	cursor: pointer;
-	transition: box-shadow 120ms ease;
+	transition: color 120ms ease;
 }
 
 .chart-switch button:hover,
 .range-tabs a:hover {
 	color: var(--ink);
+	text-decoration: underline;
+	text-underline-offset: 4px;
 }
 
 .chart-switch button[aria-pressed='true'],
 .range-tabs a[aria-current='page'] {
-	color: var(--accent-ink);
-	background: var(--accent);
-	box-shadow: var(--shadow-small);
+	color: var(--ink);
+	font-weight: 720;
+	background: transparent;
+	box-shadow: none;
 }
 
 .chart-switch button:disabled {
@@ -552,18 +578,18 @@
 
 .evidence-notes {
 	margin-top: 48px;
-	border-block: 1px solid var(--line);
+	border: 0;
 	border-radius: 0;
 	background: transparent;
 }
 
 .evidence-notes > summary {
-	display: grid;
-	grid-template-columns: auto auto minmax(0, 1fr);
+	display: inline-flex;
 	gap: 10px;
 	align-items: center;
-	min-height: 52px;
+	min-height: 0;
 	padding: 0;
+	color: var(--muted);
 	list-style: none;
 }
 
@@ -576,19 +602,14 @@
 	font-size: 0.72rem;
 }
 
-.evidence-notes > summary::after {
-	justify-self: end;
-	color: var(--muted);
-	content: '+';
-}
-
-.evidence-notes[open] > summary::after {
-	content: '−';
+.evidence-notes > summary strong {
+	color: var(--ink);
+	font-size: 0.8rem;
 }
 
 .evidence-note-body {
-	padding: 24px 0;
-	border-top: 1px solid var(--line);
+	padding: 24px 0 0;
+	border: 0;
 }
 
 .evidence-note-grid {
@@ -648,7 +669,7 @@ dd {
 .compare-controls {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-	gap: 24px;
+	gap: 32px;
 	align-items: end;
 	margin: 32px 0 48px;
 	padding: 0;
@@ -658,7 +679,7 @@ dd {
 }
 
 .compare-controls > span {
-	padding-bottom: 10px;
+	padding-bottom: 9px;
 	color: var(--muted);
 	font-size: 0.72rem;
 }
@@ -697,8 +718,8 @@ dd {
 	display: grid;
 	min-width: 96px;
 	min-height: 76px;
-	place-content: center;
-	text-align: center;
+	place-content: center start;
+	text-align: left;
 	border: 0;
 	border-radius: 0;
 	background: transparent;
@@ -757,7 +778,7 @@ dd {
 }
 
 .comparison-head {
-	background: color-mix(in srgb, var(--panel-soft) 45%, transparent);
+	background: transparent;
 }
 
 .comparison-interpretation {
@@ -815,16 +836,16 @@ dd {
 .evidence-status-disclosure {
 	margin-bottom: 28px;
 	padding: 0;
-	border-block: 1px solid var(--line);
+	border: 0;
 	border-radius: 0;
 	background: transparent;
 }
 
 .evidence-status-disclosure > summary {
-	display: flex;
-	justify-content: space-between;
-	gap: 20px;
-	padding-block: 12px;
+	display: inline-flex;
+	justify-content: flex-start;
+	gap: 8px;
+	padding: 4px 0;
 	color: var(--muted);
 	font-size: 0.76rem;
 }
@@ -833,16 +854,30 @@ dd {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 8px;
-	padding-bottom: 12px;
+	padding-top: 12px;
 }
 
 .range-tabs {
-	margin-bottom: 10px;
+	margin: 0;
 }
 
-.trend-mode-control,
+.trend-mode-control {
+	grid-template-columns: repeat(3, max-content);
+	gap: 28px;
+	justify-content: start;
+	margin-bottom: 18px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+}
+
 .trend-window-control {
-	justify-content: space-between;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 24px;
+	align-items: center;
+	justify-content: flex-start;
 	margin-bottom: 14px;
 	padding: 0;
 	border: 0;
@@ -850,7 +885,6 @@ dd {
 	background: transparent;
 }
 
-.trend-mode-control > span,
 .trend-window-control > span {
 	color: var(--muted);
 	font-size: 0.7rem;
@@ -1521,10 +1555,6 @@ dd {
 		border: 0;
 	}
 
-	.insight-card > svg {
-		display: none;
-	}
-
 	.insight-card div {
 		gap: 3px;
 	}
@@ -1578,14 +1608,22 @@ dd {
 		align-items: stretch;
 	}
 
+	.chart-controls,
+	.chart-controls-compact,
+	.trend-mode-control {
+		grid-template-columns: 1fr;
+		gap: 16px;
+	}
+
 	.chart-controls label {
 		width: 100%;
 	}
 
 	.chart-switch {
-		width: fit-content;
+		width: auto;
 		max-width: 100%;
-		overflow-x: auto;
+		flex-wrap: wrap;
+		overflow: visible;
 	}
 
 	.efficiency-chart {
@@ -1659,7 +1697,7 @@ dd {
 	}
 
 	.evidence-notes > summary {
-		grid-template-columns: auto auto 1fr;
+		display: inline-flex;
 	}
 
 	.evidence-notes > summary span {

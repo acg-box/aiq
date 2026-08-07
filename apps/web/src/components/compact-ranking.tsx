@@ -17,6 +17,7 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
     <section className="compact-ranking analysis-panel" aria-labelledby="compact-ranking-heading">
       <header className="panel-heading">
         <div>
+          <span className="eyebrow">Ranking</span>
           <h2 id="compact-ranking-heading">Top configurations</h2>
           <p>
             {isOfficial ? 'Ordered by published AIQ score' : 'Synthetic preview · not Official'}

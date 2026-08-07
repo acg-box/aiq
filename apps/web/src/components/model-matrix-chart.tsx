@@ -275,7 +275,10 @@ export function ModelMatrixChart({
           <Heading id="matrix-chart-heading">AIQ index by configuration</Heading>
           <p>Point estimates and fixed-fixture task-sensitivity intervals stay visible together.</p>
         </div>
-        <div className="chart-controls">
+      </header>
+      <div className="chart-controls" aria-label="Matrix controls">
+        <div className="chart-control">
+          <span>Family</span>
           <div className="chart-switch" role="group" aria-label="Model family">
             {families.map((candidate) => (
               <button
@@ -295,6 +298,9 @@ export function ModelMatrixChart({
               </button>
             ))}
           </div>
+        </div>
+        <div className="chart-control">
+          <span>View</span>
           <div className="chart-switch" role="group" aria-label="Chart type">
             {(['dots', 'bars', 'ordered'] as const).map((candidate) => (
               <button
@@ -318,23 +324,23 @@ export function ModelMatrixChart({
               </button>
             ))}
           </div>
-          {scored.length > 0 ? (
-            <label>
-              Read configuration
-              <select
-                value={selectedId}
-                onChange={(event) => pushAnalyticalUrl({ matrixSelection: event.target.value })}
-              >
-                {scored.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.modelFamily} · {entry.reasoningTier}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
         </div>
-      </header>
+        {scored.length > 0 ? (
+          <label className="chart-control">
+            Read configuration
+            <select
+              value={selectedId}
+              onChange={(event) => pushAnalyticalUrl({ matrixSelection: event.target.value })}
+            >
+              {scored.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.modelFamily} · {entry.reasoningTier}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
       <p className="sr-only" aria-live="polite">
         Showing {scored.length} {family === 'All' ? '' : family} configurations as {kind}.
       </p>

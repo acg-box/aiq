@@ -1,7 +1,4 @@
 import { BookOpenTextIcon } from '@phosphor-icons/react/dist/ssr/BookOpenText';
-import { ChartBarIcon } from '@phosphor-icons/react/dist/ssr/ChartBar';
-import { TargetIcon } from '@phosphor-icons/react/dist/ssr/Target';
-import { TrophyIcon } from '@phosphor-icons/react/dist/ssr/Trophy';
 import Link from 'next/link';
 import { Suspense } from 'react';
 
@@ -230,7 +227,6 @@ export default async function OverviewPage({
 
         <section className="insight-grid" aria-label="Latest benchmark highlights">
           <article className="insight-card">
-            <TrophyIcon aria-hidden="true" size={34} weight="light" />
             <div>
               <span>Top score</span>
               <strong>
@@ -246,7 +242,6 @@ export default async function OverviewPage({
             </div>
           </article>
           <article className="insight-card">
-            <ChartBarIcon aria-hidden="true" size={34} weight="light" />
             <div>
               <span>Top five spread</span>
               <strong>
@@ -260,7 +255,6 @@ export default async function OverviewPage({
             </div>
           </article>
           <article className="insight-card">
-            <TargetIcon aria-hidden="true" size={34} weight="light" />
             <div>
               <span>Coverage</span>
               <strong>
@@ -274,16 +268,21 @@ export default async function OverviewPage({
         </section>
 
         <div className="results-main-grid">
-          <section className="analysis-panel efficiency-panel" aria-label="Score and efficiency">
+          <section
+            className="analysis-panel efficiency-panel"
+            id={hasEfficiencyEvidence ? undefined : 'matrix'}
+            aria-label="Score and efficiency"
+          >
             {hasEfficiencyEvidence ? (
               <DeferredEfficiencyPlot
                 entries={leaderboard}
                 runSummaries={officialRunSummariesResult.data}
                 rows={officialEfficiencyResult.data}
+                eager
               />
             ) : (
               <>
-                <DeferredModelMatrixChart entries={leaderboard} />
+                <DeferredModelMatrixChart entries={leaderboard} eager />
                 {rankedEntries.length === 0 && leaderboard.length > 0 ? (
                   <details className="data-disclosure empty-matrix-table">
                     <summary>Read all configuration values as a table</summary>
@@ -332,9 +331,7 @@ export default async function OverviewPage({
               <LeaderboardTable entries={leaderboard} />
             </details>
           </section>
-        ) : (
-          <div id="matrix" className="sr-only" aria-hidden="true" />
-        )}
+        ) : null}
 
         <details className="evidence-notes" open={leaderboardResult.state === 'unavailable'}>
           <summary>

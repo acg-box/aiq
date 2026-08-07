@@ -49,11 +49,12 @@ function AnalyticsLoading({ kind }: { kind: AnalyticsKind }) {
   );
 }
 
-function useNearViewport() {
+function useNearViewport(eager = false) {
   const host = useRef<HTMLDivElement>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
+  const [shouldLoad, setShouldLoad] = useState(eager);
 
   useEffect(() => {
+    if (eager) return undefined;
     const element = host.current;
     if (!element) return undefined;
     if (!('IntersectionObserver' in window)) {
@@ -72,7 +73,7 @@ function useNearViewport() {
     );
     observer.observe(observationTarget);
     return () => observer.disconnect();
-  }, []);
+  }, [eager]);
 
   return { host, shouldLoad };
 }
@@ -80,11 +81,13 @@ function useNearViewport() {
 export function DeferredModelMatrixChart({
   entries,
   headingLevel = 2,
+  eager = false,
 }: {
   entries: readonly LeaderboardEntry[];
   headingLevel?: 2 | 3;
+  eager?: boolean;
 }) {
-  const { host, shouldLoad } = useNearViewport();
+  const { host, shouldLoad } = useNearViewport(eager);
   const [hasVisualization, setHasVisualization] = useState(() =>
     entries.some(isScoredLeaderboardEntry),
   );
@@ -111,12 +114,14 @@ export function DeferredEfficiencyPlot({
   entries,
   runSummaries,
   rows,
+  eager = false,
 }: {
   entries: readonly LeaderboardEntry[];
   runSummaries: readonly BenchmarkRunSummary[];
   rows: readonly PublicModelEfficiency[];
+  eager?: boolean;
 }) {
-  const { host, shouldLoad } = useNearViewport();
+  const { host, shouldLoad } = useNearViewport(eager);
   const [hasVisualization, setHasVisualization] = useState(
     () => rows.length > 0 && runSummaries.length > 0 && entries.some(isScoredLeaderboardEntry),
   );
