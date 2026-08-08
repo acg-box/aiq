@@ -13,7 +13,7 @@ const identity = {
   runnerCommit: 'a79a6616128eb3161069e4fd50657df0b88e6760',
   corpusReleaseId: 'corpus_2026.08.04-aiq-core-1.0.6-final',
   corpusCommitment: `sha256:${'1'.repeat(64)}`,
-  catalogDigest: 'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460',
+  catalogDigest: 'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91',
   taskSetDigest: `sha256:${'3'.repeat(64)}`,
   promptSetDigest: `sha256:${'4'.repeat(64)}`,
   estimatedCostResultCount: 1_208,

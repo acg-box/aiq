@@ -35,17 +35,16 @@ automation only to remove a marker.
 The source-head public constants include AIQ Core and scoring version `1.0.6`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
+`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
-The public catalog is deterministic and identity-frozen. Two controlled
-generations produced one matching tree, and the reviewed 72-task database
-commitment is bound in source. Final controlled corpus identities remain
-calibration candidates. Contrast generation is pending. The first
+`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+The public catalog is deterministic and identity-frozen. Independent
+no-deadline Core and Contrast A/B seals produced the current database task and
+fixture commitments. One final clean-source seal remains before the focused
+canary. Final controlled corpus identities remain calibration candidates. The first
 `1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
 evidence, not as an all-execution failure. The `1.0.6` sequence requires a
-debugging-02-by-17 runtime-budget pilot before the full 17-by-5 non-Official pilot
-and 17-by-72 calibration. Final
+focused no-deadline canary before the full 17-by-72 calibration. Final
 native build verification, a real Official run, publication, and final
 deployment remain pending. The sole production tuple is AIQ Core `1.0.6`,
 scoring `1.0.6`, and measurement `2.0.0`; no legacy fallback is supported.

@@ -46,10 +46,11 @@ controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
 `1.0.6`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
 final native binaries pass validation. The controlled production reference is
-still pending. The reviewed 72-task database commitment is frozen in
-`aiq-core-1.0.6-task-commitments.json`. The repository does not contain a
-substitute production commitment or benchmark results. Supply the controlled
-production reference separately.
+still pending. The checked-in runtime task-set and task-commitment identities
+describe the validated no-deadline task and fixture bindings. Re-seal from the
+final clean identity commit before the focused canary. The repository does
+not contain a substitute production commitment or benchmark results. Supply
+the controlled production reference separately.
 
 A successful receipt reports:
 
@@ -63,13 +64,13 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`;
+  `sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`;
 - catalog release identity
-  `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`;
-- reviewed runtime task-set identity
-  `sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`;
-- reviewed task-commitment manifest identity
-  `sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`;
+  `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`;
+- current no-deadline runtime task-set identity,
+  `sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`;
+- current no-deadline task-commitment manifest identity,
+  `sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`;
 - reviewed evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
@@ -87,9 +88,12 @@ The native corpus commitment owns the scorer-manifest identity. The
 database binds its output through scoring version `1.0.6` and recomputes
 the score from normalized result evidence.
 
-The reviewed public-safe `1.0.6` 72-task database binding manifest is
+The current public-safe `1.0.6` 72-task database binding manifest is
 `aiq-core-1.0.6-task-commitments.json`. Its canonical JCS identity is
-`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
+`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
+Independent no-deadline Core A/B seals and the model-free validator produced it.
+It is not authorization for database action; a real signed 17-by-72 package
+must still pass native verifier replay first.
 
 The desired state targets the sole production tuple: AIQ Core `1.0.6`, scoring
 `1.0.6`, and measurement `2.0.0`. Do not reset or initialize production until
@@ -159,7 +163,7 @@ cargo make reset-database -- \
 
 Before it makes a Storage request or starts PostgreSQL cleanup, the destructive
 command reads, parses, and validates the production reference plus the
-checked-in schema, catalog, corpus schema, and reviewed task commitments. A
+checked-in schema, catalog, corpus schema, and current task commitments. A
 missing, malformed, or inconsistent authority stops the reset without mutation.
 
 The command uses the supported Supabase Storage API to list and delete objects

@@ -1107,7 +1107,7 @@ mod tests {
 			configured_jobs: 1,
 			effective_jobs: 1,
 			seconds_until_next_slot: 43_200,
-			conservative_bound_seconds: 3_600,
+			conservative_bound_seconds: Some(3_600),
 		}
 	}
 

@@ -9,7 +9,7 @@
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460",
+    "digest": "sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91",
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
@@ -18,12 +18,12 @@
     "task_metadata_identity": {
       "algorithm": "sha256",
       "canonicalization": "aiq.sorted-key-json.v1",
-      "digest": "sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460",
+      "digest": "sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91",
       "scope": "ordered_full_task_metadata"
     },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78",
+    "digest": "sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f",
     "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
@@ -113,9 +113,9 @@
       "summary": "Add a typed configuration field whose validation interacts with an existing setting while preserving documented compatibility and source-specific errors.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -134,7 +134,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -211,7 +211,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -233,9 +233,9 @@
       "summary": "Implement cursor pagination that preserves stable ordering across duplicate sort keys. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -254,7 +254,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -331,7 +331,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -353,9 +353,9 @@
       "summary": "Complete a bounded retry utility whose scheduling, cancellation, and attempt lifecycle remain correct under deterministic concurrent timing.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -374,7 +374,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -451,7 +451,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -473,9 +473,9 @@
       "summary": "Implement a library helper that validates content and atomically replaces one owned file without losing permissions. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -494,7 +494,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -571,7 +571,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -593,9 +593,9 @@
       "summary": "Deduplicate records while jointly preserving normalization policy, deterministic winners, stable output order, and declared invalid-record handling.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -614,7 +614,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -691,7 +691,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -714,8 +714,8 @@
       "design_revision": {
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
-        "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "coding-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. It removes the model wall-clock deadline. It changes the step and tool-call limits from 40/28 to 48/40. Elapsed time and cost remain independent efficiency measurements.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -734,7 +734,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 1500,
+        "wall_seconds": null,
         "max_steps": 48,
         "max_tool_calls": 40
       },
@@ -834,8 +834,8 @@
       "design_revision": {
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
-        "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "coding-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 420 wall seconds to 600 wall seconds while retaining 32 steps and 21 tool calls. Two independent Sol ultra attempts at the prior 420-second wall limit timed out, including a jobs=1 attempt; the other 16 configurations completed at or below 363.664 seconds. The 600-second limit is one common task budget for all configurations, not a model-specific exception.",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. It removes the model wall-clock deadline. It retains 32 steps and 21 tool calls. Elapsed time and cost remain independent efficiency measurements.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -854,7 +854,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 600,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -953,9 +953,9 @@
       "summary": "Implement a batch processor that checkpoints committed items and resumes without duplicate side effects. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-08 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "coding-08 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -974,7 +974,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 480,
+        "wall_seconds": null,
         "max_steps": 36,
         "max_tool_calls": 24
       },
@@ -1051,7 +1051,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -1074,8 +1074,8 @@
       "design_revision": {
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
-        "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "debugging-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. It removes the model wall-clock deadline. It changes the step and tool-call limits from 40/28 to 48/40. Elapsed time and cost remain independent efficiency measurements.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1094,7 +1094,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 1500,
+        "wall_seconds": null,
         "max_steps": 48,
         "max_tool_calls": 40
       },
@@ -1194,8 +1194,8 @@
       "design_revision": {
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
-        "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "debugging-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1800 wall seconds, 64 steps, and 56 tool calls. The r11 five-task pilot stopped on a debugging-02 runtime failure after 1,060.042 seconds at 47/48 steps and 41/40 tool calls. The new 1,800-second, 64-step, 56-call envelope gives bounded headroom in every observed dimension: 20% wall, 33% steps, and 40% calls, uniformly for all 17 configurations. coding-06 reached 93.2% of its wall ceiling and debugging-01 reached 91.7% of its step and 95% of its call ceilings without a runtime failure; those envelopes remain unchanged and must be falsified by the complete next 17-by-5 pilot.",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. It removes the model wall-clock deadline. It changes the step and tool-call limits from 40/28 to 64/56. Elapsed time and cost remain independent efficiency measurements.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1214,7 +1214,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 1800,
+        "wall_seconds": null,
         "max_steps": 64,
         "max_tool_calls": 56
       },
@@ -1313,9 +1313,9 @@
       "summary": "Repair a versioned cache race under out-of-order refresh and invalidation while preserving cache hits and independent-key concurrency.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "debugging-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1334,7 +1334,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 480,
+        "wall_seconds": null,
         "max_steps": 36,
         "max_tool_calls": 24
       },
@@ -1411,7 +1411,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -1434,8 +1434,8 @@
       "design_revision": {
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
-        "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "debugging-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. It removes the model wall-clock deadline. It changes the step and tool-call limits from 40/28 to 48/40. Elapsed time and cost remain independent efficiency measurements.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1454,7 +1454,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 1500,
+        "wall_seconds": null,
         "max_steps": 48,
         "max_tool_calls": 40
       },
@@ -1553,9 +1553,9 @@
       "summary": "Repair duplicate side effects across durable crash windows and concurrent replay while preserving acknowledgement order and transient retryability.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "debugging-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1574,7 +1574,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -1651,7 +1651,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -1673,9 +1673,9 @@
       "summary": "Fix a reporting window that uses UTC dates where the contract requires a configured IANA timezone. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "debugging-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1694,7 +1694,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -1771,7 +1771,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -1793,9 +1793,9 @@
       "summary": "Diagnose and repair a leaked database permit on one cancellation path under bounded concurrency. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "debugging-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1814,7 +1814,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 480,
+        "wall_seconds": null,
         "max_steps": 36,
         "max_tool_calls": 24
       },
@@ -1891,7 +1891,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -1913,9 +1913,9 @@
       "summary": "Fix extraction failures on Windows-style paths while retaining traversal and symlink protections. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "debugging-08 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "debugging-08 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1934,7 +1934,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 480,
+        "wall_seconds": null,
         "max_steps": 36,
         "max_tool_calls": 24
       },
@@ -2012,7 +2012,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2034,9 +2034,9 @@
       "summary": "Identify the source, tests, configuration, and documentation that jointly own one CLI flag. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2054,7 +2054,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 300,
+        "wall_seconds": null,
         "max_steps": 24,
         "max_tool_calls": 16
       },
@@ -2131,7 +2131,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2153,9 +2153,9 @@
       "summary": "Trace a request from its entrypoint through validation and persistence, including the principal error branches. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2173,7 +2173,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 300,
+        "wall_seconds": null,
         "max_steps": 24,
         "max_tool_calls": 16
       },
@@ -2250,7 +2250,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2272,9 +2272,9 @@
       "summary": "Determine which files are generated, what source owns them, and the supported regeneration command. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2292,7 +2292,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 300,
+        "wall_seconds": null,
         "max_steps": 24,
         "max_tool_calls": 16
       },
@@ -2369,7 +2369,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2391,9 +2391,9 @@
       "summary": "Enumerate the runtime, tests, migrations, API types, and documentation affected by a named schema field rename. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2411,7 +2411,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 18
       },
@@ -2488,7 +2488,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2510,9 +2510,9 @@
       "summary": "Explain which release jobs can run after a specified job failure and which artifacts or publications can still occur. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2530,7 +2530,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 18
       },
@@ -2607,7 +2607,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2629,9 +2629,9 @@
       "summary": "Recover a configuration contract spread across parser code, startup code, example files, and tests. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2649,7 +2649,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 300,
+        "wall_seconds": null,
         "max_steps": 24,
         "max_tool_calls": 16
       },
@@ -2726,7 +2726,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2748,9 +2748,9 @@
       "summary": "Determine the minimal atomic edits needed to move a package while preserving build, release, and local commands. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "repository-understanding-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "repository-understanding-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2768,7 +2768,7 @@
         "filesystem_read"
       ],
       "budget": {
-        "wall_seconds": 390,
+        "wall_seconds": null,
         "max_steps": 30,
         "max_tool_calls": 21
       },
@@ -2845,7 +2845,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2867,9 +2867,9 @@
       "summary": "Normalize headers, dates, missing values, and row ordering in a small CSV export. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -2888,7 +2888,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -2965,7 +2965,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -2987,9 +2987,9 @@
       "summary": "Join two keyed datasets under an explicit cardinality policy, producing deterministic matched rows, unmatched-key reconciliation, and duplicate diagnostics.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3008,7 +3008,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -3085,7 +3085,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3107,9 +3107,9 @@
       "summary": "Build weekly cohort retention from signup and activity events with explicit timezone and denominator rules. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3128,7 +3128,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -3205,7 +3205,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3227,9 +3227,9 @@
       "summary": "Reconcile debits, credits, reversals, and duplicate references into a discrepancy report. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3248,7 +3248,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -3325,7 +3325,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3347,9 +3347,9 @@
       "summary": "Flatten selected nested fields, classify malformed events, and aggregate counts without dropping valid unknown fields. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3368,7 +3368,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -3445,7 +3445,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3467,9 +3467,9 @@
       "summary": "Identify a seeded reporting discontinuity while distinguishing missing intervals from true zero values. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3488,7 +3488,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -3565,7 +3565,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3587,9 +3587,9 @@
       "summary": "Produce a deterministic stratified sample that satisfies minimum group coverage and a fixed row budget. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3608,7 +3608,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -3685,7 +3685,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3707,9 +3707,9 @@
       "summary": "Construct non-overlapping validity intervals from out-of-order entity updates and late corrections. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "data-processing-08 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "data-processing-08 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3728,7 +3728,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -3805,7 +3805,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3827,9 +3827,9 @@
       "summary": "Apply a dated numeric product limit to a concrete request plan and preserve its exact scope and capture identity. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3848,7 +3848,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -3925,7 +3925,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -3947,9 +3947,9 @@
       "summary": "Reconstruct initial feature availability and a later default change from two captured releases. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -3968,7 +3968,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -4045,7 +4045,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4067,9 +4067,9 @@
       "summary": "Interpret a standards assertion from a captured normative source, including authority strength and negative evidence. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4088,7 +4088,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -4165,7 +4165,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4187,9 +4187,9 @@
       "summary": "Verify a dependency compatibility claim from a captured first-party migration source and preserve its exact conditions. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4208,7 +4208,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -4285,7 +4285,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4307,9 +4307,9 @@
       "summary": "Reconstruct a dated policy timeline from captured first-party evidence, including amendments and superseded text. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4328,7 +4328,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -4405,7 +4405,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4427,9 +4427,9 @@
       "summary": "Validate a quoted statistic from captured first-party dataset rows and reproduce its numerator, denominator, and limitation. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4448,7 +4448,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -4525,7 +4525,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4547,9 +4547,9 @@
       "summary": "Audit a short technical brief against bounded captured first-party sources and classify each material claim. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "retrieval-verification-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "retrieval-verification-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4568,7 +4568,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -4645,7 +4645,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4667,9 +4667,9 @@
       "summary": "Convert a small incident fact set into a concise operator notice with impact, status, and next update time. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4688,7 +4688,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -4765,7 +4765,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4787,9 +4787,9 @@
       "summary": "Rewrite incomplete setup notes into ordered, executable steps with prerequisites and verification. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4808,7 +4808,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -4885,7 +4885,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -4907,9 +4907,9 @@
       "summary": "Create a handoff that names completed work, remaining environment inputs, rollback, and verification commands. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -4928,7 +4928,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -5005,7 +5005,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5027,9 +5027,9 @@
       "summary": "Write a short public explanation and a precise technical appendix from one scoring specification. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5048,7 +5048,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -5125,7 +5125,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5147,9 +5147,9 @@
       "summary": "Correct a changelog entry that overstates scope and omits a compatibility condition. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5168,7 +5168,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -5245,7 +5245,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5267,9 +5267,9 @@
       "summary": "Turn supplied evidence into a decision record with constraints, alternatives, consequences, and replacement triggers. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5288,7 +5288,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -5365,7 +5365,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5387,9 +5387,9 @@
       "summary": "Consolidate two drifting runbooks into one owner and replace duplicate instructions with accurate links. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "documentation-communication-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "documentation-communication-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5408,7 +5408,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -5485,7 +5485,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5507,9 +5507,9 @@
       "summary": "Build a feasible maintenance schedule from dependencies, durations, exclusive capacity, and a validation reserve. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5528,7 +5528,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -5605,7 +5605,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5627,9 +5627,9 @@
       "summary": "Execute compatibility checkpoints while each state remains deployable and the last rollback boundary stays explicit. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5648,7 +5648,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -5725,7 +5725,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5747,9 +5747,9 @@
       "summary": "Allocate qualified available people to interval demand without double booking and preserve useful continuity. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5768,7 +5768,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -5845,7 +5845,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5867,9 +5867,9 @@
       "summary": "Execute eligible rollout stages, stop before the first ineligible stage, and retain the controlling evidence. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -5888,7 +5888,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -5965,7 +5965,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -5987,9 +5987,9 @@
       "summary": "Implement a bounded schema/data change with a dry-run, invariant checks, and an explicit rollback path. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6008,7 +6008,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -6085,7 +6085,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6107,9 +6107,9 @@
       "summary": "Update one direct dependency, migrate supported API changes, regenerate the lock, and report graph delta. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6128,7 +6128,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -6205,7 +6205,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6227,9 +6227,9 @@
       "summary": "Repair package paths across a build matrix while preserving pinned actions and platform-specific archive formats. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "planning-execution-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "planning-execution-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6248,7 +6248,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -6325,7 +6325,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6347,9 +6347,9 @@
       "summary": "Find the source-owned setting, change it without editing generated output, and record recomputable evidence. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6369,7 +6369,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 390,
+        "wall_seconds": null,
         "max_steps": 30,
         "max_tool_calls": 22
       },
@@ -6448,7 +6448,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6470,9 +6470,9 @@
       "summary": "Invoke an immutable local Node document extractor and retain its digest-bound output receipt. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6492,7 +6492,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 390,
+        "wall_seconds": null,
         "max_steps": 30,
         "max_tool_calls": 22
       },
@@ -6571,7 +6571,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6593,9 +6593,9 @@
       "summary": "Use an immutable local validator to diagnose invalid configuration, repair it, validate it again, and retain digest-bound receipts. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6615,7 +6615,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 450,
+        "wall_seconds": null,
         "max_steps": 34,
         "max_tool_calls": 25
       },
@@ -6694,7 +6694,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6716,9 +6716,9 @@
       "summary": "Verify a bounded captured local site and record the selected release, source anchors, rejected draft evidence, and source receipts. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6738,7 +6738,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 390,
+        "wall_seconds": null,
         "max_steps": 30,
         "max_tool_calls": 22
       },
@@ -6816,7 +6816,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6838,9 +6838,9 @@
       "summary": "Apply a bounded multi-file patch and make the focused validation artifact reject behavioral regressions. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6860,7 +6860,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 390,
+        "wall_seconds": null,
         "max_steps": 30,
         "max_tool_calls": 22
       },
@@ -6938,7 +6938,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -6960,9 +6960,9 @@
       "summary": "Combine two frozen, versioned local-command outputs into a deterministic report without exposing diagnostic or environment fields. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -6982,7 +6982,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 390,
+        "wall_seconds": null,
         "max_steps": 30,
         "max_tool_calls": 22
       },
@@ -7060,7 +7060,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7082,9 +7082,9 @@
       "summary": "Complete a repository lookup after a preferred indexing tool fails, using bounded source evidence and recomputable receipts. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "tool-use-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "tool-use-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7104,7 +7104,7 @@
         "command_execution"
       ],
       "budget": {
-        "wall_seconds": 450,
+        "wall_seconds": null,
         "max_steps": 34,
         "max_tool_calls": 25
       },
@@ -7182,7 +7182,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7204,9 +7204,9 @@
       "summary": "Return supplied facts in an exact JSON schema with no extra keys or prose. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "instruction-following-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "instruction-following-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7225,7 +7225,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -7302,7 +7302,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7324,9 +7324,9 @@
       "summary": "Implement a change while modifying only the explicitly allowed files and preserving all forbidden paths. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "instruction-following-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "instruction-following-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7345,7 +7345,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -7422,7 +7422,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7444,9 +7444,9 @@
       "summary": "Produce an artifact that satisfies a hierarchy of format, safety, terminology, and length constraints. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "instruction-following-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "instruction-following-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7465,7 +7465,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -7542,7 +7542,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7564,9 +7564,9 @@
       "summary": "Prepare deployable configuration and code without creating the prohibited cloud resource or sending a message. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "instruction-following-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "instruction-following-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7585,7 +7585,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -7662,7 +7662,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7684,9 +7684,9 @@
       "summary": "Add demo data while ensuring every public surface identifies it as synthetic and no measured claim is implied. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "instruction-following-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "instruction-following-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7705,7 +7705,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -7782,7 +7782,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7804,9 +7804,9 @@
       "summary": "Apply a change with exact naming, compatibility, validation, documentation, and no-secret requirements. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "instruction-following-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "instruction-following-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7825,7 +7825,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -7902,7 +7902,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -7924,9 +7924,9 @@
       "summary": "Classify an interrupted item from frozen capability evidence and preserve prior completed evidence without inventing a result. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-01 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -7945,7 +7945,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 330,
+        "wall_seconds": null,
         "max_steps": 26,
         "max_tool_calls": 16
       },
@@ -8023,7 +8023,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -8045,9 +8045,9 @@
       "summary": "Resume after interruption using a checkpoint and avoid re-running completed side effects. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-02 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -8066,7 +8066,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -8143,7 +8143,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -8165,9 +8165,9 @@
       "summary": "Apply the supplied integrity policy to a partial attachment and preserve auditable byte and digest evidence. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-03 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-03 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -8186,7 +8186,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -8263,7 +8263,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -8285,9 +8285,9 @@
       "summary": "Recover an ambiguous submission from frozen state, lookup evidence, and idempotency policy. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-04 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -8306,7 +8306,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -8383,7 +8383,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -8405,9 +8405,9 @@
       "summary": "Recover when output is ahead of the durable checkpoint, avoid repeated work, promote final output, and retire temporary state. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-05 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-05 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -8426,7 +8426,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -8504,7 +8504,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -8526,9 +8526,9 @@
       "summary": "Reject one malformed task definition while continuing independent valid tasks and reporting the batch summary. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-06 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -8547,7 +8547,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 360,
+        "wall_seconds": null,
         "max_steps": 28,
         "max_tool_calls": 18
       },
@@ -8624,7 +8624,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
@@ -8646,9 +8646,9 @@
       "summary": "Reconcile signed claims from deterministic verification evidence while preserving unresolved trust boundaries. Score the core result, edge handling, preservation, and evidence separately so plausible partial work receives deterministic partial credit.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "reliability-recovery-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.",
+        "task_specific_delta": "reliability-recovery-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -8667,7 +8667,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": null,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -8745,7 +8745,7 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
         "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",

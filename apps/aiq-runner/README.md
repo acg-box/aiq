@@ -107,16 +107,16 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
+sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91
 ```
 
 This is the active public `1.0.6` metadata identity. Its public release digest
-is `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
-The public catalog is deterministic and identity-frozen. Two controlled
-generations produced one matching tree. The database task commitment is
-intentionally not changed by this scoring-only update and must be regenerated
-before database cutover. Final clean-commit regeneration, the fresh pilot,
-Contrast generation, and release acceptance remain pending.
+is `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+The public catalog is deterministic and identity-frozen. The no-deadline
+identity requires fresh independent Core and Contrast seals. The database task
+commitment must then be regenerated before database cutover. Final clean-commit
+regeneration, the focused canary, full calibration, and release acceptance
+remain pending.
 
 ## Execution and evidence
 
@@ -124,11 +124,11 @@ The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
 
-For the `1.0.6` release, first run coding-07 across all 17 configurations, then
-run all five runtime-revised tasks across all 17 configurations, and only then
-run one complete 17-by-72 calibration before any real Official publication
-path. Each task uses one budget for every model configuration. The non-Official
-calibration must try to falsify fixture
+For the `1.0.6` release, first rerun the two Sol ultra cells that reached the
+old wall deadline, and then run one complete 17-by-72 calibration before any
+real Official publication path. Every formal model task has
+`wall_seconds: null`; the adapter waits for normal completion while live step
+and tool-call budgets remain enforced. The non-Official calibration must try to falsify fixture
 discrimination and must pass the release policy without an operator override.
 The interrupted `1.0.3` Official attempt was rejected as unpublished calibration
 evidence after an already-conclusive ceiling failure. No hidden responses or
@@ -147,7 +147,9 @@ Each adapter-invoked result can record runner-observed wall time. When Codex
 reports token counters, the verifier parses the retained evidence again and
 records the provider-reported input, cache, output, and reasoning counters. The
 versioned cost field is a Standard short-context API-equivalent estimate. It is
-not the actual cost of a ChatGPT or Codex subscription.
+not the actual cost of a ChatGPT or Codex subscription. Time, tokens, tool use,
+and estimated cost never enter AIQ, Rasch ability, quality, strict-pass,
+ranking, or interval calculations.
 
 Task workspaces are fresh copies. The runner stores content-addressed workspace
 and evaluator artifacts under the controlled artifact root. It writes a durable
