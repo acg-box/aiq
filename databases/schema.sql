@@ -7801,7 +7801,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.6', '1.0.6'
+        'aiq-core', '1.0.6', '1.0.7'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
