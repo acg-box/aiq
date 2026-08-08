@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json;
 use sha2::{Digest, Sha256};
 
+use crate::calibration_verification::CALIBRATION_ADMISSION_SCHEMA_VERSION;
 use crate::official_admission::{
 	OfficialOutputPlan, OfficialPlanBinding, PermissionAdmissionReport,
 };
@@ -44,6 +45,7 @@ use aiq_runner::{
 		ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus,
 		Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor,
 	},
+	calibration_verification::CalibrationAdmissionBundleV2,
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
 		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment,
@@ -70,7 +72,8 @@ use aiq_runner::{
 	schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
 	scoring::{
 		self, AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
-		CalibrationScoreReport, FalseOnly, ScoreContext, ScoreOptions, ScoreReport,
+		CalibrationScoreReport, FalseOnly, FrozenCalibrationBankV2, ScoreContext, ScoreOptions,
+		ScoreReport,
 	},
 	submission::{
 		self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY,
@@ -138,6 +141,7 @@ struct RunOptions {
 struct PermissionAdmissionOptions {
 	public_tasks: Option<PathBuf>,
 	hidden_tasks: Option<PathBuf>,
+	calibration_admission: PathBuf,
 	corpus_commitment: PathBuf,
 	source_root: PathBuf,
 	capabilities: PathBuf,
@@ -573,6 +577,7 @@ struct AuthorizedRun {
 	codex_home_commitment: String,
 	preflight: PreflightCache,
 	execution_window: ExecutionWindow,
+	official_calibration_binding: Option<(String, FrozenCalibrationBankV2)>,
 }
 
 struct ExecutedLiveRun {
@@ -643,6 +648,7 @@ impl VerifiedPermissionEvidence {
 struct OfficialPlanningInputs<'a> {
 	public_tasks: Option<&'a Path>,
 	hidden_tasks: Option<&'a Path>,
+	calibration_admission: &'a Path,
 	corpus_commitment: &'a Path,
 	capabilities: &'a Path,
 	source_root: &'a Path,
@@ -1253,6 +1259,9 @@ enum Command {
 		/// Controlled directory of hidden task JSON files.
 		#[arg(long)]
 		hidden_tasks: Option<PathBuf>,
+		/// Verifier-signed calibration admission v2 containing the frozen item bank.
+		#[arg(long)]
+		calibration_admission: PathBuf,
 		/// Current public-safe controlled-corpus commitment.
 		#[arg(long)]
 		corpus_commitment: PathBuf,
@@ -1613,10 +1622,10 @@ enum Command {
 		/// Result workspace reconstruction and deterministic evaluator replay disposition.
 		#[arg(long, value_enum)]
 		replay_status: ReplayMode,
-		/// Output path for the exact `aiq.normalized-batch.v3` database stage.
+		/// Output path for the exact `aiq.normalized-batch.v4` database stage.
 		#[arg(long)]
 		stage_output: PathBuf,
-		/// Output path for the signed `aiq.verifier-attestation.v3`.
+		/// Output path for the signed `aiq.verifier-attestation.v4`.
 		#[arg(long)]
 		attestation_output: PathBuf,
 	},
@@ -2147,6 +2156,7 @@ fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::er
 	let Command::AdmitPermissions {
 		public_tasks,
 		hidden_tasks,
+		calibration_admission,
 		corpus_commitment,
 		source_root,
 		capabilities,
@@ -2177,6 +2187,7 @@ fn dispatch_permission_admission(command: Command) -> Result<(), Box<dyn std::er
 	run_permission_admission(PermissionAdmissionOptions {
 		public_tasks,
 		hidden_tasks,
+		calibration_admission,
 		corpus_commitment,
 		source_root,
 		capabilities,
@@ -2706,6 +2717,7 @@ fn prepare_permission_admission(
 		OfficialPlanningInputs {
 			public_tasks: options.public_tasks.as_deref(),
 			hidden_tasks: options.hidden_tasks.as_deref(),
+			calibration_admission: &options.calibration_admission,
 			corpus_commitment: &options.corpus_commitment,
 			capabilities: &options.capabilities,
 			source_root: &options.source_root,
@@ -3078,6 +3090,18 @@ fn build_official_plan(
 	)?;
 
 	let manifest = read_json::<CapabilityManifest>(inputs.capabilities)?;
+	let calibration_bundle =
+		read_json::<CalibrationAdmissionBundleV2>(inputs.calibration_admission)?;
+
+	calibration_bundle.admission.claims.calibration_bank.validate(&prepared.report.tasks)?;
+
+	if calibration_bundle.admission.schema_version != CALIBRATION_ADMISSION_SCHEMA_VERSION
+		|| calibration_bundle.admission.claims.calibration_bank_digest
+			!= calibration_bundle.admission.claims.calibration_bank.digest()?
+	{
+		return Err("calibration admission or frozen bank commitment is invalid".into());
+	}
+
 	let manifest_issues = adapter::validate_capability_manifest(&manifest);
 
 	if !manifest_issues.is_empty() {
@@ -3100,6 +3124,15 @@ fn build_official_plan(
 	Ok(OfficialPlanBinding {
 		run_id: prepared.run_id.clone(),
 		task_ids: prepared.report.tasks.iter().map(|task| task.task_id.clone()).collect(),
+		calibration_admission: canonical_policy_path(inputs.calibration_admission)?
+			.display()
+			.to_string(),
+		calibration_admission_digest: protocol::canonical_hash(&calibration_bundle)?,
+		calibration_bank_digest: calibration_bundle
+			.admission
+			.claims
+			.calibration_bank_digest
+			.clone(),
 		task_set_hash: prepared.task_set_hash.clone(),
 		corpus_commitment_digest: prepared.corpus.canonical_sha256().to_owned(),
 		catalog_digest: prepared.corpus.catalog_digest().to_owned(),
@@ -3552,8 +3585,25 @@ fn prepare_authorized_live_run(
 		codex_home_commitment,
 		preflight,
 		execution_window,
+		official_calibration_binding: load_official_calibration_binding(admission.as_ref())?,
 		options,
 	})
+}
+
+fn load_official_calibration_binding(
+	admission: Option<&(PermissionAdmissionReport, String)>,
+) -> Result<Option<(String, FrozenCalibrationBankV2)>, Box<dyn std::error::Error>> {
+	let Some((report, _)) = admission else { return Ok(None) };
+	let plan = report.plan.as_ref().ok_or("Official admission omits its plan")?;
+	let bundle = read_json::<CalibrationAdmissionBundleV2>(Path::new(&plan.calibration_admission))?;
+
+	if protocol::canonical_hash(&bundle)? != plan.calibration_admission_digest
+		|| bundle.admission.claims.calibration_bank_digest != plan.calibration_bank_digest
+	{
+		return Err("Official calibration admission changed after planning".into());
+	}
+
+	Ok(Some((plan.calibration_admission_digest.clone(), bundle.admission.claims.calibration_bank)))
 }
 
 fn verify_official_admitted_plan(
@@ -3567,6 +3617,7 @@ fn verify_official_admitted_plan(
 		OfficialPlanningInputs {
 			public_tasks: options.public_tasks.as_deref(),
 			hidden_tasks: options.hidden_tasks.as_deref(),
+			calibration_admission: Path::new(&admitted.calibration_admission),
 			corpus_commitment: &options.corpus_commitment,
 			capabilities: &options.capabilities,
 			source_root: &options.source_root,
@@ -3871,6 +3922,7 @@ fn execute_authorized_live_run(
 		codex_home_commitment: _,
 		preflight,
 		execution_window,
+		official_calibration_binding: _,
 	} = context;
 	let checkpoint_was_created = future_files.was_created(&options.checkpoint);
 	let checkpoint_commitments = commitments.clone();
@@ -3952,6 +4004,14 @@ fn build_live_run_commitments(
 		catalog_digest: context.corpus.catalog_digest().to_owned(),
 		task_set_hash: context.task_set_hash.clone(),
 		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		calibration_admission_digest: context
+			.official_calibration_binding
+			.as_ref()
+			.map(|(digest, _)| digest.clone()),
+		calibration_bank: context
+			.official_calibration_binding
+			.as_ref()
+			.map(|(_, bank)| bank.clone()),
 		evaluator_digest,
 		runtime_digest,
 		model_toolchain_digest: context.model_toolchain.digest().to_owned(),
@@ -4700,7 +4760,35 @@ fn run_score(
 
 			aiq_runner::run_validation::validate_run_record(&run, Some(&report.tasks))?;
 
-			let scores = score_all(&report.tasks, &run, options)?;
+			let calibration_bank = if run.synthetic {
+				None
+			} else {
+				let admission_path = official_admission
+					.ok_or("real Official score requires --official-admission")?;
+				let (permission, _) = read_successful_official_admission(admission_path)?;
+				let plan = permission.plan.ok_or("Official admission receipt omits its plan")?;
+				let bundle = read_json::<CalibrationAdmissionBundleV2>(Path::new(
+					&plan.calibration_admission,
+				))?;
+
+				if protocol::canonical_hash(&bundle)? != plan.calibration_admission_digest
+					|| bundle.admission.claims.calibration_bank_digest
+						!= plan.calibration_bank_digest
+					|| bundle.admission.claims.calibration_bank.digest()?
+						!= plan.calibration_bank_digest
+					|| run.calibration_admission_digest.as_deref()
+						!= Some(plan.calibration_admission_digest.as_str())
+					|| run.calibration_bank.as_ref()
+						!= Some(&bundle.admission.claims.calibration_bank)
+				{
+					return Err(
+						"Official admission does not bind the exact calibration bank".into()
+					);
+				}
+
+				Some(bundle.admission.claims.calibration_bank)
+			};
+			let scores = score_all(&report.tasks, &run, calibration_bank.as_ref(), options)?;
 
 			write_json(
 				&output,
@@ -4809,9 +4897,11 @@ fn historical_run_diagnostic_bundle(
 	let normalized_runtime_zero_count =
 		scoring::normalize_historical_runtime_zeroes(&mut run.results)?;
 
+	run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
+
 	aiq_runner::run_validation::validate_run_record(&run, Some(tasks))?;
 
-	let reports = score_all(tasks, &run, options)?;
+	let reports = score_all(tasks, &run, None, options)?;
 
 	Ok(HistoricalDiagnosticRescoreBundle {
 		schema_version: HISTORICAL_DIAGNOSTIC_RESCORE_SCHEMA_VERSION,
@@ -4847,6 +4937,8 @@ fn historical_calibration_diagnostic_bundle(
 	let selected_tasks = select_tasks(tasks, &run.task_ids)?;
 	let normalized_runtime_zero_count =
 		scoring::normalize_historical_runtime_zeroes(&mut run.results)?;
+
+	run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
 
 	aiq_runner::run_validation::validate_calibration_run_record_for_historical_diagnostic(
 		&run,
@@ -5229,6 +5321,7 @@ fn run_demo(
 	let scores = score_all(
 		&tasks,
 		&run,
+		None,
 		ScoreOptions { bootstrap_samples, bootstrap_seed: 0x41_49_51_5f_56_32 },
 	)?;
 
@@ -5332,6 +5425,7 @@ fn ensure_unique_task_ids(report: &mut TaskLoadReport) {
 fn score_all(
 	tasks: &[TaskDefinition],
 	run: &RunRecord,
+	calibration_bank: Option<&FrozenCalibrationBankV2>,
 	options: ScoreOptions,
 ) -> Result<Vec<ScoreReport>, Box<dyn std::error::Error>> {
 	MODEL_MATRIX
@@ -5347,17 +5441,23 @@ fn score_all(
 									== ConfigurationProbeStatus::ObservedUnsupported
 						})
 				});
+			let context = ScoreContext {
+				preflight_configuration_not_applicable,
+				receiver_authorized_publication: false,
+			};
 
-			scoring::score_model_with_context(
-				tasks,
-				&run.results,
-				model,
-				ScoreContext {
-					preflight_configuration_not_applicable,
-					receiver_authorized_publication: false,
-				},
-				options,
-			)
+			if let Some(bank) = calibration_bank {
+				scoring::score_official_model_with_bank(
+					tasks,
+					&run.results,
+					model,
+					bank,
+					context,
+					options,
+				)
+			} else {
+				scoring::score_model_with_context(tasks, &run.results, model, context, options)
+			}
 			.map_err(|error| -> Box<dyn std::error::Error> { Box::new(error) })
 		})
 		.collect()
@@ -5925,6 +6025,7 @@ mod tests {
 			"result_{}",
 			failed.content_hash().expect("legacy result hash").trim_start_matches("sha256:")
 		);
+		run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
 
 		let source_bytes = serde_json::to_vec(&run).expect("source serialization");
 		let source_bytes_sha256 = cli::raw_sha256(&source_bytes);
@@ -6026,6 +6127,9 @@ mod tests {
 		crate::official_admission::OfficialPlanBinding {
 			run_id: format!("run_{}", "b".repeat(64)),
 			task_ids: vec!["task-01".to_owned()],
+			calibration_admission: path("calibration-admission.json"),
+			calibration_admission_digest: digest.clone(),
+			calibration_bank_digest: digest.clone(),
 			task_set_hash: digest.clone(),
 			corpus_commitment_digest: digest.clone(),
 			catalog_digest: digest.clone(),
@@ -7023,6 +7127,7 @@ mod tests {
 		let options = cli::PermissionAdmissionOptions {
 			public_tasks: None,
 			hidden_tasks: Some(root.join("tasks")),
+			calibration_admission: root.join("calibration-admission.json"),
 			corpus_commitment: root.join("commitment.json"),
 			source_root: root.join("source"),
 			capabilities: root.join("capabilities.json"),

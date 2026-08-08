@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aiq.wiki/schema/result-package-v3.schema.json",
-  "title": "AIQ full result submission package v3",
+  "$id": "https://aiq.wiki/schema/result-package-v4.schema.json",
+  "title": "AIQ full result submission package v4",
   "description": "The bounded full-run envelope accepted by the AIQ submission boundary. Local calibration packages are not valid submissions.",
   "type": "object",
   "additionalProperties": false,
@@ -17,13 +17,13 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "aiq.result-package.v3"
+      "const": "aiq.result-package.v4"
     },
     "idempotency_key": {
       "$ref": "#/$defs/runId"
     },
     "payload_type": {
-      "const": "aiq.run.v3"
+      "const": "aiq.run.v4"
     },
     "content_hash": {
       "$ref": "#/$defs/sha256"
@@ -55,6 +55,8 @@
         "schedule_slot",
         "task_set_hash",
         "scoring_version",
+        "calibration_admission_digest",
+        "calibration_bank",
         "execution_concurrency",
         "models",
         "started_unix_ms",
@@ -63,11 +65,12 @@
         "capability_validation",
         "provenance",
         "evaluator_results_artifact",
+        "terminal_attempt_lineage",
         "results"
       ],
       "properties": {
         "schema_version": {
-          "const": "aiq.run.v3"
+          "const": "aiq.run.v4"
         },
         "run_id": {
           "$ref": "#/$defs/runId"
@@ -79,7 +82,13 @@
           "$ref": "#/$defs/sha256"
         },
         "scoring_version": {
-          "const": "1.0.6"
+          "const": "1.0.7"
+        },
+        "calibration_admission_digest": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }]
+        },
+        "calibration_bank": {
+          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/calibrationBank" }]
         },
         "execution_concurrency": {
           "type": "integer",
@@ -181,6 +190,7 @@
         "evaluator_results_artifact": {
           "$ref": "#/$defs/evaluatorResultsArtifact"
         },
+        "terminal_attempt_lineage": { "$ref": "#/$defs/terminalAttemptLineage" },
         "results": {
           "type": "array",
           "minItems": 1224,
@@ -259,9 +269,75 @@
     }
   ],
   "$defs": {
+    "terminalAttemptLineage": {
+      "type": "array",
+      "minItems": 1224,
+      "maxItems": 1224,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "task_version", "model", "terminal_result_ids", "selected_result_id"],
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "task_version": { "const": "1.0.6" },
+          "model": { "$ref": "#/$defs/model" },
+          "terminal_result_ids": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": { "$ref": "#/$defs/resultId" }
+          },
+          "selected_result_id": { "$ref": "#/$defs/resultId" }
+        }
+      }
+    },
+    "calibrationBank": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "scoring_version", "measurement_version", "method", "source_package_sha256", "source_scoring_version", "task_set_id", "task_set_version", "task_set_digest", "catalog_digest", "evaluator_digest", "policy_digest", "calibration_model_count", "items"],
+      "properties": {
+        "schema_version": { "const": "aiq.calibration-bank.v2" },
+        "scoring_version": { "const": "1.0.7" },
+        "measurement_version": { "const": "2.0.0" },
+        "method": { "const": "rasch_fractional_fixed_bank_map_v2" },
+        "source_package_sha256": { "$ref": "#/$defs/sha256" },
+        "source_scoring_version": { "const": "1.0.6" },
+        "task_set_id": { "const": "aiq-core" },
+        "task_set_version": { "const": "1.0.6" },
+        "task_set_digest": { "$ref": "#/$defs/sha256" },
+        "catalog_digest": { "$ref": "#/$defs/sha256" },
+        "evaluator_digest": { "$ref": "#/$defs/sha256" },
+        "policy_digest": { "$ref": "#/$defs/sha256" },
+        "calibration_model_count": { "const": 17 },
+        "items": {
+          "type": "array",
+          "minItems": 72,
+          "maxItems": 72,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["task_id", "task_version", "domain", "facility", "difficulty", "mean_item_information"],
+            "properties": {
+              "task_id": { "type": "string", "minLength": 1 },
+              "task_version": { "const": "1.0.6" },
+              "domain": { "type": "string" },
+              "facility": { "type": "number", "minimum": 0, "maximum": 1 },
+              "difficulty": { "type": "number" },
+              "mean_item_information": { "type": "number", "minimum": 0, "maximum": 0.25 }
+            }
+          }
+        }
+      }
+    },
     "runId": {
       "type": "string",
       "pattern": "^run_[a-f0-9]{64}(?![\\s\\S])"
+    },
+    "resultId": {
+      "type": "string",
+      "pattern": "^result_[a-f0-9]{64}(?![\\s\\S])"
     },
     "sha256": {
       "type": "string",

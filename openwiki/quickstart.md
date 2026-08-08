@@ -15,7 +15,7 @@ contains:
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
 - an active public AIQ Core `aiq-core@1.0.6` candidate, with 72 private-task
-  identities, a public catalog, and scoring `1.0.6`;
+  identities, a public catalog, and scoring `1.0.7`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
@@ -33,7 +33,7 @@ Core and Contrast A/B seals and both model-free validators produced the current
 72-task database commitment. Re-seal once from the final clean identity commit
 before the focused canary. The focused canary, full calibration, native build verification, a real
 Official run, publication, and final deployment are pending. The only production
-tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement `2.0.0`. Production
+tuple is AIQ Core `1.0.6`, scoring `1.0.7`, and measurement `2.0.0`. Production
 must not publish an Official matrix until the new real package passes verification.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive
@@ -174,7 +174,7 @@ commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
 Initialization can start only after one real signed non-synthetic 17-by-72
 package passes native verifier replay. It validates those fields and bindings. The expected initialization
-receipt must contain scoring `1.0.6`, 72 tasks, 17 model configurations, three nodes,
+receipt must contain scoring `1.0.7`, 72 tasks, 17 model configurations, three nodes,
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is

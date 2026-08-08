@@ -15,7 +15,7 @@ use crate::calibration_verification;
 use crate::calibration_verification::ApiEquivalentPricingModel;
 use crate::calibration_verification::CalibrationEfficiencyAggregate;
 use crate::calibration_verification::CalibrationResultEfficiency;
-use crate::runner::MAX_RUN_JOBS;
+use crate::runner::{self, MAX_RUN_JOBS};
 use crate::{
 	adapter::ArtifactReference,
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
@@ -35,13 +35,13 @@ use crate::{
 };
 
 /// Normalized batch schema.
-pub const NORMALIZATION_SCHEMA_VERSION: &str = "aiq.normalized-batch.v3";
+pub const NORMALIZATION_SCHEMA_VERSION: &str = "aiq.normalized-batch.v4";
 /// Normalized child-run schema.
 pub const NORMALIZED_MODEL_RUN_SCHEMA_VERSION: &str = "aiq.normalized-model-run.v1";
 /// Normalized result schema.
 pub const NORMALIZED_RESULT_SCHEMA_VERSION: &str = "aiq.normalized-result.v1";
 /// Verifier attestation schema.
-pub const VERIFIER_ATTESTATION_SCHEMA_VERSION: &str = "aiq.verifier-attestation.v3";
+pub const VERIFIER_ATTESTATION_SCHEMA_VERSION: &str = "aiq.verifier-attestation.v4";
 /// Signature algorithm used by verifier attestations.
 pub const VERIFIER_SIGNATURE_ALGORITHM: &str = "ed25519";
 /// Signature framing and serialization version.
@@ -209,6 +209,8 @@ pub struct NormalizedBatchStage {
 	pub task_set_version: String,
 	/// Signed task-set content address.
 	pub task_set_hash: String,
+	/// Digest of the exact terminal-attempt lineage in the signed run.
+	pub terminal_attempt_lineage_digest: String,
 	/// Signed capability-validation content address, when a production preflight exists.
 	pub capability_validation_digest: Option<String>,
 	/// Signed committed corpus and method identities, absent only for synthetic data.
@@ -267,6 +269,11 @@ impl NormalizedBatchStage {
 		validate_hash("package_sha256", &self.package_sha256, false)?;
 		validate_hash("content_hash", &self.content_hash, true)?;
 		validate_hash("task_set_hash", &self.task_set_hash, true)?;
+		validate_hash(
+			"terminal_attempt_lineage_digest",
+			&self.terminal_attempt_lineage_digest,
+			true,
+		)?;
 		validate_hash("prompt_set_digest", &self.prompt_set_digest, true)?;
 
 		match (
@@ -450,6 +457,8 @@ pub struct VerifierAttestationV2 {
 	pub normalization_digest: String,
 	/// Task-set content address.
 	pub task_set_hash: String,
+	/// Bound terminal-attempt lineage digest.
+	pub terminal_attempt_lineage_digest: String,
 	/// Capability-validation content address, when present.
 	pub capability_validation_digest: Option<String>,
 	/// Signed committed corpus and method identities, when present.
@@ -490,6 +499,7 @@ impl VerifierAttestationV2 {
 			|| self.content_hash != stage.content_hash
 			|| self.normalization_digest != stage.normalization_digest
 			|| self.task_set_hash != stage.task_set_hash
+			|| self.terminal_attempt_lineage_digest != stage.terminal_attempt_lineage_digest
 			|| self.capability_validation_digest != stage.capability_validation_digest
 			|| self.provenance != stage.provenance
 			|| self.benchmark_version != stage.benchmark_version
@@ -603,6 +613,7 @@ impl VerifierSigningIdentity {
 			content_hash: stage.content_hash.clone(),
 			normalization_digest: stage.normalization_digest.clone(),
 			task_set_hash: stage.task_set_hash.clone(),
+			terminal_attempt_lineage_digest: stage.terminal_attempt_lineage_digest.clone(),
 			capability_validation_digest: stage.capability_validation_digest.clone(),
 			provenance: stage.provenance.clone(),
 			benchmark_version: stage.benchmark_version.clone(),
@@ -635,6 +646,7 @@ struct UnsignedNormalizedStage<'a> {
 	task_set_id: &'a str,
 	task_set_version: &'a str,
 	task_set_hash: &'a str,
+	terminal_attempt_lineage_digest: &'a str,
 	capability_validation_digest: &'a Option<String>,
 	provenance: &'a Option<RunProvenanceCommitment>,
 	run_class: Option<RunClass>,
@@ -664,6 +676,7 @@ impl<'a> From<&'a NormalizedBatchStage> for UnsignedNormalizedStage<'a> {
 			task_set_id: &value.task_set_id,
 			task_set_version: &value.task_set_version,
 			task_set_hash: &value.task_set_hash,
+			terminal_attempt_lineage_digest: &value.terminal_attempt_lineage_digest,
 			capability_validation_digest: &value.capability_validation_digest,
 			provenance: &value.provenance,
 			run_class: value.run_class,
@@ -695,6 +708,7 @@ struct UnsignedAttestation<'a> {
 	content_hash: &'a str,
 	normalization_digest: &'a str,
 	task_set_hash: &'a str,
+	terminal_attempt_lineage_digest: &'a str,
 	capability_validation_digest: &'a Option<String>,
 	provenance: &'a Option<RunProvenanceCommitment>,
 	benchmark_version: &'a str,
@@ -717,6 +731,7 @@ impl<'a> From<&'a VerifierAttestationV2> for UnsignedAttestation<'a> {
 			content_hash: &value.content_hash,
 			normalization_digest: &value.normalization_digest,
 			task_set_hash: &value.task_set_hash,
+			terminal_attempt_lineage_digest: &value.terminal_attempt_lineage_digest,
 			capability_validation_digest: &value.capability_validation_digest,
 			provenance: &value.provenance,
 			benchmark_version: &value.benchmark_version,
@@ -871,6 +886,8 @@ pub fn normalize_verified_batch(
 		task_set_id: metadata.task_set_id.clone(),
 		task_set_version: metadata.task_set_version.clone(),
 		task_set_hash: run.task_set_hash.clone(),
+		terminal_attempt_lineage_digest: protocol::canonical_hash(&run.terminal_attempt_lineage)
+			.map_err(|error| NormalizationError::new(error.to_string()))?,
 		capability_validation_digest: run
 			.capability_validation
 			.as_ref()
@@ -1017,9 +1034,28 @@ fn recompute_score(
 		}),
 		receiver_authorized_publication: false,
 	};
+	let result = if run.synthetic {
+		scoring::score_model_with_context(
+			tasks,
+			&run.results,
+			model,
+			context,
+			ScoreOptions::default(),
+		)
+	} else {
+		scoring::score_official_model_with_bank(
+			tasks,
+			&run.results,
+			model,
+			run.calibration_bank
+				.as_ref()
+				.ok_or_else(|| NormalizationError::new("Official run omits frozen bank"))?,
+			context,
+			ScoreOptions::default(),
+		)
+	};
 
-	scoring::score_model_with_context(tasks, &run.results, model, context, ScoreOptions::default())
-		.map_err(|error| NormalizationError::new(format!("score recomputation failed: {error}")))
+	result.map_err(|error| NormalizationError::new(format!("score recomputation failed: {error}")))
 }
 
 fn validate_inputs(
@@ -1029,6 +1065,9 @@ fn validate_inputs(
 	package: &VerifiedPackageIdentity,
 	metadata: &AttestedDeploymentMetadata,
 ) -> Result<(), NormalizationError> {
+	runner::validate_terminal_attempt_lineage(&run.results, &run.terminal_attempt_lineage)
+		.map_err(|error| NormalizationError::new(error.to_string()))?;
+
 	validate_hash("package_sha256", &package.package_sha256, false)?;
 	validate_hash("content_hash", &package.content_hash, true)?;
 	validate_node(&package.signer)?;

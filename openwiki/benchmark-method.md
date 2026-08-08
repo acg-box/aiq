@@ -10,7 +10,7 @@ tags: ['benchmark', 'method', 'scoring']
 ## Fixture
 
 Repository source targets the public AIQ Core `1.0.6` candidate, benchmark
-release `aiq-core@1.0.6`, and scoring implementation `1.0.6`. It contains 72 fixed
+release `aiq-core@1.0.6`, and scoring implementation `1.0.7`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -68,7 +68,7 @@ bound by the corpus commitment.
 
 ## Published Official evidence
 
-Production can publish only one AIQ Core `1.0.6`, scoring `1.0.6`, measurement
+Production can publish only one AIQ Core `1.0.6`, scoring `1.0.7`, measurement
 `2.0.0`, non-synthetic Official `72 × 17` matrix, or 1,224 results. The release gate checks all
 72 Core task definitions and their policy-valid acceptance suites. Every Core
 task requires `gold`, `alternate_correct`, `partial`, and `adversarial_format`;
@@ -325,10 +325,14 @@ invalid, missing, and not-applicable states separate.
 
 AIQ measurement `2.0.0` separates the ranking estimand from the raw fixture
 diagnostics. The raw equal-domain fixed-fixture mean remains a criterion-
-referenced `qualityScore`; it is not the ranking score. A complete 17-by-72
-calibration matrix jointly estimates model locations (`theta`) and task
-difficulties (`beta`) with weak `N(0, 3²)` priors and a centered item scale. The
-released Official score is bounded to 0–100 as
+referenced `qualityScore`; it is not the ranking score. A complete replay-
+verified 17-by-72 calibration matrix jointly estimates model locations (`theta`)
+and task difficulties (`beta`) with weak `N(0, 3²)` priors and a centered item
+scale. Calibration admission v2 signs that complete item bank once. Each
+Official replicate freezes those task difficulties and estimates only its model
+locations. Replicate ceiling, informative-item, and non-uniform counts remain
+drift diagnostics; they do not re-fit or re-gate the admitted bank. The released
+Official score is bounded to 0–100 as
 `100 × logistic(theta)` for the average calibrated task. It is a calibrated
 ability index, not an IQ norm, percentile, or claim of general intelligence.
 
@@ -350,28 +354,37 @@ task-resampling interval remains a calibrated sensitivity interval for task-mix
 sensitivity, not a universal confidence interval for model capability.
 
 An Official result requires non-synthetic evidence for all 72 tasks in one model
-configuration, valid evidence for the complete 17-configuration batch, and a
-passed calibration release gate. A complete synthetic score uses
+configuration, valid evidence for the complete 17-configuration batch, and the
+exact signed calibration admission and frozen bank. A complete synthetic score uses
 `synthetic_complete`: it has no latent Official score, is descriptive only, and
 is never ranking eligible. Partial data can be shown as Provisional or
 coverage-only but is not ranked as Official.
 
 ## Verification
 
-The runner signs one `aiq.result-package.v3` envelope. For an Official run, the
+The runner signs one `aiq.result-package.v4` envelope. For an Official run, the
 verifier checks the signature and content hashes, reconstructs submitted
 workspaces, replays the deterministic evaluators, and signs
-`aiq.verifier-attestation.v3` only after the normalized stage and replay bindings
+`aiq.verifier-attestation.v4` only after the normalized stage and replay bindings
 agree.
 
 Calibration uses a parallel but permanently non-Official contract. The verifier
 replays the selected controlled tasks, recomputes scores and efficiency
-aggregates, creates `aiq.calibration-verified-stage.v1`, and signs
-`aiq.calibration-verifier-attestation.v1`. The stage binds the exact package,
+aggregates, creates `aiq.calibration-verified-stage.v2`, and signs
+`aiq.calibration-verifier-attestation.v2`. The stage binds the exact package,
 selection digests, capability and provenance evidence, evaluator-results
 artifact, execution concurrency, scoring version, benchmark release, telemetry,
 and pricing method. Replay-verified provenance does not change its `untrusted`
 trust tier or make it Official or ranking eligible.
+
+Calibration admission keeps two signed provenance boundaries. Replay provenance
+binds the legacy calibration package, corpus, source, runner binary, and Codex
+runtime that produced the retained evidence. Issuance bindings independently
+bind the current verifier, source tree, build receipt, corpus, and executables
+that create admission v2. The task-set, catalog, evaluator, policy, and method
+identities must agree across both boundaries. The replay runner key must remain
+the runner key approved by the production reference. Source or binary identity
+is never copied from one boundary to impersonate the other.
 
 `aiq-verifier diagnose-rescore` is a separate offline audit path. It first
 validates the signed source package and completes the source evaluator replay.

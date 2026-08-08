@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 import livePublishedConfig from './playwright.live-published.ts';
+import { AIQ_CORE_BENCHMARK_VERSION, AIQ_CORE_SCORING_VERSION } from './src/aiq-core-contract.ts';
 
 const livePublishedServers = Array.isArray(livePublishedConfig.webServer)
   ? livePublishedConfig.webServer
@@ -27,8 +28,8 @@ export default defineConfig({
   metadata: {
     productionEvidenceVariants: true,
     productionExpectedIdentity: {
-      benchmarkVersion: 'aiq-core@1.0.6',
-      scoringVersion: '1.0.6',
+      benchmarkVersion: AIQ_CORE_BENCHMARK_VERSION,
+      scoringVersion: AIQ_CORE_SCORING_VERSION,
       matrixBatchId: `run_${'b'.repeat(64)}`,
       runnerCommit: 'b76148cd419ab4ebb491cdb9f6a00555059eab67',
       corpusReleaseId: 'corpus_test-generated-aiq-core-1.0.6',

@@ -8,7 +8,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::runner::MAX_RUN_JOBS;
+use crate::runner::{self, MAX_RUN_JOBS};
 use crate::{
 	adapter::{
 		self, AdapterFailure, ArtifactReference, CapabilityValidationReport,
@@ -43,6 +43,7 @@ const MAX_TASK_ID_BYTES: usize = 64;
 const MAX_TASK_VERSION_BYTES: usize = 32;
 const MAX_RUNNER_VERSION_BYTES: usize = 32;
 const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const CALIBRATION_SOURCE_1_0_6_SCORING_VERSION: &str = "1.0.6";
 
 /// A saved run failed semantic validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -67,7 +68,7 @@ impl Display for RunValidationError {
 pub fn validate_calibration_run_record(
 	run: &CalibrationRunRecord,
 ) -> Result<(), RunValidationError> {
-	validate_calibration_run_record_inner(run, false)
+	validate_calibration_run_record_inner(run, false, AIQ_SCORING_VERSION)
 }
 
 /// Validates a calibration against the exact supplied task definitions and frozen catalog bindings.
@@ -80,14 +81,29 @@ pub fn validate_calibration_run_record_with_tasks(
 	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
 }
 
+/// Validates a promoted 1.0.6 calibration source without changing its signed run identity.
+pub fn validate_calibration_source_1_0_6_with_tasks(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<(), RunValidationError> {
+	validate_calibration_run_record_inner(run, true, CALIBRATION_SOURCE_1_0_6_SCORING_VERSION)?;
+
+	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
+}
+
 /// Validates a complete run. Supplied tasks add source-authoritative hash checks.
 pub fn validate_run_record(
 	run: &RunRecord,
 	tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), RunValidationError> {
 	if run.schema_version != RUN_SCHEMA_VERSION {
-		return Err(RunValidationError::new("run schema_version is not aiq.run.v3"));
+		return Err(RunValidationError::new("run schema_version is not aiq.run.v4"));
 	}
+
+	runner::validate_terminal_attempt_lineage(&run.results, &run.terminal_attempt_lineage)
+		.map_err(|error| RunValidationError::new(error.to_string()))?;
+
+	validate_run_calibration_bank(run, tasks)?;
 
 	run.schedule_slot
 		.validate()
@@ -220,7 +236,7 @@ pub(crate) fn validate_calibration_run_record_for_historical_diagnostic(
 	run: &CalibrationRunRecord,
 	tasks: &[TaskDefinition],
 ) -> Result<(), RunValidationError> {
-	validate_calibration_run_record_inner(run, true)?;
+	validate_calibration_run_record_inner(run, true, AIQ_SCORING_VERSION)?;
 
 	validate_calibration_task_content(run, tasks)
 }
@@ -253,23 +269,44 @@ pub(crate) fn valid_normalized_artifact_reference(artifact: &ArtifactReference) 
 		)
 }
 
+fn validate_run_calibration_bank(
+	run: &RunRecord,
+	tasks: Option<&[TaskDefinition]>,
+) -> Result<(), RunValidationError> {
+	match (run.synthetic, &run.calibration_admission_digest, &run.calibration_bank) {
+		(true, None, None) => Ok(()),
+		(false, Some(admission_digest), Some(bank)) => {
+			if !is_sha256(admission_digest) {
+				return Err(RunValidationError::new("calibration admission digest is invalid"));
+			}
+
+			if let Some(tasks) = tasks {
+				bank.validate(tasks).map_err(|error| RunValidationError::new(error.to_string()))?;
+			}
+
+			Ok(())
+		},
+		_ => Err(RunValidationError::new("run calibration-bank binding is invalid")),
+	}
+}
+
 fn validate_calibration_run_record_inner(
 	run: &CalibrationRunRecord,
 	allow_historical_catalog: bool,
+	identity_scoring_version: &str,
 ) -> Result<(), RunValidationError> {
-	if run.schema_version != CALIBRATION_RUN_SCHEMA_VERSION
-		|| run.official_eligible
-		|| run.classification != "local_calibration_non_official"
-		|| run.scoring_version != AIQ_SCORING_VERSION
-		|| run.models.is_empty()
-		|| run.execution_concurrency.is_some_and(|jobs| !(1..=MAX_RUN_JOBS).contains(&jobs))
-		|| run.task_ids.is_empty()
-		|| run.finished_unix_ms < run.started_unix_ms
-		|| run.started_unix_ms > MAX_JCS_SAFE_INTEGER
-		|| run.finished_unix_ms > MAX_JCS_SAFE_INTEGER
-	{
+	if !valid_calibration_run_identity(run) {
 		return Err(RunValidationError::new(
 			"calibration run identity or classification is invalid",
+		));
+	}
+
+	runner::validate_terminal_attempt_lineage(&run.results, &run.terminal_attempt_lineage)
+		.map_err(|error| RunValidationError::new(error.to_string()))?;
+
+	if run.calibration_admission_digest.is_some() || run.calibration_bank.is_some() {
+		return Err(RunValidationError::new(
+			"calibration runs must not consume an Official frozen bank",
 		));
 	}
 
@@ -352,12 +389,13 @@ fn validate_calibration_run_record_inner(
 	})?;
 
 	if task_set_hash != run.task_set_hash
-		|| resume::classified_run_id(
+		|| resume::classified_run_id_for_scoring_version(
 			&run.schedule_slot,
 			&run.task_set_hash,
 			&run.provenance.corpus_commitment_sha256,
 			&run.models,
 			RunClass::Calibration,
+			identity_scoring_version,
 		)
 		.map_err(|error| RunValidationError::new(error.to_string()))?
 			!= run.run_id
@@ -368,6 +406,19 @@ fn validate_calibration_run_record_inner(
 	}
 
 	validate_calibration_results(run, &model_set, &task_set)
+}
+
+fn valid_calibration_run_identity(run: &CalibrationRunRecord) -> bool {
+	run.schema_version == CALIBRATION_RUN_SCHEMA_VERSION
+		&& !run.official_eligible
+		&& run.classification == "local_calibration_non_official"
+		&& run.scoring_version == AIQ_SCORING_VERSION
+		&& !run.models.is_empty()
+		&& run.execution_concurrency.is_none_or(|jobs| (1..=MAX_RUN_JOBS).contains(&jobs))
+		&& !run.task_ids.is_empty()
+		&& run.finished_unix_ms >= run.started_unix_ms
+		&& run.started_unix_ms <= MAX_JCS_SAFE_INTEGER
+		&& run.finished_unix_ms <= MAX_JCS_SAFE_INTEGER
 }
 
 fn validate_calibration_task_bindings(
@@ -1381,7 +1432,7 @@ mod tests {
 			ResultStatus, RunRecord, TaskResult, ToolUsage,
 		},
 		schedule::{self, ScheduleConfig, ScheduleOccurrence},
-		scoring::AIQ_SCORING_VERSION,
+		scoring::{self, AIQ_SCORING_VERSION},
 		task::{self, EvaluatorCheck, EvaluatorCheckFailureClass},
 	};
 
@@ -1465,6 +1516,21 @@ mod tests {
 		});
 
 		assert!(!super::calibration_preflight_covers_models(&invalid_preflight, &selected));
+	}
+
+	#[test]
+	fn terminal_attempt_replacement_and_multiple_selection_fail_closed() {
+		let (tasks, mut run) = large_synthetic_fixture();
+		let selected = run.terminal_attempt_lineage.first_mut().expect("lineage cell");
+
+		selected.terminal_result_ids.push(format!("result_{}", "f".repeat(64)));
+
+		selected.selected_result_id = selected.terminal_result_ids[1].clone();
+
+		let error = super::validate_run_record(&run, Some(&tasks))
+			.expect_err("replacement lineage must be rejected");
+
+		assert!(error.to_string().contains("terminal-attempt lineage"));
 	}
 
 	fn large_synthetic_fixture() -> (Vec<crate::task::TaskDefinition>, RunRecord) {
@@ -1552,6 +1618,8 @@ mod tests {
 				schedule_slot: slot,
 				task_set_hash: set_hash,
 				scoring_version: AIQ_SCORING_VERSION.to_owned(),
+				calibration_admission_digest: None,
+				calibration_bank: None,
 				execution_concurrency: Some(1),
 				models: MODEL_MATRIX.to_vec(),
 				started_unix_ms: 0,
@@ -1565,6 +1633,7 @@ mod tests {
 					uri: format!("aiq-artifact://sha256/{}/evaluator-results.json", "a".repeat(64)),
 					bytes: 1,
 				},
+				terminal_attempt_lineage: runner::terminal_attempt_lineage(&results),
 				results,
 			},
 		)
@@ -1630,6 +1699,8 @@ mod tests {
 				.expect("result hash")
 				.trim_start_matches("sha256:")
 		);
+		shared_digest.terminal_attempt_lineage =
+			runner::terminal_attempt_lineage(&shared_digest.results);
 
 		run_validation::validate_run_record(&shared_digest, Some(tasks))
 			.expect("distinct roles may bind the same exact bytes");
@@ -1991,6 +2062,10 @@ mod tests {
 				result.content_hash().expect("result hash").trim_start_matches("sha256:")
 			);
 		}
+
+		run.calibration_bank = Some(scoring::fixture_frozen_calibration_bank(&tasks));
+		run.calibration_admission_digest = Some(format!("sha256:{}", "2".repeat(64)));
+		run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
 
 		run_validation::validate_run_record(&run, Some(&tasks))
 			.expect("bound real run must validate");
