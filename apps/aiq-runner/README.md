@@ -93,11 +93,11 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 This is the active public `1.0.6` metadata identity. Its public release digest
-is `sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+is `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree. The database task commitment is
 intentionally not changed by this scoring-only update and must be regenerated

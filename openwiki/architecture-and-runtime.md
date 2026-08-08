@@ -22,18 +22,20 @@ Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
 AIQ Core `1.0.6` with task-metadata digest
-`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 This public candidate changes only task-level runtime envelopes for five bounded
 interaction tasks. Coding-07 gets 600 wall seconds, 32 steps, and 21 tool calls;
-the other four revised tasks get 1,500 seconds, 48 steps, and 40 tool calls.
+debugging-02 gets 1,800 seconds, 64 steps, and 56 tool calls; coding-06,
+debugging-01, and debugging-04 retain 1,500 seconds, 48 steps, and 40 tool calls.
 Every task budget is common to every model configuration. The other 67 task,
 evaluator, tool, and budget contracts carry forward with new bindings. The
 preceding `1.0.5` pilots remain immutable non-Official evidence. The first had
-63 completed cells, five timeouts, and saturated completed means. A later pilot
-exposed seven timeouts and three tool-budget failures at the old common
-envelope. The current task semantics and calibration implications are
+63 completed cells, five timeouts, and saturated completed means. The r11 pilot
+stopped on debugging-02 at 47/48 steps and 41/40 tool calls; coding-06 and
+debugging-01 had high utilization but no runtime failure. The current task
+semantics and calibration implications are
 canonicalized in [Benchmark Method](benchmark-method.md).
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database

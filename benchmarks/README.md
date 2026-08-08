@@ -13,7 +13,7 @@ the other 67 task, evaluator, tool, and budget contracts with new version,
 provenance, and commitment bindings. The public catalog is deterministic and
 identity-frozen. Two controlled generations produced one matching tree, and the
 reviewed 72-task database commitment is bound in source. Final clean-commit
-regeneration, a fresh coding-07-by-17 pilot followed by a 17-by-5 targeted pilot,
+regeneration, a fresh debugging-02-by-17 pilot followed by a 17-by-5 targeted pilot,
 Contrast generation, full calibration,
 final native build verification, a real Official run, publication, and final
 deployment are pending. The only production tuple is AIQ Core `1.0.6`, scoring
@@ -49,13 +49,13 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 Its release identity is:
 
 ```text
-sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c
+sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. The reviewed evaluator identity
@@ -91,13 +91,13 @@ These files own the active catalog authority:
 The task-metadata identity is:
 
 ```text
-sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 The release identity is:
 
 ```text
-sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c
+sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78
 ```
 
 The first digest binds the ordered public task metadata. The second binds the

@@ -25,12 +25,12 @@ cells. It is preserved as non-Official statistical evidence because it failed
 the release policy. This does not mean that all task executions failed. AIQ
 Core `1.0.5` retargeted four calibration-sensitive tasks. Its pilot evidence
 found that the shared 900-second, 40-step, and 28-tool-call envelope was too
-small for those interaction tasks. AIQ Core `1.0.6` adds coding-07 as a fifth
-task-level runtime revision: its wall limit is 600 seconds, while its 32-step
-and 21-tool-call limits remain unchanged. The other four revised tasks use
-1,500 seconds, 48 steps, and 40 tool calls. These are common task budgets for
-every model configuration, not model-specific exceptions. Run a direct
-coding-07-by-17 falsification pilot first, then the complete 17-by-5 targeted
+small for those interaction tasks. AIQ Core `1.0.6` has five task-level runtime
+revisions: coding-07 uses 600 seconds, 32 steps, and 21 tool calls; debugging-02
+uses 1,800 seconds, 64 steps, and 56 tool calls; and coding-06, debugging-01,
+and debugging-04 use 1,500 seconds, 48 steps, and 40 tool calls. These are
+common task budgets for every model configuration, not model-specific
+exceptions. Run a direct debugging-02-by-17 falsification pilot first, then the complete 17-by-5 targeted
 pilot before a complete 17-by-72 non-Official calibration. No operator can
 override a failed release gate. Real calibration evidence can enter the public
 calibration register only after signed verifier admission and distinct
@@ -38,12 +38,13 @@ publication, and it remains non-Official.
 
 The first `1.0.5` 68-cell pilot completed 63 cells and timed out on 5. It was
 rejected because the completed task means were 0.933–0.992 and therefore did
-not distinguish the model configurations. A later interaction pilot exposed
-seven timeouts and three tool-budget failures at the old common envelope. The
-offline historical diagnostic now treats those ten observed runtime failures as
-runtime-null coverage evidence instead of semantic zero scores. It is
-permanently non-Official and cannot rewrite the preserved package. The rejected
-pilots remain immutable evidence.
+not distinguish the model configurations. The r11 five-task pilot then stopped
+on debugging-02 at 47/48 steps and 41/40 tool calls. Its debugging-01 and
+coding-06 utilization margins were high but those cells completed, so their
+envelopes remain unchanged pending the complete 17-by-5 falsification pilot.
+The offline diagnostic treats runtime failures as runtime-null coverage evidence
+instead of semantic zero scores. It is permanently non-Official and cannot
+rewrite the preserved package. The rejected pilots remain immutable evidence.
 
 ## Product contract
 
@@ -100,11 +101,11 @@ pilots remain immutable evidence.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 Its public release digest is
-`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The release-policy identity is `aiq-core/1.0.6`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.

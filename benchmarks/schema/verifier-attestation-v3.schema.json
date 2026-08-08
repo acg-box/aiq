@@ -186,7 +186,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b"
+          "const": "sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
