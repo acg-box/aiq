@@ -8,12 +8,13 @@ descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
 The active public candidate, task, and scorer contract is `1.0.6`. It changes
-only the common runtime envelope for four interaction tasks and carries forward
-the other 68 task, evaluator, tool, and budget contracts with new version,
+only task-level runtime envelopes for five interaction tasks and carries forward
+the other 67 task, evaluator, tool, and budget contracts with new version,
 provenance, and commitment bindings. The public catalog is deterministic and
 identity-frozen. Two controlled generations produced one matching tree, and the
 reviewed 72-task database commitment is bound in source. Final clean-commit
-regeneration, a fresh 68-cell pilot, Contrast generation, full calibration,
+regeneration, a fresh coding-07-by-17 pilot followed by a 17-by-5 targeted pilot,
+Contrast generation, full calibration,
 final native build verification, a real Official run, publication, and final
 deployment are pending. The only production tuple is AIQ Core `1.0.6`, scoring
 `1.0.6`, and measurement `2.0.0`. Do not reset, initialize, or publish until a
@@ -23,8 +24,9 @@ earlier publication is a compatibility source or fallback.
 The `1.0.3` Official attempt was interrupted after its calibration evidence had
 already proved a ceiling-policy failure. It was rejected and remains
 unpublished calibration evidence. No hidden responses or hidden task details
-were published. The `1.0.6` release path requires a fresh 68-cell pilot over the
-four runtime-revised tasks and one complete, non-Official 17-by-72
+were published. The `1.0.6` release path requires a fresh coding-07-by-17
+falsification pilot, then a fresh 17-by-5 pilot over all five runtime-revised
+tasks and one complete, non-Official 17-by-72
 falsification-first calibration before any real Official publication path. The
 calibration must pass the release policy without an operator override.
 
@@ -47,13 +49,13 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
 ```
 
 Its release identity is:
 
 ```text
-sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c
+sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. The reviewed evaluator identity
@@ -63,7 +65,9 @@ The public-safe database task-set identity is
 and the reviewed task-commitment manifest identity is
 `sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
 Final controlled corpus identities are not accepted release identities until
-the clean-commit regeneration and calibration pass.
+the clean-commit regeneration and calibration pass. This scoring-only change
+does not update the database task-commitment file; that file must be regenerated
+before a database cutover.
 
 Each task score uses the executable weighted-check contract. A private,
 content-addressed evaluator configuration binds each binary check, its
@@ -87,13 +91,13 @@ These files own the active catalog authority:
 The task-metadata identity is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
 ```
 
 The release identity is:
 
 ```text
-sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c
+sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c
 ```
 
 The first digest binds the ordered public task metadata. The second binds the

@@ -25,13 +25,16 @@ cells. It is preserved as non-Official statistical evidence because it failed
 the release policy. This does not mean that all task executions failed. AIQ
 Core `1.0.5` retargeted four calibration-sensitive tasks. Its pilot evidence
 found that the shared 900-second, 40-step, and 28-tool-call envelope was too
-small for those interaction tasks. AIQ Core `1.0.6` preserves their task and
-evaluator semantics and gives every model configuration the same 1,500-second,
-48-step, and 40-tool-call envelope. Run those four tasks across all 17
-configurations as a fresh 68-cell pilot before a complete 17-by-72 non-Official
-calibration. No operator can override a failed release gate. Real calibration
-evidence can enter the public calibration register only after signed verifier
-admission and distinct publication, and it remains non-Official.
+small for those interaction tasks. AIQ Core `1.0.6` adds coding-07 as a fifth
+task-level runtime revision: its wall limit is 600 seconds, while its 32-step
+and 21-tool-call limits remain unchanged. The other four revised tasks use
+1,500 seconds, 48 steps, and 40 tool calls. These are common task budgets for
+every model configuration, not model-specific exceptions. Run a direct
+coding-07-by-17 falsification pilot first, then the complete 17-by-5 targeted
+pilot before a complete 17-by-72 non-Official calibration. No operator can
+override a failed release gate. Real calibration evidence can enter the public
+calibration register only after signed verifier admission and distinct
+publication, and it remains non-Official.
 
 The first `1.0.5` 68-cell pilot completed 63 cells and timed out on 5. It was
 rejected because the completed task means were 0.933–0.992 and therefore did
@@ -47,15 +50,17 @@ pilots remain immutable evidence.
 - Repository source targets the public AIQ Core `1.0.6` candidate and scoring
   `1.0.6`, with 72 private controlled tasks in ten domains.
 - The active public candidate, task, and scorer contract is `1.0.6`. It changes
-  only the common runtime envelope for four interaction tasks and carries
-  forward the other 68 task, evaluator, tool, and budget contracts with new
+  only task-level runtime envelopes for five interaction tasks and carries
+  forward the other 67 task, evaluator, tool, and budget contracts with new
   version, provenance, and commitment bindings.
 - The public `1.0.6` catalog is deterministic and identity-frozen. Two
-  independently generated controlled candidates produced one matching tree,
-  and the reviewed 72-task database commitment is bound in source. Final
-  regeneration from the final clean commit, the fresh 68-cell pilot, full
-  calibration, Contrast generation, final native build, real Official run,
-  publication, and deployment are pending. No earlier publication is a fallback.
+  independently generated controlled candidates produced one matching tree.
+  The database task commitment is intentionally unchanged by this scoring-only
+  update and must be regenerated before database cutover. Final regeneration
+  from the final clean commit, the fresh coding-07-by-17 pilot, the 17-by-5
+  targeted pilot, full calibration, Contrast generation, final native build,
+  real Official run, publication, and deployment are pending. No earlier
+  publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -95,11 +100,11 @@ pilots remain immutable evidence.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
 ```
 
 Its public release digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
 The release-policy identity is `aiq-core/1.0.6`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.

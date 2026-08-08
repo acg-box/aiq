@@ -9,7 +9,7 @@
   "task_metadata_identity": {
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1",
+    "digest": "sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b",
     "scope": "ordered_full_task_metadata"
   },
   "catalog_release_identity": {
@@ -18,12 +18,12 @@
     "task_metadata_identity": {
       "algorithm": "sha256",
       "canonicalization": "aiq.sorted-key-json.v1",
-      "digest": "sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1",
+      "digest": "sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b",
       "scope": "ordered_full_task_metadata"
     },
     "algorithm": "sha256",
     "canonicalization": "aiq.sorted-key-json.v1",
-    "digest": "sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c",
+    "digest": "sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c",
     "scope": "release_identity_scoring_version_and_ordered_task_metadata_identity"
   },
   "content_policy": {
@@ -213,7 +213,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -333,7 +333,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -453,7 +453,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -573,7 +573,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -693,7 +693,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -715,7 +715,7 @@
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
         "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "coding-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls for every model configuration. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "task_specific_delta": "coding-06 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -813,7 +813,7 @@
       "provenance": {
         "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -833,9 +833,9 @@
       "summary": "Implement an incremental framed-event parser with bounded buffering, Unicode-safe chunk state, and explicit recoverable and terminal errors.",
       "design_revision": {
         "supersedes_task_version": "1.0.5",
-        "kind": "carry_forward",
-        "objective": "Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.",
-        "task_specific_delta": "coding-07 carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.",
+        "kind": "runtime_budget_revision",
+        "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
+        "task_specific_delta": "coding-07 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 420 wall seconds to 600 wall seconds while retaining 32 steps and 21 tool calls. Two independent Sol ultra attempts at the prior 420-second wall limit timed out, including a jobs=1 attempt; the other 16 configurations completed at or below 363.664 seconds. The 600-second limit is one common task budget for all configurations, not a model-specific exception.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -854,7 +854,7 @@
         "filesystem_write"
       ],
       "budget": {
-        "wall_seconds": 420,
+        "wall_seconds": 600,
         "max_steps": 32,
         "max_tool_calls": 21
       },
@@ -931,9 +931,9 @@
       ],
       "visibility": "hidden",
       "provenance": {
-        "origin": "release_carry_forward",
+        "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1053,7 +1053,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1075,7 +1075,7 @@
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
         "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "debugging-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls for every model configuration. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "task_specific_delta": "debugging-01 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1173,7 +1173,7 @@
       "provenance": {
         "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1195,7 +1195,7 @@
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
         "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "debugging-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls for every model configuration. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "task_specific_delta": "debugging-02 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1293,7 +1293,7 @@
       "provenance": {
         "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1413,7 +1413,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1435,7 +1435,7 @@
         "supersedes_task_version": "1.0.5",
         "kind": "runtime_budget_revision",
         "objective": "Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.",
-        "task_specific_delta": "debugging-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls for every model configuration. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
+        "task_specific_delta": "debugging-04 preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. Its common per-task runtime envelope changes from 900 wall seconds, 40 steps, and 28 tool calls to 1500 wall seconds, 48 steps, and 40 tool calls. The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.",
         "controlled_corpus_requirements": [
           "Bind every scored check identifier, nonnegative integer weight, type, and hard-gate status in the content-addressed private evaluator configuration.",
           "Exercise correct, alternate-correct, partial, adversarial-format, empty, and timeout fixtures under deterministic exact replay.",
@@ -1533,7 +1533,7 @@
       "provenance": {
         "origin": "runtime_budget_revision",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1653,7 +1653,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1773,7 +1773,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -1893,7 +1893,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2014,7 +2014,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2133,7 +2133,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2252,7 +2252,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2371,7 +2371,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2490,7 +2490,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2609,7 +2609,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2728,7 +2728,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2847,7 +2847,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -2967,7 +2967,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3087,7 +3087,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3207,7 +3207,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3327,7 +3327,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3447,7 +3447,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3567,7 +3567,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3687,7 +3687,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3807,7 +3807,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -3927,7 +3927,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4047,7 +4047,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4167,7 +4167,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4287,7 +4287,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4407,7 +4407,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4527,7 +4527,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4647,7 +4647,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4767,7 +4767,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -4887,7 +4887,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5007,7 +5007,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5127,7 +5127,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5247,7 +5247,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5367,7 +5367,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5487,7 +5487,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5607,7 +5607,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5727,7 +5727,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5847,7 +5847,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -5967,7 +5967,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6087,7 +6087,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6207,7 +6207,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6327,7 +6327,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6450,7 +6450,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6573,7 +6573,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6696,7 +6696,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6818,7 +6818,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -6940,7 +6940,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7062,7 +7062,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7184,7 +7184,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7304,7 +7304,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7424,7 +7424,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7544,7 +7544,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7664,7 +7664,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7784,7 +7784,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -7904,7 +7904,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8025,7 +8025,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8145,7 +8145,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8265,7 +8265,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8385,7 +8385,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8506,7 +8506,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8626,7 +8626,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
@@ -8747,7 +8747,7 @@
       "provenance": {
         "origin": "release_carry_forward",
         "owner": "AIQ benchmark maintainers",
-        "recorded_date": "2026-08-06",
+        "recorded_date": "2026-08-08",
         "predecessor_task_version": "1.0.5",
         "source": "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts"
       },
