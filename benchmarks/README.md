@@ -24,7 +24,7 @@ earlier publication is a compatibility source or fallback.
 The `1.0.3` Official attempt was interrupted after its calibration evidence had
 already proved a ceiling-policy failure. It was rejected and remains
 unpublished calibration evidence. No hidden responses or hidden task details
-were published. The `1.0.6` release path requires a fresh coding-07-by-17
+were published. The `1.0.6` release path requires a fresh debugging-02-by-17
 falsification pilot, then a fresh 17-by-5 pilot over all five runtime-revised
 tasks and one complete, non-Official 17-by-72
 falsification-first calibration before any real Official publication path. The
@@ -61,13 +61,13 @@ sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78
 The release-policy identity is `aiq-core/1.0.6`. The reviewed evaluator identity
 is `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 The public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
 Final controlled corpus identities are not accepted release identities until
-the clean-commit regeneration and calibration pass. This scoring-only change
-does not update the database task-commitment file; that file must be regenerated
-before a database cutover.
+the clean-commit regeneration and calibration pass. The reviewed database
+task-commitment file is regenerated from the current controlled 72-task
+commitment and bound to these identities.
 
 Each task score uses the executable weighted-check contract. A private,
 content-addressed evaluator configuration binds each binary check, its
@@ -103,11 +103,12 @@ sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78
 The first digest binds the ordered public task metadata. The second binds the
 public catalog release. They do not define controlled identities. The reviewed
 public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
-Final controlled corpus identities remain calibration candidates; Contrast
-remains pending. The shared Rust validator fails closed
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
+Final controlled corpus identities remain calibration candidates; final
+clean-source Core and Contrast regeneration remains pending. The shared Rust
+validator fails closed
 unless `runner.identity_kind` is `source_only` and
 `runner.built_binary_sha256` is null. The Core JSON schema enforces the same
 rule. Contrast has equivalent shared typed enforcement even though it does not

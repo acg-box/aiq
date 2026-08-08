@@ -56,7 +56,9 @@ preview semantics. It gives coding-07 a common 600-second, 32-step, and
 56-tool-call budget; and coding-06, debugging-01, and debugging-04 a common
 1,500-second, 48-step, and 40-tool-call budget for every model configuration.
 This candidate still needs a fresh debugging-02-by-17 falsification pilot and
-17-by-5 pilot.
+17-by-5 pilot. The reviewed public-safe database task-set and task-commitment
+identities are now regenerated and bound to the current controlled 72-task
+commitment; final clean-source Core and Contrast regeneration remains pending.
 
 ## Deployment status
 
@@ -182,11 +184,11 @@ release-identity digest is
 The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
-Final controlled corpus identities remain calibration candidates; Contrast is
-pending. The shared
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
+Final controlled corpus identities remain calibration candidates; final
+clean-source Core and Contrast regeneration is not yet accepted. The shared
 Rust validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent

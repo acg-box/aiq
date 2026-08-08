@@ -42,11 +42,14 @@ The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
 Final controlled corpus identities are calibration candidates, not accepted
-release identities. Contrast generation remains pending. Each final
+release identities. The reviewed public-safe database task-set and
+task-commitment manifest are regenerated and bound to the current controlled
+72-task commitment; final clean-source Core and Contrast regeneration remains
+pending. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The

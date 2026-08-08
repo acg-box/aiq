@@ -63,13 +63,13 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`;
+  `sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`;
 - catalog release identity
-  `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`;
+  `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`;
 - reviewed runtime task-set identity
-  `sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`;
+  `sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`;
 - reviewed task-commitment manifest identity
-  `sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`;
+  `sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`;
 - reviewed evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
@@ -89,7 +89,7 @@ the score from normalized result evidence.
 
 The reviewed public-safe `1.0.6` 72-task database binding manifest is
 `aiq-core-1.0.6-task-commitments.json`. Its canonical JCS identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
 
 The desired state targets the sole production tuple: AIQ Core `1.0.6`, scoring
 `1.0.6`, and measurement `2.0.0`. Do not reset or initialize production until

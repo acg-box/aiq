@@ -265,8 +265,8 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1';
-  const catalogReleaseDigest = '7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c';
+  const catalogDigest = '6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460';
+  const catalogReleaseDigest = 'fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78';
   const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
   const controlledTaskTreeDigest =
     '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
@@ -394,7 +394,7 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
 }
 
 function checkReviewedTaskSetIdentity(schema: string): void {
-  const taskSetIdentity = 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82';
+  const taskSetIdentity = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -448,9 +448,9 @@ function checkReviewedTaskSetIdentity(schema: string): void {
 }
 
 export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
-  const taskSetIdentity = 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82';
+  const taskSetIdentity = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766';
   const reviewedCommitmentsIdentity =
-    'sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211';
+    'sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e';
   const fixture = jsonObject(value);
   assert.deepEqual(Object.keys(fixture).toSorted(), [
     'schema_version',
@@ -520,12 +520,12 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   assert.match(
     initializer,
-    /const TASK_SET_IDENTITY =\s*'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'/,
+    /const TASK_SET_IDENTITY =\s*'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'/,
     'The initializer must declare the native task-set identity.',
   );
   assert.match(
     initializer,
-    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211'/,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e'/,
     'The initializer must declare the reviewed task commitment manifest identity.',
   );
   assert.match(
