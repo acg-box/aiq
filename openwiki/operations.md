@@ -221,9 +221,9 @@ configuration; debugging-02 uses a uniform 1,800-second, 64-step, and 56-tool-ca
 budget. The first `1.0.5` pilot completed 63 cells, timed out on 5, and
 was rejected because its completed task means were 0.933–0.992. The r11 pilot
 stopped on debugging-02 at 47/48 steps and 41/40 tool calls under the
-1,500/48/40 envelope. Regenerate and revalidate the controlled catalog and evaluator
-bindings before the fresh pilot. Review the new 68-cell pilot
-before the full non-Official 17-by-72
+1,500/48/40 envelope. Regenerate and revalidate the controlled catalog,
+task-commitment manifest, and evaluator bindings before the fresh pilot. Review
+the new 85-cell pilot before the full non-Official 17-by-72
 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
 cannot override a failure. The interrupted `1.0.3` Official attempt remains

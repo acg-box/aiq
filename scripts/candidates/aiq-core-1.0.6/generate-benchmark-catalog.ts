@@ -136,9 +136,9 @@ const DEBUGGING_02_RUNTIME_BUDGET = Object.freeze({
   max_tool_calls: 56,
 } satisfies TaskBudget);
 
-function runtimeBudgetFor(task: PriorTask): TaskBudget {
-  if (task.task_id === 'coding-07') return CODING_07_RUNTIME_BUDGET;
-  if (task.task_id === 'debugging-02') return DEBUGGING_02_RUNTIME_BUDGET;
+function runtimeBudgetFor(taskId: string): TaskBudget {
+  if (taskId === 'coding-07') return CODING_07_RUNTIME_BUDGET;
+  if (taskId === 'debugging-02') return DEBUGGING_02_RUNTIME_BUDGET;
   return { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 };
 }
 
@@ -237,13 +237,13 @@ function runtimeBudgetDelta(task: PriorTask, budget: TaskBudget): string {
       ? 'Two independent Sol ultra attempts at the prior 420-second wall limit timed out, including a jobs=1 attempt; the other 16 configurations completed at or below 363.664 seconds. The 600-second limit is one common task budget for all configurations, not a model-specific exception.'
       : task.task_id === 'debugging-02'
         ? 'The r11 five-task pilot stopped on a debugging-02 runtime failure after 1,060.042 seconds at 47/48 steps and 41/40 tool calls. The new 1,800-second, 64-step, 56-call envelope gives bounded headroom in every observed dimension: 20% wall, 33% steps, and 40% calls, uniformly for all 17 configurations. coding-06 reached 93.2% of its wall ceiling and debugging-01 reached 91.7% of its step and 95% of its call ceilings without a runtime failure; those envelopes remain unchanged and must be falsified by the complete next 17-by-5 pilot.'
-      : 'The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.';
+        : 'The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.';
   return `${task.task_id} preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. ${limitChange} ${evidence}`;
 }
 
 function reviseTask(priorTask: PriorTask): CatalogTask106 {
   const revised = isRuntimeBudgetTaskId(priorTask.task_id);
-  const budget = revised ? runtimeBudgetFor(priorTask) : priorTask.budget;
+  const budget = revised ? runtimeBudgetFor(priorTask.task_id) : priorTask.budget;
 
   return {
     task_id: priorTask.task_id,
@@ -469,7 +469,7 @@ export function assertCatalogInvariants(catalog: Catalog106): void {
     ) {
       throw new Error(`Task ${task.task_id} has inconsistent public scoring metadata.`);
     }
-    if (isRevised && canonicalJson(task.budget) !== canonicalJson(runtimeBudgetFor(task))) {
+    if (isRevised && canonicalJson(task.budget) !== canonicalJson(runtimeBudgetFor(task.task_id))) {
       throw new Error(`Task ${task.task_id} has an inconsistent calibration budget.`);
     }
   }

@@ -61,8 +61,9 @@ already-conclusive ceiling failure and was rejected as unpublished calibration
 evidence. No hidden responses or hidden task details were published. The first
 `1.0.4` calibration completed all 1,224 cells but failed the statistical release
 gate. It remains non-Official evidence; this does not mean every task execution
-failed. The `1.0.6` sequence is a 17-configuration by four-runtime-revised-task pilot,
-followed by the complete 17-by-72 non-Official calibration. Real calibration
+failed. The `1.0.6` sequence is a 17-configuration by
+five-runtime-revised-task pilot, followed by the complete 17-by-72 non-Official
+calibration. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
 The accepted production package must be non-synthetic. Its 1,224 task-level

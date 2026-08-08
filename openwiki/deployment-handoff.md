@@ -18,8 +18,9 @@ and its public release digest is
 `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
-commitment is bound in source. Final clean-commit regeneration, the fresh
-targeted pilot, Contrast generation, full calibration, final native build
+task-commitment manifest is regenerated and bound in source. Final clean-source
+Core and Contrast regeneration, the fresh
+targeted pilot, full calibration, final native build
 verification, a real Official run, publication, and final deployment are
 pending. The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and
 measurement `2.0.0`. Do not treat the source-head change as a deployment claim.
@@ -488,8 +489,9 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       while preserving paths.
 - [ ] Regenerate and audit the final AIQ Core `1.0.6` corpus from the final clean
       source commit, then build and hash the native runner and verifier.
-- [ ] Complete the 17-by-4 targeted pilot and the required full non-Official
-      calibration. Stop if either release gate fails.
+- [ ] Complete the debugging-02-by-17 falsification pilot, the 17-by-5 targeted
+      pilot, and the required full non-Official calibration. Stop if any release
+      gate fails.
 - [ ] Create and successfully offline-verify one new signed AIQ 2.0
       `1.0.6` 17-by-72 package before touching the live database.
 - [ ] After the offline verifier gate passes, empty only the AIQ-owned namespace
