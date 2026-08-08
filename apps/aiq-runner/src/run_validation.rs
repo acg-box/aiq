@@ -1038,13 +1038,15 @@ fn validate_result_budgets(
 	if let Some(task) =
 		tasks.and_then(|tasks| tasks.iter().find(|task| task.task_id == result.task_id))
 	{
-		let maximum_wall_ms = task.budgets.wall_seconds.saturating_mul(1_000).saturating_add(1_000);
+		let exceeds_wall_budget = task.budgets.wall_seconds.is_some_and(|wall_seconds| {
+			result.latency.wall_ms > wall_seconds.saturating_mul(1_000).saturating_add(1_000)
+		});
 		let budget_failure = result
 			.failure
 			.as_ref()
 			.is_some_and(|failure| failure.kind == FailureKind::BudgetExceeded);
 
-		if result.latency.wall_ms > maximum_wall_ms
+		if exceeds_wall_budget
 			|| (!budget_failure && result.tool_usage.steps > task.budgets.max_steps)
 			|| (!budget_failure && result.tool_usage.total_calls > task.budgets.max_tool_calls)
 		{
@@ -1409,6 +1411,42 @@ mod tests {
 		result.failure.as_mut().expect("failure").message = "x".repeat(129);
 
 		assert!(super::validate_result_budgets(result, None).is_err());
+	}
+
+	#[test]
+	fn unbounded_tasks_accept_elapsed_time_but_still_enforce_step_and_tool_limits() {
+		let slot = ScheduleConfig::default()
+			.slot("2026-08-02", ScheduleOccurrence::Day)
+			.expect("fixture slot");
+		let mut run =
+			runner::synthetic_demo(slot, &runner::TestArtifactSink).expect("synthetic fixture");
+		let mut tasks = runner::synthetic_tasks();
+		let result = &mut run.results[0];
+		let task_index = tasks
+			.iter_mut()
+			.position(|task| task.task_id == result.task_id)
+			.expect("matching task");
+
+		result.latency.wall_ms = 600_000;
+		tasks[task_index].budgets.wall_seconds = Some(1);
+
+		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
+
+		tasks[task_index].budgets.wall_seconds = None;
+
+		super::validate_result_budgets(result, Some(&tasks))
+			.expect("elapsed time is descriptive when the task has no wall deadline");
+
+		result.tool_usage.steps = tasks[task_index].budgets.max_steps + 1;
+
+		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
+
+		result.tool_usage.steps = 0;
+		result.tool_usage.total_calls = tasks[task_index].budgets.max_tool_calls + 1;
+		result.tool_usage.by_tool =
+			BTreeMap::from([("command_execution".to_owned(), result.tool_usage.total_calls)]);
+
+		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
 	}
 
 	#[test]

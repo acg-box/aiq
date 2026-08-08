@@ -121,7 +121,9 @@
       "additionalProperties": false,
       "required": ["wall_seconds", "max_steps", "max_tool_calls"],
       "properties": {
-        "wall_seconds": { "type": "integer", "minimum": 1 },
+        "wall_seconds": {
+          "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+        },
         "max_steps": { "type": "integer", "minimum": 1 },
         "max_tool_calls": { "type": "integer", "minimum": 0 }
       }
