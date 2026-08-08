@@ -30,8 +30,9 @@ revisions: coding-07 uses 600 seconds, 32 steps, and 21 tool calls; debugging-02
 uses 1,800 seconds, 64 steps, and 56 tool calls; and coding-06, debugging-01,
 and debugging-04 use 1,500 seconds, 48 steps, and 40 tool calls. These are
 common task budgets for every model configuration, not model-specific
-exceptions. Run a direct debugging-02-by-17 falsification pilot first, then the complete 17-by-5 targeted
-pilot before a complete 17-by-72 non-Official calibration. No operator can
+exceptions. Run a direct debugging-02-by-17 falsification pilot first, then the
+complete 17-by-5 targeted pilot before a complete 17-by-72 non-Official
+calibration. No operator can
 override a failed release gate. Real calibration evidence can enter the public
 calibration register only after signed verifier admission and distinct
 publication, and it remains non-Official.
@@ -56,12 +57,12 @@ rewrite the preserved package. The rejected pilots remain immutable evidence.
   version, provenance, and commitment bindings.
 - The public `1.0.6` catalog is deterministic and identity-frozen. Two
   independently generated controlled candidates produced one matching tree.
-  The database task commitment is intentionally unchanged by this scoring-only
-  update and must be regenerated before database cutover. Final regeneration
-  from the final clean commit, the fresh coding-07-by-17 pilot, the 17-by-5
-  targeted pilot, full calibration, Contrast generation, final native build,
-  real Official run, publication, and deployment are pending. No earlier
-  publication is a fallback.
+  The reviewed database task commitment is regenerated from the current
+  controlled 72-task commitment and bound to the same identities. Final
+  regeneration from the final clean commit, the fresh debugging-02-by-17 pilot,
+  the 17-by-5 targeted pilot, full calibration, final clean-source Contrast
+  regeneration, final native build, real Official run, publication, and
+  deployment are pending. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -110,12 +111,12 @@ The release-policy identity is `aiq-core/1.0.6`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 The public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
 Final controlled corpus identities remain provisional until the clean-commit
-regeneration and calibration accept the candidate; Contrast generation is still
-pending. The checked Core schema
+Core and Contrast regeneration and calibration accept the candidate. The
+checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
 closed on this runner subtree for both Core and Contrast. Contrast does not have
