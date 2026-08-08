@@ -29,7 +29,7 @@ const taskCommitmentsPath = resolve(
   repositoryRoot,
   'databases/aiq-core-1.0.6-task-commitments.json',
 );
-const taskSetIdentity = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766';
+const taskSetIdentity = 'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda';
 const evaluatorIdentity = 'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 
 function isObject(value: unknown): value is JsonObject {
