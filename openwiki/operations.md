@@ -156,6 +156,7 @@ Use CLI help as the exact command authority:
 ```sh
 cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
+cargo run -p aiq-runner -- seal-corpus --help
 cargo run -p aiq-runner -- admit-permissions --help
 cargo run -p aiq-runner -- preflight --help
 cargo run -p aiq-runner -- run --help
@@ -169,6 +170,49 @@ JSON schema enforces the same rule. Contrast has equivalent shared typed
 enforcement even though it has no separate checked-in JSON schema. Contrast is
 an operator-enforced release gate before admission. It is not an input to the
 Official admission receipt and does not add cells to the 1,224-cell matrix.
+
+Use `seal-corpus` to create a new complete Core or Contrast seal from retained
+controlled assets. This is unchanged-corpus sealing, not task-content generation
+and not predecessor commitment patching. Supply the exact task, baseline,
+acceptance, evaluator, Node.js plus ripgrep, source, and typed runtime-authority
+inputs. The command derives versioned fixture, acceptance, leakage-review,
+harness, source, and runtime identities. It installs one new private directory
+atomically only after the production corpus validator and every runtime baseline
+manifest check pass. The sealed evaluator runtime resolves to the single Node
+executable under `toolchain`; no second runtime copy is retained. Run it
+independently for candidate A and candidate B, then
+require recursive byte equality between their complete sealed output directories
+before release use. Successful stdout is the canonical commitment digest required
+by the Contrast validator. Do not use temporary `jq`-modified commitments or
+diagnostic r13/r14 outputs as sealer inputs.
+
+For each corpus kind, run the same command twice with independent retained input
+copies and different new output paths. The release identifier must be the same
+because it is part of the sealed identity. Substitute only controlled local paths:
+
+```sh
+cargo run --locked -p aiq-runner -- seal-corpus \
+  --corpus-kind "$AIQ_CORPUS_KIND" \
+  --release-id "$AIQ_RELEASE_ID" \
+  --tasks-root "$AIQ_CANDIDATE_TASKS" \
+  --baselines-root "$AIQ_CANDIDATE_BASELINES" \
+  --acceptance-root "$AIQ_CANDIDATE_ACCEPTANCE" \
+  --evaluator-root "$AIQ_CANDIDATE_EVALUATOR" \
+  --evaluator-runtime "$AIQ_CANDIDATE_NODE" \
+  --codex-toolchain-root "$AIQ_CANDIDATE_TOOLCHAIN" \
+  --source-root "$AIQ_SOURCE_ROOT" \
+  --source-commit "$AIQ_SOURCE_COMMIT" \
+  --source-tree "$AIQ_SOURCE_TREE" \
+  --runtime-authority "$AIQ_RUNTIME_AUTHORITY" \
+  --output "$AIQ_SEALED_OUTPUT"
+```
+
+Run this once for candidate A and once for candidate B. Then require an empty
+recursive comparison before either output can become release authority:
+
+```sh
+diff -ru -- "$AIQ_SEALED_CANDIDATE_A" "$AIQ_SEALED_CANDIDATE_B"
+```
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
 exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, and planned
