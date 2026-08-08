@@ -124,6 +124,7 @@ declare
   provenance jsonb;
   run_id text;
   results jsonb;
+  terminal_attempt_lineage jsonb;
   payload jsonb;
   evaluator_digest text:=repeat('e',64);
 begin
@@ -229,18 +230,26 @@ begin
     ) as result_base) built
     where task.task_set_id='aiq-core' and task.task_set_version='1.0.6'
   ) generated;
+  select jsonb_agg(jsonb_build_object(
+    'task_id',result->>'task_id','task_version',result->>'task_version',
+    'model',result->'model',
+    'terminal_result_ids',jsonb_build_array(result->>'result_id'),
+    'selected_result_id',result->>'result_id'
+  ) order by ordinality) into terminal_attempt_lineage
+  from jsonb_array_elements(results) with ordinality selected(result,ordinality);
   payload:=jsonb_build_object(
     'schema_version','aiq.calibration-run.v4','official_eligible',false,
     'classification','local_calibration_non_official','run_id',run_id,
     'schedule_slot',schedule_slot,'task_set_hash',task_set_hash,
     'scoring_version','1.0.7','execution_concurrency',1,
+    'calibration_admission_digest',null,'calibration_bank',null,
     'models',models,'task_ids',task_ids,'started_unix_ms',1785672000000,
     'finished_unix_ms',1785672001000,'capability_validation',preflight,
     'provenance',provenance,
     'evaluator_results_artifact',jsonb_build_object(
       'kind','evaluator-results.json','content_hash','sha256:'||evaluator_digest,
       'uri','aiq-artifact://sha256/'||evaluator_digest||'/evaluator-results.json','bytes',128
-    ),'results',results
+    ),'terminal_attempt_lineage',terminal_attempt_lineage,'results',results
   );
   return jsonb_build_object(
     'schema_version','aiq.result-package.v4','idempotency_key',run_id,
@@ -428,6 +437,9 @@ with source as (
       'model_selection_digest',aiq_private.jcs_sha256(source.payload->'models'),
       'score_reports_digest',aiq_private.jcs_sha256(scores.value),
       'telemetry_digest',aiq_private.jcs_sha256(result_efficiency.value),
+      'terminal_attempt_lineage_digest',aiq_private.jcs_sha256(
+        source.payload->'terminal_attempt_lineage'
+      ),
       'capability_validation_digest',aiq_private.jcs_sha256(source.payload->'capability_validation'),
       'provenance',source.payload->'provenance',
       'evaluator_results_artifact',source.payload->'evaluator_results_artifact',
@@ -463,6 +475,7 @@ select stage.*,
     'model_selection_digest',stage.stage->>'model_selection_digest',
     'score_reports_digest',stage.stage->>'score_reports_digest',
     'telemetry_digest',stage.stage->>'telemetry_digest',
+    'terminal_attempt_lineage_digest',stage.stage->>'terminal_attempt_lineage_digest',
     'capability_validation_digest',stage.stage->>'capability_validation_digest',
     'scoring_version','1.0.7','execution_concurrency',stage.stage->'execution_concurrency',
     'observed_unix_ms',1785672002000,'replay_status','evaluator_replayed',
