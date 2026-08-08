@@ -21,7 +21,7 @@ tree and database commitment bind the retired deadline policy. Fresh independent
 Core and Contrast sealing, the
 focused canary, full calibration, final native build
 verification, a real Official run, publication, and final deployment are
-pending. The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and
+pending. The only production tuple is AIQ Core `1.0.6`, scoring `1.0.7`, and
 measurement `2.0.0`. Do not treat the source-head change as a deployment claim.
 
 The `1.0.3` Official attempt was interrupted after an already-conclusive
@@ -93,7 +93,7 @@ AIQ_2_CODEX_BINARY='/controlled/aiq-2/codex-runtime/codex'
 AIQ_2_BUILD_RECEIPT='/controlled/aiq-2/final-build-receipt.json'
 AIQ_2_STAGE_OUTPUT='/controlled/aiq-2/verified-stage.json'
 AIQ_2_ATTESTATION_OUTPUT='/controlled/aiq-2/verifier-attestation.json'
-AIQ_2_ADMISSION_OUTPUT='/controlled/aiq-2/official-admission.json'
+AIQ_2_CALIBRATION_ADMISSION='/controlled/aiq-2/calibration-admission-v2.json'
 AIQ_2_PRODUCTION_REFERENCE_SHA256='<sha256-of-production-reference-file>'
 AIQ_2_BUILD_RECEIPT_SHA256='<sha256-of-final-build-receipt-file>'
 
@@ -111,10 +111,16 @@ target/release/aiq-verifier verify-local \
   --observed-unix-ms "$(date +%s000)" \
   --stage-output "$AIQ_2_STAGE_OUTPUT" \
   --attestation-output "$AIQ_2_ATTESTATION_OUTPUT" \
-  --admission-output "$AIQ_2_ADMISSION_OUTPUT" \
-  --source-root "$AIQ_2_SOURCE_ROOT" \
-  --frozen-runner-binary "$AIQ_2_RUNNER_BINARY" \
-  --codex-binary "$AIQ_2_CODEX_BINARY" \
+  --calibration-admission "$AIQ_2_CALIBRATION_ADMISSION" \
+  --admission-tasks "$AIQ_2_TASKS" \
+  --admission-environment "$AIQ_2_VERIFIER_ENVIRONMENT" \
+  --admission-evaluator-root "$AIQ_2_EVALUATOR_ROOT" \
+  --admission-corpus-commitment "$AIQ_2_CORPUS_COMMITMENT" \
+  --admission-evaluator-runtime "$AIQ_2_EVALUATOR_RUNTIME" \
+  --admission-codex-toolchain-root "$AIQ_2_CODEX_TOOLCHAIN_ROOT" \
+  --admission-source-root "$AIQ_2_SOURCE_ROOT" \
+  --admission-runner-binary "$AIQ_2_RUNNER_BINARY" \
+  --admission-codex-binary "$AIQ_2_CODEX_BINARY" \
   --production-reference "$AIQ_PRODUCTION_REFERENCE" \
   --expected-production-reference-sha256 "$AIQ_2_PRODUCTION_REFERENCE_SHA256" \
   --build-receipt "$AIQ_2_BUILD_RECEIPT" \
@@ -122,15 +128,19 @@ target/release/aiq-verifier verify-local \
 
 test -s "$AIQ_2_STAGE_OUTPUT"
 test -s "$AIQ_2_ATTESTATION_OUTPUT"
-test -s "$AIQ_2_ADMISSION_OUTPUT"
+test -s "$AIQ_2_CALIBRATION_ADMISSION"
 ```
 
-`--codex-binary` identifies the main file in the exact two-file runtime
+`--admission-codex-binary` identifies the main file in the exact two-file runtime
 directory. The verifier derives and hashes the sibling `codex-code-mode-host`;
 the signed provenance, verifier environment, final-build receipt, and actual
 files must all agree. The same native replay also resolves the signed
 `capability-marker.txt` artifact for every available capability probe and
 rejects missing, altered, or failure-associated marker evidence.
+Before replay starts, the verifier independently validates the calibration
+admission signature, current issuance bindings, complete frozen bank, bundle
+digest, and the bank embedded in the Official package. It does not re-fit the
+bank from the Official replicate.
 
 The live verifier and publisher must still process this package after the fresh
 database is initialized. The offline output proves the package and replay
@@ -154,7 +164,7 @@ It fails unless the database contains exactly one published, non-synthetic
 `1.0.6` matrix, 17 published runs, 17 Official scores, 1,224 task results, one
 calibration digest, zero synthetic Official scores, and exactly 17 public
 Official leaderboard rows with zero synthetic rows. It also checks measurement
-`2.0.0` and method `rasch_fractional_joint_map_v1`. This is the release gate
+`2.0.0` and method `rasch_fractional_fixed_bank_map_v2`. This is the release gate
 with database evidence; it is not a migration framework.
 
 ## First-release topology
@@ -176,7 +186,7 @@ command environments with direct network access. The verifier must not receive
 the Codex home or runner signing key. The first release does not depend on or run
 Linux or Docker. They remain a future deployment target outside this handoff.
 
-This is one greenfield AIQ Core `1.0.6`, scoring `1.0.6`, measurement `2.0.0`
+This is one greenfield AIQ Core `1.0.6`, scoring `1.0.7`, measurement `2.0.0`
 state. The accepted publication is one complete `17 × 72 = 1,224` task-level
 result Official matrix, not 1,224 separate benchmark runs. The native macOS
 runner creates it, the native verifier replays it, and the distinct publisher
@@ -284,7 +294,7 @@ cargo make init-database
 
 The initializer must be the first AIQ database action. It uses one transaction
 and rejects existing AIQ objects. Confirm that the receipt reports scoring
-`1.0.6`, 72 tasks, 17 model configurations, three distinct identities, and the
+`1.0.7`, 72 tasks, 17 model configurations, three distinct identities, and the
 expected public-view inventory.
 
 Run the database checks:

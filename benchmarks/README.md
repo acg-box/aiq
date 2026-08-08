@@ -36,9 +36,9 @@ calibration must pass the release policy without an operator override.
   catalog.
 - `schema/corpus-commitment-v2.schema.json` validates the controlled AIQ Core
   corpus commitment document.
-- `schema/result-package-v3.schema.json` validates signed runner packages.
-- `schema/normalized-batch-v3.schema.json` validates the database stage.
-- `schema/verifier-attestation-v3.schema.json` validates verifier evidence.
+- `schema/result-package-v4.schema.json` validates signed runner packages.
+- `schema/normalized-batch-v4.schema.json` validates the database stage.
+- `schema/verifier-attestation-v4.schema.json` validates verifier evidence.
 - `schema/test-generated-public-fixture-v1.schema.json` validates the
   browser-only public projection fixture. It is not a submission schema.
 - `examples/tasks/` contains synthetic public task examples.

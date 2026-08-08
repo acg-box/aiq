@@ -75,7 +75,7 @@ The accepted production package must be non-synthetic. Its 1,224 task-level
 results are one 17-by-72 matrix, not 1,224 separate benchmark runs. The native
 verifier must replay the committed evaluators before the distinct publisher can
 complete publication. Production exposes only the AIQ Core `1.0.6`, scoring
-`1.0.6`, measurement `2.0.0` matrix as `trusted_verified`. No legacy matrix is a
+`1.0.7`, measurement `2.0.0` matrix as `trusted_verified`. No legacy matrix is a
 fallback. The outcome and efficiency semantics are detailed in [Benchmark
 Method](benchmark-method.md).
 
@@ -83,8 +83,8 @@ Method](benchmark-method.md).
 
 Production uses three Ed25519 identities:
 
-1. The runner signs `aiq.result-package.v3`.
-2. The verifier signs `aiq.verifier-attestation.v3` and must differ from the
+1. The runner signs `aiq.result-package.v4`.
+2. The verifier signs `aiq.verifier-attestation.v4` and must differ from the
    runner.
 3. The publisher completes the database publication transition and must differ
    from both.
@@ -167,7 +167,7 @@ The flow prevents a model invocation before the exact Official plan passes
 permission admission and prevents later stages from silently changing that plan.
 
 A live run uses fresh task workspaces and content-addressed artifacts. It writes
-a durable checkpoint and creates one `aiq.run.v3` record. Official run output is
+a durable checkpoint and creates one `aiq.run.v4` record. Official run output is
 held by an exact run-bound reservation so only the unchanged run may recover it
 after interruption; score and package outputs remain create-new. Parent ownership,
 nonblocking advisory locks, link checks, and macOS atomic writes form the
@@ -219,13 +219,13 @@ create-new diagnostic is permanently non-Official and non-ranking. It cannot
 publish, create a verifier stage, or sign an attestation.
 
 The verification route performs three ordered database actions for Official
-evidence: stage `aiq.normalized-batch.v3`, record the immutable verifier
+evidence: stage `aiq.normalized-batch.v4`, record the immutable verifier
 attestation, then publish through the distinct publisher role. Calibration uses
 the same verifier and publisher identity boundary with separate stage,
 attestation, and publication RPCs. Its verifier replays the selected task
 artifacts, recomputes descriptive scores and efficiency evidence, and binds them
-in `aiq.calibration-verified-stage.v1` plus a signed
-`aiq.calibration-verifier-attestation.v1`.
+in `aiq.calibration-verified-stage.v2` plus a signed
+`aiq.calibration-verifier-attestation.v2`.
 
 ```mermaid
 sequenceDiagram
@@ -265,7 +265,7 @@ Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
 AIQ database. There is no migration chain. The pre-release desired state
-targets the public AIQ Core `1.0.6` catalog and scoring `1.0.6`.
+targets the public AIQ Core `1.0.6` catalog and scoring `1.0.7`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,

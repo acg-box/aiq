@@ -27,3 +27,7 @@ libc = "0.2"
 [[bin]]
 name = "aiq-verifier"
 path = "src/main.rs"
+
+[dev-dependencies]
+# crates.io
+ed25519-dalek = { workspace = true }

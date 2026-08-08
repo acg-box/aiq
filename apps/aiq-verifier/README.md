@@ -1,6 +1,6 @@
 # AIQ verifier
 
-`aiq-verifier` is a bounded worker for queued v3 result packages. It claims one
+`aiq-verifier` is a bounded worker for queued v4 result packages. It claims one
 or more packages through the Web gateway, downloads exact private artifacts,
 reconstructs candidate workspaces, replays deterministic evaluators, and submits
 a signed verifier attestation.
@@ -24,6 +24,12 @@ it claims work.
 
 The verifier identity must differ from the runner/package signer. Publication
 uses a third identity.
+
+Official `verify-local` also requires `--calibration-admission` plus the current
+admission authority inputs shown by `verify-local --help`. Before evaluator
+replay, the verifier validates the approved verifier signature, issuance and
+build bindings, bundle digest, complete frozen bank, and the exact bank embedded
+in the Official run. Official replay never re-fits the item bank.
 
 Show the production worker contract and the two model-free local modes:
 
@@ -56,13 +62,14 @@ Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
 `32` to match controlled host capacity. Replay output stays in signed result
 order, independent of this setting.
 
-Before the verifier creates Official publication evidence, it applies
-`aiq.official-calibration-policy.v1` to the complete fixed `17 × 72` matrix.
-This auxiliary empirical release diagnostic does not change the public AIQ 2.0
-formula or task weights. It does not fit an item-response model; the separate
-AIQ 2.0 scorer fits the joint Rasch bank and fails closed when that calibration
-does not converge. The 17 configurations are correlated, so this verifier
-policy is not a substitute for the released bank or its conditional uncertainty.
+Before the worker replays an Official claim, it independently verifies the
+private calibration admission against the current production reference, build
+receipt, source, corpus, evaluator, and runtime identities. It then requires the
+Official run to embed that exact frozen bank and bundle digest. Replicate
+ceiling, informative-item, and non-uniform-item measurements are non-blocking
+drift diagnostics. They never re-fit or gate the released bank. The 17
+configurations are correlated, and the reported interval remains conditional on
+the frozen item bank.
 
 For each task, facility is the mean task credit across the 17 configurations.
 The inclusive facility band is `0.10` through `0.90`. A task is informative
@@ -99,8 +106,8 @@ published score.
 3. Verify exact package bytes, Ed25519 signatures, JCS hashes, and run bindings.
 4. Reconstruct each candidate workspace under the controlled replay root.
 5. Replay the committed evaluator with the committed runtime.
-6. Create `aiq.normalized-batch.v3` and
-   `aiq.verifier-attestation.v3` evidence.
+6. Create `aiq.normalized-batch.v4` and
+   `aiq.verifier-attestation.v4` evidence.
 7. Submit the evidence to `/api/verifications`.
 
 Production attestations require `evaluator_replayed`. The database accepts the

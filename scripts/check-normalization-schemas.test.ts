@@ -365,13 +365,14 @@ const domainCounts = [8, 8, 7, 8, 7, 7, 7, 7, 6, 7] as const;
 function score(model: { family: string; reasoning_effort: string }): JsonObject {
   return {
     schema_version: 'aiq.score-report.v2',
-    scoring_version: '1.0.6',
+    scoring_version: '1.0.7',
     measurement_version: '2.0.0',
     model,
     tier: 'synthetic_complete',
     score: null,
     quality_score: 100,
     latent_ability: null,
+    replicate_drift_diagnostic: null,
     ranking_eligible: false,
     completion_bounds: { lower: 100, upper: 100 },
     task_resampling_sensitivity_interval: {
@@ -414,7 +415,7 @@ function score(model: { family: string; reasoning_effort: string }): JsonObject 
       zero_failure_tasks: 0,
       score: 1,
     })),
-    rule: "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.",
+    rule: "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. A replay-verified calibration package fits one centered 72-item bank; Official scoring freezes those item difficulties and estimates only each model theta with a weak N(0, 3²) prior. Official replicate ceiling, informative-item, and non-uniform-item measurements are drift diagnostics and never re-fit or gate the released bank. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a valid signed calibration admission and its exact frozen bank. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is a fixed-fixture calibrated sensitivity interval with a versioned 1.3 deviation correction, not a universal confidence interval. Time, latency, token use, tool use, and cost are auxiliary measurements and never alter AIQ.",
   };
 }
 
@@ -542,7 +543,7 @@ function pricing(): JsonObject {
 
 function normalizedBatch(): JsonObject {
   return {
-    schema_version: 'aiq.normalized-batch.v3',
+    schema_version: 'aiq.normalized-batch.v4',
     matrix_batch_id: runId(1),
     package_sha256: 'c'.repeat(64),
     content_hash: sha256(2),
@@ -550,12 +551,13 @@ function normalizedBatch(): JsonObject {
     task_set_id: 'aiq-core',
     task_set_version: '1.0.6',
     task_set_hash: sha256(3),
+    terminal_attempt_lineage_digest: sha256(23),
     capability_validation_digest: null,
     provenance: null,
     run_class: null,
     benchmark_version: 'aiq-core@1.0.6',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.6',
+    scoring_version: '1.0.7',
     runner_commit: 'd'.repeat(40),
     region: 'local-test',
     scheduled_unix_ms: 0,
@@ -680,7 +682,7 @@ function productionBatch(): JsonObject {
 
 function attestation(): JsonObject {
   return {
-    schema_version: 'aiq.verifier-attestation.v3',
+    schema_version: 'aiq.verifier-attestation.v4',
     signature_algorithm: 'ed25519',
     signature_version: 'aiq.ed25519-jcs.v1',
     matrix_batch_id: runId(1),
@@ -688,11 +690,12 @@ function attestation(): JsonObject {
     content_hash: sha256(2),
     normalization_digest: sha256(5),
     task_set_hash: sha256(3),
+    terminal_attempt_lineage_digest: sha256(23),
     capability_validation_digest: null,
     provenance: null,
     benchmark_version: 'aiq-core@1.0.6',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.6',
+    scoring_version: '1.0.7',
     verifier: { node_id: nodeId, public_key: publicKey },
     observed_unix_ms: 3,
     replay_status: 'commitments_verified',
@@ -737,9 +740,9 @@ const parseSchema = async (path: string): Promise<JsonObject> => {
 };
 
 await test('representative normalized Rust wire objects match both public schemas', async () => {
-  const batchSchema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const batchSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const attestationSchema = await parseSchema(
-    'benchmarks/schema/verifier-attestation-v3.schema.json',
+    'benchmarks/schema/verifier-attestation-v4.schema.json',
   );
 
   strictEqual(matchesSchema(normalizedBatch(), batchSchema, batchSchema), true);
@@ -747,7 +750,7 @@ await test('representative normalized Rust wire objects match both public schema
 });
 
 await test('synthetic-complete scores are descriptive and never Official', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
   const firstRun = requireObjectAt(requireArrayProperty(batch, 'runs'), 0, 'runs');
   const report = requireObjectProperty(firstRun, 'score');
@@ -850,7 +853,7 @@ await test('synthetic-complete scores are descriptive and never Official', async
 });
 
 await test('batch provenance rejects contradictory score tiers and permits partial synthetic tiers', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
 
   const syntheticOfficial = normalizedBatch();
   const syntheticOfficialRun = requireObjectAt(
@@ -967,9 +970,9 @@ await test('corpus runtime components keep stable fields and bounded diagnostics
 await test('public wire schemas bind only the active AIQ Core 1.0.6 release', async () => {
   const schemas = await Promise.all(
     [
-      'benchmarks/schema/result-package-v3.schema.json',
-      'benchmarks/schema/normalized-batch-v3.schema.json',
-      'benchmarks/schema/verifier-attestation-v3.schema.json',
+      'benchmarks/schema/result-package-v4.schema.json',
+      'benchmarks/schema/normalized-batch-v4.schema.json',
+      'benchmarks/schema/verifier-attestation-v4.schema.json',
       'benchmarks/schema/corpus-commitment-v2.schema.json',
     ].map(parseSchema),
   );
@@ -983,7 +986,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
     'payload',
   );
   const resultPayloadProperties = requireObjectProperty(resultPayload, 'properties');
-  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.6');
+  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.7');
   const resultDefinitions = requireObjectProperty(resultPackage, '$defs');
   strictEqual(
     requireObjectProperty(
@@ -1010,7 +1013,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
     requireObjectProperty(normalizedProperties, 'benchmark_version').const,
     'aiq-core@1.0.6',
   );
-  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.6');
+  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.7');
   const normalizedDefinitions = requireObjectProperty(normalizedBatchSchema, '$defs');
   strictEqual(
     requireObjectProperty(
@@ -1040,7 +1043,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
       ),
       'scoring_version',
     ).const,
-    '1.0.6',
+    '1.0.7',
   );
 
   const attestationProperties = requireObjectProperty(attestationSchema, 'properties');
@@ -1048,7 +1051,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
     requireObjectProperty(attestationProperties, 'benchmark_version').const,
     'aiq-core@1.0.6',
   );
-  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.6');
+  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.7');
 
   const corpusProperties = requireObjectProperty(corpusCommitment, 'properties');
   const corpusCatalogProperties = requireObjectProperty(
@@ -1069,10 +1072,82 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
   );
 });
 
+await test('Official method and rule stay identical across Rust, schemas, database, and cutover', async () => {
+  const method = 'rasch_fractional_fixed_bank_map_v2';
+  const paths = [
+    'apps/aiq-runner/src/scoring.rs',
+    'benchmarks/schema/result-package-v4.schema.json',
+    'benchmarks/schema/normalized-batch-v4.schema.json',
+    'databases/init.ts',
+    'databases/schema.sql',
+    'databases/integration.sql',
+    'databases/synthetic-demo.sql',
+    'scripts/check-aiq-2-cutover.ts',
+  ];
+  const sources = await Promise.all(
+    paths.map(
+      async (path): Promise<readonly [string, string]> => [path, await readFile(path, 'utf8')],
+    ),
+  );
+  const retiredJointMethod = ['rasch_fractional', 'joint_map'].join('_');
+
+  for (const [path, source] of sources) {
+    strictEqual(source.includes(method), true, `${path} must use the fixed-bank method`);
+    strictEqual(
+      source.includes(retiredJointMethod),
+      false,
+      `${path} must not retain the joint-fit Official method`,
+    );
+  }
+
+  const rust = sources[0]?.[1] ?? '';
+  const rustMethod = rust.match(/LATENT_ABILITY_METHOD: &str = "([^"]+)";/)?.[1];
+  const rustRule = rust.match(/const SCORE_RULE: &str = "([^"]+)";/)?.[1];
+  const resultSchema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
+  const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
+  const resultMethod = requireObjectProperty(
+    requireObjectProperty(
+      requireObjectProperty(requireObjectProperty(resultSchema, '$defs'), 'calibrationBank'),
+      'properties',
+    ),
+    'method',
+  ).const;
+  const normalizedDefinitions = requireObjectProperty(normalizedSchema, '$defs');
+  const normalizedMethod = requireObjectProperty(
+    requireObjectProperty(
+      requireObjectProperty(normalizedDefinitions, 'latentAbility'),
+      'properties',
+    ),
+    'method',
+  ).const;
+  const normalizedRule = requireObjectProperty(
+    requireObjectProperty(
+      requireObjectProperty(normalizedDefinitions, 'scoreReport'),
+      'properties',
+    ),
+    'rule',
+  ).const;
+
+  strictEqual(rustMethod, method);
+  strictEqual(resultMethod, method);
+  strictEqual(normalizedMethod, method);
+  strictEqual(normalizedRule, rustRule);
+  strictEqual(typeof rustRule, 'string');
+  strictEqual(rustRule?.includes('freezes those item difficulties'), true);
+  strictEqual(rustRule?.includes('drift diagnostics and never re-fit or gate'), true);
+  strictEqual(rustRule?.includes('auxiliary measurements and never alter AIQ'), true);
+
+  const escapedRule = rustRule?.replaceAll("'", "''") ?? '';
+  for (const path of ['databases/schema.sql', 'databases/integration.sql']) {
+    const source = sources.find(([candidate]) => candidate === path)?.[1] ?? '';
+    strictEqual(source.includes(escapedRule), true, `${path} must enforce the Rust score rule`);
+  }
+});
+
 await test('normalized and attestation provenance conditionals enforce the full policy', async () => {
-  const batchSchema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const batchSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const attestationSchema = await parseSchema(
-    'benchmarks/schema/verifier-attestation-v3.schema.json',
+    'benchmarks/schema/verifier-attestation-v4.schema.json',
   );
 
   strictEqual(matchesSchema(productionBatch(), batchSchema, batchSchema), true);
@@ -1115,9 +1190,9 @@ await test('normalized and attestation provenance conditionals enforce the full 
 await test('all current run provenance digests are nonzero', async () => {
   const schemas = await Promise.all(
     [
-      'benchmarks/schema/result-package-v3.schema.json',
-      'benchmarks/schema/normalized-batch-v3.schema.json',
-      'benchmarks/schema/verifier-attestation-v3.schema.json',
+      'benchmarks/schema/result-package-v4.schema.json',
+      'benchmarks/schema/normalized-batch-v4.schema.json',
+      'benchmarks/schema/verifier-attestation-v4.schema.json',
     ].map(parseSchema),
   );
   const provenanceFields = [
@@ -1193,22 +1268,22 @@ await test('all current run provenance digests are nonzero', async () => {
   }
 });
 
-await test('v3 public wire schemas reject zero content and package digests', async () => {
-  const resultSchema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+await test('v4 public wire schemas reject zero content and package digests', async () => {
+  const resultSchema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const resultPackage = requireObject(
-    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
     'result package fixture',
   );
   resultPackage.content_hash = `sha256:${'0'.repeat(64)}`;
   strictEqual(matchesSchema(resultPackage, resultSchema, resultSchema), false);
 
-  const batchSchema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const batchSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
   batch.package_sha256 = '0'.repeat(64);
   strictEqual(matchesSchema(batch, batchSchema, batchSchema), false);
 
   const attestationSchema = await parseSchema(
-    'benchmarks/schema/verifier-attestation-v3.schema.json',
+    'benchmarks/schema/verifier-attestation-v4.schema.json',
   );
   const attestationValue = attestation();
   attestationValue.package_sha256 = '0'.repeat(64);
@@ -1220,19 +1295,19 @@ await test('v3 public wire schemas reject zero content and package digests', asy
   strictEqual(matchesSchema(rejectionValue, rejectionSchema, rejectionSchema), false);
 });
 
-await test('result package v3 schema accepts the golden fixture and rejects a noncurrent protocol', async () => {
-  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+await test('result package v4 schema accepts the golden fixture and rejects a noncurrent protocol', async () => {
+  const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixtureValue: unknown = JSON.parse(
-    await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8'),
+    await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8'),
   );
   const fixture = requireObject(fixtureValue, 'result package fixture');
 
   strictEqual(matchesSchema(fixture, schema, schema), true);
 
   const noncurrent = structuredClone(fixture);
-  noncurrent.schema_version = 'aiq.result-package.v4';
-  noncurrent.payload_type = 'aiq.run.v4';
-  requireObjectProperty(noncurrent, 'payload').schema_version = 'aiq.run.v4';
+  noncurrent.schema_version = 'aiq.result-package.v3';
+  noncurrent.payload_type = 'aiq.run.v3';
+  requireObjectProperty(noncurrent, 'payload').schema_version = 'aiq.run.v3';
 
   strictEqual(matchesSchema(noncurrent, schema, schema), false);
 
@@ -1276,9 +1351,9 @@ await test('result package v3 schema accepts the golden fixture and rejects a no
 });
 
 await test('runtime failures require a null task score while semantic incorrect remains zero', async () => {
-  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixture = requireObject(
-    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
     'result package fixture',
   );
   const taskResultSchema = resolveReference(schema, '#/$defs/taskResult');
@@ -1320,7 +1395,7 @@ await test('runtime failures require a null task score while semantic incorrect 
 });
 
 await test('capability validation accepts the serialized workspace-integrity adapter failure', async () => {
-  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const report = capabilityValidation();
   const entry = requireObjectAt(requireArrayProperty(report, 'models'), 0, 'models');
   const probe = requireObjectProperty(entry, 'probe');
@@ -1356,9 +1431,9 @@ await test('capability validation accepts the serialized workspace-integrity ada
 });
 
 await test('result submission schema rejects matrix, pair, status, byte, artifact, and tool mutations', async () => {
-  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixture = requireObject(
-    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
     'result package fixture',
   );
   const reject = (label: string, mutate: (value: JsonObject) => void) => {
@@ -1417,9 +1492,9 @@ await test('result submission schema rejects matrix, pair, status, byte, artifac
 });
 
 await test('workspace integrity is a failed post-invocation result taxonomy', async () => {
-  const resultSchema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const resultSchema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixture = requireObject(
-    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
     'result package fixture',
   );
   const result = structuredClone(
@@ -1455,7 +1530,7 @@ await test('workspace integrity is a failed post-invocation result taxonomy', as
   requireObjectProperty(adapterOnlyFailure, 'failure').kind = 'usage_limit';
   strictEqual(matchesSchema(adapterOnlyFailure, taskResultSchema, resultSchema), false);
 
-  const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const normalized = normalizedResult({ family: 'sol', reasoning_effort: 'low' }, 0, 0);
   normalized.source_status = 'failed';
   normalized.source_evaluation = 'not_evaluated';
@@ -1539,9 +1614,9 @@ await test('evaluator results v1 schema accepts positional evidence and enforces
 });
 
 await test('result submission provenance is explicit and calibration packages stay outside the endpoint', async () => {
-  const schema = await parseSchema('benchmarks/schema/result-package-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixture = requireObject(
-    JSON.parse(await readFile('benchmarks/fixtures/result-package-v3.synthetic.json', 'utf8')),
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
     'result package fixture',
   );
   const payload = requireObjectProperty(fixture, 'payload');
@@ -1568,9 +1643,9 @@ await test('result submission provenance is explicit and calibration packages st
   strictEqual(matchesSchema(productionNull, schema, schema), false);
 
   const calibration = structuredClone(production);
-  calibration.payload_type = 'aiq.calibration-run.v3';
+  calibration.payload_type = 'aiq.calibration-run.v4';
   const calibrationPayload = requireObjectProperty(calibration, 'payload');
-  calibrationPayload.schema_version = 'aiq.calibration-run.v3';
+  calibrationPayload.schema_version = 'aiq.calibration-run.v4';
   calibrationPayload.official_eligible = false;
   calibrationPayload.classification = 'local_calibration_non_official';
   const calibrationProvenance = runProvenance();
@@ -1586,7 +1661,7 @@ await test('result submission provenance is explicit and calibration packages st
 });
 
 await test('normalized batch schema enforces closed records and exact matrix cardinality', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
 
   strictEqual(batch.execution_concurrency, 17);
@@ -1663,7 +1738,7 @@ await test('normalized batch schema enforces closed records and exact matrix car
 });
 
 await test('normalized efficiency evidence preserves required and nullable authority fields', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
 
   const nonInvoked = structuredClone(batch);
@@ -1841,7 +1916,7 @@ await test('normalized efficiency evidence preserves required and nullable autho
 });
 
 await test('normalized aggregate and pricing evidence retain their fixed contracts', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
 
   strictEqual(matchesSchema(batch, schema, schema), true);
@@ -1931,7 +2006,7 @@ await test('normalized aggregate and pricing evidence retain their fixed contrac
 });
 
 await test('calibration stage pricing and context-band evidence mirror the normalized contract', async () => {
-  const schema = await parseSchema('benchmarks/schema/calibration-verified-stage-v1.schema.json');
+  const schema = await parseSchema('benchmarks/schema/calibration-verified-stage-v2.schema.json');
   const pricingSchema = resolveReference(schema, '#/$defs/pricing');
   const properties = requireObjectProperty(schema, 'properties');
 
@@ -2031,6 +2106,61 @@ await test('calibration stage pricing and context-band evidence mirror the norma
   }
 });
 
+await test('calibration admission v2 claims require the exact Rust field set', async () => {
+  const schema = await parseSchema('benchmarks/schema/calibration-admission-bundle-v2.schema.json');
+  const admission = requireObjectProperty(requireObjectProperty(schema, 'properties'), 'admission');
+  const claims = requireObjectProperty(requireObjectProperty(admission, 'properties'), 'claims');
+  const required = requireArrayProperty(claims, 'required');
+  const expected = [
+    'run_id',
+    'package_sha256',
+    'content_hash',
+    'stage_digest',
+    'attestation_digest',
+    'replay_runner',
+    'admission_verifier',
+    'classification',
+    'run_class',
+    'official_eligible',
+    'ranking_eligible',
+    'trust',
+    'replay_status',
+    'task_count',
+    'model_configuration_count',
+    'task_set_hash',
+    'terminal_attempt_lineage_digest',
+    'task_selection_digest',
+    'model_selection_digest',
+    'scoring_version',
+    'calibration_bank',
+    'calibration_bank_digest',
+    'replay_provenance',
+    'policy_digest',
+    'diagnostic_digest',
+    'diagnostic',
+    'issuance_bindings',
+    'observed_unix_ms',
+  ];
+  deepStrictEqual(
+    [...required].map(String).toSorted((left, right) => left.localeCompare(right)),
+    expected.toSorted((left, right) => left.localeCompare(right)),
+  );
+  strictEqual(claims.additionalProperties, false);
+
+  const exactShapeSchema = structuredClone(claims);
+  const properties = requireObjectProperty(exactShapeSchema, 'properties');
+  for (const field of Object.keys(properties)) properties[field] = {};
+  const valid = Object.fromEntries(expected.map((field) => [field, null]));
+  strictEqual(matchesSchema(valid, exactShapeSchema, exactShapeSchema), true);
+  const missing = structuredClone(valid);
+  delete missing.calibration_bank_digest;
+  strictEqual(matchesSchema(missing, exactShapeSchema, exactShapeSchema), false);
+  strictEqual(
+    matchesSchema({ ...valid, unexpected: true }, exactShapeSchema, exactShapeSchema),
+    false,
+  );
+});
+
 await test('verifier environment example binds the current public task release', async () => {
   const environment = requireObject(
     JSON.parse(await readFile('config/verifier-environment.example.json', 'utf8')),
@@ -2053,7 +2183,7 @@ await test('verifier environment example binds the current public task release',
 });
 
 await test('normalized result and score schemas enforce exact payload fields and bounds', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
 
   strictEqual(matchesSchema(batch, schema, schema), true);
@@ -2195,7 +2325,7 @@ await test('normalized result and score schemas enforce exact payload fields and
 });
 
 await test('normalized artifact addresses bind the supported kind and digest path', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
   const firstRun = requireObjectAt(requireArrayProperty(batch, 'runs'), 0, 'runs');
   const firstResult = requireObjectAt(requireArrayProperty(firstRun, 'results'), 0, 'results');
@@ -2238,7 +2368,7 @@ await test('normalized artifact addresses bind the supported kind and digest pat
 });
 
 await test('score payload permits non-frozen task domain and difficulty coverage', async () => {
-  const schema = await parseSchema('benchmarks/schema/normalized-batch-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
   const batch = normalizedBatch();
   for (const runValue of requireArrayProperty(batch, 'runs')) {
     const run = requireObject(runValue, 'run');
@@ -2277,7 +2407,7 @@ await test('score payload permits non-frozen task domain and difficulty coverage
 });
 
 await test('attestation schema rejects malformed digests, keys, signatures, and enums', async () => {
-  const schema = await parseSchema('benchmarks/schema/verifier-attestation-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/verifier-attestation-v4.schema.json');
   const evaluatorReplay = attestation();
   evaluatorReplay.replay_status = 'evaluator_replayed';
   strictEqual(matchesSchema(evaluatorReplay, schema, schema), true);
@@ -2306,7 +2436,7 @@ await test('attestation schema rejects malformed digests, keys, signatures, and 
 });
 
 await test('attestation policy accepts only publishable replay outcomes', async () => {
-  const schema = await parseSchema('benchmarks/schema/verifier-attestation-v3.schema.json');
+  const schema = await parseSchema('benchmarks/schema/verifier-attestation-v4.schema.json');
 
   for (const [fixture, policy, replayStatus, accepted] of [
     [productionAttestation(), 'production', 'evaluator_replayed', true],

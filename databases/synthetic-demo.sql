@@ -11,12 +11,39 @@ insert into aiq_private.aiq_scoring_versions (
 )
 values (
   '1.0.6',
+  'aiq.task-score.v1',
+  'aiq-core@1.0.6',
+  'AIQ reproducible task evaluator score 1.0.6',
+  'The task-level reproducible evaluator score in [0, 1]; this registry row is not an aggregate score method.',
+  array[
+    'Preserve evaluator correct, partial, and incorrect scores without aggregate ability estimation.',
+    'Keep runtime, infrastructure, missing, and unevaluated outcomes null and outside semantic denominators.'
+  ],
+  'A task without a reproducible semantic evaluator result has no task score.',
+  'Runtime and infrastructure failures remain null; semantic incorrect remains zero.',
+  'Task-level evaluator scores do not define an uncertainty interval.',
+  '{"aggregate":null,"method":"reproducible_evaluator_task_score_v1","range":[0,1]}'::jsonb,
+  '{"method":"not_applicable"}'::jsonb,
+  '{"infrastructure_failure_score":null,"runtime_failure_score":null}'::jsonb,
+  true,
+  false,
+  null
+);
+
+insert into aiq_private.aiq_scoring_versions (
+  scoring_version, schema_version, benchmark_version, name,
+  fixed_fixture_estimand, principles, missing_policy, failure_policy_text,
+  confidence_policy, formula, interval_method, failure_policy, synthetic,
+  is_published, published_at
+)
+values (
+  '1.0.7',
   'aiq.score-snapshot.v2',
   'aiq-core@1.0.6',
   'AIQ calibrated latent score 2.0',
   'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is a diagnostic and is not the Official ranking score.',
   array[
-    'Jointly estimate one Rasch item difficulty per task and one model location per configuration from the complete 17-configuration by 72-task calibration matrix, with a centered item scale.',
+    'Fit one centered 72-item Rasch bank from the replay-verified calibration matrix, then freeze it for every Official score.',
     'Estimate each model theta with fractional task credit and a weak N(0, 3²) MAP prior; report conditional Wald uncertainty given the released item bank.',
     'Publish 100 × logistic(theta) as predicted success on an average calibrated task; do not call it an IQ norm or a 150-point scale.',
     'Retain the equal-domain criterion score, item information, theta, and standard error as separate evidence.',
@@ -31,9 +58,9 @@ values (
   'Observed runtime and infrastructure failures have no semantic task score. They are disclosed separately, while missing cells have no result record and require an audited rerun before Official publication.',
   'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank and is not a population confidence interval.',
   '{
-    "aggregate":"rasch_fractional_joint_map",
+    "aggregate":"rasch_fractional_fixed_bank_map_v2",
     "measurement_version":"2.0.0",
-    "measurement_method":"rasch_fractional_joint_map_v1",
+    "measurement_method":"rasch_fractional_fixed_bank_map_v2",
     "official_score":"100 * logistic(theta)",
     "calibration_matrix":"17_model_configurations_by_72_tasks",
     "criterion_diagnostic":"100 * mean_of_equal_domain_means",
@@ -288,7 +315,7 @@ select
   'aiq-core',
   '1.0.6',
   'aiq-core@1.0.6',
-  '1.0.6',
+  '1.0.7',
   run.model_config_id,
   node.node_id,
   encode(extensions.digest(node.node_id || ':capability:v1', 'sha256'), 'hex'),
@@ -494,6 +521,20 @@ signed_results as (
   ) as value
   from signed_result_rows row
 ),
+terminal_attempt_lineage as (
+  select jsonb_agg(
+    jsonb_build_object(
+      'task_id', result.value ->> 'task_id',
+      'task_version', result.value ->> 'task_version',
+      'model', result.value -> 'model',
+      'terminal_result_ids', jsonb_build_array(result.value ->> 'result_id'),
+      'selected_result_id', result.value ->> 'result_id'
+    ) order by result.ordinality
+  ) as value
+  from signed_results
+  cross join lateral jsonb_array_elements(signed_results.value)
+    with ordinality result(value, ordinality)
+),
 evaluator_bundle as (
   select jsonb_build_object(
     'schema_version', 'aiq.evaluator-results.v1',
@@ -520,20 +561,20 @@ insert into aiq_private.aiq_result_packages (
 )
 select
   constants.package_sha256,
-  'aiq.result-package.v3',
+  'aiq.result-package.v4',
   constants.batch_id,
   constants.batch_id,
   node.node_id,
   constants.content_hash,
   jsonb_build_object(
-    'schema_version', 'aiq.result-package.v3',
+    'schema_version', 'aiq.result-package.v4',
     'idempotency_key', constants.batch_id,
-    'payload_type', 'aiq.run.v3',
+    'payload_type', 'aiq.run.v4',
     'content_hash', constants.content_hash,
     'signer', jsonb_build_object('node_id', node.node_id, 'public_key', node.public_key),
     'claimed_trust', 'trusted',
     'payload', jsonb_build_object(
-      'schema_version', 'aiq.run.v3',
+      'schema_version', 'aiq.run.v4',
       'run_id', constants.batch_id,
       'schedule_slot', jsonb_build_object(
         'local_date', '2026-07-24',
@@ -542,7 +583,9 @@ select
         'timezone', 'UTC'
       ),
       'task_set_hash', 'sha256:' || task_set.catalog_sha256,
-      'scoring_version', '1.0.6',
+      'scoring_version', '1.0.7',
+      'calibration_admission_digest', null,
+      'calibration_bank', null,
       'models', signed_models.value,
       'execution_concurrency', 1,
       'started_unix_ms', 1784894400000,
@@ -557,6 +600,7 @@ select
           || '/evaluator-results.json',
         'bytes', evaluator_bundle_identity.byte_size
       ),
+      'terminal_attempt_lineage', terminal_attempt_lineage.value,
       'results', signed_results.value
     ),
     'signature', repeat('ab', 64)
@@ -576,6 +620,7 @@ cross join official_node node
 cross join verifier_node verifier
 cross join signed_models
 cross join signed_results
+cross join terminal_attempt_lineage
 cross join evaluator_bundle_identity
 cross join aiq_private.aiq_task_sets task_set
 where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.6';
@@ -585,7 +630,7 @@ with artifact as (
     package.idempotency_key as run_id,
     package.envelope #> '{payload,evaluator_results_artifact}' as reference
   from aiq_private.aiq_result_packages package
-  where package.schema_version = 'aiq.result-package.v3'
+  where package.schema_version = 'aiq.result-package.v4'
 )
 insert into aiq_private.aiq_artifact_ingress_objects (
   artifact_kind, content_sha256, bucket_name, object_path, byte_size
@@ -611,7 +656,7 @@ select
     ''
   )
 from aiq_private.aiq_result_packages package
-where package.schema_version = 'aiq.result-package.v3';
+where package.schema_version = 'aiq.result-package.v4';
 
 insert into aiq_private.aiq_matrix_batches (
   matrix_batch_id, package_sha256, content_hash, normalization_digest,
@@ -623,7 +668,7 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   package.matrix_batch_id, package.package_sha256, package.content_hash,
-  package.normalization_digest, package.node_id, 'aiq-core', '1.0.6', '1.0.6',
+  package.normalization_digest, package.node_id, 'aiq-core', '1.0.6', '1.0.7',
   true, null, null,
   'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.6',
   'sha256:' || encode(
@@ -736,7 +781,7 @@ select
     || substr(md5(run.run_id || ':score'), 21, 12)
   )::uuid,
   run.run_id,
-  '1.0.6',
+  '1.0.7',
   score.score_status::aiq_private.score_status,
   case when score.score_status = 'coverage_only' then null else round(score.fixed_score, 3) end,
   case when score.score_status = 'coverage_only' then null

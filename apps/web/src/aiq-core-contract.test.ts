@@ -5,8 +5,8 @@ import { describe, it } from 'node:test';
 import {
   AIQ_CORE_CATALOG_RELEASE_IDENTITY,
   AIQ_CORE_RELEASE_IDENTITY,
-  AIQ_CORE_SCORING_VERSION,
   AIQ_CORE_TASK_SCORING_CONTRACT,
+  AIQ_CORE_TASK_SCORER_VERSION,
   AIQ_CORE_TASK_METADATA_IDENTITY,
   AIQ_CORE_TASK_SET_VERSION,
 } from './aiq-core-contract.ts';
@@ -39,7 +39,7 @@ void describe('AIQ Core source-head contract', () => {
     );
 
     assert.equal(catalog.task_set_version, AIQ_CORE_TASK_SET_VERSION);
-    assert.equal(catalog.scoring_version, AIQ_CORE_SCORING_VERSION);
+    assert.equal(catalog.scoring_version, AIQ_CORE_TASK_SCORER_VERSION);
     assert.equal(taskIdentity.digest, AIQ_CORE_TASK_METADATA_IDENTITY);
     assert.equal(releaseIdentity.release_identity, AIQ_CORE_RELEASE_IDENTITY);
     assert.equal(releaseIdentity.digest, AIQ_CORE_CATALOG_RELEASE_IDENTITY);

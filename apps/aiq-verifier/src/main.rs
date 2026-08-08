@@ -21,3 +21,13 @@ fn main() -> ExitCode {
 		},
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use ed25519_dalek::SigningKey;
+
+	#[test]
+	fn verifier_test_signing_key_has_expected_width() {
+		assert_eq!(SigningKey::from_bytes(&[0; 32]).to_bytes().len(), 32);
+	}
+}

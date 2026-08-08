@@ -85,7 +85,7 @@ interface ValidatedReference {
 export interface InitializationReceipt {
   readonly schema_version: 'aiq.production-initialization-receipt.v1';
   readonly initialized: true;
-  readonly scoring_version: '1.0.6';
+  readonly scoring_version: '1.0.7';
   readonly measurement_version: '2.0.0';
   readonly catalog_identity_sha256: string;
   readonly catalog_release_identity_sha256: string;
@@ -753,13 +753,42 @@ function scoringRows(reviewedAt: string): JsonObject[] {
   return [
     {
       scoring_version: '1.0.6',
+      schema_version: 'aiq.task-score.v1',
+      benchmark_version: 'aiq-core@1.0.6',
+      name: 'AIQ reproducible task evaluator score 1.0.6',
+      fixed_fixture_estimand:
+        'The task-level reproducible evaluator score in [0, 1]; this registry row is not an aggregate score method.',
+      principles: [
+        'Preserve evaluator correct, partial, and incorrect scores without aggregate ability estimation.',
+        'Keep runtime, infrastructure, missing, and unevaluated outcomes null and outside semantic denominators.',
+      ],
+      missing_policy: 'A task without a reproducible semantic evaluator result has no task score.',
+      failure_policy_text:
+        'Runtime and infrastructure failures remain null; semantic incorrect remains zero.',
+      confidence_policy: 'Task-level evaluator scores do not define an uncertainty interval.',
+      formula: {
+        aggregate: null,
+        method: 'reproducible_evaluator_task_score_v1',
+        range: [0, 1],
+      },
+      interval_method: { method: 'not_applicable' },
+      failure_policy: {
+        infrastructure_failure_score: null,
+        runtime_failure_score: null,
+      },
+      synthetic: false,
+      is_published: false,
+      published_at: null,
+    },
+    {
+      scoring_version: '1.0.7',
       schema_version: 'aiq.score-snapshot.v2',
       benchmark_version: 'aiq-core@1.0.6',
       name: 'AIQ calibrated latent score 2.0',
       fixed_fixture_estimand:
         'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is retained as a diagnostic and is not the Official ranking score.',
       principles: [
-        'Jointly estimate one Rasch item difficulty per task and one model location per configuration from the complete 17-configuration by 72-task calibration matrix, with a centered item scale.',
+        'Fit one centered 72-item Rasch bank from the replay-verified calibration matrix, then freeze it for every Official score.',
         'Estimate each model theta with fractional task credit and a weak N(0, 3²) MAP prior; report conditional Wald uncertainty given the released item bank.',
         'Publish 100 × logistic(theta) as predicted success on an average calibrated task; do not call it an IQ norm or a 150-point scale.',
         'Retain the equal-domain criterion score, item information, theta, and standard error as separate evidence.',
@@ -777,9 +806,9 @@ function scoringRows(reviewedAt: string): JsonObject[] {
       confidence_policy:
         'The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction calibrated for this fixed benchmark fixture. It is a fixed-fixture calibrated sensitivity interval, not a universal confidence interval for model capability. Latent standard error is conditional on the frozen calibration bank and is not a population confidence interval.',
       formula: {
-        aggregate: 'rasch_fractional_joint_map',
+        aggregate: 'rasch_fractional_fixed_bank_map_v2',
         measurement_version: '2.0.0',
-        measurement_method: 'rasch_fractional_joint_map_v1',
+        measurement_method: 'rasch_fractional_fixed_bank_map_v2',
         official_score: '100 * logistic(theta)',
         calibration_matrix: '17_model_configurations_by_72_tasks',
         criterion_diagnostic: '100 * mean_of_equal_domain_means',
@@ -1190,7 +1219,7 @@ commit;
     receipt: {
       schema_version: 'aiq.production-initialization-receipt.v1',
       initialized: true,
-      scoring_version: '1.0.6',
+      scoring_version: '1.0.7',
       measurement_version: '2.0.0',
       catalog_identity_sha256: CATALOG_IDENTITY,
       catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,

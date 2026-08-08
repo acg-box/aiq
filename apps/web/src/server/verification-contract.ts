@@ -9,10 +9,10 @@ import {
 import { canonicalJson, sha256Hex } from './submission-contract.ts';
 
 export const MAX_VERIFICATION_BYTES = 4 * 1024 * 1024;
-export const NORMALIZED_BATCH_SCHEMA = 'aiq.normalized-batch.v3';
-export const VERIFIER_ATTESTATION_SCHEMA = 'aiq.verifier-attestation.v3';
-export const CALIBRATION_VERIFIED_STAGE_SCHEMA = 'aiq.calibration-verified-stage.v1';
-export const CALIBRATION_VERIFIER_ATTESTATION_SCHEMA = 'aiq.calibration-verifier-attestation.v1';
+export const NORMALIZED_BATCH_SCHEMA = 'aiq.normalized-batch.v4';
+export const VERIFIER_ATTESTATION_SCHEMA = 'aiq.verifier-attestation.v4';
+export const CALIBRATION_VERIFIED_STAGE_SCHEMA = 'aiq.calibration-verified-stage.v2';
+export const CALIBRATION_VERIFIER_ATTESTATION_SCHEMA = 'aiq.calibration-verifier-attestation.v2';
 export const VERIFIER_REJECTION_SCHEMA = 'aiq.verifier-rejection.v2';
 export const MAX_VERIFICATION_JSON_DEPTH = 32;
 export const MAX_VERIFICATION_JSON_NODES = 100_000;

@@ -26,6 +26,7 @@ version = "0.1.0"
 dependencies = [
  "aiq-runner",
  "clap",
+ "ed25519-dalek",
  "hex",
  "libc",
  "serde",

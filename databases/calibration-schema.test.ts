@@ -74,7 +74,7 @@ void test('keeps calibration evidence separate from Official publication tables'
     assert.match(schema, new RegExp(`create table aiq_private\\.${table}`));
     assert.match(schema, new RegExp(`ALTER TABLE aiq_private\\.${table} FORCE ROW LEVEL SECURITY`));
   }
-  assert.match(schema, /aiq\.calibration-run\.v3/);
+  assert.match(schema, /aiq\.calibration-run\.v4/);
   assert.match(schema, /local_calibration_non_official/);
   assert.match(schema, /evaluator_replayed/);
   assert.match(schema, /calibration evidence is append-only/);
@@ -789,7 +789,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   assert.match(schema, /canonical_public_view_count=12/);
   assert.match(
     schema,
-    /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_joint_map"[\s\S]*?"measurement_method":"rasch_fractional_joint_map_v1"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,
+    /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_fixed_bank_map_v2"[\s\S]*?"measurement_method":"rasch_fractional_fixed_bank_map_v2"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,
   );
   assert.doesNotMatch(
     schema,

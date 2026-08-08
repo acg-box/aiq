@@ -139,7 +139,7 @@ function checkActivePublicReadVersionFilters(schema: string): void {
     /run\.task_set_id\s*=\s*'aiq-core'/,
     /run\.task_set_version\s*=\s*'1\.0\.6'/,
     /run\.benchmark_version\s*=\s*'aiq-core@1\.0\.6'/,
-    /run\.scoring_version\s*=\s*'1\.0\.6'/,
+    /run\.scoring_version\s*=\s*'1\.0\.7'/,
   ];
   for (const viewName of [
     'public_leaderboard',
@@ -158,19 +158,19 @@ function checkActivePublicReadVersionFilters(schema: string): void {
   assert.ok(leaderboard);
   assert.match(
     leaderboard,
-    /score\.scoring_version\s*=\s*'1\.0\.6'/,
+    /score\.scoring_version\s*=\s*'1\.0\.7'/,
     'public_leaderboard must bind its snapshot to the active scoring version.',
   );
 
   const scoringVersions = sections.get('public_scoring_versions');
   assert.ok(scoringVersions);
   assert.match(scoringVersions, /benchmark_version\s*=\s*'aiq-core@1\.0\.6'/);
-  assert.match(scoringVersions, /scoring_version\s*=\s*'1\.0\.6'/);
+  assert.match(scoringVersions, /scoring_version\s*=\s*'1\.0\.7'/);
 
   const taskCoverage = sections.get('public_task_coverage');
   assert.ok(taskCoverage);
   assert.match(taskCoverage, /scoring\.benchmark_version\s*=\s*'aiq-core@1\.0\.6'/);
-  assert.match(taskCoverage, /scoring\.scoring_version\s*=\s*'1\.0\.6'/);
+  assert.match(taskCoverage, /scoring\.scoring_version\s*=\s*'1\.0\.7'/);
 
   const trend = sections.get('public_trend_points');
   assert.ok(trend);
@@ -188,7 +188,7 @@ function checkActivePublicReadVersionFilters(schema: string): void {
     assert.ok(section, `The schema checker is missing ${viewName}.`);
     assert.match(section, /run\.task_set_id\s*=\s*'aiq-core'/);
     assert.match(section, /run\.task_set_version\s*=\s*'1\.0\.6'/);
-    assert.match(section, /run\.scoring_version\s*=\s*'1\.0\.6'/);
+    assert.match(section, /run\.scoring_version\s*=\s*'1\.0\.7'/);
   }
 }
 
@@ -297,13 +297,13 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
   assert.match(schema, /task_set\.task_set_version = '1\.0\.6'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.6'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.7'/);
   assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.6'/);
   assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
   assert.match(syntheticDemo, /'aiq-core@1\.0\.6'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.6', '1\.0\.6'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.6', '1\.0\.7'/,
   );
 
   const pricingValidator =
@@ -780,20 +780,23 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   );
   assert.doesNotMatch(schema, /create table public\.aiq_/);
   const databaseSources = `${schema}\n${syntheticDemo}`;
-  for (const contractName of [
-    'result-package',
-    'verifier-attestation',
-    'normalized-batch',
-    'package-binding',
-  ]) {
+  for (const [contractName, expectedVersion] of Object.entries({
+    'result-package': '4',
+    'verifier-attestation': '4',
+    'normalized-batch': '4',
+    'package-binding': '3',
+  })) {
     const versions = [
       ...databaseSources.matchAll(new RegExp(`aiq\\.${contractName}\\.v([0-9]+)`, 'g')),
     ].map((match) => match[1]);
-    assert.ok(versions.length > 0, `The canonical database sources omit aiq.${contractName}.v3.`);
+    assert.ok(
+      versions.length > 0,
+      `The canonical database sources omit aiq.${contractName}.v${expectedVersion}.`,
+    );
     assert.deepEqual(
       new Set(versions),
-      new Set(['3']),
-      `The canonical database sources must use only aiq.${contractName}.v3.`,
+      new Set([expectedVersion]),
+      `The canonical database sources must use only aiq.${contractName}.v${expectedVersion}.`,
     );
   }
   assert.doesNotMatch(databaseSources, /(?:stage_verifier_result|verify_and_publish)_v[0-9]+/);
@@ -802,7 +805,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(schema, /create function aiq_private\.verify_and_publish_core\(/);
   assert.match(
     schema,
-    /aiq_result_packages_schema_version_check check \(\(schema_version = 'aiq\.result-package\.v3'::text\)\)/,
+    /aiq_result_packages_schema_version_check check \(\(schema_version = 'aiq\.result-package\.v4'::text\)\)/,
   );
   assert.match(
     schema,
@@ -1178,7 +1181,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   assert.match(syntheticDemo, /insert into aiq_private\.aiq_model_configs/);
   assert.match(syntheticDemo, /insert into aiq_private\.aiq_task_catalog/);
   assert.match(syntheticDemo, /insert into aiq_private\.aiq_package_runs/);
-  assert.match(syntheticDemo, /'schema_version', 'aiq\.result-package\.v3'/);
+  assert.match(syntheticDemo, /'schema_version', 'aiq\.result-package\.v4'/);
   assert.doesNotMatch(syntheticDemo, /'unverified',\s*'queued'/);
   assert.match(syntheticDemo, /'unverified',\s*'processed'/);
   assert.doesNotMatch(syntheticDemo, /storage\.buckets|create\s+(?:storage\s+)?bucket/i);

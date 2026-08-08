@@ -380,7 +380,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
 
   deepStrictEqual(
     groups.map((group) => group.length),
-    [1, 1, 72, 17, 3],
+    [2, 1, 72, 17, 3],
   );
   deepStrictEqual(
     prepared.sql
@@ -460,7 +460,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .update(canonicalJson(object(reference.corpus_commitment)))
       .digest('hex')}`,
   );
-  strictEqual(prepared.receipt.scoring_version, '1.0.6');
+  strictEqual(prepared.receipt.scoring_version, '1.0.7');
   strictEqual(prepared.receipt.measurement_version, '2.0.0');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,

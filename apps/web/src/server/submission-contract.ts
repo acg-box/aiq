@@ -1,15 +1,19 @@
 import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
 
-import { AIQ_CORE_SCORING_VERSION } from '../aiq-core-contract.ts';
+import {
+  AIQ_CORE_SCORING_VERSION,
+  AIQ_CORE_TASK_METADATA_IDENTITY,
+  AIQ_CORE_TASK_SET_VERSION,
+} from '../aiq-core-contract.ts';
 import { isOfficialRunProvenance, isRunProvenance, type RunProvenance } from './run-provenance.ts';
 
 /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/restrict-template-expressions -- Exact validators narrow untrusted JSON one field at a time. */
 
 export const MAX_RAW_SUBMISSION_BYTES = 4 * 1024 * 1024;
 export const MAX_SIGNED_PACKAGE_BYTES = 3_948_544;
-export const RESULT_PACKAGE_SCHEMA = 'aiq.result-package.v3';
-export const RUN_PAYLOAD_TYPE = 'aiq.run.v3';
-export const CALIBRATION_RUN_PAYLOAD_TYPE = 'aiq.calibration-run.v3';
+export const RESULT_PACKAGE_SCHEMA = 'aiq.result-package.v4';
+export const RUN_PAYLOAD_TYPE = 'aiq.run.v4';
+export const CALIBRATION_RUN_PAYLOAD_TYPE = 'aiq.calibration-run.v4';
 export const RESULT_SCHEMA = 'aiq.result.v2';
 export const OFFICIAL_SCORING_VERSION = AIQ_CORE_SCORING_VERSION;
 export const EVALUATOR_RESULTS_ARTIFACT_MAX_BYTES = 3_948_544;
@@ -65,6 +69,8 @@ const taskResultKeys = [
   'workspace_manifest',
 ] as const;
 const runPayloadKeys = [
+  'calibration_admission_digest',
+  'calibration_bank',
   'capability_validation',
   'evaluator_results_artifact',
   'execution_concurrency',
@@ -79,8 +85,11 @@ const runPayloadKeys = [
   'started_unix_ms',
   'synthetic',
   'task_set_hash',
+  'terminal_attempt_lineage',
 ] as const;
 const calibrationRunPayloadKeys = [
+  'calibration_admission_digest',
+  'calibration_bank',
   'capability_validation',
   'classification',
   'evaluator_results_artifact',
@@ -97,6 +106,7 @@ const calibrationRunPayloadKeys = [
   'started_unix_ms',
   'task_ids',
   'task_set_hash',
+  'terminal_attempt_lineage',
 ] as const;
 const scheduleSlotKeys = ['local_date', 'local_time', 'occurrence', 'timezone'] as const;
 const modelConfigKeys = ['family', 'reasoning_effort'] as const;
@@ -162,6 +172,19 @@ const modelMatrix = [
   ['luna', 'max'],
 ] as const;
 const modelMatrixKeys = modelMatrix.map(([family, effort]) => `${family}:${effort}`);
+const calibrationDomainTaskCounts = new Map<string, number>([
+  ['coding', 8],
+  ['debugging', 8],
+  ['repository_understanding', 7],
+  ['data_processing', 8],
+  ['retrieval_verification', 7],
+  ['documentation_communication', 7],
+  ['planning_execution', 7],
+  ['tool_use', 7],
+  ['instruction_following', 6],
+  ['reliability_recovery', 7],
+]);
+const calibrationTaskIdPattern = /^(?<prefix>[a-z][a-z0-9-]{0,62})-(?<ordinal>[0-9]{2})(?![\s\S])/;
 const identifierPattern = /^[A-Za-z0-9._-]+(?![\s\S])/;
 const unixMillisPattern = /^unix-ms:[0-9]{1,39}(?![\s\S])/;
 const preflightMarkerKind = 'capability-marker.txt';
@@ -989,6 +1012,143 @@ function validateTaskResult(
   };
 }
 
+function hasValidTerminalAttemptLineage(lineage: unknown, results: unknown[]): boolean {
+  if (!Array.isArray(lineage) || lineage.length !== results.length) return false;
+  const resultIds = new Map<string, string>();
+  for (const result of results) {
+    if (!isRecord(result) || typeof result.result_id !== 'string') return false;
+    const key = `${String(result.task_id)}\0${modelKey(result.model) ?? ''}`;
+    if (resultIds.has(key)) return false;
+    resultIds.set(key, result.result_id);
+  }
+  const seen = new Set<string>();
+  for (const entry of lineage) {
+    if (
+      !isRecord(entry) ||
+      !hasExactKeys(entry, [
+        'model',
+        'selected_result_id',
+        'task_id',
+        'task_version',
+        'terminal_result_ids',
+      ]) ||
+      typeof entry.task_id !== 'string' ||
+      entry.task_version !== '1.0.6' ||
+      typeof entry.selected_result_id !== 'string' ||
+      !Array.isArray(entry.terminal_result_ids) ||
+      entry.terminal_result_ids.length !== 1 ||
+      entry.terminal_result_ids[0] !== entry.selected_result_id
+    ) {
+      return false;
+    }
+    const key = `${entry.task_id}\0${modelKey(entry.model) ?? ''}`;
+    if (seen.has(key) || resultIds.get(key) !== entry.selected_result_id) return false;
+    seen.add(key);
+  }
+  return seen.size === resultIds.size;
+}
+
+function domainForCalibrationTask(taskId: string): string | null {
+  const match = calibrationTaskIdPattern.exec(taskId);
+  if (!match?.groups) return null;
+  const domain = match.groups.prefix?.replaceAll('-', '_');
+  const ordinal = Number(match.groups.ordinal);
+  const taskCount = domain === undefined ? undefined : calibrationDomainTaskCounts.get(domain);
+  return taskCount !== undefined &&
+    Number.isInteger(ordinal) &&
+    ordinal >= 1 &&
+    ordinal <= taskCount
+    ? (domain ?? null)
+    : null;
+}
+
+function isFrozenCalibrationBank(
+  value: unknown,
+  taskSetDigest: unknown,
+  expectedTasks: readonly Readonly<{ taskId: string; taskVersion: string }>[],
+): boolean {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'calibration_model_count',
+      'catalog_digest',
+      'evaluator_digest',
+      'items',
+      'measurement_version',
+      'method',
+      'policy_digest',
+      'schema_version',
+      'scoring_version',
+      'source_package_sha256',
+      'source_scoring_version',
+      'task_set_digest',
+      'task_set_id',
+      'task_set_version',
+    ]) ||
+    value.schema_version !== 'aiq.calibration-bank.v2' ||
+    value.scoring_version !== OFFICIAL_SCORING_VERSION ||
+    value.measurement_version !== '2.0.0' ||
+    value.method !== 'rasch_fractional_fixed_bank_map_v2' ||
+    value.source_scoring_version !== '1.0.6' ||
+    value.task_set_id !== 'aiq-core' ||
+    value.task_set_version !== AIQ_CORE_TASK_SET_VERSION ||
+    value.task_set_digest !== taskSetDigest ||
+    value.catalog_digest !== AIQ_CORE_TASK_METADATA_IDENTITY ||
+    value.calibration_model_count !== 17 ||
+    !Array.isArray(value.items) ||
+    value.items.length !== 72 ||
+    expectedTasks.length !== value.items.length
+  ) {
+    return false;
+  }
+  if (
+    !['source_package_sha256', 'evaluator_digest', 'policy_digest'].every(
+      (field) => typeof value[field] === 'string' && contentHashPattern.test(value[field]),
+    )
+  ) {
+    return false;
+  }
+
+  const seenTaskIds = new Set<string>();
+  let difficultySum = 0;
+  for (const [index, item] of value.items.entries()) {
+    const expectedTask = expectedTasks[index];
+    if (
+      expectedTask === undefined ||
+      !isRecord(item) ||
+      !hasExactKeys(item, [
+        'difficulty',
+        'domain',
+        'facility',
+        'mean_item_information',
+        'task_id',
+        'task_version',
+      ]) ||
+      typeof item.task_id !== 'string' ||
+      item.task_id !== expectedTask.taskId ||
+      item.task_version !== expectedTask.taskVersion ||
+      item.task_version !== AIQ_CORE_TASK_SET_VERSION ||
+      item.domain !== domainForCalibrationTask(item.task_id) ||
+      seenTaskIds.has(item.task_id) ||
+      typeof item.facility !== 'number' ||
+      !Number.isFinite(item.facility) ||
+      item.facility < 0 ||
+      item.facility > 1 ||
+      typeof item.difficulty !== 'number' ||
+      !Number.isFinite(item.difficulty) ||
+      typeof item.mean_item_information !== 'number' ||
+      !Number.isFinite(item.mean_item_information) ||
+      item.mean_item_information < 0 ||
+      item.mean_item_information > 0.25
+    ) {
+      return false;
+    }
+    seenTaskIds.add(item.task_id);
+    difficultySum += item.difficulty;
+  }
+  return Number.isFinite(difficultySum) && Math.abs(difficultySum) <= 1e-8;
+}
+
 function validateOfficialRunPayload(
   payload: Record<string, unknown>,
   signerNodeId: string,
@@ -1008,13 +1168,19 @@ function validateOfficialRunPayload(
     payload.execution_concurrency > 32 ||
     typeof payload.synthetic !== 'boolean' ||
     !Array.isArray(payload.results) ||
-    payload.results.length !== MAX_RESULTS
+    payload.results.length !== MAX_RESULTS ||
+    !hasValidTerminalAttemptLineage(payload.terminal_attempt_lineage, payload.results)
   ) {
     return false;
   }
   const capabilityByModel = new Map<string, string>();
   if (payload.synthetic) {
-    if (payload.capability_validation !== null || payload.provenance !== null) {
+    if (
+      payload.capability_validation !== null ||
+      payload.provenance !== null ||
+      payload.calibration_admission_digest !== null ||
+      payload.calibration_bank !== null
+    ) {
       return false;
     }
   } else {
@@ -1023,7 +1189,9 @@ function validateOfficialRunPayload(
       !isOfficialRunProvenance(payload.provenance) ||
       payload.provenance.task_set_digest !== payload.task_set_hash ||
       payload.provenance.preflight_digest !==
-        `sha256:${sha256Hex(canonicalJson(payload.capability_validation))}`
+        `sha256:${sha256Hex(canonicalJson(payload.capability_validation))}` ||
+      typeof payload.calibration_admission_digest !== 'string' ||
+      !contentHashPattern.test(payload.calibration_admission_digest)
     ) {
       return false;
     }
@@ -1069,6 +1237,16 @@ function validateOfficialRunPayload(
   }
   const hashes = [...metadata.values()].map(({ hash }) => hash).toSorted();
   if (`sha256:${sha256Hex(canonicalJson(hashes))}` !== payload.task_set_hash) {
+    return false;
+  }
+  const expectedTasks = [...metadata].map(([taskId, task]) => ({
+    taskId,
+    taskVersion: task.version,
+  }));
+  if (
+    !payload.synthetic &&
+    !isFrozenCalibrationBank(payload.calibration_bank, payload.task_set_hash, expectedTasks)
+  ) {
     return false;
   }
   for (const taskId of metadata.keys()) {
@@ -1125,6 +1303,9 @@ function validateCalibrationRunPayload(
     payload.execution_concurrency > 32 ||
     !Array.isArray(payload.results) ||
     payload.results.length !== payload.models.length * payload.task_ids.length ||
+    payload.calibration_admission_digest !== null ||
+    payload.calibration_bank !== null ||
+    !hasValidTerminalAttemptLineage(payload.terminal_attempt_lineage, payload.results) ||
     !isCapabilityReport(payload.capability_validation) ||
     !isRunProvenance(payload.provenance) ||
     payload.provenance.run_class !== 'calibration' ||
@@ -1438,7 +1619,7 @@ export function validateSubmission(value: unknown): ValidationResult {
     return {
       ok: false,
       code: 'INVALID_PAYLOAD',
-      message: 'payload is not an exact semantically valid aiq.run.v3 RunRecord.',
+      message: 'payload is not an exact semantically valid aiq.run.v4 RunRecord.',
     };
   }
   let provenance: RunProvenance | null;
@@ -1482,7 +1663,7 @@ export function validateSubmission(value: unknown): ValidationResult {
     return {
       ok: false,
       code: 'INVALID_PAYLOAD',
-      message: 'payload is not an exact semantically valid aiq.run.v3 RunRecord.',
+      message: 'payload is not an exact semantically valid aiq.run.v4 RunRecord.',
     };
   }
   const evaluatorResultsArtifact = evaluatorResultsArtifactReference(
