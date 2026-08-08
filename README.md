@@ -111,12 +111,14 @@ Its public release digest is
 The release-policy identity is `aiq-core/1.0.6`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-The predecessor public-safe database task-set identity is
-`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
+The current no-deadline public-safe database task-set identity is
+`sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`,
 and its task-commitment manifest identity is
-`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-Replace both after clean-commit Core and Contrast sealing. Final controlled
-corpus identities remain provisional until calibration accepts the candidate.
+`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
+Independent Core and Contrast A/B seals and both model-free validators produced
+these bindings. Re-seal once from the final clean identity commit before the
+focused canary. Final controlled corpus identities remain provisional until
+calibration accepts the candidate.
 The checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails

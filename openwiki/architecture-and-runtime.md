@@ -36,10 +36,10 @@ stopped on debugging-02 at 47/48 steps and 41/40 tool calls; coding-06 and
 debugging-01 had high utilization but no runtime failure. The current task
 semantics and calibration implications are
 canonicalized in [Benchmark Method](benchmark-method.md).
-The public catalog is deterministic and identity-frozen. The prior controlled
-tree and database commitment bind the retired deadline policy. The new identity
-requires fresh independent Core and Contrast seals and a regenerated database
-commitment before calibration. The
+The public catalog is deterministic and identity-frozen. Independent
+no-deadline Core and Contrast A/B seals and both model-free validators produced
+the current database task and fixture commitments. One final clean-source seal
+is required before calibration. The
 shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast

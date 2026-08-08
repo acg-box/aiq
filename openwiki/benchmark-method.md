@@ -40,12 +40,13 @@ release-identity digest is
 `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
 The public catalog is deterministic and identity-frozen. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-the predecessor public-safe database task-set identity is
-`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
+the current no-deadline public-safe database task-set identity is
+`sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`,
 and its task-commitment manifest identity is
-`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-They bind the retired deadline policy and must be replaced after fresh
-independent Core and Contrast seals. Final controlled corpus identities are
+`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
+Independent no-deadline Core and Contrast A/B seals and both model-free
+validators produced these bindings. Re-seal from the final clean identity
+commit before the focused canary. Final controlled corpus identities are
 calibration candidates, not accepted release identities. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as

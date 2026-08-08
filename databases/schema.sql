@@ -2017,7 +2017,7 @@ begin
     or candidate ->> 'catalog_digest' <>
       'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91'
     or candidate ->> 'task_set_digest' <>
-      'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
+      'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
     or candidate ->> 'evaluator_digest' <>
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
@@ -2488,7 +2488,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
         where catalog.task_set_id = task_set.task_set_id
           and catalog.task_set_version = task_set.task_set_version
           and catalog.fixture_commitment is not null
-      ) = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
+      ) = 'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -4425,7 +4425,7 @@ begin
     or jsonb_typeof(stage -> 'signer' -> 'node_id') is distinct from 'string'
     or candidate ->> 'run_class' is distinct from stage ->> 'run_class'
     or candidate ->> 'task_set_digest' is distinct from
-      'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
+      'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
     or candidate ->> 'evaluator_digest' is distinct from
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from stage ->> 'task_set_hash'
@@ -7777,7 +7777,7 @@ begin
       and planning_execution_count = 7 and tool_use_count = 7
       and instruction_following_count = 6 and reliability_recovery_count = 7
       and task_set_identity_sha256 =
-        'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
+        'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
       and frozen_catalog_valid
       and evaluator_identity_sha256 =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
@@ -7809,7 +7809,7 @@ begin
     'catalog_identity_sha256', catalog_identity_sha256,
     'task_set_identity_sha256', task_set_identity_sha256,
     'task_set_identity_valid', task_set_identity_sha256 =
-      'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766',
+      'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda',
     'evaluator_identity_sha256', evaluator_identity_sha256,
     'evaluator_identity_valid', evaluator_identity_sha256 =
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',

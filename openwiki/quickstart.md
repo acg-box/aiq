@@ -28,11 +28,10 @@ end-to-end bounds rather than claiming a schedule fit. Five interaction tasks
 retain revised step and tool-call limits and the other 67 retain their accepted
 limits. Prompt,
 evaluator, semantic scoring, and tool permissions remain unchanged. The
-public catalog is deterministic and identity-frozen. Two controlled generations
-produced the predecessor deadline-bound tree. The no-deadline identity requires
-fresh independent Core and Contrast seals and a regenerated 72-task database
-commitment. The focused canary,
-full calibration, Contrast generation, native build verification, a real
+public catalog is deterministic and identity-frozen. Independent no-deadline
+Core and Contrast A/B seals and both model-free validators produced the current
+72-task database commitment. Re-seal once from the final clean identity commit
+before the focused canary. The focused canary, full calibration, native build verification, a real
 Official run, publication, and final deployment are pending. The only production
 tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement `2.0.0`. Production
 must not publish an Official matrix until the new real package passes verification.
@@ -59,8 +58,7 @@ all tasks while keeping step and tool-call limits. Elapsed time, tokens, tool
 use, and cost remain independent efficiency evidence and never alter AIQ or its
 statistical diagnostics. Old deadline evidence cannot be relabeled or mixed
 with the new corpus. The checked-in database task-set and task-commitment
-identities still describe the predecessor seal and must be replaced after
-fresh Core and Contrast sealing.
+identities now describe the validated no-deadline task and fixture bindings.
 
 ## Deployment status
 
@@ -186,12 +184,13 @@ release-identity digest is
 `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
 The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-the predecessor public-safe database task-set identity is
-`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
+the current no-deadline public-safe database task-set identity is
+`sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`,
 and its task-commitment manifest identity is
-`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-Replace both after fresh Core and Contrast sealing. Final controlled corpus
-identities remain calibration candidates. The shared
+`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
+Independent A/B sealing and model-free validation produced both. Re-seal from
+the final clean identity commit before the focused canary. Final controlled
+corpus identities remain calibration candidates. The shared
 Rust validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent

@@ -394,7 +394,7 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
 }
 
 function checkReviewedTaskSetIdentity(schema: string): void {
-  const taskSetIdentity = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766';
+  const taskSetIdentity = 'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -448,9 +448,9 @@ function checkReviewedTaskSetIdentity(schema: string): void {
 }
 
 export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
-  const taskSetIdentity = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766';
+  const taskSetIdentity = 'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda';
   const reviewedCommitmentsIdentity =
-    'sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e';
+    'sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6';
   const fixture = jsonObject(value);
   assert.deepEqual(Object.keys(fixture).toSorted(), [
     'schema_version',
@@ -520,12 +520,12 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   assert.match(
     initializer,
-    /const TASK_SET_IDENTITY =\s*'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'/,
+    /const TASK_SET_IDENTITY =\s*'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'/,
     'The initializer must declare the native task-set identity.',
   );
   assert.match(
     initializer,
-    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e'/,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6'/,
     'The initializer must declare the reviewed task commitment manifest identity.',
   );
   assert.match(

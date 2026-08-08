@@ -38,10 +38,10 @@ task-metadata digest
 `sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
 `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
-The public catalog is deterministic and identity-frozen. The no-deadline
-identity requires fresh independent Core and Contrast seals and a regenerated
-database commitment. Final controlled corpus identities remain calibration
-candidates. The first
+The public catalog is deterministic and identity-frozen. Independent
+no-deadline Core and Contrast A/B seals produced the current database task and
+fixture commitments. One final clean-source seal remains before the focused
+canary. Final controlled corpus identities remain calibration candidates. The first
 `1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
 evidence, not as an all-execution failure. The `1.0.6` sequence requires a
 focused no-deadline canary before the full 17-by-72 calibration. Final
