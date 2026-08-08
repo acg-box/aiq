@@ -184,7 +184,17 @@ replacing completed evidence.
 Live accounting excludes completed `error` items from the agent step budget;
 they remain in raw evidence. Known presentation and reasoning items are not
 tools, while unknown completed item types remain conservatively counted as
-steps and tool calls.
+steps and tool calls. The `codex.exec-json-items.v3` policy recognizes only the
+observed inert collaboration status item: `collab_tool_call` with `tool=wait`,
+empty `receiver_thread_ids`, empty `agents_states`, a null `prompt`, and a valid
+sender. Its `item.started` and `item.completed` records must share both `id` and
+sender; the r13 structural audit observed this binding in all 10 paired records.
+The completed record adds one step and zero tool calls. Any other
+collaboration shape or lifecycle is a policy failure. Live accounting, durable
+recomputation, checkpoint resume, and native verifier replay use this same
+policy. Raw stdout remains retained for a rejected cell, but a policy-invalid
+cell cannot become semantic evidence or an accepted result through its fallback
+counters.
 
 ## Time, tokens, and API-equivalent cost
 
