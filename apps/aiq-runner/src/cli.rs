@@ -4068,6 +4068,9 @@ fn official_plan_protected_paths(
 	plan: &OfficialPlanBinding,
 	receipt_path: &Path,
 ) -> Result<Vec<ProtectedBenchmarkPath>, Box<dyn std::error::Error>> {
+	let codex_code_mode_host = corpus_commitment::codex_code_mode_host_path(&plan.codex_binary)?;
+	let codex_code_mode_host =
+		codex_code_mode_host.to_str().ok_or("Codex code-mode host path must be valid UTF-8")?;
 	let mut paths = vec![
 		("source_root", plan.source_root.as_str()),
 		("workspace_baselines", plan.workspace_root.as_str()),
@@ -4075,6 +4078,7 @@ fn official_plan_protected_paths(
 		("artifact_root", plan.artifact_root.as_str()),
 		("codex_home", plan.codex_home.as_str()),
 		("codex_binary", plan.codex_binary.as_str()),
+		("codex_code_mode_host", codex_code_mode_host),
 	];
 
 	if let Some(path) = &plan.public_tasks {
@@ -4096,7 +4100,6 @@ fn official_plan_protected_paths(
 		("official_package_output", plan.outputs.package_output.as_str()),
 	]);
 
-	let codex_code_mode_host = corpus_commitment::codex_code_mode_host_path(&plan.codex_binary)?;
 	let mut protected = paths
 		.into_iter()
 		.map(|(category, path)| {
@@ -4104,10 +4107,6 @@ fn official_plan_protected_paths(
 		})
 		.collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
 
-	protected.push(ProtectedBenchmarkPath {
-		category: "codex_code_mode_host",
-		path: canonical_policy_path(&codex_code_mode_host)?,
-	});
 	protected.push(ProtectedBenchmarkPath {
 		category: "official_admission_receipt",
 		path: canonical_policy_path(receipt_path)?,
@@ -5930,6 +5929,65 @@ mod tests {
 		binary
 	}
 
+	fn official_plan_fixture(
+		root: &Path,
+		codex_binary: &Path,
+	) -> crate::official_admission::OfficialPlanBinding {
+		let path = |name: &str| root.join(name).display().to_string();
+		let digest = format!("sha256:{}", "a".repeat(64));
+
+		crate::official_admission::OfficialPlanBinding {
+			run_id: format!("run_{}", "b".repeat(64)),
+			task_ids: vec!["task-01".to_owned()],
+			task_set_hash: digest.clone(),
+			corpus_commitment_digest: digest.clone(),
+			catalog_digest: digest.clone(),
+			source_manifest_digest: digest.clone(),
+			evaluator_digest: digest.clone(),
+			capability_manifest_digest: digest.clone(),
+			model_toolchain_digest: digest.clone(),
+			evaluator_runtime_digest: digest.clone(),
+			runner_executable_digest: digest.clone(),
+			codex_executable_digest: digest.clone(),
+			codex_code_mode_host_digest: digest.clone(),
+			codex_credential_digest: digest.clone(),
+			public_tasks: None,
+			hidden_tasks: Some(path("tasks")),
+			corpus_commitment: path("commitment.json"),
+			capabilities: path("capabilities.json"),
+			source_root: path("source"),
+			workspace_root: path("baselines"),
+			execution_root: path("execution"),
+			evaluator_root: path("evaluators"),
+			evaluator_runtime: path("toolchain/node"),
+			codex_toolchain_root: path("toolchain"),
+			artifact_root: path("artifacts"),
+			codex_home: path("codex-home"),
+			codex_binary: codex_binary.display().to_string(),
+			schedule: path("schedule.json"),
+			schedule_digest: digest.clone(),
+			slot: crate::schedule::ScheduleSlot {
+				local_date: "2026-08-08".to_owned(),
+				occurrence: crate::schedule::ScheduleOccurrence::Night,
+				local_time: "23:59".to_owned(),
+				timezone: "America/New_York".to_owned(),
+			},
+			observed_at: "unix-ms:1786159606000".to_owned(),
+			jobs: 32,
+			conservative_capacity_digest: digest,
+			outputs: crate::official_admission::OfficialOutputPlan {
+				preflight_cache: path("preflight.json"),
+				preflight_attempt: resume::preflight_attempt_path(&root.join("preflight.json"))
+					.display()
+					.to_string(),
+				checkpoint: path("checkpoint.json"),
+				run_output: path("official.json"),
+				score_output: path("scores.json"),
+				package_output: path("package.json"),
+			},
+		}
+	}
+
 	#[test]
 	fn permission_canary_evidence_digest_commits_to_executable_canary_schema() {
 		let bindings = [
@@ -5949,6 +6007,47 @@ mod tests {
 			cli::permission_canary_evidence_digest(&bindings)
 				.expect("stable permission canary evidence digest")
 		);
+	}
+
+	#[test]
+	fn official_plan_reconstructs_the_admission_canary_order() {
+		let root = fixture_root("official-plan-canary-order");
+
+		fs::create_dir_all(&root).expect("fixture root");
+
+		let codex_binary = codex_runtime_fixture(&root);
+		let report = root.join("admission.json");
+		let protected = cli::official_plan_protected_paths(
+			&official_plan_fixture(&root, &codex_binary),
+			&report,
+		)
+		.expect("reconstruct protected paths from the saved Official plan");
+
+		assert_eq!(
+			protected.iter().map(|entry| entry.category).collect::<Vec<_>>(),
+			[
+				"source_root",
+				"workspace_baselines",
+				"evaluator_root",
+				"artifact_root",
+				"codex_home",
+				"codex_binary",
+				"codex_code_mode_host",
+				"hidden_tasks",
+				"corpus_commitment",
+				"capabilities",
+				"schedule",
+				"preflight_cache",
+				"preflight_attempt",
+				"checkpoint",
+				"output",
+				"official_score_output",
+				"official_package_output",
+				"official_admission_receipt",
+			]
+		);
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	fn expected_path(path: &Path) -> PathBuf {
@@ -6923,8 +7022,8 @@ mod tests {
 		];
 
 		assert_eq!(
-			protected.iter().map(|entry| entry.category).collect::<std::collections::BTreeSet<_>>(),
-			category_names.into_iter().collect()
+			protected.iter().map(|entry| entry.category).collect::<Vec<_>>(),
+			category_names
 		);
 
 		let requests = Rc::new(RefCell::new(Vec::new()));
