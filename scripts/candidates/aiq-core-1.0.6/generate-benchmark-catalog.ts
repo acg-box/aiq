@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.6' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_6_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b';
+  'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460';
 export const AIQ_CORE_1_0_6_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c';
+  'sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -130,8 +130,15 @@ const CODING_07_RUNTIME_BUDGET = Object.freeze({
   max_tool_calls: 21,
 } satisfies TaskBudget);
 
+const DEBUGGING_02_RUNTIME_BUDGET = Object.freeze({
+  wall_seconds: 1800,
+  max_steps: 64,
+  max_tool_calls: 56,
+} satisfies TaskBudget);
+
 function runtimeBudgetFor(task: PriorTask): TaskBudget {
   if (task.task_id === 'coding-07') return CODING_07_RUNTIME_BUDGET;
+  if (task.task_id === 'debugging-02') return DEBUGGING_02_RUNTIME_BUDGET;
   return { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 };
 }
 
@@ -228,6 +235,8 @@ function runtimeBudgetDelta(task: PriorTask, budget: TaskBudget): string {
   const evidence =
     task.task_id === 'coding-07'
       ? 'Two independent Sol ultra attempts at the prior 420-second wall limit timed out, including a jobs=1 attempt; the other 16 configurations completed at or below 363.664 seconds. The 600-second limit is one common task budget for all configurations, not a model-specific exception.'
+      : task.task_id === 'debugging-02'
+        ? 'The r11 five-task pilot stopped on a debugging-02 runtime failure after 1,060.042 seconds at 47/48 steps and 41/40 tool calls. The new 1,800-second, 64-step, 56-call envelope gives bounded headroom in every observed dimension: 20% wall, 33% steps, and 40% calls, uniformly for all 17 configurations. coding-06 reached 93.2% of its wall ceiling and debugging-01 reached 91.7% of its step and 95% of its call ceilings without a runtime failure; those envelopes remain unchanged and must be falsified by the complete next 17-by-5 pilot.'
       : 'The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.';
   return `${task.task_id} preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. ${limitChange} ${evidence}`;
 }

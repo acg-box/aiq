@@ -13,9 +13,9 @@ workers, or later publications from this release plan.
 
 Repository source has the active public AIQ Core `1.0.6` candidate. Its
 public metadata digest is
-`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
 and its public release digest is
-`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final clean-commit regeneration, the fresh
@@ -29,7 +29,7 @@ ceiling failure. It is rejected, unpublished calibration evidence. No hidden
 responses or hidden task details were published. The first `1.0.4` calibration
 completed all 1,224 cells but failed the statistical release gate. It remains
 non-Official evidence and must not be described as 1,224 failed executions. The
-`1.0.6` path first runs coding-07 across all 17 configurations, then a
+`1.0.6` path first runs debugging-02 across all 17 configurations, then a
 17-by-5 pilot over the five runtime-revised tasks, then the full
 falsification-first non-Official 17-by-72 calibration. A failed release gate has
 no operator override. Real calibration remains permanently non-Official even
@@ -43,8 +43,8 @@ legacy matrix as production evidence. It is not a fallback.
 
 The order below is intentional:
 
-1. Complete the required 17-by-4 pilot and full 17-by-72 non-Official
-   calibration with the final native runner/verifier inputs. Only after its
+1. Complete the required debugging-02-by-17 pilot, then the full 17-by-5 and
+   17-by-72 non-Official calibration with the final native runner/verifier inputs. Only after its
    release gate passes, execute the controlled 17-by-72 Official run, score it
    with AIQ measurement `2.0.0`, and create one signed result package. Keep the
    package and all private inputs outside Git.

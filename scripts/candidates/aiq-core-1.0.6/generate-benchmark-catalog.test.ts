@@ -103,16 +103,27 @@ await test('only five task budgets are revised while 67 tasks explicitly carry f
         task.budget,
         task.task_id === 'coding-07'
           ? { wall_seconds: 600, max_steps: 32, max_tool_calls: 21 }
-          : { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 },
+          : task.task_id === 'debugging-02'
+            ? { wall_seconds: 1800, max_steps: 64, max_tool_calls: 56 }
+            : { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 },
       );
       strictEqual(
         task.design_revision.task_specific_delta.includes(
-          task.task_id === 'coding-07' ? 'jobs=1 attempt' : 'seven timeouts',
+          task.task_id === 'coding-07'
+            ? 'jobs=1 attempt'
+            : task.task_id === 'debugging-02'
+              ? '47/48 steps'
+              : 'seven timeouts',
         ),
         true,
       );
       if (task.task_id !== 'coding-07') {
-        strictEqual(task.design_revision.task_specific_delta.includes('three tool-budget'), true);
+        strictEqual(
+          task.design_revision.task_specific_delta.includes(
+            task.task_id === 'debugging-02' ? '41/40 tool calls' : 'three tool-budget',
+          ),
+          true,
+        );
       }
     }
     deepStrictEqual(task.title, priorTask.title);
@@ -197,7 +208,9 @@ await test('runtime revisions use evidence-backed task-level budgets', () => {
       task.budget,
       task.task_id === 'coding-07'
         ? { wall_seconds: 600, max_steps: 32, max_tool_calls: 21 }
-        : { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 },
+        : task.task_id === 'debugging-02'
+          ? { wall_seconds: 1800, max_steps: 64, max_tool_calls: 56 }
+          : { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 },
     );
     strictEqual(task.design_revision.kind, 'runtime_budget_revision');
     strictEqual(task.design_revision.objective.includes('every model configuration'), true);
@@ -208,6 +221,17 @@ await test('runtime revisions use evidence-backed task-level budgets', () => {
       true,
     );
   }
+});
+
+await test('debugging-02 raises every observed ceiling uniformly for all configurations', () => {
+  const task = buildCatalog().tasks.find(({ task_id }) => task_id === 'debugging-02');
+  if (task === undefined) throw new RangeError('debugging-02 is missing.');
+  deepStrictEqual(task.budget, { wall_seconds: 1800, max_steps: 64, max_tool_calls: 56 });
+  strictEqual(task.design_revision.task_specific_delta.includes('all 17 configurations'), true);
+  strictEqual(task.design_revision.task_specific_delta.includes('47/48 steps'), true);
+  strictEqual(task.design_revision.task_specific_delta.includes('41/40 tool calls'), true);
+  strictEqual(task.design_revision.task_specific_delta.includes('93.2%'), true);
+  strictEqual(task.design_revision.task_specific_delta.includes('95%'), true);
 });
 
 await test('coding-07 changes only the wall ceiling and applies to every configuration', () => {
