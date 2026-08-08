@@ -25,37 +25,44 @@ cells. It is preserved as non-Official statistical evidence because it failed
 the release policy. This does not mean that all task executions failed. AIQ
 Core `1.0.5` retargeted four calibration-sensitive tasks. Its pilot evidence
 found that the shared 900-second, 40-step, and 28-tool-call envelope was too
-small for those interaction tasks. AIQ Core `1.0.6` preserves their task and
-evaluator semantics and gives every model configuration the same 1,500-second,
-48-step, and 40-tool-call envelope. Run those four tasks across all 17
-configurations as a fresh 68-cell pilot before a complete 17-by-72 non-Official
-calibration. No operator can override a failed release gate. Real calibration
-evidence can enter the public calibration register only after signed verifier
-admission and distinct publication, and it remains non-Official.
+small for those interaction tasks. AIQ Core `1.0.6` has five task-level runtime
+revisions: coding-07 uses 600 seconds, 32 steps, and 21 tool calls; debugging-02
+uses 1,800 seconds, 64 steps, and 56 tool calls; and coding-06, debugging-01,
+and debugging-04 use 1,500 seconds, 48 steps, and 40 tool calls. These are
+common task budgets for every model configuration, not model-specific
+exceptions. Run a direct debugging-02-by-17 falsification pilot first, then the
+complete 17-by-5 targeted pilot before a complete 17-by-72 non-Official
+calibration. No operator can
+override a failed release gate. Real calibration evidence can enter the public
+calibration register only after signed verifier admission and distinct
+publication, and it remains non-Official.
 
 The first `1.0.5` 68-cell pilot completed 63 cells and timed out on 5. It was
 rejected because the completed task means were 0.933–0.992 and therefore did
-not distinguish the model configurations. A later interaction pilot exposed
-seven timeouts and three tool-budget failures at the old common envelope. The
-offline historical diagnostic now treats those ten observed runtime failures as
-runtime-null coverage evidence instead of semantic zero scores. It is
-permanently non-Official and cannot rewrite the preserved package. The rejected
-pilots remain immutable evidence.
+not distinguish the model configurations. The r11 five-task pilot then stopped
+on debugging-02 at 47/48 steps and 41/40 tool calls. Its debugging-01 and
+coding-06 utilization margins were high but those cells completed, so their
+envelopes remain unchanged pending the complete 17-by-5 falsification pilot.
+The offline diagnostic treats runtime failures as runtime-null coverage evidence
+instead of semantic zero scores. It is permanently non-Official and cannot
+rewrite the preserved package. The rejected pilots remain immutable evidence.
 
 ## Product contract
 
 - Repository source targets the public AIQ Core `1.0.6` candidate and scoring
   `1.0.6`, with 72 private controlled tasks in ten domains.
 - The active public candidate, task, and scorer contract is `1.0.6`. It changes
-  only the common runtime envelope for four interaction tasks and carries
-  forward the other 68 task, evaluator, tool, and budget contracts with new
+  only task-level runtime envelopes for five interaction tasks and carries
+  forward the other 67 task, evaluator, tool, and budget contracts with new
   version, provenance, and commitment bindings.
 - The public `1.0.6` catalog is deterministic and identity-frozen. Two
-  independently generated controlled candidates produced one matching tree,
-  and the reviewed 72-task database commitment is bound in source. Final
-  regeneration from the final clean commit, the fresh 68-cell pilot, full
-  calibration, Contrast generation, final native build, real Official run,
-  publication, and deployment are pending. No earlier publication is a fallback.
+  independently generated controlled candidates produced one matching tree.
+  The reviewed database task commitment is regenerated from the current
+  controlled 72-task commitment and bound to the same identities. Final
+  regeneration from the final clean commit, the fresh debugging-02-by-17 pilot,
+  the 17-by-5 targeted pilot, full calibration, final clean-source Contrast
+  regeneration, final native build, real Official run, publication, and
+  deployment are pending. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -95,21 +102,21 @@ pilots remain immutable evidence.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 Its public release digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The release-policy identity is `aiq-core/1.0.6`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
 The public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
 Final controlled corpus identities remain provisional until the clean-commit
-regeneration and calibration accept the candidate; Contrast generation is still
-pending. The checked Core schema
+Core and Contrast regeneration and calibration accept the candidate. The
+checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
 closed on this runner subtree for both Core and Contrast. Contrast does not have

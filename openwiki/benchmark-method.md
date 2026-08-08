@@ -32,21 +32,24 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. Its public catalog
 release-identity digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the public-safe database task-set identity is
-`sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82`,
+`sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
 and the reviewed task-commitment manifest identity is
-`sha256:94d41753482dbb45cc67cf2563fa369f125eb0d8dd19fa186f279c1b0f741211`.
+`sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
 Final controlled corpus identities are calibration candidates, not accepted
-release identities. Contrast generation remains pending. Each final
+release identities. The reviewed public-safe database task-set and
+task-commitment manifest are regenerated and bound to the current controlled
+72-task commitment; final clean-source Core and Contrast regeneration remains
+pending. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The
@@ -117,12 +120,16 @@ budgets, complete ellipses, and omission metadata. A later `1.0.5` pilot exposed
 seven timeouts and three tool-budget failures at the common 900-second,
 40-step, and 28-tool-call envelope. The offline historical diagnostic excludes
 those runtime-null cells from semantic scoring without changing the preserved
-package or producing Official evidence. AIQ Core `1.0.6` preserves the task,
-fixture, evaluator, tool, and scoring semantics and gives each of the four tasks
-the same 1,500-second, 48-step, and 40-tool-call budget for every model
-configuration. This budget revision does not alter scoring. The other 68 task
-contracts carry forward with new release bindings. Run a fresh
-17-by-4, 68-cell non-Official pilot before paying for the full
+package or producing Official evidence. The r11 five-task pilot then stopped on
+debugging-02 at 47/48 steps and 41/40 tool calls after 1,060.042 seconds. AIQ
+Core `1.0.6` preserves the task, fixture, evaluator, tool, and scoring semantics
+and has five runtime-budget revisions. Coding-07 uses 600 wall seconds, 32
+steps, and 21 tool calls; debugging-02 uses 1,800 seconds, 64 steps, and 56
+tool calls; coding-06, debugging-01, and debugging-04 use 1,500 seconds, 48
+steps, and 40 tool calls. Each task budget is common to every model
+configuration, and this budget revision does not alter scoring. The other 67
+task contracts carry forward with new release bindings. Run a fresh
+debugging-02-by-17 falsification pilot, then a 17-by-5, 85-cell non-Official pilot before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model

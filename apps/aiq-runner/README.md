@@ -93,14 +93,15 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 This is the active public `1.0.6` metadata identity. Its public release digest
-is `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+is `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
-generations produced one matching tree, and the reviewed 72-task database
-commitment is bound in source. Final clean-commit regeneration, the fresh pilot,
+generations produced one matching tree. The database task commitment is
+intentionally not changed by this scoring-only update and must be regenerated
+before database cutover. Final clean-commit regeneration, the fresh pilot,
 Contrast generation, and release acceptance remain pending.
 
 ## Execution and evidence
@@ -109,10 +110,11 @@ The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
 
-For the `1.0.6` release, first run the four runtime-revised tasks across all 17
-configurations, then run one complete 17-by-72 calibration before any real
-Official publication path. Both use the same per-task budget for every model
-configuration. The non-Official calibration must try to falsify fixture
+For the `1.0.6` release, first run coding-07 across all 17 configurations, then
+run all five runtime-revised tasks across all 17 configurations, and only then
+run one complete 17-by-72 calibration before any real Official publication
+path. Each task uses one budget for every model configuration. The non-Official
+calibration must try to falsify fixture
 discrimination and must pass the release policy without an operator override.
 The interrupted `1.0.3` Official attempt was rejected as unpublished calibration
 evidence after an already-conclusive ceiling failure. No hidden responses or

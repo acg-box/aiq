@@ -37,7 +37,7 @@ void describe('public calibration evidence boundary', () => {
     assert.equal(payload.official_eligible, false);
     assert.equal(
       (payload.provenance as Record<string, unknown>).catalog_digest,
-      'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1',
+      'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460',
     );
   });
 

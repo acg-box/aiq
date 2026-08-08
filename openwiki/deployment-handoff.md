@@ -13,13 +13,14 @@ workers, or later publications from this release plan.
 
 Repository source has the active public AIQ Core `1.0.6` candidate. Its
 public metadata digest is
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
 and its public release digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
-commitment is bound in source. Final clean-commit regeneration, the fresh
-targeted pilot, Contrast generation, full calibration, final native build
+task-commitment manifest is regenerated and bound in source. Final clean-source
+Core and Contrast regeneration, the fresh
+targeted pilot, full calibration, final native build
 verification, a real Official run, publication, and final deployment are
 pending. The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and
 measurement `2.0.0`. Do not treat the source-head change as a deployment claim.
@@ -29,7 +30,8 @@ ceiling failure. It is rejected, unpublished calibration evidence. No hidden
 responses or hidden task details were published. The first `1.0.4` calibration
 completed all 1,224 cells but failed the statistical release gate. It remains
 non-Official evidence and must not be described as 1,224 failed executions. The
-`1.0.6` path first runs a 17-by-4 pilot over the four runtime-revised tasks, then the full
+`1.0.6` path first runs debugging-02 across all 17 configurations, then a
+17-by-5 pilot over the five runtime-revised tasks, then the full
 falsification-first non-Official 17-by-72 calibration. A failed release gate has
 no operator override. Real calibration remains permanently non-Official even
 after signed verifier admission and distinct publication to its public register.
@@ -42,8 +44,8 @@ legacy matrix as production evidence. It is not a fallback.
 
 The order below is intentional:
 
-1. Complete the required 17-by-4 pilot and full 17-by-72 non-Official
-   calibration with the final native runner/verifier inputs. Only after its
+1. Complete the required debugging-02-by-17 pilot, then the full 17-by-5 and
+   17-by-72 non-Official calibration with the final native runner/verifier inputs. Only after its
    release gate passes, execute the controlled 17-by-72 Official run, score it
    with AIQ measurement `2.0.0`, and create one signed result package. Keep the
    package and all private inputs outside Git.
@@ -487,8 +489,9 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       while preserving paths.
 - [ ] Regenerate and audit the final AIQ Core `1.0.6` corpus from the final clean
       source commit, then build and hash the native runner and verifier.
-- [ ] Complete the 17-by-4 targeted pilot and the required full non-Official
-      calibration. Stop if either release gate fails.
+- [ ] Complete the debugging-02-by-17 falsification pilot, the 17-by-5 targeted
+      pilot, and the required full non-Official calibration. Stop if any release
+      gate fails.
 - [ ] Create and successfully offline-verify one new signed AIQ 2.0
       `1.0.6` 17-by-72 package before touching the live database.
 - [ ] After the offline verifier gate passes, empty only the AIQ-owned namespace

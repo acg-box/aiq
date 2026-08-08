@@ -22,18 +22,20 @@ Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
 AIQ Core `1.0.6` with task-metadata digest
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
-This public candidate changes only the common runtime envelope for the bounded
-keyed executor, quoted-record parser, six-field layered service configuration
-loader, and bounded Unicode log preview. Every model configuration gets the
-same 1,500-second, 48-step, and 40-tool-call budget. The other 68 task,
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
+This public candidate changes only task-level runtime envelopes for five bounded
+interaction tasks. Coding-07 gets 600 wall seconds, 32 steps, and 21 tool calls;
+debugging-02 gets 1,800 seconds, 64 steps, and 56 tool calls; coding-06,
+debugging-01, and debugging-04 retain 1,500 seconds, 48 steps, and 40 tool calls.
+Every task budget is common to every model configuration. The other 67 task,
 evaluator, tool, and budget contracts carry forward with new bindings. The
 preceding `1.0.5` pilots remain immutable non-Official evidence. The first had
-63 completed cells, five timeouts, and saturated completed means. A later pilot
-exposed seven timeouts and three tool-budget failures at the old common
-envelope. The current task semantics and calibration implications are
+63 completed cells, five timeouts, and saturated completed means. The r11 pilot
+stopped on debugging-02 at 47/48 steps and 41/40 tool calls; coding-06 and
+debugging-01 had high utilization but no runtime failure. The current task
+semantics and calibration implications are
 canonicalized in [Benchmark Method](benchmark-method.md).
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
@@ -59,8 +61,9 @@ already-conclusive ceiling failure and was rejected as unpublished calibration
 evidence. No hidden responses or hidden task details were published. The first
 `1.0.4` calibration completed all 1,224 cells but failed the statistical release
 gate. It remains non-Official evidence; this does not mean every task execution
-failed. The `1.0.6` sequence is a 17-configuration by four-runtime-revised-task pilot,
-followed by the complete 17-by-72 non-Official calibration. Real calibration
+failed. The `1.0.6` sequence is a 17-configuration by
+five-runtime-revised-task pilot, followed by the complete 17-by-72 non-Official
+calibration. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
 The accepted production package must be non-synthetic. Its 1,224 task-level
