@@ -125,7 +125,10 @@ external service configuration and production acceptance.
 Before any paid Official preflight, `admit-permissions` validates the exact
 72-by-17 plan, controlled-input identities, schedule occurrence, worker count,
 and permission boundary. Capacity evidence records model duration as unbounded
-and does not claim that the run fits before another schedule slot. The runner starts Codex with
+and does not claim that the run fits before another schedule slot. Capacity-admission
+v2 represents the model wall-budget sums and model/end-to-end bounds as nullable
+when runnable model execution is unbounded; evaluator and orchestration controls
+remain bounded. The runner starts Codex with
 strict CLI configuration that selects the explicit `aiq_benchmark` profile and
 requires external managed requirements to be absent, then runs the sandbox
 canaries and validates the planned preflight, checkpoint, run, score, and package

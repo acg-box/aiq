@@ -69,13 +69,17 @@ bound by the corpus commitment.
 
 Production can publish only one AIQ Core `1.0.6`, scoring `1.0.6`, measurement
 `2.0.0`, non-synthetic Official `72 × 17` matrix, or 1,224 results. The release gate checks all
-72 Core task definitions and 432 fixed evaluator bindings: gold,
-alternate-correct, partial, adversarial-format, empty, and timeout for every
-task. The separate six-task Contrast calibration checks 36 bindings. Both
-validators also bind toolchain identities, source inputs, and deterministic
-evaluator outputs on the native macOS host. Contrast evidence does not add rows
-to the Official matrix. Use the top-level model-free validators for these two
-controlled corpora:
+72 Core task definitions and their policy-valid acceptance suites. Every Core
+task requires `gold`, `alternate_correct`, `partial`, and `adversarial_format`;
+`empty` and `timeout` are permitted only as reviewed optional classes, and no
+other class is allowed. The separate six-task Contrast calibration requires
+exactly `challenge`, `empty`, `format`, `near_miss`, `reference`, and `tamper`
+for each task, with no optional classes. The authoring input and harness
+manifests record the required classes, optional classes, and observed classes
+per task. Both validators also bind toolchain identities, source inputs, and
+deterministic evaluator outputs on the native macOS host. Contrast evidence does
+not add rows to the Official matrix. Use the top-level model-free validators for
+these two controlled corpora:
 
 ```sh
 cargo run -p aiq-runner -- validate-core-corpus --help

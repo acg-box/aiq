@@ -182,8 +182,15 @@ executable under `toolchain`; no second runtime copy is retained. Run it
 independently for candidate A and candidate B, then
 require recursive byte equality between their complete sealed output directories
 before release use. Successful stdout is the canonical commitment digest required
-by the Contrast validator. Do not use temporary `jq`-modified commitments or
-diagnostic r13/r14 outputs as sealer inputs.
+by the Contrast validator. The acceptance directory must satisfy the
+corpus-kind policy: Core requires `adversarial_format`, `alternate_correct`,
+`gold`, and `partial`, permits only the reviewed optional classes `empty` and
+`timeout`, and records the observed classes per task; Contrast requires exactly
+`challenge`, `empty`, `format`, `near_miss`, `reference`, and `tamper` with no
+optional classes. The generated authoring input and harness manifests preserve
+those required, optional, and per-task class lists for independent validation.
+Do not use temporary `jq`-modified commitments or diagnostic r13/r14 outputs as
+sealer inputs.
 
 For each corpus kind, run the same command twice with independent retained input
 copies and different new output paths. The release identifier must be the same
