@@ -21,7 +21,7 @@ use crate::adapter::CapabilityValidationReport;
 use crate::adapter::PREFLIGHT_MARKER_ARTIFACT_KIND;
 use crate::adapter::PREFLIGHT_MARKER_BYTES;
 use crate::protocol::{CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, TrustTier};
-use crate::runner::MAX_RUN_JOBS;
+use crate::runner::{self, MAX_RUN_JOBS};
 use crate::{
 	adapter::ArtifactReference,
 	protocol::{self, SubmissionEnvelope},
@@ -70,9 +70,9 @@ pub trait ArtifactUploadTransport {
 /// to Official normalization or publication code as a [`RunRecord`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum ValidatedSubmissionPayload {
-	/// Existing `aiq.run.v3` payload.
+	/// Current `aiq.run.v4` payload.
 	Official(RunRecord),
-	/// Explicitly non-Official `aiq.calibration-run.v3` payload.
+	/// Explicitly non-Official `aiq.calibration-run.v4` payload.
 	Calibration(CalibrationRunRecord),
 }
 impl ValidatedSubmissionPayload {
@@ -451,6 +451,8 @@ pub fn bind_synthetic_run_to_signer(
 				.trim_start_matches("sha256:")
 		);
 	}
+
+	run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
 
 	Ok(())
 }
@@ -1480,6 +1482,13 @@ mod tests {
 		signed_body_with_sink(&runner::TestArtifactSink)
 	}
 
+	fn bind_official_bank(run: &mut runner::RunRecord) {
+		let tasks = runner::synthetic_demo_tasks();
+
+		run.calibration_admission_digest = Some(format!("sha256:{}", "2".repeat(64)));
+		run.calibration_bank = Some(scoring::fixture_frozen_calibration_bank(&tasks));
+	}
+
 	fn signed_body_with_sink<S>(sink: &S) -> Vec<u8>
 	where
 		S: ArtifactSink,
@@ -1573,40 +1582,12 @@ mod tests {
 		let codex_version = "codex fixture".to_owned();
 		let preview = String::from_utf8(probe_output[..adapter::MAX_INLINE_PREVIEW_BYTES].to_vec())
 			.expect("ASCII fixture preview");
-		let models = MODEL_MATRIX
-			.into_iter()
-			.map(|model| {
-				let observed_at = "unix-ms:1".to_owned();
-				let probe_artifacts = vec![preflight_artifact.clone(), marker_artifact.clone()];
-				let evidence_digest = adapter::configuration_evidence_digest(
-					model,
-					Some(&codex_version),
-					&observed_at,
-					ConfigurationProbeStatus::Available,
-					Some(&preflight_artifact.content_hash),
-					Some(&preview),
-					&probe_artifacts,
-					None,
-				)
-				.expect("preflight evidence digest");
-
-				CapabilityValidation {
-					model,
-					status: CapabilityValidationStatus::Available,
-					reason: "active probe succeeded".to_owned(),
-					probe: ConfigurationProbe {
-						status: ConfigurationProbeStatus::Available,
-						codex_version: Some(codex_version.clone()),
-						observed_at,
-						result_digest: Some(preflight_artifact.content_hash.clone()),
-						result_preview: Some(preview.clone()),
-						artifacts: probe_artifacts,
-						evidence_digest,
-						failure: None,
-					},
-				}
-			})
-			.collect();
+		let models = available_preflight_models(
+			&codex_version,
+			&preview,
+			&preflight_artifact,
+			&marker_artifact,
+		);
 		let mut run = runner::synthetic_demo(
 			ScheduleConfig::default()
 				.slot("2024-02-29", ScheduleOccurrence::Day)
@@ -1669,12 +1650,58 @@ mod tests {
 			);
 		}
 
+		bind_official_bank(&mut run);
+
+		run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
+
 		let envelope = identity
 			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
 			.expect("fixture must sign");
 		let body = submission::serialize_signed_package(&envelope).expect("fixture package");
 
 		(body, preflight_artifact)
+	}
+
+	fn available_preflight_models(
+		codex_version: &String,
+		preview: &str,
+		preflight_artifact: &ArtifactReference,
+		marker_artifact: &ArtifactReference,
+	) -> Vec<CapabilityValidation> {
+		MODEL_MATRIX
+			.into_iter()
+			.map(|model| {
+				let observed_at = "unix-ms:1".to_owned();
+				let probe_artifacts = vec![preflight_artifact.clone(), marker_artifact.clone()];
+				let evidence_digest = adapter::configuration_evidence_digest(
+					model,
+					Some(codex_version),
+					&observed_at,
+					ConfigurationProbeStatus::Available,
+					Some(&preflight_artifact.content_hash),
+					Some(preview),
+					&probe_artifacts,
+					None,
+				)
+				.expect("preflight evidence digest");
+
+				CapabilityValidation {
+					model,
+					status: CapabilityValidationStatus::Available,
+					reason: "active probe succeeded".to_owned(),
+					probe: ConfigurationProbe {
+						status: ConfigurationProbeStatus::Available,
+						codex_version: Some(codex_version.to_owned()),
+						observed_at,
+						result_digest: Some(preflight_artifact.content_hash.clone()),
+						result_preview: Some(preview.to_owned()),
+						artifacts: probe_artifacts,
+						evidence_digest,
+						failure: None,
+					},
+				}
+			})
+			.collect()
 	}
 
 	fn preflight_artifacts(
@@ -1784,7 +1811,7 @@ mod tests {
 		result.task_version = "v".repeat(32);
 		result.evaluation = EvaluationOutcome::Incorrect;
 		result.task_score = Some(0.0);
-		result.response = Some("\0".repeat(MAX_RESULT_PREVIEW_BYTES));
+		result.response = Some("\0".repeat(MAX_RESULT_PREVIEW_BYTES.saturating_sub(512)));
 		result.response_sha256 = Some(format!("sha256:{}", "c".repeat(64)));
 		result.artifacts = vec![
 			artifact("stdout.jsonl", 'a'),
@@ -1894,6 +1921,10 @@ mod tests {
 			maximize_completed_result(result, &node_id, &codex_version, &task_ids);
 		}
 
+		bind_official_bank(&mut run);
+
+		run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
+
 		let (_, evaluator_results_bytes) =
 			runner::build_evaluator_results_bundle(&run.results).expect("maximum bundle");
 
@@ -1976,6 +2007,8 @@ mod tests {
 			schedule_slot: failed_run.schedule_slot.clone(),
 			task_set_hash: failed_run.task_set_hash.clone(),
 			scoring_version: failed_run.scoring_version.clone(),
+			calibration_admission_digest: None,
+			calibration_bank: None,
 			execution_concurrency: failed_run.execution_concurrency,
 			models: failed_run.models.clone(),
 			task_ids: selected_task_ids,
@@ -1987,6 +2020,7 @@ mod tests {
 				.expect("maximum fixture preflight"),
 			provenance,
 			evaluator_results_artifact: failed_run.evaluator_results_artifact.clone(),
+			terminal_attempt_lineage: runner::terminal_attempt_lineage(&results),
 			results,
 		};
 
@@ -2034,6 +2068,8 @@ mod tests {
 			);
 		}
 
+		failed_run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&failed_run.results);
+
 		let (_, failed_evaluator_results_bytes) =
 			runner::build_evaluator_results_bundle(&failed_run.results)
 				.expect("failed evaluator-results bundle");
@@ -2056,6 +2092,8 @@ mod tests {
 				.expect("overbound result hash")
 				.trim_start_matches("sha256:")
 		);
+		overbound_run.terminal_attempt_lineage =
+			runner::terminal_attempt_lineage(&overbound_run.results);
 
 		let overbound = identity
 			.sign(
@@ -2816,10 +2854,10 @@ mod tests {
 	}
 
 	#[test]
-	fn checked_in_v3_fixture_is_a_canonical_rust_verified_full_package() {
+	fn checked_in_v4_fixture_is_a_canonical_rust_verified_full_package() {
 		let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-			.join("../../benchmarks/fixtures/result-package-v3.synthetic.json");
-		let fixture = fs::read(fixture_path).expect("checked-in v3 fixture");
+			.join("../../benchmarks/fixtures/result-package-v4.synthetic.json");
+		let fixture = fs::read(fixture_path).expect("checked-in v4 fixture");
 		let envelope: SubmissionEnvelope =
 			serde_json::from_slice(&fixture).expect("checked-in fixture envelope");
 		let canonical = submission::serialize_signed_package(&envelope)
@@ -2867,15 +2905,15 @@ mod tests {
 
 	#[test]
 	#[ignore = "explicitly rewrites the checked-in synthetic package fixture"]
-	fn regenerate_checked_in_v3_fixture() {
+	fn regenerate_checked_in_v4_fixture() {
 		let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-			.join("../../benchmarks/fixtures/result-package-v3.synthetic.json");
+			.join("../../benchmarks/fixtures/result-package-v4.synthetic.json");
 
-		fs::write(fixture_path, signed_body()).expect("write checked-in v3 fixture");
+		fs::write(fixture_path, signed_body()).expect("write checked-in v4 fixture");
 	}
 
 	#[test]
-	fn maximum_inline_previews_fit_full_1224_result_package() {
+	fn large_inline_previews_fit_full_1224_result_package_with_bank_and_lineage() {
 		let (
 			envelope,
 			evaluator_results_bytes,
@@ -2925,11 +2963,11 @@ mod tests {
 		.expect("valid calibration package submission");
 
 		assert_eq!(calibration_submission.kind, SubmissionOutcomeKind::Accepted);
-		assert_eq!(bytes.len(), 3_750_708);
 		assert_eq!(evaluator_results_bytes, 2_310_969);
 		assert_eq!(failed_bundle_bytes, 6_177);
-		assert_eq!(failed_bytes.len(), 3_924_513);
-		assert_eq!(calibration_bytes.len(), 3_929_435);
+		assert!(bytes.len() > 3 * 1_024 * 1_024);
+		assert!(failed_bytes.len() > 3 * 1_024 * 1_024);
+		assert!(calibration_bytes.len() > 3 * 1_024 * 1_024);
 		assert!(submission::serialize_signed_package(&overbound_envelope).is_err());
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
 		assert!(

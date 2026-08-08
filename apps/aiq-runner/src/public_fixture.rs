@@ -13,6 +13,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::model::ModelFamily;
+use crate::task;
 use crate::{
 	model::{MODEL_MATRIX, ModelConfig},
 	protocol::{self, ResultProvenance, TrustTier},
@@ -121,7 +122,7 @@ impl TestGeneratedPublicFixture {
 
 		for cell in &self.task_cells {
 			if cell.provenance != TEST_GENERATED_FIXTURE_PROVENANCE
-				|| cell.task_version != AIQ_SCORING_VERSION
+				|| cell.task_version != crate::scoring::AIQ_TASK_SCORER_VERSION
 				|| !cell.task_score.is_finite()
 				|| !(0.0..=1.0).contains(&cell.task_score)
 			{
@@ -324,6 +325,19 @@ pub fn generate_test_generated_public_fixture()
 		)));
 	}
 
+	let task_set_digest = task::task_set_hash(&tasks)
+		.map_err(|error| error_message("fixture task-set digest failed", error))?;
+	let evaluator_digest = protocol::canonical_hash(&"test-generated-evaluator-v1")
+		.map_err(|error| error_message("fixture evaluator digest failed", error))?;
+	let calibration_bank = scoring::derive_frozen_calibration_bank(
+		&tasks,
+		&results,
+		&"1".repeat(64),
+		scoring::AIQ_TASK_SCORER_VERSION,
+		&task_set_digest,
+		&evaluator_digest,
+	)
+	.map_err(|error| error_message("fixture calibration-bank derivation failed", error))?;
 	let matrix_batch_id = fixture_matrix_batch_id()?;
 	let options = ScoreOptions {
 		bootstrap_samples: TEST_GENERATED_BOOTSTRAP_SAMPLES,
@@ -335,10 +349,11 @@ pub fn generate_test_generated_public_fixture()
 	for model in MODEL_MATRIX {
 		let model_id = matrix_id(model);
 		let run_id = fixture_run_id(&matrix_batch_id, &model_id)?;
-		let report = scoring::score_model_with_context(
+		let report = scoring::score_official_model_with_bank(
 			&tasks,
 			&results,
 			model,
+			&calibration_bank,
 			ScoreContext::default(),
 			options,
 		)

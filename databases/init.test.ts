@@ -380,7 +380,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
 
   deepStrictEqual(
     groups.map((group) => group.length),
-    [1, 1, 72, 17, 3],
+    [2, 1, 72, 17, 3],
   );
   deepStrictEqual(
     prepared.sql
@@ -421,7 +421,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.6', '1\.0\.6'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.6', '1\.0\.7'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -460,7 +460,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .update(canonicalJson(object(reference.corpus_commitment)))
       .digest('hex')}`,
   );
-  strictEqual(prepared.receipt.scoring_version, '1.0.6');
+  strictEqual(prepared.receipt.scoring_version, '1.0.7');
   strictEqual(prepared.receipt.measurement_version, '2.0.0');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,

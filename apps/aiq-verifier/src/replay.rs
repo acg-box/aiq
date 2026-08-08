@@ -4,6 +4,9 @@
 mod tests {
 	#[cfg(unix)]
 	use std::os::unix::fs::PermissionsExt as _;
+
+	use std::slice;
+
 	use std::{
 		collections::{BTreeMap, BTreeSet},
 		env, fs,
@@ -15,11 +18,13 @@ mod tests {
 	use sha2::{Digest, Sha256};
 
 	use crate::{ArtifactResolverClient, ReasonCode, WorkerError, replay};
+
 	#[cfg(unix)]
 	use aiq_runner::task::{
 		EVALUATOR_PROTOCOL_VERSION, EvaluatorRuntime, EvaluatorRuntimeKind,
 		ExternalEvaluatorBinding,
 	};
+
 	use aiq_runner::{
 		adapter::ArtifactReference,
 		model::MODEL_MATRIX,
@@ -52,6 +57,16 @@ mod tests {
 	struct PanickingResolver {
 		inner: MemoryResolver,
 		panicked: AtomicBool,
+	}
+
+	struct Fixture {
+		root: PathBuf,
+		evaluator_root: PathBuf,
+		evaluator_runtime: EvaluatorRuntime,
+		replay_root: PathBuf,
+		tasks: Vec<TaskDefinition>,
+		run: RunRecord,
+		resolver: MemoryResolver,
 	}
 
 	impl ArtifactResolverClient for MemoryResolver {
@@ -112,16 +127,6 @@ mod tests {
 		}
 	}
 
-	struct Fixture {
-		root: PathBuf,
-		evaluator_root: PathBuf,
-		evaluator_runtime: EvaluatorRuntime,
-		replay_root: PathBuf,
-		tasks: Vec<TaskDefinition>,
-		run: RunRecord,
-		resolver: MemoryResolver,
-	}
-
 	impl Fixture {
 		fn completed(response: &str) -> Self {
 			let root = fixture_root();
@@ -141,25 +146,7 @@ mod tests {
 				.evaluate_checked(response, None)
 				.expect("evaluation");
 			let (manifest, snapshot, mut objects) = candidate_evidence(Vec::new());
-			let stdout = serde_json::json!({
-				"type": "item.completed",
-				"item": {
-					"id": "message-1",
-					"type": "agent_message",
-					"text": response
-				}
-			})
-			.to_string();
-			let stdout_reference = artifact("stdout.jsonl", stdout.as_bytes());
-
-			objects.insert(
-				(
-					stdout_reference.content_hash.trim_start_matches("sha256:").to_owned(),
-					stdout_reference.kind.clone(),
-				),
-				stdout.as_bytes().to_vec(),
-			);
-
+			let (stdout, stdout_reference) = completed_stdout_evidence(response, &mut objects);
 			let tool_usage =
 				runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 			let model = MODEL_MATRIX[0];
@@ -221,6 +208,8 @@ mod tests {
 					.expect("slot"),
 				task_set_hash: format!("sha256:{}", "4".repeat(64)),
 				scoring_version: AIQ_SCORING_VERSION.to_owned(),
+				calibration_admission_digest: None,
+				calibration_bank: None,
 				execution_concurrency: Some(1),
 				models: vec![model],
 				started_unix_ms: 1,
@@ -229,6 +218,9 @@ mod tests {
 				capability_validation: None,
 				provenance: None,
 				evaluator_results_artifact: bundle_reference,
+				terminal_attempt_lineage: runner::terminal_attempt_lineage(slice::from_ref(
+					&result,
+				)),
 				results: vec![result],
 			};
 
@@ -413,6 +405,32 @@ mod tests {
 		fn drop(&mut self) {
 			let _ = fs::remove_dir_all(&self.root);
 		}
+	}
+
+	fn completed_stdout_evidence(
+		response: &str,
+		objects: &mut BTreeMap<(String, String), Vec<u8>>,
+	) -> (String, ArtifactReference) {
+		let stdout = serde_json::json!({
+			"type": "item.completed",
+			"item": {
+				"id": "message-1",
+				"type": "agent_message",
+				"text": response
+			}
+		})
+		.to_string();
+		let reference = artifact("stdout.jsonl", stdout.as_bytes());
+
+		objects.insert(
+			(
+				reference.content_hash.trim_start_matches("sha256:").to_owned(),
+				reference.kind.clone(),
+			),
+			stdout.as_bytes().to_vec(),
+		);
+
+		(stdout, reference)
 	}
 
 	fn fixture_evaluator_runtime(root: &Path) -> EvaluatorRuntime {

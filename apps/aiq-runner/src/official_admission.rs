@@ -20,6 +20,9 @@ pub(crate) struct OfficialOutputPlan {
 pub(crate) struct OfficialPlanBinding {
 	pub(crate) run_id: String,
 	pub(crate) task_ids: Vec<String>,
+	pub(crate) calibration_admission: String,
+	pub(crate) calibration_admission_digest: String,
+	pub(crate) calibration_bank_digest: String,
 	pub(crate) task_set_hash: String,
 	pub(crate) corpus_commitment_digest: String,
 	pub(crate) catalog_digest: String,

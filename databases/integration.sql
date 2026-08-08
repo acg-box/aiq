@@ -239,6 +239,8 @@ declare
   task_set_hash text;
   run_id text;
   results jsonb := '[]'::jsonb;
+  lineage jsonb;
+  bank_items jsonb;
   payload jsonb;
   result_base jsonb;
   response_digest text := 'sha256:' || encode(
@@ -268,7 +270,7 @@ begin
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.6'
+    'scoring_version', '1.0.7'
   )), 8);
 
   for task in
@@ -318,12 +320,54 @@ begin
     end loop;
   end loop;
 
+  select jsonb_agg(
+    jsonb_build_object(
+      'task_id', result ->> 'task_id',
+      'task_version', result ->> 'task_version',
+      'model', result -> 'model',
+      'terminal_result_ids', jsonb_build_array(result ->> 'result_id'),
+      'selected_result_id', result ->> 'result_id'
+    )
+  ) into strict lineage
+  from jsonb_array_elements(results) result;
+
+  select jsonb_agg(
+    jsonb_build_object(
+      'task_id', catalog.task_id,
+      'task_version', catalog.task_version,
+      'domain', catalog.domain,
+      'facility', 0.5,
+      'difficulty', 0.0,
+      'mean_item_information', 0.25
+    ) order by catalog.task_id
+  ) into strict bank_items
+  from aiq_private.aiq_task_catalog catalog
+  where catalog.task_set_id = 'aiq-core'
+    and catalog.task_set_version = '1.0.6';
+
   payload := jsonb_build_object(
-    'schema_version', 'aiq.run.v3',
+    'schema_version', 'aiq.run.v4',
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.6',
+    'scoring_version', '1.0.7',
+    'calibration_admission_digest', 'sha256:' || repeat('c', 64),
+    'calibration_bank', jsonb_build_object(
+      'schema_version', 'aiq.calibration-bank.v2',
+      'scoring_version', '1.0.7',
+      'measurement_version', '2.0.0',
+      'method', 'rasch_fractional_fixed_bank_map_v2',
+      'source_package_sha256', 'sha256:' || repeat('d', 64),
+      'source_scoring_version', '1.0.6',
+      'task_set_id', 'aiq-core',
+      'task_set_version', '1.0.6',
+      'task_set_digest', task_set_hash,
+      'catalog_digest', 'sha256:' || repeat('e', 64),
+      'evaluator_digest', 'sha256:' || repeat('f', 64),
+      'policy_digest', 'sha256:' || repeat('a', 64),
+      'calibration_model_count', 17,
+      'items', bank_items
+    ),
     'models', models,
     'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
@@ -338,12 +382,13 @@ begin
         || '/evaluator-results.json',
       'bytes', 1
     ),
+    'terminal_attempt_lineage', lineage,
     'results', results
   );
   return jsonb_build_object(
-    'schema_version', 'aiq.result-package.v3',
+    'schema_version', 'aiq.result-package.v4',
     'idempotency_key', run_id,
-    'payload_type', 'aiq.run.v3',
+    'payload_type', 'aiq.run.v4',
     'content_hash', aiq_private.jcs_sha256(payload),
     'signer', jsonb_build_object(
       'node_id', node_id, 'public_key', public_key
@@ -504,14 +549,15 @@ begin
       'results', normalized_results,
       'score', jsonb_build_object(
         'schema_version', 'aiq.score-report.v2',
-        'scoring_version', '1.0.6',
+        'scoring_version', '1.0.7',
         'measurement_version', '2.0.0',
         'model', model_identity,
         'tier', 'synthetic_complete',
-        'rule', 'AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate''s predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.',
+        'rule', 'AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate''s predicted success probability on an average calibrated task. A replay-verified calibration package fits one centered 72-item bank; Official scoring freezes those item difficulties and estimates only each model theta with a weak N(0, 3²) prior. Official replicate ceiling, informative-item, and non-uniform-item measurements are drift diagnostics and never re-fit or gate the released bank. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a valid signed calibration admission and its exact frozen bank. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is a fixed-fixture calibrated sensitivity interval with a versioned 1.3 deviation correction, not a universal confidence interval. Time, latency, token use, tool use, and cost are auxiliary measurements and never alter AIQ.',
         'score', null,
         'quality_score', 100,
         'latent_ability', null,
+        'replicate_drift_diagnostic', null,
         'ranking_eligible', false,
         'duplicate_results', 0,
         'coverage', jsonb_build_object(
@@ -550,7 +596,7 @@ begin
   end loop;
 
   return jsonb_build_object(
-    'schema_version', 'aiq.normalized-batch.v3',
+    'schema_version', 'aiq.normalized-batch.v4',
     'matrix_batch_id', batch_id,
     'package_sha256', package_sha256,
     'content_hash', envelope ->> 'content_hash',
@@ -558,12 +604,14 @@ begin
     'task_set_id', 'aiq-core',
     'task_set_version', '1.0.6',
     'task_set_hash', payload ->> 'task_set_hash',
+    'terminal_attempt_lineage_digest',
+      aiq_private.jcs_sha256(payload -> 'terminal_attempt_lineage'),
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
     'benchmark_version', 'aiq-core@1.0.6',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.6',
+    'scoring_version', '1.0.7',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', payload -> 'started_unix_ms',
@@ -995,6 +1043,47 @@ begin
 end;
 $$;
 
+select pg_temp.aiq_assert(
+  (
+    select count(*) = 17
+      and bool_and(batch.scoring_version = '1.0.7')
+      and bool_and(batch.source_scoring_version = '1.0.6')
+      and bool_and(aiq_private.task_result_scorer_versions_match_catalog(
+        run.run_id, batch.task_set_id, batch.task_set_version
+      ))
+    from aiq_private.aiq_runs run
+    join aiq_private.aiq_matrix_batches batch
+      on batch.matrix_batch_id = run.matrix_batch_id
+  ),
+  '1.0.6 task scorers must remain catalog-bound under 1.0.7 aggregate scoring'
+);
+
+savepoint task_scorer_version_tamper;
+set local session_replication_role = replica;
+update aiq_private.aiq_task_results
+set scorer_version = '1.0.7'
+where result_id = (
+  select result_id from aiq_private.aiq_task_results
+  order by result_id limit 1
+);
+set local session_replication_role = origin;
+select pg_temp.aiq_assert(
+  (
+    select not aiq_private.task_result_scorer_versions_match_catalog(
+      run.run_id, batch.task_set_id, batch.task_set_version
+    )
+    from aiq_private.aiq_runs run
+    join aiq_private.aiq_matrix_batches batch
+      on batch.matrix_batch_id = run.matrix_batch_id
+    join aiq_private.aiq_task_results result on result.run_id = run.run_id
+    where result.scorer_version = '1.0.7'
+    limit 1
+  ),
+  'aggregate scoring version must not be accepted as a task scorer version'
+);
+rollback to savepoint task_scorer_version_tamper;
+release savepoint task_scorer_version_tamper;
+
 savepoint non_synthetic_score_classification;
 set local session_replication_role = replica;
 update aiq_private.aiq_score_snapshots
@@ -1041,7 +1130,7 @@ select
   package.matrix_batch_id,
   package.package_sha256,
   jsonb_build_object(
-    'schema_version', 'aiq.verifier-attestation.v3',
+    'schema_version', 'aiq.verifier-attestation.v4',
     'signature_algorithm', 'ed25519',
     'signature_version', 'aiq.ed25519-jcs.v1',
     'matrix_batch_id', package.matrix_batch_id,
@@ -1049,6 +1138,9 @@ select
     'content_hash', package.content_hash,
     'normalization_digest', package.normalization_digest,
     'task_set_hash', package.envelope #>> '{payload,task_set_hash}',
+    'terminal_attempt_lineage_digest', aiq_private.jcs_sha256(
+      package.envelope #> '{payload,terminal_attempt_lineage}'
+    ),
     'capability_validation_digest', null,
     'provenance', null,
     'benchmark_version', batch.benchmark_version,
@@ -1164,7 +1256,7 @@ set
     'calibration_model_count', 17,
     'calibration_task_count', 72,
     'items_used', 72,
-    'method', 'rasch_fractional_joint_map_v1',
+    'method', 'rasch_fractional_fixed_bank_map_v2',
     'observed_information', 12,
     'reliability_status', 'single_matrix_information_only',
     'score', quality_score,
@@ -1199,7 +1291,7 @@ select pg_temp.aiq_assert(
         > pg_catalog.date_trunc('milliseconds', recorded_at)
       and bucket_ended_at = recorded_at + interval '1 millisecond'
       and resolution_seconds = 1
-      and scoring_version = '1.0.6'
+      and scoring_version = '1.0.7'
     )
     from aiq_single_batch_trend
   ),

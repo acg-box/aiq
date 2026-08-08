@@ -23,7 +23,7 @@ use std::{
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use clap::Parser;
+use clap::{ArgGroup, Parser};
 use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -37,9 +37,11 @@ use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
 	calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
-		CalibrationAdmissionBundleV1, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+		CalibrationAdmissionBundleV2, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
-	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
+	corpus_commitment::{
+		self, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain,
+	},
 	model::{MODEL_MATRIX, ModelConfig},
 	normalization::{
 		self, AttestedDeploymentMetadata, MAX_VERIFICATION_REQUEST_BYTES, NormalizedBatchStage,
@@ -55,9 +57,9 @@ use aiq_runner::{
 		TaskResult,
 	},
 	scoring::{
-		self, AIQ_CORE_TASK_IDENTITY_SHA256, FalseOnly, OfficialCalibrationDiagnostic,
-		OfficialCalibrationPolicy, OfficialCalibrationSummary, ScoreContext, ScoreOptions,
-		ScoreReport,
+		self, AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION,
+		FalseOnly, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy,
+		OfficialCalibrationSummary, ScoreContext, ScoreOptions, ScoreReport,
 	},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
 	task::{
@@ -170,6 +172,62 @@ pub struct Cli {
 		conflicts_with = "synthetic_demo_tasks"
 	)]
 	evaluator_runtime: Option<PathBuf>,
+	/// Private verifier-signed calibration admission required for Official claims.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	calibration_admission: Option<PathBuf>,
+	/// Exact detached source tree bound by the calibration admission authority.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	source_root: Option<PathBuf>,
+	/// Exact frozen runner binary approved for Official execution.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	runner_binary: Option<PathBuf>,
+	/// Main executable in the exact frozen two-file Codex runtime.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	codex_binary: Option<PathBuf>,
+	/// Protected production reference approving the runner and verifier identities.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	production_reference: Option<PathBuf>,
+	/// Independently supplied SHA-256 of the protected production reference.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	expected_production_reference_sha256: Option<String>,
+	/// Private final-build receipt for the current source and binaries.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	build_receipt: Option<PathBuf>,
+	/// Independently supplied SHA-256 of the private final-build receipt.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	expected_build_receipt_sha256: Option<String>,
 	/// Controlled parent for fresh reconstructed candidate workspaces.
 	#[arg(long)]
 	replay_root: PathBuf,
@@ -293,18 +351,6 @@ impl WorkerError {
 		}
 	}
 
-	fn terminal_calibration(
-		code: ReasonCode,
-		message: impl Into<String>,
-		official_calibration: OfficialCalibrationDiagnostic,
-	) -> Self {
-		Self {
-			kind: ErrorKind::Terminal(code),
-			message: message.into(),
-			official_calibration: Some(Box::new(official_calibration)),
-		}
-	}
-
 	fn is_transient(&self) -> bool {
 		self.kind == ErrorKind::Transient
 	}
@@ -369,7 +415,8 @@ impl VerificationRecord {
 #[command(
 	name = "aiq-verifier verify-local",
 	version,
-	about = "Replay one exact production package offline without publishing or assigning cloud trust"
+	about = "Replay one exact production package offline without publishing or assigning cloud trust",
+	group(ArgGroup::new("admission_mode").args(["admission_output", "calibration_admission"]).multiple(false))
 )]
 struct VerifyLocalCli {
 	/// Exact signed result-package bytes.
@@ -412,19 +459,50 @@ struct VerifyLocalCli {
 	/// Safe Unix-millisecond time when offline verification completed.
 	#[arg(long)]
 	observed_unix_ms: u64,
-	/// New output path for the exact `aiq.normalized-batch.v3` stage.
+	/// New output path for the exact `aiq.normalized-batch.v4` stage.
 	#[arg(long)]
 	stage_output: PathBuf,
-	/// New output path for the signed `aiq.verifier-attestation.v3`.
+	/// New output path for the signed `aiq.verifier-attestation.v4`.
 	#[arg(long)]
 	attestation_output: PathBuf,
+	/// Private verifier-signed calibration admission required for Official replay.
+	#[arg(
+		long,
+		conflicts_with = "admission_output",
+		requires_all = [
+			"admission_tasks",
+			"admission_environment",
+			"admission_evaluator_root",
+			"admission_corpus_commitment",
+			"admission_evaluator_runtime",
+			"admission_codex_toolchain_root",
+			"admission_source_root",
+			"admission_runner_binary",
+			"admission_codex_binary",
+			"production_reference",
+			"expected_production_reference_sha256",
+			"build_receipt",
+			"expected_build_receipt_sha256"
+		]
+	)]
+	calibration_admission: Option<PathBuf>,
+	/// Accept one exact signed 1.0.6 calibration package only for one-way,
+	/// no-model derivation of admission v2 and its frozen bank.
+	#[arg(long, default_value_t = false, requires = "admission_output")]
+	calibration_source_1_0_6: bool,
 	/// New private verifier-signed admission output for an exact full 72-by-17 calibration.
 	#[arg(
 		long,
 		requires_all = [
-			"source_root",
-			"frozen_runner_binary",
-			"codex_binary",
+			"admission_tasks",
+			"admission_environment",
+			"admission_evaluator_root",
+			"admission_corpus_commitment",
+			"admission_evaluator_runtime",
+			"admission_codex_toolchain_root",
+			"admission_source_root",
+			"admission_runner_binary",
+			"admission_codex_binary",
 			"production_reference",
 			"expected_production_reference_sha256",
 			"build_receipt",
@@ -432,26 +510,44 @@ struct VerifyLocalCli {
 		]
 	)]
 	admission_output: Option<PathBuf>,
-	/// Detached frozen source tree validated by the Core corpus commitment.
-	#[arg(long, requires = "admission_output")]
-	source_root: Option<PathBuf>,
-	/// Exact retained runner binary that created the signed calibration package.
-	#[arg(long, requires = "admission_output")]
-	frozen_runner_binary: Option<PathBuf>,
-	/// Exact retained Codex binary used by the signed calibration run.
-	#[arg(long, requires = "admission_output")]
-	codex_binary: Option<PathBuf>,
+	/// Current controlled tasks used to derive and bind the frozen bank.
+	#[arg(long, requires = "admission_mode")]
+	admission_tasks: Option<PathBuf>,
+	/// Current verifier environment used only for admission authority bindings.
+	#[arg(long, requires = "admission_mode")]
+	admission_environment: Option<PathBuf>,
+	/// Current controlled evaluator registry used only for admission bindings.
+	#[arg(long, requires = "admission_mode")]
+	admission_evaluator_root: Option<PathBuf>,
+	/// Current corpus commitment used only for admission authority bindings.
+	#[arg(long, requires = "admission_mode")]
+	admission_corpus_commitment: Option<PathBuf>,
+	/// Current controlled evaluator runtime used only for admission bindings.
+	#[arg(long, requires = "admission_mode")]
+	admission_evaluator_runtime: Option<PathBuf>,
+	/// Current controlled model toolchain used only for admission bindings.
+	#[arg(long, requires = "admission_mode")]
+	admission_codex_toolchain_root: Option<PathBuf>,
+	/// Current detached source tree validated by the admission corpus commitment.
+	#[arg(long, requires = "admission_mode")]
+	admission_source_root: Option<PathBuf>,
+	/// Current frozen runner binary approved for Official execution.
+	#[arg(long, requires = "admission_mode")]
+	admission_runner_binary: Option<PathBuf>,
+	/// Current frozen Codex binary approved for Official execution.
+	#[arg(long, requires = "admission_mode")]
+	admission_codex_binary: Option<PathBuf>,
 	/// Protected production reference approving distinct runner and verifier identities.
-	#[arg(long, requires = "admission_output")]
+	#[arg(long, requires = "admission_mode")]
 	production_reference: Option<PathBuf>,
 	/// Independently supplied exact SHA-256 of the protected production reference.
-	#[arg(long, requires = "admission_output")]
+	#[arg(long, requires = "admission_mode")]
 	expected_production_reference_sha256: Option<String>,
 	/// Private final-build receipt that binds the retained binaries to source identity.
-	#[arg(long, requires = "admission_output")]
+	#[arg(long, requires = "admission_mode")]
 	build_receipt: Option<PathBuf>,
 	/// Independently supplied exact SHA-256 of the private final-build receipt.
-	#[arg(long, requires = "admission_output")]
+	#[arg(long, requires = "admission_mode")]
 	expected_build_receipt_sha256: Option<String>,
 }
 
@@ -1074,6 +1170,7 @@ struct Worker<T> {
 	backoff: Duration,
 	evaluator_root: PathBuf,
 	evaluator_runtime: Option<EvaluatorRuntime>,
+	official_admission: Option<VerifiedOfficialCalibrationAdmission>,
 	replay_root: PathBuf,
 	replay_jobs: usize,
 	#[cfg(test)]
@@ -1282,6 +1379,15 @@ where
 			Err(error) if error.is_transient() => return Err(error),
 			Err(error) => return self.reject_and_complete(claim, lease, error),
 		};
+
+		if let Err(error) = validate_package_official_admission_before_replay(
+			&package_bytes,
+			&self.tasks,
+			self.official_admission.as_ref(),
+		) {
+			return self.reject_and_complete(claim, lease, error);
+		}
+
 		let prepared = match self.prepare_verification(claim, &package_bytes, lease) {
 			Ok(prepared) => prepared,
 			Err(error) => return self.reject_and_complete(claim, lease, error),
@@ -1385,6 +1491,8 @@ where
 			evaluator_runtime: self.evaluator_runtime.as_ref(),
 			replay_root: &self.replay_root,
 			signing_identity: &self.signing_identity,
+			official_admission: self.official_admission.as_ref(),
+			require_official_admission: true,
 			observed_unix_ms: now_unix_ms()?,
 			require_production: false,
 			replay_jobs: self.replay_jobs,
@@ -1756,6 +1864,8 @@ struct PreparedVerification {
 	evidence: PreparedEvidence,
 	replay_scope: &'static str,
 	official_calibration: Option<OfficialCalibrationDiagnostic>,
+	calibration_source: Option<CalibrationRunRecord>,
+	calibration_source_scoring_version: Option<String>,
 }
 impl PreparedVerification {
 	fn run_id(&self) -> &str {
@@ -1792,6 +1902,8 @@ struct PreparationRequest<'a> {
 	evaluator_runtime: Option<&'a EvaluatorRuntime>,
 	replay_root: &'a Path,
 	signing_identity: &'a VerifierSigningIdentity,
+	official_admission: Option<&'a VerifiedOfficialCalibrationAdmission>,
+	require_official_admission: bool,
 	observed_unix_ms: u64,
 	require_production: bool,
 	replay_jobs: usize,
@@ -1902,6 +2014,40 @@ struct DiagnosticSourcePackage {
 
 struct OperationalAdmissionContext {
 	bindings: CalibrationAdmissionBindings,
+	tasks: Vec<TaskDefinition>,
+}
+
+#[derive(Clone, Copy)]
+struct OperationalAdmissionPaths<'a> {
+	tasks: &'a Path,
+	environment: &'a Path,
+	evaluator_root: &'a Path,
+	corpus_commitment: &'a Path,
+	evaluator_runtime: &'a Path,
+	codex_toolchain_root: &'a Path,
+	source_root: &'a Path,
+	runner_binary: &'a Path,
+	codex_binary: &'a Path,
+	production_reference: &'a Path,
+	expected_production_reference_sha256: &'a str,
+	build_receipt: &'a Path,
+	expected_build_receipt_sha256: &'a str,
+}
+
+struct VerifiedOfficialCalibrationAdmission {
+	bundle: CalibrationAdmissionBundleV2,
+	bindings: CalibrationAdmissionBindings,
+}
+
+struct OperationalAdmissionAssets {
+	tasks: Vec<TaskDefinition>,
+	environment: VerifierEnvironment,
+	evaluator_runtime: EvaluatorRuntime,
+	corpus: ValidatedCorpusCommitment,
+	model_toolchain: ValidatedModelToolchain,
+	source_tree: String,
+	task_set_digest: String,
+	evaluator_digest: String,
 }
 
 /// Stable rejection reason understood by operators and automation.
@@ -2099,6 +2245,93 @@ fn prepare_package_verification(
 	}
 }
 
+fn prepare_calibration_source_1_0_6_verification(
+	request: PreparationRequest<'_>,
+) -> Result<PreparedVerification, WorkerError> {
+	let observed_package_sha256 = hex::encode(Sha256::digest(request.package_bytes));
+
+	if observed_package_sha256 != request.package_sha256 {
+		return Err(WorkerError::terminal(
+			ReasonCode::PackageIntegrityMismatch,
+			"package bytes do not match the expected SHA-256",
+		));
+	}
+
+	let envelope: SubmissionEnvelope =
+		serde_json::from_slice(request.package_bytes).map_err(|_| {
+			WorkerError::terminal(
+				ReasonCode::InvalidPackageProtocol,
+				"calibration source is not a valid result envelope",
+			)
+		})?;
+
+	if request.expected_idempotency_key.is_some_and(|expected| envelope.idempotency_key != expected)
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"expected idempotency key does not match the calibration source",
+		));
+	}
+
+	let verified = envelope.verify_calibration_source_v3().map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageSignature,
+			"calibration source identity, content hash, or signature is invalid",
+		)
+	})?;
+	let mut payload = verified.payload;
+	let object = payload.as_object_mut().ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"calibration source payload is invalid",
+		)
+	})?;
+	let results = serde_json::from_value::<Vec<TaskResult>>(
+		object.get("results").cloned().ok_or_else(|| {
+			WorkerError::terminal(
+				ReasonCode::InvalidPackageProtocol,
+				"calibration source results are missing",
+			)
+		})?,
+	)
+	.map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"calibration source results are invalid",
+		)
+	})?;
+
+	object.insert(
+		"schema_version".to_owned(),
+		Value::String(CALIBRATION_RUN_PAYLOAD_TYPE.to_owned()),
+	);
+	object.insert("scoring_version".to_owned(), Value::String(AIQ_SCORING_VERSION.to_owned()));
+	object.insert("calibration_admission_digest".to_owned(), Value::Null);
+	object.insert("calibration_bank".to_owned(), Value::Null);
+	object.insert(
+		"terminal_attempt_lineage".to_owned(),
+		serde_json::to_value(runner::terminal_attempt_lineage(&results)).map_err(|_| {
+			WorkerError::terminal(
+				ReasonCode::InvalidPackageProtocol,
+				"calibration source lineage derivation failed",
+			)
+		})?,
+	);
+
+	let promoted = VerifiedSubmission {
+		payload_type: CALIBRATION_RUN_PAYLOAD_TYPE.to_owned(),
+		content_hash: verified.content_hash,
+		signer: verified.signer,
+		effective_trust: verified.effective_trust,
+		payload,
+	};
+	let mut prepared = prepare_calibration_verification_inner(request, promoted, true)?;
+
+	prepared.calibration_source_scoring_version = Some("1.0.6".to_owned());
+
+	Ok(prepared)
+}
+
 fn prepare_official_verification(
 	request: PreparationRequest<'_>,
 	verified: VerifiedSubmission,
@@ -2109,6 +2342,8 @@ fn prepare_official_verification(
 			"package payload is not a run record",
 		)
 	})?;
+
+	validate_requested_official_admission(&run, &request)?;
 
 	run_validation::validate_run_record(&run, Some(request.tasks)).map_err(|_| {
 		WorkerError::terminal(
@@ -2205,7 +2440,32 @@ fn prepare_official_verification(
 		evidence: PreparedEvidence::Official { stage, attestation },
 		replay_scope,
 		official_calibration,
+		calibration_source: None,
+		calibration_source_scoring_version: None,
 	})
+}
+
+fn validate_requested_official_admission(
+	run: &RunRecord,
+	request: &PreparationRequest<'_>,
+) -> Result<(), WorkerError> {
+	if run.synthetic || !request.require_official_admission {
+		return Ok(());
+	}
+
+	let admission = request.official_admission.ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"Official package has no independently verified calibration admission",
+		)
+	})?;
+
+	verify_official_calibration_admission_binding(
+		run,
+		&admission.bundle,
+		&admission.bindings,
+		request.tasks,
+	)
 }
 
 fn validated_official_calibration(
@@ -2223,18 +2483,6 @@ fn validated_official_calibration(
 				format!("Official publication calibration failed: {error}"),
 			)
 		})?;
-
-	if !diagnostic.passed() {
-		return Err(WorkerError::terminal_calibration(
-			ReasonCode::NormalizationMismatch,
-			format!(
-				"Official publication calibration failed under {}: {}",
-				diagnostic.policy.version,
-				diagnostic.violations.join("; ")
-			),
-			diagnostic,
-		));
-	}
 
 	Ok(Some(diagnostic))
 }
@@ -2280,6 +2528,14 @@ fn prepare_calibration_verification(
 	request: PreparationRequest<'_>,
 	verified: VerifiedSubmission,
 ) -> Result<PreparedVerification, WorkerError> {
+	prepare_calibration_verification_inner(request, verified, false)
+}
+
+fn prepare_calibration_verification_inner(
+	request: PreparationRequest<'_>,
+	verified: VerifiedSubmission,
+	calibration_source_1_0_6: bool,
+) -> Result<PreparedVerification, WorkerError> {
 	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidPackageProtocol,
@@ -2287,13 +2543,19 @@ fn prepare_calibration_verification(
 		)
 	})?;
 	let tasks = selected_calibration_tasks(&run, request.tasks)?;
+	let validation = if calibration_source_1_0_6 {
+		run_validation::validate_calibration_source_1_0_6_with_tasks(&run, &tasks)
+	} else {
+		run_validation::validate_calibration_run_record_with_tasks(&run, &tasks)
+	};
 
-	run_validation::validate_calibration_run_record_with_tasks(&run, &tasks).map_err(|_| {
+	validation.map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidRunProvenance,
 			"signed calibration does not match the controlled task selection",
 		)
 	})?;
+
 	submission::validate_calibration_signer_binding(&run, &verified.signer.node_id).map_err(
 		|_| {
 			WorkerError::terminal(
@@ -2345,19 +2607,33 @@ fn prepare_calibration_verification(
 		content_hash: verified.content_hash,
 		signer: verified.signer,
 	};
-	let (stage, attestation) = calibration_verification::verify_and_attest_calibration_run(
-		request.signing_identity,
-		&run,
-		&tasks,
-		&package,
-		&metadata,
-		&provider_usage,
-		request.observed_unix_ms,
-	)
-	.map_err(|_| {
+	let verification = if calibration_source_1_0_6 {
+		calibration_verification::verify_and_attest_calibration_source_1_0_6(
+			request.signing_identity,
+			&run,
+			&tasks,
+			&package,
+			&metadata,
+			&provider_usage,
+			request.observed_unix_ms,
+		)
+	} else {
+		calibration_verification::verify_and_attest_calibration_run(
+			request.signing_identity,
+			&run,
+			&tasks,
+			&package,
+			&metadata,
+			&provider_usage,
+			request.observed_unix_ms,
+		)
+	};
+	let (stage, attestation) = verification.map_err(|error| {
 		WorkerError::terminal(
 			ReasonCode::NormalizationMismatch,
-			"calibration recomputation or verifier attestation construction failed",
+			format!(
+				"calibration recomputation or verifier attestation construction failed: {error}"
+			),
 		)
 	})?;
 
@@ -2368,10 +2644,14 @@ fn prepare_calibration_verification(
 		)
 	})?;
 
+	let source_scoring_version = AIQ_TASK_SCORER_VERSION.to_owned();
+
 	Ok(PreparedVerification {
 		evidence: PreparedEvidence::Calibration { stage, attestation },
 		replay_scope: PRODUCTION_REPLAY_SCOPE,
 		official_calibration: None,
+		calibration_source: Some(run),
+		calibration_source_scoring_version: Some(source_scoring_version),
 	})
 }
 
@@ -2464,6 +2744,7 @@ fn verify_and_write_local_with_admission(
 	attestation_output: &Path,
 	admission_output: &Path,
 	context: &OperationalAdmissionContext,
+	calibration_source_1_0_6: bool,
 ) -> Result<(), WorkerError> {
 	let stage_target = OutputTarget::new(stage_output, "stage output")?;
 	let attestation_target = OutputTarget::new(attestation_output, "attestation output")?;
@@ -2478,10 +2759,14 @@ fn verify_and_write_local_with_admission(
 		));
 	}
 
-	let package_bytes = request.package_bytes;
-	let tasks = request.tasks;
+	let replay_tasks = request.tasks;
+	let admission_tasks = context.tasks.as_slice();
 	let signing_identity = request.signing_identity;
-	let prepared = prepare_package_verification(request)?;
+	let prepared = if calibration_source_1_0_6 {
+		prepare_calibration_source_1_0_6_verification(request)?
+	} else {
+		prepare_package_verification(request)?
+	};
 
 	if prepared.replay_scope != PRODUCTION_REPLAY_SCOPE {
 		return Err(WorkerError::terminal(
@@ -2495,37 +2780,37 @@ fn verify_and_write_local_with_admission(
 			"calibration admission requires a signed calibration package",
 		));
 	};
-	let envelope: SubmissionEnvelope = serde_json::from_slice(package_bytes).map_err(|_| {
-		WorkerError::terminal(
-			ReasonCode::InvalidPackageProtocol,
-			"calibration admission package is invalid",
-		)
+	let run = prepared.calibration_source.as_ref().ok_or_else(|| {
+		WorkerError::configuration("calibration admission requires a calibration payload")
 	})?;
-	let verified = envelope.verify(&BTreeSet::new()).map_err(|_| {
-		WorkerError::terminal(
-			ReasonCode::InvalidPackageSignature,
-			"calibration admission package signature is invalid",
-		)
-	})?;
+	let source_scoring_version =
+		prepared.calibration_source_scoring_version.as_deref().ok_or_else(|| {
+			WorkerError::configuration("calibration source scoring version is missing")
+		})?;
+	let replay_task_set_digest = task::task_set_hash(replay_tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let admission_task_set_digest = task::task_set_hash(admission_tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let replay_evaluator_digest = corpus_commitment::evaluator_digest(replay_tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
 
-	if verified.payload_type != CALIBRATION_RUN_PAYLOAD_TYPE {
-		return Err(WorkerError::configuration(
-			"calibration admission requires a calibration payload",
+	if replay_task_set_digest != admission_task_set_digest
+		|| replay_task_set_digest != context.bindings.task_set_digest
+		|| replay_evaluator_digest != context.bindings.evaluator_digest
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"calibration replay assets do not match the current admission task and evaluator identities",
 		));
 	}
 
-	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
-		WorkerError::terminal(
-			ReasonCode::InvalidPackageProtocol,
-			"calibration admission payload is invalid",
-		)
-	})?;
 	let admission = calibration_verification::sign_full_calibration_admission(
 		signing_identity,
 		stage,
 		attestation,
-		tasks,
+		admission_tasks,
 		&run.results,
+		source_scoring_version,
 		context.bindings.clone(),
 	)
 	.map_err(|error| {
@@ -2534,14 +2819,14 @@ fn verify_and_write_local_with_admission(
 			format!("calibration admission failed: {error}"),
 		)
 	})?;
-	let bundle = CalibrationAdmissionBundleV1 {
+	let bundle = CalibrationAdmissionBundleV2 {
 		schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
 		stage: stage.clone(),
 		attestation: attestation.clone(),
 		admission,
 	};
 
-	bundle.verify(&context.bindings, tasks, &run.results).map_err(|error| {
+	bundle.verify(&context.bindings, admission_tasks, &run.results).map_err(|error| {
 		WorkerError::terminal(
 			ReasonCode::NormalizationMismatch,
 			format!("calibration admission bundle failed: {error}"),
@@ -3251,20 +3536,7 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
 	}
 
-	for task in &tasks {
-		if let Some(binding) =
-			task.evaluator.as_ref().and_then(|evaluator| evaluator.external.as_ref())
-		{
-			let evaluator_runtime = evaluator_runtime.as_ref().ok_or_else(|| {
-				WorkerError::configuration("external tasks require --evaluator-runtime")
-			})?;
-
-			binding
-				.validate_registry(&evaluator_root)
-				.and_then(|()| binding.validate_runtime(evaluator_runtime))
-				.map_err(|error| WorkerError::configuration(error.to_string()))?;
-		}
-	}
+	validate_worker_evaluator_bindings(&tasks, &evaluator_root, evaluator_runtime.as_ref())?;
 
 	if !cli.synthetic_demo_tasks
 		&& (evaluator_root == replay_root
@@ -3276,6 +3548,23 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		));
 	}
 
+	let signing_identity = VerifierSigningIdentity::from_secret(signing_key);
+	let official_admission = if cli.synthetic_demo_tasks {
+		None
+	} else {
+		let context = operational_admission_context(
+			worker_operational_admission_paths(&cli)?,
+			&signing_identity,
+		)?;
+
+		Some(load_verified_official_admission(
+			cli.calibration_admission.as_deref().ok_or_else(|| {
+				WorkerError::configuration("production worker calibration admission is missing")
+			})?,
+			context,
+			&tasks,
+		)?)
+	};
 	let worker = Worker {
 		transport: UreqTransport::new(
 			Duration::from_secs(cli.timeout_seconds),
@@ -3284,7 +3573,7 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		),
 		endpoint,
 		token,
-		signing_identity: VerifierSigningIdentity::from_secret(signing_key),
+		signing_identity,
 		tasks,
 		environment,
 		environment_sha256,
@@ -3294,6 +3583,7 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		backoff: Duration::from_millis(cli.backoff_ms),
 		evaluator_root,
 		evaluator_runtime,
+		official_admission,
 		replay_root,
 		replay_jobs: cli.replay_jobs,
 		#[cfg(test)]
@@ -3303,55 +3593,50 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 	worker.run(cli.max_claims, cli.max_idle_polls)
 }
 
-fn operational_admission_context(
-	cli: &VerifyLocalCli,
+fn validate_worker_evaluator_bindings(
 	tasks: &[TaskDefinition],
-	environment: &VerifierEnvironment,
-	evaluator_runtime: &EvaluatorRuntime,
-	toolchain_root: &Path,
+	evaluator_root: &Path,
+	evaluator_runtime: Option<&EvaluatorRuntime>,
+) -> Result<(), WorkerError> {
+	for task in tasks {
+		if let Some(binding) =
+			task.evaluator.as_ref().and_then(|evaluator| evaluator.external.as_ref())
+		{
+			let runtime = evaluator_runtime.ok_or_else(|| {
+				WorkerError::configuration("external tasks require --evaluator-runtime")
+			})?;
+
+			binding
+				.validate_registry(evaluator_root)
+				.and_then(|()| binding.validate_runtime(runtime))
+				.map_err(|error| WorkerError::configuration(error.to_string()))?;
+		}
+	}
+
+	Ok(())
+}
+
+fn operational_admission_context(
+	paths: OperationalAdmissionPaths<'_>,
 	signing_identity: &VerifierSigningIdentity,
 ) -> Result<OperationalAdmissionContext, WorkerError> {
-	let source_root = controlled_root(
-		cli.source_root
-			.as_deref()
-			.ok_or_else(|| WorkerError::configuration("admission source root is missing"))?,
-		"admission source root",
-	)?;
-	let source_tree = validate_detached_source_identity(&source_root, &environment.runner_commit)?;
-	let corpus = corpus_commitment::validate_core_corpus_commitment(
-		&cli.corpus_commitment,
+	let OperationalAdmissionAssets {
 		tasks,
-		&source_root,
-	)
-	.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	corpus
-		.validate_evaluator_runtime(evaluator_runtime)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	let model_toolchain = corpus
-		.validate_model_toolchain(toolchain_root, evaluator_runtime)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let task_set_digest = task::task_set_hash(tasks)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let evaluator_digest = corpus_commitment::evaluator_digest(tasks)
-		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let runner_executable_digest = protected_executable_digest(
-		cli.frozen_runner_binary
-			.as_deref()
-			.ok_or_else(|| WorkerError::configuration("frozen runner binary is missing"))?,
-		"frozen runner binary",
-	)?;
-	let codex_executable_digest = protected_executable_digest(
-		cli.codex_binary
-			.as_deref()
-			.ok_or_else(|| WorkerError::configuration("Codex binary is missing"))?,
-		"Codex binary",
-	)?;
+		environment,
+		evaluator_runtime,
+		corpus,
+		model_toolchain,
+		source_tree,
+		task_set_digest,
+		evaluator_digest,
+	} = operational_admission_assets(paths)?;
+	let runner_executable_digest =
+		protected_executable_digest(paths.runner_binary, "frozen runner binary")?;
+	let codex_executable_digest = protected_executable_digest(paths.codex_binary, "Codex binary")?;
 	let codex_code_mode_host_path = corpus_commitment::codex_code_mode_host_path(
-		cli.codex_binary
-			.as_deref()
-			.and_then(Path::to_str)
+		paths
+			.codex_binary
+			.to_str()
 			.ok_or_else(|| WorkerError::configuration("Codex binary path is invalid"))?,
 	)
 	.map_err(|error| WorkerError::configuration(error.to_string()))?;
@@ -3366,21 +3651,11 @@ fn operational_admission_context(
 		production_reference_sha256,
 		reference_corpus_commitment_sha256,
 	) = approved_operational_nodes(
-		cli.production_reference
-			.as_deref()
-			.ok_or_else(|| WorkerError::configuration("production reference is missing"))?,
-		cli.expected_production_reference_sha256.as_deref().ok_or_else(|| {
-			WorkerError::configuration("expected production reference digest is missing")
-		})?,
+		paths.production_reference,
+		paths.expected_production_reference_sha256,
 	)?;
-	let (build_receipt, build_receipt_sha256) = validated_build_receipt(
-		cli.build_receipt
-			.as_deref()
-			.ok_or_else(|| WorkerError::configuration("final-build receipt is missing"))?,
-		cli.expected_build_receipt_sha256.as_deref().ok_or_else(|| {
-			WorkerError::configuration("expected final-build receipt digest is missing")
-		})?,
-	)?;
+	let (build_receipt, build_receipt_sha256) =
+		validated_build_receipt(paths.build_receipt, paths.expected_build_receipt_sha256)?;
 	let expected = environment.expected_provenance.as_ref().ok_or_else(|| {
 		WorkerError::configuration("production verifier environment lacks expected provenance")
 	})?;
@@ -3428,6 +3703,305 @@ fn operational_admission_context(
 			codex_code_mode_host_digest,
 			verifier_executable_digest,
 		},
+		tasks,
+	})
+}
+
+fn has_operational_admission_inputs(cli: &VerifyLocalCli) -> bool {
+	[
+		cli.admission_tasks.as_ref(),
+		cli.admission_environment.as_ref(),
+		cli.admission_evaluator_root.as_ref(),
+		cli.admission_corpus_commitment.as_ref(),
+		cli.admission_evaluator_runtime.as_ref(),
+		cli.admission_codex_toolchain_root.as_ref(),
+		cli.admission_source_root.as_ref(),
+		cli.admission_runner_binary.as_ref(),
+		cli.admission_codex_binary.as_ref(),
+		cli.production_reference.as_ref(),
+		cli.build_receipt.as_ref(),
+	]
+	.into_iter()
+	.any(|value| value.is_some())
+		|| cli.expected_production_reference_sha256.is_some()
+		|| cli.expected_build_receipt_sha256.is_some()
+}
+
+fn required_path<'a>(value: &'a Option<PathBuf>, label: &str) -> Result<&'a Path, WorkerError> {
+	value.as_deref().ok_or_else(|| WorkerError::configuration(format!("{label} is missing")))
+}
+
+fn required_text<'a>(value: &'a Option<String>, label: &str) -> Result<&'a str, WorkerError> {
+	value.as_deref().ok_or_else(|| WorkerError::configuration(format!("{label} is missing")))
+}
+
+fn local_operational_admission_paths(
+	cli: &VerifyLocalCli,
+) -> Result<OperationalAdmissionPaths<'_>, WorkerError> {
+	Ok(OperationalAdmissionPaths {
+		tasks: required_path(&cli.admission_tasks, "admission task root")?,
+		environment: required_path(&cli.admission_environment, "admission environment")?,
+		evaluator_root: required_path(&cli.admission_evaluator_root, "admission evaluator root")?,
+		corpus_commitment: required_path(
+			&cli.admission_corpus_commitment,
+			"admission corpus commitment",
+		)?,
+		evaluator_runtime: required_path(
+			&cli.admission_evaluator_runtime,
+			"admission evaluator runtime",
+		)?,
+		codex_toolchain_root: required_path(
+			&cli.admission_codex_toolchain_root,
+			"admission model toolchain root",
+		)?,
+		source_root: required_path(&cli.admission_source_root, "admission source root")?,
+		runner_binary: required_path(&cli.admission_runner_binary, "admission runner binary")?,
+		codex_binary: required_path(&cli.admission_codex_binary, "admission Codex binary")?,
+		production_reference: required_path(&cli.production_reference, "production reference")?,
+		expected_production_reference_sha256: required_text(
+			&cli.expected_production_reference_sha256,
+			"expected production reference digest",
+		)?,
+		build_receipt: required_path(&cli.build_receipt, "final-build receipt")?,
+		expected_build_receipt_sha256: required_text(
+			&cli.expected_build_receipt_sha256,
+			"expected final-build receipt digest",
+		)?,
+	})
+}
+
+fn worker_operational_admission_paths(
+	cli: &Cli,
+) -> Result<OperationalAdmissionPaths<'_>, WorkerError> {
+	Ok(OperationalAdmissionPaths {
+		tasks: required_path(&cli.tasks, "task root")?,
+		environment: &cli.environment,
+		evaluator_root: required_path(&cli.evaluator_root, "evaluator root")?,
+		corpus_commitment: required_path(&cli.corpus_commitment, "corpus commitment")?,
+		evaluator_runtime: required_path(&cli.evaluator_runtime, "evaluator runtime")?,
+		codex_toolchain_root: required_path(&cli.codex_toolchain_root, "model toolchain root")?,
+		source_root: required_path(&cli.source_root, "source root")?,
+		runner_binary: required_path(&cli.runner_binary, "runner binary")?,
+		codex_binary: required_path(&cli.codex_binary, "Codex binary")?,
+		production_reference: required_path(&cli.production_reference, "production reference")?,
+		expected_production_reference_sha256: required_text(
+			&cli.expected_production_reference_sha256,
+			"expected production reference digest",
+		)?,
+		build_receipt: required_path(&cli.build_receipt, "final-build receipt")?,
+		expected_build_receipt_sha256: required_text(
+			&cli.expected_build_receipt_sha256,
+			"expected final-build receipt digest",
+		)?,
+	})
+}
+
+fn load_verified_official_admission(
+	path: &Path,
+	context: OperationalAdmissionContext,
+	tasks: &[TaskDefinition],
+) -> Result<VerifiedOfficialCalibrationAdmission, WorkerError> {
+	let bundle: CalibrationAdmissionBundleV2 =
+		read_regular_json(path, "calibration admission bundle")?;
+	let task_set_digest = task::task_set_hash(tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let admission_task_set_digest = task::task_set_hash(&context.tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	if task_set_digest != admission_task_set_digest
+		|| bundle.verify_for_official(&context.bindings, tasks).is_err()
+	{
+		return Err(WorkerError::configuration(
+			"calibration admission does not match current verifier authority",
+		));
+	}
+
+	Ok(VerifiedOfficialCalibrationAdmission { bundle, bindings: context.bindings })
+}
+
+fn validate_official_calibration_admission(
+	cli: &VerifyLocalCli,
+	package_bytes: &[u8],
+	tasks: &[TaskDefinition],
+	context: Option<&OperationalAdmissionContext>,
+) -> Result<Option<VerifiedOfficialCalibrationAdmission>, WorkerError> {
+	let envelope: SubmissionEnvelope = serde_json::from_slice(package_bytes).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package is not a valid result envelope",
+		)
+	})?;
+
+	if envelope.payload_type != RUN_PAYLOAD_TYPE {
+		if cli.calibration_admission.is_some() {
+			return Err(WorkerError::configuration(
+				"calibration admission input is valid only for an Official package",
+			));
+		}
+
+		return Ok(None);
+	}
+
+	let admission_path = cli.calibration_admission.as_deref().ok_or_else(|| {
+		WorkerError::configuration(
+			"Official verify-local requires a private calibration admission bundle",
+		)
+	})?;
+	let context = context.ok_or_else(|| {
+		WorkerError::configuration("Official calibration admission authority is missing")
+	})?;
+	let bundle: CalibrationAdmissionBundleV2 =
+		read_regular_json(admission_path, "calibration admission bundle")?;
+	let run: RunRecord = serde_json::from_value(envelope.payload).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package payload is not a run record",
+		)
+	})?;
+	let task_set_digest = task::task_set_hash(tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let admission_task_set_digest = task::task_set_hash(&context.tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	if task_set_digest != admission_task_set_digest {
+		return Err(WorkerError::configuration(
+			"Official task root differs from calibration admission authority",
+		));
+	}
+
+	verify_official_calibration_admission_binding(&run, &bundle, &context.bindings, tasks)?;
+
+	Ok(Some(VerifiedOfficialCalibrationAdmission { bundle, bindings: context.bindings.clone() }))
+}
+
+fn verify_official_calibration_admission_binding(
+	run: &RunRecord,
+	bundle: &CalibrationAdmissionBundleV2,
+	bindings: &CalibrationAdmissionBindings,
+	tasks: &[TaskDefinition],
+) -> Result<(), WorkerError> {
+	if bundle.verify_for_official(bindings, tasks).is_err() {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"calibration admission signature or issuance binding is invalid",
+		));
+	}
+
+	let bundle_digest = protocol::canonical_hash(&bundle).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"calibration admission digest cannot be recomputed",
+		)
+	})?;
+
+	if run.calibration_admission_digest.as_ref() != Some(&bundle_digest)
+		|| run.calibration_bank.as_ref() != Some(&bundle.admission.claims.calibration_bank)
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"Official run does not match the independently verified calibration admission",
+		));
+	}
+
+	Ok(())
+}
+
+fn validate_package_official_admission_before_replay(
+	package_bytes: &[u8],
+	tasks: &[TaskDefinition],
+	admission: Option<&VerifiedOfficialCalibrationAdmission>,
+) -> Result<(), WorkerError> {
+	let envelope: SubmissionEnvelope = serde_json::from_slice(package_bytes).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package is not a valid result envelope",
+		)
+	})?;
+
+	if envelope.payload_type != RUN_PAYLOAD_TYPE {
+		return Ok(());
+	}
+
+	let run: RunRecord = serde_json::from_value(envelope.payload).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"package payload is not a run record",
+		)
+	})?;
+
+	if run.synthetic {
+		return Ok(());
+	}
+
+	let admission = admission.ok_or_else(|| {
+		WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"Official package has no independently verified calibration admission",
+		)
+	})?;
+
+	verify_official_calibration_admission_binding(
+		&run,
+		&admission.bundle,
+		&admission.bindings,
+		tasks,
+	)
+}
+
+fn operational_admission_assets(
+	paths: OperationalAdmissionPaths<'_>,
+) -> Result<OperationalAdmissionAssets, WorkerError> {
+	let tasks_root = controlled_root(paths.tasks, "admission task root")?;
+	let tasks = load_local_tasks(&tasks_root)?;
+	let environment: VerifierEnvironment =
+		read_regular_json(paths.environment, "admission verifier environment")?;
+
+	validate_environment(&environment)?;
+
+	if environment.synthetic_test || environment.expected_provenance.is_none() {
+		return Err(WorkerError::configuration(
+			"admission requires a production verifier environment",
+		));
+	}
+
+	let evaluator_root = controlled_root(paths.evaluator_root, "admission evaluator root")?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(paths.evaluator_runtime)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let toolchain_root =
+		controlled_root(paths.codex_toolchain_root, "admission model toolchain root")?;
+
+	validate_evaluator_bindings(&tasks, &evaluator_root, &evaluator_runtime)?;
+
+	let source_root = controlled_root(paths.source_root, "admission source root")?;
+	let source_tree = validate_detached_source_identity(&source_root, &environment.runner_commit)?;
+	let corpus = corpus_commitment::validate_core_corpus_commitment(
+		paths.corpus_commitment,
+		&tasks,
+		&source_root,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	corpus
+		.validate_evaluator_runtime(&evaluator_runtime)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	let model_toolchain = corpus
+		.validate_model_toolchain(&toolchain_root, &evaluator_runtime)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let task_set_digest = task::task_set_hash(&tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let evaluator_digest = corpus_commitment::evaluator_digest(&tasks)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	Ok(OperationalAdmissionAssets {
+		tasks,
+		environment,
+		evaluator_runtime,
+		corpus,
+		model_toolchain,
+		source_tree,
+		task_set_digest,
+		evaluator_digest,
 	})
 }
 
@@ -3461,29 +4035,12 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 	let artifact_resolver = LocalArtifactResolver::new(&cli.artifact_root)?;
 	let toolchain_root = controlled_root(&cli.codex_toolchain_root, "model toolchain root")?;
 
-	for (left_label, left, right_label, right) in [
-		(
-			"artifact root",
-			artifact_resolver.root.as_path(),
-			"evaluator root",
-			evaluator_root.as_path(),
-		),
-		("artifact root", artifact_resolver.root.as_path(), "replay root", replay_root.as_path()),
-		(
-			"artifact root",
-			artifact_resolver.root.as_path(),
-			"model toolchain root",
-			toolchain_root.as_path(),
-		),
-		("evaluator root", evaluator_root.as_path(), "replay root", replay_root.as_path()),
-		("model toolchain root", toolchain_root.as_path(), "replay root", replay_root.as_path()),
-	] {
-		if roots_overlap(left, right) {
-			return Err(WorkerError::configuration(format!(
-				"{left_label} and {right_label} must be separate directory trees"
-			)));
-		}
-	}
+	validate_local_root_separation(
+		&artifact_resolver,
+		&evaluator_root,
+		&replay_root,
+		&toolchain_root,
+	)?;
 
 	let evaluator_runtime = EvaluatorRuntime::resolve(&cli.evaluator_runtime)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
@@ -3505,20 +4062,24 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 
 	let signing_identity =
 		VerifierSigningIdentity::from_secret(signing_key_from_environment(&cli.signing_key_env)?);
-	let admission = cli
-		.admission_output
-		.as_ref()
-		.map(|_| {
-			operational_admission_context(
-				&cli,
-				&tasks,
-				&environment,
-				&evaluator_runtime,
-				&toolchain_root,
-				&signing_identity,
-			)
-		})
-		.transpose()?;
+	let admission_mode = cli.admission_output.is_some() || cli.calibration_admission.is_some();
+
+	if has_operational_admission_inputs(&cli) && !admission_mode {
+		return Err(WorkerError::configuration(
+			"operational admission inputs require admission issuance or Official consumption",
+		));
+	}
+
+	let admission = if admission_mode {
+		Some(operational_admission_context(
+			local_operational_admission_paths(&cli)?,
+			&signing_identity,
+		)?)
+	} else {
+		None
+	};
+	let official_admission =
+		validate_official_calibration_admission(&cli, &package_bytes, &tasks, admission.as_ref())?;
 	let request = PreparationRequest {
 		package_bytes: &package_bytes,
 		package_sha256: &package_sha256,
@@ -3531,6 +4092,8 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 		evaluator_runtime: Some(&evaluator_runtime),
 		replay_root: &replay_root,
 		signing_identity: &signing_identity,
+		official_admission: official_admission.as_ref(),
+		require_official_admission: true,
 		observed_unix_ms: cli.observed_unix_ms,
 		require_production: true,
 		replay_jobs: cli.replay_jobs,
@@ -3543,10 +4106,34 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 			&cli.attestation_output,
 			output,
 			context,
+			cli.calibration_source_1_0_6,
 		)
 	} else {
 		verify_and_write_local(request, &cli.stage_output, &cli.attestation_output).map(|_| ())
 	}
+}
+
+fn validate_local_root_separation(
+	artifact_resolver: &LocalArtifactResolver,
+	evaluator_root: &Path,
+	replay_root: &Path,
+	toolchain_root: &Path,
+) -> Result<(), WorkerError> {
+	for (left_label, left, right_label, right) in [
+		("artifact root", artifact_resolver.root.as_path(), "evaluator root", evaluator_root),
+		("artifact root", artifact_resolver.root.as_path(), "replay root", replay_root),
+		("artifact root", artifact_resolver.root.as_path(), "model toolchain root", toolchain_root),
+		("evaluator root", evaluator_root, "replay root", replay_root),
+		("model toolchain root", toolchain_root, "replay root", replay_root),
+	] {
+		if roots_overlap(left, right) {
+			return Err(WorkerError::configuration(format!(
+				"{left_label} and {right_label} must be separate directory trees"
+			)));
+		}
+	}
+
+	Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4147,15 +4734,31 @@ fn recompute_scores(
 				}),
 				receiver_authorized_publication: false,
 			};
+			let score = if run.synthetic {
+				scoring::score_model_with_context(
+					tasks,
+					&run.results,
+					model,
+					context,
+					ScoreOptions::default(),
+				)
+			} else {
+				scoring::score_official_model_with_bank(
+					tasks,
+					&run.results,
+					model,
+					run.calibration_bank.as_ref().ok_or_else(|| {
+						WorkerError::terminal(
+							ReasonCode::NormalizationMismatch,
+							"Official package omits its frozen calibration bank",
+						)
+					})?,
+					context,
+					ScoreOptions::default(),
+				)
+			};
 
-			scoring::score_model_with_context(
-				tasks,
-				&run.results,
-				model,
-				context,
-				ScoreOptions::default(),
-			)
-			.map_err(|_| {
+			score.map_err(|_| {
 				WorkerError::terminal(
 					ReasonCode::NormalizationMismatch,
 					"deterministic score replay failed",
@@ -4533,6 +5136,7 @@ mod tests {
 	};
 
 	use clap::Parser;
+	use ed25519_dalek::{Signer as _, SigningKey};
 	use sha2::{Digest, Sha256};
 
 	use crate::{
@@ -4547,8 +5151,9 @@ mod tests {
 		VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
-		self, CalibrationAdmissionBindings, CalibrationAdmissionBundleV1, CalibrationAdmissionV1,
-		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
+		CalibrationAdmissionBundleV2, CalibrationAdmissionV2, CalibrationVerifiedStageV1,
+		CalibrationVerifierAttestationV1,
 	};
 	use aiq_runner::{
 		AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
@@ -4557,14 +5162,14 @@ mod tests {
 			CapabilityValidationReport, CapabilityValidationStatus, CliProbe, ConfigurationProbe,
 			ConfigurationProbeStatus, ExecutorError, ProbeStatus,
 		},
-		corpus_commitment::{RunClass, RunProvenanceCommitment},
+		corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 		model::MODEL_MATRIX,
 		normalization::{
 			NormalizedBatchStage, ReplayStatus, VerifierAttestationV2, VerifierSigningIdentity,
 		},
 		protocol::{self, NodeIdentity, SigningIdentity, TrustTier},
 		resume, run_validation,
-		runner::{self, CalibrationRunRecord, WorkspaceManifest, WorkspaceSnapshot},
+		runner::{self, CalibrationRunRecord, RunRecord, WorkspaceManifest, WorkspaceSnapshot},
 		schedule::{ScheduleConfig, ScheduleOccurrence},
 		scoring::{self, FalseOnly, OfficialCalibrationPolicy},
 		submission,
@@ -5000,13 +5605,6 @@ mod tests {
 			let tasks = runner::synthetic_demo_tasks();
 			let artifact_sink =
 				adapter::LocalArtifactSink::new(&artifact_root).expect("fixture artifact sink");
-			let mut run = runner::synthetic_demo(
-				ScheduleConfig::default()
-					.slot("2026-07-25", ScheduleOccurrence::Day)
-					.expect("fixture slot"),
-				&artifact_sink,
-			)
-			.expect("synthetic base run");
 			let runner_identity = SigningIdentity::from_secret([7; 32]);
 			let runner_node_id = runner_identity.node().node_id.clone();
 			let codex_version = "codex fixture".to_owned();
@@ -5018,7 +5616,19 @@ mod tests {
 				vec![capability_artifact, capability_marker],
 			);
 			let preflight_digest = protocol::canonical_hash(&preflight).expect("preflight digest");
-			let provenance = local_fixture_provenance(run.task_set_hash.clone(), preflight_digest);
+			let mut run = runner::synthetic_demo(
+				ScheduleConfig::default()
+					.slot("2026-07-25", ScheduleOccurrence::Day)
+					.expect("fixture slot"),
+				&artifact_sink,
+			)
+			.expect("synthetic base run");
+			let mut provenance =
+				local_fixture_provenance(run.task_set_hash.clone(), preflight_digest);
+
+			provenance.evaluator_digest =
+				corpus_commitment::evaluator_digest(&tasks).expect("fixture evaluator digest");
+
 			let run_id = resume::classified_run_id(
 				&run.schedule_slot,
 				&run.task_set_hash,
@@ -5059,6 +5669,10 @@ mod tests {
 				result.result_id = format!("result_{}", result_hash.trim_start_matches("sha256:"));
 			}
 
+			run.calibration_admission_digest = Some(format!("sha256:{}", "3".repeat(64)));
+			run.calibration_bank = Some(fixture_frozen_bank(&tasks));
+			run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
+
 			run_validation::validate_run_record(&run, Some(&tasks)).expect("production fixture");
 
 			let envelope = runner_identity
@@ -5078,14 +5692,7 @@ mod tests {
 				synthetic_test: false,
 				artifact_resolver_endpoint: None,
 			};
-			let node = env::split_paths(&env::var_os("PATH").expect("test PATH"))
-				.map(|directory| directory.join(format!("node{}", env::consts::EXE_SUFFIX)))
-				.find(|candidate| candidate.is_file())
-				.expect("Node.js runtime");
-			let evaluator_runtime = EvaluatorRuntime::resolve(
-				&fs::canonicalize(node).expect("canonical Node.js runtime"),
-			)
-			.expect("evaluator runtime");
+			let evaluator_runtime = Self::node_evaluator_runtime();
 
 			Self {
 				root,
@@ -5101,6 +5708,16 @@ mod tests {
 				manifest_path,
 				capability_artifact_path,
 			}
+		}
+
+		fn node_evaluator_runtime() -> EvaluatorRuntime {
+			let node = env::split_paths(&env::var_os("PATH").expect("test PATH"))
+				.map(|directory| directory.join(format!("node{}", env::consts::EXE_SUFFIX)))
+				.find(|candidate| candidate.is_file())
+				.expect("Node.js runtime");
+
+			EvaluatorRuntime::resolve(&fs::canonicalize(node).expect("canonical Node.js runtime"))
+				.expect("evaluator runtime")
 		}
 
 		fn capability_artifacts(root: &Path) -> (ArtifactReference, PathBuf, ArtifactReference) {
@@ -5234,6 +5851,8 @@ mod tests {
 				schedule_slot: official.schedule_slot,
 				task_set_hash,
 				scoring_version: official.scoring_version,
+				calibration_admission_digest: None,
+				calibration_bank: None,
 				execution_concurrency: Some(17),
 				models: official.models,
 				task_ids,
@@ -5242,6 +5861,7 @@ mod tests {
 				capability_validation: official.capability_validation.expect("preflight"),
 				provenance,
 				evaluator_results_artifact,
+				terminal_attempt_lineage: runner::terminal_attempt_lineage(&results),
 				results,
 			};
 			let identity = SigningIdentity::from_secret([7; 32]);
@@ -5314,6 +5934,8 @@ mod tests {
 					evaluator_runtime: Some(&self.evaluator_runtime),
 					replay_root: &self.replay_root,
 					signing_identity: &signing_identity,
+					official_admission: None,
+					require_official_admission: false,
 					observed_unix_ms: 1_000,
 					require_production: true,
 					replay_jobs,
@@ -5324,8 +5946,10 @@ mod tests {
 		}
 
 		fn admission_context(&self) -> super::OperationalAdmissionContext {
-			let provenance = self.environment.expected_provenance.as_ref().expect("provenance");
 			let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
+			let task_set_digest = task::task_set_hash(&self.tasks).expect("task-set hash");
+			let evaluator_digest =
+				corpus_commitment::evaluator_digest(&self.tasks).expect("evaluator digest");
 
 			super::OperationalAdmissionContext {
 				bindings: CalibrationAdmissionBindings {
@@ -5333,19 +5957,20 @@ mod tests {
 					build_receipt_sha256: digest('5'),
 					approved_runner: SigningIdentity::from_secret([7; 32]).node().clone(),
 					approved_verifier: VerifierSigningIdentity::from_secret([8; 32]).node().clone(),
-					corpus_commitment_sha256: provenance.corpus_commitment_sha256.clone(),
-					source_manifest_digest: provenance.source_manifest_digest.clone(),
+					corpus_commitment_sha256: digest('c'),
+					source_manifest_digest: digest('d'),
 					runner_commit: self.environment.runner_commit.clone(),
 					runner_source_tree: "e".repeat(40),
-					task_set_digest: provenance.task_set_digest.clone(),
-					evaluator_digest: provenance.evaluator_digest.clone(),
+					task_set_digest,
+					evaluator_digest,
 					model_toolchain_digest: digest('2'),
 					evaluator_runtime_digest: digest('3'),
-					runner_executable_digest: provenance.runner_executable_digest.clone(),
-					codex_executable_digest: provenance.codex_executable_digest.clone(),
-					codex_code_mode_host_digest: provenance.codex_code_mode_host_digest.clone(),
+					runner_executable_digest: digest('6'),
+					codex_executable_digest: digest('7'),
+					codex_code_mode_host_digest: digest('8'),
 					verifier_executable_digest: digest('4'),
 				},
+				tasks: self.tasks.clone(),
 			}
 		}
 
@@ -5372,6 +5997,8 @@ mod tests {
 					evaluator_runtime: Some(&self.evaluator_runtime),
 					replay_root: &self.replay_root,
 					signing_identity: &signing_identity,
+					official_admission: None,
+					require_official_admission: false,
 					observed_unix_ms: 1_000,
 					require_production: true,
 					replay_jobs: DEFAULT_REPLAY_JOBS,
@@ -5380,6 +6007,7 @@ mod tests {
 				attestation_output,
 				admission_output,
 				context,
+				false,
 			)
 		}
 	}
@@ -5387,6 +6015,36 @@ mod tests {
 	impl Drop for LocalReplayFixture {
 		fn drop(&mut self) {
 			let _ = fs::remove_dir_all(&self.root);
+		}
+	}
+
+	fn fixture_frozen_bank(tasks: &[task::TaskDefinition]) -> scoring::FrozenCalibrationBankV2 {
+		scoring::FrozenCalibrationBankV2 {
+			schema_version: scoring::CALIBRATION_BANK_SCHEMA_VERSION.to_owned(),
+			scoring_version: scoring::AIQ_SCORING_VERSION.to_owned(),
+			measurement_version: scoring::AIQ_MEASUREMENT_VERSION.to_owned(),
+			method: scoring::LATENT_ABILITY_METHOD.to_owned(),
+			source_package_sha256: format!("sha256:{}", "1".repeat(64)),
+			source_scoring_version: scoring::AIQ_TASK_SCORER_VERSION.to_owned(),
+			task_set_id: AIQ_TASK_SET_ID.to_owned(),
+			task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+			task_set_digest: task::task_set_hash(tasks).expect("fixture task-set digest"),
+			catalog_digest: scoring::AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
+			evaluator_digest: corpus_commitment::evaluator_digest(tasks)
+				.expect("fixture evaluator digest"),
+			policy_digest: format!("sha256:{}", "2".repeat(64)),
+			calibration_model_count: MODEL_MATRIX.len(),
+			items: tasks
+				.iter()
+				.map(|task| scoring::CalibrationTaskParameter {
+					task_id: task.task_id.clone(),
+					task_version: task.task_version.clone(),
+					domain: task.domain,
+					facility: 0.5,
+					difficulty: 0.0,
+					mean_item_information: 0.25,
+				})
+				.collect(),
 		}
 	}
 
@@ -5487,7 +6145,7 @@ mod tests {
 	}
 
 	fn assert_calibration_admission_mutations_rejected(
-		admission: &CalibrationAdmissionV1,
+		admission: &CalibrationAdmissionV2,
 		expected_bindings: &CalibrationAdmissionBindings,
 		fixture: &LocalReplayFixture,
 		run: &CalibrationRunRecord,
@@ -5503,15 +6161,15 @@ mod tests {
 					changed.claims.package_sha256.replace_range(0..1, replacement);
 				},
 				1 => {
-					changed.claims.bindings.runner_executable_digest =
+					changed.claims.issuance_bindings.runner_executable_digest =
 						format!("sha256:{}", "a".repeat(64))
 				},
 				2 => {
-					changed.claims.bindings.source_manifest_digest =
+					changed.claims.issuance_bindings.source_manifest_digest =
 						format!("sha256:{}", "b".repeat(64))
 				},
 				3 => {
-					changed.claims.bindings.verifier_executable_digest =
+					changed.claims.issuance_bindings.verifier_executable_digest =
 						format!("sha256:{}", "c".repeat(64))
 				},
 				4 => changed.claims.diagnostic.violations.push("forced failure".to_owned()),
@@ -5523,6 +6181,186 @@ mod tests {
 				"mutation {mutation} must fail"
 			);
 		}
+	}
+
+	fn resign_calibration_admission(admission: &mut CalibrationAdmissionV2, secret: [u8; 32]) {
+		admission.admission_digest =
+			protocol::canonical_hash(&admission.claims).expect("mutated claims digest");
+
+		let unsigned = serde_json::json!({
+			"schema_version": &admission.schema_version,
+			"signature_algorithm": &admission.signature_algorithm,
+			"signature_version": &admission.signature_version,
+			"claims": &admission.claims,
+			"admission_digest": &admission.admission_digest,
+		});
+		let bytes = protocol::canonical_json(&unsigned).expect("mutated admission bytes");
+
+		admission.signature = hex::encode(SigningKey::from_bytes(&secret).sign(&bytes).to_bytes());
+	}
+
+	fn assert_official_consumer_bank_bindings(
+		fixture: &LocalReplayFixture,
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
+		admission: &CalibrationAdmissionV2,
+		expected_bindings: &CalibrationAdmissionBindings,
+		official_run: &mut RunRecord,
+	) {
+		let bundle = CalibrationAdmissionBundleV2 {
+			schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
+			stage: stage.clone(),
+			attestation: attestation.clone(),
+			admission: admission.clone(),
+		};
+
+		bundle
+			.verify_for_official(expected_bindings, &fixture.tasks)
+			.expect("Official consumer verifies signed bank without re-fitting");
+
+		for mutation in 0..4 {
+			let mut inconsistent = bundle.clone();
+
+			match mutation {
+				0 => {
+					inconsistent.admission.claims.calibration_bank.source_package_sha256 =
+						format!("sha256:{}", "a".repeat(64));
+				},
+				1 => {
+					inconsistent.admission.claims.calibration_bank.task_set_digest =
+						format!("sha256:{}", "b".repeat(64));
+				},
+				2 => {
+					inconsistent.admission.claims.calibration_bank.evaluator_digest =
+						format!("sha256:{}", "c".repeat(64));
+				},
+				_ => {
+					inconsistent.admission.claims.calibration_bank.policy_digest =
+						format!("sha256:{}", "d".repeat(64));
+				},
+			}
+
+			inconsistent.admission.claims.calibration_bank_digest = inconsistent
+				.admission
+				.claims
+				.calibration_bank
+				.digest()
+				.expect("mutated bank digest");
+
+			resign_calibration_admission(&mut inconsistent.admission, [8; 32]);
+
+			assert!(
+				inconsistent.verify_for_official(expected_bindings, &fixture.tasks).is_err(),
+				"approved-verifier re-signed internal bank mismatch {mutation} must reject"
+			);
+		}
+
+		official_run.calibration_admission_digest =
+			Some(protocol::canonical_hash(&bundle).expect("bundle digest"));
+		official_run.calibration_bank = Some(admission.claims.calibration_bank.clone());
+
+		crate::verify_official_calibration_admission_binding(
+			official_run,
+			&bundle,
+			expected_bindings,
+			&fixture.tasks,
+		)
+		.expect("Official run matches the independently verified bank");
+
+		let mut missing_admission_digest = official_run.clone();
+
+		missing_admission_digest.calibration_admission_digest = None;
+
+		assert!(
+			crate::verify_official_calibration_admission_binding(
+				&missing_admission_digest,
+				&bundle,
+				expected_bindings,
+				&fixture.tasks,
+			)
+			.is_err(),
+			"Official consumption rejects a missing admission digest"
+		);
+
+		let mut replaced_bank = official_run.clone();
+
+		replaced_bank.calibration_bank.as_mut().expect("embedded bank").items[0].difficulty += 0.01;
+
+		assert!(
+			crate::verify_official_calibration_admission_binding(
+				&replaced_bank,
+				&bundle,
+				expected_bindings,
+				&fixture.tasks,
+			)
+			.is_err(),
+			"Official consumption rejects a replaced embedded bank"
+		);
+	}
+
+	fn assert_attacker_admission_rejected(
+		fixture: &LocalReplayFixture,
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
+		admission: &CalibrationAdmissionV2,
+		expected_bindings: &CalibrationAdmissionBindings,
+		official_run: &RunRecord,
+		run: &CalibrationRunRecord,
+	) {
+		let attacker = VerifierSigningIdentity::from_secret([10; 32]);
+		let attacker_attestation = calibration_verification::attest_calibration_stage(
+			&attacker,
+			stage,
+			attestation.observed_unix_ms,
+		)
+		.expect("attacker-owned attestation");
+		let mut attacker_bindings = expected_bindings.clone();
+
+		attacker_bindings.approved_verifier = attacker.node().clone();
+
+		let attacker_admission = calibration_verification::sign_full_calibration_admission(
+			&attacker,
+			stage,
+			&attacker_attestation,
+			&fixture.tasks,
+			&run.results,
+			scoring::AIQ_TASK_SCORER_VERSION,
+			attacker_bindings,
+		)
+		.expect("attacker-owned re-signed admission");
+		let attacker_bundle = CalibrationAdmissionBundleV2 {
+			schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
+			stage: stage.clone(),
+			attestation: attacker_attestation,
+			admission: attacker_admission.clone(),
+		};
+
+		assert!(
+			attacker_admission.verify(expected_bindings, &fixture.tasks, &run.results).is_err(),
+			"external verifier and production-reference bindings reject an attacker-owned admission"
+		);
+		assert!(
+			crate::verify_official_calibration_admission_binding(
+				official_run,
+				&attacker_bundle,
+				expected_bindings,
+				&fixture.tasks,
+			)
+			.is_err(),
+			"Official consumption rejects an attacker re-signed admission bundle"
+		);
+		assert!(
+			admission
+				.verify(
+					&CalibrationAdmissionBindings {
+						approved_verifier: attacker.node().clone(),
+						..expected_bindings.clone()
+					},
+					&fixture.tasks,
+					&run.results,
+				)
+				.is_err()
+		);
 	}
 
 	#[test]
@@ -5551,6 +6389,22 @@ mod tests {
 			"/toolchain/node",
 			"--codex-toolchain-root",
 			"/toolchain",
+			"--calibration-admission",
+			"calibration-admission.json",
+			"--source-root",
+			"source",
+			"--runner-binary",
+			"bin/aiq-runner",
+			"--codex-binary",
+			"codex-runtime/codex",
+			"--production-reference",
+			"production-reference.json",
+			"--expected-production-reference-sha256",
+			"sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			"--build-receipt",
+			"final-build-receipt.json",
+			"--expected-build-receipt-sha256",
+			"sha256:2222222222222222222222222222222222222222222222222222222222222222",
 		]);
 
 		assert!(Cli::try_parse_from(production).is_ok());
@@ -5659,11 +6513,23 @@ mod tests {
 		admitted.extend([
 			"--admission-output",
 			"admission.json",
-			"--source-root",
+			"--admission-tasks",
+			"/current/tasks",
+			"--admission-environment",
+			"/current/environment.json",
+			"--admission-evaluator-root",
+			"/current/evaluators",
+			"--admission-corpus-commitment",
+			"/current/corpus.json",
+			"--admission-evaluator-runtime",
+			"/current/toolchain/node",
+			"--admission-codex-toolchain-root",
+			"/current/toolchain",
+			"--admission-source-root",
 			"/frozen/source",
-			"--frozen-runner-binary",
+			"--admission-runner-binary",
 			"/frozen/aiq-runner",
-			"--codex-binary",
+			"--admission-codex-binary",
 			"/frozen/codex",
 			"--production-reference",
 			"/controlled/production-reference.json",
@@ -5678,11 +6544,59 @@ mod tests {
 		assert!(VerifyLocalCli::try_parse_from(&admitted).is_ok());
 		assert!(VerifyLocalCli::try_parse_from(&admitted[..admitted.len() - 2]).is_err());
 
+		let consuming = official_consumer_arguments(&arguments);
+
+		assert!(VerifyLocalCli::try_parse_from(&consuming).is_ok());
+		assert!(VerifyLocalCli::try_parse_from(&consuming[..consuming.len() - 2]).is_err());
+
+		let mut conflicting = consuming;
+
+		conflicting.extend(["--admission-output", "new-admission.json"]);
+
+		assert!(VerifyLocalCli::try_parse_from(conflicting).is_err());
+
 		let mut incomplete = arguments.to_vec();
 
 		incomplete.extend(["--admission-output", "admission.json"]);
 
 		assert!(VerifyLocalCli::try_parse_from(incomplete).is_err());
+	}
+
+	fn official_consumer_arguments<'a>(base: &'a [&'a str]) -> Vec<&'a str> {
+		let mut arguments = base.to_vec();
+
+		arguments.extend([
+			"--calibration-admission",
+			"/current/calibration-admission.json",
+			"--admission-tasks",
+			"/current/tasks",
+			"--admission-environment",
+			"/current/environment.json",
+			"--admission-evaluator-root",
+			"/current/evaluators",
+			"--admission-corpus-commitment",
+			"/current/corpus.json",
+			"--admission-evaluator-runtime",
+			"/current/toolchain/node",
+			"--admission-codex-toolchain-root",
+			"/current/toolchain",
+			"--admission-source-root",
+			"/frozen/source",
+			"--admission-runner-binary",
+			"/frozen/aiq-runner",
+			"--admission-codex-binary",
+			"/frozen/codex",
+			"--production-reference",
+			"/controlled/production-reference.json",
+			"--expected-production-reference-sha256",
+			"sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			"--build-receipt",
+			"/controlled/final-build-receipt.json",
+			"--expected-build-receipt-sha256",
+			"sha256:2222222222222222222222222222222222222222222222222222222222222222",
+		]);
+
+		arguments
 	}
 
 	#[test]
@@ -6036,6 +6950,7 @@ mod tests {
 
 		root
 	}
+
 	#[test]
 	fn local_replay_reconstructs_all_1224_results_and_writes_deterministic_evidence() {
 		let fixture = LocalReplayFixture::new();
@@ -6170,6 +7085,7 @@ mod tests {
 				&attestation,
 				&fixture.tasks,
 				&run.results,
+				scoring::AIQ_TASK_SCORER_VERSION,
 				admission_bindings(&stage, &attestation),
 			)
 			.is_err(),
@@ -6178,8 +7094,25 @@ mod tests {
 	}
 
 	#[test]
+	#[ignore = "explicitly rewrites the checked-in calibration package example"]
+	fn rewrite_calibration_package_example() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_calibration_task_count(1);
+
+		let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+			.join("../../benchmarks/fixtures/calibration-result-package-v4.example.json");
+
+		fs::write(path, &fixture.package).expect("write calibration package example");
+	}
+
+	#[test]
 	fn full_calibration_admission_is_signed_hashed_and_tamper_evident() {
 		let mut fixture = LocalReplayFixture::new();
+		let official_envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("Official envelope");
+		let mut official_run: RunRecord =
+			serde_json::from_value(official_envelope.payload).expect("Official run");
 
 		fixture.convert_to_calibration();
 
@@ -6210,6 +7143,7 @@ mod tests {
 			&attestation,
 			&fixture.tasks,
 			&run.results,
+			scoring::AIQ_TASK_SCORER_VERSION,
 			bindings,
 		)
 		.expect("signed admission");
@@ -6217,6 +7151,15 @@ mod tests {
 		admission
 			.verify(&expected_bindings, &fixture.tasks, &run.results)
 			.expect("externally anchored admission");
+
+		assert_official_consumer_bank_bindings(
+			&fixture,
+			&stage,
+			&attestation,
+			&admission,
+			&expected_bindings,
+			&mut official_run,
+		);
 
 		assert_eq!(admission.claims.task_count, 72);
 		assert_eq!(admission.claims.model_configuration_count, 17);
@@ -6230,44 +7173,16 @@ mod tests {
 			&fixture,
 			&run,
 		);
-
-		let attacker = VerifierSigningIdentity::from_secret([10; 32]);
-		let attacker_attestation = calibration_verification::attest_calibration_stage(
-			&attacker,
+		assert_attacker_admission_rejected(
+			&fixture,
 			&stage,
-			attestation.observed_unix_ms,
-		)
-		.expect("attacker-owned attestation");
-		let mut attacker_bindings = expected_bindings.clone();
-
-		attacker_bindings.approved_verifier = attacker.node().clone();
-
-		let attacker_admission = calibration_verification::sign_full_calibration_admission(
-			&attacker,
-			&stage,
-			&attacker_attestation,
-			&fixture.tasks,
-			&run.results,
-			attacker_bindings,
-		)
-		.expect("attacker-owned re-signed admission");
-
-		assert!(
-			attacker_admission.verify(&expected_bindings, &fixture.tasks, &run.results).is_err(),
-			"external verifier and production-reference bindings reject an attacker-owned admission"
+			&attestation,
+			&admission,
+			&expected_bindings,
+			&official_run,
+			&run,
 		);
-		assert!(
-			admission
-				.verify(
-					&CalibrationAdmissionBindings {
-						approved_verifier: attacker.node().clone(),
-						..expected_bindings.clone()
-					},
-					&fixture.tasks,
-					&run.results
-				)
-				.is_err()
-		);
+
 		assert!(
 			admission
 				.verify(
@@ -6292,6 +7207,7 @@ mod tests {
 				&attestation,
 				&fixture.tasks,
 				&incomplete_results,
+				scoring::AIQ_TASK_SCORER_VERSION,
 				admission_bindings(&stage, &attestation),
 			)
 			.is_err()
@@ -6313,7 +7229,7 @@ mod tests {
 			.prepare_admission(&stage, &attestation, &admission, &context)
 			.expect("atomic admitted replay");
 
-		let value: CalibrationAdmissionBundleV1 =
+		let value: CalibrationAdmissionBundleV2 =
 			serde_json::from_slice(&fs::read(&admission).expect("admission bytes"))
 				.expect("admission JSON");
 		let envelope: protocol::SubmissionEnvelope =
@@ -6345,15 +7261,36 @@ mod tests {
 		let failed_admission = fixture.root.join("failed-admission.json");
 		let mut mismatched = fixture.admission_context();
 
-		mismatched.bindings.runner_executable_digest = format!("sha256:{}", "a".repeat(64));
+		mismatched.bindings.evaluator_digest = format!("sha256:{}", "a".repeat(64));
 
 		fixture
 			.prepare_admission(&failed_stage, &failed_attestation, &failed_admission, &mismatched)
-			.expect_err("binary mismatch must reject admission");
+			.expect_err("replay-to-issuance evaluator mismatch must reject admission");
 
 		assert!(!failed_stage.exists());
 		assert!(!failed_attestation.exists());
 		assert!(!failed_admission.exists());
+
+		let attacker_stage = fixture.root.join("attacker-stage.json");
+		let attacker_attestation = fixture.root.join("attacker-attestation.json");
+		let attacker_admission = fixture.root.join("attacker-admission.json");
+		let mut attacker_runner = fixture.admission_context();
+
+		attacker_runner.bindings.approved_runner =
+			SigningIdentity::from_secret([6; 32]).node().clone();
+
+		fixture
+			.prepare_admission(
+				&attacker_stage,
+				&attacker_attestation,
+				&attacker_admission,
+				&attacker_runner,
+			)
+			.expect_err("unanchored replay runner must reject admission");
+
+		assert!(!attacker_stage.exists());
+		assert!(!attacker_attestation.exists());
+		assert!(!attacker_admission.exists());
 
 		let preserved = fixture.root.join("preserved-admission.json");
 
@@ -6683,10 +7620,44 @@ mod tests {
 			backoff: Duration::from_millis(1),
 			evaluator_root: PathBuf::from("/unused-evaluator"),
 			evaluator_runtime: None,
+			official_admission: None,
 			replay_root: PathBuf::from("/unused-replay"),
 			replay_jobs: DEFAULT_REPLAY_JOBS,
 			preparation_calls: AtomicUsize::new(0),
 		}
+	}
+
+	#[test]
+	fn worker_rejects_official_without_admission_before_replay_or_stage_submission() {
+		let fixture = LocalReplayFixture::new();
+		let envelope: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&fixture.package).expect("Official envelope");
+		let run: RunRecord = serde_json::from_value(envelope.payload).expect("Official run");
+		let package_sha256 = hex::encode(Sha256::digest(&fixture.package));
+		let transport = FakeTransport {
+			package: fixture.package.clone(),
+			posts: Mutex::new(VecDeque::new()),
+			terminal_claims: Mutex::new(Vec::new()),
+			verification_request_bytes: Mutex::new(Vec::new()),
+		};
+		let worker = test_worker(transport);
+		let mut claim = test_claim(run.run_id);
+
+		claim.package_sha256.clone_from(&package_sha256);
+
+		claim.object_content_sha256 = package_sha256;
+		claim.body_bytes = fixture.package.len();
+
+		let record = worker.process_claim(&claim);
+
+		assert_eq!(record.disposition, "rejected");
+		assert_eq!(record.reason_code, Some(ReasonCode::InvalidRunProvenance));
+		assert_eq!(worker.preparation_calls.load(Ordering::Relaxed), 0);
+		assert!(worker.transport.verification_request_bytes.lock().expect("requests").is_empty());
+		assert_eq!(
+			worker.transport.posts.lock().expect("posts").iter().cloned().collect::<Vec<_>>(),
+			["renewed", "rejection_recorded_not_published", "acknowledged"]
+		);
 	}
 
 	fn test_claim(idempotency_key: String) -> Claim {
