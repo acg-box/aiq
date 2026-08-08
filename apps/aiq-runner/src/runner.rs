@@ -1829,6 +1829,27 @@ pub(crate) fn extract_final_response(stdout: &str) -> Option<String> {
 	response
 }
 
+pub(crate) fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceManifest, RunnerError> {
+	let canonical_root = fs::canonicalize(workspace)
+		.map_err(|error| RunnerError::new(format!("candidate workspace unavailable: {error}")))?;
+	let mut entries = Vec::new();
+	let mut total_file_bytes = 0_u64;
+	let mut total_path_bytes = 0_usize;
+
+	collect_workspace_manifest_entries(
+		&canonical_root,
+		&canonical_root,
+		&mut entries,
+		0,
+		&mut total_file_bytes,
+		&mut total_path_bytes,
+	)?;
+
+	entries.sort_by(|left, right| left.path.cmp(&right.path));
+
+	Ok(WorkspaceManifest { schema_version: "aiq.workspace-manifest.v1", entries })
+}
+
 fn retained_stdout_tool_usage(stdout: &str, artifacts: &[ArtifactReference]) -> ToolUsage {
 	if artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl") {
 		// A policy-invalid failed attempt retains raw stdout for verifier rejection;
@@ -2587,27 +2608,6 @@ where
 		.map_err(|error| RunnerError::new(error.to_string()))?;
 
 	Ok((manifest_reference, snapshot_reference))
-}
-
-fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceManifest, RunnerError> {
-	let canonical_root = fs::canonicalize(workspace)
-		.map_err(|error| RunnerError::new(format!("candidate workspace unavailable: {error}")))?;
-	let mut entries = Vec::new();
-	let mut total_file_bytes = 0_u64;
-	let mut total_path_bytes = 0_usize;
-
-	collect_workspace_manifest_entries(
-		&canonical_root,
-		&canonical_root,
-		&mut entries,
-		0,
-		&mut total_file_bytes,
-		&mut total_path_bytes,
-	)?;
-
-	entries.sort_by(|left, right| left.path.cmp(&right.path));
-
-	Ok(WorkspaceManifest { schema_version: "aiq.workspace-manifest.v1", entries })
 }
 
 fn read_workspace_file_bounded(path: &Path, max_bytes: u64) -> Result<Vec<u8>, RunnerError> {

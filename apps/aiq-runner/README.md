@@ -27,11 +27,25 @@ contrast corpus without invoking Codex:
 ```sh
 cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
+cargo run -p aiq-runner -- seal-corpus --help
 ```
 
 The first command requires the 72 controlled tasks and their commitment. The
 second also requires the exact expected contrast-corpus commitment digest. Both
 commands validate fixtures, evaluators, the committed runtime, and toolchain.
+
+`seal-corpus` is the only repository-owned authoring boundary for a new complete
+controlled corpus seal. It does not modify or rebind a predecessor commitment.
+It derives every task, baseline, fixture, acceptance, leakage-review, evaluator,
+runtime, toolchain, harness, and source identity from actual retained inputs. It
+writes one new private directory only after the Core or Contrast production
+validator and every baseline check pass. The output includes the normalized
+inputs, canonical preimages, commitment, harness, and private receipt needed for
+independent regeneration. The sealed evaluator runtime is the one Node executable
+under `toolchain`; the output does not contain a duplicate runtime copy. The
+command does not invoke Codex or generate task content. After successful atomic
+installation, stdout contains only the canonical commitment digest required by
+the Contrast validator.
 
 Create deterministic synthetic output without invoking Codex:
 

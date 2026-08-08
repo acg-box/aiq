@@ -48,7 +48,14 @@ unless the runner subtree remains `identity_kind: source_only` with a null
 has equivalent shared typed enforcement even though it has no separate
 checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
 identities. The source-only corpus rule and signed per-run runner and complete
-Codex runtime provenance are the executable product contracts. After the final
+Codex runtime provenance are the executable product contracts. The
+repository-owned `seal-corpus` command creates a complete new Core or Contrast
+seal from actual retained assets. It derives source-only runner,
+workspace-manifest baseline, controlled-tree fixture and acceptance,
+leakage-review, evaluator, runtime, toolchain, and authoring-harness identities.
+It is not a task generator and cannot patch a predecessor commitment. One
+create-new private directory becomes visible only after production-validator and
+baseline round-trip checks pass. After the final
 clean build, the operator retains a private, unsigned audit receipt with the
 exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Codex executable, and Codex code-mode host. The offline native

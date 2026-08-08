@@ -130,6 +130,7 @@ cargo run -p aiq-runner -- validate \
   --public-tasks benchmarks/examples/tasks
 cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
+cargo run -p aiq-runner -- seal-corpus --help
 cargo make fmt-check
 cargo make check
 cargo make lint
