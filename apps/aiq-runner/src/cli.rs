@@ -265,6 +265,7 @@ struct PreflightAdmissionBinding {
 	model_toolchain: ValidatedModelToolchain,
 	codex_binary: String,
 	codex_executable_digest: String,
+	codex_code_mode_host_digest: String,
 	codex_home: PinnedDirectoryIdentity,
 	credential: ChatgptCredentialObservation,
 	profile_workspace: PinnedDirectoryIdentity,
@@ -307,6 +308,9 @@ impl PreflightAdmissionBinding {
 			model_toolchain: inputs.model_toolchain.clone(),
 			codex_binary: inputs.codex_binary.to_owned(),
 			codex_executable_digest: corpus_commitment::codex_executable_digest(
+				inputs.codex_binary,
+			)?,
+			codex_code_mode_host_digest: corpus_commitment::codex_code_mode_host_digest(
 				inputs.codex_binary,
 			)?,
 			codex_home: PinnedDirectoryIdentity::capture(&codex_home_path)?,
@@ -354,6 +358,11 @@ impl PreflightAdmissionBinding {
 			!= self.codex_executable_digest
 		{
 			return Err("Codex executable bytes changed before a capability probe".into());
+		}
+		if corpus_commitment::codex_code_mode_host_digest(&self.codex_binary)?
+			!= self.codex_code_mode_host_digest
+		{
+			return Err("Codex code-mode host bytes changed before a capability probe".into());
 		}
 
 		self.codex_home.verify()?;
@@ -558,6 +567,7 @@ struct AuthorizedRun {
 	run_id: String,
 	runner_executable_digest: String,
 	codex_executable_digest: String,
+	codex_code_mode_host_digest: String,
 	codex_binary_commitment: String,
 	codex_home_commitment: String,
 	preflight: PreflightCache,
@@ -583,6 +593,7 @@ struct PreparedLiveRuntime {
 	permission_evidence: VerifiedPermissionEvidence,
 	runner_executable_digest: String,
 	codex_executable_digest: String,
+	codex_code_mode_host_digest: String,
 	codex_home_commitment: String,
 }
 
@@ -2138,22 +2149,21 @@ fn run_preflight(
 		standalone_preflight_denied_roots(
 			&path,
 			&corpus_commitment,
+			&codex_home,
 			&artifact_root,
 			model_toolchain.root(),
 		)?
 	};
+	let profile_workspace = preflight_profile_workspace(admission.as_ref(), &artifact_root);
 	let adapter = CodexAdapter::new(
 		SystemExecutor,
 		artifact_sink,
 		codex_binary.clone(),
 		CodexExecutionConfig::isolated(codex_home.clone())
+			.with_capability_workspace_root(profile_workspace)
 			.with_denied_roots(denied_roots)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
-	let profile_workspace = admission
-		.as_ref()
-		.and_then(|(receipt, _)| receipt.plan.as_ref())
-		.map_or(artifact_root.as_path(), |plan| Path::new(&plan.execution_root));
 	let binding = PreflightAdmissionBinding::capture(
 		&adapter,
 		PreflightAdmissionInputs {
@@ -2209,6 +2219,15 @@ fn preflight_window(expires_in_seconds: u64) -> Result<(u64, u64), &'static str>
 		.ok_or("preflight expiry overflows")?;
 
 	Ok((observed_unix_ms, expires_unix_ms))
+}
+
+fn preflight_profile_workspace<'a>(
+	admission: Option<&'a (PermissionAdmissionReport, String)>,
+	artifact_root: &'a Path,
+) -> &'a Path {
+	admission
+		.and_then(|(receipt, _)| receipt.plan.as_ref())
+		.map_or(artifact_root, |plan| Path::new(&plan.execution_root))
 }
 
 fn preflight_model_toolchain(
@@ -2402,6 +2421,7 @@ fn verify_preflight_matches_official_plan(
 		evaluator_runtime.executable_digest().to_owned(),
 		model_toolchain.digest().to_owned(),
 		corpus_commitment::codex_executable_digest(codex_binary)?,
+		corpus_commitment::codex_code_mode_host_digest(codex_binary)?,
 		resume::directory_identity(codex_home, "Codex home")?,
 		resume::directory_identity(artifact_root, "artifact root")?,
 		canonical_policy_path(output)?.display().to_string(),
@@ -2417,6 +2437,7 @@ fn verify_preflight_matches_official_plan(
 		plan.evaluator_runtime_digest.clone(),
 		plan.model_toolchain_digest.clone(),
 		plan.codex_executable_digest.clone(),
+		plan.codex_code_mode_host_digest.clone(),
 		plan.codex_home.clone(),
 		plan.artifact_root.clone(),
 		plan.outputs.preflight_cache.clone(),
@@ -2764,6 +2785,10 @@ fn controlled_codex_binary(selector: &str) -> Result<String, Box<dyn std::error:
 
 	let canonical = fs::canonicalize(path)?;
 
+	corpus_commitment::codex_code_mode_host_path(
+		canonical.to_str().ok_or("--codex-binary path must be valid UTF-8")?,
+	)?;
+
 	Ok(canonical.to_string_lossy().into_owned())
 }
 
@@ -2963,6 +2988,7 @@ fn build_official_plan(
 		evaluator_runtime_digest: evaluator_runtime.executable_digest().to_owned(),
 		runner_executable_digest: corpus_commitment::runner_executable_digest()?,
 		codex_executable_digest: corpus_commitment::codex_executable_digest(&codex_binary)?,
+		codex_code_mode_host_digest: corpus_commitment::codex_code_mode_host_digest(&codex_binary)?,
 		codex_credential_digest: protocol::canonical_hash(
 			&adapter::chatgpt_credential_observation(inputs.codex_home)?,
 		)?,
@@ -3134,6 +3160,7 @@ fn freeze_run_preflight(
 	let (_, denied_roots) =
 		validate_live_protected_layout(options, &protected_paths, &model_toolchain)?;
 	let execution_config = CodexExecutionConfig::isolated(options.codex_home.clone())
+		.with_capability_workspace_root(&options.execution_root)
 		.with_denied_roots(denied_roots)
 		.with_model_toolchain(model_toolchain.clone());
 	let adapter = CodexAdapter::new(
@@ -3366,6 +3393,7 @@ fn prepare_authorized_live_run(
 		permission_evidence,
 		runner_executable_digest,
 		codex_executable_digest,
+		codex_code_mode_host_digest,
 		codex_home_commitment,
 	} = runtime;
 	let permission_evidence_digest = permission_evidence.combined_digest()?;
@@ -3397,6 +3425,7 @@ fn prepare_authorized_live_run(
 		run_id,
 		runner_executable_digest,
 		codex_executable_digest,
+		codex_code_mode_host_digest,
 		codex_binary_commitment: options.codex_binary.clone(),
 		codex_home_commitment,
 		preflight,
@@ -3470,6 +3499,8 @@ fn prepare_live_runtime(
 	let runner_executable_digest = corpus_commitment::runner_executable_digest()?;
 	let codex_executable_digest =
 		corpus_commitment::codex_executable_digest(&options.codex_binary)?;
+	let codex_code_mode_host_digest =
+		corpus_commitment::codex_code_mode_host_digest(&options.codex_binary)?;
 	let manifest = read_json::<CapabilityManifest>(&options.capabilities)?;
 	let codex_home_commitment = resume::directory_identity(&options.codex_home, "Codex home")?;
 	let workspace_provider = LocalDirectoryWorkspaceProvider::new(
@@ -3486,6 +3517,7 @@ fn prepare_live_runtime(
 		artifact_sink,
 		options.codex_binary.clone(),
 		CodexExecutionConfig::isolated(options.codex_home.clone())
+			.with_capability_workspace_root(&options.execution_root)
 			.with_denied_roots(denied_roots)
 			.with_model_toolchain(model_toolchain.clone()),
 	);
@@ -3503,6 +3535,7 @@ fn prepare_live_runtime(
 		permission_evidence,
 		runner_executable_digest,
 		codex_executable_digest,
+		codex_code_mode_host_digest,
 		codex_home_commitment,
 	})
 }
@@ -3683,6 +3716,12 @@ fn execute_authorized_live_run(
 ) -> Result<ExecutedLiveRun, Box<dyn std::error::Error>> {
 	let validation = context.preflight.report.clone();
 
+	verify_codex_runtime_unchanged(
+		&context.options.codex_binary,
+		&context.codex_executable_digest,
+		&context.codex_code_mode_host_digest,
+	)?;
+
 	context.future_files.disarm(&context.options.preflight_cache);
 
 	let commitments = build_live_run_commitments(&context, &validation)?;
@@ -3704,7 +3743,8 @@ fn execute_authorized_live_run(
 		task_set_hash: _,
 		run_id: _,
 		runner_executable_digest: _,
-		codex_executable_digest: _,
+		codex_executable_digest,
+		codex_code_mode_host_digest,
 		codex_binary_commitment: _,
 		codex_home_commitment: _,
 		preflight,
@@ -3727,6 +3767,12 @@ fn execute_authorized_live_run(
 		},
 		resume::unix_ms,
 		|| {
+			verify_codex_runtime_unchanged(
+				&options.codex_binary,
+				&codex_executable_digest,
+				&codex_code_mode_host_digest,
+			)?;
+
 			Ok(runner::execute_selected_run(
 				&adapter,
 				&workspace_provider,
@@ -3743,6 +3789,11 @@ fn execute_authorized_live_run(
 		},
 	)?;
 
+	verify_codex_runtime_unchanged(
+		&options.codex_binary,
+		&codex_executable_digest,
+		&codex_code_mode_host_digest,
+	)?;
 	validate_selected_run(&run, &report.tasks)?;
 
 	Ok(ExecutedLiveRun { run, tasks: report.tasks, options, future_files, dispatch_deadline })
@@ -3769,6 +3820,7 @@ fn build_live_run_commitments(
 		preflight_digest.clone(),
 		context.runner_executable_digest.clone(),
 		context.codex_executable_digest.clone(),
+		context.codex_code_mode_host_digest.clone(),
 		context.permission_evidence_digest.clone(),
 	);
 
@@ -3800,6 +3852,21 @@ fn build_live_run_commitments(
 		preflight_digest,
 		provenance,
 	})
+}
+
+fn verify_codex_runtime_unchanged(
+	codex_binary: &str,
+	expected_codex_digest: &str,
+	expected_code_mode_host_digest: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if corpus_commitment::codex_executable_digest(codex_binary)? != expected_codex_digest
+		|| corpus_commitment::codex_code_mode_host_digest(codex_binary)?
+			!= expected_code_mode_host_digest
+	{
+		return Err("Codex runtime bundle changed before or during live dispatch".into());
+	}
+
+	Ok(())
 }
 
 fn with_final_preflight_execution_boundary<T>(
@@ -3957,6 +4024,12 @@ fn benchmark_protected_paths_from(
 	push("codex_home", inputs.codex_home)?;
 	push("codex_binary", inputs.codex_binary)?;
 
+	let codex_code_mode_host = corpus_commitment::codex_code_mode_host_path(
+		inputs.codex_binary.to_str().ok_or("Codex binary path must be valid UTF-8")?,
+	)?;
+
+	push("codex_code_mode_host", &codex_code_mode_host)?;
+
 	if let Some(path) = inputs.public_tasks {
 		push("public_tasks", path)?;
 	}
@@ -4023,6 +4096,7 @@ fn official_plan_protected_paths(
 		("official_package_output", plan.outputs.package_output.as_str()),
 	]);
 
+	let codex_code_mode_host = corpus_commitment::codex_code_mode_host_path(&plan.codex_binary)?;
 	let mut protected = paths
 		.into_iter()
 		.map(|(category, path)| {
@@ -4030,6 +4104,10 @@ fn official_plan_protected_paths(
 		})
 		.collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
 
+	protected.push(ProtectedBenchmarkPath {
+		category: "codex_code_mode_host",
+		path: canonical_policy_path(&codex_code_mode_host)?,
+	});
 	protected.push(ProtectedBenchmarkPath {
 		category: "official_admission_receipt",
 		path: canonical_policy_path(receipt_path)?,
@@ -4041,21 +4119,25 @@ fn official_plan_protected_paths(
 /// Builds the deny policy for model-free standalone capability probes.
 ///
 /// The host Codex process must read its executable, credential, and committed
-/// toolchain. Probe turns have no tools, so the exact capability and corpus
-/// control files are the only model-facing deny policy needed here.
+/// toolchain. Functional probes run one command in a disposable workspace, so
+/// the credential plus exact capability and corpus controls remain denied.
 fn standalone_preflight_denied_roots(
 	capabilities: &Path,
 	corpus_commitment: &Path,
+	codex_home: &Path,
 	artifact_root: &Path,
 	model_toolchain_root: &Path,
 ) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>> {
-	let protected_paths =
-		[("capabilities", capabilities), ("corpus_commitment", corpus_commitment)]
-			.into_iter()
-			.map(|(category, path)| {
-				Ok(ProtectedBenchmarkPath { category, path: canonical_policy_path(path)? })
-			})
-			.collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+	let protected_paths = [
+		("capabilities", capabilities),
+		("corpus_commitment", corpus_commitment),
+		("codex_home", codex_home),
+	]
+	.into_iter()
+	.map(|(category, path)| {
+		Ok(ProtectedBenchmarkPath { category, path: canonical_policy_path(path)? })
+	})
+	.collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
 
 	isolation::validate_protected_layout(
 		&protected_paths,
@@ -5824,6 +5906,30 @@ mod tests {
 		repository_root.join("target").join(format!("aiq-cli-{name}-{}-{suffix}", process::id()))
 	}
 
+	fn codex_runtime_fixture(root: &Path) -> PathBuf {
+		let runtime = root.join("codex-runtime");
+
+		fs::create_dir_all(&runtime).expect("Codex runtime fixture");
+
+		let binary = runtime.join(if cfg!(windows) { "codex.exe" } else { "codex" });
+		let host = runtime.join(if cfg!(windows) {
+			"codex-code-mode-host.exe"
+		} else {
+			"codex-code-mode-host"
+		});
+
+		fs::write(&binary, b"codex").expect("Codex binary fixture");
+		fs::write(&host, b"host").expect("Codex host fixture");
+
+		#[cfg(unix)]
+		for executable in [&binary, &host] {
+			fs::set_permissions(executable, fs::Permissions::from_mode(0o700))
+				.expect("executable fixture permissions");
+		}
+
+		binary
+	}
+
 	#[test]
 	fn permission_canary_evidence_digest_commits_to_executable_canary_schema() {
 		let bindings = [
@@ -6515,29 +6621,36 @@ mod tests {
 		let controls = root.join("controls");
 		let artifacts = root.join("probe-artifacts");
 		let toolchain = root.join("toolchain");
+		let codex_home = root.join("codex-home");
 		let capabilities = controls.join("capabilities.json");
 		let corpus_commitment = controls.join("commitment.json");
 
 		fs::create_dir_all(&controls).expect("control fixture");
 		fs::create_dir_all(&artifacts).expect("artifact fixture");
 		fs::create_dir_all(&toolchain).expect("toolchain fixture");
+		fs::create_dir_all(&codex_home).expect("Codex home fixture");
 		fs::write(&capabilities, b"{}").expect("capability fixture");
 		fs::write(&corpus_commitment, b"{}").expect("corpus fixture");
 
 		let roots = cli::standalone_preflight_denied_roots(
 			&capabilities,
 			&corpus_commitment,
+			&codex_home,
 			&artifacts,
 			&toolchain,
 		)
 		.expect("standalone preflight roots");
-		let mut expected = vec![expected_path(&capabilities), expected_path(&corpus_commitment)];
+		let mut expected = vec![
+			expected_path(&capabilities),
+			expected_path(&corpus_commitment),
+			expected_path(&codex_home),
+		];
 
 		expected.sort();
 		expected.dedup();
 
 		assert_eq!(roots, expected);
-		assert_eq!(roots.len(), 2);
+		assert_eq!(roots.len(), 3);
 
 		let workspace_capabilities = artifacts.join("capabilities.json");
 
@@ -6546,6 +6659,7 @@ mod tests {
 		let workspace_error = cli::standalone_preflight_denied_roots(
 			&workspace_capabilities,
 			&corpus_commitment,
+			&codex_home,
 			&artifacts,
 			&toolchain,
 		)
@@ -6561,6 +6675,7 @@ mod tests {
 		let toolchain_error = cli::standalone_preflight_denied_roots(
 			&capabilities,
 			&toolchain_commitment,
+			&codex_home,
 			&artifacts,
 			&toolchain,
 		)
@@ -6592,6 +6707,7 @@ mod tests {
 		let roots = cli::standalone_preflight_denied_roots(
 			&capabilities,
 			&corpus_commitment,
+			&codex_home,
 			&artifacts,
 			&toolchain,
 		)
@@ -6758,7 +6874,7 @@ mod tests {
 		let evaluators = root.join("evaluators");
 		let artifacts = root.join("artifacts");
 		let tasks = root.join("tasks");
-		let codex_binary = root.join("codex");
+		let codex_binary = codex_runtime_fixture(&root);
 		let commitment = root.join("commitment.json");
 		let capabilities = root.join("capabilities.json");
 		let schedule = root.join("schedule.json");
@@ -6794,6 +6910,7 @@ mod tests {
 			"artifact_root",
 			"codex_home",
 			"codex_binary",
+			"codex_code_mode_host",
 			"hidden_tasks",
 			"corpus_commitment",
 			"capabilities",

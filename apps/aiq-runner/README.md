@@ -60,7 +60,7 @@ A live preflight requires:
 - the current `aiq.corpus-commitment.v2` document;
 - an absolute committed Node.js runtime;
 - the controlled Node.js and ripgrep toolchain root;
-- the exact Codex executable and Codex home;
+- the exact Codex runtime directory and Codex home;
 - a durable output path.
 
 The only first-release Official runtime runs directly on the operator's Apple
@@ -118,10 +118,14 @@ The interrupted `1.0.3` Official attempt was rejected as unpublished calibration
 evidence after an already-conclusive ceiling failure. No hidden responses or
 hidden task details were published.
 
-Capability preflight records the exact local model support state. The run binds
+The runtime directory must contain exactly the native `codex` executable and
+its `codex-code-mode-host` sibling. Capability preflight records the exact local
+model support state only after each available configuration completes one
+command and writes the expected content-bound marker in a fresh workspace. The run binds
 the corpus, catalog, task set, evaluator, runtime, harness, prompt, tool policy,
 network policy, environment, source manifest, executables, and permission
-evidence in `aiq.run-provenance.v2`.
+evidence in `aiq.run-provenance.v3`, including separate digests for the Codex
+executable and code-mode host.
 
 Each adapter-invoked result can record runner-observed wall time. When Codex
 reports token counters, the verifier parses the retained evidence again and

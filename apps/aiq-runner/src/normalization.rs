@@ -1526,6 +1526,7 @@ mod tests {
 			"source_manifest_digest",
 			"runner_executable_digest",
 			"codex_executable_digest",
+			"codex_code_mode_host_digest",
 			"permission_evidence_digest",
 		] {
 			let mut changed = stage.clone();

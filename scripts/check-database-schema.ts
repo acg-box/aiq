@@ -354,7 +354,7 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
     )?.[0] ?? '';
   const stageMatcher =
     schema.match(
-      /create function aiq_private\.run_provenance_v2_matches_stage[\s\S]*?\n\$\$;/i,
+      /create function aiq_private\.run_provenance_v3_matches_stage[\s\S]*?\n\$\$;/i,
     )?.[0] ?? '';
   const catalogValidator =
     schema.match(
@@ -401,7 +401,7 @@ function checkReviewedTaskSetIdentity(schema: string): void {
     )?.[0] ?? '';
   const stageMatcher =
     schema.match(
-      /create function aiq_private\.run_provenance_v2_matches_stage[\s\S]*?\n\$\$;/i,
+      /create function aiq_private\.run_provenance_v3_matches_stage[\s\S]*?\n\$\$;/i,
     )?.[0] ?? '';
   const catalogValidator =
     schema.match(
