@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Direct capacity estimate schema version.
-pub const CAPACITY_ADMISSION_SCHEMA_VERSION: &str = "aiq.capacity-admission.v1";
+pub const CAPACITY_ADMISSION_SCHEMA_VERSION: &str = "aiq.capacity-admission.v2";
 
 /// Deterministic capacity data for one selected run.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -38,12 +38,12 @@ pub struct CapacityAdmission {
 	pub selected_cells: usize,
 	/// Number of selected cells that invoke an available model.
 	pub runnable_cell_count: usize,
-	/// Sum of declared wall budgets for available cells.
-	pub declared_wall_budget_sum_seconds: u64,
-	/// Maximum declared wall budget for one available cell.
-	pub maximum_cell_wall_budget_seconds: u64,
-	/// Conservative list-scheduling bound for Codex adapter execution only.
-	pub model_execution_bound_seconds: u64,
+	/// Sum of declared wall budgets for available cells, or `None` for unbounded execution.
+	pub declared_wall_budget_sum_seconds: Option<u64>,
+	/// Maximum declared wall budget for one available cell, or `None` for unbounded execution.
+	pub maximum_cell_wall_budget_seconds: Option<u64>,
+	/// Conservative list-scheduling bound for Codex execution, or `None` when it is unbounded.
+	pub model_execution_bound_seconds: Option<u64>,
 	/// Sum of aggregate two-pass evaluator deadlines for every runnable cell.
 	pub declared_evaluator_budget_sum_ms: u64,
 	/// Shared-runtime evaluator permits available to this run.
@@ -54,8 +54,8 @@ pub struct CapacityAdmission {
 	pub orchestration_reserve_seconds: u64,
 	/// Exact interval from this slot to the next configured slot.
 	pub seconds_until_next_slot: u64,
-	/// End-to-end declared model, evaluator, and orchestration bound.
-	pub conservative_bound_seconds: u64,
+	/// End-to-end bound, or `None` because any selected model execution is unbounded.
+	pub conservative_bound_seconds: Option<u64>,
 }
 impl CapacityAdmission {
 	/// Returns the canonical estimate content address.
@@ -93,8 +93,8 @@ pub struct CapacityCommitment {
 	pub effective_jobs: usize,
 	/// Exact interval to the next configured slot.
 	pub seconds_until_next_slot: u64,
-	/// Deterministic conservative list-scheduling estimate.
-	pub conservative_bound_seconds: u64,
+	/// Deterministic conservative estimate, or `None` for unbounded model execution.
+	pub conservative_bound_seconds: Option<u64>,
 }
 
 /// Capacity arithmetic or input failure.
@@ -158,46 +158,39 @@ pub fn assess_capacity(
 		.checked_mul(active_models)
 		.ok_or_else(|| CapacityError::new("runnable cell count overflows"))?;
 	let effective_jobs = configured_jobs.min(runnable_cell_count);
-	let one_model_sum = tasks.iter().try_fold(0_u64, |sum, task| {
-		sum.checked_add(task.budgets.wall_seconds)
-			.ok_or_else(|| CapacityError::new("declared wall budget sum overflows"))
-	})?;
+	let wall_budgets =
+		tasks.iter().map(|task| task.budgets.wall_seconds).collect::<Option<Vec<_>>>();
 	let active_model_count = u64::try_from(active_models)
 		.map_err(|_| CapacityError::new("available model count overflows"))?;
-	let declared_wall_budget_sum_seconds = one_model_sum
-		.checked_mul(active_model_count)
-		.ok_or_else(|| CapacityError::new("declared wall budget sum overflows"))?;
-	let maximum_cell_wall_budget_seconds = if runnable_cell_count == 0 {
-		0
-	} else {
-		tasks.iter().map(|task| task.budgets.wall_seconds).max().unwrap_or(0)
-	};
-	let model_execution_bound_seconds = if effective_jobs == 0 {
-		0
-	} else {
-		let workers = u64::try_from(effective_jobs)
-			.map_err(|_| CapacityError::new("effective jobs overflow"))?;
-
-		declared_wall_budget_sum_seconds
-			.checked_add(workers - 1)
-			.map(|sum| sum / workers)
-			.and_then(|bound| bound.checked_add(maximum_cell_wall_budget_seconds))
-			.ok_or_else(|| CapacityError::new("capacity bound overflows"))?
-	};
+	let (declared_wall_budget_sum_seconds, maximum_cell_wall_budget_seconds) =
+		declared_wall_budget_metrics(&wall_budgets, active_model_count, runnable_cell_count)?;
+	let model_execution_bound_seconds = model_execution_bound(
+		declared_wall_budget_sum_seconds,
+		maximum_cell_wall_budget_seconds,
+		effective_jobs,
+	)?;
 	let evaluator = assess_evaluator_capacity(tasks, active_models, effective_jobs)?;
 	let declared_execution_bound_seconds = model_execution_bound_seconds
-		.checked_add(evaluator.bound_seconds)
-		.ok_or_else(|| CapacityError::new("combined capacity bound overflows"))?;
+		.map(|bound| {
+			bound
+				.checked_add(evaluator.bound_seconds)
+				.ok_or_else(|| CapacityError::new("combined capacity bound overflows"))
+		})
+		.transpose()?;
 	let orchestration_reserve_seconds = if runnable_cell_count == 0 {
 		0
 	} else {
-		900_u64.max(declared_execution_bound_seconds.div_ceil(20))
+		declared_execution_bound_seconds.map_or(900, |bound| 900_u64.max(bound.div_ceil(20)))
 	};
 	let conservative_bound_seconds = declared_execution_bound_seconds
-		.checked_add(orchestration_reserve_seconds)
-		.ok_or_else(|| CapacityError::new("end-to-end capacity bound overflows"))?;
+		.map(|bound| {
+			bound
+				.checked_add(orchestration_reserve_seconds)
+				.ok_or_else(|| CapacityError::new("end-to-end capacity bound overflows"))
+		})
+		.transpose()?;
 
-	if conservative_bound_seconds >= seconds_until_next_slot {
+	if conservative_bound_seconds.is_some_and(|bound| bound >= seconds_until_next_slot) {
 		return Err(CapacityError::new(
 			"declared model, evaluator, and orchestration bound does not fit before the next slot",
 		));
@@ -222,6 +215,53 @@ pub fn assess_capacity(
 		seconds_until_next_slot,
 		conservative_bound_seconds,
 	})
+}
+
+fn declared_wall_budget_metrics(
+	wall_budgets: &Option<Vec<u64>>,
+	active_model_count: u64,
+	runnable_cell_count: usize,
+) -> Result<(Option<u64>, Option<u64>), CapacityError> {
+	if runnable_cell_count == 0 {
+		return Ok((Some(0), Some(0)));
+	}
+
+	let Some(wall_budgets) = wall_budgets else {
+		return Ok((None, None));
+	};
+	let one_model_sum = wall_budgets.iter().try_fold(0_u64, |sum, budget| {
+		sum.checked_add(*budget)
+			.ok_or_else(|| CapacityError::new("declared wall budget sum overflows"))
+	})?;
+	let sum = one_model_sum
+		.checked_mul(active_model_count)
+		.ok_or_else(|| CapacityError::new("declared wall budget sum overflows"))?;
+	let maximum = wall_budgets.iter().copied().max().unwrap_or(0);
+
+	Ok((Some(sum), Some(maximum)))
+}
+
+fn model_execution_bound(
+	declared_sum: Option<u64>,
+	maximum_cell: Option<u64>,
+	effective_jobs: usize,
+) -> Result<Option<u64>, CapacityError> {
+	if effective_jobs == 0 {
+		return Ok(Some(0));
+	}
+
+	let (Some(declared_sum), Some(maximum_cell)) = (declared_sum, maximum_cell) else {
+		return Ok(None);
+	};
+	let workers =
+		u64::try_from(effective_jobs).map_err(|_| CapacityError::new("effective jobs overflow"))?;
+	let bound = declared_sum
+		.checked_add(workers - 1)
+		.map(|sum| sum / workers)
+		.and_then(|bound| bound.checked_add(maximum_cell))
+		.ok_or_else(|| CapacityError::new("capacity bound overflows"))?;
+
+	Ok(Some(bound))
 }
 
 fn assess_evaluator_capacity(
@@ -347,6 +387,35 @@ mod tests {
 	}
 
 	#[test]
+	fn unbounded_model_tasks_do_not_claim_or_enforce_a_schedule_fit() {
+		let mut tasks = runner::synthetic_demo_tasks();
+
+		for task in &mut tasks[..2] {
+			task.budgets.wall_seconds = None;
+		}
+
+		let available = MODEL_MATRIX[..2].to_vec();
+		let unsupported = MODEL_MATRIX[2..].to_vec();
+		let estimate = super::assess_capacity(
+			&tasks[..2],
+			&MODEL_MATRIX,
+			&available,
+			&unsupported,
+			&digest(),
+			3,
+			1,
+		)
+		.expect("unbounded model execution must not be rejected by a guessed duration");
+
+		assert_eq!(estimate.schema_version, super::CAPACITY_ADMISSION_SCHEMA_VERSION);
+		assert_eq!(estimate.declared_wall_budget_sum_seconds, None);
+		assert_eq!(estimate.maximum_cell_wall_budget_seconds, None);
+		assert_eq!(estimate.model_execution_bound_seconds, None);
+		assert_eq!(estimate.conservative_bound_seconds, None);
+		assert_eq!(estimate.commitment().expect("commitment").conservative_bound_seconds, None);
+	}
+
+	#[test]
 	fn unsupported_cells_have_zero_execution_capacity() {
 		let tasks = runner::synthetic_demo_tasks();
 		let estimate = super::assess_capacity(
@@ -363,7 +432,7 @@ mod tests {
 		assert_eq!(estimate.selected_cells, 17);
 		assert_eq!(estimate.runnable_cell_count, 0);
 		assert_eq!(estimate.effective_jobs, 0);
-		assert_eq!(estimate.conservative_bound_seconds, 0);
+		assert_eq!(estimate.conservative_bound_seconds, Some(0));
 	}
 
 	#[test]
@@ -407,9 +476,11 @@ mod tests {
 		assert_eq!(estimate.evaluator_bound_seconds, 20);
 		assert_eq!(
 			estimate.conservative_bound_seconds,
-			estimate.model_execution_bound_seconds
-				+ estimate.evaluator_bound_seconds
-				+ estimate.orchestration_reserve_seconds
+			Some(
+				estimate.model_execution_bound_seconds.expect("bounded model estimate")
+					+ estimate.evaluator_bound_seconds
+					+ estimate.orchestration_reserve_seconds
+			)
 		);
 		assert!(
 			super::assess_capacity(
@@ -419,7 +490,7 @@ mod tests {
 				&unsupported,
 				&digest(),
 				2,
-				estimate.conservative_bound_seconds,
+				estimate.conservative_bound_seconds.expect("bounded total estimate"),
 			)
 			.is_err()
 		);

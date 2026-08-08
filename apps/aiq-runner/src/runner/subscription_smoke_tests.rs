@@ -569,7 +569,7 @@ fn chatgpt_subscription_request(
 		program: codex_binary.display().to_string(),
 		args: vec!["login".to_owned(), "status".to_owned()],
 		stdin: Vec::new(),
-		timeout: Duration::from_secs(10),
+		timeout: Some(Duration::from_secs(10)),
 		max_capture_bytes: 4_096,
 		max_steps: u32::MAX,
 		max_tool_calls: u32::MAX,
