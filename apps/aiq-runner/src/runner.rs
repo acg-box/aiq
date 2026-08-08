@@ -36,9 +36,9 @@ use windows_sys::Win32::Storage::FileSystem;
 use crate::adapter::ExecutorError;
 use crate::{
 	adapter::{
-		self, AdapterFailure, AdapterFailureKind, ArtifactReference, ArtifactSink,
-		CapabilityValidationReport, CapabilityValidationStatus, CodexAdapter, CodexItemPhase,
-		CodexOutput, Executor, InvocationRequest, SandboxPolicy,
+		AdapterFailure, AdapterFailureKind, ArtifactReference, ArtifactSink,
+		CapabilityValidationReport, CapabilityValidationStatus, CodexAdapter, CodexItemAccounting,
+		CodexItemPolicyError, CodexOutput, Executor, InvocationRequest, SandboxPolicy,
 	},
 	capacity,
 	corpus_commitment::{RunClass, RunProvenanceCommitment},
@@ -1687,8 +1687,8 @@ pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 /// The verifier uses the same deterministic parser against the content-addressed
 /// `stdout.jsonl` artifact. This prevents signed tool-use counters from becoming
 /// an unaudited evaluator input.
-#[must_use]
-pub fn parse_codex_tool_usage(stdout: &str) -> ToolUsage {
+pub fn parse_codex_tool_usage(stdout: &str) -> Result<ToolUsage, CodexItemPolicyError> {
+	let mut accounting = CodexItemAccounting::default();
 	let mut usage = ToolUsage::default();
 
 	for line in stdout.lines() {
@@ -1716,28 +1716,16 @@ pub fn parse_codex_tool_usage(stdout: &str) -> ToolUsage {
 			merge_provider_counter(&mut usage.provider_tokens.total, provider, "total_tokens");
 		}
 
-		let Some(item) = adapter::normalize_codex_item(line.as_bytes()) else {
-			continue;
-		};
-
-		if item.phase != CodexItemPhase::Completed {
-			continue;
-		}
-		if item.counts_as_step {
-			usage.steps = usage.steps.saturating_add(1);
-		}
-		if !item.is_tool_call {
-			continue;
-		}
-
-		usage.total_calls = usage.total_calls.saturating_add(1);
-
-		let count = usage.by_tool.entry(item.raw_type).or_default();
-
-		*count = count.saturating_add(1);
+		accounting.observe(line.as_bytes())?;
 	}
 
-	usage
+	accounting.finish()?;
+
+	usage.steps = accounting.steps;
+	usage.total_calls = accounting.tool_calls;
+	usage.by_tool = accounting.by_tool;
+
+	Ok(usage)
 }
 
 /// Executes a deterministic selected matrix through the normal local runner.
@@ -1843,7 +1831,9 @@ pub(crate) fn extract_final_response(stdout: &str) -> Option<String> {
 
 fn retained_stdout_tool_usage(stdout: &str, artifacts: &[ArtifactReference]) -> ToolUsage {
 	if artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl") {
-		parse_codex_tool_usage(stdout)
+		// A policy-invalid failed attempt retains raw stdout for verifier rejection;
+		// its counters cannot be used as trusted evidence in the local result.
+		parse_codex_tool_usage(stdout).unwrap_or_default()
 	} else {
 		ToolUsage::default()
 	}
@@ -2874,6 +2864,12 @@ fn restore_checkpoint_results(
 	for (result, evaluator_result) in checkpoint.results.iter().zip(&checkpoint.evaluator_results) {
 		let mut result = result.clone();
 
+		if result.tool_usage.by_tool.contains_key("collab_tool_call") {
+			return Err(RunnerError::new(
+				"run checkpoint contains collaboration calls rejected by the active item policy",
+			));
+		}
+
 		result.evaluator_checks =
 			evaluator_result.as_ref().map_or_else(Vec::new, |result| result.checks.clone());
 
@@ -3124,7 +3120,8 @@ where
 	E: Executor,
 	S: ArtifactSink,
 {
-	let tool_usage = parse_codex_tool_usage(&output.stdout_full);
+	let tool_usage = parse_codex_tool_usage(&output.stdout_full)
+		.map_err(|error| RunnerError::new(error.to_string()))?;
 	let complete_response = extract_final_response(&output.stdout_full);
 	let mut artifacts = output.artifacts.clone();
 
@@ -5663,7 +5660,7 @@ mod tests {
 			r#"not-json"#,
 		]
 		.join("\n");
-		let usage = runner::parse_codex_tool_usage(&stdout);
+		let usage = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 
 		assert_eq!(usage.steps, 6);
 		assert_eq!(usage.total_calls, 5);
@@ -5677,6 +5674,57 @@ mod tests {
 				("web_search".to_owned(), 1),
 			])
 		);
+	}
+
+	#[test]
+	fn durable_parser_keeps_inert_collaboration_wait_out_of_tool_counts() {
+		let stdout = [
+			r#"{"type":"item.started","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":[],"sender_thread_id":"thread-sender","status":"in_progress","tool":"wait","type":"collab_tool_call"}}"#,
+			r#"{"type":"item.completed","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":[],"sender_thread_id":"thread-sender","status":"completed","tool":"wait","type":"collab_tool_call"}}"#,
+		]
+		.join("\n");
+		let usage = runner::parse_codex_tool_usage(&stdout).expect("inert wait policy");
+
+		assert_eq!(usage.steps, 1);
+		assert_eq!(usage.total_calls, 0);
+		assert!(usage.by_tool.is_empty());
+	}
+
+	#[test]
+	fn durable_parser_rejects_policy_invalid_collaboration_stdout() {
+		let stdout = r#"{"type":"item.completed","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":["receiver"],"sender_thread_id":"thread-sender","status":"completed","tool":"wait","type":"collab_tool_call"}}"#;
+
+		assert!(runner::parse_codex_tool_usage(stdout).is_err());
+	}
+
+	#[test]
+	fn checkpoint_resume_rejects_legacy_collaboration_tool_counts() {
+		let (_tasks, _models, _manifest, validation, slot, commitments) = selected_fixture(1, 1);
+		let mut result = runner::synthetic_demo(slot, &runner::TestArtifactSink)
+			.expect("synthetic fixture")
+			.results
+			.into_iter()
+			.next()
+			.expect("synthetic result");
+
+		result.tool_usage.by_tool.insert("collab_tool_call".to_owned(), 1);
+
+		let mut checkpoint = RunCheckpoint::new(commitments.clone(), 1);
+
+		checkpoint.results = vec![result];
+		checkpoint.evaluator_results = vec![None];
+
+		let error = super::restore_checkpoint_results(
+			&checkpoint,
+			&BTreeMap::new(),
+			&BTreeMap::new(),
+			&validation,
+			&commitments,
+			"fixture",
+		)
+		.expect_err("legacy collaboration counters must not resume");
+
+		assert!(error.to_string().contains("collaboration calls"));
 	}
 
 	#[test]

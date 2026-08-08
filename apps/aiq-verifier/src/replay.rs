@@ -160,7 +160,8 @@ mod tests {
 				stdout.as_bytes().to_vec(),
 			);
 
-			let tool_usage = runner::parse_codex_tool_usage(&stdout);
+			let tool_usage =
+				runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 			let model = MODEL_MATRIX[0];
 			let result = TaskResult {
 				schema_version: RESULT_SCHEMA_VERSION.to_owned(),
@@ -912,7 +913,7 @@ mod tests {
 
 		fixture.replace_artifact("stdout.jsonl", stdout.as_bytes().to_vec());
 
-		let expected = runner::parse_codex_tool_usage(&stdout);
+		let expected = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 
 		assert_eq!(expected.steps, 1);
 		assert_eq!(expected.total_calls, 0);
@@ -920,6 +921,50 @@ mod tests {
 		fixture.run.results[0].tool_usage = expected;
 
 		fixture.verify().expect("shared parser replay");
+	}
+
+	#[test]
+	fn verifier_replay_accepts_only_the_exact_inert_collaboration_wait_pair() {
+		let stdout = [
+			r#"{"type":"item.started","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":[],"sender_thread_id":"thread-sender","status":"in_progress","tool":"wait","type":"collab_tool_call"}}"#,
+			r#"{"type":"item.completed","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":[],"sender_thread_id":"thread-sender","status":"completed","tool":"wait","type":"collab_tool_call"}}"#,
+			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"OK"}}"#,
+		]
+		.join("\n");
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.replace_artifact("stdout.jsonl", stdout.as_bytes().to_vec());
+
+		let expected = runner::parse_codex_tool_usage(&stdout).expect("inert wait policy");
+
+		assert_eq!(expected.steps, 2);
+		assert_eq!(expected.total_calls, 0);
+
+		fixture.run.results[0].tool_usage = expected;
+
+		fixture.verify().expect("inert wait replay");
+	}
+
+	#[test]
+	fn verifier_replay_rejects_malformed_collaboration_evidence_after_rebinding() {
+		let stdout = r#"{"type":"item.completed","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":["receiver"],"sender_thread_id":"thread-sender","status":"completed","tool":"wait","type":"collab_tool_call"}}"#;
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.replace_artifact("stdout.jsonl", stdout.as_bytes().to_vec());
+
+		fixture.run.results[0].tool_usage = runner::ToolUsage::default();
+		fixture.run.results[0].result_id = format!(
+			"result_{}",
+			fixture.run.results[0]
+				.content_hash()
+				.expect("rebound result hash")
+				.trim_start_matches("sha256:")
+		);
+
+		assert_replay_error(
+			fixture.verify().expect_err("malformed collaboration evidence"),
+			ReasonCode::InvalidReplayEvidence,
+		);
 	}
 
 	fn failed_usage_stdout() -> String {
@@ -934,7 +979,7 @@ mod tests {
 	fn failed_results_replay_signed_tool_and_provider_usage() {
 		for kind in [FailureKind::NonZeroExit, FailureKind::Timeout] {
 			let stdout = failed_usage_stdout();
-			let expected = runner::parse_codex_tool_usage(&stdout);
+			let expected = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 			let mut fixture = Fixture::completed("OK");
 
 			fixture.make_failed(kind);
@@ -974,7 +1019,7 @@ mod tests {
 	fn workspace_integrity_replays_with_or_without_paired_workspace_evidence() {
 		for retain_workspace in [false, true] {
 			let stdout = failed_usage_stdout();
-			let expected = runner::parse_codex_tool_usage(&stdout);
+			let expected = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 			let mut fixture = Fixture::completed("OK");
 
 			fixture.make_failed(FailureKind::WorkspaceIntegrity);
@@ -1504,7 +1549,7 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 		fixture.expand_results(12);
 
 		let stdout = failed_usage_stdout();
-		let expected = runner::parse_codex_tool_usage(&stdout);
+		let expected = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 		let reference = artifact("stdout.jsonl", stdout.as_bytes());
 
 		fixture.resolver.objects.insert(
@@ -2788,7 +2833,9 @@ fn verified_tool_usage(
 			"content-addressed stdout is not UTF-8",
 		)
 	})?;
-	let observed = runner::parse_codex_tool_usage(stdout);
+	let observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
+		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
+	})?;
 
 	if observed.steps != result.tool_usage.steps
 		|| observed.total_calls != result.tool_usage.total_calls
@@ -2859,7 +2906,9 @@ where
 			"content-addressed stdout is not UTF-8",
 		)
 	})?;
-	let observed = runner::parse_codex_tool_usage(stdout);
+	let observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
+		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
+	})?;
 
 	if observed.steps != result.tool_usage.steps
 		|| observed.total_calls != result.tool_usage.total_calls
