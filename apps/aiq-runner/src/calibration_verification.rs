@@ -543,6 +543,8 @@ pub struct CalibrationAdmissionBindings {
 	pub runner_executable_digest: String,
 	/// SHA-256 of the supplied frozen Codex binary.
 	pub codex_executable_digest: String,
+	/// SHA-256 of the supplied frozen Codex code-mode host.
+	pub codex_code_mode_host_digest: String,
 	/// SHA-256 of the verifier binary that issued the admission.
 	pub verifier_executable_digest: String,
 }
@@ -656,6 +658,8 @@ impl CalibrationAdmissionV1 {
 			|| claims.provenance.runner_executable_digest
 				!= claims.bindings.runner_executable_digest
 			|| claims.provenance.codex_executable_digest != claims.bindings.codex_executable_digest
+			|| claims.provenance.codex_code_mode_host_digest
+				!= claims.bindings.codex_code_mode_host_digest
 			|| claims.task_set_hash != claims.bindings.task_set_digest
 			|| claims.diagnostic.policy != OfficialCalibrationPolicy::default()
 			|| claims.diagnostic != expected_diagnostic
@@ -693,6 +697,7 @@ impl CalibrationAdmissionV1 {
 			&claims.bindings.evaluator_runtime_digest,
 			&claims.bindings.runner_executable_digest,
 			&claims.bindings.codex_executable_digest,
+			&claims.bindings.codex_code_mode_host_digest,
 			&claims.bindings.verifier_executable_digest,
 			&self.admission_digest,
 		] {
@@ -1212,6 +1217,7 @@ pub fn sign_full_calibration_admission(
 		|| stage.provenance.evaluator_digest != bindings.evaluator_digest
 		|| stage.provenance.runner_executable_digest != bindings.runner_executable_digest
 		|| stage.provenance.codex_executable_digest != bindings.codex_executable_digest
+		|| stage.provenance.codex_code_mode_host_digest != bindings.codex_code_mode_host_digest
 		|| stage.task_set_hash != bindings.task_set_digest
 		|| stage.runner_commit != bindings.runner_commit
 		|| diagnostic.policy != OfficialCalibrationPolicy::default()

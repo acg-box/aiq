@@ -46,8 +46,9 @@ use windows_sys::Win32::{
 
 use crate::{
 	adapter::{
-		self, CapabilityValidationReport, CapabilityValidationStatus, ConfigurationProbeStatus,
-		ProbeStatus,
+		self, ArtifactReference, CapabilityValidationReport, CapabilityValidationStatus,
+		ConfigurationProbeStatus, PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES,
+		PREFLIGHT_MARKER_SHA256, ProbeStatus,
 	},
 	capacity::CapacityCommitment,
 	corpus_commitment::{RunClass, RunProvenanceCommitment},
@@ -927,7 +928,7 @@ fn validate_preflight_attempt_report(
 	manifest: &CapabilityManifest,
 	report: &CapabilityValidationReport,
 ) -> Result<(), ResumeError> {
-	if report.schema_version != "aiq.capability-validation.v2"
+	if report.schema_version != "aiq.capability-validation.v3"
 		|| report.node_id != manifest.node_id
 		|| report.manifest_issues != adapter::validate_capability_manifest(manifest)
 		|| report.models.iter().map(|entry| entry.model).collect::<Vec<_>>() != MODEL_MATRIX
@@ -982,18 +983,34 @@ fn validate_preflight_attempt_report(
 					&& entry.probe.result_digest.is_some()
 					&& entry.probe.result_preview.is_some()
 					&& entry.probe.failure.is_none()
+					&& entry
+						.probe
+						.artifacts
+						.iter()
+						.filter(|artifact| artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND)
+						.count() == 1 && entry.probe.artifacts.iter().any(valid_preflight_marker_reference)
 			},
 			ConfigurationProbeStatus::ObservedUnsupported => {
 				entry.status == CapabilityValidationStatus::Unsupported
 					&& entry.probe.result_digest.is_none()
 					&& entry.probe.result_preview.is_none()
 					&& entry.probe.failure.is_some()
+					&& !entry
+						.probe
+						.artifacts
+						.iter()
+						.any(|artifact| artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND)
 			},
 			ConfigurationProbeStatus::Failed => {
 				entry.status == CapabilityValidationStatus::Unavailable
 					&& entry.probe.result_digest.is_none()
 					&& entry.probe.result_preview.is_none()
 					&& entry.probe.failure.is_some()
+					&& !entry
+						.probe
+						.artifacts
+						.iter()
+						.any(|artifact| artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND)
 			},
 		};
 
@@ -1009,6 +1026,17 @@ fn validate_preflight_attempt_report(
 	}
 
 	Ok(())
+}
+
+fn valid_preflight_marker_reference(artifact: &ArtifactReference) -> bool {
+	artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND
+		&& artifact.content_hash == PREFLIGHT_MARKER_SHA256
+		&& artifact.uri
+			== format!(
+				"aiq-artifact://sha256/{}/{}",
+				PREFLIGHT_MARKER_SHA256.trim_start_matches("sha256:"),
+				PREFLIGHT_MARKER_ARTIFACT_KIND
+			) && artifact.bytes == PREFLIGHT_MARKER_BYTES.len() as u64
 }
 
 fn read_json<T>(path: &Path, label: &str) -> Result<T, ResumeError>
@@ -1090,6 +1118,7 @@ mod tests {
 			.into_iter()
 			.map(|model| {
 				let preview = "AIQ_PREFLIGHT_OK".to_owned();
+				let artifacts = vec![adapter::preflight_marker_artifact_reference()];
 				let result_digest =
 					format!("sha256:{}", hex::encode(Sha256::digest(preview.as_bytes())));
 				let observed_at = "unix-ms:1".to_owned();
@@ -1100,7 +1129,7 @@ mod tests {
 					ConfigurationProbeStatus::Available,
 					Some(&result_digest),
 					Some(&preview),
-					&[],
+					&artifacts,
 					None,
 				)
 				.expect("evidence digest");
@@ -1115,7 +1144,7 @@ mod tests {
 						observed_at,
 						result_digest: Some(result_digest),
 						result_preview: Some(preview),
-						artifacts: Vec::new(),
+						artifacts,
 						evidence_digest,
 						failure: None,
 					},
@@ -1124,7 +1153,7 @@ mod tests {
 			.collect();
 
 		CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id: manifest.node_id,
 			manifest_issues: Vec::new(),
 			cli_probe: CliProbe {
@@ -1162,6 +1191,9 @@ mod tests {
 			entry.probe.status = ConfigurationProbeStatus::Failed;
 			entry.probe.result_digest = None;
 			entry.probe.result_preview = None;
+
+			entry.probe.artifacts.clear();
+
 			entry.probe.failure = Some(failure);
 			entry.probe.evidence_digest = adapter::configuration_evidence_digest(
 				entry.model,

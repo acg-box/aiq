@@ -494,6 +494,7 @@ struct FinalBuildReceipt {
 	runner_executable_sha256: String,
 	verifier_executable_sha256: String,
 	codex_executable_sha256: String,
+	codex_code_mode_host_sha256: String,
 }
 
 /// Offline source-verification and candidate-evaluator diagnostic settings.
@@ -897,7 +898,8 @@ impl ArtifactResolverClient for LocalArtifactResolver {
 				kind,
 				"evaluator-results.json"
 					| "stdout.jsonl"
-					| "stderr.txt" | "final-response.txt"
+					| "stderr.txt" | "capability-marker.txt"
+					| "final-response.txt"
 					| "workspace-manifest.json"
 					| "workspace-snapshot.json"
 			) {
@@ -2976,12 +2978,13 @@ fn validated_build_receipt(
 	let receipt: FinalBuildReceipt = serde_json::from_slice(&input.bytes)
 		.map_err(|error| WorkerError::configuration(format!("final-build receipt: {error}")))?;
 
-	if receipt.schema_version != "aiq.final-build-receipt.v1"
+	if receipt.schema_version != "aiq.final-build-receipt.v2"
 		|| !valid_git_oid(&receipt.source_commit)
 		|| !valid_git_oid(&receipt.source_tree)
 		|| !valid_sha256_digest(&receipt.runner_executable_sha256)
 		|| !valid_sha256_digest(&receipt.verifier_executable_sha256)
 		|| !valid_sha256_digest(&receipt.codex_executable_sha256)
+		|| !valid_sha256_digest(&receipt.codex_code_mode_host_sha256)
 	{
 		return Err(WorkerError::configuration("final-build receipt is invalid"));
 	}
@@ -3345,6 +3348,15 @@ fn operational_admission_context(
 			.ok_or_else(|| WorkerError::configuration("Codex binary is missing"))?,
 		"Codex binary",
 	)?;
+	let codex_code_mode_host_path = corpus_commitment::codex_code_mode_host_path(
+		cli.codex_binary
+			.as_deref()
+			.and_then(Path::to_str)
+			.ok_or_else(|| WorkerError::configuration("Codex binary path is invalid"))?,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let codex_code_mode_host_digest =
+		protected_executable_digest(&codex_code_mode_host_path, "Codex code-mode host")?;
 	let verifier_executable_digest =
 		corpus_commitment::current_executable_digest("verifier executable")
 			.map_err(|error| WorkerError::configuration(error.to_string()))?;
@@ -3383,12 +3395,14 @@ fn operational_admission_context(
 		|| evaluator_digest != expected.evaluator_digest
 		|| runner_executable_digest != expected.runner_executable_digest
 		|| codex_executable_digest != expected.codex_executable_digest
+		|| codex_code_mode_host_digest != expected.codex_code_mode_host_digest
 		|| signing_identity.node() != &approved_verifier
 		|| build_receipt.source_commit != environment.runner_commit
 		|| build_receipt.source_tree != source_tree
 		|| build_receipt.runner_executable_sha256 != runner_executable_digest
 		|| build_receipt.verifier_executable_sha256 != verifier_executable_digest
 		|| build_receipt.codex_executable_sha256 != codex_executable_digest
+		|| build_receipt.codex_code_mode_host_sha256 != codex_code_mode_host_digest
 	{
 		return Err(WorkerError::configuration(
 			"operational admission inputs do not match frozen signed provenance",
@@ -3411,6 +3425,7 @@ fn operational_admission_context(
 			evaluator_runtime_digest: evaluator_runtime.executable_digest().to_owned(),
 			runner_executable_digest,
 			codex_executable_digest,
+			codex_code_mode_host_digest,
 			verifier_executable_digest,
 		},
 	})
@@ -4332,6 +4347,7 @@ fn verifier_environment_has_placeholders(environment: &VerifierEnvironment) -> b
 		&provenance.source_manifest_digest,
 		&provenance.runner_executable_digest,
 		&provenance.codex_executable_digest,
+		&provenance.codex_code_mode_host_digest,
 		&provenance.permission_evidence_digest,
 	];
 
@@ -4994,15 +5010,12 @@ mod tests {
 			let runner_identity = SigningIdentity::from_secret([7; 32]);
 			let runner_node_id = runner_identity.node().node_id.clone();
 			let codex_version = "codex fixture".to_owned();
-			let (capability_artifact, capability_artifact_path) = Self::write_artifact(
-				&artifact_root,
-				"stdout.jsonl",
-				b"{\"type\":\"capability.probe\"}\n",
-			);
+			let (capability_artifact, capability_artifact_path, capability_marker) =
+				Self::capability_artifacts(&artifact_root);
 			let preflight = local_fixture_preflight(
 				runner_node_id.clone(),
 				&codex_version,
-				vec![capability_artifact],
+				vec![capability_artifact, capability_marker],
 			);
 			let preflight_digest = protocol::canonical_hash(&preflight).expect("preflight digest");
 			let provenance = local_fixture_provenance(run.task_set_hash.clone(), preflight_digest);
@@ -5088,6 +5101,18 @@ mod tests {
 				manifest_path,
 				capability_artifact_path,
 			}
+		}
+
+		fn capability_artifacts(root: &Path) -> (ArtifactReference, PathBuf, ArtifactReference) {
+			let (stdout, stdout_path) =
+				Self::write_artifact(root, "stdout.jsonl", b"{\"type\":\"capability.probe\"}\n");
+			let (marker, _) = Self::write_artifact(
+				root,
+				adapter::PREFLIGHT_MARKER_ARTIFACT_KIND,
+				adapter::PREFLIGHT_MARKER_BYTES,
+			);
+
+			(stdout, stdout_path, marker)
 		}
 
 		fn unique() -> String {
@@ -5318,6 +5343,7 @@ mod tests {
 					evaluator_runtime_digest: digest('3'),
 					runner_executable_digest: provenance.runner_executable_digest.clone(),
 					codex_executable_digest: provenance.codex_executable_digest.clone(),
+					codex_code_mode_host_digest: provenance.codex_code_mode_host_digest.clone(),
 					verifier_executable_digest: digest('4'),
 				},
 			}
@@ -5417,6 +5443,7 @@ mod tests {
 			evaluator_runtime_digest: digest('3'),
 			runner_executable_digest: stage.provenance.runner_executable_digest.clone(),
 			codex_executable_digest: stage.provenance.codex_executable_digest.clone(),
+			codex_code_mode_host_digest: stage.provenance.codex_code_mode_host_digest.clone(),
 			verifier_executable_digest: digest('4'),
 		}
 	}
@@ -5800,12 +5827,13 @@ mod tests {
 		let path = root.join("final-build-receipt.json");
 		let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
 		let mut receipt = serde_json::json!({
-			"schema_version": "aiq.final-build-receipt.v1",
+			"schema_version": "aiq.final-build-receipt.v2",
 			"source_commit": "a".repeat(40),
 			"source_tree": "b".repeat(40),
 			"runner_executable_sha256": digest('1'),
 			"verifier_executable_sha256": digest('2'),
-			"codex_executable_sha256": digest('3')
+			"codex_executable_sha256": digest('3'),
+			"codex_code_mode_host_sha256": digest('4')
 		});
 		let write_receipt = |value: &serde_json::Value| {
 			let bytes = serde_json::to_vec(value).expect("receipt JSON");
@@ -6722,12 +6750,21 @@ mod tests {
 		capability_artifacts: Vec<ArtifactReference>,
 	) -> CapabilityValidationReport {
 		let codex_version = codex_version.to_owned();
+		let marker_artifact = capability_artifacts
+			.iter()
+			.find(|artifact| artifact.kind == adapter::PREFLIGHT_MARKER_ARTIFACT_KIND)
+			.expect("capability marker fixture")
+			.clone();
 		let models = MODEL_MATRIX
 			.into_iter()
 			.enumerate()
 			.map(|(index, model)| {
 				let preview = "AIQ_PREFLIGHT_OK".to_owned();
-				let artifacts = if index == 0 { capability_artifacts.clone() } else { Vec::new() };
+				let artifacts = if index == 0 {
+					capability_artifacts.clone()
+				} else {
+					vec![marker_artifact.clone()]
+				};
 				let result_digest =
 					artifacts.iter().find(|artifact| artifact.kind == "stdout.jsonl").map_or_else(
 						|| format!("sha256:{}", hex::encode(Sha256::digest(preview.as_bytes()))),
@@ -6765,7 +6802,7 @@ mod tests {
 			.collect();
 
 		CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id,
 			manifest_issues: Vec::new(),
 			cli_probe: CliProbe {
@@ -6787,7 +6824,7 @@ mod tests {
 		preflight_digest: String,
 	) -> RunProvenanceCommitment {
 		RunProvenanceCommitment {
-			schema_version: "aiq.run-provenance.v2".to_owned(),
+			schema_version: "aiq.run-provenance.v3".to_owned(),
 			run_class: RunClass::Official,
 			corpus_release_id: "corpus_fixture".to_owned(),
 			corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
@@ -6804,6 +6841,7 @@ mod tests {
 			source_manifest_digest: format!("sha256:{}", "7".repeat(64)),
 			runner_executable_digest: format!("sha256:{}", "8".repeat(64)),
 			codex_executable_digest: format!("sha256:{}", "9".repeat(64)),
+			codex_code_mode_host_digest: format!("sha256:{}", "b".repeat(64)),
 			permission_evidence_digest: format!("sha256:{}", "a".repeat(64)),
 		}
 	}

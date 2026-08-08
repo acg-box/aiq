@@ -162,7 +162,7 @@ begin
     ) as failure) failure_record
   ) built;
   preflight:=jsonb_build_object(
-    'schema_version','aiq.capability-validation.v2','node_id',runner->>'node_id',
+    'schema_version','aiq.capability-validation.v3','node_id',runner->>'node_id',
     'manifest_issues','[]'::jsonb,
     'cli_probe',jsonb_build_object('status','available','version','integration','failure',null),
     'authentication_probe',jsonb_build_object(
@@ -171,7 +171,7 @@ begin
     'models',preflight_models
   );
   provenance:=jsonb_build_object(
-    'schema_version','aiq.run-provenance.v2','run_class','calibration',
+    'schema_version','aiq.run-provenance.v3','run_class','calibration',
     'corpus_release_id','corpus_integration_calibration',
     'corpus_commitment_sha256',(select metadata->>'corpus_commitment_sha256'
       from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.6'),
@@ -188,6 +188,7 @@ begin
     'source_manifest_digest','sha256:'||repeat('a',64),
     'runner_executable_digest','sha256:'||repeat('b',64),
     'codex_executable_digest','sha256:'||repeat('c',64),
+    'codex_code_mode_host_digest','sha256:'||repeat('e',64),
     'permission_evidence_digest','sha256:'||repeat('d',64)
   );
   run_id:='run_'||substr(aiq_private.jcs_sha256(jsonb_build_object(
@@ -262,8 +263,8 @@ select pg_temp.aiq_assert(
   'the calibration ingress package must satisfy the complete database contract'
 ) from aiq_calibration_input;
 select pg_temp.aiq_assert(
-  aiq_private.run_provenance_v2_is_valid(envelope#>'{payload,provenance}')
-  and aiq_private.run_provenance_v2_is_valid(jsonb_set(
+  aiq_private.run_provenance_v3_is_valid(envelope#>'{payload,provenance}')
+  and aiq_private.run_provenance_v3_is_valid(jsonb_set(
     envelope#>'{payload,provenance}','{run_class}','"official"'::jsonb
   )),
   'generic run provenance must accept only the two explicit run classes'

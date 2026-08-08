@@ -30,6 +30,7 @@ pub(crate) struct OfficialPlanBinding {
 	pub(crate) evaluator_runtime_digest: String,
 	pub(crate) runner_executable_digest: String,
 	pub(crate) codex_executable_digest: String,
+	pub(crate) codex_code_mode_host_digest: String,
 	pub(crate) codex_credential_digest: String,
 	pub(crate) public_tasks: Option<String>,
 	pub(crate) hidden_tasks: Option<String>,

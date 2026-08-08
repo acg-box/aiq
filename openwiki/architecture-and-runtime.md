@@ -45,12 +45,14 @@ unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
 has equivalent shared typed enforcement even though it has no separate
 checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
-identities. The source-only corpus rule and signed per-run runner and Codex
-executable provenance are the executable product contracts. After the final
+identities. The source-only corpus rule and signed per-run runner and complete
+Codex runtime provenance are the executable product contracts. After the final
 clean build, the operator retains a private, unsigned audit receipt with the
 exact source commit and tree identity and SHA-256 values for the native runner,
-verifier, Node.js, and ripgrep executables. The repository does not validate or
-publish this reproducibility evidence. Full calibration, native build
+verifier, Codex executable, and Codex code-mode host. The offline native
+verifier validates the receipt against an independently supplied digest. It
+does not publish this reproducibility evidence. Node.js and ripgrep identities
+remain bound by the corpus. Full calibration, native build
 verification, real Official execution, publication, and final deployment of
 `1.0.6` are pending. The `1.0.3` Official attempt was interrupted after an
 already-conclusive ceiling failure and was rejected as unpublished calibration
@@ -126,8 +128,12 @@ writes one private create-once
 preflight validates the public catalog, current corpus commitment, controlled
 toolchain, evaluator runtime, source manifest, capability manifest,
 schedule, and path layout, probes the exact local Codex CLI, and binds its
-expiring report to that receipt. The same admission is required by Official
-`run`, `score`, and `package`; calibration rejects it.
+expiring report to that receipt. An available model probe must use a fresh
+workspace to execute exactly one command and create the fixed
+`AIQ_CAPABILITY_COMMAND_AND_WRITE_V1` marker. The marker is retained as the
+content-addressed `capability-marker.txt` artifact; the verifier resolves and
+checks its exact bytes before publication. The same admission is required by
+Official `run`, `score`, and `package`; calibration rejects it.
 
 ```mermaid
 sequenceDiagram
@@ -170,10 +176,14 @@ workspace-integrity boundaries cancel remaining paid cells; checkpoints do not
 automatically retry indeterminate or boundary-failed cells. This avoids paying
 again while replacing evidence whose outcome is uncertain.
 
-`aiq.run-provenance.v2` contains 18 top-level fields. It binds the run class,
+`aiq.run-provenance.v3` contains 19 top-level fields. It binds the run class,
 corpus, catalog, task set, evaluator, runtime, preflight, harness, prompt, tool
 policy, network policy, environment, source manifest, runner executable, Codex
-executable, and permission evidence.
+executable, Codex code-mode host, and permission evidence. The selected Codex
+executable must live in a private directory containing exactly the `codex` and
+`codex-code-mode-host` executable pair. The runner rehashes both files before
+and after live dispatch. A successful capability probe also retains an exact
+content-addressed marker produced by one real command in a fresh workspace.
 
 ## Verification flow
 

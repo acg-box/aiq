@@ -93,7 +93,10 @@ operational boundary.
 
 The native subscription runner copies `~/.codex/auth.json` into an isolated,
 mode-private `CODEX_HOME` and passes that directory to the Codex subprocess.
-The verifier never receives it.
+Capability preflight requires one completed command plus the exact
+`AIQ_CAPABILITY_COMMAND_AND_WRITE_V1` workspace marker for each available model;
+the marker is retained as `capability-marker.txt` and checked by replay. The
+verifier never receives the Codex home or credentials.
 
 Private tasks, fixtures, expected outputs, evaluators, signing keys, and Codex
 authentication stay outside Git.
@@ -185,12 +188,15 @@ Rust validator fails closed unless
 null. The checked Core schema enforces the same rule. Contrast has equivalent
 shared typed enforcement even though it has no separate checked-in JSON schema.
 Each corpus also binds the Node.js and ripgrep identities. The source-only corpus
-rule and signed per-run runner and Codex executable provenance are the executable
-product contracts. After the final clean build, the operator retains a private,
-unsigned audit receipt with the exact source commit and tree identity and SHA-256
-values for the native runner, verifier, Node.js, and ripgrep executables. The
-repository does not validate or publish this reproducibility evidence, and
-database initialization does not consume it.
+rule and signed per-run runner and complete Codex runtime provenance are the
+executable product contracts. The Codex runtime is an exact two-file directory:
+`codex` plus `codex-code-mode-host`. After the final clean build, the operator
+retains a private, unsigned audit receipt with the exact source commit and tree
+identity and SHA-256 values for the native runner, verifier, Codex executable,
+and Codex code-mode host. The offline native verifier validates the receipt
+against an independently supplied digest. The receipt is not published, and
+database initialization does not consume it. Node.js and ripgrep identities
+remain in the corpus commitment.
 
 ## Next reading
 

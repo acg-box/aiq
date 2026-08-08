@@ -122,10 +122,11 @@
         "source_manifest_digest",
         "runner_executable_digest",
         "codex_executable_digest",
+        "codex_code_mode_host_digest",
         "permission_evidence_digest"
       ],
       "properties": {
-        "schema_version": { "const": "aiq.run-provenance.v2" },
+        "schema_version": { "const": "aiq.run-provenance.v3" },
         "run_class": { "const": "calibration" },
         "corpus_release_id": {
           "type": "string",
@@ -146,6 +147,7 @@
         "source_manifest_digest": { "$ref": "#/$defs/sha256" },
         "runner_executable_digest": { "$ref": "#/$defs/sha256" },
         "codex_executable_digest": { "$ref": "#/$defs/sha256" },
+        "codex_code_mode_host_digest": { "$ref": "#/$defs/sha256" },
         "permission_evidence_digest": { "$ref": "#/$defs/sha256" }
       }
     }

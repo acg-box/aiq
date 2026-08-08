@@ -545,7 +545,7 @@ mod tests {
 		let mut production = production_without_provenance;
 
 		production["provenance"] = serde_json::json!({
-			"schema_version": "aiq.run-provenance.v2",
+			"schema_version": "aiq.run-provenance.v3",
 			"run_class": "official"
 		});
 
@@ -554,7 +554,7 @@ mod tests {
 		let mut synthetic_with_provenance = payload();
 
 		synthetic_with_provenance["provenance"] = serde_json::json!({
-			"schema_version": "aiq.run-provenance.v2",
+			"schema_version": "aiq.run-provenance.v3",
 			"run_class": "official"
 		});
 
@@ -570,7 +570,7 @@ mod tests {
 			"official_eligible": false,
 			"classification": "local_calibration_non_official",
 			"provenance": {
-				"schema_version": "aiq.run-provenance.v2",
+				"schema_version": "aiq.run-provenance.v3",
 				"run_class": "calibration"
 			},
 		});

@@ -4,9 +4,14 @@ import { hasValidBearerToken } from './submission-handler.ts';
 import { canonicalJson } from './submission-contract.ts';
 
 export const MAX_EVALUATOR_RESULTS_BYTES = 3_948_544;
+export const CAPABILITY_MARKER_BYTES = Buffer.from('AIQ_CAPABILITY_COMMAND_AND_WRITE_V1\n');
+export const CAPABILITY_MARKER_DIGEST = createHash('sha256')
+  .update(CAPABILITY_MARKER_BYTES)
+  .digest('hex');
 
 export const ARTIFACT_KIND_MAX_BYTES = {
   'evaluator-results.json': MAX_EVALUATOR_RESULTS_BYTES,
+  'capability-marker.txt': CAPABILITY_MARKER_BYTES.byteLength,
   'final-response.txt': 4 * 1024 * 1024,
   'stderr.txt': 4 * 1024 * 1024,
   'stdout.jsonl': 4 * 1024 * 1024,
@@ -214,6 +219,12 @@ export async function handleArtifactUpload(
   if (!rawBytes) return json(400, { error: 'ARTIFACT_SIZE_MISMATCH' });
   if (artifactKind === 'evaluator-results.json' && !isCanonicalEvaluatorResultsBundle(rawBytes)) {
     return json(400, { error: 'INVALID_EVALUATOR_RESULTS_BUNDLE' });
+  }
+  if (
+    artifactKind === 'capability-marker.txt' &&
+    !Buffer.from(rawBytes).equals(CAPABILITY_MARKER_BYTES)
+  ) {
+    return json(400, { error: 'INVALID_CAPABILITY_MARKER' });
   }
   const observedDigest = createHash('sha256').update(rawBytes).digest('hex');
   if (observedDigest !== digest) {

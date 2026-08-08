@@ -68,7 +68,7 @@ function productionProvenance(
   overrides: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return {
-    schema_version: 'aiq.run-provenance.v2',
+    schema_version: 'aiq.run-provenance.v3',
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
@@ -85,6 +85,7 @@ function productionProvenance(
     source_manifest_digest: digest('c'),
     runner_executable_digest: digest('d'),
     codex_executable_digest: digest('e'),
+    codex_code_mode_host_digest: digest('1'),
     permission_evidence_digest: digest('f'),
     ...overrides,
   };
