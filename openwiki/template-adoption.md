@@ -35,9 +35,9 @@ automation only to remove a marker.
 The source-head public constants include AIQ Core and scoring version `1.0.6`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final controlled corpus identities remain

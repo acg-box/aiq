@@ -292,7 +292,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1"
+          "const": "sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"

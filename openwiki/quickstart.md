@@ -23,8 +23,8 @@ The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
 The active public candidate, task, and scorer contract is `1.0.6`. It changes
-only the common runtime envelope for four interaction tasks and carries forward
-the other 68 task, evaluator, tool, and budget contracts with new bindings. The
+only task-level runtime envelopes for five interaction tasks and carries forward
+the other 67 task, evaluator, tool, and budget contracts with new bindings. The
 public catalog is deterministic and identity-frozen. Two controlled generations
 produced one matching tree, and the reviewed 72-task database commitment is
 bound in source. Final clean-commit regeneration, the fresh targeted pilot,
@@ -38,7 +38,8 @@ ceiling failure. It was rejected as unpublished calibration evidence. No hidden
 responses or hidden task details were published. The first `1.0.4` calibration
 completed all 1,224 cells but failed the statistical release gate. Preserve it
 as non-Official evidence; do not describe it as 1,224 failed executions. For
-`1.0.6`, run the four runtime-revised tasks across all 17 configurations as a 68-cell
+`1.0.6`, run coding-07 across all 17 configurations, then run the five
+runtime-revised tasks across all 17 configurations as an 85-cell
 pilot before the complete 17-by-72 non-Official calibration. An operator cannot
 override a failed release gate. Real calibration stays non-Official until the
 signed verifier and distinct-publisher admission flow accepts it into the
@@ -50,9 +51,10 @@ task set as saturated. A later interaction pilot exposed seven timeouts and
 three tool-budget failures at the shared 900-second, 40-step, and 28-tool-call
 envelope. AIQ Core `1.0.6` keeps the bounded keyed executor, quoted-record
 parser, six-field layered service configuration, and bounded Unicode log
-preview semantics. It gives each task the same 1,500-second, 48-step, and
-40-tool-call budget for every model configuration. This candidate still needs a
-fresh 68-cell pilot.
+preview semantics. It gives coding-07 a common 600-second, 32-step, and
+21-tool-call budget, and the other four revised tasks a common 1,500-second,
+48-step, and 40-tool-call budget for every model configuration. This candidate
+still needs a fresh coding-07-by-17 falsification pilot and 17-by-5 pilot.
 
 ## Deployment status
 
@@ -171,10 +173,10 @@ receipt must contain scoring `1.0.6`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`;
+`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`;
 the release-policy identity is `aiq-core/1.0.6`, and its public catalog
 release-identity digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
 The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the public-safe database task-set identity is

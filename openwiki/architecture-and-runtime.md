@@ -22,13 +22,13 @@ Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
 AIQ Core `1.0.6` with task-metadata digest
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
-This public candidate changes only the common runtime envelope for the bounded
-keyed executor, quoted-record parser, six-field layered service configuration
-loader, and bounded Unicode log preview. Every model configuration gets the
-same 1,500-second, 48-step, and 40-tool-call budget. The other 68 task,
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+This public candidate changes only task-level runtime envelopes for five bounded
+interaction tasks. Coding-07 gets 600 wall seconds, 32 steps, and 21 tool calls;
+the other four revised tasks get 1,500 seconds, 48 steps, and 40 tool calls.
+Every task budget is common to every model configuration. The other 67 task,
 evaluator, tool, and budget contracts carry forward with new bindings. The
 preceding `1.0.5` pilots remain immutable non-Official evidence. The first had
 63 completed cells, five timeouts, and saturated completed means. A later pilot

@@ -13,9 +13,9 @@ workers, or later publications from this release plan.
 
 Repository source has the active public AIQ Core `1.0.6` candidate. Its
 public metadata digest is
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
 and its public release digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final clean-commit regeneration, the fresh
@@ -29,7 +29,8 @@ ceiling failure. It is rejected, unpublished calibration evidence. No hidden
 responses or hidden task details were published. The first `1.0.4` calibration
 completed all 1,224 cells but failed the statistical release gate. It remains
 non-Official evidence and must not be described as 1,224 failed executions. The
-`1.0.6` path first runs a 17-by-4 pilot over the four runtime-revised tasks, then the full
+`1.0.6` path first runs coding-07 across all 17 configurations, then a
+17-by-5 pilot over the five runtime-revised tasks, then the full
 falsification-first non-Official 17-by-72 calibration. A failed release gate has
 no operator override. Real calibration remains permanently non-Official even
 after signed verifier admission and distinct publication to its public register.

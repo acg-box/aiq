@@ -29,9 +29,9 @@ Handoff](deployment-handoff.md) for production acceptance checks.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.6`. Its public metadata digest is
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
 and its public release digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final clean-commit regeneration, the fresh
@@ -105,10 +105,10 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+   `sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
    the release-policy identity is `aiq-core/1.0.6`, and the public catalog
    release-identity digest is
-   `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+   `sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
    Use the final clean-commit controlled regeneration for the targeted pilot.
    Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
    task-commitment manifest, and Core corpus identities distinct. Generate the
@@ -208,7 +208,8 @@ eligible. Use `run --help` for the complete controlled input contract.
 
 The first `1.0.4` calibration completed all 1,224 cells but failed the
 statistical release gate. Preserve it as non-Official evidence; do not report it
-as 1,224 failed task executions. For `1.0.6`, first run the four runtime-revised tasks
+as 1,224 failed task executions. For `1.0.6`, first run coding-07 across all 17
+configurations, then the five runtime-revised tasks
 (`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
 configurations. The current `coding-06` revision is a priority keyed async
 executor repair with stable eligible-head scheduling, dynamic concurrency,

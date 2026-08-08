@@ -30,7 +30,13 @@ const priorCandidateRoot = new URL(
   import.meta.url,
 );
 
-const EXPECTED_REVISED_TASK_IDS = ['coding-06', 'debugging-01', 'debugging-02', 'debugging-04'];
+const EXPECTED_REVISED_TASK_IDS = [
+  'coding-06',
+  'coding-07',
+  'debugging-01',
+  'debugging-02',
+  'debugging-04',
+];
 
 function jsonObject(value: unknown, label: string): JsonObject {
   if (!isJsonObject(value)) {
@@ -66,7 +72,7 @@ await test('the generated 1.0.6 catalog is deterministic and identity-frozen', a
   );
 });
 
-await test('only four task budgets are revised while 68 tasks explicitly carry forward', () => {
+await test('only five task budgets are revised while 67 tasks explicitly carry forward', () => {
   const catalog = buildCatalog();
   const prior = buildPriorCatalog();
   const budgetRevised = catalog.tasks
@@ -79,7 +85,7 @@ await test('only four task budgets are revised while 68 tasks explicitly carry f
 
   deepStrictEqual(REVISED_TASK_IDS, EXPECTED_REVISED_TASK_IDS);
   deepStrictEqual(budgetRevised, EXPECTED_REVISED_TASK_IDS);
-  strictEqual(carriedForward.length, 68);
+  strictEqual(carriedForward.length, 67);
   for (const task of catalog.tasks) {
     strictEqual(task.design_revision.supersedes_task_version, '1.0.5');
     strictEqual(task.provenance.predecessor_task_version, '1.0.5');
@@ -93,13 +99,21 @@ await test('only four task budgets are revised while 68 tasks explicitly carry f
       strictEqual(task.design_revision.task_specific_delta.includes('carries forward'), true);
       deepStrictEqual(task.budget, priorTask.budget);
     } else {
-      deepStrictEqual(task.budget, {
-        wall_seconds: 1500,
-        max_steps: 48,
-        max_tool_calls: 40,
-      });
-      strictEqual(task.design_revision.task_specific_delta.includes('seven timeouts'), true);
-      strictEqual(task.design_revision.task_specific_delta.includes('three tool-budget'), true);
+      deepStrictEqual(
+        task.budget,
+        task.task_id === 'coding-07'
+          ? { wall_seconds: 600, max_steps: 32, max_tool_calls: 21 }
+          : { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 },
+      );
+      strictEqual(
+        task.design_revision.task_specific_delta.includes(
+          task.task_id === 'coding-07' ? 'jobs=1 attempt' : 'seven timeouts',
+        ),
+        true,
+      );
+      if (task.task_id !== 'coding-07') {
+        strictEqual(task.design_revision.task_specific_delta.includes('three tool-budget'), true);
+      }
     }
     deepStrictEqual(task.title, priorTask.title);
     deepStrictEqual(task.summary, priorTask.summary);
@@ -174,16 +188,34 @@ await test('the new release keeps the public scoring contract and hides controll
   }
 });
 
-await test('the four runtime revisions use one common empirically justified budget', () => {
+await test('runtime revisions use evidence-backed task-level budgets', () => {
   const tasks = buildCatalog().tasks.filter(({ task_id }) =>
     EXPECTED_REVISED_TASK_IDS.includes(task_id),
   );
   for (const task of tasks) {
-    deepStrictEqual(task.budget, { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 });
+    deepStrictEqual(
+      task.budget,
+      task.task_id === 'coding-07'
+        ? { wall_seconds: 600, max_steps: 32, max_tool_calls: 21 }
+        : { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 },
+    );
     strictEqual(task.design_revision.kind, 'runtime_budget_revision');
     strictEqual(task.design_revision.objective.includes('every model configuration'), true);
-    strictEqual(task.design_revision.task_specific_delta.includes('900 wall seconds'), true);
+    strictEqual(
+      task.design_revision.task_specific_delta.includes(
+        task.task_id === 'coding-07' ? '420 wall seconds' : '900 wall seconds',
+      ),
+      true,
+    );
   }
+});
+
+await test('coding-07 changes only the wall ceiling and applies to every configuration', () => {
+  const task = buildCatalog().tasks.find(({ task_id }) => task_id === 'coding-07');
+  if (task === undefined) throw new RangeError('coding-07 is missing.');
+  deepStrictEqual(task.budget, { wall_seconds: 600, max_steps: 32, max_tool_calls: 21 });
+  strictEqual(task.design_revision.task_specific_delta.includes('all configurations'), true);
+  strictEqual(task.design_revision.task_specific_delta.includes('model-specific exception'), true);
 });
 
 await test('the closed schemas bind the 1.0.6 release and revision provenance', async () => {
@@ -316,6 +348,6 @@ await test('catalog invariants reject revision and metadata drift', () => {
   );
   throws(
     () => assertCatalogInvariants(changed),
-    /four runtime-budget revisions|revision metadata/u,
+    /five runtime-budget revisions|revision metadata/u,
   );
 });
