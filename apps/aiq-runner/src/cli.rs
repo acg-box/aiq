@@ -1184,7 +1184,7 @@ enum Command {
 		/// Directory containing one runtime baseline directory per task identifier.
 		baselines_root: PathBuf,
 		#[arg(long)]
-		/// Directory containing one six-class acceptance directory per task identifier.
+		/// Directory containing one policy-valid acceptance directory per task identifier.
 		acceptance_root: PathBuf,
 		#[arg(long)]
 		/// Controlled root containing the one evaluator referenced by every task.
