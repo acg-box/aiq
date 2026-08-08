@@ -7,6 +7,7 @@ pub mod calibration_verification;
 pub mod capacity;
 pub mod cli;
 pub mod corpus_commitment;
+pub mod corpus_seal;
 pub mod distributed;
 pub mod isolation;
 pub mod model;
