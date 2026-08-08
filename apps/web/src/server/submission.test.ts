@@ -129,6 +129,12 @@ function artifact(kind: string, seed: string, bytes = 1): Record<string, unknown
 
 function capabilityValidation(): Record<string, unknown> {
   const codexVersion = 'codex-1';
+  const marker = {
+    kind: 'capability-marker.txt',
+    content_hash: 'sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3',
+    uri: 'aiq-artifact://sha256/83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3/capability-marker.txt',
+    bytes: 36,
+  };
   const entries = models.map((model, index) => {
     const preview = `probe-${index}`;
     const resultDigest = `sha256:${sha256Hex(preview)}`;
@@ -138,7 +144,7 @@ function capabilityValidation(): Record<string, unknown> {
       observed_at: `unix-ms:${index + 1}`,
       result_digest: resultDigest,
       result_preview: preview,
-      artifacts: [],
+      artifacts: [marker],
       evidence_digest: '',
       failure: null,
     };
@@ -162,7 +168,7 @@ function capabilityValidation(): Record<string, unknown> {
     };
   });
   return {
-    schema_version: 'aiq.capability-validation.v2',
+    schema_version: 'aiq.capability-validation.v3',
     node_id: runnerNodeId,
     manifest_issues: [],
     cli_probe: {
@@ -183,7 +189,7 @@ function productionProvenance(
   overrides: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return {
-    schema_version: 'aiq.run-provenance.v2',
+    schema_version: 'aiq.run-provenance.v3',
     run_class: 'official',
     corpus_release_id: 'corpus_2026.07.25',
     corpus_commitment_sha256: digest('1'),
@@ -200,6 +206,7 @@ function productionProvenance(
     source_manifest_digest: digest('c'),
     runner_executable_digest: digest('d'),
     codex_executable_digest: digest('e'),
+    codex_code_mode_host_digest: digest('1'),
     permission_evidence_digest: digest('f'),
     ...overrides,
   };
@@ -803,6 +810,54 @@ void describe('shared result-package contract', () => {
     assert.ok(firstEntry);
     (firstEntry.probe as Record<string, unknown>).evidence_digest = digest('a');
     assert.equal(validateSubmission(resignPackage(brokenEvidence)).ok, false);
+
+    for (const [label, mutate] of [
+      [
+        'missing functional marker',
+        (artifacts: Record<string, unknown>[]) => artifacts.splice(0, artifacts.length),
+      ],
+      [
+        'wrong functional marker bytes',
+        (artifacts: Record<string, unknown>[]) => {
+          const marker = artifacts[0];
+          assert.ok(marker);
+          marker.bytes = 35;
+        },
+      ],
+      [
+        'wrong functional marker digest',
+        (artifacts: Record<string, unknown>[]) => {
+          const marker = artifacts[0];
+          assert.ok(marker);
+          marker.content_hash = digest('a');
+          marker.uri = `aiq-artifact://sha256/${'a'.repeat(64)}/capability-marker.txt`;
+        },
+      ],
+    ] as const) {
+      const candidate = officialPackage();
+      const candidatePayload = candidate.payload as Record<string, unknown>;
+      const candidateCapability = candidatePayload.capability_validation as Record<string, unknown>;
+      const candidateEntry = (candidateCapability.models as Record<string, unknown>[])[0];
+      assert.ok(candidateEntry);
+      const candidateProbe = candidateEntry.probe as Record<string, unknown>;
+      const artifacts = candidateProbe.artifacts as Record<string, unknown>[];
+      mutate(artifacts);
+      candidateProbe.evidence_digest = `sha256:${sha256Hex(
+        canonicalJson([
+          candidateEntry.model,
+          candidateProbe.codex_version,
+          candidateProbe.observed_at,
+          candidateProbe.status,
+          candidateProbe.result_digest,
+          candidateProbe.result_preview,
+          candidateProbe.artifacts,
+          candidateProbe.failure,
+        ]),
+      )}`;
+      (candidatePayload.provenance as Record<string, unknown>).preflight_digest =
+        `sha256:${sha256Hex(canonicalJson(candidateCapability))}`;
+      assert.equal(validateSubmission(resignPackage(candidate)).ok, false, label);
+    }
   });
 
   void it('accepts attempted workspace-integrity failures with exact safe semantics', () => {

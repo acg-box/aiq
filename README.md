@@ -114,14 +114,17 @@ requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
 closed on this runner subtree for both Core and Contrast. Contrast does not have
 a separate checked-in JSON schema. Each corpus also binds the Node.js and ripgrep
-identities. The source-only corpus rule and signed per-run runner and Codex
-executable provenance are the executable product contracts. After the final
-clean build, the operator retains a private, unsigned audit receipt with the
-exact source commit and tree identity and SHA-256 values for the native runner,
-verifier, Node.js, and ripgrep executables. This receipt is reproducibility
-evidence, not a product protocol, database input, or published artifact. The
-repository does not validate it. Do not infer a runtime hash from a generated-task
-tree digest. The accepted AIQ 2.0 publication will be one batch of 17
+identities. The source-only corpus rule and signed per-run runner and complete
+Codex runtime provenance are the executable product contracts. The Codex runtime
+is one private directory that contains exactly the `codex` executable and its
+`codex-code-mode-host` sibling. After the final clean build, the operator retains
+a private, unsigned audit receipt with the exact source commit and tree identity
+and SHA-256 values for the native runner, verifier, Codex executable, and Codex
+code-mode host. The offline native verifier validates this receipt against an
+independently supplied receipt digest. It is not a database input or published
+artifact. Node.js and ripgrep remain bound by the corpus commitment. Do not infer
+a runtime hash from a generated-task tree digest. The accepted AIQ 2.0 publication
+will be one batch of 17
 configuration runs and 1,224 task-level executions.
 Elapsed time, provider-token usage, and Standard API-equivalent cost are
 reported separately from AIQ.
@@ -309,7 +312,10 @@ Storage schedule currently exist. The twice-daily schedule and its next run are
 pending operations work, not part of the current production state.
 The subscription runner uses a protected copy of `~/.codex/auth.json` in an
 isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
-as its writable runtime directory.
+as its writable runtime directory. It also uses a private two-file copy of the
+ChatGPT app's `codex` and `codex-code-mode-host` executables. Capability
+preflight succeeds only after Codex completes one command and writes the exact
+content-bound marker in a fresh disposable workspace.
 See [Operations and Validation](openwiki/operations.md) for the native command
 contract. Repository support does not prove that private inputs, credentials,
 or live model capabilities are configured.

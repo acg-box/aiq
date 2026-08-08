@@ -108,6 +108,13 @@ pub const MAX_INLINE_PREVIEW_BYTES: usize = 64;
 pub const MAX_CODEX_VERSION_BYTES: usize = 32;
 /// Maximum prompt bytes written to a Codex child.
 pub const MAX_STDIN_BYTES: usize = 256 * 1_024;
+/// Exact bytes retained by a successful functional capability probe.
+pub const PREFLIGHT_MARKER_BYTES: &[u8] = b"AIQ_CAPABILITY_COMMAND_AND_WRITE_V1\n";
+/// Artifact role for functional capability-probe workspace evidence.
+pub const PREFLIGHT_MARKER_ARTIFACT_KIND: &str = "capability-marker.txt";
+/// SHA-256 of [`PREFLIGHT_MARKER_BYTES`].
+pub const PREFLIGHT_MARKER_SHA256: &str =
+	"sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3";
 
 /// Normalization contract for Codex `exec --json` item events.
 pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v2";
@@ -137,6 +144,7 @@ const DISABLED_CODEX_FEATURES: &[&str] = &[
 ];
 const BENCHMARK_PERMISSION_PROFILE: &str = "aiq_benchmark";
 const CONTROLLED_OPENSSL_CONF: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
+const PREFLIGHT_MARKER_NAME: &str = ".aiq-capability-marker-v1";
 const MAX_AUTH_JSON_BYTES: u64 = 1_024 * 1_024;
 const MAX_ID_TOKEN_PAYLOAD_BYTES: usize = 128 * 1_024;
 const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
@@ -626,6 +634,8 @@ pub struct InvocationRequest {
 pub struct CodexExecutionConfig {
 	/// Operator-controlled Codex home.
 	pub codex_home: PathBuf,
+	/// Controlled parent in which paid capability probes create disposable workspaces.
+	pub capability_workspace_root: Option<PathBuf>,
 	/// Explicit safe environment inherited by the child.
 	pub allowed_environment: BTreeMap<String, String>,
 	/// Canonical roots that model-generated commands must never read.
@@ -657,6 +667,7 @@ impl CodexExecutionConfig {
 
 		Self {
 			codex_home: codex_home.into(),
+			capability_workspace_root: None,
 			allowed_environment,
 			denied_roots: Vec::new(),
 			permission_probe_executable: None,
@@ -671,6 +682,14 @@ impl CodexExecutionConfig {
 				}
 			},
 		}
+	}
+
+	/// Selects a controlled parent for functional paid capability probes.
+	#[must_use]
+	pub fn with_capability_workspace_root(mut self, root: impl Into<PathBuf>) -> Self {
+		self.capability_workspace_root = Some(root.into());
+
+		self
 	}
 
 	/// Adds canonical sensitive roots that the benchmark workspace may be nested inside.
@@ -1254,7 +1273,7 @@ where
 			})
 			.collect();
 		let mut report = CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id: manifest.node_id.clone(),
 			manifest_issues,
 			cli_probe,
@@ -1288,35 +1307,90 @@ where
 	}
 
 	fn probe_configuration(&self, model: ModelConfig) -> Result<CodexOutput, AdapterFailure> {
-		let scratch = WorkspaceScratch::create(&self.config.codex_home)?;
+		let workspace_root = self.config.capability_workspace_root.as_deref().ok_or_else(|| {
+			adapter_failure(
+				AdapterFailureKind::Spawn,
+				"functional capability probe workspace is not configured",
+			)
+		})?;
+		let scratch = WorkspaceScratch::create(workspace_root)?;
 		let scratch_environment = scratch.environment();
 		let capture = self.execute_request_with_environment(
 			invocation_args(
 				model,
-				SandboxPolicy::NoTools,
-				Path::new("."),
+				SandboxPolicy::WorkspaceWrite,
+				&scratch.path,
 				&self.config.denied_roots,
 				self.config.model_toolchain.as_ref(),
 			)?,
-			b"Reply with exactly AIQ_PREFLIGHT_OK. Do not use tools.".to_vec(),
+			format!(
+				"Use the command execution tool exactly once to create the regular file {PREFLIGHT_MARKER_NAME} in the current workspace. Its exact bytes must be AIQ_CAPABILITY_COMMAND_AND_WRITE_V1 followed by one newline. Then reply with exactly AIQ_PREFLIGHT_OK."
+			)
+			.into_bytes(),
 			Duration::from_secs(30),
+			2,
 			1,
-			0,
 			&scratch_environment,
 		);
+		let marker = capture.as_ref().ok().map(|_| {
+			scratch.read_child_file_bounded(PREFLIGHT_MARKER_NAME, PREFLIGHT_MARKER_BYTES.len())
+		});
 		let cleanup = scratch.cleanup();
+		let classified = capture.and_then(|capture| classify_capture(capture, &self.sink, false));
 
-		cleanup?;
+		if let Err(cleanup_failure) = cleanup {
+			return Err(post_execution_integrity_failure(
+				classified,
+				format!(
+					"post-capability-probe scratch cleanup failed: {}",
+					cleanup_failure.message
+				),
+			));
+		}
 
-		let capture = capture?;
-		let output = classify_capture(capture, &self.sink, false)?;
+		let mut output = classified?;
+		let marker = marker
+			.ok_or_else(|| {
+				adapter_failure(
+					AdapterFailureKind::WorkspaceIntegrity,
+					"configuration probe did not produce workspace evidence",
+				)
+			})?
+			.map_err(|_| {
+				post_execution_integrity_failure(
+					Ok(output.clone()),
+					"configuration probe workspace marker is missing or unsafe",
+				)
+			})?;
 
+		if marker != PREFLIGHT_MARKER_BYTES {
+			return Err(post_execution_integrity_failure(
+				Ok(output),
+				"configuration probe did not create the exact workspace marker",
+			));
+		}
+		if completed_command_execution_count(&output.stdout_full) != 1 {
+			return Err(post_execution_integrity_failure(
+				Ok(output),
+				"configuration probe did not complete exactly one command execution",
+			));
+		}
 		if extract_probe_response(&output.stdout_full).as_deref() != Some("AIQ_PREFLIGHT_OK") {
 			return Err(adapter_failure(
 				AdapterFailureKind::NonZeroExit,
 				"configuration probe did not return the exact preflight sentinel",
 			));
 		}
+
+		let marker_artifact =
+			self.sink.put(PREFLIGHT_MARKER_ARTIFACT_KIND, &marker).map_err(|_| {
+				post_execution_integrity_failure(
+					Ok(output.clone()),
+					"configuration probe marker artifact could not be retained",
+				)
+			})?;
+
+		output.artifacts.push(marker_artifact);
 
 		Ok(output)
 	}
@@ -1409,7 +1483,7 @@ impl CapabilityValidationReport {
 	/// Returns whether all entries have current usable evidence.
 	#[must_use]
 	pub fn is_usable(&self) -> bool {
-		self.schema_version == "aiq.capability-validation.v2"
+		self.schema_version == "aiq.capability-validation.v3"
 			&& self.manifest_issues.is_empty()
 			&& self.cli_probe.status == ProbeStatus::Available
 			&& self.authentication_probe.status == ProbeStatus::Available
@@ -1684,6 +1758,55 @@ impl WorkspaceScratch {
 		}
 
 		environment
+	}
+
+	fn read_child_file_bounded(
+		&self,
+		name: &str,
+		maximum_bytes: usize,
+	) -> Result<Vec<u8>, AdapterFailure> {
+		#[cfg(unix)]
+		return self
+			.identity
+			.read_child_file_bounded(OsStr::new(name), maximum_bytes)
+			.map_err(|error| adapter_failure(AdapterFailureKind::WorkspaceIntegrity, error));
+
+		#[cfg(not(unix))]
+		{
+			let path = self.path.join(name);
+			let metadata = fs::symlink_metadata(&path).map_err(|_| {
+				adapter_failure(
+					AdapterFailureKind::WorkspaceIntegrity,
+					"configuration probe workspace marker is unavailable",
+				)
+			})?;
+
+			if metadata.file_type().is_symlink()
+				|| !metadata.is_file()
+				|| metadata.len() > u64::try_from(maximum_bytes).unwrap_or(u64::MAX)
+			{
+				return Err(adapter_failure(
+					AdapterFailureKind::WorkspaceIntegrity,
+					"configuration probe workspace marker is unsafe",
+				));
+			}
+
+			let bytes = fs::read(path).map_err(|_| {
+				adapter_failure(
+					AdapterFailureKind::WorkspaceIntegrity,
+					"configuration probe workspace marker cannot be read",
+				)
+			})?;
+
+			if bytes.len() > maximum_bytes {
+				return Err(adapter_failure(
+					AdapterFailureKind::WorkspaceIntegrity,
+					"configuration probe workspace marker exceeds the byte limit",
+				));
+			}
+
+			Ok(bytes)
+		}
 	}
 
 	fn cleanup(mut self) -> Result<(), AdapterFailure> {
@@ -2226,61 +2349,19 @@ enum JsonRpcStdoutEvent {
 	End,
 }
 
-/// Observes a private credential from a platform-protected controlled source.
-pub(crate) fn chatgpt_credential_observation(
-	codex_home: &Path,
-) -> Result<ChatgptCredentialObservation, ExecutorError> {
-	let (_, _, _, _, observation) = open_and_observe_credential(codex_home, true)?;
-
-	Ok(observation)
-}
-
-#[cfg(test)]
-pub(crate) fn chatgpt_credential_observation_for_test(
-	codex_home: &Path,
-) -> Result<ChatgptCredentialObservation, ExecutorError> {
-	let (_, _, _, _, observation) = open_and_observe_credential(codex_home, false)?;
-
-	Ok(observation)
-}
-
-pub(crate) fn normalize_codex_item(line: &[u8]) -> Option<NormalizedCodexItem> {
-	let Ok(value) = serde_json::from_slice::<Value>(line) else {
-		return None;
-	};
-	let phase = match value.get("type").and_then(Value::as_str) {
-		Some("item.started") => CodexItemPhase::Started,
-		Some("item.completed") => CodexItemPhase::Completed,
-		_ => return None,
-	};
-	let item = value.get("item")?.as_object()?;
-	let raw_type = item.get("type")?.as_str()?;
-
-	if raw_type.is_empty() {
-		return None;
+/// Returns the canonical content-addressed reference for functional probe evidence.
+#[must_use]
+pub fn preflight_marker_artifact_reference() -> ArtifactReference {
+	ArtifactReference {
+		kind: PREFLIGHT_MARKER_ARTIFACT_KIND.to_owned(),
+		content_hash: PREFLIGHT_MARKER_SHA256.to_owned(),
+		uri: format!(
+			"aiq-artifact://sha256/{}/{}",
+			PREFLIGHT_MARKER_SHA256.trim_start_matches("sha256:"),
+			PREFLIGHT_MARKER_ARTIFACT_KIND
+		),
+		bytes: PREFLIGHT_MARKER_BYTES.len() as u64,
 	}
-
-	// Known presentation/reasoning items are not tools. Error items remain in the
-	// raw evidence but are not agent steps; unknown completed items stay bounded
-	// conservatively as both steps and tools.
-	let is_tool_call =
-		!matches!(raw_type, "agent_message" | "message" | "error" | "reasoning" | "todo_list");
-	let counts_as_step = phase == CodexItemPhase::Completed && raw_type != "error";
-
-	Some(NormalizedCodexItem {
-		version: CODEX_ITEM_ACCOUNTING_VERSION,
-		phase,
-		item_id: item.get("id").and_then(Value::as_str).map(ToOwned::to_owned),
-		raw_type: raw_type.to_owned(),
-		is_tool_call,
-		counts_as_step,
-	})
-}
-
-pub(crate) fn safe_codex_version(value: &str) -> bool {
-	!value.is_empty()
-		&& value.len() <= MAX_CODEX_VERSION_BYTES
-		&& value.bytes().all(|byte| (b' '..=b'~').contains(&byte) && !matches!(byte, b'"' | b'\\'))
 }
 
 /// Recomputes the signed-data commitment for one active configuration probe.
@@ -2515,6 +2596,73 @@ pub fn expected_official_permission_profile_digests(
 		managed_requirements_digest,
 		profile_selection_digest,
 	})
+}
+
+/// Observes a private credential from a platform-protected controlled source.
+pub(crate) fn chatgpt_credential_observation(
+	codex_home: &Path,
+) -> Result<ChatgptCredentialObservation, ExecutorError> {
+	let (_, _, _, _, observation) = open_and_observe_credential(codex_home, true)?;
+
+	Ok(observation)
+}
+
+#[cfg(test)]
+pub(crate) fn chatgpt_credential_observation_for_test(
+	codex_home: &Path,
+) -> Result<ChatgptCredentialObservation, ExecutorError> {
+	let (_, _, _, _, observation) = open_and_observe_credential(codex_home, false)?;
+
+	Ok(observation)
+}
+
+pub(crate) fn normalize_codex_item(line: &[u8]) -> Option<NormalizedCodexItem> {
+	let Ok(value) = serde_json::from_slice::<Value>(line) else {
+		return None;
+	};
+	let phase = match value.get("type").and_then(Value::as_str) {
+		Some("item.started") => CodexItemPhase::Started,
+		Some("item.completed") => CodexItemPhase::Completed,
+		_ => return None,
+	};
+	let item = value.get("item")?.as_object()?;
+	let raw_type = item.get("type")?.as_str()?;
+
+	if raw_type.is_empty() {
+		return None;
+	}
+
+	// Known presentation/reasoning items are not tools. Error items remain in the
+	// raw evidence but are not agent steps; unknown completed items stay bounded
+	// conservatively as both steps and tools.
+	let is_tool_call =
+		!matches!(raw_type, "agent_message" | "message" | "error" | "reasoning" | "todo_list");
+	let counts_as_step = phase == CodexItemPhase::Completed && raw_type != "error";
+
+	Some(NormalizedCodexItem {
+		version: CODEX_ITEM_ACCOUNTING_VERSION,
+		phase,
+		item_id: item.get("id").and_then(Value::as_str).map(ToOwned::to_owned),
+		raw_type: raw_type.to_owned(),
+		is_tool_call,
+		counts_as_step,
+	})
+}
+
+pub(crate) fn safe_codex_version(value: &str) -> bool {
+	!value.is_empty()
+		&& value.len() <= MAX_CODEX_VERSION_BYTES
+		&& value.bytes().all(|byte| (b' '..=b'~').contains(&byte) && !matches!(byte, b'"' | b'\\'))
+}
+
+fn completed_command_execution_count(stdout: &str) -> usize {
+	stdout
+		.lines()
+		.filter_map(|line| normalize_codex_item(line.as_bytes()))
+		.filter(|item| {
+			item.phase == CodexItemPhase::Completed && item.raw_type == "command_execution"
+		})
+		.count()
 }
 
 fn run_toolchain_executable_canaries(
@@ -5321,7 +5469,8 @@ mod tests {
 			CapabilityValidationStatus, ChildProcessObserver, CodexAdapter, CodexExecutionConfig,
 			CodexItemPhase, CommandRequest, ConfigurationProbeStatus, ExecutionCapture, Executor,
 			ExecutorError, InvocationRequest, LiveBudgetKind, LiveItemAccounting,
-			LocalArtifactSink, MAX_INLINE_PREVIEW_BYTES, SandboxPolicy, SystemExecutor,
+			LocalArtifactSink, MAX_INLINE_PREVIEW_BYTES, PREFLIGHT_MARKER_ARTIFACT_KIND,
+			PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_NAME, SandboxPolicy, SystemExecutor,
 		},
 		corpus_commitment,
 		model::{CapabilityManifest, CapabilityStatus, MODEL_MATRIX, ModelCapability},
@@ -5335,6 +5484,7 @@ mod tests {
 	struct FakeExecutor {
 		captures: RefCell<Vec<Result<ExecutionCapture, ExecutorError>>>,
 		requests: RefCell<Vec<CommandRequest>>,
+		preflight_marker_bytes: Option<Vec<u8>>,
 	}
 
 	struct CanaryWritingExecutor {
@@ -5384,13 +5534,30 @@ mod tests {
 
 	impl FakeExecutor {
 		fn from_order(captures: Vec<Result<ExecutionCapture, ExecutorError>>) -> Self {
-			Self { captures: RefCell::new(captures.into_iter().rev().collect()), ..Self::default() }
+			Self {
+				captures: RefCell::new(captures.into_iter().rev().collect()),
+				preflight_marker_bytes: Some(PREFLIGHT_MARKER_BYTES.to_vec()),
+				..Self::default()
+			}
 		}
 	}
 
 	impl Executor for FakeExecutor {
 		fn execute(&self, request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
 			self.requests.borrow_mut().push(request.clone());
+
+			if request
+				.stdin
+				.windows(b"AIQ_PREFLIGHT_OK".len())
+				.any(|part| part == b"AIQ_PREFLIGHT_OK")
+				&& let Some(bytes) = &self.preflight_marker_bytes
+			{
+				fs::write(
+					request_argument_path(request, "--cd").join(PREFLIGHT_MARKER_NAME),
+					bytes,
+				)
+				.expect("create fixture capability marker");
+			}
 
 			self.captures.borrow_mut().pop().expect("test must provide a capture")
 		}
@@ -5604,13 +5771,18 @@ mod tests {
 	fn adapter(
 		captures: Vec<Result<ExecutionCapture, ExecutorError>>,
 	) -> CodexAdapter<FakeExecutor, MemorySink> {
+		adapter_with_executor(FakeExecutor::from_order(captures))
+	}
+
+	fn adapter_with_executor(executor: FakeExecutor) -> CodexAdapter<FakeExecutor, MemorySink> {
 		let root = test_controlled_root();
 
 		CodexAdapter::new(
-			FakeExecutor::from_order(captures),
+			executor,
 			MemorySink::default(),
 			"codex",
 			CodexExecutionConfig::isolated(root.join("codex-home"))
+				.with_capability_workspace_root(root.join("task"))
 				.with_denied_roots(vec![root.join("denied")]),
 		)
 	}
@@ -7097,6 +7269,8 @@ mod tests {
 				concat!(
 					r#"{"type":"item.completed","item":{"type":"error","message":"redacted"}}"#,
 					"\n",
+					r#"{"type":"item.completed","item":{"type":"command_execution","id":"command-1"}}"#,
+					"\n",
 					r#"{"type":"item.completed","item":{"type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#,
 				)
 				.as_bytes()
@@ -7113,6 +7287,73 @@ mod tests {
 		assert!(
 			report.models.iter().all(|entry| entry.status == CapabilityValidationStatus::Available)
 		);
+		assert!(report.models.iter().all(|entry| {
+			entry.probe.artifacts.iter().any(|artifact| {
+				artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND
+					&& artifact.bytes == PREFLIGHT_MARKER_BYTES.len() as u64
+			})
+		}));
+
+		let requests = adapter.executor.requests.borrow();
+
+		assert_eq!(requests.len(), MODEL_MATRIX.len() + 2);
+
+		for request in &requests[2..] {
+			let workspace = request_argument_path(request, "--cd");
+			let workspace_text = workspace.display().to_string();
+
+			assert_eq!(request.timeout, Duration::from_secs(30));
+			assert_eq!(request.max_steps, 2);
+			assert_eq!(request.max_tool_calls, 1);
+			assert_eq!(request.environment.get("TMPDIR"), Some(&workspace_text));
+			assert!(!workspace.exists(), "functional probe scratch must be removed");
+			assert!(!request.args.windows(2).any(|pair| pair == ["--disable", "shell_tool"]));
+			assert!(!request.args.windows(2).any(|pair| pair == ["--disable", "unified_exec"]));
+			assert!(request.args.windows(2).any(|pair| {
+				pair[0] == "--config"
+					&& pair[1].contains(&workspace_text)
+					&& pair[1].contains("write")
+			}));
+		}
+	}
+
+	#[test]
+	fn capability_probe_rejects_text_and_command_events_without_workspace_evidence() {
+		let mut captures = vec![
+			Ok(capture(0, b"codex-cli current".to_vec(), Vec::new())),
+			Ok(capture(0, b"Logged in using ChatGPT".to_vec(), Vec::new())),
+		];
+
+		captures.extend((0..MODEL_MATRIX.len()).map(|_| {
+			Ok(capture(
+				0,
+				concat!(
+					r#"{"type":"item.completed","item":{"type":"command_execution","id":"command-1"}}"#,
+					"\n",
+					r#"{"type":"item.completed","item":{"type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#,
+				)
+				.as_bytes()
+				.to_vec(),
+				Vec::new(),
+			))
+		}));
+
+		let mut executor = FakeExecutor::from_order(captures);
+
+		executor.preflight_marker_bytes = None;
+
+		let report = adapter_with_executor(executor)
+			.validate_capabilities(&manifest(CapabilityStatus::Available, "codex-cli current"));
+
+		assert!(!report.is_usable());
+		assert!(report.models.iter().all(|entry| {
+			entry.status == CapabilityValidationStatus::Unavailable
+				&& entry
+					.probe
+					.failure
+					.as_ref()
+					.is_some_and(|failure| failure.kind == AdapterFailureKind::WorkspaceIntegrity)
+		}));
 	}
 
 	#[test]

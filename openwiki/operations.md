@@ -123,25 +123,33 @@ Before a live run:
 4. Select separate absolute roots for source, task input, baseline workspaces,
    execution copies, evaluator files, replay, artifacts, checkpoints, and
    preflight output.
-5. Configure the exact native Codex executable, separate Codex home, capability
-   manifest, and approved schedule.
+5. Create a private runtime directory that contains exactly the native `codex`
+   executable and its `codex-code-mode-host` sibling. Configure that exact
+   `codex` path, the separate Codex home, capability manifest, and approved
+   schedule.
 
 Use a separate private Codex home whose `auth.json` is copied from
 `~/.codex/auth.json`, set to mode `0600`, and owner immutable with `uchg`. Do not
 make the active Codex profile immutable. Build
 `aiq-runner` and `aiq-verifier` with `cargo build --locked --release`. After the
-final clean build, the operator generates a private, unsigned audit receipt.
-Record the exact source commit and tree identity and SHA-256 values for the
-native runner, verifier, Node.js, and ripgrep executables. Retain the receipt with
-private release records. The repository does not validate or publish it, and it
-is not a database input. Bind the actual runner and Codex executables in the run
-plan and signed per-run provenance.
+final clean build, the operator generates a private, unsigned
+`aiq.final-build-receipt.v2`. Record the exact source commit and tree identity
+and SHA-256 values for the native runner, verifier, Codex executable, and Codex
+code-mode host. Retain the receipt with private release records. The offline
+native verifier validates it against the independently supplied receipt digest;
+it is not a database input or public artifact. Node.js and ripgrep identities
+remain bound by the corpus. Bind the actual runner and both Codex runtime
+executables in the run plan and signed per-run provenance.
 
 Pass the isolated home to every paid runner boundary with
 `--codex-home "$AIQ_RELEASE_CODEX_HOME"`. The runner clears the inherited
 environment and injects this directory as the Codex subprocess `CODEX_HOME`.
 Do not set the shell's global `CODEX_HOME`, and do not give this directory to the
-verifier.
+verifier. Preflight marks a configuration available only after Codex completes exactly
+one command and writes the fixed 36-byte `AIQ_CAPABILITY_COMMAND_AND_WRITE_V1`
+marker in a fresh disposable workspace. The runner retains it as
+`capability-marker.txt`; the verifier resolves and checks those exact bytes
+before publication. It does not invoke Codex or receive Codex credentials.
 
 Use CLI help as the exact command authority:
 

@@ -608,10 +608,12 @@ declare
 begin
   perform aiq_private.require_request_role('aiq_verifier');
   if requested_kind not in (
-    'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
+    'capability-marker.txt', 'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
     'workspace-manifest.json', 'workspace-snapshot.json'
   )
     or not coalesce(requested_sha256 ~ '^[0-9a-f]{64}$', false)
+    or (requested_kind = 'capability-marker.txt' and requested_sha256 <>
+      '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3')
   then
     raise exception 'invalid artifact reference' using errcode = '22023';
   end if;
@@ -968,7 +970,7 @@ begin
         or not aiq_private.jsonb_sha256_field_is_valid(
           stage, 'capability_validation_digest', true
         )
-        or aiq_private.run_provenance_v2_matches_stage(stage_provenance, stage)
+        or aiq_private.run_provenance_v3_matches_stage(stage_provenance, stage)
           is distinct from true
       )
     )
@@ -1591,7 +1593,7 @@ begin
       'authentication_probe','cli_probe','manifest_issues','models',
       'node_id','schema_version'
     ]::text[])
-    or candidate ->> 'schema_version' <> 'aiq.capability-validation.v2'
+    or candidate ->> 'schema_version' <> 'aiq.capability-validation.v3'
     or jsonb_typeof(candidate -> 'node_id') <> 'string'
     or candidate ->> 'node_id' !~ '^node_[0-9a-f]{64}$'
     or jsonb_typeof(candidate -> 'manifest_issues') <> 'array'
@@ -1639,7 +1641,8 @@ begin
       or probe ->> 'observed_at' !~ '^unix-ms:[0-9]{1,39}$'
       or not aiq_private.dto_sha256_is_valid(probe -> 'evidence_digest')
       or not aiq_private.dto_artifact_array_is_valid(
-        probe -> 'artifacts', array['stdout.jsonl','stderr.txt'], 2
+        probe -> 'artifacts',
+        array['stdout.jsonl','stderr.txt','capability-marker.txt'], 3
       )
       or probe ->> 'status' not in ('available','observed_unsupported','failed')
       or not (
@@ -1655,11 +1658,25 @@ begin
         or jsonb_typeof(probe -> 'result_preview') <> 'string'
         or octet_length(probe ->> 'result_preview') > 64
         or probe -> 'failure' <> 'null'::jsonb
+        or 1 <> (
+          select count(*)
+          from jsonb_array_elements(probe -> 'artifacts') artifact
+          where artifact ->> 'kind' = 'capability-marker.txt'
+            and artifact ->> 'content_hash' =
+              'sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3'
+            and artifact ->> 'uri' =
+              'aiq-artifact://sha256/83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3/capability-marker.txt'
+            and artifact ->> 'bytes' = '36'
+        )
       then return false;
       end if;
     elsif probe -> 'result_digest' <> 'null'::jsonb
       or probe -> 'result_preview' <> 'null'::jsonb
       or not aiq_private.dto_adapter_failure_is_valid(probe -> 'failure')
+      or exists (
+        select 1 from jsonb_array_elements(probe -> 'artifacts') artifact
+        where artifact ->> 'kind' = 'capability-marker.txt'
+      )
     then return false;
     end if;
     evidence := jsonb_build_array(
@@ -1987,14 +2004,14 @@ declare
 begin
   if jsonb_typeof(candidate) <> 'object'
     or not aiq_private.has_exact_jsonb_keys(candidate, array[
-      'catalog_digest','codex_executable_digest','corpus_commitment_sha256',
+      'catalog_digest','codex_code_mode_host_digest','codex_executable_digest','corpus_commitment_sha256',
       'corpus_release_id','environment_digest','evaluator_digest',
       'harness_digest','network_policy_digest','permission_evidence_digest','preflight_digest',
       'prompt_digest','run_class','runner_executable_digest','runtime_digest',
       'schema_version','source_manifest_digest','task_set_digest',
       'tool_policy_digest'
     ]::text[])
-    or candidate ->> 'schema_version' <> 'aiq.run-provenance.v2'
+    or candidate ->> 'schema_version' <> 'aiq.run-provenance.v3'
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
@@ -2008,7 +2025,7 @@ begin
   then return false;
   end if;
   foreach field in array array[
-    'catalog_digest','codex_executable_digest','corpus_commitment_sha256',
+    'catalog_digest','codex_code_mode_host_digest','codex_executable_digest','corpus_commitment_sha256',
     'environment_digest','evaluator_digest','harness_digest',
       'network_policy_digest','permission_evidence_digest','preflight_digest','prompt_digest',
     'runner_executable_digest','runtime_digest','source_manifest_digest',
@@ -2228,6 +2245,10 @@ begin
       case when supplied_artifact_kind = 'evaluator-results.json'
         then 3948544 else 4194304 end
     )
+    or (supplied_artifact_kind = 'capability-marker.txt' and (
+      supplied_sha256 <> '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3'
+      or supplied_bytes <> 36
+    ))
     or supplied_retention_class not in ('ephemeral_30d', 'audit_1y', 'preserve')
     or ((supplied_retention_class = 'preserve') is distinct from (supplied_expires_at is null))
     or (
@@ -2239,7 +2260,7 @@ begin
       supplied_object_type = 'runner_artifact'
       and (
         supplied_artifact_kind not in (
-          'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
+          'capability-marker.txt', 'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
           'workspace-manifest.json', 'workspace-snapshot.json'
         )
         or supplied_path is distinct from
@@ -4320,10 +4341,10 @@ $$;
 
 
 --
--- Name: run_provenance_v2_is_valid(jsonb); Type: function; Schema: aiq_private; Owner: -
+-- Name: run_provenance_v3_is_valid(jsonb); Type: function; Schema: aiq_private; Owner: -
 --
 
-create function aiq_private.run_provenance_v2_is_valid(candidate jsonb) returns boolean
+create function aiq_private.run_provenance_v3_is_valid(candidate jsonb) returns boolean
     language plpgsql stable
     SET search_path to ''
     as $_$
@@ -4334,7 +4355,7 @@ begin
     or not aiq_private.has_exact_jsonb_keys(
     candidate,
     array[
-      'catalog_digest', 'codex_executable_digest',
+      'catalog_digest', 'codex_code_mode_host_digest', 'codex_executable_digest',
       'corpus_commitment_sha256', 'corpus_release_id',
       'environment_digest', 'evaluator_digest', 'harness_digest',
       'network_policy_digest', 'permission_evidence_digest', 'preflight_digest',
@@ -4344,7 +4365,7 @@ begin
     ]::text[]
   )
     or jsonb_typeof(candidate -> 'schema_version') is distinct from 'string'
-    or candidate ->> 'schema_version' is distinct from 'aiq.run-provenance.v2'
+    or candidate ->> 'schema_version' is distinct from 'aiq.run-provenance.v3'
     or jsonb_typeof(candidate -> 'run_class') is distinct from 'string'
     or candidate ->> 'run_class' not in ('official', 'calibration')
     or jsonb_typeof(candidate -> 'corpus_release_id') is distinct from 'string'
@@ -4358,7 +4379,7 @@ begin
   end if;
 
   foreach digest_key in array array[
-    'catalog_digest', 'codex_executable_digest',
+    'catalog_digest', 'codex_code_mode_host_digest', 'codex_executable_digest',
     'corpus_commitment_sha256', 'environment_digest', 'evaluator_digest',
     'harness_digest', 'network_policy_digest', 'permission_evidence_digest', 'preflight_digest',
     'prompt_digest', 'runner_executable_digest', 'runtime_digest',
@@ -4379,15 +4400,15 @@ $_$;
 
 
 --
--- Name: run_provenance_v2_matches_stage(jsonb, jsonb); Type: function; Schema: aiq_private; Owner: -
+-- Name: run_provenance_v3_matches_stage(jsonb, jsonb); Type: function; Schema: aiq_private; Owner: -
 --
 
-create function aiq_private.run_provenance_v2_matches_stage(candidate jsonb, stage jsonb) returns boolean
+create function aiq_private.run_provenance_v3_matches_stage(candidate jsonb, stage jsonb) returns boolean
     language plpgsql stable
     SET search_path to ''
     as $$
 begin
-  if aiq_private.run_provenance_v2_is_valid(candidate) is distinct from true
+  if aiq_private.run_provenance_v3_is_valid(candidate) is distinct from true
     or jsonb_typeof(stage) is distinct from 'object'
     or jsonb_typeof(stage -> 'run_class') is distinct from 'string'
     or stage ->> 'run_class' is distinct from 'official'
@@ -4808,7 +4829,7 @@ begin
           ]::text[]
         )
         or payload -> 'capability_validation' ->> 'schema_version'
-          is distinct from 'aiq.capability-validation.v2'
+          is distinct from 'aiq.capability-validation.v3'
         or payload -> 'capability_validation' ->> 'node_id'
           is distinct from source_node
         or jsonb_typeof(payload -> 'capability_validation' -> 'manifest_issues')
@@ -6286,7 +6307,7 @@ begin
       not batch.synthetic
       and (
         batch.normalized_stage is null
-        or aiq_private.run_provenance_v2_is_valid(batch.run_provenance)
+        or aiq_private.run_provenance_v3_is_valid(batch.run_provenance)
           is distinct from true
         or batch.run_provenance ->> 'run_class' is distinct from 'official'
         or aiq_private.production_execution_identities_are_authorized(
@@ -6609,7 +6630,7 @@ begin
           attestation -> 'provenance'
         or batch.normalized_stage ->> 'normalization_digest' is distinct from
           attestation ->> 'normalization_digest'
-        or aiq_private.run_provenance_v2_is_valid(
+        or aiq_private.run_provenance_v3_is_valid(
           attestation -> 'provenance'
         ) is distinct from true
       )
@@ -7991,13 +8012,17 @@ begin
   perform aiq_private.require_request_role('service_role');
   if not coalesce(target_run_id ~ '^run_[0-9a-f]{64}$', false)
     or supplied_kind not in (
-      'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
+      'capability-marker.txt', 'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
       'workspace-manifest.json', 'workspace-snapshot.json'
     )
     or not coalesce(supplied_sha256 ~ '^[0-9a-f]{64}$', false)
     or supplied_byte_size not between 1 and (
       case when supplied_kind = 'evaluator-results.json' then 3948544 else 4194304 end
     )
+    or (supplied_kind = 'capability-marker.txt' and (
+      supplied_sha256 <> '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3'
+      or supplied_byte_size <> 36
+    ))
     or not aiq_private.has_exact_jsonb_keys(
       object_identity, array['bucket', 'key']::text[]
     )
@@ -8753,14 +8778,21 @@ create table aiq_private.aiq_artifact_ingress_objects (
     byte_size bigint not null,
     received_at timestamp with time zone default now() not null,
     expires_at timestamp with time zone default (now() + '30 days'::interval) not null,
-    constraint aiq_artifact_ingress_objects_artifact_kind_check check ((artifact_kind = ANY (ARRAY['evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text]))),
+    constraint aiq_artifact_ingress_objects_artifact_kind_check check ((artifact_kind = ANY (ARRAY['capability-marker.txt'::text, 'evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text]))),
     constraint aiq_artifact_ingress_objects_bucket_name_check check ((bucket_name <> ''::text)),
     constraint aiq_artifact_ingress_objects_check check ((object_path = ((('sha256/'::text || content_sha256) || '/'::text) || artifact_kind))),
-    constraint aiq_artifact_ingress_objects_check1 check (((artifact_kind = ANY (ARRAY['evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text])) and ((byte_size >= 1) and (byte_size <=
-case
-    when (artifact_kind = 'evaluator-results.json'::text) then 3948544
-    else 4194304
-end)))),
+    constraint aiq_artifact_ingress_objects_check1 check (
+        artifact_kind = ANY (ARRAY['capability-marker.txt'::text, 'evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text])
+        and byte_size between 1 and case
+            when artifact_kind = 'capability-marker.txt'::text then 36
+            when artifact_kind = 'evaluator-results.json'::text then 3948544
+            else 4194304
+        end
+        and (
+            artifact_kind <> 'capability-marker.txt'::text
+            or (byte_size = 36 and content_sha256 = '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3'::text)
+        )
+    ),
     constraint aiq_artifact_ingress_objects_check2 check ((expires_at >= (received_at + '30 days'::interval))),
     constraint aiq_artifact_ingress_objects_content_sha256_check check ((content_sha256 ~ '^[0-9a-f]{64}$'::text))
 );
@@ -9099,7 +9131,7 @@ create table aiq_private.aiq_node_capability_snapshots (
     validated_at timestamp with time zone not null,
     created_at timestamp with time zone default now() not null,
     validation_report jsonb,
-    constraint aiq_capability_validation_report_shape check (((validation_report IS null) or ((jsonb_typeof(validation_report) = 'object'::text) and ((validation_report ->> 'schema_version'::text) = 'aiq.capability-validation.v2'::text)))),
+    constraint aiq_capability_validation_report_shape check (((validation_report IS null) or ((jsonb_typeof(validation_report) = 'object'::text) and ((validation_report ->> 'schema_version'::text) = 'aiq.capability-validation.v3'::text)))),
     constraint aiq_node_capability_snapshots_capability_sha256_check check ((capability_sha256 ~ '^[0-9a-f]{64}$'::text)),
     constraint aiq_node_capability_snapshots_harness_sha256_check check ((harness_sha256 ~ '^[0-9a-f]{64}$'::text)),
     constraint aiq_node_capability_snapshots_runner_sha256_check check ((runner_sha256 ~ '^[0-9a-f]{64}$'::text)),
@@ -9367,12 +9399,18 @@ create table aiq_private.aiq_storage_objects (
     registered_at timestamp with time zone default now() not null,
     updated_at timestamp with time zone default now() not null,
     constraint aiq_storage_objects_bucket_name_check check ((((object_type = 'submission_package'::text) and (bucket_name = 'aiq-submission-packages'::text)) or ((object_type = 'runner_artifact'::text) and (bucket_name = 'aiq-runner-artifacts'::text)))),
-    constraint aiq_storage_objects_check check ((((object_type = 'submission_package'::text) and (artifact_kind IS null) and (object_path = ('sha256/'::text || content_sha256))) or ((object_type = 'runner_artifact'::text) and (artifact_kind = ANY (ARRAY['evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text])) and (object_path = ((('sha256/'::text || content_sha256) || '/'::text) || artifact_kind))))),
-    constraint aiq_storage_objects_check1 check (((byte_size >= 1) and (byte_size <=
-case
-    when (artifact_kind = 'evaluator-results.json'::text) then 3948544
-    else 4194304
-end))),
+    constraint aiq_storage_objects_check check ((((object_type = 'submission_package'::text) and (artifact_kind IS null) and (object_path = ('sha256/'::text || content_sha256))) or ((object_type = 'runner_artifact'::text) and (artifact_kind = ANY (ARRAY['capability-marker.txt'::text, 'evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text])) and (object_path = ((('sha256/'::text || content_sha256) || '/'::text) || artifact_kind))))),
+    constraint aiq_storage_objects_check1 check (
+        byte_size between 1 and case
+            when artifact_kind = 'capability-marker.txt'::text then 36
+            when artifact_kind = 'evaluator-results.json'::text then 3948544
+            else 4194304
+        end
+        and (
+            artifact_kind <> 'capability-marker.txt'::text
+            or (byte_size = 36 and content_sha256 = '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3'::text)
+        )
+    ),
     constraint aiq_storage_objects_check2 check (((retention_class = 'preserve'::text) = (expires_at IS null))),
     constraint aiq_storage_objects_check3 check ((((deletion_lease_token IS null) and (deletion_lease_expires_at IS null)) or ((deletion_lease_token IS not null) and (deletion_lease_expires_at IS not null)))),
     constraint aiq_storage_objects_check4 check (((lifecycle_state = 'delete_pending'::text) = (deletion_lease_token IS not null))),
@@ -12473,17 +12511,17 @@ revoke all on function aiq_private.run_evidence_is_staged(target_run_id text) fr
 
 
 --
--- Name: function run_provenance_v2_is_valid(candidate jsonb); Type: ACL; Schema: aiq_private; Owner: -
+-- Name: function run_provenance_v3_is_valid(candidate jsonb); Type: ACL; Schema: aiq_private; Owner: -
 --
 
-revoke all on function aiq_private.run_provenance_v2_is_valid(candidate jsonb) from PUBLIC;
+revoke all on function aiq_private.run_provenance_v3_is_valid(candidate jsonb) from PUBLIC;
 
 
 --
--- Name: function run_provenance_v2_matches_stage(candidate jsonb, stage jsonb); Type: ACL; Schema: aiq_private; Owner: -
+-- Name: function run_provenance_v3_matches_stage(candidate jsonb, stage jsonb); Type: ACL; Schema: aiq_private; Owner: -
 --
 
-revoke all on function aiq_private.run_provenance_v2_matches_stage(candidate jsonb, stage jsonb) from PUBLIC;
+revoke all on function aiq_private.run_provenance_v3_matches_stage(candidate jsonb, stage jsonb) from PUBLIC;
 
 
 --
@@ -13990,7 +14028,7 @@ begin
   then return false; end if;
   preflight := payload -> 'capability_validation';
   if jsonb_typeof(preflight) <> 'object'
-    or preflight ->> 'schema_version' <> 'aiq.capability-validation.v2'
+    or preflight ->> 'schema_version' <> 'aiq.capability-validation.v3'
     or preflight ->> 'node_id' is distinct from envelope #>> '{signer,node_id}'
     or jsonb_typeof(preflight -> 'models') <> 'array'
     or (select jsonb_agg(value -> 'model' order by ordinality)
@@ -13998,7 +14036,7 @@ begin
        is distinct from payload -> 'models'
   then return false; end if;
   provenance := payload -> 'provenance';
-  if aiq_private.run_provenance_v2_is_valid(provenance) is not true
+  if aiq_private.run_provenance_v3_is_valid(provenance) is not true
     or provenance ->> 'run_class' <> 'calibration'
     or aiq_private.production_execution_identities_are_authorized(
       envelope #>> '{signer,node_id}',null
