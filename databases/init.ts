@@ -1043,7 +1043,7 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.6', '1.0.6')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.6', '1.0.7')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
