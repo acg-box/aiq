@@ -49,6 +49,7 @@ use aiq_runner::{
 		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment,
 		ValidatedCorpusCommitment, ValidatedModelToolchain,
 	},
+	corpus_seal::{self, CorpusKind, SealOptions},
 	isolation::{self, ProtectedBenchmarkPath},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
 	normalization::{
@@ -1168,6 +1169,48 @@ enum Command {
 		#[arg(long)]
 		codex_toolchain_root: PathBuf,
 	},
+	/// Seal complete retained controlled assets into a new corpus without invoking Codex.
+	SealCorpus {
+		/// Exact catalog authority to enforce.
+		#[arg(long, value_enum)]
+		corpus_kind: CorpusKind,
+		/// New release identity. The sealer never copies a predecessor identity.
+		#[arg(long)]
+		release_id: String,
+		#[arg(long)]
+		/// Directory containing exactly one canonical hidden task JSON per task.
+		tasks_root: PathBuf,
+		#[arg(long)]
+		/// Directory containing one runtime baseline directory per task identifier.
+		baselines_root: PathBuf,
+		#[arg(long)]
+		/// Directory containing one six-class acceptance directory per task identifier.
+		acceptance_root: PathBuf,
+		#[arg(long)]
+		/// Controlled root containing the one evaluator referenced by every task.
+		evaluator_root: PathBuf,
+		#[arg(long)]
+		/// Exact Node.js executable used by the evaluator and controlled toolchain.
+		evaluator_runtime: PathBuf,
+		#[arg(long)]
+		/// Controlled directory containing exactly the committed Node.js and ripgrep tools.
+		codex_toolchain_root: PathBuf,
+		#[arg(long)]
+		/// Clean repository root covered by the checked-in source inventory.
+		source_root: PathBuf,
+		/// Exact lowercase Git commit identity for the source snapshot.
+		#[arg(long)]
+		source_commit: String,
+		/// Exact lowercase Git tree identity for the source snapshot.
+		#[arg(long)]
+		source_tree: String,
+		/// Typed `aiq.corpus-runtime-authority.v1` input.
+		#[arg(long)]
+		runtime_authority: PathBuf,
+		/// New private directory installed atomically after complete round-trip validation.
+		#[arg(long)]
+		output: PathBuf,
+	},
 	/// Actively validate and persist an authenticated, expiring capability report.
 	Preflight {
 		/// Capability manifest to compare with the local Codex CLI.
@@ -1626,6 +1669,44 @@ enum CorpusValidationMode {
 	Contrast { expected_corpus_sha256: String },
 }
 
+#[cfg(unix)]
+pub(crate) fn atomic_rename_no_replace(source: &Path, destination: &Path) -> Result<(), io::Error> {
+	let source = CString::new(source.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("rename source contains a NUL byte"))?;
+	let destination = CString::new(destination.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("rename destination contains a NUL byte"))?;
+	#[cfg(target_os = "linux")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe {
+		libc::renameat2(AT_FDCWD, source.as_ptr(), AT_FDCWD, destination.as_ptr(), RENAME_NOREPLACE)
+	};
+	#[cfg(target_vendor = "apple")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), RENAME_EXCL) };
+
+	#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+	{
+		return Err(io::Error::new(
+			ErrorKind::Unsupported,
+			"atomic no-replace rename is unavailable on this Unix platform",
+		));
+	}
+
+	#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+	if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn atomic_rename_no_replace(
+	_source: &Path,
+	_destination: &Path,
+) -> Result<(), io::Error> {
+	Err(io::Error::new(
+		ErrorKind::Unsupported,
+		"atomic no-replace rename is unavailable on this platform",
+	))
+}
+
 fn read_held_bounded_file(
 	file: &File,
 	label: &str,
@@ -1688,6 +1769,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 		command @ (Command::ValidateCoreCorpus { .. }
 		| Command::ValidateContrastCorpus { .. }
 		| Command::Validate { .. }) => dispatch_corpus_validation(command)?,
+		command @ Command::SealCorpus { .. } => dispatch_corpus_seal(command)?,
 		Command::Preflight {
 			capabilities,
 			corpus_commitment,
@@ -1792,6 +1874,46 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 		command @ Command::Normalize { .. } => run_normalize_command(command)?,
 		command @ Command::PermissionProbe { .. } => dispatch_permission_probe(command)?,
 	}
+
+	Ok(())
+}
+
+fn dispatch_corpus_seal(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::SealCorpus {
+		corpus_kind,
+		release_id,
+		tasks_root,
+		baselines_root,
+		acceptance_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		source_root,
+		source_commit,
+		source_tree,
+		runtime_authority,
+		output,
+	} = command
+	else {
+		unreachable!("dispatch requires seal-corpus")
+	};
+	let canonical_sha256 = corpus_seal::seal_corpus(&SealOptions {
+		corpus_kind,
+		release_id,
+		tasks_root,
+		baselines_root,
+		acceptance_root,
+		evaluator_root,
+		evaluator_runtime,
+		codex_toolchain_root,
+		source_root,
+		source_commit,
+		source_tree,
+		runtime_authority,
+		output,
+	})?;
+
+	println!("{canonical_sha256}");
 
 	Ok(())
 }
@@ -5511,41 +5633,6 @@ fn atomic_exchange_paths(_left: &Path, _right: &Path) -> Result<(), io::Error> {
 	))
 }
 
-#[cfg(unix)]
-fn atomic_rename_no_replace(source: &Path, destination: &Path) -> Result<(), io::Error> {
-	let source = CString::new(source.as_os_str().as_bytes())
-		.map_err(|_| io::Error::other("rename source contains a NUL byte"))?;
-	let destination = CString::new(destination.as_os_str().as_bytes())
-		.map_err(|_| io::Error::other("rename destination contains a NUL byte"))?;
-	#[cfg(target_os = "linux")]
-	// SAFETY: both C strings remain live for the call and contain no interior NUL.
-	let result = unsafe {
-		libc::renameat2(AT_FDCWD, source.as_ptr(), AT_FDCWD, destination.as_ptr(), RENAME_NOREPLACE)
-	};
-	#[cfg(target_vendor = "apple")]
-	// SAFETY: both C strings remain live for the call and contain no interior NUL.
-	let result = unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), RENAME_EXCL) };
-
-	#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
-	{
-		return Err(io::Error::new(
-			ErrorKind::Unsupported,
-			"atomic no-replace rename is unavailable on this Unix platform",
-		));
-	}
-
-	#[cfg(any(target_os = "linux", target_vendor = "apple"))]
-	if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
-}
-
-#[cfg(not(unix))]
-fn atomic_rename_no_replace(_source: &Path, _destination: &Path) -> Result<(), io::Error> {
-	Err(io::Error::new(
-		ErrorKind::Unsupported,
-		"atomic no-replace rename is unavailable on this platform",
-	))
-}
-
 fn sync_parent_directory(path: &Path, label: &str) -> Result<(), Box<dyn std::error::Error>> {
 	let parent = path.parent().ok_or("protected output has no parent")?;
 
@@ -6102,6 +6189,39 @@ mod tests {
 			contrast,
 			Ok(super::Cli { command: super::Command::ValidateContrastCorpus { .. } })
 		));
+
+		let seal = super::Cli::try_parse_from([
+			"aiq-runner",
+			"seal-corpus",
+			"--corpus-kind",
+			"core",
+			"--release-id",
+			"core-sealed-v1",
+			"--tasks-root",
+			"/controlled/tasks",
+			"--baselines-root",
+			"/controlled/baselines",
+			"--acceptance-root",
+			"/controlled/acceptance",
+			"--evaluator-root",
+			"/controlled/evaluator",
+			"--evaluator-runtime",
+			"/controlled/toolchain/node",
+			"--codex-toolchain-root",
+			"/controlled/toolchain",
+			"--source-root",
+			"/controlled/source",
+			"--source-commit",
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"--source-tree",
+			"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"--runtime-authority",
+			"/controlled/runtime-authority.json",
+			"--output",
+			"/controlled/sealed",
+		]);
+
+		assert!(matches!(seal, Ok(super::Cli { command: super::Command::SealCorpus { .. } })));
 		assert!(super::Cli::try_parse_from(["aiq-runner", "candidate", "plan"]).is_err());
 		assert!(super::Cli::try_parse_from(["aiq-runner", "replay-candidate"]).is_err());
 	}
