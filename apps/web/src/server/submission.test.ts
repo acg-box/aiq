@@ -62,6 +62,23 @@ const scheduleSlot = {
   timezone: 'UTC',
 };
 const models = modelMatrix.map(([family, reasoning_effort]) => ({ family, reasoning_effort }));
+const taskIds = [
+  ['coding', 8],
+  ['debugging', 8],
+  ['repository-understanding', 7],
+  ['data-processing', 8],
+  ['retrieval-verification', 7],
+  ['documentation-communication', 7],
+  ['planning-execution', 7],
+  ['tool-use', 7],
+  ['instruction-following', 6],
+  ['reliability-recovery', 7],
+].flatMap(([prefix, count]) =>
+  Array.from(
+    { length: Number(count) },
+    (_, index) => `${String(prefix)}-${String(index + 1).padStart(2, '0')}`,
+  ),
+);
 const taskHashes = Array.from({ length: 72 }, (_, index) => `sha256:${sha256Hex(`task-${index}`)}`);
 const taskSetHash = `sha256:${sha256Hex(canonicalJson(taskHashes.toSorted()))}`;
 const fixtureRunId = `run_${sha256Hex(
@@ -81,8 +98,8 @@ function syntheticResults(): Record<string, unknown>[] {
         schema_version: 'aiq.result.v2',
         result_id: '',
         run_id: fixtureRunId,
-        task_id: `task-${taskIndex}`,
-        task_version: OFFICIAL_SCORING_VERSION,
+        task_id: taskIds[taskIndex],
+        task_version: '1.0.6',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'failed',
@@ -124,6 +141,42 @@ function artifact(kind: string, seed: string, bytes = 1): Record<string, unknown
     content_hash: `sha256:${hash}`,
     uri: `aiq-artifact://sha256/${hash}/${kind}`,
     bytes,
+  };
+}
+
+function terminalAttemptLineage(results: readonly Record<string, unknown>[]) {
+  return results.map((result) => ({
+    task_id: result.task_id,
+    task_version: result.task_version,
+    model: result.model,
+    terminal_result_ids: [result.result_id],
+    selected_result_id: result.result_id,
+  }));
+}
+
+function frozenCalibrationBank(): Record<string, unknown> {
+  return {
+    schema_version: 'aiq.calibration-bank.v2',
+    scoring_version: OFFICIAL_SCORING_VERSION,
+    measurement_version: '2.0.0',
+    method: 'rasch_fractional_fixed_bank_map_v2',
+    source_package_sha256: digest('2'),
+    source_scoring_version: '1.0.6',
+    task_set_id: 'aiq-core',
+    task_set_version: '1.0.6',
+    task_set_digest: taskSetHash,
+    catalog_digest: FROZEN_CATALOG_DIGEST,
+    evaluator_digest: digest('4'),
+    policy_digest: digest('5'),
+    calibration_model_count: 17,
+    items: taskIds.map((taskId) => ({
+      task_id: taskId,
+      task_version: '1.0.6',
+      domain: taskId.slice(0, taskId.lastIndexOf('-')).replaceAll('-', '_'),
+      facility: 0.5,
+      difficulty: 0,
+      mean_item_information: 0.25,
+    })),
   };
 }
 
@@ -236,8 +289,8 @@ function officialPackage(): Record<string, unknown> {
         schema_version: 'aiq.result.v2',
         result_id: '',
         run_id: runId,
-        task_id: `task-${taskIndex}`,
-        task_version: OFFICIAL_SCORING_VERSION,
+        task_id: taskIds[taskIndex],
+        task_version: '1.0.6',
         task_hash: taskHashes[taskIndex],
         model,
         status: 'completed',
@@ -276,7 +329,10 @@ function officialPackage(): Record<string, unknown> {
     payloadOverrides: {
       run_id: runId,
       capability_validation: capability,
+      calibration_admission_digest: digest('6'),
+      calibration_bank: frozenCalibrationBank(),
       results,
+      terminal_attempt_lineage: terminalAttemptLineage(results),
     },
   });
 }
@@ -321,13 +377,16 @@ function calibrationPackage(): Record<string, unknown> {
     scoring_version: OFFICIAL_SCORING_VERSION,
     execution_concurrency: 17,
     models: [selectedModel],
-    task_ids: ['task-0'],
+    task_ids: [taskIds[0]],
     started_unix_ms: 1,
     finished_unix_ms: 2,
     capability_validation: capability,
     provenance,
     evaluator_results_artifact: officialPayload.evaluator_results_artifact,
     results: [result],
+    calibration_admission_digest: null,
+    calibration_bank: null,
+    terminal_attempt_lineage: terminalAttemptLineage([result]),
   };
   return resignPackage({
     schema_version: RESULT_PACKAGE_SCHEMA,
@@ -391,13 +450,16 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       scoring_version: OFFICIAL_SCORING_VERSION,
       execution_concurrency: 17,
       models,
-      task_ids: Array.from({ length: 72 }, (_, index) => `task-${index}`),
+      task_ids: taskIds,
       started_unix_ms: 1,
       finished_unix_ms: 2,
       capability_validation: capability,
       provenance,
       evaluator_results_artifact: officialPayload.evaluator_results_artifact,
       results,
+      calibration_admission_digest: null,
+      calibration_bank: null,
+      terminal_attempt_lineage: terminalAttemptLineage(results),
     },
     signature: '',
   });
@@ -442,8 +504,13 @@ function signedPackage(
     },
     models: [...models],
     results: syntheticResults(),
+    calibration_admission_digest: null,
+    calibration_bank: null,
     ...options.payloadOverrides,
   };
+  payload.terminal_attempt_lineage = terminalAttemptLineage(
+    payload.results as readonly Record<string, unknown>[],
+  );
   const runId = payload.run_id as string;
   const envelope: Record<string, unknown> = {
     schema_version: options.schemaVersion ?? RESULT_PACKAGE_SCHEMA,
@@ -476,8 +543,16 @@ function cloneFixture(): Record<string, unknown> {
   return structuredClone(fixture);
 }
 
-function resignPackage(envelope: Record<string, unknown>): Record<string, unknown> {
+function resignPackage(
+  envelope: Record<string, unknown>,
+  synchronizeLineage = false,
+): Record<string, unknown> {
   const payload = envelope.payload as Record<string, unknown>;
+  if (synchronizeLineage) {
+    payload.terminal_attempt_lineage = terminalAttemptLineage(
+      payload.results as readonly Record<string, unknown>[],
+    );
+  }
   envelope.content_hash = `sha256:${sha256Hex(canonicalJson(payload))}`;
   const unsigned = Object.fromEntries(
     Object.entries(envelope).filter(([key]) => key !== 'signature'),
@@ -571,9 +646,13 @@ function rehashResult(result: Record<string, unknown>): void {
 }
 
 void describe('shared result-package contract', () => {
-  void it('accepts a complete signed v3 synthetic RunRecord', () => {
+  void it('accepts a complete signed v4 synthetic RunRecord', () => {
     const validation = validateSubmission(fixture);
-    assert.equal(validation.ok, true);
+    assert.equal(
+      validation.ok,
+      true,
+      JSON.stringify({ validation, keys: Object.keys(fixture.payload as Record<string, unknown>) }),
+    );
     if (!validation.ok) {
       return;
     }
@@ -585,7 +664,7 @@ void describe('shared result-package contract', () => {
     const currentFixture = JSON.parse(
       readFileSync(
         new URL(
-          '../../../../benchmarks/fixtures/result-package-v3.synthetic.json',
+          '../../../../benchmarks/fixtures/result-package-v4.synthetic.json',
           import.meta.url,
         ),
         'utf8',
@@ -608,6 +687,39 @@ void describe('shared result-package contract', () => {
     assert.equal(validation.submission.envelope.payload.models.length, 17);
     assert.equal(validation.submission.envelope.payload.results.length, 1_224);
     assert.equal(validation.submission.envelope.payload.provenance?.run_class, 'official');
+  });
+
+  void it('rejects malformed frozen calibration-bank items at the Web boundary', () => {
+    const mutations: ReadonlyArray<
+      readonly [string, (item: Record<string, unknown>, bank: Record<string, unknown>) => void]
+    > = [
+      ['missing item field', (item) => void delete item.mean_item_information],
+      ['unknown item field', (item) => void (item.unexpected = true)],
+      ['wrong task identity', (item) => void (item.task_id = 'coding-08')],
+      ['wrong task version', (item) => void (item.task_version = OFFICIAL_SCORING_VERSION)],
+      ['wrong domain', (item) => void (item.domain = 'debugging')],
+      ['non-finite facility', (item) => void (item.facility = Number.POSITIVE_INFINITY)],
+      ['facility above one', (item) => void (item.facility = 1.01)],
+      ['non-finite difficulty', (item) => void (item.difficulty = Number.NaN)],
+      ['information above one quarter', (item) => void (item.mean_item_information = 0.251)],
+      [
+        'uncentered difficulties',
+        (item) => {
+          item.difficulty = 0.001;
+        },
+      ],
+      ['wrong catalog identity', (_item, bank) => void (bank.catalog_digest = digest('7'))],
+    ];
+
+    for (const [label, mutate] of mutations) {
+      const candidate = officialPackage();
+      const payload = candidate.payload as Record<string, unknown>;
+      const bank = payload.calibration_bank as Record<string, unknown>;
+      const firstItem = (bank.items as Record<string, unknown>[])[0];
+      assert.ok(firstItem);
+      mutate(firstItem, bank);
+      assert.equal(validateSubmission(resignPackage(candidate)).ok, false, label);
+    }
   });
 
   void it('admits only exact signed untrusted selected calibration packages', () => {
@@ -801,7 +913,7 @@ void describe('shared result-package contract', () => {
       workspace_manifest: null,
     });
     rehashResult(result);
-    assert.equal(validateSubmission(resignPackage(unattempted)).ok, true);
+    assert.equal(validateSubmission(resignPackage(unattempted, true)).ok, true);
 
     const brokenEvidence = officialPackage();
     const capability = (brokenEvidence.payload as Record<string, unknown>)
@@ -886,7 +998,7 @@ void describe('shared result-package contract', () => {
         result.workspace_manifest = null;
       }
       rehashResult(result);
-      return resignPackage(candidate);
+      return resignPackage(candidate, true);
     };
 
     assert.equal(validateSubmission(workspaceIntegrityPackage(true)).ok, true);
@@ -932,7 +1044,7 @@ void describe('shared result-package contract', () => {
       },
     });
     rehashResult(unevaluatedResult);
-    assert.equal(validateSubmission(resignPackage(unevaluated)).ok, true);
+    assert.equal(validateSubmission(resignPackage(unevaluated, true)).ok, true);
 
     const failed = officialPackage();
     const failedResult = firstResult(failed);
@@ -952,7 +1064,7 @@ void describe('shared result-package contract', () => {
       },
     });
     rehashResult(failedResult);
-    assert.equal(validateSubmission(resignPackage(failed)).ok, true);
+    assert.equal(validateSubmission(resignPackage(failed, true)).ok, true);
 
     const failedWithSemanticZero = structuredClone(failed);
     firstResult(failedWithSemanticZero).task_score = 0;
@@ -977,7 +1089,7 @@ void describe('shared result-package contract', () => {
       },
     });
     rehashResult(subscriptionLimitedResult);
-    assert.equal(validateSubmission(resignPackage(subscriptionLimited)).ok, true);
+    assert.equal(validateSubmission(resignPackage(subscriptionLimited, true)).ok, true);
 
     const failedWithEvaluatorStdout = structuredClone(failed);
     firstResult(failedWithEvaluatorStdout).evaluator_stdout_sha256 = digest('e');
@@ -1044,7 +1156,7 @@ void describe('shared result-package contract', () => {
     }
     const provenance = payload.provenance as Record<string, unknown>;
     provenance.preflight_digest = `sha256:${sha256Hex(canonicalJson(capability))}`;
-    assert.equal(validateSubmission(resignPackage(unsupported)).ok, true);
+    assert.equal(validateSubmission(resignPackage(unsupported, true)).ok, true);
 
     const mismatch = structuredClone(unsupported);
     firstResult(mismatch).status = 'failed';
@@ -1062,7 +1174,7 @@ void describe('shared result-package contract', () => {
       result.response = value;
       result.response_sha256 = `sha256:${sha256Hex(value)}`;
       rehashResult(result);
-      assert.equal(validateSubmission(resignPackage(candidate)).ok, accepted);
+      assert.equal(validateSubmission(resignPackage(candidate, true)).ok, accepted);
     }
 
     for (const [value, accepted] of [
@@ -1322,7 +1434,7 @@ void describe('shared result-package contract', () => {
     completedResult.failure = null;
     completedResult.result_id = '';
     completedResult.result_id = `result_${sha256Hex(canonicalJson(completedResult))}`;
-    resignPackage(valid);
+    resignPackage(valid, true);
     assert.equal(validateSubmission(valid).ok, true);
 
     const missingArtifact = cloneFixture();
@@ -1387,7 +1499,7 @@ void describe('shared result-package contract', () => {
   void it('keeps the JSON Schema constants consistent with the implementation and fixture', () => {
     const schema = JSON.parse(
       readFileSync(
-        new URL('../../../../benchmarks/schema/result-package-v3.schema.json', import.meta.url),
+        new URL('../../../../benchmarks/schema/result-package-v4.schema.json', import.meta.url),
         'utf8',
       ),
     ) as {
@@ -1618,8 +1730,8 @@ void describe('submission handler', () => {
     const source = fixtureBytes.toString('utf8');
     const duplicates = [
       source.replace(
-        '"schema_version":"aiq.result-package.v3"',
-        '"schema_version":"aiq.result-package.v3","schema_version":"aiq.result-package.v3"',
+        '"schema_version":"aiq.result-package.v4"',
+        '"schema_version":"aiq.result-package.v4","schema_version":"aiq.result-package.v4"',
       ),
       source.replace(
         /"signature":"([^"]+)"/,

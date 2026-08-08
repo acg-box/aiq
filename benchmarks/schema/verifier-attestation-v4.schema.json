@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aiq.wiki/schema/verifier-attestation-v3.schema.json",
-  "title": "AIQ verifier attestation v3",
-  "description": "A signed verifier attestation over one aiq.normalized-batch.v3 stage. The production evaluator_replayed status means candidate workspace reconstruction and deterministic evaluator replay, not a model rerun. Cryptographic signature, key derivation, cross-field bindings, and policy bindings require the Rust verifier.",
+  "$id": "https://aiq.wiki/schema/verifier-attestation-v4.schema.json",
+  "title": "AIQ verifier attestation v4",
+  "description": "A signed verifier attestation over one aiq.normalized-batch.v4 stage. The production evaluator_replayed status means candidate workspace reconstruction and deterministic evaluator replay, not a model rerun. Cryptographic signature, key derivation, cross-field bindings, and policy bindings require the Rust verifier.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,6 +14,7 @@
     "content_hash",
     "normalization_digest",
     "task_set_hash",
+    "terminal_attempt_lineage_digest",
     "capability_validation_digest",
     "provenance",
     "benchmark_version",
@@ -28,7 +29,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "aiq.verifier-attestation.v3"
+      "const": "aiq.verifier-attestation.v4"
     },
     "signature_algorithm": {
       "const": "ed25519"
@@ -51,6 +52,7 @@
     "task_set_hash": {
       "$ref": "#/$defs/sha256"
     },
+    "terminal_attempt_lineage_digest": { "$ref": "#/$defs/sha256" },
     "capability_validation_digest": {
       "oneOf": [
         {
@@ -78,7 +80,7 @@
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "const": "1.0.6"
+      "const": "1.0.7"
     },
     "verifier": {
       "$ref": "#/$defs/nodeIdentity"

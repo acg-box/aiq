@@ -122,11 +122,11 @@ await test('checker rejects an unpinned security-definer function', async () => 
 
 await test('checker rejects a noncurrent publication contract', async () => {
   const [schema, syntheticDemo] = await sources();
-  const changed = schema.replace("'aiq.result-package.v3'::text", "'aiq.result-package.v4'::text");
+  const changed = schema.replace("'aiq.result-package.v4'::text", "'aiq.result-package.v3'::text");
   assert.notEqual(changed, schema);
   assert.throws(
     () => checkDatabaseSchemaSources(changed, syntheticDemo),
-    /only aiq\.result-package\.v3/,
+    /only aiq\.result-package\.v4/,
   );
 });
 

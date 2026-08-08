@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/calibration-admission-bundle-v2.schema.json",
+  "title": "AIQ calibration admission bundle v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stage", "attestation", "admission"],
+  "properties": {
+    "schema_version": { "const": "aiq.calibration-admission-bundle.v2" },
+    "stage": { "$ref": "calibration-verified-stage-v2.schema.json" },
+    "attestation": { "$ref": "calibration-verifier-attestation-v2.schema.json" },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "signature_algorithm",
+        "signature_version",
+        "claims",
+        "admission_digest",
+        "signature"
+      ],
+      "properties": {
+        "schema_version": { "const": "aiq.calibration-admission.v2" },
+        "signature_algorithm": { "const": "ed25519" },
+        "signature_version": { "const": "aiq.ed25519-jcs.v1" },
+        "claims": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "run_id",
+            "package_sha256",
+            "content_hash",
+            "stage_digest",
+            "attestation_digest",
+            "replay_runner",
+            "admission_verifier",
+            "classification",
+            "run_class",
+            "official_eligible",
+            "ranking_eligible",
+            "trust",
+            "replay_status",
+            "task_count",
+            "model_configuration_count",
+            "terminal_attempt_lineage_digest",
+            "task_set_hash",
+            "task_selection_digest",
+            "model_selection_digest",
+            "scoring_version",
+            "calibration_bank",
+            "calibration_bank_digest",
+            "replay_provenance",
+            "policy_digest",
+            "diagnostic_digest",
+            "diagnostic",
+            "issuance_bindings",
+            "observed_unix_ms"
+          ],
+          "properties": {
+            "run_id": { "$ref": "result-package-v4.schema.json#/$defs/runId" },
+            "package_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}(?![\\s\\S])" },
+            "content_hash": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "stage_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "attestation_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "replay_runner": { "$ref": "result-package-v4.schema.json#/properties/signer" },
+            "admission_verifier": { "$ref": "result-package-v4.schema.json#/properties/signer" },
+            "classification": { "const": "local_calibration_non_official" },
+            "run_class": { "const": "calibration" },
+            "official_eligible": { "const": false },
+            "ranking_eligible": { "const": false },
+            "trust": { "const": "untrusted" },
+            "replay_status": { "const": "evaluator_replayed" },
+            "task_count": { "const": 72 },
+            "model_configuration_count": { "const": 17 },
+            "terminal_attempt_lineage_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "task_set_hash": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "task_selection_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "model_selection_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "scoring_version": { "const": "1.0.7" },
+            "calibration_bank": { "$ref": "result-package-v4.schema.json#/$defs/calibrationBank" },
+            "calibration_bank_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "replay_provenance": { "$ref": "calibration-run-v4.schema.json#/$defs/provenance" },
+            "policy_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "diagnostic_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+            "diagnostic": { "$ref": "#/$defs/diagnostic" },
+            "issuance_bindings": { "$ref": "#/$defs/bindings" },
+            "observed_unix_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "admission_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "signature": { "type": "string", "pattern": "^[a-f0-9]{128}(?![\\s\\S])" }
+      }
+    }
+  },
+  "$defs": {
+    "finiteRate": { "type": "number", "minimum": 0, "maximum": 1 },
+    "boundedScore": { "type": "number", "minimum": 0, "maximum": 100 },
+    "count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "required_tasks",
+        "required_model_configurations",
+        "informative_facility_min",
+        "informative_facility_max",
+        "informative_task_range_min",
+        "min_informative_task_rate",
+        "min_non_uniform_task_rate",
+        "max_universal_semantic_zero_rate",
+        "max_universal_full_credit_rate",
+        "domain_facility_min",
+        "domain_facility_max",
+        "min_model_score_range",
+        "min_latent_score_range"
+      ],
+      "properties": {
+        "version": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "required_tasks": { "const": 72 },
+        "required_model_configurations": { "const": 17 },
+        "informative_facility_min": { "$ref": "#/$defs/finiteRate" },
+        "informative_facility_max": { "$ref": "#/$defs/finiteRate" },
+        "informative_task_range_min": { "$ref": "#/$defs/finiteRate" },
+        "min_informative_task_rate": { "$ref": "#/$defs/finiteRate" },
+        "min_non_uniform_task_rate": { "$ref": "#/$defs/finiteRate" },
+        "max_universal_semantic_zero_rate": { "$ref": "#/$defs/finiteRate" },
+        "max_universal_full_credit_rate": { "$ref": "#/$defs/finiteRate" },
+        "domain_facility_min": { "$ref": "#/$defs/finiteRate" },
+        "domain_facility_max": { "$ref": "#/$defs/finiteRate" },
+        "min_model_score_range": { "$ref": "#/$defs/boundedScore" },
+        "min_latent_score_range": { "$ref": "#/$defs/boundedScore" }
+      }
+    },
+    "domainSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "tasks", "mean_facility", "informative_tasks", "non_uniform_tasks"],
+      "properties": {
+        "domain": {
+          "enum": [
+            "coding",
+            "debugging",
+            "repository_understanding",
+            "data_processing",
+            "retrieval_verification",
+            "documentation_communication",
+            "planning_execution",
+            "tool_use",
+            "instruction_following",
+            "reliability_recovery"
+          ]
+        },
+        "tasks": { "$ref": "#/$defs/count" },
+        "mean_facility": { "$ref": "#/$defs/finiteRate" },
+        "informative_tasks": { "$ref": "#/$defs/count" },
+        "non_uniform_tasks": { "$ref": "#/$defs/count" }
+      }
+    },
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_version",
+        "tasks",
+        "model_configurations",
+        "informative_tasks",
+        "informative_task_rate",
+        "non_uniform_tasks",
+        "non_uniform_task_rate",
+        "universal_zero_tasks",
+        "universal_semantic_zero_tasks",
+        "universal_runtime_zero_tasks",
+        "universal_mixed_zero_tasks",
+        "universal_full_credit_tasks",
+        "domains",
+        "min_model_score",
+        "max_model_score",
+        "model_score_range",
+        "min_latent_score",
+        "max_latent_score",
+        "latent_score_range",
+        "max_latent_standard_error"
+      ],
+      "properties": {
+        "policy_version": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "tasks": { "const": 72 },
+        "model_configurations": { "const": 17 },
+        "informative_tasks": { "$ref": "#/$defs/count" },
+        "informative_task_rate": { "$ref": "#/$defs/finiteRate" },
+        "non_uniform_tasks": { "$ref": "#/$defs/count" },
+        "non_uniform_task_rate": { "$ref": "#/$defs/finiteRate" },
+        "universal_zero_tasks": { "$ref": "#/$defs/count" },
+        "universal_semantic_zero_tasks": { "$ref": "#/$defs/count" },
+        "universal_runtime_zero_tasks": { "$ref": "#/$defs/count" },
+        "universal_mixed_zero_tasks": { "$ref": "#/$defs/count" },
+        "universal_full_credit_tasks": { "$ref": "#/$defs/count" },
+        "domains": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/domainSummary" }
+        },
+        "min_model_score": { "$ref": "#/$defs/boundedScore" },
+        "max_model_score": { "$ref": "#/$defs/boundedScore" },
+        "model_score_range": { "$ref": "#/$defs/boundedScore" },
+        "min_latent_score": { "$ref": "#/$defs/boundedScore" },
+        "max_latent_score": { "$ref": "#/$defs/boundedScore" },
+        "latent_score_range": { "$ref": "#/$defs/boundedScore" },
+        "max_latent_standard_error": { "type": "number", "minimum": 0 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "observed", "violations"],
+      "properties": {
+        "policy": { "$ref": "#/$defs/policy" },
+        "observed": { "$ref": "#/$defs/observed" },
+        "violations": {
+          "type": "array",
+          "maxItems": 72,
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 }
+        }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "production_reference_sha256",
+        "build_receipt_sha256",
+        "approved_runner",
+        "approved_verifier",
+        "corpus_commitment_sha256",
+        "source_manifest_digest",
+        "runner_commit",
+        "runner_source_tree",
+        "task_set_digest",
+        "evaluator_digest",
+        "model_toolchain_digest",
+        "evaluator_runtime_digest",
+        "runner_executable_digest",
+        "codex_executable_digest",
+        "codex_code_mode_host_digest",
+        "verifier_executable_digest"
+      ],
+      "properties": {
+        "production_reference_sha256": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "build_receipt_sha256": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "approved_runner": { "$ref": "result-package-v4.schema.json#/properties/signer" },
+        "approved_verifier": { "$ref": "result-package-v4.schema.json#/properties/signer" },
+        "corpus_commitment_sha256": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "source_manifest_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "runner_commit": { "type": "string", "pattern": "^[a-f0-9]{40}(?![\\s\\S])" },
+        "runner_source_tree": { "type": "string", "pattern": "^[a-f0-9]{40}(?![\\s\\S])" },
+        "task_set_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "evaluator_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "model_toolchain_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "evaluator_runtime_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "runner_executable_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "codex_executable_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "codex_code_mode_host_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
+        "verifier_executable_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" }
+      }
+    }
+  }
+}

@@ -267,7 +267,7 @@ test('the overview workspace exposes evidence and switches chart modes and famil
   await expect(selected).toContainText('task-mix sensitivity');
   await expect(chart.getByText('Dot + CI', { exact: true })).toHaveCount(0);
   await expect(selected).toContainText('coverage 100.0%');
-  await expect(selected).toContainText('scoring 1.0.6 · synthetic');
+  await expect(selected).toContainText('scoring 1.0.7 · synthetic');
   const valuesDisclosure = chart.getByText('Read 6 configuration values', { exact: true });
   await valuesDisclosure.click();
   const valuesTable = chart.getByRole('region', { name: 'AIQ configuration values' });

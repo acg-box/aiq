@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aiq.wiki/schema/calibration-result-package-v3.schema.json",
-  "title": "AIQ signed non-Official calibration package v3",
+  "$id": "https://aiq.wiki/schema/calibration-result-package-v4.schema.json",
+  "title": "AIQ signed non-Official calibration package v4",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,9 +15,9 @@
     "signature"
   ],
   "properties": {
-    "schema_version": { "const": "aiq.result-package.v3" },
+    "schema_version": { "const": "aiq.result-package.v4" },
     "idempotency_key": { "type": "string", "pattern": "^run_[a-f0-9]{64}(?![\\s\\S])" },
-    "payload_type": { "const": "aiq.calibration-run.v3" },
+    "payload_type": { "const": "aiq.calibration-run.v4" },
     "content_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}(?![\\s\\S])" },
     "signer": {
       "type": "object",
@@ -29,7 +29,7 @@
       }
     },
     "claimed_trust": { "const": "untrusted" },
-    "payload": { "$ref": "calibration-run-v3.schema.json" },
+    "payload": { "$ref": "calibration-run-v4.schema.json" },
     "signature": { "type": "string", "pattern": "^[a-f0-9]{128}(?![\\s\\S])" }
   }
 }

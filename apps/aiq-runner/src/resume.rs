@@ -54,21 +54,24 @@ use crate::{
 	corpus_commitment::{RunClass, RunProvenanceCommitment},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
 	protocol,
-	runner::{RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus, TaskResult},
+	runner::{
+		self, RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus, TaskResult,
+		TerminalAttemptLineage,
+	},
 	schedule::ScheduleSlot,
-	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION},
+	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, FrozenCalibrationBankV2},
 	task::{EvaluationResult, TASK_SCHEMA_VERSION},
 };
 
 /// Checkpoint schema version.
-pub const CHECKPOINT_SCHEMA_VERSION: &str = "aiq.run-checkpoint.v7";
+pub const CHECKPOINT_SCHEMA_VERSION: &str = "aiq.run-checkpoint.v8";
 /// Persisted preflight schema version.
 pub const PREFLIGHT_CACHE_SCHEMA_VERSION: &str = "aiq.preflight-cache.v2";
 /// Persisted completed preflight-attempt diagnostic schema version.
 pub const PREFLIGHT_ATTEMPT_SCHEMA_VERSION: &str = "aiq.preflight-attempt.v1";
 
 /// Immutable commitments that make a checkpoint safe to resume.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunCommitments {
 	/// Stable run identifier.
@@ -81,6 +84,10 @@ pub struct RunCommitments {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Exact permission-admission commitment for Official execution.
+	pub calibration_admission_digest: Option<String>,
+	/// Frozen item bank embedded for scoring and verifier replay.
+	pub calibration_bank: Option<FrozenCalibrationBankV2>,
 	/// Digest of ordered task evaluator commitments.
 	pub evaluator_digest: String,
 	/// Digest of runner and result protocol commitments.
@@ -127,6 +134,8 @@ pub struct RunCheckpoint {
 	pub in_flight: Vec<InFlightCell>,
 	/// Completed terminal results in deterministic execution order.
 	pub results: Vec<TaskResult>,
+	/// Append-visible terminal observations bound to selected results.
+	pub terminal_attempt_lineage: Vec<TerminalAttemptLineage>,
 	/// Full evaluator results aligned with `results`.
 	///
 	/// Signed run results retain only the canonical digest. Checkpoints retain
@@ -143,6 +152,7 @@ impl RunCheckpoint {
 			started_unix_ms,
 			in_flight: Vec::new(),
 			results: Vec::new(),
+			terminal_attempt_lineage: Vec::new(),
 			evaluator_results: Vec::new(),
 		}
 	}
@@ -172,6 +182,12 @@ impl RunCheckpoint {
 				"run checkpoint evaluator evidence is not aligned with its results",
 			));
 		}
+
+		runner::validate_terminal_attempt_lineage(
+			&checkpoint.results,
+			&checkpoint.terminal_attempt_lineage,
+		)
+		.map_err(|error| ResumeError::new(error.to_string()))?;
 
 		let mut pairs = BTreeSet::new();
 		let mut in_flight = BTreeSet::new();
@@ -244,6 +260,7 @@ pub struct InFlightCell {
 	/// Exact model configuration.
 	pub model: ModelConfig,
 }
+
 /// Authenticated subscription preflight that can be reused before expiry.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -554,33 +571,14 @@ pub fn classified_run_id(
 	models: &[ModelConfig],
 	run_class: RunClass,
 ) -> Result<String, ResumeError> {
-	if !valid_digest(corpus_commitment_sha256) {
-		return Err(ResumeError::new("run identity corpus commitment digest is invalid"));
-	}
-
-	#[derive(Serialize)]
-	struct ClassifiedRunIdentity<'a> {
-		schema_version: &'static str,
-		run_class: RunClass,
-		slot: &'a ScheduleSlot,
-		task_set_hash: &'a str,
-		corpus_commitment_sha256: &'a str,
-		models: &'a [ModelConfig],
-		scoring_version: &'static str,
-	}
-
-	let digest = protocol::canonical_hash(&ClassifiedRunIdentity {
-		schema_version: "aiq.run-identity.v3",
-		run_class,
+	classified_run_id_for_scoring_version(
 		slot,
 		task_set_hash,
 		corpus_commitment_sha256,
 		models,
-		scoring_version: AIQ_SCORING_VERSION,
-	})
-	.map_err(|error| ResumeError::new(error.to_string()))?;
-
-	Ok(format!("run_{}", digest.trim_start_matches("sha256:")))
+		run_class,
+		AIQ_SCORING_VERSION,
+	)
 }
 
 /// Returns the fixed full-catalog commitment.
@@ -650,6 +648,43 @@ pub fn directory_identity(path: &Path, label: &str) -> Result<String, ResumeErro
 	fs::canonicalize(path)
 		.map(|path: PathBuf| path.display().to_string())
 		.map_err(|error| ResumeError::new(format!("{label} unavailable: {error}")))
+}
+
+pub(crate) fn classified_run_id_for_scoring_version(
+	slot: &ScheduleSlot,
+	task_set_hash: &str,
+	corpus_commitment_sha256: &str,
+	models: &[ModelConfig],
+	run_class: RunClass,
+	scoring_version: &str,
+) -> Result<String, ResumeError> {
+	if !valid_digest(corpus_commitment_sha256) {
+		return Err(ResumeError::new("run identity corpus commitment digest is invalid"));
+	}
+
+	#[derive(Serialize)]
+	struct ClassifiedRunIdentity<'a> {
+		schema_version: &'static str,
+		run_class: RunClass,
+		slot: &'a ScheduleSlot,
+		task_set_hash: &'a str,
+		corpus_commitment_sha256: &'a str,
+		models: &'a [ModelConfig],
+		scoring_version: &'a str,
+	}
+
+	let digest = protocol::canonical_hash(&ClassifiedRunIdentity {
+		schema_version: "aiq.run-identity.v3",
+		run_class,
+		slot,
+		task_set_hash,
+		corpus_commitment_sha256,
+		models,
+		scoring_version,
+	})
+	.map_err(|error| ResumeError::new(error.to_string()))?;
+
+	Ok(format!("run_{}", digest.trim_start_matches("sha256:")))
 }
 
 fn valid_digest(value: &str) -> bool {
@@ -1250,6 +1285,8 @@ mod tests {
 			catalog_digest: super::catalog_digest(),
 			task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			calibration_admission_digest: None,
+			calibration_bank: None,
 			evaluator_digest,
 			runtime_digest,
 			model_toolchain_digest,
@@ -1313,6 +1350,9 @@ mod tests {
 
 		checkpoint.evaluator_results.push(result.evaluator_result());
 		checkpoint.results.push(result.clone());
+
+		checkpoint.terminal_attempt_lineage = runner::terminal_attempt_lineage(&checkpoint.results);
+
 		checkpoint.persist(&path).expect("checkpoint persist");
 
 		let loaded = RunCheckpoint::load(&path, &commitments)
@@ -1443,6 +1483,9 @@ mod tests {
 
 		checkpoint.evaluator_results.push(None);
 		checkpoint.results.push(result.clone());
+
+		checkpoint.terminal_attempt_lineage = runner::terminal_attempt_lineage(&checkpoint.results);
+
 		checkpoint.persist(&path).expect("checkpoint persist");
 
 		let loaded = RunCheckpoint::load(&path, &commitments)
@@ -1744,6 +1787,15 @@ mod tests {
 			RunClass::Calibration,
 		)
 		.expect("calibration identity");
+		let calibration_1_0_6 = super::classified_run_id_for_scoring_version(
+			&slot,
+			&task_set_hash,
+			&corpus_commitment,
+			&MODEL_MATRIX,
+			RunClass::Calibration,
+			"1.0.6",
+		)
+		.expect("1.0.6 calibration identity");
 		let repeated = super::classified_run_id(
 			&slot,
 			&task_set_hash,
@@ -1770,6 +1822,7 @@ mod tests {
 		.expect("official identity");
 
 		assert_eq!(calibration, repeated);
+		assert_ne!(calibration, calibration_1_0_6);
 		assert_ne!(calibration, changed_corpus);
 		assert_ne!(calibration, official);
 		assert!(

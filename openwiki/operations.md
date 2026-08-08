@@ -20,7 +20,7 @@ transiently because a later deployment can recreate or reassign them. A
 deployment-specific URL is intrinsic to its retained deployment. The current
 generated Vercel surfaces emit `noindex`.
 
-The only production tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement
+The only production tuple is AIQ Core `1.0.6`, scoring `1.0.7`, and measurement
 `2.0.0`. Production must remain without an Official AIQ 2.0 publication until a
 real non-synthetic signed 17-by-72 package passes native verifier replay. A
 legacy publication is not a compatibility source or fallback. See [Benchmark
@@ -432,7 +432,7 @@ commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Retain the private final-build audit receipt separately; database
 initialization does not consume or validate it. Initialization validates the
 production-reference fields and bindings. The repository defines one greenfield
-desired state. The initialization receipt must report scoring `1.0.6`,
+desired state. The initialization receipt must report scoring `1.0.7`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the

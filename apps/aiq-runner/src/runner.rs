@@ -46,7 +46,7 @@ use crate::{
 	protocol::{self, ProtocolError, ResultProvenance, TrustTier},
 	resume::{self, InFlightCell, RunCheckpoint, RunCommitments},
 	schedule::{self, ScheduleSlot},
-	scoring::{self, AIQ_SCORING_VERSION},
+	scoring::{self, AIQ_SCORING_VERSION, FrozenCalibrationBankV2},
 	task::{
 		self, Domain, EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationError, EvaluationResult,
 		Evaluator, EvaluatorCheck, EvaluatorContext, EvaluatorOutcome, EvaluatorRuntime,
@@ -57,9 +57,9 @@ use crate::{
 /// Result schema version.
 pub const RESULT_SCHEMA_VERSION: &str = "aiq.result.v2";
 /// Run schema version.
-pub const RUN_SCHEMA_VERSION: &str = "aiq.run.v3";
+pub const RUN_SCHEMA_VERSION: &str = "aiq.run.v4";
 /// Calibration run schema version.
-pub const CALIBRATION_RUN_SCHEMA_VERSION: &str = "aiq.calibration-run.v3";
+pub const CALIBRATION_RUN_SCHEMA_VERSION: &str = "aiq.calibration-run.v4";
 /// Evaluator-result bundle schema version.
 pub const EVALUATOR_RESULTS_SCHEMA_VERSION: &str = "aiq.evaluator-results.v1";
 /// Maximum canonical evaluator-result bundle size.
@@ -770,6 +770,22 @@ pub struct EvaluatorResultsBundle {
 	pub results: Vec<Option<EvaluationResult>>,
 }
 
+/// Complete terminal-observation history for one task-model cell.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerminalAttemptLineage {
+	/// Canonical task identifier.
+	pub task_id: String,
+	/// Canonical task version.
+	pub task_version: String,
+	/// Canonical model configuration.
+	pub model: ModelConfig,
+	/// Append-only terminal result identities observed for this cell.
+	pub terminal_result_ids: Vec<String>,
+	/// The sole terminal result selected for publication.
+	pub selected_result_id: String,
+}
+
 /// A complete idempotent full-matrix run.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -784,6 +800,10 @@ pub struct RunRecord {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Exact permission-admission commitment for Official execution.
+	pub calibration_admission_digest: Option<String>,
+	/// Frozen calibration bank; required for real Official records.
+	pub calibration_bank: Option<FrozenCalibrationBankV2>,
 	/// Maximum concurrent task executions, when recorded by the producing runner.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub execution_concurrency: Option<usize>,
@@ -801,6 +821,8 @@ pub struct RunRecord {
 	pub provenance: Option<RunProvenanceCommitment>,
 	/// Content-addressed evaluator-results bundle aligned with `results`.
 	pub evaluator_results_artifact: ArtifactReference,
+	/// Canonical one-terminal-observation lineage for every cell.
+	pub terminal_attempt_lineage: Vec<TerminalAttemptLineage>,
 	/// Task and model results.
 	pub results: Vec<TaskResult>,
 }
@@ -823,6 +845,10 @@ pub struct CalibrationRunRecord {
 	pub task_set_hash: String,
 	/// Scoring implementation version.
 	pub scoring_version: String,
+	/// Calibration runs never consume an Official frozen bank.
+	pub calibration_admission_digest: Option<String>,
+	/// Calibration runs fit, but do not consume, a frozen bank.
+	pub calibration_bank: Option<FrozenCalibrationBankV2>,
 	/// Maximum concurrent task executions, when recorded by the producing runner.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub execution_concurrency: Option<usize>,
@@ -840,6 +866,8 @@ pub struct CalibrationRunRecord {
 	pub provenance: RunProvenanceCommitment,
 	/// Content-addressed evaluator-results bundle aligned with `results`.
 	pub evaluator_results_artifact: ArtifactReference,
+	/// Canonical one-terminal-observation lineage for every cell.
+	pub terminal_attempt_lineage: Vec<TerminalAttemptLineage>,
 	/// Selected task and model results.
 	pub results: Vec<TaskResult>,
 }
@@ -1204,6 +1232,12 @@ where
 		committed: &BTreeMap<usize, TaskResult>,
 	) -> Result<(), RunnerError> {
 		checkpoint.results = committed.values().cloned().collect();
+
+		accumulate_terminal_attempt_lineage(
+			&mut checkpoint.terminal_attempt_lineage,
+			&checkpoint.results,
+		)?;
+
 		checkpoint.evaluator_results =
 			checkpoint.results.iter().map(TaskResult::evaluator_result).collect();
 
@@ -1488,6 +1522,50 @@ enum SelectedWorkerEvent {
 	Completed(Box<Result<(usize, TaskResult), RunnerError>>),
 }
 
+/// Derives canonical lineage without discarding duplicate terminal evidence.
+#[must_use]
+pub fn terminal_attempt_lineage(results: &[TaskResult]) -> Vec<TerminalAttemptLineage> {
+	let mut grouped = BTreeMap::<(String, String, ModelConfig), Vec<String>>::new();
+
+	for result in results {
+		grouped
+			.entry((result.task_id.clone(), result.task_version.clone(), result.model))
+			.or_default()
+			.push(result.result_id.clone());
+	}
+
+	grouped
+		.into_iter()
+		.map(|((task_id, task_version, model), terminal_result_ids)| TerminalAttemptLineage {
+			task_id,
+			task_version,
+			model,
+			selected_result_id: terminal_result_ids.last().cloned().unwrap_or_default(),
+			terminal_result_ids,
+		})
+		.collect()
+}
+
+/// Rejects replacement, selection, omission, or duplicate terminal evidence.
+pub fn validate_terminal_attempt_lineage(
+	results: &[TaskResult],
+	lineage: &[TerminalAttemptLineage],
+) -> Result<(), ProtocolError> {
+	let expected = terminal_attempt_lineage(results);
+
+	if lineage != expected
+		|| lineage.iter().any(|entry| {
+			entry.terminal_result_ids.len() != 1
+				|| entry.terminal_result_ids.first() != Some(&entry.selected_result_id)
+		}) {
+		return Err(ProtocolError::new(
+			"terminal-attempt lineage contains replacement or multiple selected observations",
+		));
+	}
+
+	Ok(())
+}
+
 /// Builds a declared-capacity estimate without invoking a model.
 pub fn estimate_capacity(
 	tasks: &[TaskDefinition],
@@ -1603,6 +1681,8 @@ where
 		schedule_slot: slot,
 		task_set_hash: set_hash,
 		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		calibration_admission_digest: None,
+		calibration_bank: None,
 		execution_concurrency: Some(1),
 		models: MODEL_MATRIX.to_vec(),
 		started_unix_ms: scheduled_unix_ms,
@@ -1611,6 +1691,7 @@ where
 		capability_validation: None,
 		provenance: None,
 		evaluator_results_artifact,
+		terminal_attempt_lineage: terminal_attempt_lineage(&results),
 		results,
 	})
 }
@@ -1835,6 +1916,42 @@ pub(crate) fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceMani
 	Ok(WorkspaceManifest { schema_version: "aiq.workspace-manifest.v1", entries })
 }
 
+fn accumulate_terminal_attempt_lineage(
+	lineage: &mut Vec<TerminalAttemptLineage>,
+	results: &[TaskResult],
+) -> Result<(), RunnerError> {
+	for candidate in terminal_attempt_lineage(results) {
+		if candidate.terminal_result_ids.len() != 1 {
+			return Err(RunnerError::new("multiple terminal observations cannot be committed"));
+		}
+
+		if let Some(existing) = lineage.iter().find(|entry| {
+			entry.task_id == candidate.task_id
+				&& entry.task_version == candidate.task_version
+				&& entry.model == candidate.model
+		}) {
+			if existing != &candidate {
+				return Err(RunnerError::new(
+					"a committed terminal observation cannot be replaced",
+				));
+			}
+		} else {
+			lineage.push(candidate);
+		}
+	}
+
+	lineage.sort_by(|left, right| {
+		(&left.task_id, &left.task_version, left.model).cmp(&(
+			&right.task_id,
+			&right.task_version,
+			right.model,
+		))
+	});
+
+	validate_terminal_attempt_lineage(results, lineage)
+		.map_err(|error| RunnerError::new(error.to_string()))
+}
+
 fn bounded_capacity_metrics(
 	budgets: &[u64],
 	model_count: usize,
@@ -1984,6 +2101,12 @@ where
 	}
 
 	checkpoint.results = committed.into_values().collect();
+
+	accumulate_terminal_attempt_lineage(
+		&mut checkpoint.terminal_attempt_lineage,
+		&checkpoint.results,
+	)?;
+
 	checkpoint.evaluator_results =
 		checkpoint.results.iter().map(TaskResult::evaluator_result).collect();
 
@@ -2948,6 +3071,8 @@ fn selected_run_record(
 			schedule_slot: slot,
 			task_set_hash: commitments.task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			calibration_admission_digest: commitments.calibration_admission_digest,
+			calibration_bank: commitments.calibration_bank,
 			execution_concurrency: Some(execution_concurrency),
 			models: MODEL_MATRIX.to_vec(),
 			started_unix_ms: checkpoint.started_unix_ms,
@@ -2956,6 +3081,7 @@ fn selected_run_record(
 			capability_validation: Some(validation),
 			provenance: Some(commitments.provenance),
 			evaluator_results_artifact,
+			terminal_attempt_lineage: checkpoint.terminal_attempt_lineage,
 			results: checkpoint.results,
 		})
 	} else {
@@ -2967,6 +3093,8 @@ fn selected_run_record(
 			schedule_slot: slot,
 			task_set_hash: commitments.task_set_hash,
 			scoring_version: AIQ_SCORING_VERSION.to_owned(),
+			calibration_admission_digest: None,
+			calibration_bank: None,
 			execution_concurrency: Some(execution_concurrency),
 			models: models.to_vec(),
 			task_ids: tasks.iter().map(|task| task.task_id.clone()).collect(),
@@ -2975,6 +3103,7 @@ fn selected_run_record(
 			capability_validation: validation,
 			provenance: commitments.provenance,
 			evaluator_results_artifact,
+			terminal_attempt_lineage: checkpoint.terminal_attempt_lineage,
 			results: checkpoint.results,
 		})
 	}
@@ -3698,7 +3827,7 @@ mod tests {
 		runner::{
 			self, EvaluationOutcome, FailureKind, LocalDirectoryWorkspaceProvider,
 			MAX_RESULT_PREVIEW_BYTES, MAX_RUN_JOBS, ResultStatus, SelectedRun,
-			TaskExecutionContext, TaskWorkspaceProvider, WorkspaceError,
+			TaskExecutionContext, TaskResult, TaskWorkspaceProvider, WorkspaceError,
 		},
 		schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
 		scoring::{
@@ -3707,7 +3836,7 @@ mod tests {
 		submission::MAX_SUBMISSION_BYTES,
 		task::{
 			self, EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationResult, Evaluator, EvaluatorCheck,
-			EvaluatorOutcome, evaluator::EvaluatorCheckFailureClass,
+			EvaluatorOutcome, TaskDefinition, evaluator::EvaluatorCheckFailureClass,
 		},
 	};
 	#[cfg(unix)]
@@ -4227,6 +4356,8 @@ mod tests {
 			catalog_digest: resume::catalog_digest(),
 			task_set_hash,
 			scoring_version: crate::scoring::AIQ_SCORING_VERSION.to_owned(),
+			calibration_admission_digest: None,
+			calibration_bank: None,
 			evaluator_digest,
 			runtime_digest,
 			model_toolchain_digest,
@@ -4443,11 +4574,13 @@ mod tests {
 			);
 		}
 
+		checkpoint.terminal_attempt_lineage = super::terminal_attempt_lineage(&checkpoint.results);
+
 		let selected = super::selected_run_record(
 			&tasks,
 			&models,
 			slot,
-			validation,
+			validation.clone(),
 			commitments,
 			checkpoint,
 			evaluator_results_artifact,
@@ -4457,7 +4590,7 @@ mod tests {
 			panic!("full calibration must not emit an Official RunRecord")
 		};
 
-		assert_eq!(run.schema_version, "aiq.calibration-run.v3");
+		assert_eq!(run.schema_version, "aiq.calibration-run.v4");
 		assert!(!run.official_eligible);
 		assert_eq!(run.classification, "local_calibration_non_official");
 		assert_eq!(run.provenance.run_class, RunClass::Calibration);
@@ -4512,7 +4645,7 @@ mod tests {
 	#[test]
 	fn unsupported_calibration_resume_keeps_one_terminal_cell_without_invocation() {
 		let root = env::temp_dir().join(format!("aiq-runner-selected-resume-{}", process::id()));
-		let checkpoint_path = root.join("checkpoint.json");
+		let path = root.join("checkpoint.json");
 		let (tasks, models, manifest, mut validation, _slot, mut commitments) =
 			selected_fixture(1, 1);
 
@@ -4528,11 +4661,10 @@ mod tests {
 			artifacts: Vec::new(),
 			stdout_full: String::new(),
 		};
-		let observed_at = "unix-ms:1".to_owned();
 		let evidence_digest = adapter::configuration_evidence_digest(
 			models[0],
 			validation.cli_probe.version.as_ref(),
-			&observed_at,
+			"unix-ms:1",
 			ConfigurationProbeStatus::ObservedUnsupported,
 			None,
 			None,
@@ -4548,7 +4680,7 @@ mod tests {
 			probe: ConfigurationProbe {
 				status: ConfigurationProbeStatus::ObservedUnsupported,
 				codex_version: validation.cli_probe.version.clone(),
-				observed_at,
+				observed_at: "unix-ms:1".to_owned(),
 				result_digest: None,
 				result_preview: None,
 				artifacts: Vec::new(),
@@ -4588,11 +4720,7 @@ mod tests {
 			&tasks,
 			validation.clone(),
 			commitments.clone(),
-			runner::LocalRunExecution {
-				evaluator: None,
-				checkpoint_path: &checkpoint_path,
-				jobs: 1,
-			},
+			runner::LocalRunExecution { evaluator: None, checkpoint_path: &path, jobs: 1 },
 		)
 		.expect("first selected run");
 		let second = runner::execute_selected_run(
@@ -4600,13 +4728,9 @@ mod tests {
 			&NeverWorkspace,
 			&manifest,
 			&tasks,
-			validation,
-			commitments,
-			runner::LocalRunExecution {
-				evaluator: None,
-				checkpoint_path: &checkpoint_path,
-				jobs: 1,
-			},
+			validation.clone(),
+			commitments.clone(),
+			runner::LocalRunExecution { evaluator: None, checkpoint_path: &path, jobs: 1 },
 		)
 		.expect("resumed selected run");
 
@@ -4624,7 +4748,45 @@ mod tests {
 				.expect("single-model calibration retains one complete 17-model preflight");
 		}
 
+		assert_removed_terminal_result_rejects_resume(
+			&path,
+			&adapter,
+			&manifest,
+			&tasks,
+			validation,
+			commitments,
+		);
+
 		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	fn assert_removed_terminal_result_rejects_resume(
+		path: &Path,
+		adapter: &CodexAdapter<NeverExecutor, MemorySink>,
+		manifest: &CapabilityManifest,
+		tasks: &[TaskDefinition],
+		validation: CapabilityValidationReport,
+		commitments: RunCommitments,
+	) {
+		let mut checkpoint =
+			RunCheckpoint::load(path, &commitments).expect("checkpoint load").expect("checkpoint");
+
+		checkpoint.results.clear();
+		checkpoint.evaluator_results.clear();
+		checkpoint.persist(path).expect("tampered checkpoint write");
+
+		let error = runner::execute_selected_run(
+			adapter,
+			&NeverWorkspace,
+			manifest,
+			tasks,
+			validation,
+			commitments,
+			runner::LocalRunExecution { evaluator: None, checkpoint_path: path, jobs: 1 },
+		)
+		.expect_err("removing a terminal result must not permit retry");
+
+		assert!(error.to_string().contains("terminal-attempt lineage"));
 	}
 
 	#[test]
@@ -5935,6 +6097,10 @@ mod tests {
 			Some(FailureKind::BudgetExceeded)
 		);
 
+		assert_budget_failure_satisfies_saved_run_contract(result);
+	}
+
+	fn assert_budget_failure_satisfies_saved_run_contract(result: TaskResult) {
 		let tasks = runner::synthetic_demo_tasks();
 		let mut run = runner::synthetic_demo(
 			ScheduleConfig::default()
@@ -5972,6 +6138,7 @@ mod tests {
 			.expect("matching mutable synthetic result");
 
 		*target = validated_result;
+		run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
 
 		run_validation::validate_run_record(&run, Some(&tasks))
 			.expect("post-hoc budget failure must satisfy the saved-run contract");

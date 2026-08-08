@@ -526,7 +526,7 @@ begin
   if aiq_private.verifier_attestation_v3_binding_is_valid(
     attestation, batch, package
   ) is distinct from true then
-    raise exception 'verifier attestation v3 is not bound to staged provenance'
+    raise exception 'verifier attestation v4 is not bound to staged provenance'
       using errcode = '22023';
   end if;
 
@@ -579,7 +579,7 @@ begin
         and audit.event_type in ('verified_published', 'rejected')
     )
   then
-    raise exception 'batch is not eligible for verifier attestation v3'
+    raise exception 'batch is not eligible for verifier attestation v4'
       using errcode = '55000';
   end if;
 
@@ -772,13 +772,15 @@ begin
         'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
         'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
         'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
-        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version'
+        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version',
+        'terminal_attempt_lineage_digest'
       ]::text[]
     )
-    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
+    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v4'
     or not coalesce(stage ->> 'matrix_batch_id' ~ '^run_[0-9a-f]{64}$', false)
     or not aiq_private.jsonb_sha256_field_is_valid(stage, 'package_sha256', false)
     or not aiq_private.jsonb_sha256_field_is_valid(stage, 'content_hash', true)
+    or not aiq_private.dto_sha256_is_valid(stage -> 'terminal_attempt_lineage_digest')
     or jsonb_typeof(stage -> 'synthetic') is distinct from 'boolean'
     or jsonb_typeof(stage -> 'signer') is distinct from 'object'
     or not aiq_private.has_exact_jsonb_keys(
@@ -788,7 +790,7 @@ begin
       stage -> 'signer' ->> 'node_id', stage -> 'signer' ->> 'public_key'
     ) is distinct from true
   then
-    raise exception 'invalid aiq.normalized-batch.v3 envelope'
+    raise exception 'invalid aiq.normalized-batch.v4 envelope'
       using errcode = '22023';
   end if;
 
@@ -812,7 +814,7 @@ begin
       using errcode = 'P0002';
   end if;
   if aiq_private.result_package_v3_is_valid(inbox.envelope) is distinct from true
-    or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
+    or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v4'
     or inbox.envelope -> 'payload' -> 'provenance' is distinct from stage_provenance
     or inbox.envelope -> 'payload' -> 'synthetic' is distinct from stage -> 'synthetic'
     or inbox.envelope -> 'payload' -> 'execution_concurrency'
@@ -833,7 +835,7 @@ begin
       and batch.normalized_stage is not distinct from stage
       and batch.run_provenance is not distinct from
         nullif(stage_provenance, 'null'::jsonb)
-      and package.schema_version = 'aiq.result-package.v3'
+      and package.schema_version = 'aiq.result-package.v4'
       and package.provenance =
         '{"schema_version":"aiq.package-binding.v3"}'::jsonb
       and package.envelope is not distinct from inbox.envelope
@@ -886,11 +888,12 @@ begin
         'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
         'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
         'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
-        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version'
+        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version',
+        'terminal_attempt_lineage_digest'
       ]::text[]
     )
     or jsonb_typeof(stage -> 'schema_version') is distinct from 'string'
-    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
+    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v4'
     or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
@@ -902,6 +905,7 @@ begin
     or jsonb_typeof(stage -> 'scoring_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'synthetic') is distinct from 'boolean'
     or jsonb_typeof(stage -> 'task_set_hash') is distinct from 'string'
+    or not aiq_private.dto_sha256_is_valid(stage -> 'terminal_attempt_lineage_digest')
     or jsonb_typeof(stage -> 'task_set_id') is distinct from 'string'
     or jsonb_typeof(stage -> 'task_set_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'signer') is distinct from 'object'
@@ -951,7 +955,7 @@ begin
       stage, 'prompt_set_digest', true
     )
   then
-    raise exception 'invalid aiq.normalized-batch.v3 envelope'
+    raise exception 'invalid aiq.normalized-batch.v4 envelope'
       using errcode = '22023';
   end if;
 
@@ -1038,8 +1042,8 @@ begin
     raise exception 'immutable staged batch evidence was not found'
       using errcode = 'P0002';
   end if;
-  if package.schema_version <> 'aiq.result-package.v3' then
-    raise exception 'publication requires result package v3 and attestation v3'
+  if package.schema_version <> 'aiq.result-package.v4' then
+    raise exception 'publication requires result package v4 and attestation v4'
       using errcode = '22023';
   end if;
   if not batch.synthetic then
@@ -2456,7 +2460,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
       and task_set.task_set_version = '1.0.6'
-      and scoring.scoring_version = '1.0.6'
+      and scoring.scoring_version = '1.0.7'
       and scoring.benchmark_version = 'aiq-core@1.0.6'
       and scoring.is_published
       and not scoring.synthetic
@@ -4099,8 +4103,8 @@ begin
       'payload_type','schema_version','signature','signer'
     ]::text[])
     or jsonb_typeof(envelope -> 'schema_version') is distinct from 'string'
-    or envelope ->> 'schema_version' is distinct from 'aiq.result-package.v3'
-    or envelope ->> 'payload_type' <> 'aiq.run.v3'
+    or envelope ->> 'schema_version' is distinct from 'aiq.result-package.v4'
+    or envelope ->> 'payload_type' <> 'aiq.run.v4'
     or envelope ->> 'idempotency_key' !~ '^run_[0-9a-f]{64}$'
     or envelope ->> 'claimed_trust' not in ('trusted','untrusted')
     or not aiq_private.dto_sha256_is_valid(envelope -> 'content_hash')
@@ -4122,19 +4126,24 @@ begin
   end if;
   if not aiq_private.has_exact_jsonb_keys(payload, array[
       'capability_validation','evaluator_results_artifact','execution_concurrency',
-      'finished_unix_ms','models','provenance','results','run_id','schedule_slot',
+      'calibration_admission_digest','calibration_bank','finished_unix_ms','models','provenance',
+      'results','run_id','schedule_slot','terminal_attempt_lineage',
       'schema_version','scoring_version','started_unix_ms','synthetic',
       'task_set_hash'
     ]::text[])
     or jsonb_typeof(payload -> 'schema_version') is distinct from 'string'
-    or payload ->> 'schema_version' is distinct from 'aiq.run.v3'
+    or payload ->> 'schema_version' is distinct from 'aiq.run.v4'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.6'
+    or payload ->> 'scoring_version' <> '1.0.7'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or jsonb_typeof(payload -> 'synthetic') <> 'boolean'
     or not aiq_private.dto_schedule_is_valid(payload -> 'schedule_slot')
     or not aiq_private.dto_sha256_is_valid(payload -> 'task_set_hash')
+    or not aiq_private.dto_sha256_is_valid(payload -> 'calibration_admission_digest')
+    or jsonb_typeof(payload -> 'calibration_bank') <> 'object'
+    or jsonb_typeof(payload -> 'terminal_attempt_lineage') <> 'array'
+    or jsonb_array_length(payload -> 'terminal_attempt_lineage') <> 1224
     or not aiq_private.dto_uint_is_valid(
       payload -> 'started_unix_ms', 9007199254740991
     )
@@ -4566,7 +4575,7 @@ declare
 begin
   perform aiq_private.require_request_role('aiq_verifier');
   if jsonb_typeof(stage) is distinct from 'object' then
-    raise exception 'invalid aiq.normalized-batch.v3 envelope' using errcode = '22023';
+    raise exception 'invalid aiq.normalized-batch.v4 envelope' using errcode = '22023';
   end if;
   if octet_length(stage::text) > 4 * 1024 * 1024
     or not aiq_private.has_exact_jsonb_keys(
@@ -4578,11 +4587,12 @@ begin
         'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
         'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
         'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
-        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version'
+        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version',
+        'terminal_attempt_lineage_digest'
       ]::text[]
     )
-    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v3'
-    or stage ->> 'scoring_version' is distinct from '1.0.6'
+    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v4'
+    or stage ->> 'scoring_version' is distinct from '1.0.7'
     or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
@@ -4594,6 +4604,7 @@ begin
     or jsonb_typeof(stage -> 'schema_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'scoring_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'task_set_hash') is distinct from 'string'
+    or not aiq_private.dto_sha256_is_valid(stage -> 'terminal_attempt_lineage_digest')
     or jsonb_typeof(stage -> 'task_set_id') is distinct from 'string'
     or jsonb_typeof(stage -> 'task_set_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'signer') is distinct from 'object'
@@ -4667,7 +4678,7 @@ begin
     or (stage ->> 'finished_unix_ms')::numeric
       < (stage ->> 'started_unix_ms')::numeric
   then
-    raise exception 'invalid aiq.normalized-batch.v3 envelope' using errcode = '22023';
+    raise exception 'invalid aiq.normalized-batch.v4 envelope' using errcode = '22023';
   end if;
 
   batch_id := stage ->> 'matrix_batch_id';
@@ -4701,14 +4712,14 @@ begin
         and existing_batch.source_node_id = source_node
         and existing_batch.task_set_id = stage ->> 'task_set_id'
         and existing_batch.task_set_version = stage ->> 'task_set_version'
-        and existing_batch.scoring_version = '1.0.6'
+        and existing_batch.scoring_version = '1.0.7'
         and existing_batch.synthetic = is_synthetic
         and existing_batch.task_set_hash = stage ->> 'task_set_hash'
         and existing_batch.capability_validation_digest
           is not distinct from nullif(stage ->> 'capability_validation_digest', '')
         and existing_batch.benchmark_version = stage ->> 'benchmark_version'
         and existing_batch.prompt_set_digest = stage ->> 'prompt_set_digest'
-        and existing_batch.source_scoring_version = stage ->> 'scoring_version'
+        and existing_batch.source_scoring_version = '1.0.6'
         and existing_batch.runner_commit = stage ->> 'runner_commit'
         and existing_batch.region = stage ->> 'region'
         and existing_batch.execution_concurrency =
@@ -4770,13 +4781,15 @@ begin
   into result_efficiency_by_id
   from jsonb_array_elements(stage -> 'result_efficiency') evidence;
 
-  if inbox.envelope ->> 'schema_version' is distinct from 'aiq.result-package.v3'
-    or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
+  if inbox.envelope ->> 'schema_version' is distinct from 'aiq.result-package.v4'
+    or inbox.envelope ->> 'payload_type' is distinct from 'aiq.run.v4'
     or inbox.envelope ->> 'idempotency_key' is distinct from batch_id
     or inbox.envelope ->> 'content_hash' is distinct from stage ->> 'content_hash'
     or inbox.request_context ->> 'package_sha256' is distinct from package_id
     or payload ->> 'run_id' is distinct from batch_id
     or payload ->> 'task_set_hash' is distinct from stage ->> 'task_set_hash'
+    or aiq_private.jcs_sha256(payload -> 'terminal_attempt_lineage')
+      is distinct from stage ->> 'terminal_attempt_lineage_digest'
     or payload ->> 'scoring_version' is distinct from stage ->> 'scoring_version'
     or payload -> 'synthetic' is distinct from stage -> 'synthetic'
     or payload -> 'provenance' is distinct from stage -> 'provenance'
@@ -5134,10 +5147,10 @@ begin
   ) values (
     batch_id, package_id, stage ->> 'content_hash', normalization,
     source_node, stage ->> 'task_set_id', stage ->> 'task_set_version',
-    '1.0.6', is_synthetic, stage ->> 'task_set_hash',
+    '1.0.7', is_synthetic, stage ->> 'task_set_hash',
     nullif(stage ->> 'capability_validation_digest', ''),
     stage ->> 'benchmark_version', stage ->> 'prompt_set_digest',
-    stage ->> 'scoring_version', stage ->> 'runner_commit', stage ->> 'region',
+    '1.0.6', stage ->> 'runner_commit', stage ->> 'region',
     (stage ->> 'execution_concurrency')::integer,
     (stage ->> 'scheduled_unix_ms')::bigint,
     (stage ->> 'started_unix_ms')::bigint,
@@ -5151,7 +5164,7 @@ begin
     verifier_attestation, trust_tier, received_at, provenance,
     matrix_batch_id, normalization_digest, run_provenance
   ) values (
-    package_id, 'aiq.result-package.v3', batch_id, batch_id, source_node,
+    package_id, 'aiq.result-package.v4', batch_id, batch_id, source_node,
     stage ->> 'content_hash', inbox.envelope, inbox.envelope ->> 'signature',
     false, null, 'unverified', inbox.received_at,
     jsonb_build_object('schema_version', 'aiq.package-binding.v3'),
@@ -5175,7 +5188,8 @@ begin
         'binary_micro_diagnostic', 'completion_bounds',
         'quality_score', 'coverage', 'difficulty_coverage',
         'domains', 'duplicate_results', 'model', 'score',
-        'latent_ability', 'measurement_version', 'ranking_eligible', 'rule',
+        'latent_ability', 'measurement_version', 'replicate_drift_diagnostic',
+        'ranking_eligible', 'rule',
         'schema_version', 'scoring_version',
         'task_resampling_sensitivity_interval', 'tier'
       ]::text[]
@@ -5187,7 +5201,7 @@ begin
       or jsonb_typeof(score -> 'tier') is distinct from 'string'
       or jsonb_typeof(score -> 'rule') is distinct from 'string'
       or score ->> 'rule' is distinct from
-        'AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate''s predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.'
+        'AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate''s predicted success probability on an average calibrated task. A replay-verified calibration package fits one centered 72-item bank; Official scoring freezes those item difficulties and estimates only each model theta with a weak N(0, 3²) prior. Official replicate ceiling, informative-item, and non-uniform-item measurements are drift diagnostics and never re-fit or gate the released bank. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a valid signed calibration admission and its exact frozen bank. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is a fixed-fixture calibrated sensitivity interval with a versioned 1.3 deviation correction, not a universal confidence interval. Time, latency, token use, tool use, and cost are auxiliary measurements and never alter AIQ.'
       or jsonb_typeof(score -> 'ranking_eligible') is distinct from 'boolean'
       or (
         score -> 'latent_ability' is distinct from 'null'::jsonb
@@ -5454,7 +5468,7 @@ begin
       child_id, batch_id, child_id, 'manual',
       to_timestamp((stage ->> 'scheduled_unix_ms')::double precision / 1000),
       'UTC', stage ->> 'task_set_id', stage ->> 'task_set_version',
-      stage ->> 'benchmark_version', '1.0.6', model.model_config_id,
+      stage ->> 'benchmark_version', '1.0.7', model.model_config_id,
       source_node,
       (case when valid_count = 72 then 'completed' else 'partial' end)
         ::aiq_private.run_status,
@@ -5603,7 +5617,7 @@ begin
       not_applicable_count, domain_scores, interval_parameters, published,
       normalization_digest
     ) values (
-      child_id, '1.0.6', (score ->> 'tier')::aiq_private.score_status,
+      child_id, '1.0.7', (score ->> 'tier')::aiq_private.score_status,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round((score ->> 'quality_score')::numeric, 3) end,
       case when score ->> 'tier' = 'official'
@@ -5862,6 +5876,27 @@ $$;
 
 
 --
+-- Name: task_result_scorer_versions_match_catalog(text, text, text); Type: function; Schema: aiq_private; Owner: -
+--
+
+create function aiq_private.task_result_scorer_versions_match_catalog(target_run_id text, target_task_set_id text, target_task_set_version text) returns boolean
+    language sql stable
+    SET search_path to ''
+    as $$
+  select count(*) = 72
+    and count(distinct result.task_id) = 72
+    and bool_and(result.scorer_version = task.scorer_version)
+  from aiq_private.aiq_task_results result
+  join aiq_private.aiq_task_catalog task
+    on task.task_set_id = target_task_set_id
+   and task.task_set_version = target_task_set_version
+   and task.task_id = result.task_id
+   and task.task_version = result.task_version
+  where result.run_id = target_run_id;
+$$;
+
+
+--
 -- Name: task_resampling_interval_is_valid(jsonb); Type: function; Schema: aiq_private; Owner: -
 --
 
@@ -5941,7 +5976,7 @@ begin
     return false;
   end if;
   return coalesce(
-    candidate ->> 'method' = 'rasch_fractional_joint_map_v1'
+    candidate ->> 'method' = 'rasch_fractional_fixed_bank_map_v2'
     and candidate ->> 'calibration_digest' ~ '^sha256:[0-9a-f]{64}$'
     and (candidate ->> 'calibration_model_count')::numeric = 17
     and (candidate ->> 'calibration_task_count')::numeric = 72
@@ -6060,7 +6095,7 @@ begin
   attestation := package.verifier_attestation;
   if batch.verified_at is null
     or batch.published_at is null
-    or package.schema_version <> 'aiq.result-package.v3'
+    or package.schema_version <> 'aiq.result-package.v4'
     or not package.signature_verified
     or package.trust_tier <> 'trusted_verified'
     or package.rejection_code is not null
@@ -6072,17 +6107,17 @@ begin
     or package.run_provenance is distinct from batch.run_provenance
     or package.envelope is distinct from inbox.envelope
     or package.envelope ->> 'schema_version' is distinct from
-      'aiq.result-package.v3'
-    or package.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
+      'aiq.result-package.v4'
+    or package.envelope ->> 'payload_type' is distinct from 'aiq.run.v4'
     or package.envelope -> 'payload' ->> 'schema_version' is distinct from
-      'aiq.run.v3'
+      'aiq.run.v4'
     or package.envelope -> 'payload' -> 'provenance' is distinct from
       coalesce(batch.run_provenance, 'null'::jsonb)
     or (
       batch.normalized_stage is not null
       and (
         batch.normalized_stage ->> 'schema_version' is distinct from
-          'aiq.normalized-batch.v3'
+          'aiq.normalized-batch.v4'
         or batch.normalized_stage -> 'provenance' is distinct from
           coalesce(batch.run_provenance, 'null'::jsonb)
       )
@@ -6177,7 +6212,9 @@ begin
             and bool_and(
               result.outcome not in ('invalid', 'missing', 'not_applicable')
             )
-            and bool_and(result.scorer_version = batch.scoring_version)
+            and aiq_private.task_result_scorer_versions_match_catalog(
+              link.run_id, batch.task_set_id, batch.task_set_version
+            )
           from aiq_private.aiq_task_results result
           where result.run_id = link.run_id
         ) is not true
@@ -6257,11 +6294,11 @@ begin
     or batch.run_provenance is distinct from package.run_provenance
     or package.envelope is distinct from inbox.envelope
     or jsonb_typeof(package.envelope -> 'payload_type') is distinct from 'string'
-    or package.envelope ->> 'payload_type' is distinct from 'aiq.run.v3'
+    or package.envelope ->> 'payload_type' is distinct from 'aiq.run.v4'
     or jsonb_typeof(package.envelope -> 'payload' -> 'schema_version')
       is distinct from 'string'
     or package.envelope -> 'payload' ->> 'schema_version'
-      is distinct from 'aiq.run.v3'
+      is distinct from 'aiq.run.v4'
     or exists (
       select 1 from aiq_private.aiq_submission_conflicts conflict
       where conflict.inbox_id = inbox.inbox_id
@@ -6269,7 +6306,7 @@ begin
   then
     return false;
   end if;
-  if package.schema_version is distinct from 'aiq.result-package.v3' then
+  if package.schema_version is distinct from 'aiq.result-package.v4' then
     return false;
   end if;
   attestation := package.verifier_attestation;
@@ -6459,7 +6496,7 @@ create table aiq_private.aiq_matrix_batches (
 -- Name: table aiq_matrix_batches; Type: COMMENT; Schema: aiq_private; Owner: -
 --
 
-comment on table aiq_private.aiq_matrix_batches IS 'Immutable binding of one signed aiq.run.v3 package to 17 child runs and 1,224 results.';
+comment on table aiq_private.aiq_matrix_batches IS 'Immutable binding of one signed aiq.run.v4 package to 17 child runs and 1,224 results.';
 
 
 --
@@ -6493,7 +6530,7 @@ create table aiq_private.aiq_result_packages (
     constraint aiq_result_packages_content_hash_check check ((content_hash ~ '^sha256:[0-9a-f]{64}$'::text)),
     constraint aiq_result_packages_package_sha256_check check ((package_sha256 ~ '^[0-9a-f]{64}$'::text)),
     constraint aiq_result_packages_provenance_check check ((provenance = '{"schema_version": "aiq.package-binding.v3"}'::jsonb)),
-    constraint aiq_result_packages_schema_version_check check ((schema_version = 'aiq.result-package.v3'::text)),
+    constraint aiq_result_packages_schema_version_check check ((schema_version = 'aiq.result-package.v4'::text)),
     constraint aiq_result_packages_signature_check check ((signature ~ '^[0-9a-f]{128}$'::text))
 );
 
@@ -6502,7 +6539,7 @@ create table aiq_private.aiq_result_packages (
 -- Name: COLUMN aiq_result_packages.signature_verified; Type: COMMENT; Schema: aiq_private; Owner: -
 --
 
-comment on COLUMN aiq_private.aiq_result_packages.signature_verified IS 'Publisher assertion that external Ed25519 verification succeeded; verifier attestation v3 is retained separately.';
+comment on COLUMN aiq_private.aiq_result_packages.signature_verified IS 'Publisher assertion that external Ed25519 verification succeeded; verifier attestation v4 is retained separately.';
 
 
 
@@ -6526,7 +6563,7 @@ begin
         'package_sha256', 'policy', 'prompt_set_digest', 'provenance',
         'replay_status', 'schema_version', 'scoring_version', 'signature',
         'signature_algorithm', 'signature_version', 'synthetic',
-        'task_set_hash', 'verifier'
+        'task_set_hash', 'terminal_attempt_lineage_digest', 'verifier'
       ]::text[]
     )
     or not aiq_private.has_exact_jsonb_keys(
@@ -6540,6 +6577,7 @@ begin
     or jsonb_typeof(attestation -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(attestation -> 'normalization_digest') is distinct from 'string'
     or jsonb_typeof(attestation -> 'task_set_hash') is distinct from 'string'
+    or not aiq_private.dto_sha256_is_valid(attestation -> 'terminal_attempt_lineage_digest')
     or jsonb_typeof(attestation -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(attestation -> 'prompt_set_digest') is distinct from 'string'
     or jsonb_typeof(attestation -> 'scoring_version') is distinct from 'string'
@@ -6555,7 +6593,7 @@ begin
         when batch.synthetic then 'null' else 'string'
         end
       )
-    or attestation ->> 'schema_version' is distinct from 'aiq.verifier-attestation.v3'
+    or attestation ->> 'schema_version' is distinct from 'aiq.verifier-attestation.v4'
     or attestation ->> 'signature_algorithm' is distinct from 'ed25519'
     or attestation ->> 'signature_version' is distinct from 'aiq.ed25519-jcs.v1'
     or not coalesce(attestation ->> 'signature' ~ '^[0-9a-f]{128}$', false)
@@ -6590,6 +6628,15 @@ begin
     or attestation ->> 'content_hash' is distinct from batch.content_hash
     or attestation ->> 'normalization_digest' is distinct from batch.normalization_digest
     or attestation ->> 'task_set_hash' is distinct from batch.task_set_hash
+    or attestation ->> 'terminal_attempt_lineage_digest' is distinct from
+      aiq_private.jcs_sha256(
+        package.envelope #> '{payload,terminal_attempt_lineage}'
+      )
+    or (
+      batch.normalized_stage is not null
+      and attestation ->> 'terminal_attempt_lineage_digest' is distinct from
+        batch.normalized_stage ->> 'terminal_attempt_lineage_digest'
+    )
     or attestation -> 'capability_validation_digest' is distinct from
       coalesce(to_jsonb(batch.capability_validation_digest), 'null'::jsonb)
     or attestation -> 'provenance' is distinct from
@@ -6605,7 +6652,7 @@ begin
     )
     or attestation ->> 'benchmark_version' is distinct from batch.benchmark_version
     or attestation ->> 'prompt_set_digest' is distinct from batch.prompt_set_digest
-    or attestation ->> 'scoring_version' is distinct from batch.source_scoring_version
+    or attestation ->> 'scoring_version' is distinct from batch.scoring_version
     or (attestation ->> 'synthetic')::boolean is distinct from batch.synthetic
     or attestation ->> 'policy' is distinct from (
       case when batch.synthetic then 'synthetic_test' else 'production' end
@@ -6622,7 +6669,7 @@ begin
         or jsonb_typeof(batch.normalized_stage -> 'schema_version')
           is distinct from 'string'
         or batch.normalized_stage ->> 'schema_version' is distinct from
-          'aiq.normalized-batch.v3'
+          'aiq.normalized-batch.v4'
         or jsonb_typeof(batch.normalized_stage -> 'run_class')
           is distinct from 'string'
         or batch.normalized_stage ->> 'run_class' is distinct from 'official'
@@ -7562,12 +7609,12 @@ begin
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
-            "aggregate":"rasch_fractional_joint_map",
+            "aggregate":"rasch_fractional_fixed_bank_map_v2",
             "calibration_matrix":"17_model_configurations_by_72_tasks",
             "coverage_multiplier":false,
             "criterion_diagnostic":"100 * mean_of_equal_domain_means",
             "domain_weight":0.1,
-            "measurement_method":"rasch_fractional_joint_map_v1",
+            "measurement_method":"rasch_fractional_fixed_bank_map_v2",
             "measurement_version":"2.0.0",
             "official_score":"100 * logistic(theta)",
             "official_valid_task_count":72,
@@ -7597,7 +7644,7 @@ begin
           }'::jsonb
       )::integer as valid_scoring_count
     from aiq_private.aiq_scoring_versions scoring
-    where scoring.scoring_version = '1.0.6'
+    where scoring.scoring_version = '1.0.7'
   ),
   task_facts as (
     select
@@ -8598,7 +8645,7 @@ begin
     and run.task_set_id = 'aiq-core'
     and run.task_set_version = '1.0.6'
     and run.benchmark_version = 'aiq-core@1.0.6'
-    and run.scoring_version = '1.0.6';
+    and run.scoring_version = '1.0.7';
 
   if latest_recorded_at is null then
     return;
@@ -8707,8 +8754,8 @@ begin
       and run.task_set_id = 'aiq-core'
       and run.task_set_version = '1.0.6'
       and run.benchmark_version = 'aiq-core@1.0.6'
-      and run.scoring_version = '1.0.6'
-      and score.scoring_version = '1.0.6'
+      and run.scoring_version = '1.0.7'
+      and score.scoring_version = '1.0.7'
     order by run.scheduled_for desc, run.run_id desc
     limit 1
   ) observation
@@ -9854,8 +9901,8 @@ create view public.public_leaderboard with (security_invoker = true) as
             and run.task_set_id = 'aiq-core'
             and run.task_set_version = '1.0.6'
             and run.benchmark_version = 'aiq-core@1.0.6'
-            and run.scoring_version = '1.0.6'
-            and score.scoring_version = '1.0.6'
+            and run.scoring_version = '1.0.7'
+            and score.scoring_version = '1.0.7'
           ORDER BY run.model_config_id, run.scheduled_for DESC, score.calculated_at DESC
         ),
  status_evidence as (
@@ -10087,7 +10134,7 @@ create view public.public_run_results with (security_invoker = true) as
     and run.task_set_id = 'aiq-core'
     and run.task_set_version = '1.0.6'
     and run.benchmark_version = 'aiq-core@1.0.6'
-    and run.scoring_version = '1.0.6';
+    and run.scoring_version = '1.0.7';
 
 
 --
@@ -10160,7 +10207,7 @@ create view public.public_runs with (security_invoker = true) as
     and run.task_set_id = 'aiq-core'
     and run.task_set_version = '1.0.6'
     and run.benchmark_version = 'aiq-core@1.0.6'
-    and run.scoring_version = '1.0.6';
+    and run.scoring_version = '1.0.7';
 
 
 --
@@ -10179,7 +10226,7 @@ create view public.public_scoring_versions with (security_invoker = true) as
    from aiq_private.aiq_scoring_versions
   where is_published
     and benchmark_version = 'aiq-core@1.0.6'
-    and scoring_version = '1.0.6';
+    and scoring_version = '1.0.7';
 
 
 --
@@ -10211,7 +10258,7 @@ create view public.public_task_coverage with (security_invoker = true) as
      join expected on (((expected.task_set_id = split_part(scoring.benchmark_version, '@'::text, 1)) and (expected.task_set_version = split_part(scoring.benchmark_version, '@'::text, 2)))))
   where scoring.is_published
     and scoring.benchmark_version = 'aiq-core@1.0.6'
-    and scoring.scoring_version = '1.0.6';
+    and scoring.scoring_version = '1.0.7';
 
 
 --
@@ -12582,6 +12629,13 @@ revoke all on function aiq_private.task_catalog_is_exact(target_task_set_id text
 
 
 --
+-- Name: function task_result_scorer_versions_match_catalog(target_run_id text, target_task_set_id text, target_task_set_version text); Type: ACL; Schema: aiq_private; Owner: -
+--
+
+revoke all on function aiq_private.task_result_scorer_versions_match_catalog(target_run_id text, target_task_set_id text, target_task_set_version text) from PUBLIC;
+
+
+--
 -- Name: function task_resampling_interval_is_valid(candidate jsonb); Type: ACL; Schema: aiq_private; Owner: -
 --
 
@@ -13965,8 +14019,8 @@ begin
       'claimed_trust','content_hash','idempotency_key','payload','payload_type',
       'schema_version','signature','signer'
     ]::text[])
-    or envelope ->> 'schema_version' <> 'aiq.result-package.v3'
-    or envelope ->> 'payload_type' <> 'aiq.calibration-run.v3'
+    or envelope ->> 'schema_version' <> 'aiq.result-package.v4'
+    or envelope ->> 'payload_type' <> 'aiq.calibration-run.v4'
     or envelope ->> 'claimed_trust' <> 'untrusted'
     or envelope ->> 'idempotency_key' !~ '^run_[0-9a-f]{64}$'
     or not aiq_private.dto_sha256_is_valid(envelope -> 'content_hash')
@@ -13982,15 +14036,19 @@ begin
   if jsonb_typeof(payload) <> 'object'
     or not aiq_private.has_exact_jsonb_keys(payload,array[
       'capability_validation','classification','evaluator_results_artifact',
-      'execution_concurrency','finished_unix_ms','models','official_eligible','provenance','results',
+      'calibration_admission_digest','calibration_bank','execution_concurrency','finished_unix_ms',
+      'models','official_eligible','provenance','results','terminal_attempt_lineage',
       'run_id','schedule_slot','schema_version','scoring_version','started_unix_ms',
       'task_ids','task_set_hash'
     ]::text[])
-    or payload ->> 'schema_version' <> 'aiq.calibration-run.v3'
+    or payload ->> 'schema_version' <> 'aiq.calibration-run.v4'
     or payload -> 'official_eligible' <> 'false'::jsonb
     or payload ->> 'classification' <> 'local_calibration_non_official'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.6'
+    or payload ->> 'scoring_version' <> '1.0.7'
+    or payload -> 'calibration_admission_digest' <> 'null'::jsonb
+    or payload -> 'calibration_bank' <> 'null'::jsonb
+    or jsonb_typeof(payload -> 'terminal_attempt_lineage') <> 'array'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or not aiq_private.dto_schedule_is_valid(payload -> 'schedule_slot')
@@ -14459,7 +14517,7 @@ begin
   for share;
   if claimed.inbox_id is null
     or (supplied_publication_class='official'
-      and (claimed.envelope->>'payload_type'<>'aiq.run.v3'
+      and (claimed.envelope->>'payload_type'<>'aiq.run.v4'
         or not exists(select 1 from aiq_private.aiq_matrix_batches batch
           join aiq_private.aiq_result_packages package
             on package.matrix_batch_id=batch.matrix_batch_id
@@ -14470,7 +14528,7 @@ begin
           target_publication_id,target_package_sha256
         ) is not true))
     or (supplied_publication_class='calibration'
-      and (claimed.envelope->>'payload_type'<>'aiq.calibration-run.v3'
+      and (claimed.envelope->>'payload_type'<>'aiq.calibration-run.v4'
         or not exists(select 1 from aiq_private.calibration_runs run
           where run.run_id=target_publication_id
             and run.package_sha256=target_package_sha256
@@ -14946,9 +15004,9 @@ begin
       'region','result_efficiency','run_class','run_id','runner','runner_commit','scheduled_unix_ms',
       'schema_version','score_reports_digest','scores','scoring_version','stage_digest',
       'started_unix_ms','task_ids','task_selection_digest','task_set_hash','task_set_id',
-      'task_set_version','telemetry_digest','trust'
+      'task_set_version','telemetry_digest','terminal_attempt_lineage_digest','trust'
     ]::text[])
-    or stage ->> 'schema_version' <> 'aiq.calibration-verified-stage.v1'
+    or stage ->> 'schema_version' <> 'aiq.calibration-verified-stage.v2'
     or stage ->> 'classification' <> 'local_calibration_non_official'
     or stage ->> 'run_class' <> 'calibration'
     or stage ->> 'trust' <> 'untrusted'
@@ -14958,6 +15016,7 @@ begin
     or stage ->> 'package_sha256' !~ '^[0-9a-f]{64}$'
     or not aiq_private.dto_sha256_is_valid(stage -> 'content_hash')
     or not aiq_private.dto_sha256_is_valid(stage -> 'task_set_hash')
+    or not aiq_private.dto_sha256_is_valid(stage -> 'terminal_attempt_lineage_digest')
     or not aiq_private.dto_sha256_is_valid(stage -> 'task_selection_digest')
     or not aiq_private.dto_sha256_is_valid(stage -> 'model_selection_digest')
     or not aiq_private.dto_sha256_is_valid(stage -> 'score_reports_digest')
@@ -15160,9 +15219,10 @@ begin
       'model_selection_digest','observed_unix_ms','official_eligible','package_sha256','ranking_eligible',
       'replay_status','run_class','run_id','runner','schema_version','score_reports_digest',
       'scoring_version','signature','signature_algorithm','signature_version','stage_digest',
-      'task_selection_digest','task_set_hash','telemetry_digest','trust','verifier'
+      'task_selection_digest','task_set_hash','telemetry_digest',
+      'terminal_attempt_lineage_digest','trust','verifier'
     ]::text[])
-    or attestation ->> 'schema_version' <> 'aiq.calibration-verifier-attestation.v1'
+    or attestation ->> 'schema_version' <> 'aiq.calibration-verifier-attestation.v2'
     or attestation ->> 'signature_algorithm' <> 'ed25519'
     or attestation ->> 'signature_version' <> 'aiq.ed25519-jcs.v1'
     or attestation ->> 'classification' <> 'local_calibration_non_official'
@@ -15173,6 +15233,7 @@ begin
     or attestation -> 'official_eligible' <> 'false'::jsonb
     or attestation -> 'ranking_eligible' <> 'false'::jsonb
     or attestation ->> 'replay_status' <> 'evaluator_replayed'
+    or not aiq_private.dto_sha256_is_valid(attestation -> 'terminal_attempt_lineage_digest')
     or not aiq_private.dto_uint_is_valid(attestation -> 'observed_unix_ms',9007199254740991)
     or attestation ->> 'signature' !~ '^[0-9a-f]{128}$'
     or attestation ->> 'signature' = repeat('0',128)
@@ -15735,7 +15796,7 @@ join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
 where not run.official_eligible and not run.ranking_eligible
   and run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.6'
-  and run.scoring_version = '1.0.6'
+  and run.scoring_version = '1.0.7'
   and not publication.official_eligible and not publication.ranking_eligible;
 
 CREATE VIEW public.public_model_efficiency with (security_invoker=true) as
@@ -15807,11 +15868,11 @@ where run.published and not run.synthetic
   and run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.6'
   and run.benchmark_version = 'aiq-core@1.0.6'
-  and run.scoring_version = '1.0.6'
+  and run.scoring_version = '1.0.7'
   and run.started_at is not null and run.completed_at is not null
   and exists(select 1 from aiq_private.aiq_score_snapshots score
     where score.run_id=run.run_id and score.published
-      and score.score_status='official' and score.scoring_version='1.0.6');
+      and score.score_status='official' and score.scoring_version='1.0.7');
 
 comment on column public.public_model_efficiency.matrix_batch_elapsed_ms is
   'Signed matrix-stage wall-clock elapsed time. All 17 child runs share this value; count it once.';
@@ -15888,7 +15949,7 @@ join aiq_private.efficiency_pricing_methods pricing
   on pricing.pricing_digest=result.pricing_digest
 where run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.6'
-  and run.scoring_version = '1.0.6'
+  and run.scoring_version = '1.0.7'
   and not publication.official_eligible and not publication.ranking_eligible;
 
 CREATE VIEW public.public_calibration_scores with (security_invoker=true) as
@@ -15949,7 +16010,7 @@ join aiq_private.efficiency_pricing_methods pricing
   on pricing.pricing_digest=score.pricing_digest
 where run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.6'
-  and run.scoring_version = '1.0.6'
+  and run.scoring_version = '1.0.7'
   and not publication.official_eligible and not publication.ranking_eligible;
 
 alter table aiq_private.calibration_runs enable row level security;
