@@ -117,7 +117,10 @@ pub const PREFLIGHT_MARKER_SHA256: &str =
 	"sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3";
 
 /// Normalization contract for Codex `exec --json` item events.
-pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v2";
+///
+/// Version 3 binds the exact inert collaboration wait shape and its
+/// started/completed lifecycle to the live and replay counters.
+pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v3";
 
 // Current ChatGPT-bundled Codex 5.6 requires this host transport; aiq_benchmark,
 // denied roots, no-network policy, and the remaining disabled features stay the security boundary.
@@ -1379,7 +1382,13 @@ where
 				"configuration probe did not create the exact workspace marker",
 			));
 		}
-		if completed_command_execution_count(&output.stdout_full) != 1 {
+
+		let completed_commands =
+			completed_command_execution_count(&output.stdout_full).map_err(|error| {
+				post_execution_integrity_failure(Ok(output.clone()), error.to_string())
+			})?;
+
+		if completed_commands != 1 {
 			return Err(post_execution_integrity_failure(
 				Ok(output),
 				"configuration probe did not complete exactly one command execution",
@@ -1515,6 +1524,25 @@ impl CapabilityValidationReport {
 	}
 }
 
+/// A bounded, public-safe error from Codex JSON item policy validation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexItemPolicyError {
+	message: &'static str,
+}
+impl CodexItemPolicyError {
+	fn new(message: &'static str) -> Self {
+		Self { message }
+	}
+}
+
+impl Display for CodexItemPolicyError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(self.message)
+	}
+}
+
+impl std::error::Error for CodexItemPolicyError {}
+
 /// The crate-owned production child-process executor.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct SystemExecutor;
@@ -1559,6 +1587,134 @@ pub(crate) struct NormalizedCodexItem {
 	pub raw_type: String,
 	pub is_tool_call: bool,
 	pub counts_as_step: bool,
+	pub collaboration: Option<CodexCollaborationItem>,
+	pub collaboration_sender: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CodexCollaborationItem {
+	/// The exact inert `wait` status item observed from the bundled Codex CLI.
+	InertWait,
+}
+
+#[derive(Default)]
+pub(crate) struct CodexItemAccounting {
+	pub(crate) steps: u32,
+	pub(crate) tool_calls: u32,
+	pub(crate) by_tool: BTreeMap<String, u32>,
+	pending_ids: BTreeMap<String, String>,
+	pending_types: BTreeMap<String, u32>,
+	pending_collaboration_senders: BTreeMap<String, String>,
+}
+impl CodexItemAccounting {
+	pub(crate) fn observe(&mut self, line: &[u8]) -> Result<(), CodexItemPolicyError> {
+		let Some(item) = normalize_codex_item(line)? else {
+			return Ok(());
+		};
+
+		if let Some(CodexCollaborationItem::InertWait) = item.collaboration {
+			let item_id = item.item_id.as_deref().ok_or_else(|| {
+				CodexItemPolicyError::new("inert collaboration wait item has no id")
+			})?;
+			let sender = item.collaboration_sender.as_deref().ok_or_else(|| {
+				CodexItemPolicyError::new("inert collaboration wait item has no sender")
+			})?;
+
+			if item.phase == CodexItemPhase::Started {
+				if self
+					.pending_collaboration_senders
+					.insert(item_id.to_owned(), sender.to_owned())
+					.is_some()
+				{
+					return Err(CodexItemPolicyError::new(
+						"inert collaboration wait item started more than once",
+					));
+				}
+			} else {
+				let Some(expected_sender) = self.pending_collaboration_senders.remove(item_id)
+				else {
+					return Err(CodexItemPolicyError::new(
+						"inert collaboration wait item completed without its start",
+					));
+				};
+
+				if expected_sender != sender {
+					return Err(CodexItemPolicyError::new(
+						"inert collaboration wait sender changed across its lifecycle",
+					));
+				}
+			}
+			if item.counts_as_step {
+				self.steps = self.steps.saturating_add(1);
+			}
+
+			return Ok(());
+		}
+
+		if item
+			.item_id
+			.as_deref()
+			.is_some_and(|item_id| self.pending_collaboration_senders.contains_key(item_id))
+		{
+			return Err(CodexItemPolicyError::new(
+				"inert collaboration wait lifecycle changed item type",
+			));
+		}
+		if item.counts_as_step {
+			self.steps = self.steps.saturating_add(1);
+		}
+		if !item.is_tool_call {
+			return Ok(());
+		}
+
+		match (item.phase, item.item_id) {
+			(CodexItemPhase::Started, Some(item_id)) => {
+				let raw_type = item.raw_type;
+
+				if self.pending_ids.insert(item_id, raw_type.clone()).is_none() {
+					self.tool_calls = self.tool_calls.saturating_add(1);
+					*self.by_tool.entry(raw_type).or_default() += 1;
+				}
+			},
+			(CodexItemPhase::Completed, Some(item_id)) => {
+				let raw_type = item.raw_type;
+
+				if self.pending_ids.remove(&item_id).as_deref() != Some(&raw_type) {
+					self.tool_calls = self.tool_calls.saturating_add(1);
+					*self.by_tool.entry(raw_type).or_default() += 1;
+				}
+			},
+			(CodexItemPhase::Started, None) => {
+				let raw_type = item.raw_type;
+				let pending = self.pending_types.entry(raw_type.clone()).or_default();
+
+				*pending = pending.saturating_add(1);
+				self.tool_calls = self.tool_calls.saturating_add(1);
+				*self.by_tool.entry(raw_type).or_default() += 1;
+			},
+			(CodexItemPhase::Completed, None) => {
+				let raw_type = item.raw_type;
+				let pending = self.pending_types.entry(raw_type.clone()).or_default();
+
+				if *pending == 0 {
+					self.tool_calls = self.tool_calls.saturating_add(1);
+					*self.by_tool.entry(raw_type).or_default() += 1;
+				} else {
+					*pending -= 1;
+				}
+			},
+		}
+
+		Ok(())
+	}
+
+	pub(crate) fn finish(&self) -> Result<(), CodexItemPolicyError> {
+		if self.pending_collaboration_senders.is_empty() {
+			Ok(())
+		} else {
+			Err(CodexItemPolicyError::new("inert collaboration wait item has no completed pair"))
+		}
+	}
 }
 
 struct SystemPipes {
@@ -2112,56 +2268,6 @@ impl Drop for TemporaryProbeExecutable {
 	}
 }
 
-#[derive(Default)]
-struct LiveItemAccounting {
-	steps: u32,
-	tool_calls: u32,
-	pending_ids: BTreeMap<String, String>,
-	pending_types: BTreeMap<String, u32>,
-}
-impl LiveItemAccounting {
-	fn observe(&mut self, line: &[u8]) {
-		let Some(item) = normalize_codex_item(line) else {
-			return;
-		};
-
-		if item.counts_as_step {
-			self.steps = self.steps.saturating_add(1);
-		}
-		if !item.is_tool_call {
-			return;
-		}
-
-		match (item.phase, item.item_id) {
-			(CodexItemPhase::Started, Some(item_id)) => {
-				if self.pending_ids.insert(item_id, item.raw_type).is_none() {
-					self.tool_calls = self.tool_calls.saturating_add(1);
-				}
-			},
-			(CodexItemPhase::Completed, Some(item_id)) => {
-				if self.pending_ids.remove(&item_id).as_deref() != Some(&item.raw_type) {
-					self.tool_calls = self.tool_calls.saturating_add(1);
-				}
-			},
-			(CodexItemPhase::Started, None) => {
-				let pending = self.pending_types.entry(item.raw_type).or_default();
-
-				*pending = pending.saturating_add(1);
-				self.tool_calls = self.tool_calls.saturating_add(1);
-			},
-			(CodexItemPhase::Completed, None) => {
-				let pending = self.pending_types.entry(item.raw_type).or_default();
-
-				if *pending == 0 {
-					self.tool_calls = self.tool_calls.saturating_add(1);
-				} else {
-					*pending -= 1;
-				}
-			},
-		}
-	}
-}
-
 struct PermissionProbePaths {
 	workspace: PathBuf,
 	allowed_file: PathBuf,
@@ -2208,6 +2314,8 @@ pub enum LiveBudgetKind {
 	Steps,
 	/// Tool calls exceeded the tool-call limit.
 	ToolCalls,
+	/// Codex emitted a collaboration item outside the exact inert wait policy.
+	Policy,
 }
 
 /// Classified adapter failure.
@@ -2626,37 +2734,72 @@ pub(crate) fn chatgpt_credential_observation_for_test(
 	Ok(observation)
 }
 
-pub(crate) fn normalize_codex_item(line: &[u8]) -> Option<NormalizedCodexItem> {
+pub(crate) fn normalize_codex_item(
+	line: &[u8],
+) -> Result<Option<NormalizedCodexItem>, CodexItemPolicyError> {
 	let Ok(value) = serde_json::from_slice::<Value>(line) else {
-		return None;
+		return Ok(None);
 	};
-	let phase = match value.get("type").and_then(Value::as_str) {
-		Some("item.started") => CodexItemPhase::Started,
-		Some("item.completed") => CodexItemPhase::Completed,
-		_ => return None,
+	let Some(event_type) = value.get("type").and_then(Value::as_str) else {
+		return Ok(None);
 	};
-	let item = value.get("item")?.as_object()?;
-	let raw_type = item.get("type")?.as_str()?;
+	let phase = match event_type {
+		"item.started" => CodexItemPhase::Started,
+		"item.completed" => CodexItemPhase::Completed,
+		_ => {
+			if value
+				.get("item")
+				.and_then(Value::as_object)
+				.and_then(|item| item.get("type"))
+				.and_then(Value::as_str)
+				== Some("collab_tool_call")
+			{
+				return Err(CodexItemPolicyError::new(
+					"collaboration item has an unsupported lifecycle event",
+				));
+			}
+
+			return Ok(None);
+		},
+	};
+	let Some(item) = value.get("item").and_then(Value::as_object) else {
+		return Ok(None);
+	};
+	let Some(raw_type) = item.get("type").and_then(Value::as_str) else {
+		return Ok(None);
+	};
 
 	if raw_type.is_empty() {
-		return None;
+		return Ok(None);
 	}
 
+	let collaboration = if raw_type == "collab_tool_call" {
+		Some(validate_inert_collaboration_wait(&value, item, phase)?)
+	} else {
+		None
+	};
+	let collaboration_sender = collaboration
+		.is_some()
+		.then(|| item.get("sender_thread_id").and_then(Value::as_str).map(ToOwned::to_owned))
+		.flatten();
 	// Known presentation/reasoning items are not tools. Error items remain in the
 	// raw evidence but are not agent steps; unknown completed items stay bounded
 	// conservatively as both steps and tools.
 	let is_tool_call =
-		!matches!(raw_type, "agent_message" | "message" | "error" | "reasoning" | "todo_list");
+		!matches!(raw_type, "agent_message" | "message" | "error" | "reasoning" | "todo_list")
+			&& collaboration.is_none();
 	let counts_as_step = phase == CodexItemPhase::Completed && raw_type != "error";
 
-	Some(NormalizedCodexItem {
+	Ok(Some(NormalizedCodexItem {
 		version: CODEX_ITEM_ACCOUNTING_VERSION,
 		phase,
 		item_id: item.get("id").and_then(Value::as_str).map(ToOwned::to_owned),
 		raw_type: raw_type.to_owned(),
 		is_tool_call,
 		counts_as_step,
-	})
+		collaboration,
+		collaboration_sender,
+	}))
 }
 
 pub(crate) fn safe_codex_version(value: &str) -> bool {
@@ -2665,14 +2808,103 @@ pub(crate) fn safe_codex_version(value: &str) -> bool {
 		&& value.bytes().all(|byte| (b' '..=b'~').contains(&byte) && !matches!(byte, b'"' | b'\\'))
 }
 
-fn completed_command_execution_count(stdout: &str) -> usize {
-	stdout
+fn validate_inert_collaboration_wait(
+	event: &Value,
+	item: &serde_json::Map<String, Value>,
+	phase: CodexItemPhase,
+) -> Result<CodexCollaborationItem, CodexItemPolicyError> {
+	const EVENT_KEYS: [&str; 2] = ["item", "type"];
+	const ITEM_KEYS: [&str; 8] = [
+		"agents_states",
+		"id",
+		"prompt",
+		"receiver_thread_ids",
+		"sender_thread_id",
+		"status",
+		"tool",
+		"type",
+	];
+
+	let event_object = event
+		.as_object()
+		.ok_or_else(|| CodexItemPolicyError::new("collaboration event is not a JSON object"))?;
+
+	if event_object.len() != EVENT_KEYS.len()
+		|| EVENT_KEYS.iter().any(|key| !event_object.contains_key(*key))
+	{
+		return Err(CodexItemPolicyError::new(
+			"collaboration event has unexpected top-level fields",
+		));
+	}
+	if item.len() != ITEM_KEYS.len() || ITEM_KEYS.iter().any(|key| !item.contains_key(*key)) {
+		return Err(CodexItemPolicyError::new("collaboration wait item has unexpected fields"));
+	}
+
+	let item_id = item
+		.get("id")
+		.and_then(Value::as_str)
+		.filter(|value| valid_collaboration_identifier(value))
+		.ok_or_else(|| CodexItemPolicyError::new("collaboration wait item id is invalid"))?;
+	let sender = item
+		.get("sender_thread_id")
+		.and_then(Value::as_str)
+		.filter(|value| valid_collaboration_identifier(value))
+		.ok_or_else(|| CodexItemPolicyError::new("collaboration wait sender is invalid"))?;
+	let _ = (item_id, sender);
+
+	if item.get("tool").and_then(Value::as_str) != Some("wait")
+		|| item.get("prompt") != Some(&Value::Null)
+		|| !item
+			.get("receiver_thread_ids")
+			.is_some_and(|value| value.as_array().is_some_and(Vec::is_empty))
+		|| !item
+			.get("agents_states")
+			.is_some_and(|value| value.as_object().is_some_and(serde_json::Map::is_empty))
+	{
+		return Err(CodexItemPolicyError::new(
+			"collaboration wait item is not the exact inert shape",
+		));
+	}
+
+	let expected_status = match phase {
+		CodexItemPhase::Started => "in_progress",
+		CodexItemPhase::Completed => "completed",
+	};
+
+	if item.get("status").and_then(Value::as_str) != Some(expected_status) {
+		return Err(CodexItemPolicyError::new(
+			"collaboration wait item has an invalid lifecycle status",
+		));
+	}
+
+	Ok(CodexCollaborationItem::InertWait)
+}
+
+fn valid_collaboration_identifier(value: &str) -> bool {
+	(1..=256).contains(&value.len())
+		&& value.bytes().all(|byte| byte.is_ascii_graphic() && !matches!(byte, b'"' | b'\\'))
+}
+
+fn completed_command_execution_count(stdout: &str) -> Result<usize, CodexItemPolicyError> {
+	let mut accounting = CodexItemAccounting::default();
+	let count = stdout
 		.lines()
-		.filter_map(|line| normalize_codex_item(line.as_bytes()))
-		.filter(|item| {
-			item.phase == CodexItemPhase::Completed && item.raw_type == "command_execution"
+		.map(|line| {
+			let item = normalize_codex_item(line.as_bytes())?;
+
+			accounting.observe(line.as_bytes())?;
+
+			Ok(usize::from(item.is_some_and(|item| {
+				item.phase == CodexItemPhase::Completed && item.raw_type == "command_execution"
+			})))
 		})
-		.count()
+		.collect::<Result<Vec<_>, CodexItemPolicyError>>()?
+		.into_iter()
+		.sum();
+
+	accounting.finish()?;
+
+	Ok(count)
 }
 
 fn run_toolchain_executable_canaries(
@@ -4617,9 +4849,10 @@ fn read_stdout_stream(
 	let mut pending = Vec::new();
 	let mut buffer = [0_u8; 8_192];
 	let mut truncated = false;
-	let mut accounting = LiveItemAccounting::default();
+	let mut accounting = CodexItemAccounting::default();
 	let mut step_breach_sent = false;
 	let mut tool_breach_sent = false;
+	let mut policy_breach_sent = false;
 
 	loop {
 		let read = stream.read(&mut buffer)?;
@@ -4643,8 +4876,11 @@ fn read_stdout_stream(
 		while let Some(index) = pending.iter().position(|byte| *byte == b'\n') {
 			let line: Vec<_> = pending.drain(..=index).collect();
 
-			accounting.observe(&line);
+			if accounting.observe(&line).is_err() && !policy_breach_sent {
+				policy_breach_sent = true;
 
+				let _ = breach_tx.send(LiveBudgetKind::Policy);
+			}
 			if accounting.steps > max_steps && !step_breach_sent {
 				step_breach_sent = true;
 
@@ -4656,6 +4892,15 @@ fn read_stdout_stream(
 				let _ = breach_tx.send(LiveBudgetKind::ToolCalls);
 			}
 		}
+	}
+
+	if !pending.is_empty() && accounting.observe(&pending).is_err() && !policy_breach_sent {
+		policy_breach_sent = true;
+
+		let _ = breach_tx.send(LiveBudgetKind::Policy);
+	}
+	if accounting.finish().is_err() && !policy_breach_sent {
+		let _ = breach_tx.send(LiveBudgetKind::Policy);
 	}
 
 	Ok((bytes, truncated))
@@ -5051,16 +5296,7 @@ where
 	let stderr_full = String::from_utf8_lossy(&capture.stderr).into_owned();
 	let stderr = preview(&stderr_full);
 	let artifacts =
-		capture_artifacts(&capture, sink, retain_stdout).map_err(|artifacts| AdapterFailure {
-			kind: AdapterFailureKind::WorkspaceIntegrity,
-			exit_code: capture.exit_code,
-			stderr: stderr.clone(),
-			message: "post-invocation output evidence retention failed".to_owned(),
-			stdout_truncated: capture.stdout_truncated,
-			stderr_truncated: capture.stderr_truncated,
-			artifacts,
-			stdout_full: stdout_full.clone(),
-		})?;
+		capture_artifacts_or_failure(&capture, sink, retain_stdout, &stderr, &stdout_full)?;
 
 	if capture.timed_out {
 		return Err(AdapterFailure {
@@ -5077,14 +5313,20 @@ where
 
 	if let Some(kind) = capture.budget_exceeded {
 		return Err(AdapterFailure {
-			kind: if kind == LiveBudgetKind::Output {
-				AdapterFailureKind::OutputTruncated
-			} else {
-				AdapterFailureKind::BudgetExceeded
+			kind: match kind {
+				LiveBudgetKind::Output => AdapterFailureKind::OutputTruncated,
+				LiveBudgetKind::Policy => AdapterFailureKind::WorkspaceIntegrity,
+				LiveBudgetKind::Steps | LiveBudgetKind::ToolCalls => {
+					AdapterFailureKind::BudgetExceeded
+				},
 			},
 			exit_code: capture.exit_code,
 			stderr,
-			message: format!("Codex CLI exceeded the live {kind:?} budget"),
+			message: if kind == LiveBudgetKind::Policy {
+				"Codex CLI output violated the collaboration item accounting policy".to_owned()
+			} else {
+				format!("Codex CLI exceeded the live {kind:?} budget")
+			},
 			stdout_truncated: capture.stdout_truncated,
 			stderr_truncated: capture.stderr_truncated,
 			artifacts,
@@ -5210,6 +5452,28 @@ fn normalized_preflight_failure_message(kind: AdapterFailureKind) -> &'static st
 			"post-invocation output evidence or scratch cleanup failed"
 		},
 	}
+}
+
+fn capture_artifacts_or_failure<S>(
+	capture: &ExecutionCapture,
+	sink: &S,
+	retain_stdout: bool,
+	stderr: &str,
+	stdout_full: &str,
+) -> Result<Vec<ArtifactReference>, AdapterFailure>
+where
+	S: ArtifactSink,
+{
+	capture_artifacts(capture, sink, retain_stdout).map_err(|artifacts| AdapterFailure {
+		kind: AdapterFailureKind::WorkspaceIntegrity,
+		exit_code: capture.exit_code,
+		stderr: stderr.to_owned(),
+		message: "post-invocation output evidence retention failed".to_owned(),
+		stdout_truncated: capture.stdout_truncated,
+		stderr_truncated: capture.stderr_truncated,
+		artifacts,
+		stdout_full: stdout_full.to_owned(),
+	})
 }
 
 fn capture_artifacts<S>(
@@ -5477,8 +5741,8 @@ mod tests {
 		adapter::{
 			AdapterFailureKind, ArtifactReference, ArtifactSink, CODEX_ITEM_ACCOUNTING_VERSION,
 			CapabilityValidationStatus, ChildProcessObserver, CodexAdapter, CodexExecutionConfig,
-			CodexItemPhase, CommandRequest, ConfigurationProbeStatus, ExecutionCapture, Executor,
-			ExecutorError, InvocationRequest, LiveBudgetKind, LiveItemAccounting,
+			CodexItemAccounting, CodexItemPhase, CommandRequest, ConfigurationProbeStatus,
+			ExecutionCapture, Executor, ExecutorError, InvocationRequest, LiveBudgetKind,
 			LocalArtifactSink, MAX_INLINE_PREVIEW_BYTES, PREFLIGHT_MARKER_ARTIFACT_KIND,
 			PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_COMMAND, PREFLIGHT_MARKER_NAME, SandboxPolicy,
 			SystemExecutor,
@@ -7129,6 +7393,21 @@ mod tests {
 	}
 
 	#[test]
+	fn collaboration_policy_failure_retains_stdout_and_cannot_become_success() {
+		let malformed = r#"{"type":"item.completed","item":{"agents_states":{},"id":"wait-1","prompt":null,"receiver_thread_ids":["receiver"],"sender_thread_id":"thread-sender","status":"completed","tool":"wait","type":"collab_tool_call"}}"#;
+		let mut exceeded = capture(1, format!("{malformed}\n"), Vec::new());
+
+		exceeded.budget_exceeded = Some(LiveBudgetKind::Policy);
+
+		let adapter = adapter(vec![Ok(exceeded)]);
+		let failure = adapter.invoke(&invocation()).expect_err("policy must fail closed");
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert!(failure.artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl"));
+		assert!(failure.stdout_full.contains("collab_tool_call"));
+	}
+
+	#[test]
 	fn subscription_usage_limit_has_a_stable_failure_kind() {
 		let adapter = adapter(vec![Ok(capture(
 			1,
@@ -7723,7 +8002,8 @@ mod tests {
 		];
 
 		for (line, expected) in cases {
-			let actual = crate::adapter::normalize_codex_item(line.as_bytes());
+			let actual = crate::adapter::normalize_codex_item(line.as_bytes())
+				.expect("non-collaboration fixture must satisfy the policy");
 
 			assert_eq!(
 				actual.as_ref().map(|item| {
@@ -7739,9 +8019,194 @@ mod tests {
 		}
 	}
 
+	fn inert_wait_event(event_type: &str, status: &str, item_id: &str) -> String {
+		serde_json::json!({
+			"type": event_type,
+			"item": {
+				"agents_states": {},
+				"id": item_id,
+				"prompt": null,
+				"receiver_thread_ids": [],
+				"sender_thread_id": "thread-sender",
+				"status": status,
+				"tool": "wait",
+				"type": "collab_tool_call"
+			}
+		})
+		.to_string()
+	}
+
+	#[test]
+	fn inert_collaboration_wait_is_one_step_and_zero_tools() {
+		let started = inert_wait_event("item.started", "in_progress", "wait-1");
+		let completed = inert_wait_event("item.completed", "completed", "wait-1");
+		let normalized = crate::adapter::normalize_codex_item(started.as_bytes())
+			.expect("inert wait policy")
+			.expect("started item");
+
+		assert_eq!(
+			normalized.collaboration,
+			Some(crate::adapter::CodexCollaborationItem::InertWait)
+		);
+		assert!(!normalized.is_tool_call);
+		assert!(!normalized.counts_as_step);
+
+		let mut accounting = CodexItemAccounting::default();
+
+		accounting.observe(started.as_bytes()).expect("started wait");
+		accounting.observe(completed.as_bytes()).expect("completed wait");
+		accounting.finish().expect("paired wait");
+
+		assert_eq!(accounting.steps, 1);
+		assert_eq!(accounting.tool_calls, 0);
+		assert!(!accounting.by_tool.contains_key("collab_tool_call"));
+
+		let usage = runner::parse_codex_tool_usage(&format!("{started}\n{completed}"))
+			.expect("durable wait accounting");
+
+		assert_eq!(usage.steps, 1);
+		assert_eq!(usage.total_calls, 0);
+		assert!(usage.by_tool.is_empty());
+	}
+
+	#[test]
+	fn collaboration_policy_rejects_actual_or_malformed_items() {
+		let mut actual = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.completed",
+			"completed",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		actual["item"]["tool"] = serde_json::Value::String("spawn".to_owned());
+
+		let mut receiver = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.completed",
+			"completed",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		receiver["item"]["receiver_thread_ids"] = serde_json::json!(["receiver"]);
+
+		let mut states = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.completed",
+			"completed",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		states["item"]["agents_states"] = serde_json::json!({"receiver": {}});
+
+		let mut prompt = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.completed",
+			"completed",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		prompt["item"]["prompt"] = serde_json::Value::String("unexpected".to_owned());
+
+		let mut missing_sender = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.completed",
+			"completed",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		missing_sender["item"].as_object_mut().expect("item object").remove("sender_thread_id");
+
+		let mut updated = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.started",
+			"in_progress",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		updated["type"] = serde_json::Value::String("item.updated".to_owned());
+
+		for value in [actual, receiver, states, prompt, missing_sender, updated] {
+			assert!(
+				crate::adapter::normalize_codex_item(value.to_string().as_bytes()).is_err(),
+				"collaboration policy must reject the event"
+			);
+		}
+	}
+
+	#[test]
+	fn collaboration_lifecycle_requires_one_started_completed_pair() {
+		let started = inert_wait_event("item.started", "in_progress", "wait-1");
+		let completed = inert_wait_event("item.completed", "completed", "wait-1");
+		let other_completed = inert_wait_event("item.completed", "completed", "wait-2");
+		let mut changed_sender =
+			serde_json::from_str::<serde_json::Value>(&completed).expect("inert wait JSON");
+
+		changed_sender["item"]["sender_thread_id"] =
+			serde_json::Value::String("other-sender".to_owned());
+
+		let mut completed_first = CodexItemAccounting::default();
+
+		assert!(completed_first.observe(completed.as_bytes()).is_err());
+
+		let mut mismatched = CodexItemAccounting::default();
+
+		mismatched.observe(started.as_bytes()).expect("started wait");
+
+		assert!(mismatched.observe(other_completed.as_bytes()).is_err());
+		assert!(mismatched.finish().is_err());
+
+		let mut sender_mismatch = CodexItemAccounting::default();
+
+		sender_mismatch.observe(started.as_bytes()).expect("started wait");
+
+		assert!(sender_mismatch.observe(changed_sender.to_string().as_bytes()).is_err());
+
+		let mut unfinished = CodexItemAccounting::default();
+
+		unfinished.observe(started.as_bytes()).expect("started wait");
+
+		assert!(unfinished.finish().is_err());
+
+		let mut changed_type = CodexItemAccounting::default();
+
+		changed_type.observe(started.as_bytes()).expect("started wait");
+
+		assert!(changed_type
+			.observe(
+				r#"{"type":"item.completed","item":{"id":"wait-1","type":"command_execution"}}"#
+					.as_bytes(),
+			)
+			.is_err());
+	}
+
+	#[test]
+	fn live_stream_emits_policy_breach_for_malformed_collaboration() {
+		let mut malformed = serde_json::from_str::<serde_json::Value>(&inert_wait_event(
+			"item.completed",
+			"completed",
+			"wait-1",
+		))
+		.expect("inert wait JSON");
+
+		malformed["item"]["tool"] = serde_json::Value::String("send".to_owned());
+
+		let (breach_tx, breach_rx) = mpsc::channel();
+
+		super::read_stdout_stream(
+			io::Cursor::new(format!("{}\n", malformed)),
+			super::MAX_CAPTURE_BYTES,
+			u32::MAX,
+			u32::MAX,
+			breach_tx,
+		)
+		.expect("bounded stream");
+
+		assert_eq!(breach_rx.try_recv(), Ok(LiveBudgetKind::Policy));
+	}
+
 	#[test]
 	fn live_accounting_counts_each_tool_once_and_completed_only_file_changes() {
-		let mut accounting = LiveItemAccounting::default();
+		let mut accounting = CodexItemAccounting::default();
 
 		for line in [
 			r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution"}}"#,
@@ -7749,7 +8214,7 @@ mod tests {
 			r#"{"type":"item.completed","item":{"id":"patch-1","type":"file_change"}}"#,
 			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"ok"}}"#,
 		] {
-			accounting.observe(line.as_bytes());
+			accounting.observe(line.as_bytes()).expect("normal item policy");
 		}
 
 		assert_eq!(accounting.steps, 3);
@@ -7758,12 +8223,13 @@ mod tests {
 
 	#[test]
 	fn live_accounting_does_not_count_error_items_as_tool_calls() {
-		let mut accounting = LiveItemAccounting::default();
+		let mut accounting = CodexItemAccounting::default();
 
 		accounting.observe(
 			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#
 				.as_bytes(),
-		);
+		)
+		.expect("error item policy");
 
 		assert_eq!(accounting.steps, 0);
 		assert_eq!(accounting.tool_calls, 0);
@@ -7771,13 +8237,13 @@ mod tests {
 
 	#[test]
 	fn live_accounting_counts_agent_message_after_error_as_one_step_without_a_tool() {
-		let mut accounting = LiveItemAccounting::default();
+		let mut accounting = CodexItemAccounting::default();
 
 		for line in [
 			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
 			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#,
 		] {
-			accounting.observe(line.as_bytes());
+			accounting.observe(line.as_bytes()).expect("normal item policy");
 		}
 
 		assert_eq!(accounting.steps, 1);
@@ -8463,7 +8929,7 @@ mod tests {
 		assert_eq!(capture.budget_exceeded, None);
 
 		let stdout = String::from_utf8(capture.stdout).expect("fixture stdout must be UTF-8");
-		let usage = runner::parse_codex_tool_usage(&stdout);
+		let usage = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 
 		assert_eq!(usage.steps, 1);
 		assert_eq!(usage.total_calls, 0);
