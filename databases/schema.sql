@@ -5866,7 +5866,7 @@ create function aiq_private.task_catalog_is_exact(target_task_set_id text, targe
         and task.task_set_version = target_task_set_version
     )
     else aiq_private.frozen_catalog_identity_is_valid(
-      target_task_set_id, target_task_set_version, '1.0.6'
+      target_task_set_id, target_task_set_version, '1.0.7'
     )
   end
   from aiq_private.aiq_task_sets task_set
@@ -15113,6 +15113,8 @@ begin
     or stage -> 'execution_concurrency' is distinct from payload -> 'execution_concurrency'
     or stage -> 'evaluator_results_artifact' is distinct from payload -> 'evaluator_results_artifact'
     or stage ->> 'scoring_version' is distinct from payload ->> 'scoring_version'
+    or stage ->> 'terminal_attempt_lineage_digest' is distinct from
+      aiq_private.jcs_sha256(payload -> 'terminal_attempt_lineage')
     or stage ->> 'started_unix_ms' is distinct from payload ->> 'started_unix_ms'
     or stage ->> 'finished_unix_ms' is distinct from payload ->> 'finished_unix_ms'
     or stage ->> 'capability_validation_digest' is distinct from aiq_private.jcs_sha256(payload -> 'capability_validation')
@@ -15293,6 +15295,8 @@ begin
     or attestation ->> 'model_selection_digest' is distinct from stage ->> 'model_selection_digest'
     or attestation ->> 'score_reports_digest' is distinct from stage ->> 'score_reports_digest'
     or attestation ->> 'telemetry_digest' is distinct from stage ->> 'telemetry_digest'
+    or attestation ->> 'terminal_attempt_lineage_digest' is distinct from
+      stage ->> 'terminal_attempt_lineage_digest'
     or attestation ->> 'capability_validation_digest' is distinct from stage ->> 'capability_validation_digest'
     or attestation ->> 'scoring_version' is distinct from stage ->> 'scoring_version'
     or attestation -> 'execution_concurrency' is distinct from stage -> 'execution_concurrency'
