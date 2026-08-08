@@ -145,6 +145,16 @@ const DISABLED_CODEX_FEATURES: &[&str] = &[
 const BENCHMARK_PERMISSION_PROFILE: &str = "aiq_benchmark";
 const CONTROLLED_OPENSSL_CONF: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
 const PREFLIGHT_MARKER_NAME: &str = ".aiq-capability-marker-v1";
+#[cfg(not(windows))]
+const PREFLIGHT_MARKER_COMMAND: &str =
+	"printf 'AIQ_CAPABILITY_COMMAND_AND_WRITE_V1\\n' > .aiq-capability-marker-v1";
+#[cfg(windows)]
+const PREFLIGHT_MARKER_COMMAND: &str = concat!(
+	"powershell.exe -NoProfile -NonInteractive -Command \"",
+	"[System.IO.File]::WriteAllText('.aiq-capability-marker-v1',",
+	"[string]::Concat('AIQ_CAPABILITY_COMMAND_AND_WRITE_V1',[char]10),",
+	"[System.Text.UTF8Encoding]::new($false))\"",
+);
 const MAX_AUTH_JSON_BYTES: u64 = 1_024 * 1_024;
 const MAX_ID_TOKEN_PAYLOAD_BYTES: usize = 128 * 1_024;
 const CODEX_PROXY_ENVIRONMENT_KEYS: [&str; 6] =
@@ -1324,11 +1334,11 @@ where
 				self.config.model_toolchain.as_ref(),
 			)?,
 			format!(
-				"Use the command execution tool exactly once to create the regular file {PREFLIGHT_MARKER_NAME} in the current workspace. Its exact bytes must be AIQ_CAPABILITY_COMMAND_AND_WRITE_V1 followed by one newline. Then reply with exactly AIQ_PREFLIGHT_OK."
+				"Do not send commentary before the command. Do not use a file-editing, patch, or file-change tool. Use the terminal or shell command execution tool exactly once. Run exactly this command in the current workspace: {PREFLIGHT_MARKER_COMMAND}. Do not run any other command. After the command completes, reply with exactly AIQ_PREFLIGHT_OK and no other text."
 			)
 			.into_bytes(),
 			Duration::from_secs(30),
-			2,
+			3,
 			1,
 			&scratch_environment,
 		);
@@ -5470,7 +5480,8 @@ mod tests {
 			CodexItemPhase, CommandRequest, ConfigurationProbeStatus, ExecutionCapture, Executor,
 			ExecutorError, InvocationRequest, LiveBudgetKind, LiveItemAccounting,
 			LocalArtifactSink, MAX_INLINE_PREVIEW_BYTES, PREFLIGHT_MARKER_ARTIFACT_KIND,
-			PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_NAME, SandboxPolicy, SystemExecutor,
+			PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_COMMAND, PREFLIGHT_MARKER_NAME, SandboxPolicy,
+			SystemExecutor,
 		},
 		corpus_commitment,
 		model::{CapabilityManifest, CapabilityStatus, MODEL_MATRIX, ModelCapability},
@@ -7267,7 +7278,7 @@ mod tests {
 			Ok(capture(
 				0,
 				concat!(
-					r#"{"type":"item.completed","item":{"type":"error","message":"redacted"}}"#,
+					r#"{"type":"item.completed","item":{"type":"agent_message","text":"Starting the requested capability check."}}"#,
 					"\n",
 					r#"{"type":"item.completed","item":{"type":"command_execution","id":"command-1"}}"#,
 					"\n",
@@ -7301,10 +7312,15 @@ mod tests {
 		for request in &requests[2..] {
 			let workspace = request_argument_path(request, "--cd");
 			let workspace_text = workspace.display().to_string();
+			let prompt = str::from_utf8(&request.stdin).expect("probe prompt must be UTF-8");
 
 			assert_eq!(request.timeout, Duration::from_secs(30));
-			assert_eq!(request.max_steps, 2);
+			assert_eq!(request.max_steps, 3);
 			assert_eq!(request.max_tool_calls, 1);
+			assert!(prompt.contains("Do not send commentary before the command"));
+			assert!(prompt.contains("Do not use a file-editing, patch, or file-change tool"));
+			assert!(prompt.contains(PREFLIGHT_MARKER_COMMAND));
+			assert!(prompt.contains("reply with exactly AIQ_PREFLIGHT_OK and no other text"));
 			assert_eq!(request.environment.get("TMPDIR"), Some(&workspace_text));
 			assert!(!workspace.exists(), "functional probe scratch must be removed");
 			assert!(!request.args.windows(2).any(|pair| pair == ["--disable", "shell_tool"]));
@@ -7315,6 +7331,30 @@ mod tests {
 					&& pair[1].contains("write")
 			}));
 		}
+	}
+
+	#[test]
+	fn capability_probe_rejects_file_change_without_command_execution() {
+		let adapter = adapter(vec![Ok(capture(
+			0,
+			concat!(
+				r#"{"type":"item.completed","item":{"type":"file_change","id":"file-1","status":"completed"}}"#,
+				"\n",
+				r#"{"type":"item.completed","item":{"type":"agent_message","text":"AIQ_PREFLIGHT_OK"}}"#,
+			)
+			.as_bytes()
+			.to_vec(),
+			Vec::new(),
+		))]);
+		let failure = adapter
+			.probe_configuration(MODEL_MATRIX[0])
+			.expect_err("file changes must not satisfy command execution capability");
+
+		assert_eq!(failure.kind, AdapterFailureKind::WorkspaceIntegrity);
+		assert_eq!(
+			failure.message,
+			"configuration probe did not complete exactly one command execution"
+		);
 	}
 
 	#[test]
