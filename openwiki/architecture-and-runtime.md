@@ -22,26 +22,24 @@ Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public candidate, task, and scorer contract:
 AIQ Core `1.0.6` with task-metadata digest
-`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
+`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
-This public candidate changes only task-level runtime envelopes for five bounded
-interaction tasks. Coding-07 gets 600 wall seconds, 32 steps, and 21 tool calls;
-debugging-02 gets 1,800 seconds, 64 steps, and 56 tool calls; coding-06,
-debugging-01, and debugging-04 retain 1,500 seconds, 48 steps, and 40 tool calls.
-Every task budget is common to every model configuration. The other 67 task,
-evaluator, tool, and budget contracts carry forward with new bindings. The
+`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+This public candidate removes the model wall-clock deadline from all 72 tasks.
+Coding-07 retains 32 steps and 21 tool calls; debugging-02 retains 64 steps and
+56 tool calls; coding-06, debugging-01, and debugging-04 retain 48 steps and 40
+tool calls. The other 67 tasks retain their accepted step and tool-call limits.
+Prompt, evaluator, semantic scoring, and tool permissions are unchanged. The
 preceding `1.0.5` pilots remain immutable non-Official evidence. The first had
 63 completed cells, five timeouts, and saturated completed means. The r11 pilot
 stopped on debugging-02 at 47/48 steps and 41/40 tool calls; coding-06 and
 debugging-01 had high utilization but no runtime failure. The current task
 semantics and calibration implications are
 canonicalized in [Benchmark Method](benchmark-method.md).
-The public catalog is deterministic and identity-frozen. Two controlled
-generations produced one matching tree, and the reviewed 72-task database
-commitment is bound in source. Final controlled corpus identities remain
-calibration candidates rather than accepted release identities. Contrast
-generation remains pending. The
+The public catalog is deterministic and identity-frozen. The prior controlled
+tree and database commitment bind the retired deadline policy. The new identity
+requires fresh independent Core and Contrast seals and a regenerated database
+commitment before calibration. The
 shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
@@ -68,9 +66,9 @@ already-conclusive ceiling failure and was rejected as unpublished calibration
 evidence. No hidden responses or hidden task details were published. The first
 `1.0.4` calibration completed all 1,224 cells but failed the statistical release
 gate. It remains non-Official evidence; this does not mean every task execution
-failed. The `1.0.6` sequence is a 17-configuration by
-five-runtime-revised-task pilot, followed by the complete 17-by-72 non-Official
-calibration. Real calibration
+failed. The `1.0.6` sequence uses a focused no-deadline canary for the two
+previously timed-out Sol ultra cells, followed by the complete 17-by-72
+non-Official calibration. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
 The accepted production package must be non-synthetic. Its 1,224 task-level
@@ -125,8 +123,9 @@ external service configuration and production acceptance.
 ## Runner flow
 
 Before any paid Official preflight, `admit-permissions` validates the exact
-72-by-17 plan, controlled-input identities, schedule occurrence, conservative
-capacity, worker count, and permission boundary. The runner starts Codex with
+72-by-17 plan, controlled-input identities, schedule occurrence, worker count,
+and permission boundary. Capacity evidence records model duration as unbounded
+and does not claim that the run fits before another schedule slot. The runner starts Codex with
 strict CLI configuration that selects the explicit `aiq_benchmark` profile and
 requires external managed requirements to be absent, then runs the sandbox
 canaries and validates the planned preflight, checkpoint, run, score, and package
@@ -174,8 +173,10 @@ exactly 17 by 72. Calibration accepts a deterministic subset but remains
 untrusted, non-Official, and ineligible for ranking.
 
 The complete Official matrix is one run with 1,224 task-model cells, not 1,224
-runs. An admitted host can execute it with `--jobs 32` when the conservative
-capacity check accepts that value. A corpus, toolchain, or permission-evidence
+runs. The admitted plan fixes `--jobs`; scheduling must not start a second run
+while the first remains active. Formal task invocations have no wall-clock
+deadline. Live step and tool-call budgets still terminate runaway work, and
+deterministic evaluator subprocesses remain bounded. A corpus, toolchain, or permission-evidence
 digest change defines a different plan. It requires a new admission, preflight,
 checkpoint, run, score, package, verifier environment, replay stage, and
 attestation; evidence from the changed plan cannot authorize the new one.

@@ -14,9 +14,9 @@ const SCORER_VERSION = '1.0.6' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts';
 
 export const AIQ_CORE_1_0_6_TASK_METADATA_IDENTITY_SHA256 =
-  'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460';
+  'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91';
 export const AIQ_CORE_1_0_6_CATALOG_RELEASE_IDENTITY_SHA256 =
-  'sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78';
+  'sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f';
 
 type JsonObject = Record<string, unknown>;
 type PriorCatalog = ReturnType<typeof buildPriorCatalog>;
@@ -47,7 +47,7 @@ interface ScoringContract106 {
   readonly verification: 'committed_configuration_and_result_checks_are_content_addressed_and_replayed';
 }
 
-export type RevisionKind = 'runtime_budget_revision' | 'carry_forward';
+export type RevisionKind = 'runtime_budget_revision';
 
 export interface CatalogTask106 extends Omit<
   PriorTask,
@@ -72,7 +72,7 @@ export interface CatalogTask106 extends Omit<
     readonly content_handle: string;
   };
   readonly budget: {
-    readonly wall_seconds: number;
+    readonly wall_seconds: number | null;
     readonly max_steps: number;
     readonly max_tool_calls: number;
   };
@@ -87,7 +87,7 @@ export interface CatalogTask106 extends Omit<
   };
   readonly tags: readonly string[];
   readonly provenance: {
-    readonly origin: 'runtime_budget_revision' | 'release_carry_forward';
+    readonly origin: 'runtime_budget_revision';
     readonly owner: 'AIQ benchmark maintainers';
     readonly recorded_date: '2026-08-08';
     readonly predecessor_task_version: '1.0.5';
@@ -125,13 +125,13 @@ const RUNTIME_BUDGET_TASK_IDS = Object.freeze([
 type TaskBudget = CatalogTask106['budget'];
 
 const CODING_07_RUNTIME_BUDGET = Object.freeze({
-  wall_seconds: 600,
+  wall_seconds: null,
   max_steps: 32,
   max_tool_calls: 21,
 } satisfies TaskBudget);
 
 const DEBUGGING_02_RUNTIME_BUDGET = Object.freeze({
-  wall_seconds: 1800,
+  wall_seconds: null,
   max_steps: 64,
   max_tool_calls: 56,
 } satisfies TaskBudget);
@@ -139,7 +139,7 @@ const DEBUGGING_02_RUNTIME_BUDGET = Object.freeze({
 function runtimeBudgetFor(taskId: string): TaskBudget {
   if (taskId === 'coding-07') return CODING_07_RUNTIME_BUDGET;
   if (taskId === 'debugging-02') return DEBUGGING_02_RUNTIME_BUDGET;
-  return { wall_seconds: 1500, max_steps: 48, max_tool_calls: 40 };
+  return { wall_seconds: null, max_steps: 48, max_tool_calls: 40 };
 }
 
 const SCORING_CONTRACT = Object.freeze({
@@ -222,7 +222,7 @@ function replaceReleaseStrings(value: unknown): unknown {
 }
 
 function carriedForwardDelta(taskId: string): string {
-  return `${taskId} carries forward the accepted AIQ Core 1.0.5 task, fixture, evaluator, tool, and runtime-budget contract. AIQ Core 1.0.6 advances only the release, scorer, controlled-reference, provenance, and commitment bindings for this task.`;
+  return `${taskId} preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, semantic scoring contract, step budget, and tool-call budget. AIQ Core 1.0.6 removes the model wall-clock deadline so elapsed time remains an independent efficiency measurement rather than a score or completion gate.`;
 }
 
 function runtimeBudgetDelta(task: PriorTask, budget: TaskBudget): string {
@@ -230,20 +230,15 @@ function runtimeBudgetDelta(task: PriorTask, budget: TaskBudget): string {
     task.budget.max_steps === budget.max_steps &&
     task.budget.max_tool_calls === budget.max_tool_calls;
   const limitChange = unchangedLimits
-    ? `Its common per-task runtime envelope changes from ${task.budget.wall_seconds} wall seconds to ${budget.wall_seconds} wall seconds while retaining ${budget.max_steps} steps and ${budget.max_tool_calls} tool calls.`
-    : `Its common per-task runtime envelope changes from ${task.budget.wall_seconds} wall seconds, ${task.budget.max_steps} steps, and ${task.budget.max_tool_calls} tool calls to ${budget.wall_seconds} wall seconds, ${budget.max_steps} steps, and ${budget.max_tool_calls} tool calls.`;
-  const evidence =
-    task.task_id === 'coding-07'
-      ? 'Two independent Sol ultra attempts at the prior 420-second wall limit timed out, including a jobs=1 attempt; the other 16 configurations completed at or below 363.664 seconds. The 600-second limit is one common task budget for all configurations, not a model-specific exception.'
-      : task.task_id === 'debugging-02'
-        ? 'The r11 five-task pilot stopped on a debugging-02 runtime failure after 1,060.042 seconds at 47/48 steps and 41/40 tool calls. The new 1,800-second, 64-step, 56-call envelope gives bounded headroom in every observed dimension: 20% wall, 33% steps, and 40% calls, uniformly for all 17 configurations. coding-06 reached 93.2% of its wall ceiling and debugging-01 reached 91.7% of its step and 95% of its call ceilings without a runtime failure; those envelopes remain unchanged and must be falsified by the complete next 17-by-5 pilot.'
-        : 'The prior 17-by-4 pilot observed seven timeouts and three tool-budget failures at the old bounds.';
-  return `${task.task_id} preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. ${limitChange} ${evidence}`;
+    ? `It retains ${budget.max_steps} steps and ${budget.max_tool_calls} tool calls.`
+    : `It changes the step and tool-call limits from ${task.budget.max_steps}/${task.budget.max_tool_calls} to ${budget.max_steps}/${budget.max_tool_calls}.`;
+  return `${task.task_id} preserves the accepted AIQ Core 1.0.5 prompt, fixture, evaluator, tools, and semantic scoring contract. It removes the model wall-clock deadline. ${limitChange} Elapsed time and cost remain independent efficiency measurements.`;
 }
 
 function reviseTask(priorTask: PriorTask): CatalogTask106 {
   const revised = isRuntimeBudgetTaskId(priorTask.task_id);
-  const budget = revised ? runtimeBudgetFor(priorTask.task_id) : priorTask.budget;
+  const selectedBudget = revised ? runtimeBudgetFor(priorTask.task_id) : priorTask.budget;
+  const budget: TaskBudget = { ...selectedBudget, wall_seconds: null };
 
   return {
     task_id: priorTask.task_id,
@@ -254,10 +249,9 @@ function reviseTask(priorTask: PriorTask): CatalogTask106 {
     summary: priorTask.summary,
     design_revision: {
       supersedes_task_version: '1.0.5',
-      kind: revised ? 'runtime_budget_revision' : 'carry_forward',
-      objective: revised
-        ? 'Preserve the accepted AIQ Core 1.0.5 task and evaluator semantics while giving every model configuration the same empirically increased runtime envelope.'
-        : 'Carry forward the accepted AIQ Core 1.0.5 task, evaluator, and runtime-budget contract while advancing the complete release identity and controlled bindings to AIQ Core 1.0.6.',
+      kind: 'runtime_budget_revision',
+      objective:
+        'Preserve task and evaluator semantics while removing model wall-clock deadlines for every configuration.',
       task_specific_delta: revised
         ? runtimeBudgetDelta(priorTask, budget)
         : carriedForwardDelta(priorTask.task_id),
@@ -288,7 +282,7 @@ function reviseTask(priorTask: PriorTask): CatalogTask106 {
     tags: priorTask.tags,
     visibility: priorTask.visibility,
     provenance: {
-      origin: revised ? 'runtime_budget_revision' : 'release_carry_forward',
+      origin: 'runtime_budget_revision',
       owner: 'AIQ benchmark maintainers',
       recorded_date: '2026-08-08',
       predecessor_task_version: '1.0.5',
@@ -370,7 +364,7 @@ function reviseCatalogSchema(priorSchema: unknown): unknown {
   const designProperties = jsonObject(designRevision.properties, 'design revision properties');
   designProperties.supersedes_task_version = { const: '1.0.5' };
   designProperties.kind = {
-    enum: ['runtime_budget_revision', 'carry_forward'],
+    enum: ['runtime_budget_revision'],
   };
   const provenance = jsonObject(taskProperties.provenance, 'provenance');
   const provenanceProperties = jsonObject(provenance.properties, 'provenance properties');
@@ -385,11 +379,16 @@ function reviseCatalogSchema(priorSchema: unknown): unknown {
     'acceptance fixture commitment properties',
   );
   provenanceProperties.origin = {
-    enum: ['runtime_budget_revision', 'release_carry_forward'],
+    enum: ['runtime_budget_revision'],
   };
   provenanceProperties.recorded_date = { const: '2026-08-08' };
   provenanceProperties.predecessor_task_version = { const: '1.0.5' };
   provenanceProperties.source = { const: GENERATOR_PATH };
+  const budget = jsonObject(taskProperties.budget, 'task budget');
+  const budgetProperties = jsonObject(budget.properties, 'task budget properties');
+  budgetProperties.wall_seconds = {
+    anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+  };
   acceptanceFixtureProperties.handle = {
     type: 'string',
     pattern:
@@ -432,26 +431,20 @@ export function assertCatalogInvariants(catalog: Catalog106): void {
   const budgetRevised = catalog.tasks.filter(
     ({ design_revision }) => design_revision.kind === 'runtime_budget_revision',
   );
-  const carriedForward = catalog.tasks.filter(
-    ({ design_revision }) => design_revision.kind === 'carry_forward',
-  );
-  if (budgetRevised.length !== 5 || carriedForward.length !== 67) {
-    throw new Error(
-      'AIQ Core 1.0.6 must contain five runtime-budget revisions and 67 carry-forward tasks.',
-    );
+  if (budgetRevised.length !== 72) {
+    throw new Error('AIQ Core 1.0.6 must remove the wall-clock deadline from all 72 tasks.');
   }
   for (const task of catalog.tasks) {
     const isRevised = isRuntimeBudgetTaskId(task.task_id);
-    const expectedKind = isRevised ? 'runtime_budget_revision' : 'carry_forward';
-    const expectedOrigin = isRevised ? 'runtime_budget_revision' : 'release_carry_forward';
     if (
       task.task_version !== TASK_VERSION ||
       task.evaluator.scorer_version !== SCORER_VERSION ||
       task.design_revision.supersedes_task_version !== '1.0.5' ||
       task.provenance.predecessor_task_version !== '1.0.5' ||
       task.provenance.source !== GENERATOR_PATH ||
-      task.design_revision.kind !== expectedKind ||
-      task.provenance.origin !== expectedOrigin
+      task.design_revision.kind !== 'runtime_budget_revision' ||
+      task.provenance.origin !== 'runtime_budget_revision' ||
+      task.budget.wall_seconds !== null
     ) {
       throw new Error(`Task ${task.task_id} has inconsistent revision metadata.`);
     }
@@ -490,6 +483,19 @@ export function assertCatalogInvariants(catalog: Catalog106): void {
   }
 }
 
+function reviseTaskSchema(priorSchema: unknown): unknown {
+  const schema = replaceReleaseStrings(priorSchema);
+  const root = jsonObject(schema, 'task schema');
+  const properties = jsonObject(root.properties, 'task schema properties');
+  const budgets = jsonObject(properties.budgets, 'task budgets');
+  const budgetProperties = jsonObject(budgets.properties, 'task budget properties');
+  budgetProperties.wall_seconds = {
+    anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
+  };
+
+  return schema;
+}
+
 async function readPriorSchema(name: string): Promise<unknown> {
   const path = fileURLToPath(
     new URL(`../../../benchmarks/candidates/aiq-core-1.0.5/${name}`, import.meta.url),
@@ -501,7 +507,7 @@ export async function writeCandidate(outputDirectory: string): Promise<void> {
   const catalog = buildCatalog();
   assertCatalogInvariants(catalog);
   const catalogSchema = reviseCatalogSchema(await readPriorSchema('catalog.schema.json'));
-  const taskSchema = replaceReleaseStrings(await readPriorSchema('task.schema.json'));
+  const taskSchema = reviseTaskSchema(await readPriorSchema('task.schema.json'));
   await mkdir(outputDirectory, { recursive: true });
   await Promise.all([
     writeFile(`${outputDirectory}/catalog.json`, `${JSON.stringify(catalog, undefined, 2)}\n`),

@@ -32,24 +32,21 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
+sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. Its public catalog
 release-identity digest is
-`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
-The public catalog is deterministic and identity-frozen. Two controlled
-generations produced one matching tree. The reviewed evaluator identity is
+`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+The public catalog is deterministic and identity-frozen. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-the public-safe database task-set identity is
+the predecessor public-safe database task-set identity is
 `sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
-and the reviewed task-commitment manifest identity is
+and its task-commitment manifest identity is
 `sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-Final controlled corpus identities are calibration candidates, not accepted
-release identities. The reviewed public-safe database task-set and
-task-commitment manifest are regenerated and bound to the current controlled
-72-task commitment; final clean-source Core and Contrast regeneration remains
-pending. Each final
+They bind the retired deadline policy and must be replaced after fresh
+independent Core and Contrast seals. Final controlled corpus identities are
+calibration candidates, not accepted release identities. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The
@@ -121,16 +118,16 @@ seven timeouts and three tool-budget failures at the common 900-second,
 40-step, and 28-tool-call envelope. The offline historical diagnostic excludes
 those runtime-null cells from semantic scoring without changing the preserved
 package or producing Official evidence. The r11 five-task pilot then stopped on
-debugging-02 at 47/48 steps and 41/40 tool calls after 1,060.042 seconds. AIQ
-Core `1.0.6` preserves the task, fixture, evaluator, tool, and scoring semantics
-and has five runtime-budget revisions. Coding-07 uses 600 wall seconds, 32
-steps, and 21 tool calls; debugging-02 uses 1,800 seconds, 64 steps, and 56
-tool calls; coding-06, debugging-01, and debugging-04 use 1,500 seconds, 48
-steps, and 40 tool calls. Each task budget is common to every model
-configuration, and this budget revision does not alter scoring. The other 67
-task contracts carry forward with new release bindings. Run a fresh
-debugging-02-by-17 falsification pilot, then a 17-by-5, 85-cell non-Official pilot before paying for the full
-17-by-72 non-Official calibration. The full calibration must meet the release
+debugging-02 at 47/48 steps and 41/40 tool calls after 1,060.042 seconds. A
+later 17-by-5 pilot completed 83 semantic cells and recorded two Sol ultra
+wall-time failures. AIQ Core `1.0.6` preserves task, fixture, evaluator, tool,
+and scoring semantics and removes the model wall deadline from all 72 tasks.
+Coding-07 retains 32 steps and 21 tool calls; debugging-02 retains 64 steps and
+56 tool calls; coding-06, debugging-01, and debugging-04 retain 48 steps and 40
+tool calls. The other 67 tasks retain their accepted step and tool-call limits.
+Old deadline evidence cannot be relabeled or mixed with the new corpus. Run the
+two previously timed-out Sol ultra cells as a focused no-deadline canary before
+the full 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model
 spread. The policy permits at most seven universal semantic-zero tasks and at
@@ -197,6 +194,13 @@ cell cannot become semantic evidence or an accepted result through its fallback
 counters.
 
 ## Time, tokens, and API-equivalent cost
+
+Formal model invocations have no wall-clock deadline. The runner waits for
+normal completion unless a live step or tool-call budget, an integrity boundary,
+or an operator cancellation ends the cell. Deterministic evaluator subprocesses
+remain bounded. These execution controls classify evidence; elapsed time,
+tokens, tool use, and cost never enter task scores, Rasch ability, quality,
+strict pass, ranking, or interval calculations.
 
 Each result distinguishes selected, attempted, adapter-invoked, and
 elapsed-observed work. An attempt starts after capability admission. An adapter
