@@ -29,9 +29,9 @@ Handoff](deployment-handoff.md) for production acceptance checks.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.6`. Its public metadata digest is
-`sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
 and its public release digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final clean-commit regeneration, the fresh
@@ -105,10 +105,10 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1`,
+   `sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
    the release-policy identity is `aiq-core/1.0.6`, and the public catalog
    release-identity digest is
-   `sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+   `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
    Use the final clean-commit controlled regeneration for the targeted pilot.
    Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
    task-commitment manifest, and Core corpus identities distinct. Generate the
@@ -208,20 +208,22 @@ eligible. Use `run --help` for the complete controlled input contract.
 
 The first `1.0.4` calibration completed all 1,224 cells but failed the
 statistical release gate. Preserve it as non-Official evidence; do not report it
-as 1,224 failed task executions. For `1.0.6`, first run the four runtime-revised tasks
-(`coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
+as 1,224 failed task executions. For `1.0.6`, first run debugging-02 across all 17
+configurations, then the five runtime-revised tasks
+(`coding-06`, `coding-07`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
 configurations. The current `coding-06` revision is a priority keyed async
 executor repair with stable eligible-head scheduling, dynamic concurrency,
 bounded waiting work, AbortSignal, cancellation, close, and idle epochs. The
 other three targets are a quoted-record parser, a six-field layered service
-configuration loader, and a bounded Unicode log preview. All four use the same
-1,500-second wall budget, 48 steps, and 40 tool calls for every model
-configuration. The first `1.0.5` pilot completed 63 cells, timed out on 5, and
-was rejected because its completed task means were 0.933–0.992. A later pilot
-exposed seven timeouts and three tool-budget failures at the old common
-envelope. Regenerate and revalidate the controlled catalog and evaluator
-bindings before the fresh pilot. Review the new 68-cell pilot
-before the full non-Official 17-by-72
+configuration loader, and a bounded Unicode log preview. Those three use the
+same 1,500-second wall budget, 48 steps, and 40 tool calls for every model
+configuration; debugging-02 uses a uniform 1,800-second, 64-step, and 56-tool-call
+budget. The first `1.0.5` pilot completed 63 cells, timed out on 5, and
+was rejected because its completed task means were 0.933–0.992. The r11 pilot
+stopped on debugging-02 at 47/48 steps and 41/40 tool calls under the
+1,500/48/40 envelope. Regenerate and revalidate the controlled catalog,
+task-commitment manifest, and evaluator bindings before the fresh pilot. Review
+the new 85-cell pilot before the full non-Official 17-by-72
 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
 cannot override a failure. The interrupted `1.0.3` Official attempt remains

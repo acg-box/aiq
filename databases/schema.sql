@@ -2015,9 +2015,9 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1'
+      'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460'
     or candidate ->> 'task_set_digest' <>
-      'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'
+      'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
     or candidate ->> 'evaluator_digest' <>
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
@@ -2467,14 +2467,14 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        '7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1'
+        '6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
       and task_set.metadata ->> 'catalog_release_identity_sha256' =
-        'sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c'
+        'sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78'
       and task_set.metadata ->> 'evaluator_identity_sha256' =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
       and (
@@ -2488,7 +2488,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
         where catalog.task_set_id = task_set.task_set_id
           and catalog.task_set_version = task_set.task_set_version
           and catalog.fixture_commitment is not null
-      ) = 'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'
+      ) = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -4394,7 +4394,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1';
+    'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460';
 end;
 $_$;
 
@@ -4425,7 +4425,7 @@ begin
     or jsonb_typeof(stage -> 'signer' -> 'node_id') is distinct from 'string'
     or candidate ->> 'run_class' is distinct from stage ->> 'run_class'
     or candidate ->> 'task_set_digest' is distinct from
-      'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'
+      'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
     or candidate ->> 'evaluator_digest' is distinct from
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from stage ->> 'task_set_hash'
@@ -7777,7 +7777,7 @@ begin
       and planning_execution_count = 7 and tool_use_count = 7
       and instruction_following_count = 6 and reliability_recovery_count = 7
       and task_set_identity_sha256 =
-        'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82'
+        'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766'
       and frozen_catalog_valid
       and evaluator_identity_sha256 =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
@@ -7809,7 +7809,7 @@ begin
     'catalog_identity_sha256', catalog_identity_sha256,
     'task_set_identity_sha256', task_set_identity_sha256,
     'task_set_identity_valid', task_set_identity_sha256 =
-      'sha256:b3a11e8801310b6c07318ba0a39a9d31ca9f41e88e53295876a940873e333b82',
+      'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766',
     'evaluator_identity_sha256', evaluator_identity_sha256,
     'evaluator_identity_valid', evaluator_identity_sha256 =
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
