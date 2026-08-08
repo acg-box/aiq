@@ -11,6 +11,7 @@ import {
 
 import scorerGeneratedFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
 import { resolvePlaywrightCompanionPort } from '../playwright-port.ts';
+import { AIQ_CORE_SCORING_VERSION } from '../src/aiq-core-contract.ts';
 
 interface LivePublishedFixtures {
   runtimeFailures: string[];
@@ -750,7 +751,7 @@ test('published leaderboard, trends, runs, and results share coherent score evid
       sensitivity_low: generated.sensitivity_low,
       sensitivity_high: generated.sensitivity_high,
       calibration_status: 'calibrated',
-      scoring_version: '1.0.6',
+      scoring_version: AIQ_CORE_SCORING_VERSION,
     });
   }
 
@@ -912,7 +913,7 @@ test('the published run exposes complete task and provenance evidence', async ({
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {
   await page.goto('/method');
   await expect(page.getByText('aiq-core@1.0.6', { exact: true })).toBeVisible();
-  await expect(page.getByText('1.0.6', { exact: true })).toBeVisible();
+  await expect(page.getByText(AIQ_CORE_SCORING_VERSION, { exact: true })).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');

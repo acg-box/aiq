@@ -2,6 +2,12 @@ import { createServer } from 'node:http';
 
 import activeCatalog from '../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json' with { type: 'json' };
 import generatedPublicFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
+import {
+  AIQ_CORE_BENCHMARK_VERSION,
+  AIQ_CORE_SCORING_VERSION,
+  AIQ_CORE_TASK_SCORER_VERSION,
+  AIQ_CORE_TASK_SET_VERSION,
+} from '../src/aiq-core-contract.ts';
 import { REQUIRED_RPC_CONTRACT } from '../src/server/readiness.ts';
 
 if (
@@ -12,8 +18,8 @@ if (
   generatedPublicFixture.official_eligible ||
   generatedPublicFixture.ranking_eligible ||
   !generatedPublicFixture.synthetic ||
-  generatedPublicFixture.benchmark_version !== 'aiq-core@1.0.6' ||
-  generatedPublicFixture.scoring_version !== '1.0.6' ||
+  generatedPublicFixture.benchmark_version !== AIQ_CORE_BENCHMARK_VERSION ||
+  generatedPublicFixture.scoring_version !== AIQ_CORE_SCORING_VERSION ||
   generatedPublicFixture.measurement_version !== '2.0.0' ||
   generatedPublicFixture.task_count !== 72 ||
   generatedPublicFixture.configuration_count !== 17 ||
@@ -28,9 +34,9 @@ if (
 }
 
 if (
-  `${activeCatalog.task_set_id}@${activeCatalog.task_set_version}` !==
-    generatedPublicFixture.benchmark_version ||
-  activeCatalog.scoring_version !== generatedPublicFixture.scoring_version ||
+  `${activeCatalog.task_set_id}@${activeCatalog.task_set_version}` !== AIQ_CORE_BENCHMARK_VERSION ||
+  activeCatalog.task_set_version !== AIQ_CORE_TASK_SET_VERSION ||
+  activeCatalog.scoring_version !== AIQ_CORE_TASK_SCORER_VERSION ||
   activeCatalog.tasks.length !== generatedPublicFixture.task_count
 ) {
   throw new Error('The scorer-owned browser fixture does not match the active public catalog.');
@@ -434,7 +440,7 @@ const calibrationResults = matrix.flatMap((entry, configurationIndex) =>
       result_id: `result_${String(configurationIndex).padStart(2, '0')}_${String(taskIndex).padStart(2, '0')}`,
       run_id: calibrationRunId,
       task_id: `aiq-v1-calibration-task-${String(taskIndex + 1).padStart(2, '0')}`,
-      task_version: generatedPublicFixture.scoring_version,
+      task_version: AIQ_CORE_TASK_SET_VERSION,
       domain: domainCounts[taskIndex % domainCounts.length]?.[0] ?? 'coding',
       model_family: entry.model_family.toLowerCase(),
       reasoning_effort: entry.reasoning_tier,
