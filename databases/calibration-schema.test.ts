@@ -46,7 +46,26 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 });
 
 void test('runs calibration against the production initializer catalog authority', () => {
+  const catalogAuthority =
+    schema.match(/create function aiq_private\.task_catalog_is_exact[\s\S]*?\n\$\$;/i)?.[0] ?? '';
+
   assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.6'\)/);
+  assert.match(calibrationIntegration, /'calibration_admission_digest',null/);
+  assert.match(calibrationIntegration, /'calibration_bank',null/);
+  assert.match(calibrationIntegration, /'terminal_attempt_lineage',terminal_attempt_lineage/);
+  assert.match(calibrationIntegration, /'terminal_attempt_lineage_digest',aiq_private\.jcs_sha256/);
+  assert.match(
+    schema,
+    /stage ->> 'terminal_attempt_lineage_digest' is distinct from[\s\S]*payload -> 'terminal_attempt_lineage'/,
+  );
+  assert.match(
+    schema,
+    /attestation ->> 'terminal_attempt_lineage_digest' is distinct from[\s\S]*stage ->> 'terminal_attempt_lineage_digest'/,
+  );
+  assert.match(
+    catalogAuthority,
+    /frozen_catalog_identity_is_valid\([\s\S]*target_task_set_version, '1\.0\.7'/,
+  );
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
 });
@@ -74,7 +93,7 @@ void test('keeps calibration evidence separate from Official publication tables'
     assert.match(schema, new RegExp(`create table aiq_private\\.${table}`));
     assert.match(schema, new RegExp(`ALTER TABLE aiq_private\\.${table} FORCE ROW LEVEL SECURITY`));
   }
-  assert.match(schema, /aiq\.calibration-run\.v3/);
+  assert.match(schema, /aiq\.calibration-run\.v4/);
   assert.match(schema, /local_calibration_non_official/);
   assert.match(schema, /evaluator_replayed/);
   assert.match(schema, /calibration evidence is append-only/);
@@ -789,7 +808,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   assert.match(schema, /canonical_public_view_count=12/);
   assert.match(
     schema,
-    /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_joint_map"[\s\S]*?"measurement_method":"rasch_fractional_joint_map_v1"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,
+    /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_fixed_bank_map_v2"[\s\S]*?"measurement_method":"rasch_fractional_fixed_bank_map_v2"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,
   );
   assert.doesNotMatch(
     schema,

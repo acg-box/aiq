@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aiq.wiki/schema/calibration-run-v3.schema.json",
-  "title": "AIQ non-Official calibration run v3",
+  "$id": "https://aiq.wiki/schema/calibration-run-v4.schema.json",
+  "title": "AIQ non-Official calibration run v4",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,6 +12,8 @@
     "schedule_slot",
     "task_set_hash",
     "scoring_version",
+    "calibration_admission_digest",
+    "calibration_bank",
     "execution_concurrency",
     "models",
     "task_ids",
@@ -20,16 +22,19 @@
     "capability_validation",
     "provenance",
     "evaluator_results_artifact",
+    "terminal_attempt_lineage",
     "results"
   ],
   "properties": {
-    "schema_version": { "const": "aiq.calibration-run.v3" },
+    "schema_version": { "const": "aiq.calibration-run.v4" },
     "official_eligible": { "const": false },
     "classification": { "const": "local_calibration_non_official" },
     "run_id": { "$ref": "#/$defs/runId" },
-    "schedule_slot": { "$ref": "result-package-v3.schema.json#/$defs/scheduleSlot" },
+    "schedule_slot": { "$ref": "result-package-v4.schema.json#/$defs/scheduleSlot" },
     "task_set_hash": { "$ref": "#/$defs/sha256" },
-    "scoring_version": { "const": "1.0.6" },
+    "scoring_version": { "const": "1.0.7" },
+    "calibration_admission_digest": { "type": "null" },
+    "calibration_bank": { "type": "null" },
     "execution_concurrency": { "type": "integer", "minimum": 1, "maximum": 32 },
     "models": {
       "type": "array",
@@ -48,11 +53,18 @@
     "started_unix_ms": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "finished_unix_ms": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "capability_validation": {
-      "$ref": "result-package-v3.schema.json#/$defs/capabilityValidationReport"
+      "$ref": "result-package-v4.schema.json#/$defs/capabilityValidationReport"
     },
     "provenance": { "$ref": "#/$defs/provenance" },
     "evaluator_results_artifact": {
-      "$ref": "result-package-v3.schema.json#/$defs/evaluatorResultsArtifact"
+      "$ref": "result-package-v4.schema.json#/$defs/evaluatorResultsArtifact"
+    },
+    "terminal_attempt_lineage": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1224,
+      "uniqueItems": true,
+      "items": { "$ref": "result-package-v4.schema.json#/$defs/terminalAttemptLineage/items" }
     },
     "results": {
       "type": "array",
@@ -61,7 +73,7 @@
       "uniqueItems": true,
       "items": {
         "allOf": [
-          { "$ref": "result-package-v3.schema.json#/$defs/taskResult" },
+          { "$ref": "result-package-v4.schema.json#/$defs/taskResult" },
           {
             "type": "object",
             "properties": {
@@ -78,23 +90,23 @@
     "runId": { "type": "string", "pattern": "^run_[a-f0-9]{64}(?![\\s\\S])" },
     "model": {
       "oneOf": [
-        { "$ref": "result-package-v3.schema.json#/$defs/solLow" },
-        { "$ref": "result-package-v3.schema.json#/$defs/solMedium" },
-        { "$ref": "result-package-v3.schema.json#/$defs/solHigh" },
-        { "$ref": "result-package-v3.schema.json#/$defs/solXhigh" },
-        { "$ref": "result-package-v3.schema.json#/$defs/solMax" },
-        { "$ref": "result-package-v3.schema.json#/$defs/solUltra" },
-        { "$ref": "result-package-v3.schema.json#/$defs/terraLow" },
-        { "$ref": "result-package-v3.schema.json#/$defs/terraMedium" },
-        { "$ref": "result-package-v3.schema.json#/$defs/terraHigh" },
-        { "$ref": "result-package-v3.schema.json#/$defs/terraXhigh" },
-        { "$ref": "result-package-v3.schema.json#/$defs/terraMax" },
-        { "$ref": "result-package-v3.schema.json#/$defs/terraUltra" },
-        { "$ref": "result-package-v3.schema.json#/$defs/lunaLow" },
-        { "$ref": "result-package-v3.schema.json#/$defs/lunaMedium" },
-        { "$ref": "result-package-v3.schema.json#/$defs/lunaHigh" },
-        { "$ref": "result-package-v3.schema.json#/$defs/lunaXhigh" },
-        { "$ref": "result-package-v3.schema.json#/$defs/lunaMax" }
+        { "$ref": "result-package-v4.schema.json#/$defs/solLow" },
+        { "$ref": "result-package-v4.schema.json#/$defs/solMedium" },
+        { "$ref": "result-package-v4.schema.json#/$defs/solHigh" },
+        { "$ref": "result-package-v4.schema.json#/$defs/solXhigh" },
+        { "$ref": "result-package-v4.schema.json#/$defs/solMax" },
+        { "$ref": "result-package-v4.schema.json#/$defs/solUltra" },
+        { "$ref": "result-package-v4.schema.json#/$defs/terraLow" },
+        { "$ref": "result-package-v4.schema.json#/$defs/terraMedium" },
+        { "$ref": "result-package-v4.schema.json#/$defs/terraHigh" },
+        { "$ref": "result-package-v4.schema.json#/$defs/terraXhigh" },
+        { "$ref": "result-package-v4.schema.json#/$defs/terraMax" },
+        { "$ref": "result-package-v4.schema.json#/$defs/terraUltra" },
+        { "$ref": "result-package-v4.schema.json#/$defs/lunaLow" },
+        { "$ref": "result-package-v4.schema.json#/$defs/lunaMedium" },
+        { "$ref": "result-package-v4.schema.json#/$defs/lunaHigh" },
+        { "$ref": "result-package-v4.schema.json#/$defs/lunaXhigh" },
+        { "$ref": "result-package-v4.schema.json#/$defs/lunaMax" }
       ]
     },
     "sha256": {

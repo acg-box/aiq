@@ -55,7 +55,7 @@ the controlled production reference separately.
 A successful receipt reports:
 
 - AIQ Core task release `1.0.6` with benchmark identifier `aiq-core@1.0.6`;
-- scoring version `1.0.6`;
+- scoring version `1.0.7`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
@@ -85,7 +85,7 @@ evaluator identity in signed `evaluator_digest` provenance and in the frozen
 task-set metadata that production readiness checks. It does not copy the
 scorer-manifest identity into an unrelated field.
 The native corpus commitment owns the scorer-manifest identity. The
-database binds its output through scoring version `1.0.6` and recomputes
+database binds its output through scoring version `1.0.7` and recomputes
 the score from normalized result evidence.
 
 The current public-safe `1.0.6` 72-task database binding manifest is
@@ -96,7 +96,7 @@ It is not authorization for database action; a real signed 17-by-72 package
 must still pass native verifier replay first.
 
 The desired state targets the sole production tuple: AIQ Core `1.0.6`, scoring
-`1.0.6`, and measurement `2.0.0`. Do not reset or initialize production until
+`1.0.7`, and measurement `2.0.0`. Do not reset or initialize production until
 the controlled commitments are complete and one real non-synthetic signed
 17-by-72 package passes native verifier replay.
 
@@ -212,8 +212,8 @@ normalized v3 stage and attestation. A separate publisher identity completes
 publication.
 
 Calibration packages use the same content-addressed package ingress and claim
-lifecycle. The envelope has `payload_type: aiq.calibration-run.v3`, and the
-payload has `schema_version: aiq.calibration-run.v3`. The database accepts only
+lifecycle. The envelope has `payload_type: aiq.calibration-run.v4`, and the
+payload has `schema_version: aiq.calibration-run.v4`. The database accepts only
 `claimed_trust: untrusted`, `classification: local_calibration_non_official`,
 `provenance.run_class: calibration`, and `official_eligible: false`.
 
@@ -221,10 +221,10 @@ The verifier uses these calibration-only RPCs in order:
 
 1. `aiq_stage_calibration_verification(stage, target_inbox_id,
 supplied_lease_token, supplied_attempt)` records one
-   `aiq.calibration-verified-stage.v1` document.
+   `aiq.calibration-verified-stage.v2` document.
 2. `aiq_record_calibration_attestation(attestation, target_inbox_id,
 supplied_lease_token, supplied_attempt)` records one
-   `aiq.calibration-verifier-attestation.v1` document. The replay status must be
+   `aiq.calibration-verifier-attestation.v2` document. The replay status must be
    `evaluator_replayed`.
 3. The distinct publisher uses `aiq_publish_calibration_evidence(target_run_id,
 target_package_sha256, target_inbox_id, supplied_lease_token,

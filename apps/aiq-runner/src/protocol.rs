@@ -14,11 +14,11 @@ use sha2::{Digest, Sha256};
 use crate::model::ModelCapability;
 
 /// Signed result-package schema version.
-pub const PROTOCOL_SCHEMA_VERSION: &str = "aiq.result-package.v3";
+pub const PROTOCOL_SCHEMA_VERSION: &str = "aiq.result-package.v4";
 /// Run payload type accepted by the result-package protocol.
-pub const RUN_PAYLOAD_TYPE: &str = "aiq.run.v3";
+pub const RUN_PAYLOAD_TYPE: &str = "aiq.run.v4";
 /// Calibration payload type accepted for signed, non-submittable calibration evidence.
-pub const CALIBRATION_RUN_PAYLOAD_TYPE: &str = "aiq.calibration-run.v3";
+pub const CALIBRATION_RUN_PAYLOAD_TYPE: &str = "aiq.calibration-run.v4";
 
 const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_JCS_SAFE_INTEGER_I64: i64 = 9_007_199_254_740_991;
@@ -29,7 +29,7 @@ pub struct ProtocolError {
 	message: String,
 }
 impl ProtocolError {
-	fn new(message: impl Into<String>) -> Self {
+	pub(crate) fn new(message: impl Into<String>) -> Self {
 		Self { message: message.into() }
 	}
 }
@@ -156,6 +156,49 @@ impl SubmissionEnvelope {
 
 		self.validate_payload_contract()?;
 
+		self.verify_authenticated(trusted_nodes)
+	}
+
+	/// Verifies one exact signed 1.0.6 calibration source for the isolated,
+	/// one-way calibration-bank derivation command. Production ingestion never
+	/// calls this method and remains hard-bound to the current greenfield wire.
+	pub fn verify_calibration_source_v3(&self) -> Result<VerifiedSubmission, ProtocolError> {
+		if self.schema_version != "aiq.result-package.v3"
+			|| self.payload_type != "aiq.calibration-run.v3"
+			|| self.claimed_trust != TrustTier::Untrusted
+		{
+			return Err(ProtocolError::new("unsupported calibration source protocol"));
+		}
+
+		validate_run_key(&self.idempotency_key)?;
+
+		let payload = self
+			.payload
+			.as_object()
+			.ok_or_else(|| ProtocolError::new("payload must be an object"))?;
+
+		if payload.get("schema_version").and_then(Value::as_str) != Some("aiq.calibration-run.v3")
+			|| payload.get("run_id").and_then(Value::as_str) != Some(&self.idempotency_key)
+			|| payload.get("scoring_version").and_then(Value::as_str) != Some("1.0.6")
+			|| payload.get("official_eligible").and_then(Value::as_bool) != Some(false)
+			|| payload.get("classification").and_then(Value::as_str)
+				!= Some("local_calibration_non_official")
+			|| payload
+				.get("provenance")
+				.and_then(|value| value.get("run_class"))
+				.and_then(Value::as_str)
+				!= Some("calibration")
+		{
+			return Err(ProtocolError::new("calibration source payload contract is invalid"));
+		}
+
+		self.verify_authenticated(&BTreeSet::new())
+	}
+
+	fn verify_authenticated(
+		&self,
+		trusted_nodes: &BTreeSet<String>,
+	) -> Result<VerifiedSubmission, ProtocolError> {
 		if !is_lower_hex(&self.signer.public_key, 64) {
 			return Err(ProtocolError::new(
 				"public key must contain 64 lowercase hexadecimal characters",

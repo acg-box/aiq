@@ -32,7 +32,7 @@ Review each result against source authority. Do not replace real product values
 with generic examples. Do not add deployment resources, secrets, schedules, or
 automation only to remove a marker.
 
-The source-head public constants include AIQ Core and scoring version `1.0.6`,
+The source-head public constants include AIQ Core `1.0.6` and scoring version `1.0.7`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
 `sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
@@ -47,4 +47,4 @@ evidence, not as an all-execution failure. The `1.0.6` sequence requires a
 focused no-deadline canary before the full 17-by-72 calibration. Final
 native build verification, a real Official run, publication, and final
 deployment remain pending. The sole production tuple is AIQ Core `1.0.6`,
-scoring `1.0.6`, and measurement `2.0.0`; no legacy fallback is supported.
+scoring `1.0.7`, and measurement `2.0.0`; no legacy fallback is supported.

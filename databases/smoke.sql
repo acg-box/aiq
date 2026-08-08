@@ -130,7 +130,7 @@ begin
 
   select count(*) into current_scoring_count
   from aiq_private.aiq_scoring_versions scoring
-  where scoring.scoring_version = '1.0.6'
+  where scoring.scoring_version = '1.0.7'
     and scoring.benchmark_version = 'aiq-core@1.0.6';
 
   if current_task_set_count <> 1

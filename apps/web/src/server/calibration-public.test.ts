@@ -16,11 +16,11 @@ function readJson(path: string): Record<string, unknown> {
 void describe('public calibration evidence boundary', () => {
   void it('publishes separate exact schemas and one non-secret calibration fixture', () => {
     const files = [
-      'calibration-run-v3.schema.json',
+      'calibration-run-v4.schema.json',
       'calibration-score-report-v2.schema.json',
-      'calibration-verified-stage-v1.schema.json',
-      'calibration-verifier-attestation-v1.schema.json',
-      'calibration-result-package-v3.schema.json',
+      'calibration-verified-stage-v2.schema.json',
+      'calibration-verifier-attestation-v2.schema.json',
+      'calibration-result-package-v4.schema.json',
     ];
     for (const file of files) {
       const schema = readJson(`../../../../benchmarks/schema/${file}`);
@@ -29,9 +29,9 @@ void describe('public calibration evidence boundary', () => {
       assert.ok(Array.isArray(schema.required));
     }
     const fixture = readJson(
-      '../../../../benchmarks/fixtures/calibration-result-package-v3.example.json',
+      '../../../../benchmarks/fixtures/calibration-result-package-v4.example.json',
     );
-    assert.equal(fixture.payload_type, 'aiq.calibration-run.v3');
+    assert.equal(fixture.payload_type, 'aiq.calibration-run.v4');
     assert.equal(fixture.claimed_trust, 'untrusted');
     const payload = fixture.payload as Record<string, unknown>;
     assert.equal(payload.official_eligible, false);
