@@ -1,4 +1,9 @@
-import { ARTIFACT_KIND_MAX_BYTES, type ArtifactKind } from './artifact-handler.ts';
+import {
+  ARTIFACT_KIND_MAX_BYTES,
+  CAPABILITY_MARKER_BYTES,
+  CAPABILITY_MARKER_DIGEST,
+  type ArtifactKind,
+} from './artifact-handler.ts';
 import { AIQ_RUNNER_ARTIFACT_BUCKET, AIQ_SUBMISSION_PACKAGE_BUCKET } from './storage-buckets.ts';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -8,6 +13,7 @@ const uuidPattern =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?![\s\S])/;
 const artifactKinds = new Set<ArtifactKind>([
   'evaluator-results.json',
+  'capability-marker.txt',
   'final-response.txt',
   'stderr.txt',
   'stdout.jsonl',
@@ -64,6 +70,13 @@ function isValidObject(object: StorageLifecycleObject): boolean {
       object.artifactKind === null &&
       object.path === `sha256/${object.digest}`
     );
+  }
+  if (
+    object.artifactKind === 'capability-marker.txt' &&
+    (object.digest !== CAPABILITY_MARKER_DIGEST ||
+      object.bytes !== CAPABILITY_MARKER_BYTES.byteLength)
+  ) {
+    return false;
   }
   return (
     object.objectType === 'runner_artifact' &&

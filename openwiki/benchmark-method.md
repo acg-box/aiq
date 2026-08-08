@@ -55,12 +55,15 @@ enforcement even though it has no separate checked-in JSON schema. Each corpus
 binds every private task to its catalog and also binds the baseline workspace,
 fixture bundle, evaluator, runtime, runner source, harness, tool policy, network
 policy, environment, Node.js identity, and ripgrep identity.
-The source-only corpus rule and signed per-run runner and Codex executable
-provenance are the executable product contracts. After the final clean build,
-the operator retains a private, unsigned audit receipt with the exact source
-commit and tree identity and SHA-256 values for the native runner, verifier,
-Node.js, and ripgrep executables. The repository does not validate or publish
-this reproducibility evidence.
+The source-only corpus rule and signed per-run runner and complete Codex runtime
+provenance are the executable product contracts. The Codex runtime contains
+exactly `codex` and its `codex-code-mode-host` sibling, with separate digests.
+After the final clean build, the operator retains a private, unsigned audit
+receipt with the exact source commit and tree identity and SHA-256 values for
+the native runner, verifier, Codex executable, and Codex code-mode host. The
+offline native verifier validates the receipt against an independently supplied
+digest. It does not publish the receipt. Node.js and ripgrep identities remain
+bound by the corpus commitment.
 
 ## Published Official evidence
 
@@ -163,8 +166,18 @@ evaluator identity, and artifact requirements come from the committed task
 contract.
 
 The runner records exact timings, outcomes, tool use, result commitments,
-workspace snapshots, evaluator output, and provenance. A durable checkpoint
-supports interruption recovery without replacing completed evidence.
+workspace snapshots, evaluator output, and provenance. Capability evidence is
+also part of the signed preflight: an available configuration must execute one
+command in a fresh workspace and retain the exact 36-byte
+`capability-marker.txt` marker. Failed or unsupported probes cannot carry that
+success-only artifact, and the native verifier resolves and checks it before
+publication. A durable checkpoint supports interruption recovery without
+replacing completed evidence.
+
+Live accounting excludes completed `error` items from the agent step budget;
+they remain in raw evidence. Known presentation and reasoning items are not
+tools, while unknown completed item types remain conservatively counted as
+steps and tool calls.
 
 ## Time, tokens, and API-equivalent cost
 

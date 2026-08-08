@@ -163,6 +163,31 @@ void describe('verifier artifact resolution', () => {
     assert.match(await response.text(), /workspace-snapshot\.json/);
   });
 
+  void it('permits only the exact-size claim-bound functional marker', async () => {
+    const markerKind = 'capability-marker.txt';
+    const markerDigest = '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3';
+    const response = await handleArtifactResolve(
+      request(`Bearer ${token}`, {
+        inbox_id: inboxId,
+        lease_token: leaseToken,
+        kind: markerKind,
+        digest: markerDigest,
+      }),
+      dependencies({
+        resolve: async () =>
+          resolved({
+            object_key: `sha256/${markerDigest}/${markerKind}`,
+            artifact_kind: markerKind,
+            content_sha256: markerDigest,
+            byte_size: 36,
+          }),
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /capability-marker\.txt/);
+  });
+
   void it('permits only an exactly resolved claim-bound evaluator bundle', async () => {
     const bundleKind = 'evaluator-results.json';
     const response = await handleArtifactResolve(

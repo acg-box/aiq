@@ -1669,7 +1669,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{ArtifactResolverClient, ReasonCode, WorkerError};
 use aiq_runner::{
-	adapter::{ArtifactReference, CapabilityValidationReport},
+	adapter::{
+		ArtifactReference, CapabilityValidationReport, ConfigurationProbeStatus,
+		PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES,
+	},
 	protocol,
 	run_validation::{self, RunValidationError},
 	runner::{
@@ -1856,8 +1859,37 @@ pub(crate) fn verify_capability_artifacts<R>(
 where
 	R: ArtifactResolverClient + ?Sized,
 {
-	for artifact in report.models.iter().flat_map(|entry| &entry.probe.artifacts) {
-		resolve_exact(artifact, resolver)?;
+	for entry in &report.models {
+		let markers = entry
+			.probe
+			.artifacts
+			.iter()
+			.filter(|artifact| artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND)
+			.collect::<Vec<_>>();
+
+		if entry.probe.status == ConfigurationProbeStatus::Available {
+			if markers.len() != 1 || resolve_exact(markers[0], resolver)? != PREFLIGHT_MARKER_BYTES
+			{
+				return Err(WorkerError::terminal(
+					ReasonCode::InvalidReplayEvidence,
+					"functional capability marker evidence is missing or invalid",
+				));
+			}
+		} else if !markers.is_empty() {
+			return Err(WorkerError::terminal(
+				ReasonCode::InvalidReplayEvidence,
+				"failed capability probe contains success-only workspace evidence",
+			));
+		}
+
+		for artifact in entry
+			.probe
+			.artifacts
+			.iter()
+			.filter(|artifact| artifact.kind != PREFLIGHT_MARKER_ARTIFACT_KIND)
+		{
+			resolve_exact(artifact, resolver)?;
+		}
 	}
 
 	resolver.maintain_lease()
@@ -3132,6 +3164,7 @@ where
 			"evaluator-results.json"
 				| "stdout.jsonl"
 				| "stderr.txt"
+				| "capability-marker.txt"
 				| "final-response.txt"
 				| "workspace-manifest.json"
 				| "workspace-snapshot.json"

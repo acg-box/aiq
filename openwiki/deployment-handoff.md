@@ -86,7 +86,7 @@ AIQ_2_CODEX_TOOLCHAIN_ROOT='/controlled/toolchain'
 AIQ_2_REPLAY_ROOT='/controlled/aiq-2/replay'
 AIQ_2_SOURCE_ROOT='/controlled/aiq-2/source'
 AIQ_2_RUNNER_BINARY='/controlled/aiq-2/bin/aiq-runner'
-AIQ_2_CODEX_BINARY='/controlled/aiq-2/bin/codex'
+AIQ_2_CODEX_BINARY='/controlled/aiq-2/codex-runtime/codex'
 AIQ_2_BUILD_RECEIPT='/controlled/aiq-2/final-build-receipt.json'
 AIQ_2_STAGE_OUTPUT='/controlled/aiq-2/verified-stage.json'
 AIQ_2_ATTESTATION_OUTPUT='/controlled/aiq-2/verifier-attestation.json'
@@ -121,6 +121,13 @@ test -s "$AIQ_2_STAGE_OUTPUT"
 test -s "$AIQ_2_ATTESTATION_OUTPUT"
 test -s "$AIQ_2_ADMISSION_OUTPUT"
 ```
+
+`--codex-binary` identifies the main file in the exact two-file runtime
+directory. The verifier derives and hashes the sibling `codex-code-mode-host`;
+the signed provenance, verifier environment, final-build receipt, and actual
+files must all agree. The same native replay also resolves the signed
+`capability-marker.txt` artifact for every available capability probe and
+rejects missing, altered, or failure-associated marker evidence.
 
 The live verifier and publisher must still process this package after the fresh
 database is initialized. The offline output proves the package and replay
@@ -230,7 +237,7 @@ Record these values after each action succeeds:
 | Runner      | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
 | Verifier    | Source commit, Mach-O arm64 identity, and executable SHA-256                  |
 | Corpus      | Release ID, commitment SHA-256, 72 task count, and evaluator runtime identity |
-| Final build | Private receipt: commit, tree, runner, verifier, Node.js, and ripgrep hashes  |
+| Final build | Private receipt: commit, tree, runner, verifier, Codex, and host hashes       |
 | Database    | Source commit, `databases/schema.sql` SHA-256, and initialization receipt     |
 | Vercel      | Deployment ID, source commit, project, scope, and production origin           |
 | Domain      | Vercel domain state, Cloudflare DNS records, TLS, and redirect behavior       |
@@ -239,11 +246,13 @@ Record these values after each action succeeds:
 Private task content, credentials, signing seeds, access tokens, and service
 keys must stay outside Git and public evidence.
 
-The operator generates the private, unsigned final-build audit receipt from the
-final clean build. Retain it with the private release records under the existing
-access and retention controls. Keep it outside Git and public evidence. Do not
-use it as a product protocol or database input. The repository does not validate
-the receipt.
+The operator generates the private, unsigned `aiq.final-build-receipt.v2` from
+the final clean build. It contains the exact source commit and tree plus the
+SHA-256 values for the runner, verifier, Codex executable, and Codex code-mode
+host. Retain it with the private release records under the existing access and
+retention controls. Keep it outside Git and public evidence. The offline native
+verifier validates it against the independently supplied receipt digest. Do not
+use it as a database input.
 
 ## Supabase setup
 
@@ -366,12 +375,28 @@ and `run`. The runner clears the inherited environment and injects that exact
 directory as the Codex subprocess `CODEX_HOME`. Keep each corpus runner subtree
 source-only with a null built-binary digest, and keep the Node.js and ripgrep
 identities in the corpus.
-After the final clean build, generate the private, unsigned audit receipt. Record
-the exact source commit and tree identity and SHA-256 values for the native
-runner, verifier, Node.js, and ripgrep executables. This receipt is private
-reproducibility evidence only. The executable product contracts are the
-source-only corpus rule and the signed per-run provenance for the actual runner
-and Codex executables.
+Create a private Codex runtime directory with exactly two files copied from the
+current ChatGPT app runtime:
+
+```sh
+AIQ_CHATGPT_RESOURCES='/Applications/ChatGPT.app/Contents/Resources'
+AIQ_2_CODEX_RUNTIME='/controlled/aiq-2/codex-runtime'
+mkdir -m 0700 "$AIQ_2_CODEX_RUNTIME"
+install -m 0700 "$AIQ_CHATGPT_RESOURCES/codex" "$AIQ_2_CODEX_RUNTIME/codex"
+install -m 0700 "$AIQ_CHATGPT_RESOURCES/codex-code-mode-host" \
+  "$AIQ_2_CODEX_RUNTIME/codex-code-mode-host"
+test "$(find "$AIQ_2_CODEX_RUNTIME" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 2
+```
+
+After the final clean build, generate the private, unsigned
+`aiq.final-build-receipt.v2`. Record the exact source commit and tree identity
+and SHA-256 values for the native runner, verifier, Codex executable, and Codex
+code-mode host. The offline native verifier validates the receipt against its
+independently supplied digest. This receipt is private reproducibility evidence,
+not a database input or public artifact. Node.js and ripgrep identities remain
+bound by the corpus. The executable product contracts are the source-only corpus
+rule and the signed per-run provenance for the actual runner and both Codex
+runtime executables.
 
 Use CLI help as the exact argument authority:
 

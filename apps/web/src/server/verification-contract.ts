@@ -1268,7 +1268,7 @@ export function validateVerification(value: unknown): VerificationValidationResu
       ok: false,
       code: 'INVALID_PROVENANCE_POLICY',
       message:
-        'Synthetic verification requires null run class and provenance; production verification requires Official aiq.run-provenance.v2 commitments.',
+        'Synthetic verification requires null run class and provenance; production verification requires Official aiq.run-provenance.v3 commitments.',
     };
   }
   if (!hasValidIdentitySeparation(stage, attestation)) {

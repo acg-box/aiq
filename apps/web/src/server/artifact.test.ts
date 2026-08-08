@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 
 import {
   ARTIFACT_KIND_MAX_BYTES,
+  CAPABILITY_MARKER_BYTES,
   handleArtifactUpload,
   isCanonicalEvaluatorResultsBundle,
   MAX_EVALUATOR_RESULTS_BYTES,
@@ -160,6 +161,44 @@ void describe('runner artifact upload', () => {
 
     assert.equal(response.status, 201);
     assert.match(await response.text(), /workspace-snapshot\.json/);
+  });
+
+  void it('accepts only the exact functional capability marker', async () => {
+    const markerKind = 'capability-marker.txt' as const;
+    const markerDigest = createHash('sha256').update(CAPABILITY_MARKER_BYTES).digest('hex');
+    const markerIdentity: ArtifactObjectIdentity = {
+      runId,
+      kind: markerKind,
+      digest: markerDigest,
+      bytes: CAPABILITY_MARKER_BYTES.byteLength,
+      bucket: 'aiq-runner-artifacts',
+      key: `sha256/${markerDigest}/${markerKind}`,
+    };
+    const accepted = await handleArtifactUpload(
+      request(CAPABILITY_MARKER_BYTES, {
+        'x-aiq-artifact-kind': markerKind,
+        'x-aiq-artifact-sha256': markerDigest,
+      }),
+      dependencies({
+        storeArtifact: async () => ({ disposition: 'stored', identity: markerIdentity }),
+      }),
+    );
+
+    assert.equal(accepted.status, 201);
+    assert.equal(ARTIFACT_KIND_MAX_BYTES[markerKind], 36);
+
+    const wrongMarker = Buffer.from('AIQ_CAPABILITY_COMMAND_AND_WRITE_V2\n');
+    const wrongDigest = createHash('sha256').update(wrongMarker).digest('hex');
+    const rejected = await handleArtifactUpload(
+      request(wrongMarker, {
+        'x-aiq-artifact-kind': markerKind,
+        'x-aiq-artifact-sha256': wrongDigest,
+      }),
+      dependencies(),
+    );
+
+    assert.equal(rejected.status, 400);
+    assert.deepEqual(await rejected.json(), { error: 'INVALID_CAPABILITY_MARKER' });
   });
 
   void it('accepts only canonical bounded evaluator result bundles', async () => {

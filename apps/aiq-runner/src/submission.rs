@@ -18,6 +18,8 @@ use ureq::{
 };
 
 use crate::adapter::CapabilityValidationReport;
+use crate::adapter::PREFLIGHT_MARKER_ARTIFACT_KIND;
+use crate::adapter::PREFLIGHT_MARKER_BYTES;
 use crate::protocol::{CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, TrustTier};
 use crate::runner::MAX_RUN_JOBS;
 use crate::{
@@ -740,6 +742,7 @@ fn artifact_kind_limit(kind: &str) -> Option<usize> {
 	match kind {
 		"workspace-manifest.json" | "workspace-snapshot.json" => Some(MAX_ARTIFACT_BYTES),
 		"evaluator-results.json" => Some(MAX_EVALUATOR_RESULTS_BUNDLE_BYTES),
+		PREFLIGHT_MARKER_ARTIFACT_KIND => Some(PREFLIGHT_MARKER_BYTES.len()),
 		"final-response.txt" | "stderr.txt" | "stdout.jsonl" => Some(MAX_SUBMISSION_BYTES),
 		_ => None,
 	}
@@ -1216,7 +1219,6 @@ fn transport_url_is_allowed(url: &str, allow_loopback_http: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use std::slice;
 	use std::{
 		cell::RefCell,
 		collections::{BTreeMap, BTreeSet},
@@ -1561,8 +1563,7 @@ mod tests {
 		assert!(probe_output.len() > adapter::MAX_INLINE_PREVIEW_BYTES);
 
 		let sink = LocalArtifactSink::new(root).expect("fixture sink");
-		let preflight_artifact =
-			sink.put("stdout.jsonl", probe_output).expect("preflight artifact");
+		let (preflight_artifact, marker_artifact) = preflight_artifacts(&sink, probe_output);
 		let workspace_snapshot =
 			sink.put("workspace-snapshot.json", b"{}").expect("workspace snapshot");
 		let workspace_manifest =
@@ -1576,6 +1577,7 @@ mod tests {
 			.into_iter()
 			.map(|model| {
 				let observed_at = "unix-ms:1".to_owned();
+				let probe_artifacts = vec![preflight_artifact.clone(), marker_artifact.clone()];
 				let evidence_digest = adapter::configuration_evidence_digest(
 					model,
 					Some(&codex_version),
@@ -1583,7 +1585,7 @@ mod tests {
 					ConfigurationProbeStatus::Available,
 					Some(&preflight_artifact.content_hash),
 					Some(&preview),
-					slice::from_ref(&preflight_artifact),
+					&probe_artifacts,
 					None,
 				)
 				.expect("preflight evidence digest");
@@ -1598,7 +1600,7 @@ mod tests {
 						observed_at,
 						result_digest: Some(preflight_artifact.content_hash.clone()),
 						result_preview: Some(preview.clone()),
-						artifacts: vec![preflight_artifact.clone()],
+						artifacts: probe_artifacts,
 						evidence_digest,
 						failure: None,
 					},
@@ -1623,7 +1625,7 @@ mod tests {
 		)
 		.expect("official run id");
 		run.capability_validation = Some(CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id: node_id.clone(),
 			manifest_issues: Vec::new(),
 			cli_probe: CliProbe {
@@ -1675,6 +1677,18 @@ mod tests {
 		(body, preflight_artifact)
 	}
 
+	fn preflight_artifacts(
+		sink: &LocalArtifactSink,
+		probe_output: &[u8],
+	) -> (ArtifactReference, ArtifactReference) {
+		let stdout = sink.put("stdout.jsonl", probe_output).expect("preflight artifact");
+		let marker = sink
+			.put(adapter::PREFLIGHT_MARKER_ARTIFACT_KIND, adapter::PREFLIGHT_MARKER_BYTES)
+			.expect("capability marker artifact");
+
+		(stdout, marker)
+	}
+
 	fn maximum_preflight(node_id: String, codex_version: String) -> CapabilityValidationReport {
 		let models = MODEL_MATRIX
 			.into_iter()
@@ -1699,6 +1713,7 @@ mod tests {
 						uri: format!("aiq-artifact://sha256/{}/stderr.txt", "f".repeat(64)),
 						bytes: 4 * 1_024 * 1_024,
 					},
+					adapter::preflight_marker_artifact_reference(),
 				];
 				let evidence_digest = adapter::configuration_evidence_digest(
 					model,
@@ -1731,7 +1746,7 @@ mod tests {
 			.collect();
 
 		CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id,
 			manifest_issues: Vec::new(),
 			cli_probe: CliProbe {
@@ -2431,8 +2446,8 @@ mod tests {
 		)
 		.expect("bundle must submit");
 
-		assert_eq!(outcome.artifacts_total, 4);
-		assert_eq!(outcome.artifacts_stored, 4);
+		assert_eq!(outcome.artifacts_total, 5);
+		assert_eq!(outcome.artifacts_stored, 5);
 		assert_eq!(outcome.artifacts_duplicate, 0);
 		assert_eq!(outcome.package.kind, SubmissionOutcomeKind::Accepted);
 
@@ -2910,11 +2925,11 @@ mod tests {
 		.expect("valid calibration package submission");
 
 		assert_eq!(calibration_submission.kind, SubmissionOutcomeKind::Accepted);
-		assert_eq!(bytes.len(), 3_746_354);
+		assert_eq!(bytes.len(), 3_750_708);
 		assert_eq!(evaluator_results_bytes, 2_310_969);
 		assert_eq!(failed_bundle_bytes, 6_177);
-		assert_eq!(failed_bytes.len(), 3_920_159);
-		assert_eq!(calibration_bytes.len(), 3_925_081);
+		assert_eq!(failed_bytes.len(), 3_924_513);
+		assert_eq!(calibration_bytes.len(), 3_929_435);
 		assert!(submission::serialize_signed_package(&overbound_envelope).is_err());
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
 		assert!(
@@ -3041,7 +3056,7 @@ mod tests {
 			"official_eligible": false,
 			"classification": "local_calibration_non_official",
 			"provenance": {
-				"schema_version": "aiq.run-provenance.v2",
+				"schema_version": "aiq.run-provenance.v3",
 				"run_class": "calibration"
 			},
 			"results": []

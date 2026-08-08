@@ -450,7 +450,8 @@
             "stderr.txt",
             "final-response.txt",
             "workspace-snapshot.json",
-            "workspace-manifest.json"
+            "workspace-manifest.json",
+            "capability-marker.txt"
           ]
         },
         "content_hash": {
@@ -477,6 +478,21 @@
           "properties": {
             "kind": {
               "enum": ["stdout.jsonl", "stderr.txt"]
+            }
+          },
+          "required": ["kind"]
+        }
+      ]
+    },
+    "capabilityProbeArtifact": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifactBase"
+        },
+        {
+          "properties": {
+            "kind": {
+              "enum": ["stdout.jsonl", "stderr.txt", "capability-marker.txt"]
             }
           },
           "required": ["kind"]
@@ -741,7 +757,7 @@
       ],
       "properties": {
         "schema_version": {
-          "const": "aiq.capability-validation.v2"
+          "const": "aiq.capability-validation.v3"
         },
         "node_id": {
           "type": "string",
@@ -942,10 +958,10 @@
             },
             "artifacts": {
               "type": "array",
-              "maxItems": 2,
+              "maxItems": 3,
               "uniqueItems": true,
               "items": {
-                "$ref": "#/$defs/preflightArtifact"
+                "$ref": "#/$defs/capabilityProbeArtifact"
               }
             },
             "evidence_digest": {
@@ -982,6 +998,24 @@
                   },
                   "failure": {
                     "type": "null"
+                  },
+                  "artifacts": {
+                    "contains": {
+                      "type": "object",
+                      "properties": {
+                        "kind": { "const": "capability-marker.txt" },
+                        "content_hash": {
+                          "const": "sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3"
+                        },
+                        "uri": {
+                          "const": "aiq-artifact://sha256/83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3/capability-marker.txt"
+                        },
+                        "bytes": { "const": 36 }
+                      },
+                      "required": ["bytes", "content_hash", "kind", "uri"]
+                    },
+                    "minContains": 1,
+                    "maxContains": 1
                   }
                 }
               }
@@ -1039,15 +1073,38 @@
             }
           },
           "else": {
-            "if": {
-              "properties": {
-                "status": {
-                  "const": "unavailable"
+            "allOf": [
+              {
+                "properties": {
+                  "probe": {
+                    "properties": {
+                      "artifacts": {
+                        "not": {
+                          "contains": {
+                            "type": "object",
+                            "properties": {
+                              "kind": { "const": "capability-marker.txt" }
+                            },
+                            "required": ["kind"]
+                          }
+                        }
+                      }
+                    }
+                  }
                 }
               },
-              "required": ["status"]
-            },
-            "then": true
+              {
+                "if": {
+                  "properties": {
+                    "status": {
+                      "const": "unavailable"
+                    }
+                  },
+                  "required": ["status"]
+                },
+                "then": true
+              }
+            ]
           }
         }
       ]
@@ -1328,11 +1385,12 @@
         "source_manifest_digest",
         "runner_executable_digest",
         "codex_executable_digest",
+        "codex_code_mode_host_digest",
         "permission_evidence_digest"
       ],
       "properties": {
         "schema_version": {
-          "const": "aiq.run-provenance.v2"
+          "const": "aiq.run-provenance.v3"
         },
         "run_class": {
           "const": "official"
@@ -1382,6 +1440,9 @@
           "$ref": "#/$defs/sha256"
         },
         "codex_executable_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "codex_code_mode_host_digest": {
           "$ref": "#/$defs/sha256"
         },
         "permission_evidence_digest": {

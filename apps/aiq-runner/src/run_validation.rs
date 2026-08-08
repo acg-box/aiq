@@ -13,6 +13,7 @@ use crate::{
 	adapter::{
 		self, AdapterFailure, ArtifactReference, CapabilityValidationReport,
 		CapabilityValidationStatus, ConfigurationProbeStatus, MAX_INLINE_PREVIEW_BYTES,
+		PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_SHA256,
 		ProbeStatus,
 	},
 	corpus_commitment::{self, RunClass},
@@ -32,7 +33,7 @@ use crate::{
 };
 
 const MAX_RESULT_ARTIFACT_REFERENCES: usize = 4;
-const MAX_PREFLIGHT_ARTIFACT_REFERENCES: usize = 2;
+const MAX_PREFLIGHT_ARTIFACT_REFERENCES: usize = 3;
 const MAX_ARTIFACT_REFERENCE_BYTES: u64 = 4 * 1_024 * 1_024;
 const MAX_PREFLIGHT_REASON_BYTES: usize = 128;
 const MAX_FAILURE_MESSAGE_BYTES: usize = 128;
@@ -240,6 +241,7 @@ pub(crate) fn valid_artifact_reference(artifact: &ArtifactReference) -> bool {
 				| "evaluator-results.json"
 				| "workspace-manifest.json"
 				| "workspace-snapshot.json"
+				| PREFLIGHT_MARKER_ARTIFACT_KIND
 		)
 }
 
@@ -703,18 +705,29 @@ fn validate_preflight_report(
 				&entry.probe.artifacts,
 				None,
 				MAX_PREFLIGHT_ARTIFACT_REFERENCES,
-				&["stdout.jsonl", "stderr.txt"],
+				&["stdout.jsonl", "stderr.txt", PREFLIGHT_MARKER_ARTIFACT_KIND],
 			)
 			.is_err() || match entry.probe.status {
 			ConfigurationProbeStatus::Available => {
 				entry.probe.result_digest.as_ref().is_none_or(|value| !is_sha256(value))
 					|| entry.probe.result_preview.is_none()
 					|| entry.probe.failure.is_some()
+					|| entry
+						.probe
+						.artifacts
+						.iter()
+						.filter(|artifact| artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND)
+						.count() != 1 || !entry.probe.artifacts.iter().any(valid_preflight_marker_reference)
 			},
 			ConfigurationProbeStatus::ObservedUnsupported | ConfigurationProbeStatus::Failed => {
 				entry.probe.result_digest.is_some()
 					|| entry.probe.result_preview.is_some()
 					|| entry.probe.failure.is_none()
+					|| entry
+						.probe
+						.artifacts
+						.iter()
+						.any(|artifact| artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND)
 			},
 		} || !matches!(
 			(entry.status, entry.probe.status),
@@ -760,7 +773,7 @@ fn invalid_preflight_report_header(
 	report: &CapabilityValidationReport,
 	require_full_matrix: bool,
 ) -> bool {
-	report.schema_version != "aiq.capability-validation.v2"
+	report.schema_version != "aiq.capability-validation.v3"
 		|| !is_node_id(&report.node_id)
 		|| report
 			.cli_probe
@@ -792,6 +805,17 @@ fn invalid_preflight_report_header(
 				|| report.authentication_probe.failure.is_some()
 				|| !report.manifest_issues.is_empty()
 				|| report.models.len() != MODEL_MATRIX.len())
+}
+
+fn valid_preflight_marker_reference(artifact: &ArtifactReference) -> bool {
+	artifact.kind == PREFLIGHT_MARKER_ARTIFACT_KIND
+		&& artifact.content_hash == PREFLIGHT_MARKER_SHA256
+		&& artifact.uri
+			== format!(
+				"aiq-artifact://sha256/{}/{}",
+				PREFLIGHT_MARKER_SHA256.trim_start_matches("sha256:"),
+				PREFLIGHT_MARKER_ARTIFACT_KIND
+			) && artifact.bytes == PREFLIGHT_MARKER_BYTES.len() as u64
 }
 
 fn validate_result(
@@ -1782,6 +1806,54 @@ mod tests {
 		assert!(run_validation::validate_run_record(&run, Some(&tasks)).is_err());
 	}
 
+	fn rebind_preflight(candidate: &mut RunRecord) {
+		let report = candidate.capability_validation.as_mut().expect("preflight report");
+		let entry = report.models.first_mut().expect("first capability entry");
+
+		entry.probe.evidence_digest = adapter::configuration_evidence_digest(
+			entry.model,
+			entry.probe.codex_version.as_ref(),
+			&entry.probe.observed_at,
+			entry.probe.status,
+			entry.probe.result_digest.as_deref(),
+			entry.probe.result_preview.as_deref(),
+			&entry.probe.artifacts,
+			entry.probe.failure.as_ref(),
+		)
+		.expect("rebound capability evidence");
+		candidate.provenance.as_mut().expect("production provenance").preflight_digest =
+			protocol::canonical_hash(report).expect("rebound preflight digest");
+	}
+
+	fn assert_functional_marker_binding(tasks: &[crate::task::TaskDefinition], run: &RunRecord) {
+		let mut missing_marker = run.clone();
+
+		missing_marker.capability_validation.as_mut().expect("report").models[0]
+			.probe
+			.artifacts
+			.clear();
+
+		rebind_preflight(&mut missing_marker);
+
+		assert!(run_validation::validate_run_record(&missing_marker, Some(tasks)).is_err());
+
+		let mut wrong_marker = run.clone();
+		let marker = &mut wrong_marker.capability_validation.as_mut().expect("report").models[0]
+			.probe
+			.artifacts[0];
+
+		marker.content_hash = format!("sha256:{}", "a".repeat(64));
+		marker.uri = format!(
+			"aiq-artifact://sha256/{}/{}",
+			"a".repeat(64),
+			adapter::PREFLIGHT_MARKER_ARTIFACT_KIND
+		);
+
+		rebind_preflight(&mut wrong_marker);
+
+		assert!(run_validation::validate_run_record(&wrong_marker, Some(tasks)).is_err());
+	}
+
 	#[test]
 	fn non_synthetic_preflight_digest_and_node_identity_are_bound() {
 		let (tasks, mut run) = large_synthetic_fixture();
@@ -1791,6 +1863,7 @@ mod tests {
 			.into_iter()
 			.map(|model| {
 				let preview = "AIQ_PREFLIGHT_OK".to_owned();
+				let artifacts = vec![adapter::preflight_marker_artifact_reference()];
 				let result_digest =
 					format!("sha256:{}", hex::encode(Sha256::digest(preview.as_bytes())));
 				let observed_at = "unix-ms:1".to_owned();
@@ -1801,7 +1874,7 @@ mod tests {
 					ConfigurationProbeStatus::Available,
 					Some(&result_digest),
 					Some(&preview),
-					&[],
+					&artifacts,
 					None,
 				)
 				.expect("evidence digest");
@@ -1816,7 +1889,7 @@ mod tests {
 						observed_at,
 						result_digest: Some(result_digest),
 						result_preview: Some(preview),
-						artifacts: Vec::new(),
+						artifacts,
 						evidence_digest,
 						failure: None,
 					},
@@ -1834,7 +1907,7 @@ mod tests {
 		)
 		.expect("official run id");
 		run.capability_validation = Some(CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id: node_id.clone(),
 			manifest_issues: Vec::new(),
 			cli_probe: CliProbe {
@@ -1885,6 +1958,7 @@ mod tests {
 			.expect("bound real run must validate");
 
 		assert_artifact_invariants(&tasks, &run);
+		assert_functional_marker_binding(&tasks, &run);
 
 		run.capability_validation.as_mut().expect("report").models[0].probe.evidence_digest =
 			format!("sha256:{}", "c".repeat(64));
