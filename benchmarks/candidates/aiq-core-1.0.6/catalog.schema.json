@@ -279,8 +279,7 @@
             },
             "kind": {
               "enum": [
-                "runtime_budget_revision",
-                "carry_forward"
+                "runtime_budget_revision"
               ]
             },
             "objective": {
@@ -386,8 +385,15 @@
           ],
           "properties": {
             "wall_seconds": {
-              "type": "integer",
-              "minimum": 60
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "max_steps": {
               "type": "integer",
@@ -565,8 +571,7 @@
           "properties": {
             "origin": {
               "enum": [
-                "runtime_budget_revision",
-                "release_carry_forward"
+                "runtime_budget_revision"
               ]
             },
             "owner": {

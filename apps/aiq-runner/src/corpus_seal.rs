@@ -35,54 +35,17 @@ const MAX_SOURCE_FILE_BYTES: u64 = 16 * 1_024 * 1_024;
 const MAX_FILE_BYTES: u64 = 256 * 1_024 * 1_024;
 const MAX_TREE_FILES: usize = 4_096;
 const MAX_TREE_BYTES: u64 = 512 * 1_024 * 1_024;
-const CORE_CLASSES: [&str; 6] =
-	["adversarial_format", "alternate_correct", "empty", "gold", "partial", "timeout"];
-const CONTRAST_CLASSES: [&str; 6] =
+const CORE_REQUIRED_CLASSES: [&str; 4] =
+	["adversarial_format", "alternate_correct", "gold", "partial"];
+const CORE_OPTIONAL_CLASSES: [&str; 2] = ["empty", "timeout"];
+const CONTRAST_REQUIRED_CLASSES: [&str; 6] =
 	["challenge", "empty", "format", "near_miss", "reference", "tamper"];
+const NO_OPTIONAL_CLASSES: [&str; 0] = [];
 const CORE_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.6/catalog.json";
 const CONTRAST_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.6/contrast-catalog.json";
 const SOURCE_INVENTORY: &str = "benchmarks/corpus-source-inventory-v1.json";
 const CATALOG_GENERATOR: &str = "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts";
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-
-/// Corpus authority selected before any private input is read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize, ValueEnum)]
-#[serde(rename_all = "snake_case")]
-pub enum CorpusKind {
-	/// The exact 72-task AIQ Core catalog.
-	Core,
-	/// The exact six-task calibration-only Contrast catalog.
-	Contrast,
-}
-impl CorpusKind {
-	fn catalog_path(self) -> &'static str {
-		match self {
-			Self::Core => CORE_CATALOG,
-			Self::Contrast => CONTRAST_CATALOG,
-		}
-	}
-
-	fn task_count(self) -> usize {
-		match self {
-			Self::Core => 72,
-			Self::Contrast => 6,
-		}
-	}
-
-	fn acceptance_classes(self) -> &'static [&'static str] {
-		match self {
-			Self::Core => &CORE_CLASSES,
-			Self::Contrast => &CONTRAST_CLASSES,
-		}
-	}
-
-	fn harness_schema(self) -> &'static str {
-		match self {
-			Self::Core => "aiq.core-authoring-harness.v3",
-			Self::Contrast => "aiq.contrast-authoring-harness.v3",
-		}
-	}
-}
 
 /// Complete explicit inputs for one create-new seal.
 pub struct SealOptions {
@@ -112,6 +75,57 @@ pub struct SealOptions {
 	pub runtime_authority: PathBuf,
 	/// Create-new atomic sealed output directory.
 	pub output: PathBuf,
+}
+
+/// Corpus authority selected before any private input is read.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum CorpusKind {
+	/// The exact 72-task AIQ Core catalog.
+	Core,
+	/// The exact six-task calibration-only Contrast catalog.
+	Contrast,
+}
+impl CorpusKind {
+	fn catalog_path(self) -> &'static str {
+		match self {
+			Self::Core => CORE_CATALOG,
+			Self::Contrast => CONTRAST_CATALOG,
+		}
+	}
+
+	fn task_count(self) -> usize {
+		match self {
+			Self::Core => 72,
+			Self::Contrast => 6,
+		}
+	}
+
+	fn acceptance_policy(self) -> AcceptancePolicy {
+		match self {
+			Self::Core => AcceptancePolicy {
+				required: &CORE_REQUIRED_CLASSES,
+				optional: &CORE_OPTIONAL_CLASSES,
+			},
+			Self::Contrast => AcceptancePolicy {
+				required: &CONTRAST_REQUIRED_CLASSES,
+				optional: &NO_OPTIONAL_CLASSES,
+			},
+		}
+	}
+
+	fn harness_schema(self) -> &'static str {
+		match self {
+			Self::Core => "aiq.core-authoring-harness.v3",
+			Self::Contrast => "aiq.contrast-authoring-harness.v3",
+		}
+	}
+}
+
+#[derive(Clone, Copy)]
+struct AcceptancePolicy {
+	required: &'static [&'static str],
+	optional: &'static [&'static str],
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -224,6 +238,11 @@ struct TaskCommitment {
 	leakage_review_sha256: String,
 }
 
+struct WrittenTaskAssets {
+	commitments: Vec<TaskCommitment>,
+	acceptance_classes_by_task: BTreeMap<String, Vec<String>>,
+}
+
 #[derive(Serialize)]
 struct AuthoringInputManifest<'a> {
 	schema_version: &'static str,
@@ -232,7 +251,9 @@ struct AuthoringInputManifest<'a> {
 	source_commit: &'a str,
 	source_tree: &'a str,
 	task_count: usize,
-	acceptance_classes: &'static [&'static str],
+	acceptance_required_classes: &'static [&'static str],
+	acceptance_optional_classes: &'static [&'static str],
+	acceptance_classes_by_task: &'a BTreeMap<String, Vec<String>>,
 	tasks_tree_sha256: String,
 	baselines_tree_sha256: String,
 	acceptance_tree_sha256: String,
@@ -247,8 +268,9 @@ struct HarnessManifest<'a> {
 	schema_version: &'static str,
 	corpus_kind: CorpusKind,
 	task_count: usize,
-	acceptance_cardinality_per_task: usize,
-	acceptance_classes: &'static [&'static str],
+	acceptance_required_classes: &'static [&'static str],
+	acceptance_optional_classes: &'static [&'static str],
+	acceptance_classes_by_task: &'a BTreeMap<String, Vec<String>>,
 	source_commit: &'a str,
 	source_tree: &'a str,
 	source_manifest_sha256: &'a str,
@@ -384,19 +406,24 @@ pub fn seal_corpus(options: &SealOptions) -> Result<String, Box<dyn Error>> {
 
 fn build_seal(options: &SealOptions, output: &Path) -> Result<String, Box<dyn Error>> {
 	let prepared = prepare_seal(options)?;
-	let task_commitments = write_task_assets(options, output, &prepared)?;
+	let task_assets = write_task_assets(options, output, &prepared)?;
 
 	write_shared_assets(output, &prepared)?;
 
 	let execution = derive_execution(&prepared)?;
-	let (input_manifest_sha256, harness_sha256) =
-		write_authoring_documents(options, output, &prepared, &task_commitments)?;
+	let (input_manifest_sha256, harness_sha256) = write_authoring_documents(
+		options,
+		output,
+		&prepared,
+		&task_assets.commitments,
+		&task_assets.acceptance_classes_by_task,
+	)?;
 
 	write_commitment_and_receipt(
 		options,
 		output,
 		&prepared,
-		&task_commitments,
+		&task_assets.commitments,
 		&execution,
 		&input_manifest_sha256,
 		&harness_sha256,
@@ -643,7 +670,7 @@ fn write_task_assets(
 	options: &SealOptions,
 	output: &Path,
 	prepared: &PreparedSeal,
-) -> Result<Vec<TaskCommitment>, Box<dyn Error>> {
+) -> Result<WrittenTaskAssets, Box<dyn Error>> {
 	let output_tasks = output.join("tasks");
 	let output_baselines = output.join("baselines");
 	let output_acceptance = output.join("acceptance");
@@ -654,14 +681,17 @@ fn write_task_assets(
 	}
 
 	let mut task_commitments = Vec::with_capacity(prepared.tasks.len());
+	let mut acceptance_classes_by_task = BTreeMap::new();
 
 	for task in &prepared.tasks {
 		validate_fixture_refs(task)?;
 
 		let baseline = prepared.baselines_root.join(&task.task_id);
 		let acceptance = prepared.acceptance_root.join(&task.task_id);
+		let acceptance_classes =
+			validate_acceptance_classes(&acceptance, options.corpus_kind.acceptance_policy())?;
 
-		validate_acceptance_classes(&acceptance, options.corpus_kind.acceptance_classes())?;
+		acceptance_classes_by_task.insert(task.task_id.clone(), acceptance_classes);
 
 		let baseline_manifest = runner::build_workspace_manifest(&baseline)?;
 		let baseline_sha256 = protocol::canonical_hash(&baseline_manifest)?;
@@ -710,7 +740,7 @@ fn write_task_assets(
 		});
 	}
 
-	Ok(task_commitments)
+	Ok(WrittenTaskAssets { commitments: task_commitments, acceptance_classes_by_task })
 }
 
 fn write_shared_assets(output: &Path, prepared: &PreparedSeal) -> Result<(), Box<dyn Error>> {
@@ -793,7 +823,9 @@ fn write_authoring_documents(
 	output: &Path,
 	prepared: &PreparedSeal,
 	task_commitments: &[TaskCommitment],
+	acceptance_classes_by_task: &BTreeMap<String, Vec<String>>,
 ) -> Result<(String, String), Box<dyn Error>> {
+	let acceptance_policy = options.corpus_kind.acceptance_policy();
 	let input_manifest = AuthoringInputManifest {
 		schema_version: "aiq.corpus-authoring-input.v1",
 		corpus_kind: options.corpus_kind,
@@ -801,7 +833,9 @@ fn write_authoring_documents(
 		source_commit: &options.source_commit,
 		source_tree: &options.source_tree,
 		task_count: prepared.tasks.len(),
-		acceptance_classes: options.corpus_kind.acceptance_classes(),
+		acceptance_required_classes: acceptance_policy.required,
+		acceptance_optional_classes: acceptance_policy.optional,
+		acceptance_classes_by_task,
 		tasks_tree_sha256: protocol::canonical_hash(&controlled_tree(&prepared.tasks_root)?)?,
 		baselines_tree_sha256: protocol::canonical_hash(&controlled_tree(
 			&prepared.baselines_root,
@@ -849,8 +883,9 @@ fn write_authoring_documents(
 		schema_version: options.corpus_kind.harness_schema(),
 		corpus_kind: options.corpus_kind,
 		task_count: prepared.tasks.len(),
-		acceptance_cardinality_per_task: 6,
-		acceptance_classes: options.corpus_kind.acceptance_classes(),
+		acceptance_required_classes: acceptance_policy.required,
+		acceptance_optional_classes: acceptance_policy.optional,
+		acceptance_classes_by_task,
 		source_commit: &options.source_commit,
 		source_tree: &options.source_tree,
 		source_manifest_sha256: &prepared.source_manifest_sha256,
@@ -1535,7 +1570,10 @@ fn validate_fixture_refs(task: &TaskDefinition) -> Result<(), Box<dyn Error>> {
 
 	Ok(())
 }
-fn validate_acceptance_classes(root: &Path, expected: &[&str]) -> Result<(), Box<dyn Error>> {
+fn validate_acceptance_classes(
+	root: &Path,
+	policy: AcceptancePolicy,
+) -> Result<Vec<String>, Box<dyn Error>> {
 	let root = canonical_directory(root, "acceptance task root")?;
 	let mut observed = BTreeSet::new();
 
@@ -1559,11 +1597,19 @@ fn validate_acceptance_classes(root: &Path, expected: &[&str]) -> Result<(), Box
 		}
 	}
 
-	if observed != expected.iter().map(|v| (*v).to_owned()).collect() {
-		return Err("acceptance suite does not contain the exact corpus-kind classes".into());
+	let required = policy.required.iter().map(|value| (*value).to_owned()).collect::<BTreeSet<_>>();
+	let allowed = policy
+		.required
+		.iter()
+		.chain(policy.optional)
+		.map(|value| (*value).to_owned())
+		.collect::<BTreeSet<_>>();
+
+	if !required.is_subset(&observed) || !observed.is_subset(&allowed) {
+		return Err("acceptance suite does not satisfy the corpus-kind class policy".into());
 	}
 
-	Ok(())
+	Ok(observed.into_iter().collect())
 }
 fn digest_source_paths(
 	root: &Path,
@@ -1587,7 +1633,8 @@ mod tests {
 
 	use crate::{
 		corpus_seal::{
-			self, CONTRAST_CLASSES, CORE_CLASSES, CorpusKind, LeakageReview, SealOptions,
+			self, AcceptancePolicy, CONTRAST_REQUIRED_CLASSES, CORE_OPTIONAL_CLASSES,
+			CORE_REQUIRED_CLASSES, CorpusKind, LeakageReview, NO_OPTIONAL_CLASSES, SealOptions,
 			TEMP_SEQUENCE,
 		},
 		protocol, runner,
@@ -1706,17 +1753,54 @@ mod tests {
 	}
 
 	#[test]
-	fn acceptance_classes_are_kind_specific() {
+	fn acceptance_classes_are_kind_specific_and_core_allows_only_reviewed_optional_classes() {
 		let root = temporary_root("classes");
 
-		for class in CORE_CLASSES {
+		for class in CORE_REQUIRED_CLASSES {
 			fs::write(root.join(format!("{class}.json")), b"{}").expect("class");
 		}
 
-		assert!(corpus_seal::validate_acceptance_classes(&root, &CORE_CLASSES).is_ok());
-		assert!(corpus_seal::validate_acceptance_classes(&root, &CONTRAST_CLASSES).is_err());
+		let core_policy =
+			AcceptancePolicy { required: &CORE_REQUIRED_CLASSES, optional: &CORE_OPTIONAL_CLASSES };
+
+		assert_eq!(
+			corpus_seal::validate_acceptance_classes(&root, core_policy).expect("core classes"),
+			CORE_REQUIRED_CLASSES.map(str::to_owned)
+		);
+
+		fs::write(root.join("empty.json"), b"{}").expect("optional class");
+
+		assert!(corpus_seal::validate_acceptance_classes(&root, core_policy).is_ok());
+
+		fs::write(root.join("unknown.json"), b"{}").expect("unknown class");
+
+		assert!(corpus_seal::validate_acceptance_classes(&root, core_policy).is_err());
+
+		fs::remove_file(root.join("unknown.json")).expect("remove unknown class");
+		fs::remove_file(root.join("gold.json")).expect("remove required class");
+
+		assert!(corpus_seal::validate_acceptance_classes(&root, core_policy).is_err());
 
 		fs::remove_dir_all(root).expect("cleanup");
+
+		let contrast_root = temporary_root("contrast-classes");
+
+		for class in CONTRAST_REQUIRED_CLASSES {
+			fs::write(contrast_root.join(format!("{class}.json")), b"{}").expect("class");
+		}
+
+		let contrast_policy = AcceptancePolicy {
+			required: &CONTRAST_REQUIRED_CLASSES,
+			optional: &NO_OPTIONAL_CLASSES,
+		};
+
+		assert!(corpus_seal::validate_acceptance_classes(&contrast_root, contrast_policy).is_ok());
+
+		fs::write(contrast_root.join("partial.json"), b"{}").expect("extra class");
+
+		assert!(corpus_seal::validate_acceptance_classes(&contrast_root, contrast_policy).is_err());
+
+		fs::remove_dir_all(contrast_root).expect("cleanup");
 	}
 
 	#[test]
