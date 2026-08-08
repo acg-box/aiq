@@ -23,8 +23,10 @@ The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
 The active public candidate, task, and scorer contract is `1.0.6`. All 72 model
-tasks use `wall_seconds: null`; five interaction tasks retain revised step and
-tool-call limits and the other 67 retain their accepted limits. Prompt,
+tasks use `wall_seconds: null`; capacity admission records nullable model and
+end-to-end bounds rather than claiming a schedule fit. Five interaction tasks
+retain revised step and tool-call limits and the other 67 retain their accepted
+limits. Prompt,
 evaluator, semantic scoring, and tool permissions remain unchanged. The
 public catalog is deterministic and identity-frozen. Two controlled generations
 produced the predecessor deadline-bound tree. The no-deadline identity requires
