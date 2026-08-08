@@ -35,16 +35,17 @@ automation only to remove a marker.
 The source-head public constants include AIQ Core and scoring version `1.0.6`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`,
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
 release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree, and the reviewed 72-task database
 commitment is bound in source. Final controlled corpus identities remain
 calibration candidates. Contrast generation is pending. The first
 `1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
 evidence, not as an all-execution failure. The `1.0.6` sequence requires a
-17-by-4 runtime-budget pilot before the full 17-by-72 non-Official calibration. Final
+debugging-02-by-17 runtime-budget pilot before the full 17-by-5 non-Official pilot
+and 17-by-72 calibration. Final
 native build verification, a real Official run, publication, and final
 deployment remain pending. The sole production tuple is AIQ Core `1.0.6`,
 scoring `1.0.6`, and measurement `2.0.0`; no legacy fallback is supported.

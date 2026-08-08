@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
+sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. Its public catalog
 release-identity digest is
-`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
@@ -117,14 +117,16 @@ budgets, complete ellipses, and omission metadata. A later `1.0.5` pilot exposed
 seven timeouts and three tool-budget failures at the common 900-second,
 40-step, and 28-tool-call envelope. The offline historical diagnostic excludes
 those runtime-null cells from semantic scoring without changing the preserved
-package or producing Official evidence. AIQ Core `1.0.6` preserves the task,
-fixture, evaluator, tool, and scoring semantics and adds coding-07 as a fifth
-runtime-budget revision. Coding-07 uses 600 wall seconds, 32 steps, and 21 tool
-calls; the other four revised tasks use 1,500 seconds, 48 steps, and 40 tool
-calls. Each task budget is common to every model configuration, and this budget
-revision does not alter scoring. The other 67 task contracts carry forward with
-new release bindings. Run a fresh coding-07-by-17 falsification pilot, then a
-17-by-5, 85-cell non-Official pilot before paying for the full
+package or producing Official evidence. The r11 five-task pilot then stopped on
+debugging-02 at 47/48 steps and 41/40 tool calls after 1,060.042 seconds. AIQ
+Core `1.0.6` preserves the task, fixture, evaluator, tool, and scoring semantics
+and has five runtime-budget revisions. Coding-07 uses 600 wall seconds, 32
+steps, and 21 tool calls; debugging-02 uses 1,800 seconds, 64 steps, and 56
+tool calls; coding-06, debugging-01, and debugging-04 use 1,500 seconds, 48
+steps, and 40 tool calls. Each task budget is common to every model
+configuration, and this budget revision does not alter scoring. The other 67
+task contracts carry forward with new release bindings. Run a fresh
+debugging-02-by-17 falsification pilot, then a 17-by-5, 85-cell non-Official pilot before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model

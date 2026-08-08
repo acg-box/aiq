@@ -52,9 +52,11 @@ three tool-budget failures at the shared 900-second, 40-step, and 28-tool-call
 envelope. AIQ Core `1.0.6` keeps the bounded keyed executor, quoted-record
 parser, six-field layered service configuration, and bounded Unicode log
 preview semantics. It gives coding-07 a common 600-second, 32-step, and
-21-tool-call budget, and the other four revised tasks a common 1,500-second,
-48-step, and 40-tool-call budget for every model configuration. This candidate
-still needs a fresh coding-07-by-17 falsification pilot and 17-by-5 pilot.
+21-tool-call budget; debugging-02 a common 1,800-second, 64-step, and
+56-tool-call budget; and coding-06, debugging-01, and debugging-04 a common
+1,500-second, 48-step, and 40-tool-call budget for every model configuration.
+This candidate still needs a fresh debugging-02-by-17 falsification pilot and
+17-by-5 pilot.
 
 ## Deployment status
 
@@ -173,10 +175,10 @@ receipt must contain scoring `1.0.6`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b`;
+`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`;
 the release-policy identity is `aiq-core/1.0.6`, and its public catalog
 release-identity digest is
-`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
+`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
 The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the public-safe database task-set identity is
