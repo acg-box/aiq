@@ -40,7 +40,7 @@ pub const AIQ_TASK_SET_VERSION: &str = "1.0.6";
 pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.6";
 /// Frozen full-metadata commitment for the current AIQ Core release.
 pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
-	"sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460";
+	"sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -3312,6 +3312,55 @@ mod tests {
 		.expect_err("zero seed must be rejected");
 
 		assert_eq!(error.to_string(), "bootstrap_seed must be greater than zero");
+	}
+
+	#[test]
+	fn elapsed_time_tokens_tools_and_cost_inputs_cannot_change_the_aiq_score() {
+		let tasks = official_tasks();
+		let results = tasks
+			.iter()
+			.enumerate()
+			.map(|(index, task)| {
+				let score = index as f64 % 3.0 / 2.0;
+				let mut result = result(task, score);
+
+				if score > 0.0 && score < 1.0 {
+					result.evaluation = EvaluationOutcome::Partial;
+				}
+
+				result
+			})
+			.collect::<Vec<_>>();
+		let options = ScoreOptions { bootstrap_samples: 20, bootstrap_seed: 17 };
+		let baseline =
+			scoring::score_model_with_options(&tasks, &results, MODEL_MATRIX[0], options)
+				.expect("semantic fixture must score");
+		let mut different_efficiency = results.clone();
+
+		for (index, result) in different_efficiency.iter_mut().enumerate() {
+			result.latency.wall_ms = 86_400_000 + index as u64;
+			result.tool_usage.steps = 1;
+			result.tool_usage.total_calls = 1;
+			result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), 1)]);
+			result.tool_usage.provider_tokens = runner::ProviderTokenUsage {
+				input: Some(10_000 + index as u64),
+				cached_input: Some(1_000),
+				cache_write_input: Some(500),
+				output: Some(2_000),
+				reasoning: Some(1_000),
+				total: Some(12_000 + index as u64),
+			};
+		}
+
+		let changed = scoring::score_model_with_options(
+			&tasks,
+			&different_efficiency,
+			MODEL_MATRIX[0],
+			options,
+		)
+		.expect("efficiency-only changes must not affect semantic scoring");
+
+		assert_eq!(changed, baseline);
 	}
 
 	#[test]

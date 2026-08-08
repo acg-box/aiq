@@ -217,8 +217,8 @@ pub struct CommandRequest {
 	pub args: Vec<String>,
 	/// Standard-input bytes.
 	pub stdin: Vec<u8>,
-	/// Hard wall-clock timeout, including standard-input delivery.
-	pub timeout: Duration,
+	/// Optional wall-clock timeout, including standard-input delivery.
+	pub timeout: Option<Duration>,
 	/// Maximum accepted bytes for each output stream.
 	pub max_capture_bytes: usize,
 	/// Maximum observed completed items.
@@ -630,8 +630,8 @@ pub struct InvocationRequest {
 	pub model: ModelConfig,
 	/// Complete benchmark prompt.
 	pub prompt: String,
-	/// Hard wall-clock timeout.
-	pub timeout: Duration,
+	/// Optional wall-clock timeout. `None` lets the task run until it reaches another boundary.
+	pub timeout: Option<Duration>,
 	/// Maximum completed items.
 	pub max_steps: u32,
 	/// Maximum tool calls.
@@ -1099,7 +1099,7 @@ where
 				&rg_executable,
 			)?,
 			Vec::new(),
-			Duration::from_secs(20),
+			Some(Duration::from_secs(20)),
 			u32::MAX,
 			u32::MAX,
 			&scratch_environment,
@@ -1140,7 +1140,7 @@ where
 		self.execute_request_with_environment(
 			args,
 			stdin,
-			timeout,
+			Some(timeout),
 			max_steps,
 			max_tool_calls,
 			&BTreeMap::new(),
@@ -1151,7 +1151,7 @@ where
 		&self,
 		args: Vec<String>,
 		stdin: Vec<u8>,
-		timeout: Duration,
+		timeout: Option<Duration>,
 		max_steps: u32,
 		max_tool_calls: u32,
 		extra_environment: &BTreeMap<String, String>,
@@ -1203,7 +1203,7 @@ where
 					program: self.codex_binary.clone(),
 					args,
 					stdin,
-					timeout,
+					timeout: Some(timeout),
 					max_capture_bytes: MAX_CAPTURE_BYTES,
 					max_steps: u32::MAX,
 					max_tool_calls: u32::MAX,
@@ -1340,7 +1340,7 @@ where
 				"Do not send commentary before the command. Do not use a file-editing, patch, or file-change tool. Use the terminal or shell command execution tool exactly once. Run exactly this command in the current workspace: {PREFLIGHT_MARKER_COMMAND}. Do not run any other command. After the command completes, reply with exactly AIQ_PREFLIGHT_OK and no other text."
 			)
 			.into_bytes(),
-			Duration::from_secs(30),
+			Some(Duration::from_secs(30)),
 			3,
 			1,
 			&scratch_environment,
@@ -3831,7 +3831,7 @@ fn wait_for_system_process(
 	child_pid: u32,
 	breach_rx: &Receiver<LiveBudgetKind>,
 	stdin_rx: &Receiver<Result<(), String>>,
-	timeout: Duration,
+	timeout: Option<Duration>,
 	observer: Option<&dyn ChildProcessObserver>,
 ) -> Result<ProcessWaitOutcome, ExecutorError> {
 	let started = Instant::now();
@@ -3902,7 +3902,9 @@ fn wait_for_system_process(
 					"process-group leader is no longer waitable; cached process group was not signaled",
 				));
 			},
-			ProcessGroupPoll::Running if started.elapsed() >= timeout => {
+			ProcessGroupPoll::Running
+				if timeout.is_some_and(|timeout| started.elapsed() >= timeout) =>
+			{
 				timed_out = true;
 
 				break match process_group::kill_and_reap_group(child) {
@@ -3940,6 +3942,9 @@ fn execute_json_rpc_process_inner(
 ) -> Result<ExecutionCapture, ExecutorError> {
 	#[cfg(test)]
 	let _process_test_guard = crate::process_test_read_lock();
+	let timeout = request
+		.timeout
+		.ok_or_else(|| ExecutorError::new("JSON-RPC requests require a response deadline"))?;
 
 	if request.stdin.len() > MAX_STDIN_BYTES || expected_response_ids.is_empty() {
 		return Err(ExecutorError::new("invalid bounded JSON-RPC request"));
@@ -3980,6 +3985,7 @@ fn execute_json_rpc_process_inner(
 			request,
 			expected_response_ids,
 			started,
+			timeout,
 			&stdout_rx,
 			&breach_rx,
 			&stdin_rx,
@@ -4244,6 +4250,7 @@ fn receive_json_rpc_responses(
 	request: &CommandRequest,
 	expected_response_ids: &[u64],
 	started: Instant,
+	timeout: Duration,
 	stdout_rx: &Receiver<JsonRpcStdoutEvent>,
 	breach_rx: &Receiver<LiveBudgetKind>,
 	stdin_rx: &Receiver<Result<(), String>>,
@@ -4269,13 +4276,13 @@ fn receive_json_rpc_responses(
 
 		let elapsed = started.elapsed();
 
-		if elapsed >= request.timeout {
+		if elapsed >= timeout {
 			failure = Some("JSON-RPC process exceeded its response deadline".to_owned());
 
 			break;
 		}
 
-		let poll_interval = (request.timeout - elapsed).min(Duration::from_millis(10));
+		let poll_interval = (timeout - elapsed).min(Duration::from_millis(10));
 
 		match stdout_rx.recv_timeout(poll_interval) {
 			Ok(JsonRpcStdoutEvent::Chunk(chunk)) => {
@@ -6087,7 +6094,7 @@ mod tests {
 		InvocationRequest {
 			model: MODEL_MATRIX[0],
 			prompt: "test".to_owned(),
-			timeout: Duration::from_secs(1),
+			timeout: Some(Duration::from_secs(1)),
 			max_steps: 2,
 			max_tool_calls: 0,
 			workspace_dir: root.join("task"),
@@ -7593,7 +7600,7 @@ mod tests {
 			let workspace_text = workspace.display().to_string();
 			let prompt = str::from_utf8(&request.stdin).expect("probe prompt must be UTF-8");
 
-			assert_eq!(request.timeout, Duration::from_secs(30));
+			assert_eq!(request.timeout, Some(Duration::from_secs(30)));
 			assert_eq!(request.max_steps, 3);
 			assert_eq!(request.max_tool_calls, 1);
 			assert!(prompt.contains("Do not send commentary before the command"));
@@ -7746,6 +7753,11 @@ mod tests {
 
 	#[test]
 	fn child_event_emitter() {
+		if env::var("AIQ_CHILD_UNBOUNDED_WAIT").as_deref() == Ok("1") {
+			thread::sleep(Duration::from_millis(50));
+
+			return;
+		}
 		if env::var("AIQ_CHILD_NO_STDIN").as_deref() == Ok("1") {
 			thread::sleep(Duration::from_secs(2));
 
@@ -8306,7 +8318,7 @@ mod tests {
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
-				timeout: Duration::from_millis(100),
+				timeout: Some(Duration::from_millis(100)),
 				max_capture_bytes: 16 * 1_024,
 				max_steps: u32::MAX,
 				max_tool_calls: u32::MAX,
@@ -8350,7 +8362,7 @@ mod tests {
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
-				timeout: Duration::from_secs(5),
+				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
 				max_steps: u32::MAX,
 				max_tool_calls: 0,
@@ -8391,7 +8403,7 @@ mod tests {
 				"--nocapture".to_owned(),
 			],
 			stdin,
-			timeout,
+			timeout: Some(timeout),
 			max_capture_bytes,
 			max_steps: u32::MAX,
 			max_tool_calls: u32::MAX,
@@ -8494,6 +8506,7 @@ mod tests {
 			&request,
 			&[1],
 			Instant::now(),
+			Duration::from_millis(100),
 			&stdout_rx,
 			&breach_rx,
 			&stdin_rx,
@@ -8804,6 +8817,35 @@ mod tests {
 	}
 
 	#[test]
+	fn system_executor_accepts_an_unbounded_request_that_exits_normally() {
+		let executable = env::current_exe().expect("test executable");
+		let capture = SystemExecutor
+			.execute(&CommandRequest {
+				program: executable.display().to_string(),
+				args: vec![
+					"--exact".to_owned(),
+					"adapter::tests::child_event_emitter".to_owned(),
+					"--nocapture".to_owned(),
+				],
+				stdin: Vec::new(),
+				timeout: None,
+				max_capture_bytes: 16 * 1_024,
+				max_steps: u32::MAX,
+				max_tool_calls: u32::MAX,
+				clear_environment: true,
+				environment: BTreeMap::from([(
+					"AIQ_CHILD_UNBOUNDED_WAIT".to_owned(),
+					"1".to_owned(),
+				)]),
+			})
+			.expect("unbounded request must wait for normal process exit");
+
+		assert!(!capture.timed_out);
+		assert_eq!(capture.exit_code, Some(0));
+		assert_eq!(capture.budget_exceeded, None);
+	}
+
+	#[test]
 	fn system_executor_deadline_includes_blocked_stdin_delivery() {
 		let executable = env::current_exe().expect("test executable");
 		let started = std::time::Instant::now();
@@ -8816,7 +8858,7 @@ mod tests {
 					"--nocapture".to_owned(),
 				],
 				stdin: vec![b'x'; super::MAX_STDIN_BYTES],
-				timeout: Duration::from_millis(100),
+				timeout: Some(Duration::from_millis(100)),
 				max_capture_bytes: 16 * 1_024,
 				max_steps: 1,
 				max_tool_calls: 0,
@@ -8848,7 +8890,7 @@ mod tests {
 							"--nocapture".to_owned(),
 						],
 						stdin: Vec::new(),
-						timeout: Duration::from_secs(5),
+						timeout: Some(Duration::from_secs(5)),
 						max_capture_bytes: 16 * 1_024,
 						max_steps: u32::MAX,
 						max_tool_calls: u32::MAX,
@@ -8886,7 +8928,7 @@ mod tests {
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
-				timeout: Duration::from_secs(5),
+				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
 				max_steps: 1,
 				max_tool_calls: 0,
@@ -8914,7 +8956,7 @@ mod tests {
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
-				timeout: Duration::from_secs(5),
+				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
 				max_steps: 1,
 				max_tool_calls: 0,
@@ -8947,7 +8989,7 @@ mod tests {
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
-				timeout: Duration::from_secs(5),
+				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
 				max_steps: 1,
 				max_tool_calls: 0,

@@ -858,10 +858,10 @@ pub struct CapacityEstimate {
 	pub model_keys: Vec<String>,
 	/// Ordered selected task identifiers.
 	pub task_ids: Vec<String>,
-	/// Sum of declared wall budgets for every selected cell.
-	pub declared_wall_budget_sum_seconds: u64,
-	/// Largest worker load in a deterministic greedy schedule.
-	pub declared_wall_budget_critical_path_seconds: u64,
+	/// Sum of declared wall budgets, or `None` when any selected task is unbounded.
+	pub declared_wall_budget_sum_seconds: Option<u64>,
+	/// Largest worker load, or `None` when any selected task is unbounded.
+	pub declared_wall_budget_critical_path_seconds: Option<u64>,
 	/// Capacity output is evidence only and never asserts schedule feasibility.
 	pub feasibility_assessed: bool,
 }
@@ -1504,36 +1504,21 @@ pub fn estimate_capacity(
 		.len()
 		.checked_mul(models.len())
 		.ok_or_else(|| RunnerError::new("selected cell count overflows"))?;
-	let mut worker_loads = vec![0_u64; jobs.min(selected_cells)];
-	let mut sum = 0_u64;
-
-	for _model in models {
-		for task in tasks {
-			sum = sum
-				.checked_add(task.budgets.wall_seconds)
-				.ok_or_else(|| RunnerError::new("declared wall budget sum overflows"))?;
-
-			let worker = worker_loads
-				.iter()
-				.enumerate()
-				.min_by_key(|(index, load)| (**load, *index))
-				.map(|(index, _)| index)
-				.ok_or_else(|| RunnerError::new("capacity schedule has no worker"))?;
-
-			worker_loads[worker] = worker_loads[worker]
-				.checked_add(task.budgets.wall_seconds)
-				.ok_or_else(|| RunnerError::new("declared worker wall budget overflows"))?;
-		}
-	}
+	let wall_budgets =
+		tasks.iter().map(|task| task.budgets.wall_seconds).collect::<Option<Vec<_>>>();
+	let (sum, critical_path) = wall_budgets
+		.map(|budgets| bounded_capacity_metrics(&budgets, models.len(), jobs.min(selected_cells)))
+		.transpose()?
+		.map_or((None, None), |(sum, critical_path)| (Some(sum), Some(critical_path)));
 
 	Ok(CapacityEstimate {
-		schema_version: "aiq.capacity-estimate.v1".to_owned(),
+		schema_version: "aiq.capacity-estimate.v2".to_owned(),
 		jobs,
 		selected_cells,
 		model_keys: models.iter().map(|model| model.key()).collect(),
 		task_ids: tasks.iter().map(|task| task.task_id.clone()).collect(),
 		declared_wall_budget_sum_seconds: sum,
-		declared_wall_budget_critical_path_seconds: worker_loads.into_iter().max().unwrap_or(0),
+		declared_wall_budget_critical_path_seconds: critical_path,
 		feasibility_assessed: false,
 	})
 }
@@ -1664,7 +1649,7 @@ pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 				difficulty: catalog_task.difficulty,
 				prompt: "Synthetic task. No model invocation occurs.".to_owned(),
 				allowed_tools: vec!["none".to_owned()],
-				budgets: TaskBudgets { wall_seconds: 1, max_steps: 1, max_tool_calls: 0 },
+				budgets: TaskBudgets { wall_seconds: Some(1), max_steps: 1, max_tool_calls: 0 },
 				tags: vec!["synthetic".to_owned()],
 				cluster_id: Some(catalog_task.cluster_id),
 				catalog_entry_digest: Some(catalog_entry_digest),
@@ -1848,6 +1833,36 @@ pub(crate) fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceMani
 	entries.sort_by(|left, right| left.path.cmp(&right.path));
 
 	Ok(WorkspaceManifest { schema_version: "aiq.workspace-manifest.v1", entries })
+}
+
+fn bounded_capacity_metrics(
+	budgets: &[u64],
+	model_count: usize,
+	worker_count: usize,
+) -> Result<(u64, u64), RunnerError> {
+	let mut worker_loads = vec![0_u64; worker_count];
+	let mut sum = 0_u64;
+
+	for _model in 0..model_count {
+		for budget in budgets {
+			sum = sum
+				.checked_add(*budget)
+				.ok_or_else(|| RunnerError::new("declared wall budget sum overflows"))?;
+
+			let worker = worker_loads
+				.iter()
+				.enumerate()
+				.min_by_key(|(index, load)| (**load, *index))
+				.map(|(index, _)| index)
+				.ok_or_else(|| RunnerError::new("capacity schedule has no worker"))?;
+
+			worker_loads[worker] = worker_loads[worker]
+				.checked_add(*budget)
+				.ok_or_else(|| RunnerError::new("declared worker wall budget overflows"))?;
+		}
+	}
+
+	Ok((sum, worker_loads.into_iter().max().unwrap_or(0)))
 }
 
 fn retained_stdout_tool_usage(stdout: &str, artifacts: &[ArtifactReference]) -> ToolUsage {
@@ -3091,7 +3106,7 @@ fn task_invocation_request(
 	InvocationRequest {
 		model,
 		prompt: task_prompt(task),
-		timeout: Duration::from_secs(task.budgets.wall_seconds),
+		timeout: task.budgets.wall_seconds.map(Duration::from_secs),
 		max_steps: task.budgets.max_steps,
 		max_tool_calls: task.budgets.max_tool_calls,
 		workspace_dir: context.workspace_dir.clone(),
@@ -4945,9 +4960,36 @@ mod tests {
 		assert_eq!(estimate.selected_cells, 6);
 		assert_eq!(
 			estimate.declared_wall_budget_sum_seconds,
-			tasks.iter().map(|task| task.budgets.wall_seconds).sum::<u64>() * 2
+			Some(tasks.iter().filter_map(|task| task.budgets.wall_seconds).sum::<u64>() * 2)
 		);
 		assert!(!estimate.feasibility_assessed);
+
+		let mut unbounded_tasks = tasks.clone();
+
+		for task in &mut unbounded_tasks {
+			task.budgets.wall_seconds = None;
+		}
+
+		let unbounded = runner::estimate_capacity(&unbounded_tasks, &models, 2)
+			.expect("unbounded estimate remains descriptive");
+
+		assert_eq!(unbounded.schema_version, "aiq.capacity-estimate.v2");
+		assert_eq!(unbounded.declared_wall_budget_sum_seconds, None);
+		assert_eq!(unbounded.declared_wall_budget_critical_path_seconds, None);
+		assert!(!unbounded.feasibility_assessed);
+
+		let request = super::task_invocation_request(
+			&unbounded_tasks[0],
+			models[0],
+			&TaskExecutionContext {
+				workspace_dir: PathBuf::from("/controlled/workspace"),
+				sandbox: SandboxPolicy::WorkspaceWrite,
+			},
+		);
+
+		assert_eq!(request.timeout, None);
+		assert_eq!(request.max_steps, unbounded_tasks[0].budgets.max_steps);
+		assert_eq!(request.max_tool_calls, unbounded_tasks[0].budgets.max_tool_calls);
 
 		let run_once = |label: &str, jobs| {
 			let root = env::temp_dir()
@@ -5993,7 +6035,7 @@ mod tests {
 		};
 		let mut task = runner::synthetic_tasks().remove(0);
 
-		task.budgets.wall_seconds = 1;
+		task.budgets.wall_seconds = Some(1);
 		task.budgets.max_steps = 10;
 		task.budgets.max_tool_calls = 10;
 		task.evaluator = Some(Evaluator::exact_match("must not run", true));

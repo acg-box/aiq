@@ -7,14 +7,13 @@ domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
 content stay outside Git.
 
-The active public candidate, task, and scorer contract is `1.0.6`. It changes
-only task-level runtime envelopes for five interaction tasks and carries forward
-the other 67 task, evaluator, tool, and budget contracts with new version,
-provenance, and commitment bindings. The public catalog is deterministic and
-identity-frozen. Two controlled generations produced one matching tree, and the
-reviewed 72-task database commitment is bound in source. Final clean-commit
-regeneration, a fresh debugging-02-by-17 pilot followed by a 17-by-5 targeted pilot,
-Contrast generation, full calibration,
+The active public candidate, task, and scorer contract is `1.0.6`. All 72 model
+tasks use `wall_seconds: null`; five interaction tasks retain revised step and
+tool-call limits and the other 67 retain their accepted limits. Prompt,
+evaluator, semantic scoring, and tool permissions remain unchanged. The public
+catalog is deterministic and identity-frozen. The new identity requires fresh
+independent Core and Contrast seals and a regenerated 72-task database
+commitment. A focused no-deadline canary, full calibration,
 final native build verification, a real Official run, publication, and final
 deployment are pending. The only production tuple is AIQ Core `1.0.6`, scoring
 `1.0.6`, and measurement `2.0.0`. Do not reset, initialize, or publish until a
@@ -24,10 +23,9 @@ earlier publication is a compatibility source or fallback.
 The `1.0.3` Official attempt was interrupted after its calibration evidence had
 already proved a ceiling-policy failure. It was rejected and remains
 unpublished calibration evidence. No hidden responses or hidden task details
-were published. The `1.0.6` release path requires a fresh debugging-02-by-17
-falsification pilot, then a fresh 17-by-5 pilot over all five runtime-revised
-tasks and one complete, non-Official 17-by-72
-falsification-first calibration before any real Official publication path. The
+were published. The `1.0.6` release path requires a focused no-deadline canary
+for the two previously timed-out Sol ultra cells and one complete, non-Official
+17-by-72 falsification-first calibration before any real Official publication path. The
 calibration must pass the release policy without an operator override.
 
 ## Public authority
@@ -49,25 +47,24 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
+sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91
 ```
 
 Its release identity is:
 
 ```text
-sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78
+sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. The reviewed evaluator identity
 is `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
-The public-safe database task-set identity is
+The checked-in predecessor database task-set identity is
 `sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
-and the reviewed task-commitment manifest identity is
+and its task-commitment manifest identity is
 `sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-Final controlled corpus identities are not accepted release identities until
-the clean-commit regeneration and calibration pass. The reviewed database
-task-commitment file is regenerated from the current controlled 72-task
-commitment and bound to these identities.
+They are not release authority for the no-deadline catalog and must be replaced
+after clean-commit sealing. Final controlled corpus identities are not accepted
+release identities until regeneration and calibration pass.
 
 Each task score uses the executable weighted-check contract. A private,
 content-addressed evaluator configuration binds each binary check, its
@@ -78,6 +75,11 @@ a hard gate can have zero weight. A positive-weight hard gate also contributes
 to the fraction when all hard gates pass. The verifier replays the exact checks
 without evaluator rounding. Public pass conditions summarize coverage; they are
 not mathematical weight partitions.
+
+Formal model tasks have no wall-clock deadline. Step and tool-call limits remain
+part of the execution contract. Elapsed time, tokens, tool use, and estimated
+cost are independent efficiency evidence and never enter task score, Rasch
+ability, quality, strict pass, ranking, or intervals.
 
 ## AIQ Core 1.0.6 public authority
 
@@ -91,23 +93,23 @@ These files own the active catalog authority:
 The task-metadata identity is:
 
 ```text
-sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460
+sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91
 ```
 
 The release identity is:
 
 ```text
-sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78
+sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f
 ```
 
 The first digest binds the ordered public task metadata. The second binds the
-public catalog release. They do not define controlled identities. The reviewed
+public catalog release. They do not define controlled identities. The predecessor
 public-safe database task-set identity is
 `sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
-and the reviewed task-commitment manifest identity is
+and its task-commitment manifest identity is
 `sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-Final controlled corpus identities remain calibration candidates; final
-clean-source Core and Contrast regeneration remains pending. The shared Rust
+They must be replaced after final clean-source Core and Contrast regeneration.
+The shared Rust
 validator fails closed
 unless `runner.identity_kind` is `source_only` and
 `runner.built_binary_sha256` is null. The Core JSON schema enforces the same

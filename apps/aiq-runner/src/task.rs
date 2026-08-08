@@ -91,8 +91,8 @@ pub enum Visibility {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskBudgets {
-	/// Maximum Codex adapter elapsed time.
-	pub wall_seconds: u64,
+	/// Maximum Codex adapter elapsed time. `None` means that task execution has no deadline.
+	pub wall_seconds: Option<u64>,
 	/// Maximum agent steps.
 	pub max_steps: u32,
 	/// Maximum tool calls.
@@ -372,11 +372,11 @@ impl TaskDefinition {
 	}
 
 	fn validate_budget_and_tools(&self, issues: &mut Vec<ValidationIssue>) {
-		if self.budgets.wall_seconds == 0 {
+		if self.budgets.wall_seconds == Some(0) {
 			issues.push(ValidationIssue::field(
 				"budgets.wall_seconds",
 				"invalid_budget",
-				"must be greater than zero",
+				"must be null or greater than zero",
 			));
 		}
 		if self.budgets.max_steps == 0 {
@@ -988,7 +988,7 @@ mod tests {
 			difficulty: "easy".to_owned(),
 			prompt: "Return OK.".to_owned(),
 			allowed_tools: vec!["none".to_owned()],
-			budgets: TaskBudgets { wall_seconds: 30, max_steps: 4, max_tool_calls: 2 },
+			budgets: TaskBudgets { wall_seconds: Some(30), max_steps: 4, max_tool_calls: 2 },
 			tags: vec!["fixture".to_owned()],
 			cluster_id: Some("coding-cluster-01".to_owned()),
 			catalog_entry_digest: None,
@@ -1010,6 +1010,24 @@ mod tests {
 
 		assert_eq!(decoded, task);
 		assert!(decoded.validation_issues().is_empty());
+	}
+
+	#[test]
+	fn null_wall_budget_means_no_model_deadline_and_zero_is_rejected() {
+		let mut task = fixture();
+
+		task.budgets.wall_seconds = None;
+
+		let encoded = serde_json::to_value(&task).expect("fixture must serialize");
+
+		assert!(encoded.pointer("/budgets/wall_seconds").is_some_and(serde_json::Value::is_null));
+		assert!(task.validation_issues().is_empty());
+
+		task.budgets.wall_seconds = Some(0);
+
+		assert!(task.validation_issues().iter().any(|issue| {
+			issue.field.as_deref() == Some("budgets.wall_seconds") && issue.code == "invalid_budget"
+		}));
 	}
 
 	#[test]

@@ -29,7 +29,7 @@ use crate::{
 
 /// Ordered full-task-metadata identity for the six controlled contrast variants.
 pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
-	"sha256:47d72e328ba772d9856dfaeaf7775d90dd8c7a303f483fbc04237d1f0587e32b";
+	"sha256:934fd41d71a86133874d7dabe405b175fe4aa77a9106833d28a6813f6b98f970";
 
 const CONTROLLED_CONTRAST_TASK_SET_VERSION: &str = "1.0.6";
 const CODEX_MAIN_EXECUTABLE_NAME: &str = if cfg!(windows) { "codex.exe" } else { "codex" };
@@ -2068,7 +2068,12 @@ mod tests {
 			let mut mismatched = tasks.clone();
 
 			match field {
-				"wall_seconds" => mismatched[0].budgets.wall_seconds += 1,
+				"wall_seconds" => {
+					mismatched[0].budgets.wall_seconds = match mismatched[0].budgets.wall_seconds {
+						Some(_) => None,
+						None => Some(1),
+					};
+				},
 				"max_steps" => mismatched[0].budgets.max_steps += 1,
 				"max_tool_calls" => mismatched[0].budgets.max_tool_calls += 1,
 				_ => unreachable!("unknown budget field"),
@@ -2101,7 +2106,12 @@ mod tests {
 			let mut mismatched = fixture.core_tasks.clone();
 
 			match field {
-				"wall_seconds" => mismatched[0].budgets.wall_seconds += 1,
+				"wall_seconds" => {
+					mismatched[0].budgets.wall_seconds = match mismatched[0].budgets.wall_seconds {
+						Some(_) => None,
+						None => Some(1),
+					};
+				},
 				"max_steps" => mismatched[0].budgets.max_steps += 1,
 				"max_tool_calls" => mismatched[0].budgets.max_tool_calls += 1,
 				_ => unreachable!("unknown budget field"),
@@ -2679,7 +2689,7 @@ mod tests {
 		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
 		assert_eq!(
 			contrast.catalog.identity_sha256,
-			"sha256:47d72e328ba772d9856dfaeaf7775d90dd8c7a303f483fbc04237d1f0587e32b"
+			"sha256:934fd41d71a86133874d7dabe405b175fe4aa77a9106833d28a6813f6b98f970"
 		);
 		assert_eq!(
 			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,

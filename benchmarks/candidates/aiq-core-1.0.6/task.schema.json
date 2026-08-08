@@ -188,8 +188,15 @@
       ],
       "properties": {
         "wall_seconds": {
-          "type": "integer",
-          "minimum": 1
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "max_steps": {
           "type": "integer",

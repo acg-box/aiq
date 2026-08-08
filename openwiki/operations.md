@@ -29,13 +29,12 @@ Handoff](deployment-handoff.md) for production acceptance checks.
 
 Repository source now targets the public AIQ Core candidate and scoring
 `1.0.6`. Its public metadata digest is
-`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
+`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
 and its public release digest is
-`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
-The public catalog is deterministic and identity-frozen. Two controlled
-generations produced one matching tree, and the reviewed 72-task database
-commitment is bound in source. Final clean-commit regeneration, the fresh
-targeted pilot, Contrast generation, full calibration, a real Official run,
+`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+The public catalog is deterministic and identity-frozen. The prior controlled
+tree and database commitment bind the retired deadline policy. Fresh independent
+Core and Contrast seals, the focused canary, full calibration, a real Official run,
 publication, and final deployment are pending. This pre-release state does not
 claim that an Official production matrix is live.
 
@@ -105,11 +104,11 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`,
+   `sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
    the release-policy identity is `aiq-core/1.0.6`, and the public catalog
    release-identity digest is
-   `sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
-   Use the final clean-commit controlled regeneration for the targeted pilot.
+   `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+   Use the final clean-commit controlled regeneration for the focused canary.
    Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
    task-commitment manifest, and Core corpus identities distinct. Generate the
    separate Contrast corpus before release admission. Do not substitute one
@@ -215,7 +214,7 @@ diff -ru -- "$AIQ_SEALED_CANDIDATE_A" "$AIQ_SEALED_CANDIDATE_B"
 ```
 
 For Official work, run `admit-permissions` before paid preflight. It validates the
-exact 72-by-17 inputs, schedule slot, conservative capacity, jobs, and planned
+exact 72-by-17 inputs, schedule slot, jobs, and planned
 preflight, checkpoint, run, score, and package paths. The runner invokes Codex
 with `--strict-config`, selects the explicit `aiq_benchmark` profile, disables
 profile network access, and runs the sandbox canaries. External managed
@@ -239,9 +238,10 @@ checkpoint, run, score, package, verifier environment, replay stage, and
 attestation. Do not reuse evidence from the changed plan.
 
 An Official run must be non-synthetic and select the complete 17-by-72 matrix.
-This is one run with 1,224 task-model cells, not 1,224 runs. Use `--jobs 32` only
-when the admission capacity check accepts that exact value, and pass the same
-value through the admitted plan.
+This is one run with 1,224 task-model cells, not 1,224 runs. Use the admitted
+`--jobs` value throughout the plan. Capacity evidence reports the model duration
+as unbounded and does not claim a schedule fit. Do not start a second scheduled
+run while the first remains active.
 Repository support for admission does not prove that the production permission
 canaries pass on the selected host. The `run` command defaults to calibration
 and accepts repeated `--task` and `--model` arguments for a deterministic
@@ -252,23 +252,22 @@ eligible. Use `run --help` for the complete controlled input contract.
 
 The first `1.0.4` calibration completed all 1,224 cells but failed the
 statistical release gate. Preserve it as non-Official evidence; do not report it
-as 1,224 failed task executions. For `1.0.6`, first run debugging-02 across all 17
-configurations, then the five runtime-revised tasks
-(`coding-06`, `coding-07`, `debugging-01`, `debugging-02`, and `debugging-04`) across all 17
-configurations. The current `coding-06` revision is a priority keyed async
+as 1,224 failed task executions. For `1.0.6`, first run the two Sol ultra cells
+that reached the old wall deadline as a focused no-deadline canary. The current
+`coding-06` revision is a priority keyed async
 executor repair with stable eligible-head scheduling, dynamic concurrency,
 bounded waiting work, AbortSignal, cancellation, close, and idle epochs. The
 other three targets are a quoted-record parser, a six-field layered service
-configuration loader, and a bounded Unicode log preview. Those three use the
-same 1,500-second wall budget, 48 steps, and 40 tool calls for every model
-configuration; debugging-02 uses a uniform 1,800-second, 64-step, and 56-tool-call
-budget. The first `1.0.5` pilot completed 63 cells, timed out on 5, and
+configuration loader, and a bounded Unicode log preview. All 72 formal model
+tasks use `wall_seconds: null`. Step and tool-call budgets remain enforced. The
+first `1.0.5` pilot completed 63 cells, timed out on 5, and
 was rejected because its completed task means were 0.933–0.992. The r11 pilot
-stopped on debugging-02 at 47/48 steps and 41/40 tool calls under the
-1,500/48/40 envelope. Regenerate and revalidate the controlled catalog,
-task-commitment manifest, and evaluator bindings before the fresh pilot. Review
-the new 85-cell pilot before the full non-Official 17-by-72
-calibration. The full calibration must pass the release limits and the
+stopped on debugging-02 at 47/48 steps and 41/40 tool calls. A later 17-by-5
+pilot completed 83 semantic cells and recorded two Sol ultra wall-time failures.
+Old deadline evidence cannot be relabeled or mixed with the new corpus.
+Regenerate and revalidate the controlled catalog, task-commitment manifest, and
+evaluator bindings before the fresh canary, then run the full non-Official
+17-by-72 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
 cannot override a failure. The interrupted `1.0.3` Official attempt remains
 rejected, unpublished calibration evidence after an already-conclusive ceiling
@@ -277,6 +276,11 @@ calibration remains permanently non-Official even after signed verifier
 admission and distinct publication to the calibration register.
 
 ## Score, package, and submit
+
+Scoring consumes evaluator-backed semantic task scores only. Elapsed time,
+tokens, tool use, and estimated cost are retained as independent efficiency
+evidence and never change AIQ, Rasch ability, quality, strict pass, ranking, or
+intervals.
 
 After execution:
 

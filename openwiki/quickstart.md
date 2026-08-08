@@ -22,12 +22,14 @@ contains:
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-The active public candidate, task, and scorer contract is `1.0.6`. It changes
-only task-level runtime envelopes for five interaction tasks and carries forward
-the other 67 task, evaluator, tool, and budget contracts with new bindings. The
+The active public candidate, task, and scorer contract is `1.0.6`. All 72 model
+tasks use `wall_seconds: null`; five interaction tasks retain revised step and
+tool-call limits and the other 67 retain their accepted limits. Prompt,
+evaluator, semantic scoring, and tool permissions remain unchanged. The
 public catalog is deterministic and identity-frozen. Two controlled generations
-produced one matching tree, and the reviewed 72-task database commitment is
-bound in source. Final clean-commit regeneration, the fresh targeted pilot,
+produced the predecessor deadline-bound tree. The no-deadline identity requires
+fresh independent Core and Contrast seals and a regenerated 72-task database
+commitment. The focused canary,
 full calibration, Contrast generation, native build verification, a real
 Official run, publication, and final deployment are pending. The only production
 tuple is AIQ Core `1.0.6`, scoring `1.0.6`, and measurement `2.0.0`. Production
@@ -38,9 +40,9 @@ ceiling failure. It was rejected as unpublished calibration evidence. No hidden
 responses or hidden task details were published. The first `1.0.4` calibration
 completed all 1,224 cells but failed the statistical release gate. Preserve it
 as non-Official evidence; do not describe it as 1,224 failed executions. For
-`1.0.6`, run coding-07 across all 17 configurations, then run the five
-runtime-revised tasks across all 17 configurations as an 85-cell
-pilot before the complete 17-by-72 non-Official calibration. An operator cannot
+`1.0.6`, rerun the two Sol ultra cells that reached the old wall deadline as a
+focused no-deadline canary before the complete 17-by-72 non-Official
+calibration. An operator cannot
 override a failed release gate. Real calibration stays non-Official until the
 signed verifier and distinct-publisher admission flow accepts it into the
 calibration register, and it remains non-Official after acceptance.
@@ -49,16 +51,14 @@ The first `1.0.5` pilot completed 63 of 68 selected cells and recorded five
 timeouts. Completed means ranged from 0.933 to 0.992, so the pilot rejected the
 task set as saturated. A later interaction pilot exposed seven timeouts and
 three tool-budget failures at the shared 900-second, 40-step, and 28-tool-call
-envelope. AIQ Core `1.0.6` keeps the bounded keyed executor, quoted-record
-parser, six-field layered service configuration, and bounded Unicode log
-preview semantics. It gives coding-07 a common 600-second, 32-step, and
-21-tool-call budget; debugging-02 a common 1,800-second, 64-step, and
-56-tool-call budget; and coding-06, debugging-01, and debugging-04 a common
-1,500-second, 48-step, and 40-tool-call budget for every model configuration.
-This candidate still needs a fresh debugging-02-by-17 falsification pilot and
-17-by-5 pilot. The reviewed public-safe database task-set and task-commitment
-identities are now regenerated and bound to the current controlled 72-task
-commitment; final clean-source Core and Contrast regeneration remains pending.
+envelope. A later 17-by-5 pilot completed 83 semantic cells and recorded two Sol
+ultra wall-time failures. AIQ Core `1.0.6` removes the model wall deadline from
+all tasks while keeping step and tool-call limits. Elapsed time, tokens, tool
+use, and cost remain independent efficiency evidence and never alter AIQ or its
+statistical diagnostics. Old deadline evidence cannot be relabeled or mixed
+with the new corpus. The checked-in database task-set and task-commitment
+identities still describe the predecessor seal and must be replaced after
+fresh Core and Contrast sealing.
 
 ## Deployment status
 
@@ -178,18 +178,18 @@ receipt must contain scoring `1.0.6`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460`;
+`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`;
 the release-policy identity is `aiq-core/1.0.6`, and its public catalog
 release-identity digest is
-`sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78`.
+`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
 The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
-the public-safe database task-set identity is
+the predecessor public-safe database task-set identity is
 `sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766`,
-and the reviewed task-commitment manifest identity is
+and its task-commitment manifest identity is
 `sha256:9e09c963fe9d59b8a0b37958d4bda852a4eb8e7aa5ea6bfba86b39b41503884e`.
-Final controlled corpus identities remain calibration candidates; final
-clean-source Core and Contrast regeneration is not yet accepted. The shared
+Replace both after fresh Core and Contrast sealing. Final controlled corpus
+identities remain calibration candidates. The shared
 Rust validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent

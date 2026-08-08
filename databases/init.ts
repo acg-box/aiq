@@ -6,9 +6,9 @@ import { pathToFileURL } from 'node:url';
 
 type JsonObject = Record<string, unknown>;
 
-const CATALOG_IDENTITY = 'sha256:6dc43022b04333de889abc08de118d63652aeab6ee2c3b8610905a2faa91e460';
+const CATALOG_IDENTITY = 'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91';
 const CATALOG_RELEASE_IDENTITY =
-  'sha256:fb2a1e088def5e88434ef383e92e0201b406d556c261e294c9ae86ea9bf3ae78';
+  'sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f';
 const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
 const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
 const TASK_SET_IDENTITY = 'sha256:54c7026ac723a2e932b01fe8bf6557c226d1a658c7f87ab9fc4645c88bdd7766';
