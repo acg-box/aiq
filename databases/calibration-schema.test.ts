@@ -20,14 +20,14 @@ void test('escapes every regular-expression metacharacter', () => {
 
 void test('accepts both provenance classes but keeps caller class gates exact', () => {
   const provenanceValidator =
-    schema.match(/create function aiq_private\.run_provenance_v2_is_valid[\s\S]*?\n\$_\$;/)?.[0] ??
+    schema.match(/create function aiq_private\.run_provenance_v3_is_valid[\s\S]*?\n\$_\$;/)?.[0] ??
     '';
   const officialPackageValidator =
     schema.match(/create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/)?.[0] ??
     '';
   const officialStageValidator =
     schema.match(
-      /create function aiq_private\.run_provenance_v2_matches_stage[\s\S]*?\n\$\$;/,
+      /create function aiq_private\.run_provenance_v3_matches_stage[\s\S]*?\n\$\$;/,
     )?.[0] ?? '';
   const calibrationPackageValidator =
     schema.match(
@@ -388,6 +388,51 @@ void test('accepts the paid workspace-integrity adapter failure kind', () => {
     validator,
     /'non_zero_exit','budget_exceeded','output_truncated','workspace_integrity'/,
   );
+});
+
+void test('requires exact functional marker evidence only for successful capability probes', () => {
+  const validator =
+    schema.match(/create function aiq_private\.dto_preflight_is_valid[\s\S]*?\n\$_\$;/)?.[0] ?? '';
+
+  assert.match(validator, /array\['stdout\.jsonl','stderr\.txt','capability-marker\.txt'\], 3/);
+  assert.match(
+    validator,
+    /sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3/,
+  );
+  assert.match(
+    validator,
+    /aiq-artifact:\/\/sha256\/83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3\/capability-marker\.txt/,
+  );
+  assert.match(validator, /artifact ->> 'bytes' = '36'/);
+  assert.match(validator, /probe ->> 'status' = 'available'[\s\S]*?select count\(\*\)/);
+  assert.match(
+    validator,
+    /probe ->> 'status' = 'capability-marker\.txt'|artifact ->> 'kind' = 'capability-marker\.txt'/,
+  );
+});
+
+void test('binds functional marker ingress, resolution, and retention to one exact object', () => {
+  const markerDigest = '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3';
+  const resolver =
+    schema.match(
+      /create function aiq_private\.aiq_resolve_claim_artifact_reference_core[\s\S]*?\n\$_\$;/,
+    )?.[0] ?? '';
+  const ingress =
+    schema.match(/create function public\.aiq_record_artifact_ingress[\s\S]*?\n\$_\$;/)?.[0] ?? '';
+  const registration =
+    schema.match(/create function aiq_private\.ensure_storage_object[\s\S]*?\n\$_\$;/)?.[0] ?? '';
+  const ingressTable =
+    schema.match(/create table aiq_private\.aiq_artifact_ingress_objects[\s\S]*?\n\);/)?.[0] ?? '';
+  const storageTable =
+    schema.match(/create table aiq_private\.aiq_storage_objects[\s\S]*?\n\);/)?.[0] ?? '';
+
+  for (const contract of [resolver, ingress, registration, ingressTable, storageTable]) {
+    assert.match(contract, /capability-marker\.txt/);
+    assert.match(contract, new RegExp(markerDigest));
+  }
+  for (const contract of [ingress, registration, ingressTable, storageTable]) {
+    assert.match(contract, /(?:byte_size|supplied_byte_size|supplied_bytes)[^\n]*36|then 36/);
+  }
 });
 
 void test('binds Official efficiency evidence to the exact payload matrix', () => {

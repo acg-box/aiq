@@ -4048,7 +4048,7 @@ mod tests {
 
 	fn selected_validation(version: &str, node_id: String) -> CapabilityValidationReport {
 		CapabilityValidationReport {
-			schema_version: "aiq.capability-validation.v2".to_owned(),
+			schema_version: "aiq.capability-validation.v3".to_owned(),
 			node_id,
 			manifest_issues: Vec::new(),
 			cli_probe: CliProbe {
@@ -4066,6 +4066,7 @@ mod tests {
 				.map(|model| {
 					let observed_at = "unix-ms:1".to_owned();
 					let preview = "OK".to_owned();
+					let artifacts = vec![adapter::preflight_marker_artifact_reference()];
 					let digest =
 						format!("sha256:{}", hex::encode(Sha256::digest(preview.as_bytes())));
 					let evidence_digest = adapter::configuration_evidence_digest(
@@ -4075,7 +4076,7 @@ mod tests {
 						ConfigurationProbeStatus::Available,
 						Some(&digest),
 						Some(&preview),
-						&[],
+						&artifacts,
 						None,
 					)
 					.expect("fixture evidence digest");
@@ -4090,7 +4091,7 @@ mod tests {
 							observed_at,
 							result_digest: Some(digest),
 							result_preview: Some(preview),
-							artifacts: Vec::new(),
+							artifacts,
 							evidence_digest,
 							failure: None,
 						},

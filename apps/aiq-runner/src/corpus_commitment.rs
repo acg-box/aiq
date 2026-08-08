@@ -1,7 +1,7 @@
 //! Public-safe identities for the current controlled benchmark corpus.
 
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt as _, PermissionsExt};
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	env::{
@@ -32,6 +32,9 @@ pub const CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256: &str =
 	"sha256:47d72e328ba772d9856dfaeaf7775d90dd8c7a303f483fbc04237d1f0587e32b";
 
 const CONTROLLED_CONTRAST_TASK_SET_VERSION: &str = "1.0.6";
+const CODEX_MAIN_EXECUTABLE_NAME: &str = if cfg!(windows) { "codex.exe" } else { "codex" };
+const CODEX_CODE_MODE_HOST_EXECUTABLE_NAME: &str =
+	if cfg!(windows) { "codex-code-mode-host.exe" } else { "codex-code-mode-host" };
 const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json");
 #[cfg(test)]
@@ -116,6 +119,8 @@ pub struct RunProvenanceCommitment {
 	pub runner_executable_digest: String,
 	/// SHA-256 of the actual Codex executable.
 	pub codex_executable_digest: String,
+	/// SHA-256 of the sibling code-mode host executable used by Codex.
+	pub codex_code_mode_host_digest: String,
 	/// Deterministic digest of permission policy, requirements, profile, and canary evidence.
 	pub permission_evidence_digest: String,
 }
@@ -214,10 +219,11 @@ impl ValidatedCorpusCommitment {
 		preflight_digest: String,
 		runner_executable_digest: String,
 		codex_executable_digest: String,
+		codex_code_mode_host_digest: String,
 		permission_evidence_digest: String,
 	) -> RunProvenanceCommitment {
 		RunProvenanceCommitment {
-			schema_version: "aiq.run-provenance.v2".to_owned(),
+			schema_version: "aiq.run-provenance.v3".to_owned(),
 			run_class,
 			corpus_release_id: self.release_id.clone(),
 			corpus_commitment_sha256: self.canonical_sha256.clone(),
@@ -234,6 +240,7 @@ impl ValidatedCorpusCommitment {
 			source_manifest_digest: self.source_manifest_digest.clone(),
 			runner_executable_digest,
 			codex_executable_digest,
+			codex_code_mode_host_digest,
 			permission_evidence_digest,
 		}
 	}
@@ -532,7 +539,7 @@ pub(crate) fn fixture_run_provenance_for_class(
 	preflight_digest: String,
 ) -> RunProvenanceCommitment {
 	RunProvenanceCommitment {
-		schema_version: "aiq.run-provenance.v2".to_owned(),
+		schema_version: "aiq.run-provenance.v3".to_owned(),
 		run_class,
 		corpus_release_id: "corpus_fixture".to_owned(),
 		corpus_commitment_sha256: format!("sha256:{}", "1".repeat(64)),
@@ -549,6 +556,7 @@ pub(crate) fn fixture_run_provenance_for_class(
 		source_manifest_digest: format!("sha256:{}", "7".repeat(64)),
 		runner_executable_digest: format!("sha256:{}", "8".repeat(64)),
 		codex_executable_digest: format!("sha256:{}", "9".repeat(64)),
+		codex_code_mode_host_digest: format!("sha256:{}", "b".repeat(64)),
 		permission_evidence_digest: format!("sha256:{}", "a".repeat(64)),
 	}
 }
@@ -766,6 +774,74 @@ pub fn current_executable_digest(label: &str) -> Result<String, CorpusCommitment
 
 /// Resolves and hashes the exact Codex selector without recording its path.
 pub fn codex_executable_digest(selector: &str) -> Result<String, CorpusCommitmentError> {
+	let candidate = resolve_codex_executable(selector)?;
+
+	hash_executable(&candidate, "Codex executable")
+}
+
+/// Resolves and hashes the required sibling code-mode host used by the selected Codex CLI.
+pub fn codex_code_mode_host_digest(selector: &str) -> Result<String, CorpusCommitmentError> {
+	let candidate = codex_code_mode_host_path(selector)?;
+
+	hash_executable(&candidate, "Codex code-mode host executable")
+}
+
+/// Resolves the required code-mode host from an exact two-file Codex runtime directory.
+pub fn codex_code_mode_host_path(selector: &str) -> Result<PathBuf, CorpusCommitmentError> {
+	let codex = resolve_codex_executable(selector)?;
+	let parent = codex
+		.parent()
+		.ok_or_else(|| CorpusCommitmentError::new("Codex executable has no runtime directory"))?;
+	let parent_metadata = fs::symlink_metadata(parent)
+		.map_err(|_| CorpusCommitmentError::new("Codex runtime directory is unavailable"))?;
+
+	if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+		return Err(CorpusCommitmentError::new(
+			"Codex runtime directory must be a non-symlink directory",
+		));
+	}
+	#[cfg(unix)]
+	if PermissionsExt::mode(&parent_metadata.permissions()) & 0o022 != 0 {
+		return Err(CorpusCommitmentError::new(
+			"Codex runtime directory must not be group- or other-writable",
+		));
+	}
+
+	let mut entries = fs::read_dir(parent)
+		.map_err(|_| CorpusCommitmentError::new("Codex runtime directory cannot be read"))?
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(|_| CorpusCommitmentError::new("Codex runtime directory cannot be read"))?;
+
+	entries.sort_by_key(DirEntry::file_name);
+
+	let mut expected = vec![
+		CODEX_MAIN_EXECUTABLE_NAME.to_owned(),
+		CODEX_CODE_MODE_HOST_EXECUTABLE_NAME.to_owned(),
+	];
+
+	expected.sort();
+
+	if entries
+		.iter()
+		.map(|entry| entry.file_name().to_string_lossy().into_owned())
+		.collect::<Vec<_>>()
+		!= expected
+		|| codex.file_name().and_then(|name| name.to_str()) != Some(CODEX_MAIN_EXECUTABLE_NAME)
+	{
+		return Err(CorpusCommitmentError::new(
+			"Codex runtime directory must contain exactly the main executable and code-mode host",
+		));
+	}
+
+	let host = parent.join(CODEX_CODE_MODE_HOST_EXECUTABLE_NAME);
+
+	hash_executable(&codex, "Codex executable")?;
+	hash_executable(&host, "Codex code-mode host executable")?;
+
+	Ok(host)
+}
+
+fn resolve_codex_executable(selector: &str) -> Result<PathBuf, CorpusCommitmentError> {
 	if selector.trim().is_empty() {
 		return Err(CorpusCommitmentError::new("Codex executable selector is empty"));
 	}
@@ -782,7 +858,8 @@ pub fn codex_executable_digest(selector: &str) -> Result<String, CorpusCommitmen
 		.ok_or_else(|| CorpusCommitmentError::new("Codex executable cannot be resolved"))?
 	};
 
-	hash_executable(&candidate, "Codex executable")
+	fs::canonicalize(candidate)
+		.map_err(|_| CorpusCommitmentError::new("Codex executable cannot be resolved"))
 }
 
 fn validate_run_provenance_inner(
@@ -804,7 +881,7 @@ fn validate_run_provenance_inner(
 			}
 		};
 
-	if provenance.schema_version != "aiq.run-provenance.v2"
+	if provenance.schema_version != "aiq.run-provenance.v3"
 		|| !catalog_allowed
 		|| provenance.task_set_digest != task_set_hash
 		|| provenance.preflight_digest != preflight_digest
@@ -828,6 +905,7 @@ fn validate_run_provenance_inner(
 		&provenance.source_manifest_digest,
 		&provenance.runner_executable_digest,
 		&provenance.codex_executable_digest,
+		&provenance.codex_code_mode_host_digest,
 		&provenance.permission_evidence_digest,
 	] {
 		if !valid_digest(digest) {
@@ -1377,6 +1455,24 @@ fn validate_source_manifest(
 }
 
 fn hash_executable(path: &Path, label: &str) -> Result<String, CorpusCommitmentError> {
+	let path_metadata = fs::symlink_metadata(path)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} is unavailable")))?;
+
+	if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
+		return Err(CorpusCommitmentError::new(format!(
+			"{label} must be a non-symlink regular file"
+		)));
+	}
+	#[cfg(unix)]
+	if PermissionsExt::mode(&path_metadata.permissions()) & 0o111 == 0
+		|| PermissionsExt::mode(&path_metadata.permissions()) & 0o022 != 0
+		|| path_metadata.nlink() != 1
+	{
+		return Err(CorpusCommitmentError::new(format!(
+			"{label} must be single-link, executable, and not group- or other-writable"
+		)));
+	}
+
 	let canonical = fs::canonicalize(path)
 		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be resolved")))?;
 	let mut file = File::open(&canonical)
@@ -1397,6 +1493,21 @@ fn hash_executable(path: &Path, label: &str) -> Result<String, CorpusCommitmentE
 		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be hashed")))?;
 
 	if bytes != metadata.len() {
+		return Err(CorpusCommitmentError::new(format!("{label} changed while hashing")));
+	}
+
+	let current = fs::symlink_metadata(path)
+		.map_err(|_| CorpusCommitmentError::new(format!("{label} changed while hashing")))?;
+
+	#[cfg(unix)]
+	if current.dev() != path_metadata.dev()
+		|| current.ino() != path_metadata.ino()
+		|| current.len() != path_metadata.len()
+	{
+		return Err(CorpusCommitmentError::new(format!("{label} changed while hashing")));
+	}
+	#[cfg(not(unix))]
+	if current.len() != path_metadata.len() {
 		return Err(CorpusCommitmentError::new(format!("{label} changed while hashing")));
 	}
 
@@ -2882,6 +2993,90 @@ mod tests {
 		}
 
 		assert!(!super::valid_source_path(&"a".repeat(241)));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn codex_runtime_requires_one_exact_private_main_and_host_pair() {
+		let root = env::temp_dir().join(format!(
+			"aiq-codex-runtime-bundle-{}-{}",
+			process::id(),
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.expect("fixture clock")
+				.as_nanos()
+		));
+		let bundle = root.join("bundle");
+		let main = bundle.join(super::CODEX_MAIN_EXECUTABLE_NAME);
+		let host = bundle.join(super::CODEX_CODE_MODE_HOST_EXECUTABLE_NAME);
+
+		fs::create_dir_all(&bundle).expect("runtime bundle fixture");
+		fs::write(&main, b"codex-main-v1").expect("main fixture");
+		fs::write(&host, b"codex-host-v1").expect("host fixture");
+
+		for executable in [&main, &host] {
+			fs::set_permissions(executable, fs::Permissions::from_mode(0o700))
+				.expect("executable mode");
+		}
+
+		let selector = main.to_str().expect("UTF-8 fixture path");
+
+		assert_eq!(
+			super::codex_code_mode_host_path(selector).expect("valid runtime pair"),
+			fs::canonicalize(&host).expect("canonical host fixture")
+		);
+
+		let original_host_digest =
+			super::codex_code_mode_host_digest(selector).expect("host digest");
+
+		assert_ne!(
+			super::codex_executable_digest(selector).expect("main digest"),
+			original_host_digest
+		);
+
+		fs::write(bundle.join("unexpected"), b"extra").expect("extra fixture");
+
+		assert!(super::codex_code_mode_host_path(selector).is_err());
+
+		fs::remove_file(bundle.join("unexpected")).expect("remove extra fixture");
+		fs::write(&host, b"codex-host-v2").expect("mutated host fixture");
+
+		assert_ne!(
+			super::codex_code_mode_host_digest(selector).expect("mutated host digest"),
+			original_host_digest
+		);
+
+		fs::set_permissions(&host, fs::Permissions::from_mode(0o600))
+			.expect("non-executable host mode");
+
+		assert!(super::codex_code_mode_host_digest(selector).is_err());
+
+		fs::remove_file(&host).expect("remove host fixture");
+
+		let external_target = root.join("external-host");
+
+		fs::write(&external_target, b"external host").expect("external target");
+		fs::set_permissions(&external_target, fs::Permissions::from_mode(0o700))
+			.expect("external executable mode");
+		std::os::unix::fs::symlink(&external_target, &host).expect("host symlink fixture");
+
+		assert!(super::codex_code_mode_host_digest(selector).is_err());
+
+		fs::remove_file(&host).expect("remove host symlink");
+		fs::write(&host, b"codex-host-v3").expect("restored host fixture");
+		fs::set_permissions(&host, fs::Permissions::from_mode(0o700)).expect("restored host mode");
+		fs::set_permissions(&bundle, fs::Permissions::from_mode(0o770))
+			.expect("writable bundle mode");
+
+		assert!(super::codex_code_mode_host_digest(selector).is_err());
+
+		fs::set_permissions(&bundle, fs::Permissions::from_mode(0o700))
+			.expect("private bundle mode");
+		fs::hard_link(&main, root.join("main-hardlink")).expect("main hard link fixture");
+
+		assert!(super::codex_executable_digest(selector).is_err());
+
+		fs::remove_dir_all(root).expect("runtime bundle cleanup");
 	}
 
 	#[cfg(unix)]
