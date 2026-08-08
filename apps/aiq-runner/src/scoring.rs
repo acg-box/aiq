@@ -8,6 +8,10 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
+#[cfg(test)]
+use crate::corpus_commitment;
+#[cfg(test)]
+use crate::task;
 use crate::{
 	model::{MODEL_MATRIX, ModelConfig},
 	protocol::{self, TrustTier},
@@ -25,13 +29,18 @@ type CalibrationStatisticsEvidence<'a> =
 	(CalibrationTaskStatistics<'a>, UniversalCalibrationCounts);
 
 /// Current scoring implementation version.
-pub const AIQ_SCORING_VERSION: &str = "1.0.6";
+pub const AIQ_SCORING_VERSION: &str = "1.0.7";
+/// Frozen task-level evaluator contract. Aggregate ability scoring is versioned
+/// independently so the unchanged 1.0.6 task corpus keeps its content identity.
+pub const AIQ_TASK_SCORER_VERSION: &str = "1.0.6";
 /// Current measurement model version. This is deliberately separate from the
 /// task evaluator release: item scoring and ability estimation are different
 /// measurement layers.
 pub const AIQ_MEASUREMENT_VERSION: &str = "2.0.0";
 /// Calibrated latent-trait estimator used for Official ranking.
-pub const LATENT_ABILITY_METHOD: &str = "rasch_fractional_joint_map_v1";
+pub const LATENT_ABILITY_METHOD: &str = "rasch_fractional_fixed_bank_map_v2";
+/// Canonical frozen item-bank schema embedded in calibration admission v2.
+pub const CALIBRATION_BANK_SCHEMA_VERSION: &str = "aiq.calibration-bank.v2";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
@@ -82,7 +91,7 @@ const RASCH_MAX_INNER_ITERATIONS: usize = 24;
 const RASCH_MAX_ABS_PARAMETER: f64 = 8.0;
 const RASCH_CONVERGENCE: f64 = 1e-10;
 const LATENT_RELIABILITY_STATUS: &str = "single_matrix_information_only";
-const SCORE_RULE: &str = "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. The latent estimate uses jointly estimated item difficulties and model locations from the complete 17-configuration by 72-task calibration matrix, with weak N(0, 3²) priors and a centered item scale; it reports theta, observed information, and standard error. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a complete calibration matrix, and a passed calibration release gate. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability. Time and cost remain separate measures.";
+const SCORE_RULE: &str = "AIQ measurement 2.0: the Official ranking score is 100 × the Rasch fractional MAP estimate's predicted success probability on an average calibrated task. A replay-verified calibration package fits one centered 72-item bank; Official scoring freezes those item difficulties and estimates only each model theta with a weak N(0, 3²) prior. Official replicate ceiling, informative-item, and non-uniform-item measurements are drift diagnostics and never re-fit or gate the released bank. The theta and score Wald interval is conditional on the released item bank and excludes item-bank calibration uncertainty. The raw equal-domain fixed-fixture mean remains a criterion-referenced diagnostic and is not the ranking score. The strict-pass diagnostic is strict successes divided by all attributable tasks with a valid semantic task score; partial scores are non-passes and remain in this denominator, while missing, infrastructure-invalid, runtime-failed, and unscored tasks are excluded. Its Wilson interval uses the same denominator. Coverage semantics are explicit: invalid_tasks counts an observed result record that failed at runtime or infrastructure validation, while missing_tasks is reserved for an expected cell with no result record; neither contributes to semantic aggregates. Public result rows label timeout, budget, tool, policy, and artifact failures as runtime_issue, not as incorrect model answers. Official requires non-synthetic 72/72 semantic coverage, 10/10 domains, a valid signed calibration admission and its exact frozen bank. A complete synthetic fixture is descriptive, has no Official AIQ, and is not ranking eligible. Provisional requires at least 60/72 and at least four valid tasks per domain, is conditional, and is not ranking eligible. Lower coverage publishes no estimate. The task-resampling interval is a fixed-fixture calibrated sensitivity interval with a versioned 1.3 deviation correction, not a universal confidence interval. Time, latency, token use, tool use, and cost are auxiliary measurements and never alter AIQ.";
 const CALIBRATION_SCORE_RULE: &str = "Calibration analysis only. Values are transparent descriptive aggregates for the selected evidence. The joint Rasch fractional MAP estimate is emitted only when a complete 17-configuration by 72-task calibration matrix is available. Its uncertainty is conditional on the fitted item bank and excludes item-bank calibration uncertainty. This report has no publication classification and is not ranking eligible. The task-resampling interval uses finite_cluster_calibrated_percentile_sensitivity_v1 with a versioned 1.3 deviation correction; it is a fixed-fixture calibrated sensitivity interval for task-mix sensitivity, not a universal confidence interval for model capability.";
 
 /// Score classification tier.
@@ -466,6 +475,9 @@ pub struct ScoreReport {
 	pub quality_score: Option<f64>,
 	/// Calibrated latent ability evidence. Official reports require this field.
 	pub latent_ability: Option<LatentAbilityEstimate>,
+	/// Non-blocking descriptive comparison of this replicate with calibration
+	/// policy thresholds. It never changes the frozen bank or publication tier.
+	pub replicate_drift_diagnostic: Option<OfficialCalibrationDiagnostic>,
 	/// Whether this report can participate in an official ranking.
 	pub ranking_eligible: bool,
 	/// Fixed-fixture completion bounds.
@@ -548,6 +560,121 @@ impl Display for ScoreError {
 
 impl std::error::Error for ScoreError {}
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+/// One centered Rasch item parameter retained in a frozen calibration bank.
+pub struct CalibrationTaskParameter {
+	/// Canonical task identifier.
+	pub task_id: String,
+	/// Canonical task content version.
+	pub task_version: String,
+	/// Canonical task domain.
+	pub domain: Domain,
+	/// Mean fractional score observed in the calibration matrix.
+	pub facility: f64,
+	/// Centered Rasch item difficulty.
+	pub difficulty: f64,
+	/// Mean conditional item information across calibration models.
+	pub mean_item_information: f64,
+}
+
+/// Complete immutable item bank signed by calibration admission v2.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct FrozenCalibrationBankV2 {
+	/// Bank schema version.
+	pub schema_version: String,
+	/// Aggregate scoring implementation version.
+	pub scoring_version: String,
+	/// Measurement model version.
+	pub measurement_version: String,
+	/// Exact latent-ability method identifier.
+	pub method: String,
+	/// Digest of the replay-verified source calibration package.
+	pub source_package_sha256: String,
+	/// Task-level scoring version used by the source package.
+	pub source_scoring_version: String,
+	/// Canonical task-set identifier.
+	pub task_set_id: String,
+	/// Canonical task-set content version.
+	pub task_set_version: String,
+	/// Canonical digest of the 72 task definitions.
+	pub task_set_digest: String,
+	/// Frozen public catalog digest.
+	pub catalog_digest: String,
+	/// Canonical evaluator-registry digest.
+	pub evaluator_digest: String,
+	/// Canonical calibration policy digest.
+	pub policy_digest: String,
+	/// Number of model configurations used to fit the bank.
+	pub calibration_model_count: usize,
+	/// Complete canonical task-ordered item parameters.
+	pub items: Vec<CalibrationTaskParameter>,
+}
+impl FrozenCalibrationBankV2 {
+	/// Computes the canonical digest of the complete frozen bank.
+	pub fn digest(&self) -> Result<String, ScoreError> {
+		protocol::canonical_hash(self)
+			.map_err(|error| ScoreError::new(format!("calibration bank digest failed: {error}")))
+	}
+
+	/// Validates identity, ordering, bounds, and centering against exact tasks.
+	pub fn validate(&self, tasks: &[TaskDefinition]) -> Result<(), ScoreError> {
+		if self.schema_version != CALIBRATION_BANK_SCHEMA_VERSION
+			|| self.scoring_version != AIQ_SCORING_VERSION
+			|| self.measurement_version != AIQ_MEASUREMENT_VERSION
+			|| self.method != LATENT_ABILITY_METHOD
+			|| self.source_scoring_version != AIQ_TASK_SCORER_VERSION
+			|| self.task_set_id != AIQ_TASK_SET_ID
+			|| self.task_set_version != AIQ_TASK_SET_VERSION
+			|| self.catalog_digest != AIQ_CORE_TASK_IDENTITY_SHA256
+			|| self.calibration_model_count != MODEL_MATRIX.len()
+			|| self.items.len() != OFFICIAL_CALIBRATION_TASKS
+			|| tasks.len() != self.items.len()
+		{
+			return Err(ScoreError::new("frozen calibration bank identity is invalid"));
+		}
+
+		let mut task_ids = BTreeSet::new();
+		let mut difficulty_sum = 0.0;
+
+		for (task, item) in tasks.iter().zip(&self.items) {
+			if task.task_id != item.task_id
+				|| task.task_version != item.task_version
+				|| task.domain != item.domain
+				|| !task_ids.insert(&item.task_id)
+				|| !item.facility.is_finite()
+				|| !(0.0..=1.0).contains(&item.facility)
+				|| !item.difficulty.is_finite()
+				|| !item.mean_item_information.is_finite()
+				|| !(0.0..=0.25).contains(&item.mean_item_information)
+			{
+				return Err(ScoreError::new("frozen calibration bank item is invalid"));
+			}
+
+			difficulty_sum += item.difficulty;
+		}
+
+		if difficulty_sum.abs() > 1e-8 {
+			return Err(ScoreError::new("frozen calibration bank is not centered"));
+		}
+
+		for digest in [
+			&self.source_package_sha256,
+			&self.task_set_digest,
+			&self.catalog_digest,
+			&self.evaluator_digest,
+			&self.policy_digest,
+		] {
+			if !digest.starts_with("sha256:") || digest.len() != 71 {
+				return Err(ScoreError::new("frozen calibration bank digest is invalid"));
+			}
+		}
+
+		Ok(())
+	}
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct UniversalCalibrationCounts {
 	all_zero: usize,
@@ -571,16 +698,6 @@ struct DomainAccumulator {
 struct Observation {
 	score: f64,
 	cluster: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct CalibrationTaskParameter {
-	task_id: String,
-	task_version: String,
-	domain: Domain,
-	facility: f64,
-	difficulty: f64,
-	mean_item_information: f64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -667,6 +784,43 @@ impl DeterministicRandom {
 	}
 }
 
+struct OfficialScoreComponents {
+	latent_ability: Option<LatentAbilityEstimate>,
+	replicate_drift_diagnostic: Option<OfficialCalibrationDiagnostic>,
+	score: Option<f64>,
+}
+
+#[cfg(test)]
+pub(crate) fn fixture_frozen_calibration_bank(tasks: &[TaskDefinition]) -> FrozenCalibrationBankV2 {
+	FrozenCalibrationBankV2 {
+		schema_version: CALIBRATION_BANK_SCHEMA_VERSION.to_owned(),
+		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		measurement_version: AIQ_MEASUREMENT_VERSION.to_owned(),
+		method: LATENT_ABILITY_METHOD.to_owned(),
+		source_package_sha256: format!("sha256:{}", "1".repeat(64)),
+		source_scoring_version: AIQ_TASK_SCORER_VERSION.to_owned(),
+		task_set_id: AIQ_TASK_SET_ID.to_owned(),
+		task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+		task_set_digest: task::task_set_hash(tasks).expect("fixture task-set digest"),
+		catalog_digest: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
+		evaluator_digest: corpus_commitment::evaluator_digest(tasks)
+			.expect("fixture evaluator digest"),
+		policy_digest: format!("sha256:{}", "2".repeat(64)),
+		calibration_model_count: MODEL_MATRIX.len(),
+		items: tasks
+			.iter()
+			.map(|task| CalibrationTaskParameter {
+				task_id: task.task_id.clone(),
+				task_version: task.task_version.clone(),
+				domain: task.domain,
+				facility: 0.5,
+				difficulty: 0.0,
+				mean_item_information: 0.25,
+			})
+			.collect(),
+	}
+}
+
 /// Normalizes the one historical wire defect that is safe to repair for an
 /// offline diagnostic: a failed runtime result that carried `task_score: 0`.
 ///
@@ -747,7 +901,7 @@ pub(crate) fn task_bindings_match_frozen_catalog(tasks: &[TaskDefinition]) -> bo
 		return false;
 	};
 
-	task_bindings_match_catalog(tasks, catalog, AIQ_SCORING_VERSION)
+	task_bindings_match_catalog(tasks, catalog, AIQ_TASK_SCORER_VERSION)
 }
 
 pub(crate) fn task_bindings_match_core_catalog(tasks: &[TaskDefinition]) -> bool {
@@ -847,6 +1001,162 @@ pub fn score_model_with_context(
 	context: ScoreContext,
 	options: ScoreOptions,
 ) -> Result<ScoreReport, ScoreError> {
+	score_model_with_bank_context(tasks, results, model, None, context, options, false)
+}
+
+/// Scores an Official model against one exact frozen calibration bank.
+pub fn score_official_model_with_bank(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+	model: ModelConfig,
+	bank: &FrozenCalibrationBankV2,
+	context: ScoreContext,
+	options: ScoreOptions,
+) -> Result<ScoreReport, ScoreError> {
+	score_model_with_bank_context(tasks, results, model, Some(bank), context, options, false)
+}
+
+/// Analyzes one calibration model without exposing publication semantics.
+pub fn score_calibration_model_with_context(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+	model: ModelConfig,
+	context: ScoreContext,
+	options: ScoreOptions,
+) -> Result<CalibrationScoreReport, ScoreError> {
+	let report =
+		score_model_with_bank_context(tasks, results, model, None, context, options, true)?;
+	let complete_calibration_matrix = tasks.len() == OFFICIAL_CALIBRATION_TASKS
+		&& results.len() == tasks.len().saturating_mul(MODEL_MATRIX.len())
+		&& results.iter().all(is_semantic_result);
+	let descriptive_status = if complete_calibration_matrix
+		&& report.quality_score.is_some()
+		&& report.coverage.valid_tasks == report.coverage.expected_tasks
+		&& report.coverage.invalid_tasks == 0
+		&& report.coverage.missing_tasks == 0
+	{
+		CalibrationDescriptiveStatus::CompleteFixture
+	} else {
+		match report.tier {
+			ScoreTier::Official | ScoreTier::SyntheticComplete => {
+				CalibrationDescriptiveStatus::CoverageOnly
+			},
+			ScoreTier::Provisional => CalibrationDescriptiveStatus::ConditionalObserved,
+			ScoreTier::CoverageOnly => CalibrationDescriptiveStatus::CoverageOnly,
+			ScoreTier::NotApplicable => CalibrationDescriptiveStatus::NotApplicable,
+		}
+	};
+	let quality_score = matches!(
+		descriptive_status,
+		CalibrationDescriptiveStatus::CompleteFixture
+			| CalibrationDescriptiveStatus::ConditionalObserved
+	)
+	.then_some(report.quality_score)
+	.flatten();
+
+	Ok(CalibrationScoreReport {
+		schema_version: "aiq.calibration-score-report.v2".to_owned(),
+		run_class: "calibration".to_owned(),
+		scoring_version: report.scoring_version,
+		measurement_version: report.measurement_version,
+		model: report.model,
+		descriptive_status,
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		quality_score,
+		latent_ability: report.latent_ability,
+		completion_bounds: report.completion_bounds,
+		task_resampling_sensitivity_interval: report.task_resampling_sensitivity_interval,
+		binary_micro_diagnostic: report.binary_micro_diagnostic,
+		coverage: report.coverage,
+		difficulty_coverage: report.difficulty_coverage,
+		duplicate_results: report.duplicate_results,
+		domains: report.domains,
+		rule: CALIBRATION_SCORE_RULE.to_owned(),
+	})
+}
+
+/// Fits and freezes one complete replay-verified calibration matrix.
+pub fn derive_frozen_calibration_bank(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+	source_package_sha256: &str,
+	source_scoring_version: &str,
+	task_set_digest: &str,
+	evaluator_digest: &str,
+) -> Result<FrozenCalibrationBankV2, ScoreError> {
+	if source_scoring_version != AIQ_TASK_SCORER_VERSION {
+		return Err(ScoreError::new("calibration bank source scoring version is invalid"));
+	}
+
+	let diagnostic = diagnose_official_calibration(tasks, results)?;
+
+	if !diagnostic.passed() {
+		return Err(ScoreError::new(
+			"only a passing complete calibration matrix can freeze an item bank",
+		));
+	}
+
+	let matrix = calibration_matrix(tasks, results, &diagnostic.policy)?.0;
+	let fitted = calibration_bank_from_matrix(tasks, &matrix)?;
+	let bank = FrozenCalibrationBankV2 {
+		schema_version: CALIBRATION_BANK_SCHEMA_VERSION.to_owned(),
+		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		measurement_version: AIQ_MEASUREMENT_VERSION.to_owned(),
+		method: LATENT_ABILITY_METHOD.to_owned(),
+		source_package_sha256: format!(
+			"sha256:{}",
+			source_package_sha256.trim_start_matches("sha256:")
+		),
+		source_scoring_version: source_scoring_version.to_owned(),
+		task_set_id: AIQ_TASK_SET_ID.to_owned(),
+		task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+		task_set_digest: task_set_digest.to_owned(),
+		catalog_digest: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
+		evaluator_digest: evaluator_digest.to_owned(),
+		policy_digest: protocol::canonical_hash(&diagnostic.policy).map_err(|error| {
+			ScoreError::new(format!("calibration policy digest failed: {error}"))
+		})?,
+		calibration_model_count: fitted.model_count,
+		items: tasks
+			.iter()
+			.map(|task| {
+				fitted
+					.items
+					.get(&task.task_id)
+					.cloned()
+					.ok_or_else(|| ScoreError::new("calibration bank is missing a task"))
+			})
+			.collect::<Result<Vec<_>, _>>()?,
+	};
+
+	bank.validate(tasks)?;
+
+	Ok(bank)
+}
+
+fn score_model_with_bank_context(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+	model: ModelConfig,
+	bank: Option<&FrozenCalibrationBankV2>,
+	context: ScoreContext,
+	options: ScoreOptions,
+	calibration_descriptive: bool,
+) -> Result<ScoreReport, ScoreError> {
+	let full_matrix_cells = tasks.len().saturating_mul(MODEL_MATRIX.len());
+	let complete_calibration_matrix = calibration_descriptive
+		&& tasks.len() == OFFICIAL_CALIBRATION_TASKS
+		&& results.len() == full_matrix_cells
+		&& results.iter().all(is_semantic_result);
+
+	if tasks.len() == OFFICIAL_CALIBRATION_TASKS
+		&& results.len() >= full_matrix_cells
+		&& results.iter().all(is_semantic_result)
+	{
+		calibration_matrix(tasks, results, &OfficialCalibrationPolicy::default())?;
+	}
+
 	let frozen_catalog = catalog_identity_is_frozen(tasks);
 	let expected = validated_expected_tasks(tasks, options)?;
 	let matching = matching_model_results(results, model);
@@ -897,38 +1207,28 @@ pub fn score_model_with_context(
 
 	let coverage = coverage_summary(&accumulators);
 	let coverage_tier = publication_tier(&coverage, &accumulators, frozen_catalog);
-	let calibration_gate_passed =
-		official_calibration_gate_passed(tasks, results, coverage_tier, has_synthetic_results)?;
+	let calibration_gate_passed = coverage_tier == ScoreTier::Official
+		&& !has_synthetic_results
+		&& bank.is_some_and(|value| value.validate(tasks).is_ok());
 	let tier = resolved_score_tier(coverage_tier, has_synthetic_results, calibration_gate_passed);
 	let domain_scores = domain_scores(&accumulators);
+	let complete_calibration_description = complete_calibration_matrix
+		&& coverage.valid_tasks == coverage.expected_tasks
+		&& coverage.invalid_tasks == 0
+		&& coverage.missing_tasks == 0
+		&& duplicate_results == 0;
 	let quality_score = if matches!(
 		tier,
 		ScoreTier::Official | ScoreTier::SyntheticComplete | ScoreTier::Provisional
-	) {
+	) || complete_calibration_description
+	{
 		Some(macro_score(&accumulators)? * 100.0)
 	} else {
 		None
 	};
-	let latent_ability = if tier == ScoreTier::Official && !has_synthetic_results {
-		let matrix = calibration_matrix(tasks, results, &OfficialCalibrationPolicy::default())?.0;
-		let bank = calibration_bank_from_matrix(tasks, &matrix)?;
-
-		Some(estimate_model_ability(tasks, &matrix, model, &bank)?)
-	} else {
-		None
-	};
-	let score = if tier == ScoreTier::Official {
-		Some(
-			latent_ability
-				.as_ref()
-				.ok_or_else(|| {
-					ScoreError::new("Official score requires a complete calibration matrix")
-				})?
-				.score,
-		)
-	} else {
-		None
-	};
+	let official =
+		official_score_components(tasks, results, model, bank, tier, has_synthetic_results)?;
+	let OfficialScoreComponents { latent_ability, replicate_drift_diagnostic, score } = official;
 	let has_latent_ability = latent_ability.is_some();
 	let task_resampling_sensitivity_interval = if quality_score.is_some() {
 		Some(cluster_bootstrap(&accumulators, options)?)
@@ -948,6 +1248,7 @@ pub fn score_model_with_context(
 		score,
 		quality_score,
 		latent_ability,
+		replicate_drift_diagnostic,
 		ranking_eligible: tier == ScoreTier::Official
 			&& has_latent_ability
 			&& context.receiver_authorized_publication
@@ -963,49 +1264,44 @@ pub fn score_model_with_context(
 	})
 }
 
-/// Analyzes one calibration model without exposing publication semantics.
-pub fn score_calibration_model_with_context(
+fn official_score_components(
 	tasks: &[TaskDefinition],
 	results: &[TaskResult],
 	model: ModelConfig,
-	context: ScoreContext,
-	options: ScoreOptions,
-) -> Result<CalibrationScoreReport, ScoreError> {
-	let report = score_model_with_context(tasks, results, model, context, options)?;
-	let descriptive_status = match report.tier {
-		ScoreTier::Official | ScoreTier::SyntheticComplete => {
-			CalibrationDescriptiveStatus::CompleteFixture
-		},
-		ScoreTier::Provisional => CalibrationDescriptiveStatus::ConditionalObserved,
-		ScoreTier::CoverageOnly => CalibrationDescriptiveStatus::CoverageOnly,
-		ScoreTier::NotApplicable => CalibrationDescriptiveStatus::NotApplicable,
-	};
-	let quality_score = matches!(
-		report.tier,
-		ScoreTier::Official | ScoreTier::SyntheticComplete | ScoreTier::Provisional
-	)
-	.then_some(report.quality_score)
-	.flatten();
+	bank: Option<&FrozenCalibrationBankV2>,
+	tier: ScoreTier,
+	has_synthetic_results: bool,
+) -> Result<OfficialScoreComponents, ScoreError> {
+	if tier != ScoreTier::Official {
+		return Ok(OfficialScoreComponents {
+			latent_ability: None,
+			replicate_drift_diagnostic: None,
+			score: None,
+		});
+	}
 
-	Ok(CalibrationScoreReport {
-		schema_version: "aiq.calibration-score-report.v2".to_owned(),
-		run_class: "calibration".to_owned(),
-		scoring_version: report.scoring_version,
-		measurement_version: report.measurement_version,
-		model: report.model,
-		descriptive_status,
-		official_eligible: FalseOnly,
-		ranking_eligible: FalseOnly,
-		quality_score,
-		latent_ability: report.latent_ability,
-		completion_bounds: report.completion_bounds,
-		task_resampling_sensitivity_interval: report.task_resampling_sensitivity_interval,
-		binary_micro_diagnostic: report.binary_micro_diagnostic,
-		coverage: report.coverage,
-		difficulty_coverage: report.difficulty_coverage,
-		duplicate_results: report.duplicate_results,
-		domains: report.domains,
-		rule: CALIBRATION_SCORE_RULE.to_owned(),
+	let latent_ability = if has_synthetic_results {
+		None
+	} else {
+		Some(estimate_model_ability_from_results(
+			tasks,
+			results,
+			model,
+			bank.ok_or_else(|| {
+				ScoreError::new("Official score requires a frozen calibration bank")
+			})?,
+		)?)
+	};
+	let score = latent_ability.as_ref().map(|estimate| estimate.score);
+
+	if score.is_none() {
+		return Err(ScoreError::new("Official score requires a complete calibration matrix"));
+	}
+
+	Ok(OfficialScoreComponents {
+		latent_ability,
+		replicate_drift_diagnostic: Some(diagnose_official_calibration(tasks, results)?),
+		score,
 	})
 }
 
@@ -1020,29 +1316,6 @@ fn ensure_uniform_result_provenance(results: &[TaskResult]) -> Result<(), ScoreE
 	}
 
 	Ok(())
-}
-
-fn official_calibration_gate_passed(
-	tasks: &[TaskDefinition],
-	results: &[TaskResult],
-	coverage_tier: ScoreTier,
-	has_synthetic_results: bool,
-) -> Result<bool, ScoreError> {
-	let has_complete_matrix = tasks
-		.len()
-		.checked_mul(MODEL_MATRIX.len())
-		.is_some_and(|expected_cells| results.len() == expected_cells);
-	let has_complete_semantic_matrix =
-		has_complete_matrix && results.iter().all(is_semantic_result);
-
-	if coverage_tier == ScoreTier::Official
-		&& !has_synthetic_results
-		&& has_complete_semantic_matrix
-	{
-		return Ok(diagnose_official_calibration(tasks, results)?.passed());
-	}
-
-	Ok(false)
 }
 
 fn resolved_score_tier(
@@ -1721,6 +1994,63 @@ fn estimate_model_ability(
 	})
 }
 
+fn estimate_model_ability_from_results(
+	tasks: &[TaskDefinition],
+	results: &[TaskResult],
+	model: ModelConfig,
+	bank: &FrozenCalibrationBankV2,
+) -> Result<LatentAbilityEstimate, ScoreError> {
+	bank.validate(tasks)?;
+
+	let matching = matching_model_results(results, model);
+	let mut scores = Vec::with_capacity(tasks.len());
+	let mut difficulties = Vec::with_capacity(tasks.len());
+
+	for (task, item) in tasks.iter().zip(&bank.items) {
+		let found = matching
+			.get(&(task.task_id.as_str(), task.task_version.as_str()))
+			.ok_or_else(|| ScoreError::new("Official latent ability is missing a task result"))?;
+		let [result] = found.as_slice() else {
+			return Err(ScoreError::new(
+				"Official latent ability requires one terminal observation per cell",
+			));
+		};
+		let score = result
+			.task_score
+			.filter(|score| {
+				is_semantic_result(result) && score.is_finite() && (0.0..=1.0).contains(score)
+			})
+			.ok_or_else(|| {
+				ScoreError::new("Official latent ability requires semantic task scores")
+			})?;
+
+		scores.push(score);
+		difficulties.push(item.difficulty);
+	}
+
+	let (theta, observed_information) = fit_theta_given_items(&scores, &difficulties, 0.0)?;
+	let standard_error = (observed_information + RASCH_PRIOR_PRECISION).sqrt().recip();
+	let theta_ci_low = theta - RASCH_WALD_Z_95 * standard_error;
+	let theta_ci_high = theta + RASCH_WALD_Z_95 * standard_error;
+
+	Ok(LatentAbilityEstimate {
+		method: LATENT_ABILITY_METHOD.to_owned(),
+		calibration_digest: bank.digest()?,
+		theta,
+		standard_error,
+		theta_ci_low,
+		theta_ci_high,
+		observed_information,
+		score: logistic(theta) * 100.0,
+		score_ci_low: logistic(theta_ci_low) * 100.0,
+		score_ci_high: logistic(theta_ci_high) * 100.0,
+		reliability_status: LATENT_RELIABILITY_STATUS.to_owned(),
+		items_used: scores.len(),
+		calibration_task_count: bank.items.len(),
+		calibration_model_count: bank.calibration_model_count,
+	})
+}
+
 fn logistic(value: f64) -> f64 {
 	if value >= 0.0 {
 		1.0 / (1.0 + (-value).exp())
@@ -2048,7 +2378,7 @@ fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
 				&& task.domain == frozen.domain
 				&& task.difficulty == frozen.difficulty
 				&& task.cluster_id.as_deref() == Some(frozen.cluster_id.as_str())
-				&& task.scorer_version == AIQ_SCORING_VERSION
+				&& task.scorer_version == AIQ_TASK_SCORER_VERSION
 				&& task.scorer_version == frozen.evaluator.scorer_version
 		})
 	})
@@ -2294,8 +2624,8 @@ mod tests {
 			ResultStatus, TaskResult, ToolUsage,
 		},
 		scoring::{
-			self, AIQ_SCORING_VERSION, SCORE_RULE, ScoreContext, ScoreOptions, ScoreTier,
-			TASK_RESAMPLING_SENSITIVITY_METHOD,
+			self, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION, SCORE_RULE, ScoreContext,
+			ScoreOptions, ScoreTier, TASK_RESAMPLING_SENSITIVITY_METHOD,
 		},
 		task::TaskDefinition,
 	};
@@ -3254,10 +3584,20 @@ mod tests {
 			result.provenance.synthetic = false;
 		}
 
-		let report = scoring::score_model_with_context(
+		let bank = scoring::derive_frozen_calibration_bank(
+			&tasks,
+			&results,
+			&format!("sha256:{}", "a".repeat(64)),
+			AIQ_TASK_SCORER_VERSION,
+			&format!("sha256:{}", "b".repeat(64)),
+			&format!("sha256:{}", "c".repeat(64)),
+		)
+		.expect("fixture calibration bank");
+		let report = scoring::score_official_model_with_bank(
 			&tasks,
 			&results,
 			MODEL_MATRIX[0],
+			&bank,
 			context,
 			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
 		)
@@ -3267,6 +3607,54 @@ mod tests {
 		assert!(report.score.is_some());
 		assert!(report.latent_ability.is_some());
 		assert!(report.ranking_eligible);
+	}
+
+	#[test]
+	fn official_replicate_drift_is_non_blocking_and_never_refits_the_bank() {
+		let tasks = official_tasks();
+		let mut calibration = matrix_results(&tasks);
+
+		for result in &mut calibration {
+			result.provenance.synthetic = false;
+		}
+
+		let bank = scoring::derive_frozen_calibration_bank(
+			&tasks,
+			&calibration,
+			&format!("sha256:{}", "a".repeat(64)),
+			AIQ_TASK_SCORER_VERSION,
+			&format!("sha256:{}", "b".repeat(64)),
+			&format!("sha256:{}", "c".repeat(64)),
+		)
+		.expect("passing calibration bank");
+		let bank_digest = bank.digest().expect("bank digest");
+		let mut replicate = calibration.clone();
+
+		for result in &mut replicate {
+			if result.task_id == tasks[0].task_id || result.task_id == tasks[1].task_id {
+				result.status = ResultStatus::Completed;
+				result.evaluation = EvaluationOutcome::Correct;
+				result.task_score = Some(1.0);
+				result.failure = None;
+			}
+		}
+
+		let report = scoring::score_official_model_with_bank(
+			&tasks,
+			&replicate,
+			MODEL_MATRIX[0],
+			&bank,
+			ScoreContext::default(),
+			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
+		)
+		.expect("drifted replicate remains scoreable against frozen bank");
+
+		assert_eq!(report.tier, ScoreTier::Official);
+		assert_eq!(
+			report.latent_ability.as_ref().map(|ability| ability.calibration_digest.as_str()),
+			Some(bank_digest.as_str())
+		);
+		assert!(report.replicate_drift_diagnostic.is_some());
 	}
 
 	#[test]

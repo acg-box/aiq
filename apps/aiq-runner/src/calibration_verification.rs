@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::adapter::ArtifactReference;
-use crate::runner::MAX_RUN_JOBS;
 use crate::runner::TaskResult;
+use crate::runner::{self, MAX_RUN_JOBS};
 use crate::scoring::{
-	AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, OfficialCalibrationDiagnostic,
-	OfficialCalibrationPolicy,
+	AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
+	FrozenCalibrationBankV2, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy,
 };
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
@@ -35,14 +35,14 @@ use crate::{
 };
 
 /// Calibration verifier-stage schema.
-pub const CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION: &str = "aiq.calibration-verified-stage.v1";
+pub const CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION: &str = "aiq.calibration-verified-stage.v2";
 /// Calibration verifier-attestation schema.
 pub const CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION: &str =
-	"aiq.calibration-verifier-attestation.v1";
+	"aiq.calibration-verifier-attestation.v2";
 /// Private verifier-signed admission for one complete calibration matrix.
-pub const CALIBRATION_ADMISSION_SCHEMA_VERSION: &str = "aiq.calibration-admission.v1";
+pub const CALIBRATION_ADMISSION_SCHEMA_VERSION: &str = "aiq.calibration-admission.v2";
 /// Self-contained admission bundle that duplicates the transactionally published evidence.
-pub const CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION: &str = "aiq.calibration-admission-bundle.v1";
+pub const CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION: &str = "aiq.calibration-admission-bundle.v2";
 /// Efficiency observation schema.
 pub const CALIBRATION_EFFICIENCY_SCHEMA_VERSION: &str = "aiq.calibration-efficiency.v1";
 /// API-equivalent pricing model version.
@@ -248,6 +248,8 @@ pub struct CalibrationVerifiedStageV1 {
 	pub trust: TrustTier,
 	/// Committed controlled task-set hash.
 	pub task_set_hash: String,
+	/// Digest of the complete one-terminal-observation lineage.
+	pub terminal_attempt_lineage_digest: String,
 	/// Digest of the ordered task selection.
 	pub task_selection_digest: String,
 	/// Digest of the ordered model selection.
@@ -360,6 +362,7 @@ impl CalibrationVerifiedStageV1 {
 		for digest in [
 			&self.content_hash,
 			&self.task_set_hash,
+			&self.terminal_attempt_lineage_digest,
 			&self.task_selection_digest,
 			&self.model_selection_digest,
 			&self.score_reports_digest,
@@ -431,6 +434,8 @@ pub struct CalibrationVerifierAttestationV1 {
 	pub trust: TrustTier,
 	/// Bound controlled task-set hash.
 	pub task_set_hash: String,
+	/// Bound terminal-attempt lineage digest.
+	pub terminal_attempt_lineage_digest: String,
 	/// Bound ordered task-selection digest.
 	pub task_selection_digest: String,
 	/// Bound ordered model-selection digest.
@@ -473,6 +478,7 @@ impl CalibrationVerifierAttestationV1 {
 			|| self.run_class != RunClass::Calibration
 			|| self.trust != TrustTier::Untrusted
 			|| self.task_set_hash != stage.task_set_hash
+			|| self.terminal_attempt_lineage_digest != stage.terminal_attempt_lineage_digest
 			|| self.task_selection_digest != stage.task_selection_digest
 			|| self.model_selection_digest != stage.model_selection_digest
 			|| self.score_reports_digest != stage.score_reports_digest
@@ -563,10 +569,10 @@ pub struct CalibrationAdmissionClaims {
 	pub stage_digest: String,
 	/// Digest of the complete signed verifier attestation.
 	pub attestation_digest: String,
-	/// Runner identity from the package and stage.
-	pub runner: NodeIdentity,
-	/// Verifier identity that replayed and admitted the package.
-	pub verifier: NodeIdentity,
+	/// Legacy runner identity from the replayed package and stage.
+	pub replay_runner: NodeIdentity,
+	/// Current verifier identity that replayed and admitted the package.
+	pub admission_verifier: NodeIdentity,
 	/// Permanent non-Official classification.
 	pub classification: String,
 	/// Calibration-only execution class.
@@ -585,22 +591,28 @@ pub struct CalibrationAdmissionClaims {
 	pub model_configuration_count: usize,
 	/// Task-set content address.
 	pub task_set_hash: String,
+	/// Digest of the source run's terminal-attempt lineage.
+	pub terminal_attempt_lineage_digest: String,
 	/// Ordered task-selection identity.
 	pub task_selection_digest: String,
 	/// Ordered model-selection identity.
 	pub model_selection_digest: String,
 	/// Correctness scoring contract identity.
 	pub scoring_version: String,
-	/// Complete signed runner provenance.
-	pub provenance: RunProvenanceCommitment,
+	/// Complete centered item bank fitted from the replayed calibration package.
+	pub calibration_bank: FrozenCalibrationBankV2,
+	/// Canonical digest of `calibration_bank`.
+	pub calibration_bank_digest: String,
+	/// Complete signed provenance of the replayed calibration package.
+	pub replay_provenance: RunProvenanceCommitment,
 	/// Applied fixed calibration policy identity.
 	pub policy_digest: String,
 	/// Applied diagnostic identity.
 	pub diagnostic_digest: String,
 	/// Complete passing fixed calibration diagnostic.
 	pub diagnostic: OfficialCalibrationDiagnostic,
-	/// Independently supplied controlled identity bindings.
-	pub bindings: CalibrationAdmissionBindings,
+	/// Independently supplied current issuance and build authority bindings.
+	pub issuance_bindings: CalibrationAdmissionBindings,
 	/// Safe Unix-millisecond verifier observation time.
 	pub observed_unix_ms: u64,
 }
@@ -608,7 +620,7 @@ pub struct CalibrationAdmissionClaims {
 /// Private operational evidence that a complete signed calibration passed replay and diagnostics.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationAdmissionV1 {
+pub struct CalibrationAdmissionV2 {
 	/// Admission schema.
 	pub schema_version: String,
 	/// Signature algorithm identifier.
@@ -622,17 +634,19 @@ pub struct CalibrationAdmissionV1 {
 	/// Verifier Ed25519 signature over the schema, claims, and digest.
 	pub signature: String,
 }
-impl CalibrationAdmissionV1 {
-	/// Verifies the admission against external trust anchors and the complete matrix.
-	pub fn verify(
+impl CalibrationAdmissionV2 {
+	/// Verifies a signed admission for Official consumption without re-fitting its bank.
+	pub fn verify_for_official(
 		&self,
 		expected_bindings: &CalibrationAdmissionBindings,
 		tasks: &[TaskDefinition],
-		results: &[TaskResult],
 	) -> Result<(), CalibrationVerificationError> {
 		let claims = &self.claims;
 		let expected_verifier = &expected_bindings.approved_verifier;
-		let expected_diagnostic = scoring::diagnose_official_calibration(tasks, results)
+
+		claims
+			.calibration_bank
+			.validate(tasks)
 			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 
 		if self.schema_version != CALIBRATION_ADMISSION_SCHEMA_VERSION
@@ -644,32 +658,36 @@ impl CalibrationAdmissionV1 {
 			|| claims.replay_status != CalibrationReplayStatus::EvaluatorReplayed
 			|| claims.task_count != 72
 			|| claims.model_configuration_count != MODEL_MATRIX.len()
-			|| &claims.verifier != expected_verifier
-			|| &claims.bindings != expected_bindings
-			|| claims.runner != claims.bindings.approved_runner
-			|| claims.verifier != claims.bindings.approved_verifier
-			|| claims.runner == claims.verifier
-			|| claims.provenance.run_class != RunClass::Calibration
-			|| claims.provenance.corpus_commitment_sha256
-				!= claims.bindings.corpus_commitment_sha256
-			|| claims.provenance.source_manifest_digest != claims.bindings.source_manifest_digest
-			|| claims.provenance.task_set_digest != claims.bindings.task_set_digest
-			|| claims.provenance.evaluator_digest != claims.bindings.evaluator_digest
-			|| claims.provenance.runner_executable_digest
-				!= claims.bindings.runner_executable_digest
-			|| claims.provenance.codex_executable_digest != claims.bindings.codex_executable_digest
-			|| claims.provenance.codex_code_mode_host_digest
-				!= claims.bindings.codex_code_mode_host_digest
-			|| claims.task_set_hash != claims.bindings.task_set_digest
+			|| &claims.admission_verifier != expected_verifier
+			|| &claims.issuance_bindings != expected_bindings
+			|| claims.replay_runner != claims.issuance_bindings.approved_runner
+			|| claims.admission_verifier != claims.issuance_bindings.approved_verifier
+			|| claims.replay_runner == claims.admission_verifier
+			|| claims.replay_provenance.run_class != RunClass::Calibration
+			|| claims.replay_provenance.task_set_digest != claims.issuance_bindings.task_set_digest
+			|| claims.replay_provenance.evaluator_digest
+				!= claims.issuance_bindings.evaluator_digest
+			|| claims.task_set_hash != claims.issuance_bindings.task_set_digest
+			|| claims.scoring_version != AIQ_SCORING_VERSION
+			|| claims.calibration_bank.source_package_sha256
+				!= format!("sha256:{}", claims.package_sha256)
+			|| claims.calibration_bank.task_set_digest != claims.task_set_hash
+			|| claims.calibration_bank.task_set_digest != claims.issuance_bindings.task_set_digest
+			|| claims.calibration_bank.evaluator_digest != claims.issuance_bindings.evaluator_digest
+			|| claims.calibration_bank.policy_digest != claims.policy_digest
+			|| claims.calibration_bank_digest
+				!= claims
+					.calibration_bank
+					.digest()
+					.map_err(|error| CalibrationVerificationError::new(error.to_string()))?
 			|| claims.diagnostic.policy != OfficialCalibrationPolicy::default()
-			|| claims.diagnostic != expected_diagnostic
 			|| claims.diagnostic.policy.version != claims.diagnostic.observed.policy_version
 			|| claims.diagnostic.observed.tasks != 72
 			|| claims.diagnostic.observed.model_configurations != MODEL_MATRIX.len()
 			|| !claims.diagnostic.passed()
 			|| claims.observed_unix_ms > MAX_JCS_SAFE_INTEGER
-			|| !is_lower_hex(&claims.bindings.runner_commit, 40)
-			|| !is_lower_hex(&claims.bindings.runner_source_tree, 40)
+			|| !is_lower_hex(&claims.issuance_bindings.runner_commit, 40)
+			|| !is_lower_hex(&claims.issuance_bindings.runner_source_tree, 40)
 			|| !is_lower_hex(&claims.package_sha256, 64)
 			|| !is_lower_hex(&self.signature, 128)
 		{
@@ -678,39 +696,15 @@ impl CalibrationAdmissionV1 {
 			));
 		}
 
-		for digest in [
-			&claims.content_hash,
-			&claims.stage_digest,
-			&claims.attestation_digest,
-			&claims.task_set_hash,
-			&claims.task_selection_digest,
-			&claims.model_selection_digest,
-			&claims.policy_digest,
-			&claims.diagnostic_digest,
-			&claims.bindings.production_reference_sha256,
-			&claims.bindings.build_receipt_sha256,
-			&claims.bindings.corpus_commitment_sha256,
-			&claims.bindings.source_manifest_digest,
-			&claims.bindings.task_set_digest,
-			&claims.bindings.evaluator_digest,
-			&claims.bindings.model_toolchain_digest,
-			&claims.bindings.evaluator_runtime_digest,
-			&claims.bindings.runner_executable_digest,
-			&claims.bindings.codex_executable_digest,
-			&claims.bindings.codex_code_mode_host_digest,
-			&claims.bindings.verifier_executable_digest,
-			&self.admission_digest,
-		] {
-			validate_hash(digest, true)?;
-		}
+		self.verify_digest_bindings()?;
 
-		validate_node(&claims.runner)?;
-		validate_node(&claims.verifier)?;
+		validate_node(&claims.replay_runner)?;
+		validate_node(&claims.admission_verifier)?;
 
 		corpus_commitment::validate_run_provenance(
-			&claims.provenance,
+			&claims.replay_provenance,
 			&claims.task_set_hash,
-			&claims.provenance.preflight_digest,
+			&claims.replay_provenance.preflight_digest,
 		)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 
@@ -725,7 +719,7 @@ impl CalibrationAdmissionV1 {
 			));
 		}
 
-		let public: [u8; 32] = hex::decode(&claims.verifier.public_key)
+		let public: [u8; 32] = hex::decode(&claims.admission_verifier.public_key)
 			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?
 			.try_into()
 			.map_err(|_| CalibrationVerificationError::new("verifier public key is invalid"))?;
@@ -742,12 +736,82 @@ impl CalibrationAdmissionV1 {
 		key.verify(&bytes, &signature)
 			.map_err(|error| CalibrationVerificationError::new(error.to_string()))
 	}
+
+	fn verify_digest_bindings(&self) -> Result<(), CalibrationVerificationError> {
+		let claims = &self.claims;
+
+		for digest in [
+			&claims.content_hash,
+			&claims.stage_digest,
+			&claims.attestation_digest,
+			&claims.task_set_hash,
+			&claims.terminal_attempt_lineage_digest,
+			&claims.task_selection_digest,
+			&claims.model_selection_digest,
+			&claims.policy_digest,
+			&claims.diagnostic_digest,
+			&claims.calibration_bank_digest,
+			&claims.issuance_bindings.production_reference_sha256,
+			&claims.issuance_bindings.build_receipt_sha256,
+			&claims.issuance_bindings.corpus_commitment_sha256,
+			&claims.issuance_bindings.source_manifest_digest,
+			&claims.issuance_bindings.task_set_digest,
+			&claims.issuance_bindings.evaluator_digest,
+			&claims.issuance_bindings.model_toolchain_digest,
+			&claims.issuance_bindings.evaluator_runtime_digest,
+			&claims.issuance_bindings.runner_executable_digest,
+			&claims.issuance_bindings.codex_executable_digest,
+			&claims.issuance_bindings.codex_code_mode_host_digest,
+			&claims.issuance_bindings.verifier_executable_digest,
+			&self.admission_digest,
+		] {
+			validate_hash(digest, true)?;
+		}
+
+		Ok(())
+	}
+
+	/// Verifies the admission against external trust anchors and the complete source matrix.
+	pub fn verify(
+		&self,
+		expected_bindings: &CalibrationAdmissionBindings,
+		tasks: &[TaskDefinition],
+		results: &[TaskResult],
+	) -> Result<(), CalibrationVerificationError> {
+		self.verify_for_official(expected_bindings, tasks)?;
+
+		let claims = &self.claims;
+		let expected_diagnostic = scoring::diagnose_official_calibration(tasks, results)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+		let expected_bank = scoring::derive_frozen_calibration_bank(
+			tasks,
+			results,
+			&claims.package_sha256,
+			&claims.calibration_bank.source_scoring_version,
+			&expected_bindings.task_set_digest,
+			&expected_bindings.evaluator_digest,
+		)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+		let expected_lineage = protocol::canonical_hash(&runner::terminal_attempt_lineage(results))
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+		if claims.terminal_attempt_lineage_digest != expected_lineage
+			|| claims.calibration_bank != expected_bank
+			|| claims.diagnostic != expected_diagnostic
+		{
+			return Err(CalibrationVerificationError::new(
+				"calibration admission source matrix does not match",
+			));
+		}
+
+		Ok(())
+	}
 }
 
 /// One transactionally published calibration evidence bundle.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationAdmissionBundleV1 {
+pub struct CalibrationAdmissionBundleV2 {
 	/// Bundle schema.
 	pub schema_version: String,
 	/// Replay-verified complete calibration stage.
@@ -755,15 +819,33 @@ pub struct CalibrationAdmissionBundleV1 {
 	/// Verifier attestation bound to `stage`.
 	pub attestation: CalibrationVerifierAttestationV1,
 	/// Operational admission bound to the stage and attestation.
-	pub admission: CalibrationAdmissionV1,
+	pub admission: CalibrationAdmissionV2,
 }
-impl CalibrationAdmissionBundleV1 {
+impl CalibrationAdmissionBundleV2 {
+	/// Verifies a complete signed bundle for Official consumption without source results.
+	pub fn verify_for_official(
+		&self,
+		expected_bindings: &CalibrationAdmissionBindings,
+		tasks: &[TaskDefinition],
+	) -> Result<(), CalibrationVerificationError> {
+		self.verify_common(expected_bindings, tasks, None)
+	}
+
 	/// Verifies all bundle links against external trust anchors and the complete matrix.
 	pub fn verify(
 		&self,
 		expected_bindings: &CalibrationAdmissionBindings,
 		tasks: &[TaskDefinition],
 		results: &[TaskResult],
+	) -> Result<(), CalibrationVerificationError> {
+		self.verify_common(expected_bindings, tasks, Some(results))
+	}
+
+	fn verify_common(
+		&self,
+		expected_bindings: &CalibrationAdmissionBindings,
+		tasks: &[TaskDefinition],
+		results: Option<&[TaskResult]>,
 	) -> Result<(), CalibrationVerificationError> {
 		if self.schema_version != CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION {
 			return Err(CalibrationVerificationError::new(
@@ -773,20 +855,25 @@ impl CalibrationAdmissionBundleV1 {
 
 		self.stage.verify()?;
 		self.attestation.verify(&self.stage, &expected_bindings.approved_verifier)?;
-		self.admission.verify(expected_bindings, tasks, results)?;
+
+		if let Some(results) = results {
+			self.admission.verify(expected_bindings, tasks, results)?;
+		} else {
+			self.admission.verify_for_official(expected_bindings, tasks)?;
+		}
 
 		if self.admission.claims.run_id != self.stage.run_id
 			|| self.admission.claims.package_sha256 != self.stage.package_sha256
 			|| self.admission.claims.content_hash != self.stage.content_hash
-			|| self.admission.claims.runner != self.stage.runner
+			|| self.admission.claims.replay_runner != self.stage.runner
 			|| self.admission.claims.classification != self.stage.classification
 			|| self.admission.claims.task_set_hash != self.stage.task_set_hash
+			|| self.admission.claims.terminal_attempt_lineage_digest
+				!= self.stage.terminal_attempt_lineage_digest
 			|| self.admission.claims.task_selection_digest != self.stage.task_selection_digest
 			|| self.admission.claims.model_selection_digest != self.stage.model_selection_digest
-			|| self.admission.claims.scoring_version != self.stage.scoring_version
-			|| self.admission.claims.provenance != self.stage.provenance
+			|| self.admission.claims.replay_provenance != self.stage.provenance
 			|| self.admission.claims.observed_unix_ms != self.attestation.observed_unix_ms
-			|| self.admission.claims.bindings.runner_commit != self.stage.runner_commit
 			|| self.admission.claims.stage_digest != self.stage.stage_digest
 			|| self.admission.claims.attestation_digest
 				!= protocol::canonical_hash(&self.attestation)
@@ -809,8 +896,8 @@ struct UnsignedCalibrationAdmission<'a> {
 	claims: &'a CalibrationAdmissionClaims,
 	admission_digest: &'a str,
 }
-impl<'a> From<&'a CalibrationAdmissionV1> for UnsignedCalibrationAdmission<'a> {
-	fn from(admission: &'a CalibrationAdmissionV1) -> Self {
+impl<'a> From<&'a CalibrationAdmissionV2> for UnsignedCalibrationAdmission<'a> {
+	fn from(admission: &'a CalibrationAdmissionV2) -> Self {
 		Self {
 			schema_version: &admission.schema_version,
 			signature_algorithm: &admission.signature_algorithm,
@@ -834,6 +921,7 @@ struct UnsignedCalibrationStage<'a> {
 	ranking_eligible: FalseOnly,
 	trust: TrustTier,
 	task_set_hash: &'a str,
+	terminal_attempt_lineage_digest: &'a str,
 	task_selection_digest: &'a str,
 	model_selection_digest: &'a str,
 	score_reports_digest: &'a str,
@@ -872,6 +960,7 @@ impl<'a> From<&'a CalibrationVerifiedStageV1> for UnsignedCalibrationStage<'a> {
 			ranking_eligible: stage.ranking_eligible,
 			trust: stage.trust,
 			task_set_hash: &stage.task_set_hash,
+			terminal_attempt_lineage_digest: &stage.terminal_attempt_lineage_digest,
 			task_selection_digest: &stage.task_selection_digest,
 			model_selection_digest: &stage.model_selection_digest,
 			score_reports_digest: &stage.score_reports_digest,
@@ -916,6 +1005,7 @@ struct UnsignedCalibrationAttestation<'a> {
 	ranking_eligible: FalseOnly,
 	trust: TrustTier,
 	task_set_hash: &'a str,
+	terminal_attempt_lineage_digest: &'a str,
 	task_selection_digest: &'a str,
 	model_selection_digest: &'a str,
 	score_reports_digest: &'a str,
@@ -944,6 +1034,7 @@ impl<'a> From<&'a CalibrationVerifierAttestationV1> for UnsignedCalibrationAttes
 			ranking_eligible: attestation.ranking_eligible,
 			trust: attestation.trust,
 			task_set_hash: &attestation.task_set_hash,
+			terminal_attempt_lineage_digest: &attestation.terminal_attempt_lineage_digest,
 			task_selection_digest: &attestation.task_selection_digest,
 			model_selection_digest: &attestation.model_selection_digest,
 			score_reports_digest: &attestation.score_reports_digest,
@@ -999,114 +1090,7 @@ pub(crate) fn verify_calibration_run(
 	metadata: &AttestedDeploymentMetadata,
 	provider_usage: &[ProviderTokenUsage],
 ) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
-	let execution_concurrency = run.execution_concurrency.ok_or_else(|| {
-		CalibrationVerificationError::new(
-			"calibration verification requires a bound execution concurrency",
-		)
-	})?;
-
-	if provider_usage.len() != run.results.len() {
-		return Err(CalibrationVerificationError::new(
-			"provider usage must align with every calibration result",
-		));
-	}
-
-	run_validation::validate_calibration_run_record_with_tasks(run, tasks)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-
-	validate_metadata(run, package, metadata)?;
-
-	let pricing = ApiEquivalentPricingModel::default();
-	let result_efficiency = run
-		.results
-		.iter()
-		.zip(provider_usage)
-		.map(|(result, usage)| result_efficiency(result, usage, &pricing, false))
-		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
-	let scores = run
-		.models
-		.iter()
-		.copied()
-		.map(|model| {
-			let preflight_configuration_not_applicable =
-				run.capability_validation.model(model).is_some_and(|entry| {
-					run.capability_validation.manifest_issues.is_empty()
-						&& run.capability_validation.cli_probe.status == ProbeStatus::Available
-						&& entry.status == CapabilityValidationStatus::Unsupported
-						&& entry.probe.status == ConfigurationProbeStatus::ObservedUnsupported
-				});
-			let score = scoring::score_calibration_model_with_context(
-				tasks,
-				&run.results,
-				model,
-				ScoreContext {
-					preflight_configuration_not_applicable,
-					receiver_authorized_publication: false,
-				},
-				ScoreOptions::default(),
-			)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-			let model_results =
-				result_efficiency.iter().filter(|result| result.model == model).collect::<Vec<_>>();
-
-			Ok(CalibrationVerifiedScore {
-				model,
-				score,
-				efficiency: aggregate_efficiency(model, &model_results)?,
-			})
-		})
-		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
-	let capability_validation_digest = protocol::canonical_hash(&run.capability_validation)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	let mut stage = CalibrationVerifiedStageV1 {
-		schema_version: CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION.to_owned(),
-		run_id: run.run_id.clone(),
-		package_sha256: package.package_sha256.clone(),
-		content_hash: package.content_hash.clone(),
-		runner: package.signer.clone(),
-		classification: run.classification.clone(),
-		run_class: RunClass::Calibration,
-		official_eligible: FalseOnly,
-		ranking_eligible: FalseOnly,
-		trust: TrustTier::Untrusted,
-		task_set_hash: run.task_set_hash.clone(),
-		task_selection_digest: protocol::canonical_hash(&run.task_ids)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		model_selection_digest: protocol::canonical_hash(&run.models)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		score_reports_digest: protocol::canonical_hash(&scores)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		telemetry_digest: protocol::canonical_hash(&result_efficiency)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		capability_validation_digest,
-		provenance: run.provenance.clone(),
-		evaluator_results_artifact: run.evaluator_results_artifact.clone(),
-		scoring_version: run.scoring_version.clone(),
-		execution_concurrency,
-		task_ids: run.task_ids.clone(),
-		models: run.models.clone(),
-		scores,
-		result_efficiency,
-		pricing,
-		task_set_id: metadata.task_set_id.clone(),
-		task_set_version: metadata.task_set_version.clone(),
-		benchmark_version: metadata.benchmark_version.clone(),
-		prompt_set_digest: metadata.prompt_set_digest.clone(),
-		runner_commit: metadata.runner_commit.clone(),
-		region: metadata.region.clone(),
-		scheduled_unix_ms: metadata.scheduled_unix_ms,
-		started_unix_ms: metadata.started_unix_ms,
-		finished_unix_ms: metadata.finished_unix_ms,
-		stage_digest: String::new(),
-	};
-
-	stage.stage_digest = stage.compute_stage_digest()?;
-
-	stage.verify()?;
-
-	Ok(stage)
+	verify_calibration_run_inner(run, tasks, package, metadata, provider_usage, false)
 }
 
 /// Checks the exact persisted time, token, and pricing contract for one complete matrix.
@@ -1188,6 +1172,26 @@ pub fn verify_and_attest_calibration_run(
 	Ok((stage, attestation))
 }
 
+/// Recomputes and signs one promoted 1.0.6 calibration source without changing its run identity.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_and_attest_calibration_source_1_0_6(
+	identity: &VerifierSigningIdentity,
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	package: &VerifiedPackageIdentity,
+	metadata: &AttestedDeploymentMetadata,
+	provider_usage: &[ProviderTokenUsage],
+	observed_unix_ms: u64,
+) -> Result<
+	(CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1),
+	CalibrationVerificationError,
+> {
+	let stage = verify_calibration_run_inner(run, tasks, package, metadata, provider_usage, true)?;
+	let attestation = attest_calibration_stage(identity, &stage, observed_unix_ms)?;
+
+	Ok((stage, attestation))
+}
+
 /// Creates one verifier-signed operational admission for an exact full calibration.
 ///
 /// This artifact remains permanently non-Official and non-ranking. It is not an
@@ -1198,8 +1202,9 @@ pub fn sign_full_calibration_admission(
 	attestation: &CalibrationVerifierAttestationV1,
 	tasks: &[TaskDefinition],
 	results: &[TaskResult],
+	source_scoring_version: &str,
 	bindings: CalibrationAdmissionBindings,
-) -> Result<CalibrationAdmissionV1, CalibrationVerificationError> {
+) -> Result<CalibrationAdmissionV2, CalibrationVerificationError> {
 	stage.verify()?;
 	attestation.verify(stage, identity.node())?;
 
@@ -1211,15 +1216,9 @@ pub fn sign_full_calibration_admission(
 		|| stage.runner != bindings.approved_runner
 		|| identity.node() != &bindings.approved_verifier
 		|| stage.runner == *identity.node()
-		|| stage.provenance.corpus_commitment_sha256 != bindings.corpus_commitment_sha256
-		|| stage.provenance.source_manifest_digest != bindings.source_manifest_digest
 		|| stage.provenance.task_set_digest != bindings.task_set_digest
 		|| stage.provenance.evaluator_digest != bindings.evaluator_digest
-		|| stage.provenance.runner_executable_digest != bindings.runner_executable_digest
-		|| stage.provenance.codex_executable_digest != bindings.codex_executable_digest
-		|| stage.provenance.codex_code_mode_host_digest != bindings.codex_code_mode_host_digest
 		|| stage.task_set_hash != bindings.task_set_digest
-		|| stage.runner_commit != bindings.runner_commit
 		|| diagnostic.policy != OfficialCalibrationPolicy::default()
 		|| !diagnostic.passed()
 		|| diagnostic.observed.tasks != 72
@@ -1230,6 +1229,18 @@ pub fn sign_full_calibration_admission(
 		));
 	}
 
+	let calibration_bank = scoring::derive_frozen_calibration_bank(
+		tasks,
+		results,
+		&stage.package_sha256,
+		source_scoring_version,
+		&bindings.task_set_digest,
+		&bindings.evaluator_digest,
+	)
+	.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	let calibration_bank_digest = calibration_bank
+		.digest()
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 	let claims = CalibrationAdmissionClaims {
 		run_id: stage.run_id.clone(),
 		package_sha256: stage.package_sha256.clone(),
@@ -1237,8 +1248,8 @@ pub fn sign_full_calibration_admission(
 		stage_digest: stage.stage_digest.clone(),
 		attestation_digest: protocol::canonical_hash(attestation)
 			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
-		runner: stage.runner.clone(),
-		verifier: identity.node().clone(),
+		replay_runner: stage.runner.clone(),
+		admission_verifier: identity.node().clone(),
 		classification: stage.classification.clone(),
 		run_class: RunClass::Calibration,
 		official_eligible: FalseOnly,
@@ -1248,21 +1259,24 @@ pub fn sign_full_calibration_admission(
 		task_count: stage.task_ids.len(),
 		model_configuration_count: stage.models.len(),
 		task_set_hash: stage.task_set_hash.clone(),
+		terminal_attempt_lineage_digest: stage.terminal_attempt_lineage_digest.clone(),
 		task_selection_digest: stage.task_selection_digest.clone(),
 		model_selection_digest: stage.model_selection_digest.clone(),
-		scoring_version: stage.scoring_version.clone(),
-		provenance: stage.provenance.clone(),
+		scoring_version: AIQ_SCORING_VERSION.to_owned(),
+		calibration_bank,
+		calibration_bank_digest,
+		replay_provenance: stage.provenance.clone(),
 		policy_digest: protocol::canonical_hash(&diagnostic.policy)
 			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
 		diagnostic_digest: protocol::canonical_hash(&diagnostic)
 			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
 		diagnostic,
-		bindings,
+		issuance_bindings: bindings,
 		observed_unix_ms: attestation.observed_unix_ms,
 	};
 	let admission_digest = protocol::canonical_hash(&claims)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	let mut admission = CalibrationAdmissionV1 {
+	let mut admission = CalibrationAdmissionV2 {
 		schema_version: CALIBRATION_ADMISSION_SCHEMA_VERSION.to_owned(),
 		signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
 		signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
@@ -1275,7 +1289,7 @@ pub fn sign_full_calibration_admission(
 
 	admission.signature = identity.sign_calibration_bytes(&bytes);
 
-	admission.verify(&admission.claims.bindings.clone(), tasks, results)?;
+	admission.verify(&admission.claims.issuance_bindings.clone(), tasks, results)?;
 
 	Ok(admission)
 }
@@ -1350,6 +1364,7 @@ pub fn attest_calibration_stage(
 		ranking_eligible: FalseOnly,
 		trust: TrustTier::Untrusted,
 		task_set_hash: stage.task_set_hash.clone(),
+		terminal_attempt_lineage_digest: stage.terminal_attempt_lineage_digest.clone(),
 		task_selection_digest: stage.task_selection_digest.clone(),
 		model_selection_digest: stage.model_selection_digest.clone(),
 		score_reports_digest: stage.score_reports_digest.clone(),
@@ -1369,6 +1384,143 @@ pub fn attest_calibration_stage(
 	attestation.verify(stage, identity.node())?;
 
 	Ok(attestation)
+}
+
+fn verify_calibration_run_inner(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	package: &VerifiedPackageIdentity,
+	metadata: &AttestedDeploymentMetadata,
+	provider_usage: &[ProviderTokenUsage],
+	calibration_source_1_0_6: bool,
+) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
+	runner::validate_terminal_attempt_lineage(&run.results, &run.terminal_attempt_lineage)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+	let execution_concurrency = run.execution_concurrency.ok_or_else(|| {
+		CalibrationVerificationError::new(
+			"calibration verification requires a bound execution concurrency",
+		)
+	})?;
+
+	if provider_usage.len() != run.results.len() {
+		return Err(CalibrationVerificationError::new(
+			"provider usage must align with every calibration result",
+		));
+	}
+
+	validate_calibration_run_identity(run, tasks, calibration_source_1_0_6)?;
+
+	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+	validate_metadata(run, package, metadata)?;
+
+	let pricing = ApiEquivalentPricingModel::default();
+	let result_efficiency = run
+		.results
+		.iter()
+		.zip(provider_usage)
+		.map(|(result, usage)| result_efficiency(result, usage, &pricing, false))
+		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+	let scores = run
+		.models
+		.iter()
+		.copied()
+		.map(|model| {
+			let preflight_configuration_not_applicable =
+				run.capability_validation.model(model).is_some_and(|entry| {
+					run.capability_validation.manifest_issues.is_empty()
+						&& run.capability_validation.cli_probe.status == ProbeStatus::Available
+						&& entry.status == CapabilityValidationStatus::Unsupported
+						&& entry.probe.status == ConfigurationProbeStatus::ObservedUnsupported
+				});
+			let score = scoring::score_calibration_model_with_context(
+				tasks,
+				&run.results,
+				model,
+				ScoreContext {
+					preflight_configuration_not_applicable,
+					receiver_authorized_publication: false,
+				},
+				ScoreOptions::default(),
+			)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+			let model_results =
+				result_efficiency.iter().filter(|result| result.model == model).collect::<Vec<_>>();
+
+			Ok(CalibrationVerifiedScore {
+				model,
+				score,
+				efficiency: aggregate_efficiency(model, &model_results)?,
+			})
+		})
+		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+	let capability_validation_digest = protocol::canonical_hash(&run.capability_validation)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	let mut stage = CalibrationVerifiedStageV1 {
+		schema_version: CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION.to_owned(),
+		run_id: run.run_id.clone(),
+		package_sha256: package.package_sha256.clone(),
+		content_hash: package.content_hash.clone(),
+		runner: package.signer.clone(),
+		classification: run.classification.clone(),
+		run_class: RunClass::Calibration,
+		official_eligible: FalseOnly,
+		ranking_eligible: FalseOnly,
+		trust: TrustTier::Untrusted,
+		task_set_hash: run.task_set_hash.clone(),
+		terminal_attempt_lineage_digest: protocol::canonical_hash(&run.terminal_attempt_lineage)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		task_selection_digest: protocol::canonical_hash(&run.task_ids)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		model_selection_digest: protocol::canonical_hash(&run.models)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		score_reports_digest: protocol::canonical_hash(&scores)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		telemetry_digest: protocol::canonical_hash(&result_efficiency)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?,
+		capability_validation_digest,
+		provenance: run.provenance.clone(),
+		evaluator_results_artifact: run.evaluator_results_artifact.clone(),
+		scoring_version: run.scoring_version.clone(),
+		execution_concurrency,
+		task_ids: run.task_ids.clone(),
+		models: run.models.clone(),
+		scores,
+		result_efficiency,
+		pricing,
+		task_set_id: metadata.task_set_id.clone(),
+		task_set_version: metadata.task_set_version.clone(),
+		benchmark_version: metadata.benchmark_version.clone(),
+		prompt_set_digest: metadata.prompt_set_digest.clone(),
+		runner_commit: metadata.runner_commit.clone(),
+		region: metadata.region.clone(),
+		scheduled_unix_ms: metadata.scheduled_unix_ms,
+		started_unix_ms: metadata.started_unix_ms,
+		finished_unix_ms: metadata.finished_unix_ms,
+		stage_digest: String::new(),
+	};
+
+	stage.stage_digest = stage.compute_stage_digest()?;
+
+	stage.verify()?;
+
+	Ok(stage)
+}
+
+fn validate_calibration_run_identity(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	calibration_source_1_0_6: bool,
+) -> Result<(), CalibrationVerificationError> {
+	let validation = if calibration_source_1_0_6 {
+		run_validation::validate_calibration_source_1_0_6_with_tasks(run, tasks)
+	} else {
+		run_validation::validate_calibration_run_record_with_tasks(run, tasks)
+	};
+
+	validation.map_err(|error| CalibrationVerificationError::new(error.to_string()))
 }
 
 fn rates(
@@ -1934,13 +2086,13 @@ mod tests {
 			.expect("pricing default must serialize");
 		let repository_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 		let normalized_schema: serde_json::Value = serde_json::from_slice(
-			&fs::read(repository_root.join("benchmarks/schema/normalized-batch-v3.schema.json"))
+			&fs::read(repository_root.join("benchmarks/schema/normalized-batch-v4.schema.json"))
 				.expect("normalized schema must be readable"),
 		)
 		.expect("normalized schema must be JSON");
 		let calibration_schema: serde_json::Value = serde_json::from_slice(
 			&fs::read(
-				repository_root.join("benchmarks/schema/calibration-verified-stage-v1.schema.json"),
+				repository_root.join("benchmarks/schema/calibration-verified-stage-v2.schema.json"),
 			)
 			.expect("calibration stage schema must be readable"),
 		)

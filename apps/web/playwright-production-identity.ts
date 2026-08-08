@@ -47,7 +47,7 @@ const exactKeys = [
   'unavailableMissingUsageResultCount',
   'pricedCostSubtotalUsdNanos',
 ] as const satisfies readonly (keyof ProductionExpectedIdentity)[];
-const benchmarkPattern = /^aiq-core@(\d+\.\d+\.\d+)$/;
+const benchmarkPattern = /^aiq-core@\d+\.\d+\.\d+$/;
 const scoringPattern = /^\d+\.\d+\.\d+$/;
 const matrixBatchPattern = /^run_[0-9a-f]{64}$/;
 const runnerCommitPattern = /^[0-9a-f]{7,40}$/;
@@ -106,11 +106,11 @@ export function validateProductionExpectedIdentity(value: unknown): ProductionEx
   ) {
     return invalid('identity fields have invalid types');
   }
-  const benchmarkMatch = benchmarkPattern.exec(benchmarkVersion);
   if (
-    benchmarkMatch === null ||
+    !benchmarkPattern.test(benchmarkVersion) ||
     !scoringPattern.test(scoringVersion) ||
-    benchmarkMatch[1] !== scoringVersion ||
+    benchmarkVersion !== 'aiq-core@1.0.6' ||
+    scoringVersion !== '1.0.7' ||
     !matrixBatchPattern.test(matrixBatchId) ||
     !runnerCommitPattern.test(runnerCommit) ||
     !releasePattern.test(corpusReleaseId) ||

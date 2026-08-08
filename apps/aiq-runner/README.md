@@ -171,7 +171,7 @@ primitives and fail closed when those primitives are unavailable.
 `score` applies the checked-in AIQ 2.0 Rasch scoring rules to a saved run. The
 score and calibration bundle wrappers use their v2 schema identifiers.
 `package`
-binds the run and its artifacts into one signed `aiq.result-package.v3` envelope.
+binds the run and its artifacts into one signed `aiq.result-package.v4` envelope.
 The runner key must match the run's preflight node identity.
 
 For an immutable historical pilot whose legacy runner JSON encoded a runtime

@@ -5,7 +5,7 @@ import { AIQ_2_CUTOVER_QUERY, parseAiq2CutoverEvidence } from './check-aiq-2-cut
 
 const completeEvidence = {
   measurement_version: '2.0.0',
-  measurement_method: 'rasch_fractional_joint_map_v1',
+  measurement_method: 'rasch_fractional_fixed_bank_map_v2',
   published_batches: 1,
   published_runs: 17,
   official_scores: 17,
@@ -35,7 +35,7 @@ void test('AIQ 2.0 cutover rejects empty, synthetic, or incomplete publication',
 });
 
 void test('AIQ 2.0 cutover query binds new measurement and non-synthetic 17×72 evidence', () => {
-  assert.match(AIQ_2_CUTOVER_QUERY, /scoring_version = '1\.0\.6'/g);
+  assert.match(AIQ_2_CUTOVER_QUERY, /scoring_version = '1\.0\.7'/g);
   assert.match(AIQ_2_CUTOVER_QUERY, /not synthetic/);
   assert.match(AIQ_2_CUTOVER_QUERY, /published_task_results/);
   assert.match(AIQ_2_CUTOVER_QUERY, /public\.public_leaderboard/);
