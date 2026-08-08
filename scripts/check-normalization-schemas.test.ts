@@ -593,7 +593,7 @@ function normalizedBatch(): JsonObject {
 
 function runProvenance(): JsonObject {
   return {
-    schema_version: 'aiq.run-provenance.v2',
+    schema_version: 'aiq.run-provenance.v3',
     run_class: 'official',
     corpus_release_id: 'corpus_fixture',
     corpus_commitment_sha256: sha256(10),
@@ -610,6 +610,7 @@ function runProvenance(): JsonObject {
     source_manifest_digest: sha256(18),
     runner_executable_digest: sha256(19),
     codex_executable_digest: sha256(20),
+    codex_code_mode_host_digest: sha256(21),
     permission_evidence_digest: sha256(22),
   };
 }
@@ -617,7 +618,7 @@ function runProvenance(): JsonObject {
 function capabilityValidation(): JsonObject {
   const version = 'codex fixture';
   return {
-    schema_version: 'aiq.capability-validation.v2',
+    schema_version: 'aiq.capability-validation.v3',
     node_id: nodeId,
     manifest_issues: [],
     cli_probe: {
@@ -640,7 +641,14 @@ function capabilityValidation(): JsonObject {
         observed_at: 'unix-ms:1',
         result_digest: sha256(100 + index),
         result_preview: 'AIQ_PREFLIGHT_OK',
-        artifacts: [],
+        artifacts: [
+          {
+            kind: 'capability-marker.txt',
+            content_hash: 'sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3',
+            uri: 'aiq-artifact://sha256/83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3/capability-marker.txt',
+            bytes: 36,
+          },
+        ],
         evidence_digest: sha256(200 + index),
         failure: null,
       },
@@ -1130,6 +1138,7 @@ await test('all current run provenance digests are nonzero', async () => {
     'source_manifest_digest',
     'runner_executable_digest',
     'codex_executable_digest',
+    'codex_code_mode_host_digest',
     'permission_evidence_digest',
   ];
   const digestFields = [
@@ -1147,6 +1156,7 @@ await test('all current run provenance digests are nonzero', async () => {
     'source_manifest_digest',
     'runner_executable_digest',
     'codex_executable_digest',
+    'codex_code_mode_host_digest',
     'permission_evidence_digest',
   ];
 
@@ -1320,6 +1330,7 @@ await test('capability validation accepts the serialized workspace-integrity ada
   probe.status = 'failed';
   probe.result_digest = null;
   probe.result_preview = null;
+  probe.artifacts = [];
   probe.failure = {
     kind: 'workspace_integrity',
     exit_code: null,

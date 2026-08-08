@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { CAPABILITY_MARKER_BYTES, CAPABILITY_MARKER_DIGEST } from './artifact-handler.ts';
 import {
   registerStorageObject,
   type StorageLifecycleObject,
@@ -120,6 +121,58 @@ void describe('Storage lifecycle registration', () => {
       }),
       /Storage lifecycle registration failed/,
     );
+  });
+
+  void it('registers only the exact-size functional capability marker', async () => {
+    const observed: Array<{
+      functionName: string;
+      parameters: StorageRegistrationRpcArguments;
+    }> = [];
+    await registerStorageObject({
+      object: {
+        objectType: 'runner_artifact',
+        artifactKind: 'capability-marker.txt',
+        bucket: 'aiq-runner-artifacts',
+        path: `sha256/${CAPABILITY_MARKER_DIGEST}/capability-marker.txt`,
+        digest: CAPABILITY_MARKER_DIGEST,
+        bytes: CAPABILITY_MARKER_BYTES.byteLength,
+      },
+      rpc: rpc(observed),
+      now: () => fixedNow,
+    });
+
+    assert.equal(observed[0]?.parameters.supplied_artifact_kind, 'capability-marker.txt');
+
+    for (const object of [
+      {
+        objectType: 'runner_artifact',
+        artifactKind: 'capability-marker.txt',
+        bucket: 'aiq-runner-artifacts',
+        path: `sha256/${digest}/capability-marker.txt`,
+        digest,
+        bytes: CAPABILITY_MARKER_BYTES.byteLength,
+      },
+      {
+        objectType: 'runner_artifact',
+        artifactKind: 'capability-marker.txt',
+        bucket: 'aiq-runner-artifacts',
+        path: `sha256/${CAPABILITY_MARKER_DIGEST}/capability-marker.txt`,
+        digest: CAPABILITY_MARKER_DIGEST,
+        bytes: CAPABILITY_MARKER_BYTES.byteLength - 1,
+      },
+    ] satisfies StorageLifecycleObject[]) {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each invalid marker owns an independent RPC assertion.
+      await assert.rejects(
+        registerStorageObject({
+          object,
+          rpc: async () => {
+            throw new Error('RPC must not be called.');
+          },
+          now: () => fixedNow,
+        }),
+        /Storage lifecycle registration failed/,
+      );
+    }
   });
 
   void it('rejects invalid identities before RPC creation', async () => {

@@ -27,7 +27,7 @@
     "started_unix_ms": 1785153600000,
     "finished_unix_ms": 1785153601000,
     "capability_validation": {
-      "schema_version": "aiq.capability-validation.v2",
+      "schema_version": "aiq.capability-validation.v3",
       "node_id": "node_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "manifest_issues": [],
       "cli_probe": { "status": "available", "version": "codex-example", "failure": null },
@@ -39,7 +39,7 @@
       "models": []
     },
     "provenance": {
-      "schema_version": "aiq.run-provenance.v2",
+      "schema_version": "aiq.run-provenance.v3",
       "run_class": "calibration",
       "corpus_release_id": "corpus_example",
       "corpus_commitment_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
@@ -56,6 +56,7 @@
       "source_manifest_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "runner_executable_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       "codex_executable_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "codex_code_mode_host_digest": "sha256:abababababababababababababababababababababababababababababababab",
       "permission_evidence_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
     "evaluator_results_artifact": {

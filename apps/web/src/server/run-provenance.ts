@@ -1,12 +1,13 @@
 import { AIQ_CORE_TASK_METADATA_IDENTITY } from '../aiq-core-contract.ts';
 
-export const RUN_PROVENANCE_SCHEMA = 'aiq.run-provenance.v2';
+export const RUN_PROVENANCE_SCHEMA = 'aiq.run-provenance.v3';
 export const FROZEN_CATALOG_DIGEST = AIQ_CORE_TASK_METADATA_IDENTITY;
 
 const releaseIdPattern = /^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\s\S])/;
 const nonzeroDigestPattern = /^sha256:(?!0{64}(?![\s\S]))[a-f0-9]{64}(?![\s\S])/;
 const provenanceKeys = [
   'catalog_digest',
+  'codex_code_mode_host_digest',
   'codex_executable_digest',
   'corpus_commitment_sha256',
   'corpus_release_id',
@@ -27,6 +28,7 @@ const provenanceKeys = [
 ] as const;
 const digestKeys = [
   'catalog_digest',
+  'codex_code_mode_host_digest',
   'codex_executable_digest',
   'corpus_commitment_sha256',
   'environment_digest',
@@ -61,6 +63,7 @@ export interface RunProvenance extends Readonly<Record<string, unknown>> {
   source_manifest_digest: string;
   runner_executable_digest: string;
   codex_executable_digest: string;
+  codex_code_mode_host_digest: string;
   permission_evidence_digest: string;
 }
 

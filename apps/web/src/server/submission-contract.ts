@@ -164,6 +164,12 @@ const modelMatrix = [
 const modelMatrixKeys = modelMatrix.map(([family, effort]) => `${family}:${effort}`);
 const identifierPattern = /^[A-Za-z0-9._-]+(?![\s\S])/;
 const unixMillisPattern = /^unix-ms:[0-9]{1,39}(?![\s\S])/;
+const preflightMarkerKind = 'capability-marker.txt';
+const preflightMarkerHash =
+  'sha256:83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3';
+const preflightMarkerUri =
+  'aiq-artifact://sha256/83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3/capability-marker.txt';
+const preflightMarkerBytes = 36;
 const resultIdPattern = /^result_[a-f0-9]{64}(?![\s\S])/;
 const safeAsciiPattern = /^[\x20-\x21\x23-\x5b\x5d-\x7e]+(?![\s\S])/;
 const scheduleSlotValidity = new Map<string, boolean>();
@@ -594,7 +600,7 @@ function isCapabilityReport(value: unknown): value is Record<string, unknown> {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, capabilityReportKeys) ||
-    value.schema_version !== 'aiq.capability-validation.v2' ||
+    value.schema_version !== 'aiq.capability-validation.v3' ||
     typeof value.node_id !== 'string' ||
     !nodeIdPattern.test(value.node_id) ||
     !Array.isArray(value.manifest_issues) ||
@@ -642,7 +648,12 @@ function isCapabilityReport(value: unknown): value is Record<string, unknown> {
         (typeof probe.result_preview !== 'string' ||
           Buffer.byteLength(probe.result_preview, 'utf8') > 64)) ||
       (probe.failure !== null && !isAdapterFailure(probe.failure)) ||
-      !validArtifactSet(probe.artifacts, null, ['stdout.jsonl', 'stderr.txt'], 2)
+      !validArtifactSet(
+        probe.artifacts,
+        null,
+        ['stdout.jsonl', 'stderr.txt', preflightMarkerKind],
+        3,
+      )
     ) {
       return false;
     }
@@ -659,11 +670,16 @@ function isCapabilityReport(value: unknown): value is Record<string, unknown> {
       return false;
     }
     if (probe.status === 'available') {
+      const markers = probe.artifacts.filter((artifact) => artifact.kind === preflightMarkerKind);
       if (
         typeof probe.result_digest !== 'string' ||
         !contentHashPattern.test(probe.result_digest) ||
         typeof probe.result_preview !== 'string' ||
-        probe.failure !== null
+        probe.failure !== null ||
+        markers.length !== 1 ||
+        markers[0]?.content_hash !== preflightMarkerHash ||
+        markers[0]?.uri !== preflightMarkerUri ||
+        markers[0]?.bytes !== preflightMarkerBytes
       ) {
         return false;
       }
@@ -674,12 +690,15 @@ function isCapabilityReport(value: unknown): value is Record<string, unknown> {
       ) {
         return false;
       }
-    } else if (
-      probe.result_digest !== null ||
-      probe.result_preview !== null ||
-      probe.failure === null
-    ) {
-      return false;
+    } else {
+      if (
+        probe.result_digest !== null ||
+        probe.result_preview !== null ||
+        probe.failure === null ||
+        probe.artifacts.some((artifact) => artifact.kind === preflightMarkerKind)
+      ) {
+        return false;
+      }
     }
     const evidence = [
       entry.model,
@@ -1431,7 +1450,7 @@ export function validateSubmission(value: unknown): ValidationResult {
       return {
         ok: false,
         code: 'INVALID_PROVENANCE',
-        message: 'Calibration runs require exact calibration aiq.run-provenance.v2 commitments.',
+        message: 'Calibration runs require exact calibration aiq.run-provenance.v3 commitments.',
       };
     }
     provenance = value.payload.provenance;
@@ -1441,7 +1460,7 @@ export function validateSubmission(value: unknown): ValidationResult {
         ok: false,
         code: 'INVALID_PROVENANCE',
         message:
-          'Synthetic runs require null provenance; non-synthetic runs require exact Official aiq.run-provenance.v2 commitments.',
+          'Synthetic runs require null provenance; non-synthetic runs require exact Official aiq.run-provenance.v3 commitments.',
       };
     }
     provenance = null;
@@ -1452,7 +1471,7 @@ export function validateSubmission(value: unknown): ValidationResult {
       ok: false,
       code: 'INVALID_PROVENANCE',
       message:
-        'Synthetic runs require null provenance; non-synthetic runs require exact Official aiq.run-provenance.v2 commitments.',
+        'Synthetic runs require null provenance; non-synthetic runs require exact Official aiq.run-provenance.v3 commitments.',
     };
   }
   if (
