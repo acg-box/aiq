@@ -2840,7 +2840,7 @@ mod tests {
 		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.6");
 		assert_eq!(
 			AIQ_CORE_TASK_IDENTITY_SHA256,
-			"sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1"
+			"sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b"
 		);
 		assert!(tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION));
 		assert!(scoring::task_bindings_match_frozen_catalog(&tasks));

@@ -32,12 +32,12 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:7548f78c0b4bae156e3c8ab257688dffd176b26234d0f7a52cb06a568f8c4ad1
+sha256:b34f1cdea98ea2ad3e0b6509d5dccbe7ac03d9b1e2096e7eef8399335b476a1b
 ```
 
 The release-policy identity is `aiq-core/1.0.6`. Its public catalog
 release-identity digest is
-`sha256:7d1eaaa03bf9f15f16290df1420a4ebcad64c24183066baf4c3f1b12d11bd46c`.
+`sha256:984449def51becdb7c8992e3e45181730d241bb5793382301b084070c987c42c`.
 The public catalog is deterministic and identity-frozen. Two controlled
 generations produced one matching tree. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
@@ -118,11 +118,13 @@ seven timeouts and three tool-budget failures at the common 900-second,
 40-step, and 28-tool-call envelope. The offline historical diagnostic excludes
 those runtime-null cells from semantic scoring without changing the preserved
 package or producing Official evidence. AIQ Core `1.0.6` preserves the task,
-fixture, evaluator, tool, and scoring semantics and gives each of the four tasks
-the same 1,500-second, 48-step, and 40-tool-call budget for every model
-configuration. This budget revision does not alter scoring. The other 68 task
-contracts carry forward with new release bindings. Run a fresh
-17-by-4, 68-cell non-Official pilot before paying for the full
+fixture, evaluator, tool, and scoring semantics and adds coding-07 as a fifth
+runtime-budget revision. Coding-07 uses 600 wall seconds, 32 steps, and 21 tool
+calls; the other four revised tasks use 1,500 seconds, 48 steps, and 40 tool
+calls. Each task budget is common to every model configuration, and this budget
+revision does not alter scoring. The other 67 task contracts carry forward with
+new release bindings. Run a fresh coding-07-by-17 falsification pilot, then a
+17-by-5, 85-cell non-Official pilot before paying for the full
 17-by-72 non-Official calibration. The full calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model
