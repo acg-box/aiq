@@ -221,10 +221,10 @@ pub struct CommandRequest {
 	pub timeout: Option<Duration>,
 	/// Maximum accepted bytes for each output stream.
 	pub max_capture_bytes: usize,
-	/// Maximum observed completed items.
-	pub max_steps: u32,
-	/// Maximum observed tool calls.
-	pub max_tool_calls: u32,
+	/// Optional maximum observed completed items.
+	pub max_steps: Option<u32>,
+	/// Optional maximum observed tool calls.
+	pub max_tool_calls: Option<u32>,
 	/// Whether the inherited environment is removed.
 	pub clear_environment: bool,
 	/// Exact child environment after clearing.
@@ -632,10 +632,10 @@ pub struct InvocationRequest {
 	pub prompt: String,
 	/// Optional wall-clock timeout. `None` lets the task run until it reaches another boundary.
 	pub timeout: Option<Duration>,
-	/// Maximum completed items.
-	pub max_steps: u32,
-	/// Maximum tool calls.
-	pub max_tool_calls: u32,
+	/// Optional maximum completed items. `None` keeps accounting without termination.
+	pub max_steps: Option<u32>,
+	/// Optional maximum tool calls. `None` keeps accounting without termination.
+	pub max_tool_calls: Option<u32>,
 	/// Canonical controlled workspace directory.
 	pub workspace_dir: PathBuf,
 	/// Safe sandbox policy.
@@ -833,8 +833,8 @@ where
 			vec!["--version".to_owned()],
 			Vec::new(),
 			Duration::from_secs(10),
-			u32::MAX,
-			u32::MAX,
+			None,
+			None,
 		)?;
 		let version = classify_capture(capture, &self.sink, false)?.stdout.trim().to_owned();
 
@@ -1100,8 +1100,8 @@ where
 			)?,
 			Vec::new(),
 			Some(Duration::from_secs(20)),
-			u32::MAX,
-			u32::MAX,
+			None,
+			None,
 			&scratch_environment,
 		);
 		let canary_cleanup =
@@ -1134,8 +1134,8 @@ where
 		args: Vec<String>,
 		stdin: Vec<u8>,
 		timeout: Duration,
-		max_steps: u32,
-		max_tool_calls: u32,
+		max_steps: Option<u32>,
+		max_tool_calls: Option<u32>,
 	) -> Result<ExecutionCapture, AdapterFailure> {
 		self.execute_request_with_environment(
 			args,
@@ -1152,8 +1152,8 @@ where
 		args: Vec<String>,
 		stdin: Vec<u8>,
 		timeout: Option<Duration>,
-		max_steps: u32,
-		max_tool_calls: u32,
+		max_steps: Option<u32>,
+		max_tool_calls: Option<u32>,
 		extra_environment: &BTreeMap<String, String>,
 	) -> Result<ExecutionCapture, AdapterFailure> {
 		let codex_home = self.config.codex_home.display().to_string();
@@ -1205,8 +1205,8 @@ where
 					stdin,
 					timeout: Some(timeout),
 					max_capture_bytes: MAX_CAPTURE_BYTES,
-					max_steps: u32::MAX,
-					max_tool_calls: u32::MAX,
+					max_steps: None,
+					max_tool_calls: None,
 					clear_environment: true,
 					environment,
 				},
@@ -1304,8 +1304,8 @@ where
 			vec!["login".to_owned(), "status".to_owned()],
 			Vec::new(),
 			Duration::from_secs(10),
-			u32::MAX,
-			u32::MAX,
+			None,
+			None,
 		)?;
 		let output = classify_capture(capture, &self.sink, false)?;
 
@@ -1341,8 +1341,8 @@ where
 			)
 			.into_bytes(),
 			Some(Duration::from_secs(30)),
-			3,
-			1,
+			Some(3),
+			Some(1),
 			&scratch_environment,
 		);
 		let marker = capture.as_ref().ok().map(|_| {
@@ -4848,8 +4848,8 @@ fn read_bounded_stream(
 fn read_stdout_stream(
 	mut stream: impl Read,
 	limit: usize,
-	max_steps: u32,
-	max_tool_calls: u32,
+	max_steps: Option<u32>,
+	max_tool_calls: Option<u32>,
 	breach_tx: Sender<LiveBudgetKind>,
 ) -> std::io::Result<(Vec<u8>, bool)> {
 	let mut bytes = Vec::new();
@@ -4888,12 +4888,14 @@ fn read_stdout_stream(
 
 				let _ = breach_tx.send(LiveBudgetKind::Policy);
 			}
-			if accounting.steps > max_steps && !step_breach_sent {
+			if max_steps.is_some_and(|limit| accounting.steps > limit) && !step_breach_sent {
 				step_breach_sent = true;
 
 				let _ = breach_tx.send(LiveBudgetKind::Steps);
 			}
-			if accounting.tool_calls > max_tool_calls && !tool_breach_sent {
+			if max_tool_calls.is_some_and(|limit| accounting.tool_calls > limit)
+				&& !tool_breach_sent
+			{
 				tool_breach_sent = true;
 
 				let _ = breach_tx.send(LiveBudgetKind::ToolCalls);
@@ -6095,8 +6097,8 @@ mod tests {
 			model: MODEL_MATRIX[0],
 			prompt: "test".to_owned(),
 			timeout: Some(Duration::from_secs(1)),
-			max_steps: 2,
-			max_tool_calls: 0,
+			max_steps: Some(2),
+			max_tool_calls: Some(0),
 			workspace_dir: root.join("task"),
 			sandbox: SandboxPolicy::ReadOnly,
 		}
@@ -7601,8 +7603,8 @@ mod tests {
 			let prompt = str::from_utf8(&request.stdin).expect("probe prompt must be UTF-8");
 
 			assert_eq!(request.timeout, Some(Duration::from_secs(30)));
-			assert_eq!(request.max_steps, 3);
-			assert_eq!(request.max_tool_calls, 1);
+			assert_eq!(request.max_steps, Some(3));
+			assert_eq!(request.max_tool_calls, Some(1));
 			assert!(prompt.contains("Do not send commentary before the command"));
 			assert!(prompt.contains("Do not use a file-editing, patch, or file-change tool"));
 			assert!(prompt.contains(PREFLIGHT_MARKER_COMMAND));
@@ -8207,8 +8209,8 @@ mod tests {
 		super::read_stdout_stream(
 			io::Cursor::new(format!("{}\n", malformed)),
 			super::MAX_CAPTURE_BYTES,
-			u32::MAX,
-			u32::MAX,
+			None,
+			None,
 			breach_tx,
 		)
 		.expect("bounded stream");
@@ -8320,8 +8322,8 @@ mod tests {
 				stdin: Vec::new(),
 				timeout: Some(Duration::from_millis(100)),
 				max_capture_bytes: 16 * 1_024,
-				max_steps: u32::MAX,
-				max_tool_calls: u32::MAX,
+				max_steps: None,
+				max_tool_calls: None,
 				clear_environment: true,
 				environment: BTreeMap::from([
 					("AIQ_PROCESS_TREE_ROLE".to_owned(), "parent".to_owned()),
@@ -8364,8 +8366,8 @@ mod tests {
 				stdin: Vec::new(),
 				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
-				max_steps: u32::MAX,
-				max_tool_calls: 0,
+				max_steps: None,
+				max_tool_calls: Some(0),
 				clear_environment: true,
 				environment: BTreeMap::from([
 					("AIQ_PROCESS_TREE_ROLE".to_owned(), "budget_parent".to_owned()),
@@ -8405,8 +8407,8 @@ mod tests {
 			stdin,
 			timeout: Some(timeout),
 			max_capture_bytes,
-			max_steps: u32::MAX,
-			max_tool_calls: u32::MAX,
+			max_steps: None,
+			max_tool_calls: None,
 			clear_environment: true,
 			environment: BTreeMap::from([(
 				"AIQ_JSON_RPC_FIXTURE_ROLE".to_owned(),
@@ -8830,8 +8832,8 @@ mod tests {
 				stdin: Vec::new(),
 				timeout: None,
 				max_capture_bytes: 16 * 1_024,
-				max_steps: u32::MAX,
-				max_tool_calls: u32::MAX,
+				max_steps: None,
+				max_tool_calls: None,
 				clear_environment: true,
 				environment: BTreeMap::from([(
 					"AIQ_CHILD_UNBOUNDED_WAIT".to_owned(),
@@ -8860,8 +8862,8 @@ mod tests {
 				stdin: vec![b'x'; super::MAX_STDIN_BYTES],
 				timeout: Some(Duration::from_millis(100)),
 				max_capture_bytes: 16 * 1_024,
-				max_steps: 1,
-				max_tool_calls: 0,
+				max_steps: Some(1),
+				max_tool_calls: Some(0),
 				clear_environment: true,
 				environment: BTreeMap::from([("AIQ_CHILD_NO_STDIN".to_owned(), "1".to_owned())]),
 			})
@@ -8892,8 +8894,8 @@ mod tests {
 						stdin: Vec::new(),
 						timeout: Some(Duration::from_secs(5)),
 						max_capture_bytes: 16 * 1_024,
-						max_steps: u32::MAX,
-						max_tool_calls: u32::MAX,
+						max_steps: None,
+						max_tool_calls: None,
 						clear_environment: true,
 						environment: BTreeMap::from([(
 							"AIQ_CHILD_NO_STDIN".to_owned(),
@@ -8930,8 +8932,8 @@ mod tests {
 				stdin: Vec::new(),
 				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
-				max_steps: 1,
-				max_tool_calls: 0,
+				max_steps: Some(1),
+				max_tool_calls: Some(0),
 				clear_environment: true,
 				environment: BTreeMap::from([(
 					"AIQ_CHILD_EVENT_EMITTER".to_owned(),
@@ -8958,8 +8960,8 @@ mod tests {
 				stdin: Vec::new(),
 				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
-				max_steps: 1,
-				max_tool_calls: 0,
+				max_steps: Some(1),
+				max_tool_calls: Some(0),
 				clear_environment: true,
 				environment: BTreeMap::from([
 					("AIQ_CHILD_EVENT_EMITTER".to_owned(), "1".to_owned()),
@@ -8991,8 +8993,8 @@ mod tests {
 				stdin: Vec::new(),
 				timeout: Some(Duration::from_secs(5)),
 				max_capture_bytes: 16 * 1_024,
-				max_steps: 1,
-				max_tool_calls: 0,
+				max_steps: Some(1),
+				max_tool_calls: Some(0),
 				clear_environment: true,
 				environment: BTreeMap::from([
 					("AIQ_CHILD_EVENT_EMITTER".to_owned(), "1".to_owned()),

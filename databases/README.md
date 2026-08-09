@@ -43,18 +43,18 @@ cargo make init-database
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
 controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.6`, its real `published_at` timestamp, and exactly three public identities:
+`1.0.7`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
 final native binaries pass validation. The controlled production reference is
 still pending. The checked-in runtime task-set and task-commitment identities
-describe the validated no-deadline task and fixture bindings. Re-seal from the
-final clean identity commit before the focused canary. The repository does
+describe the unbounded task and fixture bindings. Seal and validate fresh Core
+and Contrast corpora from the final clean identity commit. The repository does
 not contain a substitute production commitment or benchmark results. Supply
 the controlled production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.6` with benchmark identifier `aiq-core@1.0.6`;
+- AIQ Core task release `1.0.7` with benchmark identifier `aiq-core@1.0.7`;
 - scoring version `1.0.7`;
 - 72 catalog tasks;
 - 17 model configurations;
@@ -64,13 +64,13 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`;
+  `sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`;
 - catalog release identity
-  `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`;
+  `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`;
 - current no-deadline runtime task-set identity,
-  `sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`;
+  `sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`;
 - current no-deadline task-commitment manifest identity,
-  `sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`;
+  `sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`;
 - reviewed evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
@@ -88,21 +88,23 @@ The native corpus commitment owns the scorer-manifest identity. The
 database binds its output through scoring version `1.0.7` and recomputes
 the score from normalized result evidence.
 
-The current public-safe `1.0.6` 72-task database binding manifest is
-`aiq-core-1.0.6-task-commitments.json`. Its canonical JCS identity is
-`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
-Independent no-deadline Core A/B seals and the model-free validator produced it.
-It is not authorization for database action; a real signed 17-by-72 package
+The current public-safe `1.0.7` 72-task database binding manifest is
+`aiq-core-1.0.7-task-commitments.json`. Its canonical JCS identity is
+`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
+It is a checked-in pre-seal binding, not authorization for database action.
+Fresh Core and Contrast A/B seals, calibration admission, and a real signed
+17-by-72 Official package
 must still pass native verifier replay first.
 
-The desired state targets the sole production tuple: AIQ Core `1.0.6`, scoring
-`1.0.7`, and measurement `2.0.0`. Do not reset or initialize production until
+The desired state targets the sole production tuple: AIQ Core `1.0.7`, task
+scorer `1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. Do not reset
+or initialize production until
 the controlled commitments are complete and one real non-synthetic signed
 17-by-72 package passes native verifier replay.
 
 ## AIQ 2.0 cutover order
 
-Create the new `1.0.6` package from the current controlled 72-task set, then
+Create the new `1.0.7` package from the current controlled 72-task set, then
 replay-verify it with the native verifier before any destructive database
 action. Do not preserve, migrate, recompute, or relabel a legacy publication.
 It is not a fallback.
@@ -127,7 +129,7 @@ archive or validate old private evidence. Submit the already verified new
 package to the fresh database, run the controlled verifier and distinct
 publisher, and publish only after all 17 Official scores are accepted.
 Finally run `cargo make check-aiq-2-cutover`. It must report exactly one
-non-synthetic `1.0.6` matrix, 17 runs, 17 Official scores, 1,224 task results,
+non-synthetic `1.0.7` matrix, 17 runs, 17 Official scores, 1,224 task results,
 one calibration digest, and zero synthetic Official/public rows. If either
 hard gate fails, do not publish or deploy the new Web build. Do not fall back to
 a legacy publication.

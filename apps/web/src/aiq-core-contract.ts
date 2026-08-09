@@ -1,12 +1,12 @@
-export const AIQ_CORE_TASK_SET_VERSION = '1.0.6';
+export const AIQ_CORE_TASK_SET_VERSION = '1.0.7';
 export const AIQ_CORE_BENCHMARK_VERSION = `aiq-core@${AIQ_CORE_TASK_SET_VERSION}`;
 export const AIQ_CORE_SCORING_VERSION = '1.0.7';
 export const AIQ_CORE_TASK_SCORER_VERSION = '1.0.6';
 export const AIQ_CORE_RELEASE_IDENTITY = `aiq-core/${AIQ_CORE_TASK_SET_VERSION}`;
 export const AIQ_CORE_TASK_METADATA_IDENTITY =
-  'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91';
+  'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1';
 export const AIQ_CORE_CATALOG_RELEASE_IDENTITY =
-  'sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f';
+  'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae';
 
 export const AIQ_CORE_TASK_SCORING_CONTRACT = {
   aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',

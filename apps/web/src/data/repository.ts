@@ -548,6 +548,9 @@ export interface RunResultRow {
   explanation_summary: string | null;
   retryable: boolean | null;
   tools: string[];
+  agent_steps: number;
+  tool_call_count: number;
+  tool_calls_by_type: Record<string, number>;
   latency_ms: number | null;
   latency_evidence_level: 'runner_observed' | null;
   input_tokens: number | null;
@@ -577,6 +580,9 @@ const RUN_RESULT_ROW_KEYS = new Set([
   'explanation_summary',
   'retryable',
   'tools',
+  'agent_steps',
+  'tool_call_count',
+  'tool_calls_by_type',
   'latency_ms',
   'latency_evidence_level',
   'input_tokens',
@@ -675,6 +681,7 @@ function isRunResultRow(
         ? 'unavailable_invalid_usage'
         : 'estimated';
   const tools = value.tools;
+  const toolCallsByType = value.tool_calls_by_type;
   const outcome = value.outcome;
   const explanationCode = value.explanation_code;
   return (
@@ -701,6 +708,17 @@ function isRunResultRow(
     tools.every(isSafeCalibrationCode) &&
     new Set(tools).size === tools.length &&
     tools.every((tool, index) => index === 0 || String(tools[index - 1]).localeCompare(tool) < 0) &&
+    isCount(value.agent_steps) &&
+    isCount(value.tool_call_count) &&
+    isUnknownRecord(toolCallsByType) &&
+    Object.keys(toolCallsByType).length <= 4 &&
+    Object.entries(toolCallsByType).every(
+      ([tool, count]) => isSafeCalibrationCode(tool) && isCount(count),
+    ) &&
+    Object.values(toolCallsByType).reduce<number>((sum, count) => sum + Number(count), 0) ===
+      value.tool_call_count &&
+    tools.length === Object.keys(toolCallsByType).length &&
+    tools.every((tool) => Object.hasOwn(toolCallsByType, tool)) &&
     ((value.latency_ms === null && value.latency_evidence_level === null) ||
       (isCount(value.latency_ms) && value.latency_evidence_level === 'runner_observed')) &&
     tokenValues.every((item) => item === null || isCount(item)) &&
@@ -793,8 +811,10 @@ export function executionStatusForOutcome(outcome: CalibrationOutcome): Executio
 
 export const CALIBRATION_EXPLANATION_SUMMARIES = {
   incorrect: 'The evaluator rejected the response.',
-  timeout: 'The task exceeded its time limit.',
-  budget_exhausted: 'The task exceeded a resource budget.',
+  timeout:
+    'Execution ended at an external runtime or safety boundary; no semantic score was assigned.',
+  budget_exhausted:
+    'Execution ended at a non-scoring safety or provider boundary; no semantic score was assigned.',
   tool_failure: 'A permitted execution tool failed.',
   policy_failure: 'The result violated a controlled-output policy.',
   wrong_artifact: 'The expected artifact was not produced.',
@@ -1057,6 +1077,9 @@ export function mapRunRow(row: RunRow, resultRows: readonly RunResultRow[]): Ben
               }
             : null,
           tools: result.tools,
+          agentSteps: result.agent_steps,
+          toolCallCount: result.tool_call_count,
+          toolCallsByType: result.tool_calls_by_type,
           latencyMs: result.latency_ms,
           latencyEvidenceLevel: result.latency_evidence_level,
           inputTokens: result.input_tokens,
@@ -2788,7 +2811,7 @@ export class SupabaseAiqRepository implements AiqRepository {
           this.#client
             .from(PUBLIC_VIEW_NAMES.runResults)
             .select(
-              'run_id,id,task_id,task,domain,outcome,execution_status,score,explanation_code,explanation_summary,retryable,tools,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,pricing_digest',
+              'run_id,id,task_id,task,domain,outcome,execution_status,score,explanation_code,explanation_summary,retryable,tools,agent_steps,tool_call_count,tool_calls_by_type,latency_ms,latency_evidence_level,input_tokens,cached_input_tokens,cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,token_usage_source_level,token_usage_evidence_level,standard_api_equivalent_usd_nanos,cost_estimator_status,cost_evidence_level,pricing_digest',
             )
             .in('run_id', batch)
             .order('run_id', { ascending: true })

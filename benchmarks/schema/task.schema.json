@@ -66,7 +66,7 @@
       "maxLength": 128,
       "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
     },
-    "task_version": { "const": "1.0.6" },
+    "task_version": { "const": "1.0.7" },
     "title": { "type": "string", "minLength": 1, "pattern": "\\S" },
     "domain": {
       "enum": [
@@ -121,11 +121,9 @@
       "additionalProperties": false,
       "required": ["wall_seconds", "max_steps", "max_tool_calls"],
       "properties": {
-        "wall_seconds": {
-          "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
-        },
-        "max_steps": { "type": "integer", "minimum": 1 },
-        "max_tool_calls": { "type": "integer", "minimum": 0 }
+        "wall_seconds": { "type": "null" },
+        "max_steps": { "type": "null" },
+        "max_tool_calls": { "type": "null" }
       }
     },
     "tags": {
@@ -165,7 +163,7 @@
           },
           {
             "type": "string",
-            "pattern": "^aiq-controlled-(?:fixture|acceptance)://aiq-core/1\\.0\\.6/[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
+            "pattern": "^aiq-controlled-(?:fixture|acceptance)://aiq-core/1\\.0\\.7/[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
           }
         ]
       }
