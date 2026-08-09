@@ -159,12 +159,13 @@ impl SubmissionEnvelope {
 		self.verify_authenticated(trusted_nodes)
 	}
 
-	/// Verifies one exact signed 1.0.6 calibration source for the isolated,
-	/// one-way calibration-bank derivation command. Production ingestion never
-	/// calls this method and remains hard-bound to the current greenfield wire.
-	pub fn verify_calibration_source_v3(&self) -> Result<VerifiedSubmission, ProtocolError> {
-		if self.schema_version != "aiq.result-package.v3"
-			|| self.payload_type != "aiq.calibration-run.v3"
+	/// Verifies one exact signed 1.0.7 calibration source for the isolated,
+	/// one-way policy-v2 calibration-bank derivation command. Production
+	/// ingestion never calls this method and remains hard-bound to the current
+	/// greenfield wire.
+	pub fn verify_calibration_source_v4(&self) -> Result<VerifiedSubmission, ProtocolError> {
+		if self.schema_version != "aiq.result-package.v4"
+			|| self.payload_type != "aiq.calibration-run.v4"
 			|| self.claimed_trust != TrustTier::Untrusted
 		{
 			return Err(ProtocolError::new("unsupported calibration source protocol"));
@@ -177,9 +178,9 @@ impl SubmissionEnvelope {
 			.as_object()
 			.ok_or_else(|| ProtocolError::new("payload must be an object"))?;
 
-		if payload.get("schema_version").and_then(Value::as_str) != Some("aiq.calibration-run.v3")
+		if payload.get("schema_version").and_then(Value::as_str) != Some("aiq.calibration-run.v4")
 			|| payload.get("run_id").and_then(Value::as_str) != Some(&self.idempotency_key)
-			|| payload.get("scoring_version").and_then(Value::as_str) != Some("1.0.6")
+			|| payload.get("scoring_version").and_then(Value::as_str) != Some("1.0.7")
 			|| payload.get("official_eligible").and_then(Value::as_bool) != Some(false)
 			|| payload.get("classification").and_then(Value::as_str)
 				!= Some("local_calibration_non_official")
@@ -643,6 +644,55 @@ mod tests {
 			.expect("unsupported payload bytes can be signed");
 
 		assert!(unsupported.verify(&BTreeSet::new()).is_err());
+	}
+
+	#[test]
+	fn policy_upgrade_accepts_only_the_exact_signed_1_0_7_calibration_source() {
+		let identity = SigningIdentity::from_secret([9; 32]);
+		let source = serde_json::json!({
+			"schema_version": super::CALIBRATION_RUN_PAYLOAD_TYPE,
+			"run_id": RUN_ID,
+			"scoring_version": "1.0.7",
+			"official_eligible": false,
+			"classification": "local_calibration_non_official",
+			"provenance": {
+				"schema_version": "aiq.run-provenance.v3",
+				"run_class": "calibration"
+			},
+		});
+		let sign_source = |payload: &serde_json::Value, trust| {
+			identity
+				.sign(RUN_ID, super::CALIBRATION_RUN_PAYLOAD_TYPE, payload, trust)
+				.expect("calibration source must sign")
+		};
+
+		assert!(sign_source(&source, TrustTier::Untrusted).verify_calibration_source_v4().is_ok());
+
+		for (field, value) in [
+			("scoring_version", serde_json::json!("1.0.6")),
+			("scoring_version", serde_json::json!("1.0.8")),
+			("official_eligible", serde_json::json!(true)),
+			("classification", serde_json::json!("official")),
+		] {
+			let mut changed = source.clone();
+
+			changed[field] = value;
+
+			assert!(
+				sign_source(&changed, TrustTier::Untrusted).verify_calibration_source_v4().is_err()
+			);
+		}
+
+		let mut changed_run_class = source.clone();
+
+		changed_run_class["provenance"]["run_class"] = serde_json::json!("official");
+
+		assert!(
+			sign_source(&changed_run_class, TrustTier::Untrusted)
+				.verify_calibration_source_v4()
+				.is_err()
+		);
+		assert!(sign_source(&source, TrustTier::Trusted).verify_calibration_source_v4().is_err());
 	}
 
 	#[test]
