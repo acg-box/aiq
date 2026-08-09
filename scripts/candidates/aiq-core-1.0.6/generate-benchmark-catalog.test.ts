@@ -21,9 +21,6 @@ const candidateRoot = new URL('../../../benchmarks/candidates/aiq-core-1.0.6/', 
 const catalogPath = fileURLToPath(new URL('catalog.json', candidateRoot));
 const catalogSchemaPath = fileURLToPath(new URL('catalog.schema.json', candidateRoot));
 const taskSchemaPath = fileURLToPath(new URL('task.schema.json', candidateRoot));
-const activeTaskSchemaPath = fileURLToPath(
-  new URL('../../../benchmarks/schema/task.schema.json', import.meta.url),
-);
 const priorCandidateRoot = new URL(
   '../../../benchmarks/candidates/aiq-core-1.0.5/',
   import.meta.url,
@@ -283,12 +280,12 @@ await test('the closed schemas bind the 1.0.6 release and revision provenance', 
   strictEqual(source.includes('aiq-core/1\\\\.0\\\\.5/'), false);
 });
 
-await test('the active task schema accepts only AIQ Core 1.0.6 controlled references', async () => {
-  const source = await readFile(activeTaskSchemaPath, 'utf8');
-  const schema = jsonObject(JSON.parse(source) as unknown, 'active task schema');
-  const properties = jsonObject(schema.properties, 'active task properties');
-  const fixtureRefs = jsonObject(properties.fixture_refs, 'active fixture references');
-  const items = jsonObject(fixtureRefs.items, 'active fixture reference items');
+await test('the historical 1.0.6 task schema accepts only 1.0.6 controlled references', async () => {
+  const source = await readFile(taskSchemaPath, 'utf8');
+  const schema = jsonObject(JSON.parse(source) as unknown, '1.0.6 task schema');
+  const properties = jsonObject(schema.properties, '1.0.6 task properties');
+  const fixtureRefs = jsonObject(properties.fixture_refs, '1.0.6 fixture references');
+  const items = jsonObject(fixtureRefs.items, '1.0.6 fixture reference items');
 
   if (!Array.isArray(items.oneOf)) throw new TypeError('active fixture references need oneOf');
   const controlledPattern = items.oneOf

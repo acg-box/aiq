@@ -1,7 +1,7 @@
 //! Test-only public projections generated from the production scoring path.
 //!
 //! This module is intentionally not a result-package or database publication
-//! format. It gives browser contract tests a complete 1.0.6-shaped response
+//! format. It gives browser contract tests a complete 1.0.7-shaped response
 //! without allowing test observations to become Official evidence.
 
 use std::{
@@ -22,8 +22,9 @@ use crate::{
 		ToolUsage,
 	},
 	scoring::{
-		self, AIQ_BENCHMARK_VERSION, AIQ_MEASUREMENT_VERSION, AIQ_SCORING_VERSION, FalseOnly,
-		OfficialCalibrationDiagnostic, ScoreContext, ScoreOptions, ScoreReport, ScoreTier,
+		self, AIQ_BENCHMARK_VERSION, AIQ_MEASUREMENT_VERSION, AIQ_SCORING_VERSION,
+		AIQ_TASK_SCORER_VERSION, AIQ_TASK_SET_VERSION, FalseOnly, OfficialCalibrationDiagnostic,
+		ScoreContext, ScoreOptions, ScoreReport, ScoreTier,
 	},
 	task::TaskDefinition,
 };
@@ -122,7 +123,7 @@ impl TestGeneratedPublicFixture {
 
 		for cell in &self.task_cells {
 			if cell.provenance != TEST_GENERATED_FIXTURE_PROVENANCE
-				|| cell.task_version != crate::scoring::AIQ_TASK_SCORER_VERSION
+				|| cell.task_version != AIQ_TASK_SET_VERSION
 				|| !cell.task_score.is_finite()
 				|| !(0.0..=1.0).contains(&cell.task_score)
 			{
@@ -155,7 +156,7 @@ impl TestGeneratedPublicFixture {
 			.iter()
 			.any(|id| task_keys_per_matrix.get(id).is_none_or(|keys| keys != &expected_task_keys))
 		{
-			return Err(error("each generated model must cover the exact 1.0.6 task set"));
+			return Err(error("each generated model must cover the exact 1.0.7 task set"));
 		}
 
 		for row in &self.leaderboard {
@@ -311,7 +312,7 @@ pub fn generate_test_generated_public_fixture()
 	let tasks = runner::synthetic_demo_tasks();
 
 	if tasks.len() != 72 {
-		return Err(error("the frozen 1.0.6 fixture task shape is not 72 tasks"));
+		return Err(error("the frozen 1.0.7 fixture task shape is not 72 tasks"));
 	}
 
 	let results = generated_matrix_results(&tasks)?;
@@ -333,7 +334,7 @@ pub fn generate_test_generated_public_fixture()
 		&tasks,
 		&results,
 		&"1".repeat(64),
-		scoring::AIQ_TASK_SCORER_VERSION,
+		AIQ_TASK_SCORER_VERSION,
 		&task_set_digest,
 		&evaluator_digest,
 	)

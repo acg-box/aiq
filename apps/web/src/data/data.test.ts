@@ -218,7 +218,7 @@ function runSummaryRow(index = 0): RunRow {
     matrix_id: 'sol-low',
     started_at: '2026-08-04T12:00:00.000Z',
     completed_at: '2026-08-04T12:30:00.000Z',
-    benchmark_version: 'aiq-core@1.0.6',
+    benchmark_version: 'aiq-core@1.0.7',
     scoring_version: '1.0.7',
     prompt_set_digest: `sha256:${'1'.repeat(64)}`,
     runner_commit: 'abcdef0',
@@ -270,6 +270,9 @@ function runResultRow(runId: string, index = 1): RunResultRow {
     explanation_summary: null,
     retryable: null,
     tools: [],
+    agent_steps: 0,
+    tool_call_count: 0,
+    tool_calls_by_type: {},
     latency_ms: 1,
     latency_evidence_level: 'runner_observed',
     input_tokens: null,
@@ -847,8 +850,8 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.6');
-    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.6');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.7');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.7');
     for (const run of seedRuns.filter(
       (candidate) =>
         candidate.synthetic &&
@@ -868,6 +871,9 @@ void describe('presentation aggregates', () => {
         .flatMap((run) => run.tasks)
         .every(
           (task) =>
+            task.agentSteps === 0 &&
+            task.toolCallCount === 0 &&
+            Object.keys(task.toolCallsByType).length === 0 &&
             task.latencyMs === null &&
             task.latencyEvidenceLevel === null &&
             task.inputTokens === null &&
@@ -1175,7 +1181,7 @@ void describe('presentation aggregates', () => {
       modelFamily: 'sol',
       reasoningEffort: 'low',
     });
-    assert.equal(detail?.results[0]?.taskVersion, '1.0.6');
+    assert.equal(detail?.results[0]?.taskVersion, '1.0.7');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -1653,6 +1659,15 @@ void describe('presentation aggregates', () => {
     const malformedResults = [
       { ...result, input_tokens: -1 },
       { ...result, unexpected: true },
+      { ...result, agent_steps: -1 },
+      { ...result, tool_call_count: 1 },
+      { ...result, tools: ['command_execution'], tool_calls_by_type: {} },
+      {
+        ...result,
+        tools: ['command_execution'],
+        tool_call_count: 1,
+        tool_calls_by_type: { command_execution: 2 },
+      },
       { ...result, task_id: 'debugging-01' },
       { ...result, task_id: 'coding-09' },
       { ...result, pricing_digest: `sha256:${'2'.repeat(64)}` },
@@ -1750,7 +1765,7 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.6',
+          task_version: '1.0.7',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
@@ -2622,7 +2637,7 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.6',
+      benchmark_version: 'aiq-core@1.0.7',
       scoring_version: '1.0.7',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',
@@ -2738,6 +2753,9 @@ void describe('presentation aggregates', () => {
       explanation_summary: 'The evaluator rejected the response.',
       retryable: null,
       tools: [],
+      agent_steps: 0,
+      tool_call_count: 0,
+      tool_calls_by_type: {},
       latency_ms: 1_500,
       latency_evidence_level: 'runner_observed',
       input_tokens: null,
@@ -2762,7 +2780,8 @@ void describe('presentation aggregates', () => {
       execution_status: 'runtime_issue',
       score: null,
       explanation_code: 'timeout',
-      explanation_summary: 'The task exceeded its time limit.',
+      explanation_summary:
+        'Execution ended at an external runtime or safety boundary; no semantic score was assigned.',
       retryable: true,
     };
     const budgetExceeded: RunResultRow = {
@@ -2774,7 +2793,8 @@ void describe('presentation aggregates', () => {
       execution_status: 'runtime_issue',
       score: null,
       explanation_code: 'budget_exceeded',
-      explanation_summary: 'The task exceeded a resource budget.',
+      explanation_summary:
+        'Execution ended at a non-scoring safety or provider boundary; no semantic score was assigned.',
       retryable: false,
     };
 
@@ -2786,12 +2806,14 @@ void describe('presentation aggregates', () => {
     });
     assert.deepEqual(tasks[1]?.explanation, {
       code: 'timeout',
-      summary: 'The task exceeded its time limit.',
+      summary:
+        'Execution ended at an external runtime or safety boundary; no semantic score was assigned.',
       retryable: true,
     });
     assert.deepEqual(tasks[2]?.explanation, {
       code: 'budget_exceeded',
-      summary: 'The task exceeded a resource budget.',
+      summary:
+        'Execution ended at a non-scoring safety or provider boundary; no semantic score was assigned.',
       retryable: false,
     });
   });

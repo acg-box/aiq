@@ -1033,7 +1033,7 @@ function hasValidTerminalAttemptLineage(lineage: unknown, results: unknown[]): b
         'terminal_result_ids',
       ]) ||
       typeof entry.task_id !== 'string' ||
-      entry.task_version !== '1.0.6' ||
+      entry.task_version !== '1.0.7' ||
       typeof entry.selected_result_id !== 'string' ||
       !Array.isArray(entry.terminal_result_ids) ||
       entry.terminal_result_ids.length !== 1 ||

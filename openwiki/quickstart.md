@@ -14,7 +14,7 @@ contains:
 - a Rust runner for capability checks, task execution, scoring, signing, and
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
-- an active public AIQ Core `aiq-core@1.0.6` candidate, with 72 private-task
+- an active public AIQ Core `aiq-core@1.0.7` candidate, with 72 private-task
   identities, a public catalog, and scoring `1.0.7`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
@@ -22,43 +22,20 @@ contains:
 The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
-The active public candidate, task, and scorer contract is `1.0.6`. All 72 model
-tasks use `wall_seconds: null`; capacity admission records nullable model and
-end-to-end bounds rather than claiming a schedule fit. Five interaction tasks
-retain revised step and tool-call limits and the other 67 retain their accepted
-limits. Prompt,
-evaluator, semantic scoring, and tool permissions remain unchanged. The
-public catalog is deterministic and identity-frozen. Independent no-deadline
-Core and Contrast A/B seals and both model-free validators produced the current
-72-task database commitment. Re-seal once from the final clean identity commit
-before the focused canary. The focused canary, full calibration, native build verification, a real
-Official run, publication, and final deployment are pending. The only production
-tuple is AIQ Core `1.0.6`, scoring `1.0.7`, and measurement `2.0.0`. Production
-must not publish an Official matrix until the new real package passes verification.
+The active tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer
+`1.0.7`, and measurement `2.0.0`. Every formal calibration and Official task
+uses `wall_seconds: null`, `max_steps: null`, and `max_tool_calls: null`.
+Capacity planning does not claim a time fit. The runner still records elapsed
+time, agent steps, tool calls by type, tokens, and estimated cost. These values
+are auxiliary evidence only and cannot change any semantic score, AIQ value,
+interval, status, or ranking.
 
-The `1.0.3` Official attempt was interrupted after an already-conclusive
-ceiling failure. It was rejected as unpublished calibration evidence. No hidden
-responses or hidden task details were published. The first `1.0.4` calibration
-completed all 1,224 cells but failed the statistical release gate. Preserve it
-as non-Official evidence; do not describe it as 1,224 failed executions. For
-`1.0.6`, rerun the two Sol ultra cells that reached the old wall deadline as a
-focused no-deadline canary before the complete 17-by-72 non-Official
-calibration. An operator cannot
-override a failed release gate. Real calibration stays non-Official until the
-signed verifier and distinct-publisher admission flow accepts it into the
-calibration register, and it remains non-Official after acceptance.
-
-The first `1.0.5` pilot completed 63 of 68 selected cells and recorded five
-timeouts. Completed means ranged from 0.933 to 0.992, so the pilot rejected the
-task set as saturated. A later interaction pilot exposed seven timeouts and
-three tool-budget failures at the shared 900-second, 40-step, and 28-tool-call
-envelope. A later 17-by-5 pilot completed 83 semantic cells and recorded two Sol
-ultra wall-time failures. AIQ Core `1.0.6` removes the model wall deadline from
-all tasks while keeping step and tool-call limits. Elapsed time, tokens, tool
-use, and cost remain independent efficiency evidence and never alter AIQ or its
-statistical diagnostics. Old deadline evidence cannot be relabeled or mixed
-with the new corpus. The checked-in database task-set and task-commitment
-identities now describe the validated no-deadline task and fixture bindings.
+The public catalog is deterministic and identity-frozen. Fresh independent
+Core and Contrast A/B seals, a complete 17-by-72 calibration, fixed-bank
+admission, final native build verification, a separate complete Official run,
+publication, and deployment are pending. Earlier bounded runs remain immutable
+failed release evidence and cannot be relabeled or combined with selected
+reruns. An operator cannot override a failed release gate.
 
 ## Deployment status
 
@@ -131,12 +108,12 @@ cargo run -p aiq-runner -- validate \
 cargo run -p aiq-runner -- validate-core-corpus --help
 cargo run -p aiq-runner -- validate-contrast-corpus --help
 cargo run -p aiq-runner -- seal-corpus --help
-cargo make fmt-check
-cargo make check
-cargo make lint
-cargo make test
-cargo make build
+cargo make verify
 ```
+
+On a fresh host, install Chromium, Firefox, and WebKit through the pinned
+Playwright package before `verify`. The gate builds Web once and includes the
+local production contract. Run a component task only to diagnose a failure.
 
 The opt-in subscription smokes each consume one Codex subscription attempt:
 
@@ -169,7 +146,7 @@ cargo make init-database
 
 For an empty AIQ namespace, after the controlled corpus passes model-free
 validation and the operator verifies the final native build, the separately
-controlled reference must contain a non-synthetic AIQ Core `1.0.6` corpus
+controlled reference must contain a non-synthetic AIQ Core `1.0.7` corpus
 commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
 Initialization can start only after one real signed non-synthetic 17-by-72
@@ -178,19 +155,19 @@ receipt must contain scoring `1.0.7`, 72 tasks, 17 model configurations, three n
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is
-`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`;
-the release-policy identity is `aiq-core/1.0.6`, and its public catalog
+`sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`;
+the release-policy identity is `aiq-core/1.0.7`, and its public catalog
 release-identity digest is
-`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the current no-deadline public-safe database task-set identity is
-`sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`,
+`sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`,
 and its task-commitment manifest identity is
-`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
-Independent A/B sealing and model-free validation produced both. Re-seal from
-the final clean identity commit before the focused canary. Final controlled
-corpus identities remain calibration candidates. The shared
+`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
+These are checked-in pre-seal bindings. Fresh A/B sealing and model-free
+validation from the final clean identity commit must establish the controlled
+corpus identities. The shared
 Rust validator fails closed unless
 `runner.identity_kind` is `source_only` and `runner.built_binary_sha256` is
 null. The checked Core schema enforces the same rule. Contrast has equivalent

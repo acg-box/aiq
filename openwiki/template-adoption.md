@@ -32,19 +32,17 @@ Review each result against source authority. Do not replace real product values
 with generic examples. Do not add deployment resources, secrets, schedules, or
 automation only to remove a marker.
 
-The source-head public constants include AIQ Core `1.0.6` and scoring version `1.0.7`,
+The source-head public constants include AIQ Core `1.0.7`, task scorer `1.0.6`,
+and aggregate scoring version `1.0.7`,
 72 tasks, 17 model configurations, three production identities, ordered
 task-metadata digest
-`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
-release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
-The public catalog is deterministic and identity-frozen. Independent
-no-deadline Core and Contrast A/B seals produced the current database task and
-fixture commitments. One final clean-source seal remains before the focused
-canary. Final controlled corpus identities remain calibration candidates. The first
-`1.0.4` 1,224-cell calibration is preserved as non-Official failed statistical
-evidence, not as an all-execution failure. The `1.0.6` sequence requires a
-focused no-deadline canary before the full 17-by-72 calibration. Final
-native build verification, a real Official run, publication, and final
-deployment remain pending. The sole production tuple is AIQ Core `1.0.6`,
-scoring `1.0.7`, and measurement `2.0.0`; no legacy fallback is supported.
+`sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
+release-policy identity `aiq-core/1.0.7`, and public release digest
+`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
+The public catalog is deterministic and identity-frozen. Fresh Core and
+Contrast A/B seals, a full 17-by-72 calibration, fixed-bank admission, final
+native build verification, a separate real Official run, publication, and
+deployment remain pending. All formal tasks have null wall-time, step, and
+tool-call limits; measured usage is auxiliary only. The sole production tuple
+is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer `1.0.7`, and
+measurement `2.0.0`; no legacy fallback is supported.

@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 import { resolvePlaywrightCompanionPort, resolvePlaywrightPort } from './playwright-port.ts';
+import { nextWebServerCommand } from './playwright-web-server.ts';
 
 const applicationPort = resolvePlaywrightPort(4_177, process.env.AIQ_PLAYWRIGHT_PORT);
 const supabasePort = resolvePlaywrightCompanionPort(applicationPort);
@@ -23,7 +24,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${supabasePort}/health`,
     },
     {
-      command: `npm run build && npm run start -- --hostname 127.0.0.1 --port ${applicationPort}`,
+      command: nextWebServerCommand(applicationPort),
       env: {
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_live_empty_fixture',
         NEXT_PUBLIC_SUPABASE_URL: `http://127.0.0.1:${supabasePort}`,

@@ -101,7 +101,7 @@ function run(family: ModelFamily, tier: ReasoningTier): BenchmarkRunSummary {
     entryId: id,
     startedAt: '2026-08-04T00:00:00.000Z',
     completedAt: '2026-08-04T00:01:00.000Z',
-    benchmarkVersion: 'aiq-core@1.0.6',
+    benchmarkVersion: 'aiq-core@1.0.7',
     scoringVersion: '1.0.7',
     promptSetDigest: 'sha256:test',
     runnerCommit: 'test',

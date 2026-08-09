@@ -93,10 +93,10 @@ pub enum Visibility {
 pub struct TaskBudgets {
 	/// Maximum Codex adapter elapsed time. `None` means that task execution has no deadline.
 	pub wall_seconds: Option<u64>,
-	/// Maximum agent steps.
-	pub max_steps: u32,
-	/// Maximum tool calls.
-	pub max_tool_calls: u32,
+	/// Maximum agent steps. `None` means that steps are measured but do not terminate the task.
+	pub max_steps: Option<u32>,
+	/// Maximum tool calls. `None` means that calls are measured but do not terminate the task.
+	pub max_tool_calls: Option<u32>,
 }
 
 /// Evaluator declaration.
@@ -379,11 +379,23 @@ impl TaskDefinition {
 				"must be null or greater than zero",
 			));
 		}
-		if self.budgets.max_steps == 0 {
+		if self.budgets.max_steps == Some(0) {
 			issues.push(ValidationIssue::field(
 				"budgets.max_steps",
 				"invalid_budget",
 				"must be greater than zero",
+			));
+		}
+		if self.visibility == Visibility::Hidden
+			&& self.task_version == "1.0.7"
+			&& (self.budgets.wall_seconds.is_some()
+				|| self.budgets.max_steps.is_some()
+				|| self.budgets.max_tool_calls.is_some())
+		{
+			issues.push(ValidationIssue::field(
+				"budgets",
+				"formal_usage_limit",
+				"AIQ Core 1.0.7 formal tasks must measure wall time, steps, and tool calls without benchmark termination limits",
 			));
 		}
 
@@ -790,7 +802,7 @@ pub(crate) fn is_fixture_reference(value: &str) -> bool {
 
 	for scheme in ["aiq-controlled-fixture://", "aiq-controlled-acceptance://"] {
 		if let Some(reference) = value.strip_prefix(scheme)
-			&& let Some(task_id) = reference.strip_prefix("aiq-core/1.0.6/")
+			&& let Some(task_id) = reference.strip_prefix("aiq-core/1.0.7/")
 		{
 			return is_task_id(task_id);
 		}
@@ -988,7 +1000,11 @@ mod tests {
 			difficulty: "easy".to_owned(),
 			prompt: "Return OK.".to_owned(),
 			allowed_tools: vec!["none".to_owned()],
-			budgets: TaskBudgets { wall_seconds: Some(30), max_steps: 4, max_tool_calls: 2 },
+			budgets: TaskBudgets {
+				wall_seconds: Some(30),
+				max_steps: Some(4),
+				max_tool_calls: Some(2),
+			},
 			tags: vec!["fixture".to_owned()],
 			cluster_id: Some("coding-cluster-01".to_owned()),
 			catalog_entry_digest: None,
@@ -1028,6 +1044,29 @@ mod tests {
 		assert!(task.validation_issues().iter().any(|issue| {
 			issue.field.as_deref() == Some("budgets.wall_seconds") && issue.code == "invalid_budget"
 		}));
+	}
+
+	#[test]
+	fn hidden_1_0_7_tasks_reject_every_numeric_formal_execution_limit() {
+		let mut task = fixture();
+
+		task.task_version = "1.0.7".to_owned();
+		task.visibility = Visibility::Hidden;
+		task.budgets = TaskBudgets { wall_seconds: None, max_steps: None, max_tool_calls: None };
+
+		assert!(!task.validation_issues().iter().any(|issue| issue.code == "formal_usage_limit"));
+
+		for budgets in [
+			TaskBudgets { wall_seconds: Some(1), max_steps: None, max_tool_calls: None },
+			TaskBudgets { wall_seconds: None, max_steps: Some(1), max_tool_calls: None },
+			TaskBudgets { wall_seconds: None, max_steps: None, max_tool_calls: Some(1) },
+		] {
+			task.budgets = budgets;
+
+			assert!(task.validation_issues().iter().any(|issue| {
+				issue.field.as_deref() == Some("budgets") && issue.code == "formal_usage_limit"
+			}));
+		}
 	}
 
 	#[test]
@@ -1166,8 +1205,8 @@ mod tests {
 
 		for reference in [
 			"repo://benchmarks/examples/tasks/public-example-coding.json",
-			"aiq-controlled-fixture://aiq-core/1.0.6/coding-01",
-			"aiq-controlled-acceptance://aiq-core/1.0.6/coding-01",
+			"aiq-controlled-fixture://aiq-core/1.0.7/coding-01",
+			"aiq-controlled-acceptance://aiq-core/1.0.7/coding-01",
 		] {
 			assert!(super::is_fixture_reference(reference), "{reference:?} must be accepted");
 		}
