@@ -18,11 +18,11 @@ and its public release digest is
 `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The public catalog is deterministic and identity-frozen. The prior controlled
 tree and database commitment bind the retired bounded policy. Fresh independent
-Core and Contrast sealing, full calibration, fixed-bank admission, final native
-build verification, a separate real Official run, publication, and final
-deployment are pending. The only production tuple is AIQ Core `1.0.7`, task
-scorer `1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. Do not treat
-the source-head change as a deployment claim.
+Core and Contrast sealing, policy-v2 replay of the retained complete calibration,
+fixed-bank admission v3, final native build verification, a separate real
+Official run, publication, and final deployment are pending. The only production
+tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer `1.0.8`, and
+measurement `2.0.0`. Do not treat the source-head change as a deployment claim.
 
 All 72 formal model tasks have null wall-time, step, and tool-call limits. Time,
 steps, tool calls, tokens, and cost remain auxiliary evidence only. Earlier
@@ -38,16 +38,16 @@ legacy matrix as production evidence. It is not a fallback.
 
 The order below is intentional:
 
-1. Complete the full 17-by-72 non-Official calibration with the final native
-   runner/verifier inputs. Derive and admit the fixed bank. Only after its
-   release gate passes, execute the controlled 17-by-72 Official run, score it
-   with AIQ measurement `2.0.0`, and create one signed result package. Keep the
-   package and all private inputs outside Git.
+1. Replay the retained complete 1.0.7 calibration package without model calls.
+   Derive and sign the policy-v2 fixed bank and admission v3. Only after this
+   gate passes, execute the controlled 17-by-72 Official run, score it with AIQ
+   measurement `2.0.0`, and create one signed result package. Keep the package
+   and all private inputs outside Git.
 2. Before changing production, run the real native verifier against that exact
    package. The verifier must exit successfully and create a new normalized
-   stage, verifier attestation, and Official admission output. A submission
-   queue receipt, a synthetic fixture, or a hand-written JSON summary is not
-   evidence of this gate.
+   stage and verifier attestation while consuming the approved calibration
+   admission v3. A submission queue receipt, a synthetic fixture, or a
+   hand-written JSON summary is not evidence of this gate.
 3. An ordinary provider backup is optional. It is not a reset manifest,
    migration input, compatibility source, publication gate, or reason to delay
    the reset.
@@ -63,7 +63,95 @@ The order below is intentional:
    Otherwise keep the new state unpublished. Do not fall back to a legacy
    publication.
 
-### Offline package gate
+### Calibration admission gate
+
+This command replays the retained signed calibration package and all 1,224
+deterministic evaluators. It does not call a model. The replay inputs keep their
+original package, corpus, environment, and artifact identities. The admission
+inputs bind the final current source, corpus, binaries, and production authority.
+
+```sh
+set -eu
+: "${AIQ_VERIFIER_SIGNING_KEY:?load the protected production verifier key}"
+: "${AIQ_PRODUCTION_REFERENCE:?set the final production-reference.json path}"
+
+AIQ_CALIBRATION_PACKAGE='/controlled/aiq-2/calibration/result-package.json'
+AIQ_CALIBRATION_ARTIFACT_ROOT='/controlled/aiq-2/calibration/artifacts'
+AIQ_CALIBRATION_TASKS='/controlled/aiq-2/calibration/corpus/tasks'
+AIQ_CALIBRATION_ENVIRONMENT='/controlled/aiq-2/calibration/verifier-environment.json'
+AIQ_CALIBRATION_EVALUATOR_ROOT='/controlled/aiq-2/calibration/corpus/evaluator'
+AIQ_CALIBRATION_CORPUS='/controlled/aiq-2/calibration/corpus/commitment.json'
+AIQ_CALIBRATION_RUNTIME='/controlled/aiq-2/calibration/corpus/toolchain/node'
+AIQ_CALIBRATION_TOOLCHAIN='/controlled/aiq-2/calibration/corpus/toolchain'
+AIQ_CALIBRATION_REPLAY_ROOT='/controlled/aiq-2/calibration/policy-v2-replay'
+
+AIQ_FINAL_TASKS='/controlled/aiq-2/final-corpus/tasks'
+AIQ_FINAL_ENVIRONMENT='/controlled/aiq-2/final-admission-environment.json'
+AIQ_FINAL_EVALUATOR_ROOT='/controlled/aiq-2/final-corpus/evaluator'
+AIQ_FINAL_CORPUS='/controlled/aiq-2/final-corpus/commitment.json'
+AIQ_FINAL_RUNTIME='/controlled/aiq-2/final-corpus/toolchain/node'
+AIQ_FINAL_TOOLCHAIN='/controlled/aiq-2/final-corpus/toolchain'
+AIQ_FINAL_SOURCE_ROOT='/controlled/aiq-2/final-detached-source'
+AIQ_FINAL_SOURCE_COMMIT='<40-character-final-source-commit>'
+AIQ_FINAL_SOURCE_TREE='<40-character-final-source-tree>'
+AIQ_FINAL_RUNNER='/controlled/aiq-2/bin/aiq-runner'
+AIQ_FINAL_VERIFIER='/controlled/aiq-2/bin/aiq-verifier'
+AIQ_FINAL_CODEX='/controlled/aiq-2/codex-runtime/codex'
+AIQ_FINAL_BUILD_RECEIPT='/controlled/aiq-2/final-build-receipt.json'
+AIQ_FINAL_REFERENCE_SHA256='<sha256-of-production-reference-file>'
+AIQ_FINAL_BUILD_RECEIPT_SHA256='<sha256-of-final-build-receipt-file>'
+AIQ_CALIBRATION_STAGE='/controlled/aiq-2/calibration/policy-v2-stage.json'
+AIQ_CALIBRATION_ATTESTATION='/controlled/aiq-2/calibration/policy-v2-attestation.json'
+AIQ_CALIBRATION_ADMISSION='/controlled/aiq-2/calibration-admission-v3.json'
+
+test "$(git -C "$AIQ_FINAL_SOURCE_ROOT" rev-parse HEAD)" = "$AIQ_FINAL_SOURCE_COMMIT"
+test "$(git -C "$AIQ_FINAL_SOURCE_ROOT" rev-parse HEAD^{tree})" = "$AIQ_FINAL_SOURCE_TREE"
+test -z "$(git -C "$AIQ_FINAL_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all)"
+! git -C "$AIQ_FINAL_SOURCE_ROOT" symbolic-ref -q HEAD
+
+"$AIQ_FINAL_VERIFIER" verify-local \
+  --package "$AIQ_CALIBRATION_PACKAGE" \
+  --artifact-root "$AIQ_CALIBRATION_ARTIFACT_ROOT" \
+  --tasks "$AIQ_CALIBRATION_TASKS" \
+  --environment "$AIQ_CALIBRATION_ENVIRONMENT" \
+  --evaluator-root "$AIQ_CALIBRATION_EVALUATOR_ROOT" \
+  --corpus-commitment "$AIQ_CALIBRATION_CORPUS" \
+  --evaluator-runtime "$AIQ_CALIBRATION_RUNTIME" \
+  --codex-toolchain-root "$AIQ_CALIBRATION_TOOLCHAIN" \
+  --replay-root "$AIQ_CALIBRATION_REPLAY_ROOT" \
+  --replay-jobs 32 \
+  --signing-key-env AIQ_VERIFIER_SIGNING_KEY \
+  --observed-unix-ms "$(date +%s000)" \
+  --stage-output "$AIQ_CALIBRATION_STAGE" \
+  --attestation-output "$AIQ_CALIBRATION_ATTESTATION" \
+  --calibration-source-1-0-7 \
+  --admission-output "$AIQ_CALIBRATION_ADMISSION" \
+  --admission-tasks "$AIQ_FINAL_TASKS" \
+  --admission-environment "$AIQ_FINAL_ENVIRONMENT" \
+  --admission-evaluator-root "$AIQ_FINAL_EVALUATOR_ROOT" \
+  --admission-corpus-commitment "$AIQ_FINAL_CORPUS" \
+  --admission-evaluator-runtime "$AIQ_FINAL_RUNTIME" \
+  --admission-codex-toolchain-root "$AIQ_FINAL_TOOLCHAIN" \
+  --admission-source-root "$AIQ_FINAL_SOURCE_ROOT" \
+  --admission-runner-binary "$AIQ_FINAL_RUNNER" \
+  --admission-codex-binary "$AIQ_FINAL_CODEX" \
+  --production-reference "$AIQ_PRODUCTION_REFERENCE" \
+  --expected-production-reference-sha256 "$AIQ_FINAL_REFERENCE_SHA256" \
+  --build-receipt "$AIQ_FINAL_BUILD_RECEIPT" \
+  --expected-build-receipt-sha256 "$AIQ_FINAL_BUILD_RECEIPT_SHA256"
+
+test -s "$AIQ_CALIBRATION_STAGE"
+test -s "$AIQ_CALIBRATION_ATTESTATION"
+test -s "$AIQ_CALIBRATION_ADMISSION"
+```
+
+All three outputs and the replay root must be fresh. Do not reuse a failed output
+path. `AIQ_FINAL_SOURCE_ROOT` must be a clean detached Git worktree, not the
+corpus `source-snapshot` directory. The signing key value is never written to an
+artifact. The verifier signs and then self-verifies admission v3 before it
+installs any output.
+
+### Offline Official package gate
 
 Use the canonical verifier, not a second TypeScript implementation of package
 cryptography. Set the following paths to the exact artifacts from the new run:
@@ -86,7 +174,7 @@ AIQ_2_CODEX_BINARY='/controlled/aiq-2/codex-runtime/codex'
 AIQ_2_BUILD_RECEIPT='/controlled/aiq-2/final-build-receipt.json'
 AIQ_2_STAGE_OUTPUT='/controlled/aiq-2/verified-stage.json'
 AIQ_2_ATTESTATION_OUTPUT='/controlled/aiq-2/verifier-attestation.json'
-AIQ_2_CALIBRATION_ADMISSION='/controlled/aiq-2/calibration-admission-v2.json'
+AIQ_2_CALIBRATION_ADMISSION='/controlled/aiq-2/calibration-admission-v3.json'
 AIQ_2_PRODUCTION_REFERENCE_SHA256='<sha256-of-production-reference-file>'
 AIQ_2_BUILD_RECEIPT_SHA256='<sha256-of-final-build-receipt-file>'
 
@@ -180,7 +268,7 @@ the Codex home or runner signing key. The first release does not depend on or ru
 Linux or Docker. They remain a future deployment target outside this handoff.
 
 This is one greenfield AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer
-`1.0.7`, measurement `2.0.0`
+`1.0.8`, measurement `2.0.0`
 state. The accepted publication is one complete `17 × 72 = 1,224` task-level
 result Official matrix, not 1,224 separate benchmark runs. The native macOS
 runner creates it, the native verifier replays it, and the distinct publisher

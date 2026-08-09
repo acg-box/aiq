@@ -36,7 +36,7 @@
     "ranking_eligible": { "const": false },
     "synthetic": { "const": true },
     "benchmark_version": { "const": "aiq-core@1.0.7" },
-    "scoring_version": { "const": "1.0.7" },
+    "scoring_version": { "const": "1.0.8" },
     "measurement_version": { "const": "2.0.0" },
     "matrix_batch_id": {
       "type": "string",
@@ -170,7 +170,7 @@
         "coverage_percent": { "const": 100 },
         "runtime_issues": { "const": 0 },
         "missing": { "const": 0 },
-        "scoring_version": { "const": "1.0.7" },
+        "scoring_version": { "const": "1.0.8" },
         "score_status": { "const": "official" },
         "synthetic": { "const": false }
       }
@@ -211,7 +211,7 @@
       "properties": {
         "matrix_id": { "$ref": "#/$defs/matrixId" },
         "run_id": { "$ref": "#/$defs/runId" },
-        "scoring_version": { "const": "1.0.7" },
+        "scoring_version": { "const": "1.0.8" },
         "recorded_at": { "type": "string", "format": "date-time" },
         "bucket_started_at": { "type": "string", "format": "date-time" },
         "bucket_ended_at": { "type": "string", "format": "date-time" },
@@ -260,7 +260,7 @@
       "additionalProperties": false,
       "required": ["policy_version", "passed", "violations"],
       "properties": {
-        "policy_version": { "const": "aiq.official-calibration-policy.v1" },
+        "policy_version": { "const": "aiq.official-calibration-policy.v2" },
         "passed": { "const": true },
         "violations": { "type": "array", "maxItems": 0 }
       }

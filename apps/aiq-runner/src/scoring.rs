@@ -29,7 +29,7 @@ type CalibrationStatisticsEvidence<'a> =
 	(CalibrationTaskStatistics<'a>, UniversalCalibrationCounts);
 
 /// Current scoring implementation version.
-pub const AIQ_SCORING_VERSION: &str = "1.0.7";
+pub const AIQ_SCORING_VERSION: &str = "1.0.8";
 /// Frozen task-level evaluator contract. Aggregate ability scoring and task-set
 /// execution semantics are versioned independently.
 pub const AIQ_TASK_SCORER_VERSION: &str = "1.0.6";
@@ -39,7 +39,7 @@ pub const AIQ_TASK_SCORER_VERSION: &str = "1.0.6";
 pub const AIQ_MEASUREMENT_VERSION: &str = "2.0.0";
 /// Calibrated latent-trait estimator used for Official ranking.
 pub const LATENT_ABILITY_METHOD: &str = "rasch_fractional_fixed_bank_map_v2";
-/// Canonical frozen item-bank schema embedded in calibration admission v2.
+/// Canonical frozen item-bank schema embedded in calibration admission v3.
 pub const CALIBRATION_BANK_SCHEMA_VERSION: &str = "aiq.calibration-bank.v2";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
@@ -55,7 +55,7 @@ pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
 pub const DEFAULT_BOOTSTRAP_SEED: u64 = 0x41_49_51_5f_56_32;
 /// Fixed empirical publication-calibration policy identity.
-pub const OFFICIAL_CALIBRATION_POLICY_VERSION: &str = "aiq.official-calibration-policy.v1";
+pub const OFFICIAL_CALIBRATION_POLICY_VERSION: &str = "aiq.official-calibration-policy.v2";
 /// Complete fixed-fixture task count required by the calibration policy.
 pub const OFFICIAL_CALIBRATION_TASKS: usize = 72;
 /// Inclusive lower bound for an informative item's mean credit across the matrix.
@@ -64,7 +64,11 @@ pub const OFFICIAL_CALIBRATION_INFORMATIVE_FACILITY_MIN: f64 = 0.10;
 pub const OFFICIAL_CALIBRATION_INFORMATIVE_FACILITY_MAX: f64 = 0.90;
 /// Minimum across-model task-credit range for an informative item.
 pub const OFFICIAL_CALIBRATION_INFORMATIVE_TASK_RANGE_MIN: f64 = 0.10;
-/// Minimum fraction of tasks whose facility is in the informative band.
+/// Descriptive target for the fraction of tasks in the informative band.
+///
+/// Policy v2 reports this target and its observed rate but does not use the
+/// binary count as a publication gate. The fitted Rasch bank retains continuous
+/// item and test information instead.
 pub const OFFICIAL_CALIBRATION_MIN_INFORMATIVE_TASK_RATE: f64 = 0.50;
 /// Minimum fraction of tasks with non-uniform credit across configurations.
 pub const OFFICIAL_CALIBRATION_MIN_NON_UNIFORM_TASK_RATE: f64 = 0.50;
@@ -170,7 +174,7 @@ pub struct OfficialCalibrationPolicy {
 	pub informative_facility_max: f64,
 	/// Minimum across-model task-credit range for an informative item.
 	pub informative_task_range_min: f64,
-	/// Minimum informative-task fraction.
+	/// Descriptive informative-task fraction target; not a hard violation.
 	pub min_informative_task_rate: f64,
 	/// Minimum non-uniform-task fraction.
 	pub min_non_uniform_task_rate: f64,
@@ -282,7 +286,7 @@ pub struct OfficialCalibrationDiagnostic {
 	pub violations: Vec<String>,
 }
 impl OfficialCalibrationDiagnostic {
-	/// Whether the matrix meets every fixed policy threshold.
+	/// Whether the matrix meets every hard policy requirement.
 	#[must_use]
 	pub fn passed(&self) -> bool {
 		self.violations.is_empty()
@@ -578,7 +582,7 @@ pub struct CalibrationTaskParameter {
 	pub mean_item_information: f64,
 }
 
-/// Complete immutable item bank signed by calibration admission v2.
+/// Complete immutable item bank signed by calibration admission v3.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct FrozenCalibrationBankV2 {
@@ -2097,12 +2101,6 @@ fn calibration_violations(
 			policy.max_universal_full_credit_rate
 		));
 	}
-	if observed.informative_task_rate < policy.min_informative_task_rate {
-		violations.push(format!(
-			"informative-task rate {:.6} is below {:.6}",
-			observed.informative_task_rate, policy.min_informative_task_rate
-		));
-	}
 	if observed.non_uniform_task_rate < policy.min_non_uniform_task_rate {
 		violations.push(format!(
 			"non-uniform-task rate {:.6} is below {:.6}",
@@ -2853,7 +2851,7 @@ mod tests {
 	}
 
 	#[test]
-	fn official_calibration_requires_informative_items_domain_coverage_and_model_spread() {
+	fn official_calibration_keeps_informative_rate_descriptive() {
 		let tasks = official_tasks();
 		let mut uninformative = matrix_results(&tasks);
 
@@ -2865,9 +2863,83 @@ mod tests {
 		let diagnostic = scoring::diagnose_official_calibration(&tasks, &uninformative)
 			.expect("complete matrix");
 
-		assert!(diagnostic.violations.iter().any(|value| value.contains("informative-task")));
+		assert_eq!(diagnostic.observed.informative_task_rate, 0.0);
+		assert!(!diagnostic.violations.iter().any(|value| value.contains("informative-task")));
 		assert!(diagnostic.violations.iter().any(|value| value.contains("domain")));
 		assert!(diagnostic.violations.iter().any(|value| value.contains("model-score range")));
+	}
+
+	#[test]
+	fn informative_count_boundaries_do_not_create_a_global_publication_cliff() {
+		let tasks = official_tasks();
+		let mut results = matrix_results(&tasks);
+
+		for result in &mut results {
+			result.task_score = Some(if result.model == MODEL_MATRIX[0] {
+				0.454_545
+			} else if result.model == MODEL_MATRIX[16] {
+				0.545_455
+			} else {
+				0.5
+			});
+			result.evaluation = EvaluationOutcome::Partial;
+		}
+
+		let below_range =
+			scoring::diagnose_official_calibration(&tasks, &results).expect("complete matrix");
+
+		assert_eq!(below_range.observed.informative_tasks, 0);
+		assert!(!below_range.violations.iter().any(|value| value.contains("informative-task")));
+
+		for result in &mut results {
+			result.task_score = Some(if result.model == MODEL_MATRIX[0] {
+				0.45
+			} else if result.model == MODEL_MATRIX[16] {
+				0.55
+			} else {
+				0.5
+			});
+		}
+
+		let exact_range =
+			scoring::diagnose_official_calibration(&tasks, &results).expect("complete matrix");
+
+		assert_eq!(exact_range.observed.informative_tasks, 72);
+		assert!(!exact_range.violations.iter().any(|value| value.contains("informative-task")));
+
+		for result in &mut results {
+			result.task_score = Some(if result.model == MODEL_MATRIX[0] {
+				0.851_96
+			} else if result.model == MODEL_MATRIX[16] {
+				0.951_96
+			} else {
+				0.901_96
+			});
+		}
+
+		let above_facility =
+			scoring::diagnose_official_calibration(&tasks, &results).expect("complete matrix");
+
+		assert_eq!(above_facility.observed.informative_tasks, 0);
+		assert!(!above_facility.violations.iter().any(|value| value.contains("informative-task")));
+	}
+
+	#[test]
+	fn retained_complete_matrix_informative_counts_are_policy_continuous() {
+		let tasks = official_tasks();
+		let baseline = scoring::diagnose_official_calibration(&tasks, &matrix_results(&tasks))
+			.expect("complete matrix");
+
+		for informative_tasks in [32, 37] {
+			let mut observed = baseline.observed.clone();
+
+			observed.informative_tasks = informative_tasks;
+			observed.informative_task_rate = informative_tasks as f64 / observed.tasks as f64;
+
+			let violations = super::calibration_violations(&baseline.policy, &observed);
+
+			assert!(violations.is_empty(), "count {informative_tasks}: {violations:?}");
+		}
 	}
 
 	#[test]
