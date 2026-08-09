@@ -43,7 +43,7 @@ const MAX_TASK_ID_BYTES: usize = 64;
 const MAX_TASK_VERSION_BYTES: usize = 32;
 const MAX_RUNNER_VERSION_BYTES: usize = 32;
 const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
-const CALIBRATION_SOURCE_1_0_6_SCORING_VERSION: &str = "1.0.6";
+const CALIBRATION_SOURCE_1_0_7_SCORING_VERSION: &str = "1.0.7";
 
 /// A saved run failed semantic validation.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,12 +81,12 @@ pub fn validate_calibration_run_record_with_tasks(
 	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
 }
 
-/// Validates a promoted 1.0.6 calibration source without changing its signed run identity.
-pub fn validate_calibration_source_1_0_6_with_tasks(
+/// Validates a promoted 1.0.7 calibration source without changing its signed run identity.
+pub fn validate_calibration_source_1_0_7_with_tasks(
 	run: &CalibrationRunRecord,
 	tasks: &[TaskDefinition],
 ) -> Result<(), RunValidationError> {
-	validate_calibration_run_record_inner(run, true, CALIBRATION_SOURCE_1_0_6_SCORING_VERSION)?;
+	validate_calibration_run_record_inner(run, true, CALIBRATION_SOURCE_1_0_7_SCORING_VERSION)?;
 
 	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
 }

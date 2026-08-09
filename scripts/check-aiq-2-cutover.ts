@@ -8,21 +8,21 @@ export const AIQ_2_CUTOVER_QUERY = `
 with target_batches as (
   select matrix_batch_id
   from aiq_private.aiq_matrix_batches
-  where scoring_version = '1.0.7'
+  where scoring_version = '1.0.8'
     and not synthetic
     and published_at is not null
 ), target_runs as (
   select run.*
   from aiq_private.aiq_runs run
   join target_batches batch on batch.matrix_batch_id = run.matrix_batch_id
-  where run.scoring_version = '1.0.7'
+  where run.scoring_version = '1.0.8'
     and not run.synthetic
     and run.published
 ), target_scores as (
   select score.*, run.matrix_batch_id, run.synthetic
   from aiq_private.aiq_score_snapshots score
   join target_runs run on run.run_id = score.run_id
-  where score.scoring_version = '1.0.7'
+  where score.scoring_version = '1.0.8'
     and score.score_status = 'official'
     and score.published
 )
@@ -30,12 +30,12 @@ select json_build_object(
   'measurement_version', (
     select formula ->> 'measurement_version'
     from aiq_private.aiq_scoring_versions
-    where scoring_version = '1.0.7' and is_published
+    where scoring_version = '1.0.8' and is_published
   ),
   'measurement_method', (
     select formula ->> 'measurement_method'
     from aiq_private.aiq_scoring_versions
-    where scoring_version = '1.0.7' and is_published
+    where scoring_version = '1.0.8' and is_published
   ),
   'published_batches', (select count(distinct matrix_batch_id) from target_batches),
   'published_runs', (select count(distinct run_id) from target_runs),

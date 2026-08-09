@@ -21,7 +21,7 @@ The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
 Repository source has one active public contract: AIQ Core `1.0.7`, task scorer
-`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`, with task-metadata digest
+`1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`, with task-metadata digest
 `sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
 release-policy identity `aiq-core/1.0.7`, and public release digest
 `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
@@ -52,17 +52,17 @@ exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Codex executable, and Codex code-mode host. The offline native
 verifier validates the receipt against an independently supplied digest. It
 does not publish this reproducibility evidence. Node.js and ripgrep identities
-remain bound by the corpus. Full calibration, fixed-bank admission, native
-build verification, separate real Official execution, publication, and final
-deployment of `1.0.7` are pending. Earlier bounded runs remain immutable failed
-release evidence. Real calibration
+remain bound by the corpus. Policy-v2 replay of the retained complete
+calibration, fixed-bank admission v3, native build verification, separate real
+Official execution, publication, and final deployment of `1.0.7` are pending.
+Earlier bounded runs remain immutable failed release evidence. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
 The accepted production package must be non-synthetic. Its 1,224 task-level
 results are one 17-by-72 matrix, not 1,224 separate benchmark runs. The native
 verifier must replay the committed evaluators before the distinct publisher can
 complete publication. Production exposes only the AIQ Core `1.0.7`, task scorer
-`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0` matrix as
+`1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0` matrix as
 `trusted_verified`. No legacy matrix is a
 fallback. The outcome and efficiency semantics are detailed in [Benchmark
 Method](benchmark-method.md).
@@ -142,7 +142,7 @@ sequenceDiagram
     participant C as Codex CLI
     O->>R: Admit exact Official plan
     R->>R: Check policy canaries paths capacity and schedule
-    R-->>O: Private admission v2 receipt
+    R-->>O: Private Official permission-admission v2 receipt
     O->>R: Paid preflight with receipt
     R->>C: Probe exact 17-model capability matrix
     R-->>O: Receipt-bound preflight report
@@ -257,7 +257,7 @@ Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
 AIQ database. There is no migration chain. The pre-release desired state
-targets the public AIQ Core `1.0.7` catalog and aggregate scoring `1.0.7`.
+targets the public AIQ Core `1.0.7` catalog and aggregate scoring `1.0.8`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,

@@ -21,23 +21,25 @@ deployment-specific URL is intrinsic to its retained deployment. The current
 generated Vercel surfaces emit `noindex`.
 
 The only production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
-scorer `1.0.7`, and measurement `2.0.0`. Production must remain without an
-Official AIQ 2.0 publication until a fresh complete calibration establishes the
-fixed bank and a separate real signed 17-by-72 package passes native verifier replay. A
+scorer `1.0.8`, and measurement `2.0.0`. Production must remain without an
+Official AIQ 2.0 publication until the retained complete calibration is replayed
+without model calls to establish the fixed bank and a separate real signed
+17-by-72 package passes native verifier replay. A
 legacy publication is not a compatibility source or fallback. See [Benchmark
 Method](benchmark-method.md) for evidence semantics and [Deployment
 Handoff](deployment-handoff.md) for production acceptance checks.
 
 Repository source now targets the public AIQ Core `1.0.7` candidate. Its task
-scorer remains `1.0.6` and aggregate scorer is `1.0.7`. Its public metadata digest is
+scorer remains `1.0.6` and aggregate scorer is `1.0.8`. Its public metadata digest is
 `sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
 and its public release digest is
 `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The public catalog is deterministic and identity-frozen. The prior controlled
 tree and database commitment bind the retired bounded policy. Fresh independent
-Core and Contrast seals, full calibration, fixed-bank admission, a real Official run,
-publication, and final deployment are pending. This pre-release state does not
-claim that an Official production matrix is live.
+Core and Contrast seals, policy-v2 replay of the retained complete calibration,
+fixed-bank admission v3, a real Official run, publication, and final deployment
+are pending. This pre-release state does not claim that an Official production
+matrix is live.
 
 No cloud runner or verifier worker and no recurring benchmark or Storage
 schedule exist. The repository validates supplied schedule occurrences but does
@@ -110,7 +112,7 @@ Before a live run:
    the release-policy identity is `aiq-core/1.0.7`, and the public catalog
    release-identity digest is
    `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
-   Use the final clean-commit controlled regeneration for calibration.
+   Use the final clean-commit controlled regeneration for admission binding.
    Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
    task-commitment manifest, and Core corpus identities distinct. Generate the
    separate Contrast corpus before release admission. Do not substitute one
@@ -264,10 +266,11 @@ relabeled or mixed with the new corpus. All 72 formal model tasks use null
 wall-time, step, and tool-call limits. The runner still records usage as
 auxiliary evidence, and hard safety boundaries remain separate. Regenerate and
 revalidate the controlled catalog, task-commitment manifest, and evaluator
-bindings, then run the fresh full non-Official
-17-by-72 calibration. The full calibration must pass the release limits and the
-informative-task, non-uniform-task, domain, and model-spread checks. An operator
-cannot override a failure. The interrupted `1.0.3` Official attempt remains
+bindings. The complete current calibration already exists and is replayed
+without model calls. Policy v2 records the informative-task rate as a
+descriptive target. It keeps complete coverage, non-uniformity, universal floor
+and ceiling, domain, and model-spread checks as hard gates. An operator cannot
+override a hard-gate failure. The interrupted `1.0.3` Official attempt remains
 rejected, unpublished calibration evidence after an already-conclusive ceiling
 failure. Do not publish hidden responses or hidden task details. Real
 calibration remains permanently non-Official even after signed verifier
@@ -423,7 +426,7 @@ commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Retain the private final-build audit receipt separately; database
 initialization does not consume or validate it. Initialization validates the
 production-reference fields and bindings. The repository defines one greenfield
-desired state. The initialization receipt must report scoring `1.0.7`,
+desired state. The initialization receipt must report aggregate scoring `1.0.8`,
 both catalog identities, 72 tasks, 17 model configurations, three production
 nodes, 40 private tables with enabled and forced RLS, 12 security-invoker public
 views, and two hardened gateway roles. This one-shot behavior enforces the

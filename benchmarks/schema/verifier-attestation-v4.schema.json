@@ -80,7 +80,7 @@
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "const": "1.0.7"
+      "const": "1.0.8"
     },
     "verifier": {
       "$ref": "#/$defs/nodeIdentity"

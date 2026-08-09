@@ -58,9 +58,6 @@ jobs:
       - name: Run Rust tests
         run: cargo make test-rust
 
-      - name: Build Rust workspace
-        run: cargo make build-rust
-
   toml-check:
     name: TOML check
     runs-on: ubuntu-latest
