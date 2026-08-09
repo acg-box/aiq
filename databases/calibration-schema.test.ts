@@ -48,6 +48,9 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 void test('runs calibration against the production initializer catalog authority', () => {
   const catalogAuthority =
     schema.match(/create function aiq_private\.task_catalog_is_exact[\s\S]*?\n\$\$;/i)?.[0] ?? '';
+  const productionReadiness =
+    schema.match(/create function public\.aiq_production_reference_status[\s\S]*?\n\$\$;/i)?.[0] ??
+    '';
 
   assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.7'\)/);
   assert.match(calibrationIntegration, /'calibration_admission_digest',null/);
@@ -64,7 +67,11 @@ void test('runs calibration against the production initializer catalog authority
   );
   assert.match(
     catalogAuthority,
-    /frozen_catalog_identity_is_valid\([\s\S]*target_task_set_version, '1\.0\.7'/,
+    /frozen_catalog_identity_is_valid\([\s\S]*target_task_set_version, '1\.0\.8'/,
+  );
+  assert.match(
+    productionReadiness,
+    /frozen_catalog_identity_is_valid\([\s\S]*'aiq-core', '1\.0\.7', '1\.0\.8'/,
   );
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
