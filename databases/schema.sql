@@ -5866,7 +5866,7 @@ create function aiq_private.task_catalog_is_exact(target_task_set_id text, targe
         and task.task_set_version = target_task_set_version
     )
     else aiq_private.frozen_catalog_identity_is_valid(
-      target_task_set_id, target_task_set_version, '1.0.7'
+      target_task_set_id, target_task_set_version, '1.0.8'
     )
   end
   from aiq_private.aiq_task_sets task_set
@@ -7801,7 +7801,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.7', '1.0.7'
+        'aiq-core', '1.0.7', '1.0.8'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
