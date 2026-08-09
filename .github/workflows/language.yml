@@ -44,9 +44,6 @@ jobs:
       - name: Run Rust format check
         run: cargo make fmt-rust-check
 
-      - name: Run Rust check
-        run: cargo make check-rust
-
       - name: Run Rust style check
         uses: acg-box/vibe-style@3a0959eac5363c4c427382bae1d80d87ecadb702 # v0.2.3
         with:
@@ -120,8 +117,8 @@ jobs:
       - name: Run TypeScript format check
         run: cargo make fmt-typescript-check
 
-      - name: Run TypeScript check
-        run: cargo make check-typescript
+      - name: Check repository TypeScript
+        run: cargo make check-root-typescript
 
       - name: Run TypeScript lint
         run: cargo make lint-typescript
@@ -129,16 +126,13 @@ jobs:
       - name: Run TypeScript tests
         run: cargo make test-typescript
 
-      - name: Build web application
-        run: cargo make build-web
-
       - name: Install Playwright browsers
         run: >-
           npm exec --workspace @aiq/web --
           playwright install --with-deps chromium firefox webkit
 
-      - name: Run browser acceptance tests
-        run: npm run test:browser --workspace @aiq/web
+      - name: Build web once and run browser acceptance tests
+        run: cargo make test-browser
 
   database-check:
     name: Database check

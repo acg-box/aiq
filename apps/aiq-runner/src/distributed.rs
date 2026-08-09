@@ -1308,11 +1308,14 @@ fn validate_wire_task(task: &TaskDefinition) -> Result<(), DistributedError> {
 	if let Some(wall_seconds) = task.budgets.wall_seconds {
 		validate_safe_integer(wall_seconds, "Codex adapter elapsed-time budget")?;
 	}
+	if let Some(max_steps) = task.budgets.max_steps {
+		validate_safe_integer(max_steps.into(), "task step budget")?;
+	}
+	if let Some(max_tool_calls) = task.budgets.max_tool_calls {
+		validate_safe_integer(max_tool_calls.into(), "task tool-call budget")?;
+	}
 
-	validate_safe_integer(task.budgets.max_steps.into(), "task step budget")?;
-	validate_safe_integer(task.budgets.max_tool_calls.into(), "task tool-call budget")?;
-
-	if task.budgets.wall_seconds == Some(0) || task.budgets.max_steps == 0 {
+	if task.budgets.wall_seconds == Some(0) || task.budgets.max_steps == Some(0) {
 		return Err(DistributedError::new("task budgets must permit execution"));
 	}
 
@@ -1737,7 +1740,11 @@ mod tests {
 			difficulty: "easy".to_owned(),
 			prompt: "Return alpha.".to_owned(),
 			allowed_tools: vec!["none".to_owned()],
-			budgets: TaskBudgets { wall_seconds: Some(30), max_steps: 4, max_tool_calls: 0 },
+			budgets: TaskBudgets {
+				wall_seconds: Some(30),
+				max_steps: Some(4),
+				max_tool_calls: Some(0),
+			},
 			tags: vec!["fixture".to_owned()],
 			cluster_id: None,
 			catalog_entry_digest: None,

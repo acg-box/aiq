@@ -41,10 +41,10 @@ const CORE_OPTIONAL_CLASSES: [&str; 2] = ["empty", "timeout"];
 const CONTRAST_REQUIRED_CLASSES: [&str; 6] =
 	["challenge", "empty", "format", "near_miss", "reference", "tamper"];
 const NO_OPTIONAL_CLASSES: [&str; 0] = [];
-const CORE_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.6/catalog.json";
-const CONTRAST_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.6/contrast-catalog.json";
+const CORE_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.7/catalog.json";
+const CONTRAST_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.7/contrast-catalog.json";
 const SOURCE_INVENTORY: &str = "benchmarks/corpus-source-inventory-v1.json";
-const CATALOG_GENERATOR: &str = "scripts/candidates/aiq-core-1.0.6/generate-benchmark-catalog.ts";
+const CATALOG_GENERATOR: &str = "scripts/candidates/aiq-core-1.0.7/generate-benchmark-catalog.ts";
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Complete explicit inputs for one create-new seal.
@@ -481,7 +481,7 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 	let source_manifest_sha256 = protocol::canonical_hash(&source_manifest)?;
 	let generator_authority = GeneratorAuthority {
 		name: "aiq-core-catalog-generator",
-		version: "1.0.6",
+		version: "1.0.7",
 		toolchain_source: "repository_source",
 		source_path: CATALOG_GENERATOR,
 		source_sha256: raw_file_sha256_bounded(
@@ -863,7 +863,7 @@ fn write_authoring_documents(
 		"benchmarks/schema/corpus-seal-receipt-v1.schema.json",
 	];
 	let domain_schema_paths = [
-		"benchmarks/candidates/aiq-core-1.0.6/task.schema.json",
+		"benchmarks/candidates/aiq-core-1.0.7/task.schema.json",
 		options.corpus_kind.catalog_path(),
 		"benchmarks/schema/corpus-commitment-v2.schema.json",
 		"benchmarks/schema/leakage-review-v1.schema.json",
@@ -1467,7 +1467,7 @@ fn validate_catalog(
 
 	if catalog.schema_version != schema
 		|| catalog.task_set_id != id
-		|| catalog.task_set_version != "1.0.6"
+		|| catalog.task_set_version != "1.0.7"
 		|| catalog.tasks.len() != kind.task_count()
 	{
 		return Err("catalog does not match corpus kind".into());
@@ -1556,8 +1556,8 @@ fn validate_catalog_identity(
 }
 fn validate_fixture_refs(task: &TaskDefinition) -> Result<(), Box<dyn Error>> {
 	let expected = BTreeSet::from([
-		format!("aiq-controlled-fixture://aiq-core/1.0.6/{}", task.task_id),
-		format!("aiq-controlled-acceptance://aiq-core/1.0.6/{}", task.task_id),
+		format!("aiq-controlled-fixture://aiq-core/1.0.7/{}", task.task_id),
+		format!("aiq-controlled-acceptance://aiq-core/1.0.7/{}", task.task_id),
 	]);
 
 	if task.fixture_refs.iter().cloned().collect::<BTreeSet<_>>() != expected
@@ -1810,7 +1810,7 @@ mod tests {
 		let first = LeakageReview {
 			schema_version: "aiq.leakage-review.v1",
 			task_id: "coding-01",
-			task_version: "1.0.6",
+			task_version: "1.0.7",
 			reviewed: true,
 			status: "reviewed",
 			leakage_notes: &first_notes,
@@ -1922,7 +1922,7 @@ mod tests {
 
 		let commitment = corpus_seal::TaskCommitment {
 			task_id: "task-1".to_owned(),
-			task_version: "1.0.6".to_owned(),
+			task_version: "1.0.7".to_owned(),
 			task_definition_sha256: "unused".to_owned(),
 			baseline_workspace_tree_sha256: "unused".to_owned(),
 			fixture_bundle_sha256: protocol::canonical_hash(
