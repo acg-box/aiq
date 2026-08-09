@@ -77,6 +77,21 @@ void test('runs calibration against the production initializer catalog authority
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
 });
 
+void test('stages current task evidence under aggregate scoring 1.0.8', () => {
+  const stageVerifier =
+    schema.match(/create function aiq_private\.stage_verifier_result_core[\s\S]*?\n\$\$;/i)?.[0] ??
+    '';
+
+  assert.match(
+    stageVerifier,
+    /insert into aiq_private\.aiq_matrix_batches[\s\S]*?stage ->> 'task_set_version',\s*'1\.0\.8', is_synthetic/,
+  );
+  assert.match(
+    stageVerifier,
+    /insert into aiq_private\.aiq_runs[\s\S]*?stage ->> 'benchmark_version', '1\.0\.8', model\.model_config_id/,
+  );
+});
+
 void test('uses the canonical private Storage identities in every SQL integration fixture', () => {
   for (const fixture of [calibrationIntegration, stateIntegration]) {
     assert.doesNotMatch(fixture, /integration-private-(?:submissions|artifacts)/);
