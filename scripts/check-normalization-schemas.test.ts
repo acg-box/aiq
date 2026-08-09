@@ -365,7 +365,7 @@ const domainCounts = [8, 8, 7, 8, 7, 7, 7, 7, 6, 7] as const;
 function score(model: { family: string; reasoning_effort: string }): JsonObject {
   return {
     schema_version: 'aiq.score-report.v2',
-    scoring_version: '1.0.7',
+    scoring_version: '1.0.8',
     measurement_version: '2.0.0',
     model,
     tier: 'synthetic_complete',
@@ -557,7 +557,7 @@ function normalizedBatch(): JsonObject {
     run_class: null,
     benchmark_version: 'aiq-core@1.0.7',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.7',
+    scoring_version: '1.0.8',
     runner_commit: 'd'.repeat(40),
     region: 'local-test',
     scheduled_unix_ms: 0,
@@ -695,7 +695,7 @@ function attestation(): JsonObject {
     provenance: null,
     benchmark_version: 'aiq-core@1.0.7',
     prompt_set_digest: sha256(4),
-    scoring_version: '1.0.7',
+    scoring_version: '1.0.8',
     verifier: { node_id: nodeId, public_key: publicKey },
     observed_unix_ms: 3,
     replay_status: 'commitments_verified',
@@ -986,7 +986,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.7 release', as
     'payload',
   );
   const resultPayloadProperties = requireObjectProperty(resultPayload, 'properties');
-  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.7');
+  strictEqual(requireObjectProperty(resultPayloadProperties, 'scoring_version').const, '1.0.8');
   const resultDefinitions = requireObjectProperty(resultPackage, '$defs');
   strictEqual(
     requireObjectProperty(
@@ -1013,7 +1013,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.7 release', as
     requireObjectProperty(normalizedProperties, 'benchmark_version').const,
     'aiq-core@1.0.7',
   );
-  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.7');
+  strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.8');
   const normalizedDefinitions = requireObjectProperty(normalizedBatchSchema, '$defs');
   strictEqual(
     requireObjectProperty(
@@ -1043,7 +1043,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.7 release', as
       ),
       'scoring_version',
     ).const,
-    '1.0.7',
+    '1.0.8',
   );
 
   const attestationProperties = requireObjectProperty(attestationSchema, 'properties');
@@ -1051,7 +1051,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.7 release', as
     requireObjectProperty(attestationProperties, 'benchmark_version').const,
     'aiq-core@1.0.7',
   );
-  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.7');
+  strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.8');
 
   const corpusProperties = requireObjectProperty(corpusCommitment, 'properties');
   const corpusCatalogProperties = requireObjectProperty(
@@ -2106,8 +2106,8 @@ await test('calibration stage pricing and context-band evidence mirror the norma
   }
 });
 
-await test('calibration admission v2 claims require the exact Rust field set', async () => {
-  const schema = await parseSchema('benchmarks/schema/calibration-admission-bundle-v2.schema.json');
+await test('calibration admission v3 claims require the exact Rust field set and policy', async () => {
+  const schema = await parseSchema('benchmarks/schema/calibration-admission-bundle-v3.schema.json');
   const admission = requireObjectProperty(requireObjectProperty(schema, 'properties'), 'admission');
   const claims = requireObjectProperty(requireObjectProperty(admission, 'properties'), 'claims');
   const required = requireArrayProperty(claims, 'required');
@@ -2146,10 +2146,20 @@ await test('calibration admission v2 claims require the exact Rust field set', a
     expected.toSorted((left, right) => left.localeCompare(right)),
   );
   strictEqual(claims.additionalProperties, false);
+  strictEqual(
+    requireObjectProperty(requireObjectProperty(claims, 'properties'), 'scoring_version').const,
+    '1.0.8',
+  );
+  const policy = requireObjectProperty(requireObjectProperty(schema, '$defs'), 'policy');
+  const policyProperties = requireObjectProperty(policy, 'properties');
+  strictEqual(
+    requireObjectProperty(policyProperties, 'version').const,
+    'aiq.official-calibration-policy.v2',
+  );
 
   const exactShapeSchema = structuredClone(claims);
-  const properties = requireObjectProperty(exactShapeSchema, 'properties');
-  for (const field of Object.keys(properties)) properties[field] = {};
+  const exactShapeProperties = requireObjectProperty(exactShapeSchema, 'properties');
+  for (const field of Object.keys(exactShapeProperties)) exactShapeProperties[field] = {};
   const valid = Object.fromEntries(expected.map((field) => [field, null]));
   strictEqual(matchesSchema(valid, exactShapeSchema, exactShapeSchema), true);
   const missing = structuredClone(valid);

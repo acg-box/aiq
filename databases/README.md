@@ -55,7 +55,7 @@ the controlled production reference separately.
 A successful receipt reports:
 
 - AIQ Core task release `1.0.7` with benchmark identifier `aiq-core@1.0.7`;
-- scoring version `1.0.7`;
+- aggregate scoring version `1.0.8`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
@@ -85,7 +85,7 @@ evaluator identity in signed `evaluator_digest` provenance and in the frozen
 task-set metadata that production readiness checks. It does not copy the
 scorer-manifest identity into an unrelated field.
 The native corpus commitment owns the scorer-manifest identity. The
-database binds its output through scoring version `1.0.7` and recomputes
+database binds its output through aggregate scoring version `1.0.8` and recomputes
 the score from normalized result evidence.
 
 The current public-safe `1.0.7` 72-task database binding manifest is
@@ -97,7 +97,7 @@ Fresh Core and Contrast A/B seals, calibration admission, and a real signed
 must still pass native verifier replay first.
 
 The desired state targets the sole production tuple: AIQ Core `1.0.7`, task
-scorer `1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. Do not reset
+scorer `1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`. Do not reset
 or initialize production until
 the controlled commitments are complete and one real non-synthetic signed
 17-by-72 package passes native verifier replay.

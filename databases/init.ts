@@ -85,7 +85,7 @@ interface ValidatedReference {
 export interface InitializationReceipt {
   readonly schema_version: 'aiq.production-initialization-receipt.v1';
   readonly initialized: true;
-  readonly scoring_version: '1.0.7';
+  readonly scoring_version: '1.0.8';
   readonly measurement_version: '2.0.0';
   readonly catalog_identity_sha256: string;
   readonly catalog_release_identity_sha256: string;
@@ -781,7 +781,7 @@ function scoringRows(reviewedAt: string): JsonObject[] {
       published_at: null,
     },
     {
-      scoring_version: '1.0.7',
+      scoring_version: '1.0.8',
       schema_version: 'aiq.score-snapshot.v2',
       benchmark_version: 'aiq-core@1.0.7',
       name: 'AIQ calibrated latent score 2.0',
@@ -1043,7 +1043,7 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.7', '1.0.7')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.7', '1.0.8')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
@@ -1219,7 +1219,7 @@ commit;
     receipt: {
       schema_version: 'aiq.production-initialization-receipt.v1',
       initialized: true,
-      scoring_version: '1.0.7',
+      scoring_version: '1.0.8',
       measurement_version: '2.0.0',
       catalog_identity_sha256: CATALOG_IDENTITY,
       catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,

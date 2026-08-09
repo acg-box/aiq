@@ -405,13 +405,15 @@ args = [
 [tasks.verify]
 clear = true
 workspace = false
+# `lint-rust` checks every target and `test-rust` compiles and executes the
+# workspace. A separate debug `build-rust` here only recompiles the same graph.
+# Final native release binaries are built once by the controlled release flow.
 dependencies = [
 	"fmt-check",
 	"check-database",
 	"check-root-typescript",
 	"lint",
 	"test",
-	"build-rust",
 	"test-browser",
 ]
 

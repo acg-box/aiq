@@ -48,6 +48,9 @@ void test('accepts both provenance classes but keeps caller class gates exact', 
 void test('runs calibration against the production initializer catalog authority', () => {
   const catalogAuthority =
     schema.match(/create function aiq_private\.task_catalog_is_exact[\s\S]*?\n\$\$;/i)?.[0] ?? '';
+  const productionReadiness =
+    schema.match(/create function public\.aiq_production_reference_status[\s\S]*?\n\$\$;/i)?.[0] ??
+    '';
 
   assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.7'\)/);
   assert.match(calibrationIntegration, /'calibration_admission_digest',null/);
@@ -64,10 +67,29 @@ void test('runs calibration against the production initializer catalog authority
   );
   assert.match(
     catalogAuthority,
-    /frozen_catalog_identity_is_valid\([\s\S]*target_task_set_version, '1\.0\.7'/,
+    /frozen_catalog_identity_is_valid\([\s\S]*target_task_set_version, '1\.0\.8'/,
+  );
+  assert.match(
+    productionReadiness,
+    /frozen_catalog_identity_is_valid\([\s\S]*'aiq-core', '1\.0\.7', '1\.0\.8'/,
   );
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
+});
+
+void test('stages current task evidence under aggregate scoring 1.0.8', () => {
+  const stageVerifier =
+    schema.match(/create function aiq_private\.stage_verifier_result_core[\s\S]*?\n\$\$;/i)?.[0] ??
+    '';
+
+  assert.match(
+    stageVerifier,
+    /insert into aiq_private\.aiq_matrix_batches[\s\S]*?stage ->> 'task_set_version',\s*'1\.0\.8', is_synthetic/,
+  );
+  assert.match(
+    stageVerifier,
+    /insert into aiq_private\.aiq_runs[\s\S]*?stage ->> 'benchmark_version', '1\.0\.8', model\.model_config_id/,
+  );
 });
 
 void test('uses the canonical private Storage identities in every SQL integration fixture', () => {

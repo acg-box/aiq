@@ -139,7 +139,7 @@ function checkActivePublicReadVersionFilters(schema: string): void {
     /run\.task_set_id\s*=\s*'aiq-core'/,
     /run\.task_set_version\s*=\s*'1\.0\.7'/,
     /run\.benchmark_version\s*=\s*'aiq-core@1\.0\.7'/,
-    /run\.scoring_version\s*=\s*'1\.0\.7'/,
+    /run\.scoring_version\s*=\s*'1\.0\.8'/,
   ];
   for (const viewName of [
     'public_leaderboard',
@@ -150,7 +150,11 @@ function checkActivePublicReadVersionFilters(schema: string): void {
     const section = sections.get(viewName);
     assert.ok(section, `The schema checker is missing ${viewName}.`);
     for (const filter of runFilters) {
-      assert.match(section, filter, `${viewName} must expose only the active AIQ 1.0.7 tuple.`);
+      assert.match(
+        section,
+        filter,
+        `${viewName} must expose only task 1.0.7 with aggregate scoring 1.0.8.`,
+      );
     }
   }
 
@@ -158,19 +162,19 @@ function checkActivePublicReadVersionFilters(schema: string): void {
   assert.ok(leaderboard);
   assert.match(
     leaderboard,
-    /score\.scoring_version\s*=\s*'1\.0\.7'/,
+    /score\.scoring_version\s*=\s*'1\.0\.8'/,
     'public_leaderboard must bind its snapshot to the active scoring version.',
   );
 
   const scoringVersions = sections.get('public_scoring_versions');
   assert.ok(scoringVersions);
   assert.match(scoringVersions, /benchmark_version\s*=\s*'aiq-core@1\.0\.7'/);
-  assert.match(scoringVersions, /scoring_version\s*=\s*'1\.0\.7'/);
+  assert.match(scoringVersions, /scoring_version\s*=\s*'1\.0\.8'/);
 
   const taskCoverage = sections.get('public_task_coverage');
   assert.ok(taskCoverage);
   assert.match(taskCoverage, /scoring\.benchmark_version\s*=\s*'aiq-core@1\.0\.7'/);
-  assert.match(taskCoverage, /scoring\.scoring_version\s*=\s*'1\.0\.7'/);
+  assert.match(taskCoverage, /scoring\.scoring_version\s*=\s*'1\.0\.8'/);
 
   const trend = sections.get('public_trend_points');
   assert.ok(trend);
@@ -188,7 +192,7 @@ function checkActivePublicReadVersionFilters(schema: string): void {
     assert.ok(section, `The schema checker is missing ${viewName}.`);
     assert.match(section, /run\.task_set_id\s*=\s*'aiq-core'/);
     assert.match(section, /run\.task_set_version\s*=\s*'1\.0\.7'/);
-    assert.match(section, /run\.scoring_version\s*=\s*'1\.0\.7'/);
+    assert.match(section, /run\.scoring_version\s*=\s*'1\.0\.8'/);
   }
 }
 
@@ -297,13 +301,13 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
   assert.match(schema, /task_set\.task_set_version = '1\.0\.7'/);
-  assert.match(schema, /scoring\.scoring_version = '1\.0\.7'/);
+  assert.match(schema, /scoring\.scoring_version = '1\.0\.8'/);
   assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.7'/);
   assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
   assert.match(syntheticDemo, /'aiq-core@1\.0\.7'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.7', '1\.0\.7'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.7', '1\.0\.8'/,
   );
 
   const pricingValidator =

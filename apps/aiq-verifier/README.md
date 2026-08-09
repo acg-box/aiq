@@ -31,6 +31,11 @@ replay, the verifier validates the approved verifier signature, issuance and
 build bindings, bundle digest, complete frozen bank, and the exact bank embedded
 in the Official run. Official replay never re-fits the item bank.
 
+The isolated `--calibration-source-1-0-7` mode accepts only the retained signed
+1.0.7 calibration package. It replays every result without model calls and
+issues calibration admission v3 under aggregate scoring 1.0.8 and policy v2.
+Production ingestion does not accept this source-only path.
+
 Show the production worker contract and the two model-free local modes:
 
 ```sh

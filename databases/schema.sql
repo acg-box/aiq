@@ -2460,7 +2460,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
       and task_set.task_set_version = '1.0.7'
-      and scoring.scoring_version = '1.0.7'
+      and scoring.scoring_version = '1.0.8'
       and scoring.benchmark_version = 'aiq-core@1.0.7'
       and scoring.is_published
       and not scoring.synthetic
@@ -4134,7 +4134,7 @@ begin
     or jsonb_typeof(payload -> 'schema_version') is distinct from 'string'
     or payload ->> 'schema_version' is distinct from 'aiq.run.v4'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.7'
+    or payload ->> 'scoring_version' <> '1.0.8'
     or not aiq_private.dto_uint_is_valid(payload -> 'execution_concurrency',32)
     or (payload->>'execution_concurrency')::integer not between 1 and 32
     or jsonb_typeof(payload -> 'synthetic') <> 'boolean'
@@ -4592,7 +4592,7 @@ begin
       ]::text[]
     )
     or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v4'
-    or stage ->> 'scoring_version' is distinct from '1.0.7'
+    or stage ->> 'scoring_version' is distinct from '1.0.8'
     or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
     or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
     or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
@@ -4712,7 +4712,7 @@ begin
         and existing_batch.source_node_id = source_node
         and existing_batch.task_set_id = stage ->> 'task_set_id'
         and existing_batch.task_set_version = stage ->> 'task_set_version'
-        and existing_batch.scoring_version = '1.0.7'
+        and existing_batch.scoring_version = '1.0.8'
         and existing_batch.synthetic = is_synthetic
         and existing_batch.task_set_hash = stage ->> 'task_set_hash'
         and existing_batch.capability_validation_digest
@@ -5147,7 +5147,7 @@ begin
   ) values (
     batch_id, package_id, stage ->> 'content_hash', normalization,
     source_node, stage ->> 'task_set_id', stage ->> 'task_set_version',
-    '1.0.7', is_synthetic, stage ->> 'task_set_hash',
+    '1.0.8', is_synthetic, stage ->> 'task_set_hash',
     nullif(stage ->> 'capability_validation_digest', ''),
     stage ->> 'benchmark_version', stage ->> 'prompt_set_digest',
     '1.0.6', stage ->> 'runner_commit', stage ->> 'region',
@@ -5468,7 +5468,7 @@ begin
       child_id, batch_id, child_id, 'manual',
       to_timestamp((stage ->> 'scheduled_unix_ms')::double precision / 1000),
       'UTC', stage ->> 'task_set_id', stage ->> 'task_set_version',
-      stage ->> 'benchmark_version', '1.0.7', model.model_config_id,
+      stage ->> 'benchmark_version', '1.0.8', model.model_config_id,
       source_node,
       (case when valid_count = 72 then 'completed' else 'partial' end)
         ::aiq_private.run_status,
@@ -5617,7 +5617,7 @@ begin
       not_applicable_count, domain_scores, interval_parameters, published,
       normalization_digest
     ) values (
-      child_id, '1.0.7', (score ->> 'tier')::aiq_private.score_status,
+      child_id, '1.0.8', (score ->> 'tier')::aiq_private.score_status,
       case when score ->> 'tier' in ('official', 'synthetic_complete', 'provisional')
         then round((score ->> 'quality_score')::numeric, 3) end,
       case when score ->> 'tier' = 'official'
@@ -5866,7 +5866,7 @@ create function aiq_private.task_catalog_is_exact(target_task_set_id text, targe
         and task.task_set_version = target_task_set_version
     )
     else aiq_private.frozen_catalog_identity_is_valid(
-      target_task_set_id, target_task_set_version, '1.0.7'
+      target_task_set_id, target_task_set_version, '1.0.8'
     )
   end
   from aiq_private.aiq_task_sets task_set
@@ -7644,7 +7644,7 @@ begin
           }'::jsonb
       )::integer as valid_scoring_count
     from aiq_private.aiq_scoring_versions scoring
-    where scoring.scoring_version = '1.0.7'
+    where scoring.scoring_version = '1.0.8'
   ),
   task_facts as (
     select
@@ -7801,7 +7801,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.7', '1.0.7'
+        'aiq-core', '1.0.7', '1.0.8'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
@@ -8645,7 +8645,7 @@ begin
     and run.task_set_id = 'aiq-core'
     and run.task_set_version = '1.0.7'
     and run.benchmark_version = 'aiq-core@1.0.7'
-    and run.scoring_version = '1.0.7';
+    and run.scoring_version = '1.0.8';
 
   if latest_recorded_at is null then
     return;
@@ -8754,8 +8754,8 @@ begin
       and run.task_set_id = 'aiq-core'
       and run.task_set_version = '1.0.7'
       and run.benchmark_version = 'aiq-core@1.0.7'
-      and run.scoring_version = '1.0.7'
-      and score.scoring_version = '1.0.7'
+      and run.scoring_version = '1.0.8'
+      and score.scoring_version = '1.0.8'
     order by run.scheduled_for desc, run.run_id desc
     limit 1
   ) observation
@@ -9901,8 +9901,8 @@ create view public.public_leaderboard with (security_invoker = true) as
             and run.task_set_id = 'aiq-core'
             and run.task_set_version = '1.0.7'
             and run.benchmark_version = 'aiq-core@1.0.7'
-            and run.scoring_version = '1.0.7'
-            and score.scoring_version = '1.0.7'
+            and run.scoring_version = '1.0.8'
+            and score.scoring_version = '1.0.8'
           ORDER BY run.model_config_id, run.scheduled_for DESC, score.calculated_at DESC
         ),
  status_evidence as (
@@ -10137,7 +10137,7 @@ create view public.public_run_results with (security_invoker = true) as
     and run.task_set_id = 'aiq-core'
     and run.task_set_version = '1.0.7'
     and run.benchmark_version = 'aiq-core@1.0.7'
-    and run.scoring_version = '1.0.7';
+    and run.scoring_version = '1.0.8';
 
 
 --
@@ -10210,7 +10210,7 @@ create view public.public_runs with (security_invoker = true) as
     and run.task_set_id = 'aiq-core'
     and run.task_set_version = '1.0.7'
     and run.benchmark_version = 'aiq-core@1.0.7'
-    and run.scoring_version = '1.0.7';
+    and run.scoring_version = '1.0.8';
 
 
 --
@@ -10229,7 +10229,7 @@ create view public.public_scoring_versions with (security_invoker = true) as
    from aiq_private.aiq_scoring_versions
   where is_published
     and benchmark_version = 'aiq-core@1.0.7'
-    and scoring_version = '1.0.7';
+    and scoring_version = '1.0.8';
 
 
 --
@@ -10261,7 +10261,7 @@ create view public.public_task_coverage with (security_invoker = true) as
      join expected on (((expected.task_set_id = split_part(scoring.benchmark_version, '@'::text, 1)) and (expected.task_set_version = split_part(scoring.benchmark_version, '@'::text, 2)))))
   where scoring.is_published
     and scoring.benchmark_version = 'aiq-core@1.0.7'
-    and scoring.scoring_version = '1.0.7';
+    and scoring.scoring_version = '1.0.8';
 
 
 --
@@ -14048,7 +14048,7 @@ begin
     or payload -> 'official_eligible' <> 'false'::jsonb
     or payload ->> 'classification' <> 'local_calibration_non_official'
     or payload ->> 'run_id' is distinct from envelope ->> 'idempotency_key'
-    or payload ->> 'scoring_version' <> '1.0.7'
+    or payload ->> 'scoring_version' <> '1.0.8'
     or payload -> 'calibration_admission_digest' <> 'null'::jsonb
     or payload -> 'calibration_bank' <> 'null'::jsonb
     or jsonb_typeof(payload -> 'terminal_attempt_lineage') <> 'array'
@@ -15803,7 +15803,7 @@ join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
 where not run.official_eligible and not run.ranking_eligible
   and run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.7'
-  and run.scoring_version = '1.0.7'
+  and run.scoring_version = '1.0.8'
   and not publication.official_eligible and not publication.ranking_eligible;
 
 CREATE VIEW public.public_model_efficiency with (security_invoker=true) as
@@ -15875,11 +15875,11 @@ where run.published and not run.synthetic
   and run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.7'
   and run.benchmark_version = 'aiq-core@1.0.7'
-  and run.scoring_version = '1.0.7'
+  and run.scoring_version = '1.0.8'
   and run.started_at is not null and run.completed_at is not null
   and exists(select 1 from aiq_private.aiq_score_snapshots score
     where score.run_id=run.run_id and score.published
-      and score.score_status='official' and score.scoring_version='1.0.7');
+      and score.score_status='official' and score.scoring_version='1.0.8');
 
 comment on column public.public_model_efficiency.matrix_batch_elapsed_ms is
   'Signed matrix-stage wall-clock elapsed time. All 17 child runs share this value; count it once.';
@@ -15956,7 +15956,7 @@ join aiq_private.efficiency_pricing_methods pricing
   on pricing.pricing_digest=result.pricing_digest
 where run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.7'
-  and run.scoring_version = '1.0.7'
+  and run.scoring_version = '1.0.8'
   and not publication.official_eligible and not publication.ranking_eligible;
 
 CREATE VIEW public.public_calibration_scores with (security_invoker=true) as
@@ -16017,7 +16017,7 @@ join aiq_private.efficiency_pricing_methods pricing
   on pricing.pricing_digest=score.pricing_digest
 where run.task_set_id = 'aiq-core'
   and run.task_set_version = '1.0.7'
-  and run.scoring_version = '1.0.7'
+  and run.scoring_version = '1.0.8'
   and not publication.official_eligible and not publication.ranking_eligible;
 
 alter table aiq_private.calibration_runs enable row level security;

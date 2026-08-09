@@ -37,7 +37,7 @@ insert into aiq_private.aiq_scoring_versions (
   is_published, published_at
 )
 values (
-  '1.0.7',
+  '1.0.8',
   'aiq.score-snapshot.v2',
   'aiq-core@1.0.7',
   'AIQ calibrated latent score 2.0',
@@ -315,7 +315,7 @@ select
   'aiq-core',
   '1.0.7',
   'aiq-core@1.0.7',
-  '1.0.7',
+  '1.0.8',
   run.model_config_id,
   node.node_id,
   encode(extensions.digest(node.node_id || ':capability:v1', 'sha256'), 'hex'),
@@ -583,7 +583,7 @@ select
         'timezone', 'UTC'
       ),
       'task_set_hash', 'sha256:' || task_set.catalog_sha256,
-      'scoring_version', '1.0.7',
+      'scoring_version', '1.0.8',
       'calibration_admission_digest', null,
       'calibration_bank', null,
       'models', signed_models.value,
@@ -668,7 +668,7 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   package.matrix_batch_id, package.package_sha256, package.content_hash,
-  package.normalization_digest, package.node_id, 'aiq-core', '1.0.7', '1.0.7',
+  package.normalization_digest, package.node_id, 'aiq-core', '1.0.7', '1.0.8',
   true, null, null,
   'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.7',
   'sha256:' || encode(
@@ -781,7 +781,7 @@ select
     || substr(md5(run.run_id || ':score'), 21, 12)
   )::uuid,
   run.run_id,
-  '1.0.7',
+  '1.0.8',
   score.score_status::aiq_private.score_status,
   case when score.score_status = 'coverage_only' then null else round(score.fixed_score, 3) end,
   case when score.score_status = 'coverage_only' then null

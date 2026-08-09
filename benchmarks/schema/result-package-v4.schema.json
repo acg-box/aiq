@@ -82,7 +82,7 @@
           "$ref": "#/$defs/sha256"
         },
         "scoring_version": {
-          "const": "1.0.7"
+          "const": "1.0.8"
         },
         "calibration_admission_digest": {
           "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/sha256" }]
@@ -298,7 +298,7 @@
       "required": ["schema_version", "scoring_version", "measurement_version", "method", "source_package_sha256", "source_scoring_version", "task_set_id", "task_set_version", "task_set_digest", "catalog_digest", "evaluator_digest", "policy_digest", "calibration_model_count", "items"],
       "properties": {
         "schema_version": { "const": "aiq.calibration-bank.v2" },
-        "scoring_version": { "const": "1.0.7" },
+        "scoring_version": { "const": "1.0.8" },
         "measurement_version": { "const": "2.0.0" },
         "method": { "const": "rasch_fractional_fixed_bank_map_v2" },
         "source_package_sha256": { "$ref": "#/$defs/sha256" },
