@@ -196,7 +196,7 @@ begin
     'schema_version','aiq.run-identity.v3','run_class','calibration',
     'slot',schedule_slot,'task_set_hash',task_set_hash,
     'corpus_commitment_sha256',provenance->'corpus_commitment_sha256',
-    'models',models,'scoring_version','1.0.7'
+    'models',models,'scoring_version','1.0.8'
   )),8);
   select jsonb_agg(result order by model_ordinal,task_ordinal) into results
   from (
@@ -241,7 +241,7 @@ begin
     'schema_version','aiq.calibration-run.v4','official_eligible',false,
     'classification','local_calibration_non_official','run_id',run_id,
     'schedule_slot',schedule_slot,'task_set_hash',task_set_hash,
-    'scoring_version','1.0.7','execution_concurrency',1,
+    'scoring_version','1.0.8','execution_concurrency',1,
     'calibration_admission_digest',null,'calibration_bank',null,
     'models',models,'task_ids',task_ids,'started_unix_ms',1785672000000,
     'finished_unix_ms',1785672001000,'capability_validation',preflight,
@@ -385,7 +385,7 @@ with source as (
     'model',model,
     'score',jsonb_build_object(
       'schema_version','aiq.calibration-score-report.v2','run_class','calibration',
-      'scoring_version','1.0.7','measurement_version','2.0.0','model',model,'descriptive_status','coverage_only',
+      'scoring_version','1.0.8','measurement_version','2.0.0','model',model,'descriptive_status','coverage_only',
       'official_eligible',false,'ranking_eligible',false,
       'quality_score',null,'latent_ability',null,'completion_bounds',null,
       'task_resampling_sensitivity_interval',null,
@@ -443,7 +443,7 @@ with source as (
       'capability_validation_digest',aiq_private.jcs_sha256(source.payload->'capability_validation'),
       'provenance',source.payload->'provenance',
       'evaluator_results_artifact',source.payload->'evaluator_results_artifact',
-      'scoring_version','1.0.7','execution_concurrency',source.payload->'execution_concurrency',
+      'scoring_version','1.0.8','execution_concurrency',source.payload->'execution_concurrency',
       'task_ids',source.payload->'task_ids','models',source.payload->'models',
       'scores',scores.value,'result_efficiency',result_efficiency.value,
       'pricing',pg_temp.aiq_efficiency_pricing(),'task_set_id','aiq-core',
@@ -477,7 +477,7 @@ select stage.*,
     'telemetry_digest',stage.stage->>'telemetry_digest',
     'terminal_attempt_lineage_digest',stage.stage->>'terminal_attempt_lineage_digest',
     'capability_validation_digest',stage.stage->>'capability_validation_digest',
-    'scoring_version','1.0.7','execution_concurrency',stage.stage->'execution_concurrency',
+    'scoring_version','1.0.8','execution_concurrency',stage.stage->'execution_concurrency',
     'observed_unix_ms',1785672002000,'replay_status','evaluator_replayed',
     'signature',repeat('32',64)
   ) as attestation

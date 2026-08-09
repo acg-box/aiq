@@ -40,9 +40,9 @@ pub const CALIBRATION_VERIFIED_STAGE_SCHEMA_VERSION: &str = "aiq.calibration-ver
 pub const CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION: &str =
 	"aiq.calibration-verifier-attestation.v2";
 /// Private verifier-signed admission for one complete calibration matrix.
-pub const CALIBRATION_ADMISSION_SCHEMA_VERSION: &str = "aiq.calibration-admission.v2";
+pub const CALIBRATION_ADMISSION_SCHEMA_VERSION: &str = "aiq.calibration-admission.v3";
 /// Self-contained admission bundle that duplicates the transactionally published evidence.
-pub const CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION: &str = "aiq.calibration-admission-bundle.v2";
+pub const CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION: &str = "aiq.calibration-admission-bundle.v3";
 /// Efficiency observation schema.
 pub const CALIBRATION_EFFICIENCY_SCHEMA_VERSION: &str = "aiq.calibration-efficiency.v1";
 /// API-equivalent pricing model version.
@@ -569,7 +569,7 @@ pub struct CalibrationAdmissionClaims {
 	pub stage_digest: String,
 	/// Digest of the complete signed verifier attestation.
 	pub attestation_digest: String,
-	/// Legacy runner identity from the replayed package and stage.
+	/// Retained calibration runner identity from the replayed package and stage.
 	pub replay_runner: NodeIdentity,
 	/// Current verifier identity that replayed and admitted the package.
 	pub admission_verifier: NodeIdentity,
@@ -620,7 +620,7 @@ pub struct CalibrationAdmissionClaims {
 /// Private operational evidence that a complete signed calibration passed replay and diagnostics.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationAdmissionV2 {
+pub struct CalibrationAdmissionV3 {
 	/// Admission schema.
 	pub schema_version: String,
 	/// Signature algorithm identifier.
@@ -634,7 +634,7 @@ pub struct CalibrationAdmissionV2 {
 	/// Verifier Ed25519 signature over the schema, claims, and digest.
 	pub signature: String,
 }
-impl CalibrationAdmissionV2 {
+impl CalibrationAdmissionV3 {
 	/// Verifies a signed admission for Official consumption without re-fitting its bank.
 	pub fn verify_for_official(
 		&self,
@@ -811,7 +811,7 @@ impl CalibrationAdmissionV2 {
 /// One transactionally published calibration evidence bundle.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CalibrationAdmissionBundleV2 {
+pub struct CalibrationAdmissionBundleV3 {
 	/// Bundle schema.
 	pub schema_version: String,
 	/// Replay-verified complete calibration stage.
@@ -819,9 +819,9 @@ pub struct CalibrationAdmissionBundleV2 {
 	/// Verifier attestation bound to `stage`.
 	pub attestation: CalibrationVerifierAttestationV1,
 	/// Operational admission bound to the stage and attestation.
-	pub admission: CalibrationAdmissionV2,
+	pub admission: CalibrationAdmissionV3,
 }
-impl CalibrationAdmissionBundleV2 {
+impl CalibrationAdmissionBundleV3 {
 	/// Verifies a complete signed bundle for Official consumption without source results.
 	pub fn verify_for_official(
 		&self,
@@ -896,8 +896,8 @@ struct UnsignedCalibrationAdmission<'a> {
 	claims: &'a CalibrationAdmissionClaims,
 	admission_digest: &'a str,
 }
-impl<'a> From<&'a CalibrationAdmissionV2> for UnsignedCalibrationAdmission<'a> {
-	fn from(admission: &'a CalibrationAdmissionV2) -> Self {
+impl<'a> From<&'a CalibrationAdmissionV3> for UnsignedCalibrationAdmission<'a> {
+	fn from(admission: &'a CalibrationAdmissionV3) -> Self {
 		Self {
 			schema_version: &admission.schema_version,
 			signature_algorithm: &admission.signature_algorithm,
@@ -1172,9 +1172,9 @@ pub fn verify_and_attest_calibration_run(
 	Ok((stage, attestation))
 }
 
-/// Recomputes and signs one promoted 1.0.6 calibration source without changing its run identity.
+/// Recomputes and signs one promoted 1.0.7 calibration source without changing its run identity.
 #[allow(clippy::too_many_arguments)]
-pub fn verify_and_attest_calibration_source_1_0_6(
+pub fn verify_and_attest_calibration_source_1_0_7(
 	identity: &VerifierSigningIdentity,
 	run: &CalibrationRunRecord,
 	tasks: &[TaskDefinition],
@@ -1204,7 +1204,7 @@ pub fn sign_full_calibration_admission(
 	results: &[TaskResult],
 	source_scoring_version: &str,
 	bindings: CalibrationAdmissionBindings,
-) -> Result<CalibrationAdmissionV2, CalibrationVerificationError> {
+) -> Result<CalibrationAdmissionV3, CalibrationVerificationError> {
 	stage.verify()?;
 	attestation.verify(stage, identity.node())?;
 
@@ -1276,7 +1276,7 @@ pub fn sign_full_calibration_admission(
 	};
 	let admission_digest = protocol::canonical_hash(&claims)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	let mut admission = CalibrationAdmissionV2 {
+	let mut admission = CalibrationAdmissionV3 {
 		schema_version: CALIBRATION_ADMISSION_SCHEMA_VERSION.to_owned(),
 		signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
 		signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
@@ -1392,7 +1392,7 @@ fn verify_calibration_run_inner(
 	package: &VerifiedPackageIdentity,
 	metadata: &AttestedDeploymentMetadata,
 	provider_usage: &[ProviderTokenUsage],
-	calibration_source_1_0_6: bool,
+	calibration_source_1_0_7: bool,
 ) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
 	runner::validate_terminal_attempt_lineage(&run.results, &run.terminal_attempt_lineage)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
@@ -1409,7 +1409,7 @@ fn verify_calibration_run_inner(
 		));
 	}
 
-	validate_calibration_run_identity(run, tasks, calibration_source_1_0_6)?;
+	validate_calibration_run_identity(run, tasks, calibration_source_1_0_7)?;
 
 	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
@@ -1512,10 +1512,10 @@ fn verify_calibration_run_inner(
 fn validate_calibration_run_identity(
 	run: &CalibrationRunRecord,
 	tasks: &[TaskDefinition],
-	calibration_source_1_0_6: bool,
+	calibration_source_1_0_7: bool,
 ) -> Result<(), CalibrationVerificationError> {
-	let validation = if calibration_source_1_0_6 {
-		run_validation::validate_calibration_source_1_0_6_with_tasks(run, tasks)
+	let validation = if calibration_source_1_0_7 {
+		run_validation::validate_calibration_source_1_0_7_with_tasks(run, tasks)
 	} else {
 		run_validation::validate_calibration_run_record_with_tasks(run, tasks)
 	};

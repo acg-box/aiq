@@ -45,7 +45,7 @@ use aiq_runner::{
 		ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus,
 		Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor,
 	},
-	calibration_verification::CalibrationAdmissionBundleV2,
+	calibration_verification::CalibrationAdmissionBundleV3,
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
 		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment,
@@ -1259,7 +1259,7 @@ enum Command {
 		/// Controlled directory of hidden task JSON files.
 		#[arg(long)]
 		hidden_tasks: Option<PathBuf>,
-		/// Verifier-signed calibration admission v2 containing the frozen item bank.
+		/// Verifier-signed calibration admission v3 containing the frozen item bank.
 		#[arg(long)]
 		calibration_admission: PathBuf,
 		/// Current public-safe controlled-corpus commitment.
@@ -3091,7 +3091,7 @@ fn build_official_plan(
 
 	let manifest = read_json::<CapabilityManifest>(inputs.capabilities)?;
 	let calibration_bundle =
-		read_json::<CalibrationAdmissionBundleV2>(inputs.calibration_admission)?;
+		read_json::<CalibrationAdmissionBundleV3>(inputs.calibration_admission)?;
 
 	calibration_bundle.admission.claims.calibration_bank.validate(&prepared.report.tasks)?;
 
@@ -3595,7 +3595,7 @@ fn load_official_calibration_binding(
 ) -> Result<Option<(String, FrozenCalibrationBankV2)>, Box<dyn std::error::Error>> {
 	let Some((report, _)) = admission else { return Ok(None) };
 	let plan = report.plan.as_ref().ok_or("Official admission omits its plan")?;
-	let bundle = read_json::<CalibrationAdmissionBundleV2>(Path::new(&plan.calibration_admission))?;
+	let bundle = read_json::<CalibrationAdmissionBundleV3>(Path::new(&plan.calibration_admission))?;
 
 	if protocol::canonical_hash(&bundle)? != plan.calibration_admission_digest
 		|| bundle.admission.claims.calibration_bank_digest != plan.calibration_bank_digest
@@ -4767,7 +4767,7 @@ fn run_score(
 					.ok_or("real Official score requires --official-admission")?;
 				let (permission, _) = read_successful_official_admission(admission_path)?;
 				let plan = permission.plan.ok_or("Official admission receipt omits its plan")?;
-				let bundle = read_json::<CalibrationAdmissionBundleV2>(Path::new(
+				let bundle = read_json::<CalibrationAdmissionBundleV3>(Path::new(
 					&plan.calibration_admission,
 				))?;
 

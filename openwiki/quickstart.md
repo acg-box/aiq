@@ -15,7 +15,7 @@ contains:
   submission;
 - a Rust verifier for artifact reconstruction and deterministic evaluator replay;
 - an active public AIQ Core `aiq-core@1.0.7` candidate, with 72 private-task
-  identities, a public catalog, and scoring `1.0.7`;
+  identities, a public catalog, and aggregate scoring `1.0.8`;
 - one PostgreSQL desired state with RLS, public reads, controlled writes, and
   private Storage lifecycle records.
 
@@ -23,19 +23,20 @@ The fixed model matrix has 17 configurations. Production has exactly three
 distinct identities: runner, verifier, and publisher.
 
 The active tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer
-`1.0.7`, and measurement `2.0.0`. Every formal calibration and Official task
+`1.0.8`, and measurement `2.0.0`. Every formal calibration and Official task
 uses `wall_seconds: null`, `max_steps: null`, and `max_tool_calls: null`.
 Capacity planning does not claim a time fit. The runner still records elapsed
 time, agent steps, tool calls by type, tokens, and estimated cost. These values
 are auxiliary evidence only and cannot change any semantic score, AIQ value,
 interval, status, or ranking.
 
-The public catalog is deterministic and identity-frozen. Fresh independent
-Core and Contrast A/B seals, a complete 17-by-72 calibration, fixed-bank
-admission, final native build verification, a separate complete Official run,
-publication, and deployment are pending. Earlier bounded runs remain immutable
-failed release evidence and cannot be relabeled or combined with selected
-reruns. An operator cannot override a failed release gate.
+The public catalog is deterministic and identity-frozen. One complete real
+1.0.7 calibration package is retained unchanged. Fresh independent Core and
+Contrast A/B seals, policy-v2 replay and admission v3, final native build
+verification, a separate complete Official run, publication, and deployment
+are pending. Earlier bounded runs remain immutable failed release evidence and
+cannot be relabeled or combined with selected reruns. An operator cannot
+override a failed release gate.
 
 ## Deployment status
 
@@ -151,7 +152,7 @@ commitment, a canonical
 millisecond UTC `published_at`, and the three production identities.
 Initialization can start only after one real signed non-synthetic 17-by-72
 package passes native verifier replay. It validates those fields and bindings. The expected initialization
-receipt must contain scoring `1.0.7`, 72 tasks, 17 model configurations, three nodes,
+receipt must contain aggregate scoring `1.0.8`, 72 tasks, 17 model configurations, three nodes,
 40 private forced-RLS tables, 12 canonical AIQ-owned security-invoker public
 views, and two hardened gateway roles. Unrelated `public` views stay outside the
 AIQ readiness inventory. The ordered task-metadata catalog digest is

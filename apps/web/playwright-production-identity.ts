@@ -110,7 +110,7 @@ export function validateProductionExpectedIdentity(value: unknown): ProductionEx
     !benchmarkPattern.test(benchmarkVersion) ||
     !scoringPattern.test(scoringVersion) ||
     benchmarkVersion !== 'aiq-core@1.0.7' ||
-    scoringVersion !== '1.0.7' ||
+    scoringVersion !== '1.0.8' ||
     !matrixBatchPattern.test(matrixBatchId) ||
     !runnerCommitPattern.test(runnerCommit) ||
     !releasePattern.test(corpusReleaseId) ||

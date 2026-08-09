@@ -35,7 +35,7 @@ void test('AIQ 2.0 cutover rejects empty, synthetic, or incomplete publication',
 });
 
 void test('AIQ 2.0 cutover query binds new measurement and non-synthetic 17×72 evidence', () => {
-  assert.match(AIQ_2_CUTOVER_QUERY, /scoring_version = '1\.0\.7'/g);
+  assert.match(AIQ_2_CUTOVER_QUERY, /scoring_version = '1\.0\.8'/g);
   assert.match(AIQ_2_CUTOVER_QUERY, /not synthetic/);
   assert.match(AIQ_2_CUTOVER_QUERY, /published_task_results/);
   assert.match(AIQ_2_CUTOVER_QUERY, /public\.public_leaderboard/);

@@ -12,10 +12,11 @@ hosts project `aiq` on PostgreSQL 17.6 with reference
 `aiq-submission-packages` and `aiq-runner-artifacts`.
 
 The only production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
-scoring `1.0.7`, and measurement `2.0.0`. Do not publish, preserve online,
+scoring `1.0.8`, and measurement `2.0.0`. Do not publish, preserve online,
 migrate, or display a legacy tuple as production evidence. Production must
-remain without an Official AIQ 2.0 publication until a fresh real,
-non-synthetic, signed 17-by-72 calibration establishes the fixed item bank and
+remain without an Official AIQ 2.0 publication until the retained complete,
+non-synthetic, signed 17-by-72 calibration is replayed under policy v2 to
+establish the fixed item bank and admission v3, and
 a separate fresh 17-by-72 Official package passes native verifier replay and
 all release gates.
 
@@ -35,14 +36,14 @@ under the active tuple.
 
 - Repository source targets AIQ Core `1.0.7`, with 72 private controlled tasks
   in ten domains. Task evaluation stays at `1.0.6`; aggregate scoring is
-  `1.0.7`.
+  `1.0.8`.
 - Every formal task encodes `wall_seconds: null`, `max_steps: null`, and
   `max_tool_calls: null`. Prompt, evaluator, semantic scoring, and tool
   permissions remain unchanged.
 - The public `1.0.7` catalog is deterministic and identity-frozen. Fresh Core
-  and Contrast seals, a complete calibration, a fixed-bank admission, a
-  separate complete Official run, publication, and deployment remain pending.
-  No earlier publication is a fallback.
+  and Contrast seals, a policy-v2 fixed-bank admission from the unchanged
+  complete calibration package, a separate complete Official run, publication,
+  and deployment remain pending. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -53,6 +54,11 @@ under the active tuple.
   theta and its conditional Wald interval are reported separately from the raw
   equal-domain `qualityScore` diagnostic. This contract is not an IQ norm or a
   150-point scale.
+- Calibration policy `aiq.official-calibration-policy.v2` reports the binary
+  informative-task rate and its 0.50 descriptive target, but does not use that
+  count as a release cliff. Complete semantic coverage, non-uniformity,
+  universal floor and ceiling limits, domain checks, and model and latent
+  spread remain hard gates.
 - Strict pass is strict successes divided by all attributable tasks with a
   valid semantic task score. Partial scores remain in that denominator; only
   missing, infrastructure-invalid, runtime-failed, and unscored tasks are
@@ -62,7 +68,7 @@ under the active tuple.
   uses the same sample.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
-  creates signed `aiq.result-package.v3` envelopes.
+  creates signed `aiq.result-package.v4` envelopes.
 - Every result keeps runner-observed elapsed time and, when Codex reports it,
   token usage and a versioned Standard API-equivalent cost estimate.
 - AIQ, Rasch ability, quality, strict pass, ranking, and intervals use only
@@ -72,7 +78,7 @@ under the active tuple.
   `provider_reported`, and verifier-checked token and cost evidence as
   `verifier_recomputed`. Unavailable evidence remains null, not zero.
 - The verifier reconstructs submitted workspaces and replays deterministic
-  evaluators before it signs `aiq.verifier-attestation.v3` evidence.
+  evaluators before it signs `aiq.verifier-attestation.v4` evidence.
 - The verifier also provides an offline `diagnose-rescore` audit. It first
   verifies and replays one source package, then scores the preserved cells with
   a candidate source, task, evaluator, runtime, and toolchain set. Its
@@ -240,7 +246,7 @@ verifies the final native build, and one real signed non-synthetic 17-by-72
 package passes native verifier replay; the repository contains no substitute
 production reference. Retain the private final-build audit receipt separately.
 Database initialization does not accept or validate that receipt.
-A successful initialization receipt must report aggregate scoring `1.0.7`, both public
+A successful initialization receipt must report aggregate scoring `1.0.8`, both public
 catalog identities, 72 tasks, 17 model configurations, and three nodes.
 
 Use one initialized disposable database for production-shape smoke and
@@ -271,7 +277,7 @@ or to production.
 1. The runner validates the controlled corpus, toolchain, and capability
    manifest.
 2. It executes the selected tasks and writes content-addressed artifacts.
-3. It scores the run, records efficiency evidence, and signs one v3 result
+3. It scores the run, records efficiency evidence, and signs one v4 result
    package.
 4. `POST /api/submissions` stores the exact package bytes and queues the package
    as unverified.
@@ -283,7 +289,7 @@ or to production.
 8. Public security-invoker views supply the Web application.
 
 Official means a complete, non-synthetic 17-by-72 run with valid task-set
-`1.0.7`, task-scorer `1.0.6`, aggregate-scorer `1.0.7`, and measurement `2.0.0`
+`1.0.7`, task-scorer `1.0.6`, aggregate-scorer `1.0.8`, and measurement `2.0.0`
 bindings that completed this flow and was published as
 `trusted_verified`. A complete synthetic fixture uses the
 `synthetic_complete` classification, has no Official AIQ value, and is never

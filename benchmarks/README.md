@@ -1,7 +1,7 @@
 # AIQ Core benchmark contract
 
 Repository source targets the public AIQ Core `1.0.7` candidate, task scorer
-`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. It is a fixed
+`1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`. It is a fixed
 72-task benchmark across ten domains. The public catalog defines task identity,
 domain, difficulty, tool policy, budget, evaluator identity, and public-safe
 descriptions. Private task prompts, fixtures, expected outputs, and evaluator
@@ -12,18 +12,26 @@ All 72 formal tasks use `wall_seconds: null`, `max_steps: null`, and
 permissions remain unchanged. The public
 catalog is deterministic and identity-frozen. The new identity requires fresh
 independent Core and Contrast seals and a regenerated 72-task database
-commitment. A full calibration,
-final native build verification, a real Official run, publication, and final
-deployment are pending. The only production tuple is AIQ Core `1.0.7`, task
-scorer `1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. Do not reset,
+commitment. One complete real 1.0.7 calibration package is retained unchanged.
+Policy-v2 replay and admission v3, final native build verification, a real
+Official run, publication, and final deployment are pending. The only
+production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer
+`1.0.8`, and measurement `2.0.0`. Do not reset,
 initialize, or publish until a
 real non-synthetic signed 17-by-72 package passes native verifier replay. No
 earlier publication is a compatibility source or fallback.
 
-Earlier bounded runs remain immutable unpublished release evidence. The `1.0.7`
-path requires one complete non-Official 17-by-72 calibration, a signed fixed-bank
-admission, and a separate complete 17-by-72 Official run. The calibration must
-pass the release policy without an operator override.
+Earlier bounded runs remain immutable unpublished release evidence. The
+retained complete non-Official 17-by-72 package is the sole calibration source;
+the verifier replays all 1,224 cells without model calls and issues a new signed
+fixed-bank admission. A separate complete 17-by-72 Official run remains
+required. No operator can override the release policy.
+
+Calibration policy v2 keeps the 0.50 informative-task rate as a signed
+descriptive target. It does not turn the binary count into a publication cliff.
+The hard gates still require complete semantic coverage, no runtime or missing
+cells, at least 0.50 non-uniform tasks, bounded universal floor and ceiling
+rates, nondegenerate domains, and sufficient model and latent-score spread.
 
 ## Public authority
 

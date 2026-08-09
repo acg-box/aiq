@@ -560,7 +560,7 @@ void describe('bounded readiness probe', () => {
         view === 'public_task_coverage'
           ? Response.json([
               {
-                scoring_version: '1.0.7',
+                scoring_version: '1.0.8',
                 domain: 'coding',
                 weight: 'not-a-number',
                 task_count: 8,

@@ -10,7 +10,7 @@ tags: ['benchmark', 'method', 'scoring']
 ## Fixture
 
 Repository source targets the public AIQ Core `1.0.7` candidate, task scorer
-`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. It contains 72 fixed
+`1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -68,7 +68,7 @@ bound by the corpus commitment.
 ## Published Official evidence
 
 Production can publish only one AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
-scorer `1.0.7`, measurement `2.0.0`, non-synthetic Official `72 × 17` matrix, or
+scorer `1.0.8`, measurement `2.0.0`, non-synthetic Official `72 × 17` matrix, or
 1,224 results. The release gate checks all
 72 Core task definitions and their policy-valid acceptance suites. Every Core
 task requires `gold`, `alternate_correct`, `partial`, and `adversarial_format`;
@@ -98,6 +98,15 @@ published. The first `1.0.4` calibration then completed the full 17-by-72
 matrix. Preserve those 1,224 cells as failed statistical release-gate evidence,
 not as 1,224 failed task executions. The run remains non-Official and does not
 authorize ranking or publication as Official evidence.
+
+The retained complete `1.0.7` calibration package is replayed without model
+calls as the sole source for the policy-v2 fixed-bank admission. Admission uses
+aggregate scoring `1.0.8` and schema
+`aiq.calibration-admission-bundle.v3`; it does not make calibration Official.
+Policy v2 keeps the 0.50 informative-task rate as descriptive evidence rather
+than a hard publication violation. Hard gates still cover complete semantic
+coverage, non-uniform task rate, universal floor and ceiling rates, domain
+spread, and model and latent-score spread.
 
 The public `1.0.5` redesign retargets four calibration-sensitive tasks:
 `coding-06`, `debugging-01`, `debugging-02`, and `debugging-04`. The first
@@ -327,7 +336,7 @@ diagnostics. The raw equal-domain fixed-fixture mean remains a criterion-
 referenced `qualityScore`; it is not the ranking score. A complete replay-
 verified 17-by-72 calibration matrix jointly estimates model locations (`theta`)
 and task difficulties (`beta`) with weak `N(0, 3²)` priors and a centered item
-scale. Calibration admission v2 signs that complete item bank once. Each
+scale. Calibration admission v3 signs that complete item bank once. Each
 Official replicate freezes those task difficulties and estimates only its model
 locations. Replicate ceiling, informative-item, and non-uniform counts remain
 drift diagnostics; they do not re-fit or re-gate the admitted bank. The released
@@ -377,10 +386,10 @@ and pricing method. Replay-verified provenance does not change its `untrusted`
 trust tier or make it Official or ranking eligible.
 
 Calibration admission keeps two signed provenance boundaries. Replay provenance
-binds the legacy calibration package, corpus, source, runner binary, and Codex
+binds the retained calibration package, corpus, source, runner binary, and Codex
 runtime that produced the retained evidence. Issuance bindings independently
 bind the current verifier, source tree, build receipt, corpus, and executables
-that create admission v2. The task-set, catalog, evaluator, policy, and method
+that create admission v3. The task-set, catalog, evaluator, policy, and method
 identities must agree across both boundaries. The replay runner key must remain
 the runner key approved by the production reference. Source or binary identity
 is never copied from one boundary to impersonate the other.

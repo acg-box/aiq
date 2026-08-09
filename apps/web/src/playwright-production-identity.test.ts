@@ -8,7 +8,7 @@ import {
 
 const identity = {
   benchmarkVersion: 'aiq-core@1.0.7',
-  scoringVersion: '1.0.7',
+  scoringVersion: '1.0.8',
   matrixBatchId: `run_${'5'.repeat(64)}`,
   runnerCommit: 'a79a6616128eb3161069e4fd50657df0b88e6760',
   corpusReleaseId: 'corpus_2026.08.08-aiq-core-1.0.7-final',
