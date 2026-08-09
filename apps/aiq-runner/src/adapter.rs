@@ -1530,7 +1530,7 @@ pub struct CodexItemPolicyError {
 	message: &'static str,
 }
 impl CodexItemPolicyError {
-	fn new(message: &'static str) -> Self {
+	pub(crate) fn new(message: &'static str) -> Self {
 		Self { message }
 	}
 }

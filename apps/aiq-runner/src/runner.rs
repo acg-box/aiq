@@ -38,7 +38,8 @@ use crate::{
 	adapter::{
 		AdapterFailure, AdapterFailureKind, ArtifactReference, ArtifactSink,
 		CapabilityValidationReport, CapabilityValidationStatus, CodexAdapter, CodexItemAccounting,
-		CodexItemPolicyError, CodexOutput, Executor, InvocationRequest, SandboxPolicy,
+		CodexItemPolicyError, CodexOutput, Executor, InvocationRequest, MAX_CAPTURE_BYTES,
+		SandboxPolicy,
 	},
 	capacity,
 	corpus_commitment::{RunClass, RunProvenanceCommitment},
@@ -83,6 +84,8 @@ pub const MAX_WORKSPACE_PATH_BYTES: usize = 256 * 1_024;
 /// Maximum live task workers accepted by the runner.
 pub const MAX_RUN_JOBS: usize = 32;
 
+/// Maximum combined JSONL retained across retryable Codex attempts for one cell.
+const MAX_RETRY_STDOUT_BYTES: usize = MAX_CAPTURE_BYTES;
 const OFFICIAL_TASK_COUNT: usize = 72;
 
 static SEALED_WORKSPACE_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -305,7 +308,8 @@ pub struct ResultFailure {
 	pub message: String,
 	/// Process exit code.
 	pub exit_code: Option<i32>,
-	/// Whether a separate new run can be appropriate. Checkpoint resume never retries this result.
+	/// Whether the live runner can retry the invocation before it commits a terminal result.
+	/// Checkpoint resume never retries an already committed result.
 	pub retryable: bool,
 }
 
@@ -1111,38 +1115,116 @@ where
 				break;
 			}
 
-			let result = execute_task(
+			let result =
+				self.execute_live_cell_with_retries(index, model_index, task_index, cancelled);
+
+			if match result.as_ref() {
+				Ok((_, result)) => aborts_paid_run(result),
+				Err(_) => true,
+			} {
+				cancelled.store(true, Ordering::Release);
+			}
+			if event_tx.send(SelectedWorkerEvent::Completed(Box::new(result))).is_err() {
+				break;
+			}
+		}
+	}
+
+	fn execute_live_cell_with_retries(
+		&self,
+		index: usize,
+		model_index: usize,
+		task_index: usize,
+		cancelled: &AtomicBool,
+	) -> Result<(usize, TaskResult), RunnerError> {
+		let task = &self.tasks[task_index];
+		let model = self.models[model_index];
+		let mut attempt_number = 1_u32;
+		let mut prior_stdout = String::new();
+		let mut prior_wall_ms = 0_u64;
+
+		loop {
+			let attempt = execute_task_attempt(
 				self.adapter,
 				self.workspace_provider,
 				self.manifest,
-				&self.tasks[task_index],
-				self.models[model_index],
+				task,
+				model,
 				&self.commitments.run_id,
 				self.codex_version,
 				self.observed_at,
 				self.evaluator_root,
 				self.evaluator_runtime,
-			)
-			.and_then(|mut result| {
-				result.assign_result_id()?;
+			)?;
+			let retry = !cancelled.load(Ordering::Acquire)
+				&& retryable_invocation_result(&attempt.result)
+				&& parse_codex_tool_usage(&attempt.stdout_full).is_ok();
 
-				Ok(result)
-			});
+			if retry {
+				append_invocation_attempt(
+					&mut prior_stdout,
+					&attempt.stdout_full,
+					InvocationAttemptMarker::retry(
+						attempt_number,
+						attempt.result.latency.wall_ms,
+						attempt.result.failure.as_ref(),
+					),
+				)?;
 
-			if match result.as_ref() {
-				Ok(result) => aborts_paid_run(result),
-				Err(_) => true,
-			} {
-				cancelled.store(true, Ordering::Release);
+				prior_wall_ms = prior_wall_ms
+					.checked_add(attempt.result.latency.wall_ms)
+					.ok_or_else(|| RunnerError::new("retryable invocation latency overflowed"))?;
+				attempt_number = attempt_number
+					.checked_add(1)
+					.ok_or_else(|| RunnerError::new("retryable invocation count overflowed"))?;
+
+				self.workspace_provider
+					.quarantine_interrupted(&self.commitments.run_id, model, task)
+					.map_err(|error| RunnerError::new(error.to_string()))?;
+
+				continue;
 			}
-			if event_tx
-				.send(SelectedWorkerEvent::Completed(Box::new(
-					result.map(|result| (index, result)),
-				)))
-				.is_err()
-			{
-				break;
+
+			let mut result = attempt.result;
+
+			if !prior_stdout.is_empty() {
+				let disposition = if result.status == ResultStatus::Completed {
+					InvocationAttemptDisposition::Selected
+				} else {
+					InvocationAttemptDisposition::TerminalFailure
+				};
+
+				append_invocation_attempt(
+					&mut prior_stdout,
+					&attempt.stdout_full,
+					InvocationAttemptMarker::terminal(
+						attempt_number,
+						result.latency.wall_ms,
+						disposition,
+						result.failure.as_ref(),
+					),
+				)?;
+
+				result.latency.wall_ms = prior_wall_ms
+					.checked_add(result.latency.wall_ms)
+					.ok_or_else(|| RunnerError::new("invocation latency overflowed"))?;
+				result.tool_usage = parse_codex_tool_usage(&prior_stdout)
+					.map_err(|error| RunnerError::new(error.to_string()))?;
+
+				result.artifacts.retain(|artifact| artifact.kind != "stdout.jsonl");
+				result.artifacts.push(
+					self.adapter
+						.store_artifact("stdout.jsonl", prior_stdout.as_bytes())
+						.map_err(|error| RunnerError::new(error.to_string()))?,
+				);
+
+				validate_invocation_attempt_evidence(&result, &prior_stdout)
+					.map_err(|error| RunnerError::new(error.to_string()))?;
 			}
+
+			result.assign_result_id()?;
+
+			return Ok((index, result));
 		}
 	}
 
@@ -1396,6 +1478,7 @@ struct InvocationEvidence {
 	exit_code: Option<i32>,
 	artifacts: Vec<ArtifactReference>,
 	tool_usage: ToolUsage,
+	stdout_full: String,
 }
 impl InvocationEvidence {
 	fn capture(invocation: &Result<CodexOutput, AdapterFailure>, wall_ms: u64) -> Self {
@@ -1405,13 +1488,62 @@ impl InvocationEvidence {
 				exit_code: output.exit_code,
 				artifacts: output.artifacts.clone(),
 				tool_usage: retained_stdout_tool_usage(&output.stdout_full, &output.artifacts),
+				stdout_full: output.stdout_full.clone(),
 			},
 			Err(failure) => Self {
 				wall_ms,
 				exit_code: failure.exit_code,
 				artifacts: failure.artifacts.clone(),
 				tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts),
+				stdout_full: failure.stdout_full.clone(),
 			},
+		}
+	}
+}
+
+struct TaskExecutionAttempt {
+	result: TaskResult,
+	stdout_full: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct InvocationAttemptMarker {
+	#[serde(rename = "type")]
+	event_type: String,
+	attempt: u32,
+	disposition: InvocationAttemptDisposition,
+	failure_kind: Option<FailureKind>,
+	exit_code: Option<i32>,
+	wall_ms: u64,
+}
+impl InvocationAttemptMarker {
+	fn retry(attempt: u32, wall_ms: u64, failure: Option<&ResultFailure>) -> Self {
+		Self::new(attempt, wall_ms, InvocationAttemptDisposition::Retry, failure)
+	}
+
+	fn terminal(
+		attempt: u32,
+		wall_ms: u64,
+		disposition: InvocationAttemptDisposition,
+		failure: Option<&ResultFailure>,
+	) -> Self {
+		Self::new(attempt, wall_ms, disposition, failure)
+	}
+
+	fn new(
+		attempt: u32,
+		wall_ms: u64,
+		disposition: InvocationAttemptDisposition,
+		failure: Option<&ResultFailure>,
+	) -> Self {
+		Self {
+			event_type: "aiq.invocation-attempt.v1".to_owned(),
+			attempt,
+			disposition,
+			failure_kind: failure.map(|failure| failure.kind),
+			exit_code: failure.and_then(|failure| failure.exit_code),
+			wall_ms,
 		}
 	}
 }
@@ -1490,6 +1622,14 @@ pub enum SelectedRun {
 	Calibration(CalibrationRunRecord),
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum InvocationAttemptDisposition {
+	Retry,
+	Selected,
+	TerminalFailure,
+}
+
 #[derive(Clone, Copy, Debug)]
 enum WorkspaceIntegrityFailure {
 	Sealing,
@@ -1520,6 +1660,98 @@ enum SelectedWorkerEvent {
 		acknowledged: SyncSender<Result<(), String>>,
 	},
 	Completed(Box<Result<(usize, TaskResult), RunnerError>>),
+}
+
+/// Validates retry-attempt markers bound inside one content-addressed stdout artifact.
+pub fn validate_invocation_attempt_evidence(
+	result: &TaskResult,
+	stdout: &str,
+) -> Result<(), CodexItemPolicyError> {
+	let mut markers = Vec::new();
+
+	for line in stdout.lines() {
+		let Ok(value) = serde_json::from_str::<Value>(line) else {
+			continue;
+		};
+		let Some(event_type) = value.get("type").and_then(Value::as_str) else {
+			continue;
+		};
+
+		if event_type == "aiq.invocation-attempt.v1" {
+			markers.push(serde_json::from_value::<InvocationAttemptMarker>(value).map_err(
+				|_| {
+					CodexItemPolicyError::new(
+						"invocation-attempt marker is not strict versioned JSON",
+					)
+				},
+			)?);
+		} else if event_type.starts_with("aiq.invocation-attempt.") {
+			return Err(CodexItemPolicyError::new(
+				"invocation-attempt marker version is not supported",
+			));
+		}
+	}
+
+	if markers.is_empty() {
+		return Ok(());
+	}
+	if markers.len() < 2 {
+		return Err(CodexItemPolicyError::new(
+			"retry evidence must contain a retry and one selected terminal attempt",
+		));
+	}
+
+	let mut wall_ms = 0_u64;
+
+	for (index, marker) in markers.iter().enumerate() {
+		let expected_attempt = u32::try_from(index + 1)
+			.map_err(|_| CodexItemPolicyError::new("invocation-attempt count overflowed"))?;
+
+		if marker.event_type != "aiq.invocation-attempt.v1" || marker.attempt != expected_attempt {
+			return Err(CodexItemPolicyError::new("invocation-attempt marker sequence is invalid"));
+		}
+
+		wall_ms = wall_ms
+			.checked_add(marker.wall_ms)
+			.ok_or_else(|| CodexItemPolicyError::new("invocation-attempt latency overflowed"))?;
+
+		if index + 1 < markers.len() {
+			let retry_failure = matches!(
+				(marker.failure_kind, marker.exit_code),
+				(Some(FailureKind::NonZeroExit), Some(code)) if code != 0
+			) || matches!(
+				(marker.failure_kind, marker.exit_code),
+				(Some(FailureKind::MissingResponse), None | Some(0))
+			);
+
+			if marker.disposition != InvocationAttemptDisposition::Retry || !retry_failure {
+				return Err(CodexItemPolicyError::new(
+					"retry marker does not bind a retryable Codex invocation failure",
+				));
+			}
+		}
+	}
+
+	let final_marker = markers.last().expect("non-empty markers");
+	let final_valid = if result.status == ResultStatus::Completed {
+		final_marker.disposition == InvocationAttemptDisposition::Selected
+			&& final_marker.failure_kind.is_none()
+			&& final_marker.exit_code.is_none()
+	} else {
+		final_marker.disposition == InvocationAttemptDisposition::TerminalFailure
+			&& result.failure.as_ref().is_some_and(|failure| {
+				final_marker.failure_kind == Some(failure.kind)
+					&& final_marker.exit_code == failure.exit_code
+			})
+	};
+
+	if !final_valid || wall_ms != result.latency.wall_ms {
+		return Err(CodexItemPolicyError::new(
+			"selected invocation-attempt evidence does not match the task result",
+		));
+	}
+
+	Ok(())
 }
 
 /// Derives canonical lineage without discarding duplicate terminal evidence.
@@ -1762,7 +1994,19 @@ pub fn parse_codex_tool_usage(stdout: &str) -> Result<ToolUsage, CodexItemPolicy
 	let mut usage = ToolUsage::default();
 
 	for line in stdout.lines() {
-		if let Ok(event) = serde_json::from_str::<Value>(line)
+		let event = serde_json::from_str::<Value>(line).ok();
+
+		if event.as_ref().and_then(|event| event.get("type")).and_then(Value::as_str)
+			== Some("aiq.invocation-attempt.v1")
+		{
+			merge_codex_item_accounting(&mut usage, &accounting)?;
+
+			accounting = CodexItemAccounting::default();
+
+			continue;
+		}
+
+		if let Some(event) = event
 			&& event.get("type").and_then(Value::as_str) == Some("turn.completed")
 			&& let Some(provider) = event.get("usage").and_then(Value::as_object)
 		{
@@ -1789,11 +2033,7 @@ pub fn parse_codex_tool_usage(stdout: &str) -> Result<ToolUsage, CodexItemPolicy
 		accounting.observe(line.as_bytes())?;
 	}
 
-	accounting.finish()?;
-
-	usage.steps = accounting.steps;
-	usage.total_calls = accounting.tool_calls;
-	usage.by_tool = accounting.by_tool;
+	merge_codex_item_accounting(&mut usage, &accounting)?;
 
 	Ok(usage)
 }
@@ -1918,6 +2158,68 @@ pub(crate) fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceMani
 	entries.sort_by(|left, right| left.path.cmp(&right.path));
 
 	Ok(WorkspaceManifest { schema_version: "aiq.workspace-manifest.v1", entries })
+}
+
+fn retryable_invocation_result(result: &TaskResult) -> bool {
+	result.status == ResultStatus::Failed
+		&& result.failure.as_ref().is_some_and(|failure| {
+			failure.retryable
+				&& matches!(failure.kind, FailureKind::NonZeroExit | FailureKind::MissingResponse)
+		})
+}
+
+fn append_invocation_attempt(
+	stdout: &mut String,
+	attempt_stdout: &str,
+	marker: InvocationAttemptMarker,
+) -> Result<(), RunnerError> {
+	let marker =
+		serde_json::to_string(&marker).map_err(|error| RunnerError::new(error.to_string()))?;
+	let separator_bytes = usize::from(!stdout.is_empty() && !stdout.ends_with('\n'))
+		+ usize::from(!attempt_stdout.is_empty() && !attempt_stdout.ends_with('\n'));
+	let additional = attempt_stdout
+		.len()
+		.checked_add(marker.len())
+		.and_then(|bytes| bytes.checked_add(separator_bytes + 1))
+		.ok_or_else(|| RunnerError::new("retryable invocation evidence size overflowed"))?;
+
+	if stdout.len().saturating_add(additional) > MAX_RETRY_STDOUT_BYTES {
+		return Err(RunnerError::new(
+			"retryable invocation evidence exceeds the hard output limit",
+		));
+	}
+	if !stdout.is_empty() && !stdout.ends_with('\n') {
+		stdout.push('\n');
+	}
+
+	stdout.push_str(attempt_stdout);
+
+	if !attempt_stdout.is_empty() && !attempt_stdout.ends_with('\n') {
+		stdout.push('\n');
+	}
+
+	stdout.push_str(&marker);
+	stdout.push('\n');
+
+	Ok(())
+}
+
+fn merge_codex_item_accounting(
+	usage: &mut ToolUsage,
+	accounting: &CodexItemAccounting,
+) -> Result<(), CodexItemPolicyError> {
+	accounting.finish()?;
+
+	usage.steps = usage.steps.saturating_add(accounting.steps);
+	usage.total_calls = usage.total_calls.saturating_add(accounting.tool_calls);
+
+	for (tool, calls) in &accounting.by_tool {
+		let total = usage.by_tool.entry(tool.clone()).or_default();
+
+		*total = total.saturating_add(*calls);
+	}
+
+	Ok(())
 }
 
 fn accumulate_terminal_attempt_lineage(
@@ -3113,6 +3415,7 @@ fn selected_run_record(
 	}
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 fn execute_task<E, S, P>(
 	adapter: &CodexAdapter<E, S>,
@@ -3131,6 +3434,39 @@ where
 	S: ArtifactSink,
 	P: TaskWorkspaceProvider,
 {
+	execute_task_attempt(
+		adapter,
+		workspace_provider,
+		manifest,
+		task,
+		model,
+		run_id,
+		codex_version,
+		observed_at,
+		evaluator_root,
+		evaluator_runtime,
+	)
+	.map(|attempt| attempt.result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_task_attempt<E, S, P>(
+	adapter: &CodexAdapter<E, S>,
+	workspace_provider: &P,
+	manifest: &CapabilityManifest,
+	task: &TaskDefinition,
+	model: ModelConfig,
+	run_id: &str,
+	codex_version: &str,
+	observed_at: &str,
+	evaluator_root: Option<&Path>,
+	evaluator_runtime: Option<&EvaluatorRuntime>,
+) -> Result<TaskExecutionAttempt, RunnerError>
+where
+	E: Executor,
+	S: ArtifactSink,
+	P: TaskWorkspaceProvider,
+{
 	let context = match workspace_provider.context(run_id, model, task) {
 		Ok(context) => context,
 		Err(error) => {
@@ -3142,7 +3478,8 @@ where
 				codex_version,
 				observed_at,
 				&error.to_string(),
-			);
+			)
+			.map(|result| TaskExecutionAttempt { result, stdout_full: String::new() });
 		},
 	};
 	let started = Instant::now();
@@ -3163,7 +3500,11 @@ where
 				&invocation_evidence,
 				None,
 				WorkspaceIntegrityFailure::Sealing,
-			);
+			)
+			.map(|result| TaskExecutionAttempt {
+				result,
+				stdout_full: invocation_evidence.stdout_full.clone(),
+			});
 		},
 	};
 	let (workspace_manifest, workspace_snapshot) =
@@ -3182,7 +3523,11 @@ where
 					&invocation_evidence,
 					None,
 					WorkspaceIntegrityFailure::EvidenceRetention,
-				);
+				)
+				.map(|result| TaskExecutionAttempt {
+					result,
+					stdout_full: invocation_evidence.stdout_full.clone(),
+				});
 			},
 		};
 	let sealed_manifest_sha256 = workspace_manifest.content_hash.clone();
@@ -3216,8 +3561,8 @@ where
 			workspace_snapshot,
 		),
 	};
-
-	finish_sealed_task_result(
+	let stdout_full = invocation_evidence.stdout_full.clone();
+	let result = finish_sealed_task_result(
 		manifest,
 		task,
 		model,
@@ -3228,7 +3573,9 @@ where
 		sealed_workspace,
 		&sealed_manifest_sha256,
 		&invocation_evidence,
-	)
+	)?;
+
+	Ok(TaskExecutionAttempt { result, stdout_full })
 }
 
 fn task_invocation_request(
@@ -3888,6 +4235,13 @@ mod tests {
 	struct FailureEvidenceExecutor {
 		timed_out: bool,
 	}
+	struct RetryThenSuccessExecutor {
+		calls: Arc<AtomicUsize>,
+	}
+	struct IncorrectExecutor(Arc<AtomicUsize>);
+	struct RecordingSink {
+		objects: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+	}
 
 	struct ExecutionStats {
 		active: AtomicUsize,
@@ -3939,6 +4293,17 @@ mod tests {
 	impl ArtifactSink for FailingSink {
 		fn put(&self, _kind: &str, _bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
 			Err(ExecutorError::new("synthetic sink failure"))
+		}
+	}
+
+	impl ArtifactSink for RecordingSink {
+		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
+			self.objects
+				.lock()
+				.expect("recording sink lock")
+				.insert(kind.to_owned(), bytes.to_vec());
+
+			MemorySink.put(kind, bytes)
 		}
 	}
 
@@ -4097,6 +4462,66 @@ mod tests {
 				.to_vec(),
 				stderr: Vec::new(),
 				timed_out: self.timed_out,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
+	impl Executor for RetryThenSuccessExecutor {
+		fn execute(&self, _request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			let attempt = self.calls.fetch_add(1, Ordering::SeqCst);
+
+			thread::sleep(Duration::from_millis(2));
+
+			let (exit_code, response, input_tokens, output_tokens) =
+				if attempt == 0 { (17, "partial", 11, 5) } else { (0, "OK", 7, 3) };
+			let stdout = [
+				serde_json::json!({
+					"type": "item.completed",
+					"item": {
+						"id": "message-shared",
+						"type": "agent_message",
+						"text": response,
+					}
+				})
+				.to_string(),
+				serde_json::json!({
+					"type": "turn.completed",
+					"usage": {
+						"input_tokens": input_tokens,
+						"output_tokens": output_tokens,
+						"total_tokens": input_tokens + output_tokens,
+					}
+				})
+				.to_string(),
+			]
+			.join("\n");
+
+			Ok(ExecutionCapture {
+				exit_code: Some(exit_code),
+				stdout: stdout.into_bytes(),
+				stderr: Vec::new(),
+				timed_out: false,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
+	impl Executor for IncorrectExecutor {
+		fn execute(&self, _request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			self.0.fetch_add(1, Ordering::SeqCst);
+
+			Ok(ExecutionCapture {
+				exit_code: Some(0),
+				stdout:
+					br#"{"type":"item.completed","item":{"type":"agent_message","text":"WRONG"}}"#
+						.to_vec(),
+				stderr: Vec::new(),
+				timed_out: false,
 				budget_exceeded: None,
 				stdout_truncated: false,
 				stderr_truncated: false,
@@ -4866,6 +5291,136 @@ mod tests {
 
 		assert!(resumed.to_string().contains("paid-run boundary failure"));
 		assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[test]
+	fn retryable_nonzero_exit_retries_the_cell_and_accumulates_auxiliary_evidence() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-cell-retry-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let calls = Arc::new(AtomicUsize::new(0));
+		let objects = Arc::new(Mutex::new(BTreeMap::new()));
+		let adapter = CodexAdapter::new(
+			RetryThenSuccessExecutor { calls: Arc::clone(&calls) },
+			RecordingSink { objects: Arc::clone(&objects) },
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home")),
+		);
+		let (tasks, _models, manifest, validation, _slot, mut commitments) = selected_fixture(1, 1);
+
+		commitments.observed_at = "unix-ms:1".to_owned();
+
+		fs::create_dir_all(&root).expect("test root");
+
+		let selected = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments,
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect("retryable process failure must continue the same cell");
+		let SelectedRun::Calibration(run) = selected else { panic!("calibration fixture") };
+		let result = run.results.first().expect("selected result");
+		let stdout = String::from_utf8(
+			objects
+				.lock()
+				.expect("recording sink lock")
+				.get("stdout.jsonl")
+				.expect("combined stdout")
+				.clone(),
+		)
+		.expect("UTF-8 stdout");
+
+		assert_eq!(calls.load(Ordering::SeqCst), 2);
+		assert_eq!(workspace.quarantines.load(Ordering::SeqCst), 1);
+		assert_eq!(result.status, ResultStatus::Completed);
+		assert_eq!(result.evaluation, EvaluationOutcome::Correct);
+		assert!(result.failure.is_none());
+		assert_eq!(result.tool_usage.steps, 2);
+		assert_eq!(result.tool_usage.total_calls, 0);
+		assert_eq!(result.tool_usage.provider_tokens.input, Some(18));
+		assert_eq!(result.tool_usage.provider_tokens.output, Some(8));
+		assert_eq!(result.tool_usage.provider_tokens.total, Some(26));
+		assert_eq!(stdout.matches(r#""type":"aiq.invocation-attempt.v1""#).count(), 2);
+
+		run_validation::validate_calibration_run_record_with_tasks(&run, &tasks)
+			.expect("retry result must satisfy the selected-run contract");
+		runner::validate_invocation_attempt_evidence(result, &stdout)
+			.expect("retry evidence must replay");
+
+		let mut wrong_latency = result.clone();
+
+		wrong_latency.latency.wall_ms = wrong_latency.latency.wall_ms.saturating_add(1);
+
+		assert!(runner::validate_invocation_attempt_evidence(&wrong_latency, &stdout).is_err());
+		assert!(
+			runner::validate_invocation_attempt_evidence(
+				result,
+				&stdout.replacen(r#""attempt":2"#, r#""attempt":3"#, 1),
+			)
+			.is_err()
+		);
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[test]
+	fn semantic_incorrect_result_is_not_retried() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-no-semantic-retry-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let calls = Arc::new(AtomicUsize::new(0));
+		let adapter = CodexAdapter::new(
+			IncorrectExecutor(Arc::clone(&calls)),
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home")),
+		);
+		let (tasks, _models, manifest, validation, _slot, commitments) = selected_fixture(1, 1);
+
+		fs::create_dir_all(&root).expect("test root");
+
+		let selected = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments,
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect("semantic incorrect is a completed observation");
+		let SelectedRun::Calibration(run) = selected else { panic!("calibration fixture") };
+		let result = run.results.first().expect("selected result");
+
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+		assert_eq!(workspace.quarantines.load(Ordering::SeqCst), 0);
+		assert_eq!(result.status, ResultStatus::Completed);
+		assert_eq!(result.evaluation, EvaluationOutcome::Incorrect);
+		assert_eq!(result.task_score, Some(0.0));
 
 		fs::remove_dir_all(root).expect("cleanup");
 	}
@@ -5892,6 +6447,23 @@ mod tests {
 				("web_search".to_owned(), 1),
 			])
 		);
+	}
+
+	#[test]
+	fn retry_markers_separate_item_lifecycles_while_preserving_cumulative_counts() {
+		let stdout = [
+			r#"{"type":"item.started","item":{"id":"cmd-shared","type":"command_execution","command":"pwd"}}"#,
+			r#"{"type":"aiq.invocation-attempt.v1","attempt":1,"disposition":"retry","failure_kind":"non_zero_exit","exit_code":17,"wall_ms":2}"#,
+			r#"{"type":"item.started","item":{"id":"cmd-shared","type":"command_execution","command":"pwd"}}"#,
+			r#"{"type":"item.completed","item":{"id":"cmd-shared","type":"command_execution","status":"completed"}}"#,
+			r#"{"type":"aiq.invocation-attempt.v1","attempt":2,"disposition":"selected","failure_kind":null,"exit_code":null,"wall_ms":3}"#,
+		]
+		.join("\n");
+		let usage = runner::parse_codex_tool_usage(&stdout).expect("retry accounting");
+
+		assert_eq!(usage.steps, 1);
+		assert_eq!(usage.total_calls, 2);
+		assert_eq!(usage.by_tool.get("command_execution"), Some(&2));
 	}
 
 	#[test]
