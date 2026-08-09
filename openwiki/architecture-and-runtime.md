@@ -173,10 +173,14 @@ checkpoint, run, score, package, verifier environment, replay stage, and
 attestation; evidence from the changed plan cannot authorize the new one.
 
 After each paid invocation, the runner retains the available invocation and
-workspace evidence before cleanup. Authentication, subscription-limit, or
-workspace-integrity boundaries cancel remaining paid cells; checkpoints do not
-automatically retry indeterminate or boundary-failed cells. This avoids paying
-again while replacing evidence whose outcome is uncertain.
+workspace evidence before cleanup. Before a terminal checkpoint commit, a
+retryable Codex non-zero exit or missing final response starts a new invocation
+from a fresh task workspace. Versioned markers in the content-addressed stdout
+bind every invocation, and wall time, steps, tool calls, and provider token
+counters accumulate as auxiliary evidence. Semantic outcomes are never retried.
+Authentication, subscription-limit, or workspace-integrity boundaries cancel
+remaining paid cells. Checkpoint resume does not retry committed or
+indeterminate cells.
 
 `aiq.run-provenance.v3` contains 19 top-level fields. It binds the run class,
 corpus, catalog, task set, evaluator, runtime, preflight, harness, prompt, tool
