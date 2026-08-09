@@ -107,15 +107,15 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91
+sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1
 ```
 
-This is the active public `1.0.6` metadata identity. Its public release digest
-is `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
-The public catalog is deterministic and identity-frozen. The no-deadline
+This is the active public `1.0.7` metadata identity. Its public release digest
+is `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
+The public catalog is deterministic and identity-frozen. The unbounded formal-task
 identity requires fresh independent Core and Contrast seals. The database task
 commitment must then be regenerated before database cutover. Final clean-commit
-regeneration, the focused canary, full calibration, and release acceptance
+regeneration, full calibration, and release acceptance
 remain pending.
 
 ## Execution and evidence
@@ -124,15 +124,13 @@ The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
 
-For the `1.0.6` release, first rerun the two Sol ultra cells that reached the
-old wall deadline, and then run one complete 17-by-72 calibration before any
-real Official publication path. Every formal model task has
-`wall_seconds: null`; the adapter waits for normal completion while live step
-and tool-call budgets remain enforced. The non-Official calibration must try to falsify fixture
-discrimination and must pass the release policy without an operator override.
-The interrupted `1.0.3` Official attempt was rejected as unpublished calibration
-evidence after an already-conclusive ceiling failure. No hidden responses or
-hidden task details were published.
+For the `1.0.7` release, run one complete 17-by-72 calibration before any real
+Official publication path. Every formal model task has `wall_seconds: null`,
+`max_steps: null`, and `max_tool_calls: null`. The adapter waits for normal
+completion and records elapsed time, steps, tool calls, tokens, and estimated
+cost as auxiliary evidence. These measurements never affect semantic scoring.
+The non-Official calibration must pass the release policy without an operator
+override. Earlier bounded runs remain unpublished failed release evidence.
 
 The runtime directory must contain exactly the native `codex` executable and
 its `codex-code-mode-host` sibling. Capability preflight records the exact local

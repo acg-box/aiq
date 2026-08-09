@@ -211,6 +211,9 @@ export interface TaskResult {
     retryable: boolean | null;
   } | null;
   tools: string[];
+  agentSteps: number;
+  toolCallCount: number;
+  toolCallsByType: Readonly<Record<string, number>>;
   latencyMs: number | null;
   latencyEvidenceLevel: 'runner_observed' | null;
   inputTokens: number | null;

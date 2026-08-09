@@ -65,7 +65,7 @@ as $$
 $$;
 
 select pg_temp.aiq_assert(
-  aiq_private.task_catalog_is_exact('aiq-core','1.0.6'),
+  aiq_private.task_catalog_is_exact('aiq-core','1.0.7'),
   'calibration integration requires the exact production initializer catalog'
 );
 
@@ -136,7 +136,7 @@ begin
     jsonb_agg('sha256:'||fixture_commitment order by fixture_commitment collate "C")
   into task_ids,task_hashes
   from aiq_private.aiq_task_catalog
-  where task_set_id='aiq-core' and task_set_version='1.0.6';
+  where task_set_id='aiq-core' and task_set_version='1.0.7';
   task_set_hash:=aiq_private.jcs_sha256(task_hashes);
   select jsonb_build_object('node_id',node_id,'public_key',public_key)
     into runner from pg_temp.aiq_calibration_identities where role_name='runner';
@@ -175,8 +175,8 @@ begin
     'schema_version','aiq.run-provenance.v3','run_class','calibration',
     'corpus_release_id','corpus_integration_calibration',
     'corpus_commitment_sha256',(select metadata->>'corpus_commitment_sha256'
-      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.6'),
-    'catalog_digest','sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91',
+      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.0.7'),
+    'catalog_digest','sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1',
     'task_set_digest',task_set_hash,
     'evaluator_digest','sha256:'||repeat('3',64),
     'runtime_digest','sha256:'||repeat('4',64),
@@ -228,7 +228,7 @@ begin
         'synthetic',false,'local_trust','untrusted'
       )
     ) as result_base) built
-    where task.task_set_id='aiq-core' and task.task_set_version='1.0.6'
+    where task.task_set_id='aiq-core' and task.task_set_version='1.0.7'
   ) generated;
   select jsonb_agg(jsonb_build_object(
     'task_id',result->>'task_id','task_version',result->>'task_version',
@@ -408,7 +408,7 @@ with source as (
       ) order by domain) from (
         select domain,count(*)::integer as task_count
         from aiq_private.aiq_task_catalog
-        where task_set_id='aiq-core' and task_set_version='1.0.6' group by domain
+        where task_set_id='aiq-core' and task_set_version='1.0.7' group by domain
       ) domain_counts),
       'rule','Synthetic untrusted calibration evidence is descriptive only.'
     ),
@@ -447,7 +447,7 @@ with source as (
       'task_ids',source.payload->'task_ids','models',source.payload->'models',
       'scores',scores.value,'result_efficiency',result_efficiency.value,
       'pricing',pg_temp.aiq_efficiency_pricing(),'task_set_id','aiq-core',
-      'task_set_version','1.0.6','benchmark_version','aiq-core@1.0.6',
+      'task_set_version','1.0.7','benchmark_version','aiq-core@1.0.7',
       'prompt_set_digest',source.payload#>>'{provenance,prompt_digest}',
       'runner_commit','integration','region','integration','scheduled_unix_ms',1785672000000,
       'started_unix_ms',source.payload->'started_unix_ms',

@@ -11,42 +11,35 @@ Use this handoff to create the first accepted AIQ 2.0 production publication
 and to track the remaining operational work. Do not infer future schedules,
 workers, or later publications from this release plan.
 
-Repository source has the active public AIQ Core `1.0.6` candidate. Its
+Repository source has the active public AIQ Core `1.0.7` candidate. Its
 public metadata digest is
-`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
+`sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
 and its public release digest is
-`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The public catalog is deterministic and identity-frozen. The prior controlled
-tree and database commitment bind the retired deadline policy. Fresh independent
-Core and Contrast sealing, the
-focused canary, full calibration, final native build
-verification, a real Official run, publication, and final deployment are
-pending. The only production tuple is AIQ Core `1.0.6`, scoring `1.0.7`, and
-measurement `2.0.0`. Do not treat the source-head change as a deployment claim.
+tree and database commitment bind the retired bounded policy. Fresh independent
+Core and Contrast sealing, full calibration, fixed-bank admission, final native
+build verification, a separate real Official run, publication, and final
+deployment are pending. The only production tuple is AIQ Core `1.0.7`, task
+scorer `1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. Do not treat
+the source-head change as a deployment claim.
 
-The `1.0.3` Official attempt was interrupted after an already-conclusive
-ceiling failure. It is rejected, unpublished calibration evidence. No hidden
-responses or hidden task details were published. The first `1.0.4` calibration
-completed all 1,224 cells but failed the statistical release gate. It remains
-non-Official evidence and must not be described as 1,224 failed executions. The
-`1.0.6` path first reruns the two Sol ultra cells that reached the old wall
-deadline as a focused no-deadline canary, then runs the full
-falsification-first non-Official 17-by-72 calibration. All 72 formal model tasks
-use `wall_seconds: null`; time and cost remain independent efficiency evidence.
-A failed release gate has
+All 72 formal model tasks have null wall-time, step, and tool-call limits. Time,
+steps, tool calls, tokens, and cost remain auxiliary evidence only. Earlier
+bounded runs remain immutable failed release evidence. A failed release gate has
 no operator override. Real calibration remains permanently non-Official even
 after signed verifier admission and distinct publication to its public register.
 
 ## AIQ 2.0 cutover
 
-The new real `1.0.6` 17-by-72 matrix is the only source for the Official
+The new real `1.0.7` 17-by-72 matrix is the only source for the Official
 publication. Do not preserve online, migrate, recompute, relabel, or display a
 legacy matrix as production evidence. It is not a fallback.
 
 The order below is intentional:
 
-1. Complete the focused no-deadline canary, then the full 17-by-72 non-Official
-   calibration with the final native runner/verifier inputs. Only after its
+1. Complete the full 17-by-72 non-Official calibration with the final native
+   runner/verifier inputs. Derive and admit the fixed bank. Only after its
    release gate passes, execute the controlled 17-by-72 Official run, score it
    with AIQ measurement `2.0.0`, and create one signed result package. Keep the
    package and all private inputs outside Git.
@@ -83,7 +76,7 @@ AIQ_2_ARTIFACT_ROOT='/controlled/aiq-2/artifacts'
 AIQ_2_TASKS='/controlled/aiq-2/tasks'
 AIQ_2_VERIFIER_ENVIRONMENT='/controlled/aiq-2/verifier-environment.json'
 AIQ_2_EVALUATOR_ROOT='/controlled/aiq-2/evaluators'
-AIQ_2_CORPUS_COMMITMENT='/controlled/aiq-2/aiq-core-1.0.6-commitment.json'
+AIQ_2_CORPUS_COMMITMENT='/controlled/aiq-2/aiq-core-1.0.7-commitment.json'
 AIQ_2_EVALUATOR_RUNTIME='/controlled/toolchain/node'
 AIQ_2_CODEX_TOOLCHAIN_ROOT='/controlled/toolchain'
 AIQ_2_REPLAY_ROOT='/controlled/aiq-2/replay'
@@ -161,7 +154,7 @@ AIQ_DATABASE_URL='<direct-connection-url>' cargo make check-aiq-2-cutover
 ```
 
 It fails unless the database contains exactly one published, non-synthetic
-`1.0.6` matrix, 17 published runs, 17 Official scores, 1,224 task results, one
+`1.0.7` matrix, 17 published runs, 17 Official scores, 1,224 task results, one
 calibration digest, zero synthetic Official scores, and exactly 17 public
 Official leaderboard rows with zero synthetic rows. It also checks measurement
 `2.0.0` and method `rasch_fractional_fixed_bank_map_v2`. This is the release gate
@@ -186,7 +179,8 @@ command environments with direct network access. The verifier must not receive
 the Codex home or runner signing key. The first release does not depend on or run
 Linux or Docker. They remain a future deployment target outside this handoff.
 
-This is one greenfield AIQ Core `1.0.6`, scoring `1.0.7`, measurement `2.0.0`
+This is one greenfield AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer
+`1.0.7`, measurement `2.0.0`
 state. The accepted publication is one complete `17 × 72 = 1,224` task-level
 result Official matrix, not 1,224 separate benchmark runs. The native macOS
 runner creates it, the native verifier replays it, and the distinct publisher
@@ -270,7 +264,7 @@ use it as a database input.
 ## Supabase setup
 
 The personal organization `ACG Box` hosts project `aiq` on PostgreSQL 17.6.
-Initialize AIQ Core `1.0.6` in this existing target project after its AIQ
+Initialize AIQ Core `1.0.7` in this existing target project after its AIQ
 namespace is empty. If residue exists, remove only `aiq_private`, the AIQ-owned
 roles, and the exact AIQ-owned public views and RPC overloads. Preserve all
 Supabase-managed and non-AIQ objects. This cleanup is a deployment prerequisite,
@@ -280,7 +274,7 @@ synthetic fixtures into this project.
 1. Confirm the standard `anon`, `authenticated`, `authenticator`, and
    `service_role` roles exist.
 2. Prepare one private production-reference
-   document. Bind the 72-task AIQ Core `1.0.6` corpus, current catalog identities,
+   document. Bind the 72-task AIQ Core `1.0.7` corpus, current catalog identities,
    and distinct runner, verifier, and publisher
    public identities.
 3. Apply the desired state once through a direct PostgreSQL connection. The
@@ -341,12 +335,12 @@ to the browser.
 Before deployment, run:
 
 ```sh
-npm run check
-npm run lint
-npm test
-npm run build
-npm run test:browser --workspace @aiq/web
+cargo make verify
 ```
+
+This is the complete local gate. It builds Web once and includes the local
+production browser contract. Do not repeat its component commands in the same
+pass.
 
 Also run the real public-read smoke against a disposable PostgreSQL 17 and
 PostgREST stack:
@@ -498,20 +492,20 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
 - [x] Runner, verifier, and publisher identities are distinct.
 - [x] `aiq.wiki` resolves with valid TLS; `www.aiq.wiki` redirects permanently
       while preserving paths.
-- [ ] Regenerate and audit the final AIQ Core `1.0.6` corpus from the final clean
+- [ ] Regenerate and audit the final AIQ Core `1.0.7` corpus from the final clean
       source commit, then build and hash the native runner and verifier.
-- [ ] Complete the focused no-deadline canary and the required full
-      non-Official calibration. Stop if any release
+- [ ] Complete the required full non-Official calibration and fixed-bank
+      admission. Stop if any release
       gate fails.
 - [ ] Create and successfully offline-verify one new signed AIQ 2.0
-      `1.0.6` 17-by-72 package before touching the live database.
+      `1.0.7` 17-by-72 package before touching the live database.
 - [ ] After the offline verifier gate passes, empty only the AIQ-owned namespace
-      and initialize the desired state once from the final AIQ Core `1.0.6`
+      and initialize the desired state once from the final AIQ Core `1.0.7`
       `databases/schema.sql`; do not apply a migration chain or provide a
       synthetic archive manifest to reset. An ordinary provider backup is optional
       and does not affect reset authorization.
 - [ ] Submit, replay, verify, and publish the already verified real 17-by-72 AIQ
-      Core `1.0.6` matrix. Then run `cargo make check-aiq-2-cutover` and deploy
+      Core `1.0.7` matrix. Then run `cargo make check-aiq-2-cutover` and deploy
       the exact source only after the count gate passes. Do not use a legacy
       publication as fallback.
 - [ ] Provision the separately owned twice-daily benchmark schedule and record its
@@ -558,8 +552,9 @@ responses with no public side effects. It covers public pages, exact matrix
 counts, evidence semantics, readiness, write rejection, mobile layout, and
 selected accessibility rules. It expects exactly one 17-by-72 Official matrix
 and fails if later runs exist until the release contract is deliberately
-revised. For a local contract check without a production read, run
-`npm run test:browser:production-contract --workspace @aiq/web`. These checks
+revised. The local contract check is included in `cargo make verify`. Run
+`npm run test:browser:production-contract --workspace @aiq/web` only to diagnose
+that suite. These checks
 validate the accepted public surface described in
 [Operations and Validation](operations.md); they do not schedule future work.
 

@@ -20,21 +20,22 @@ transiently because a later deployment can recreate or reassign them. A
 deployment-specific URL is intrinsic to its retained deployment. The current
 generated Vercel surfaces emit `noindex`.
 
-The only production tuple is AIQ Core `1.0.6`, scoring `1.0.7`, and measurement
-`2.0.0`. Production must remain without an Official AIQ 2.0 publication until a
-real non-synthetic signed 17-by-72 package passes native verifier replay. A
+The only production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
+scorer `1.0.7`, and measurement `2.0.0`. Production must remain without an
+Official AIQ 2.0 publication until a fresh complete calibration establishes the
+fixed bank and a separate real signed 17-by-72 package passes native verifier replay. A
 legacy publication is not a compatibility source or fallback. See [Benchmark
 Method](benchmark-method.md) for evidence semantics and [Deployment
 Handoff](deployment-handoff.md) for production acceptance checks.
 
-Repository source now targets the public AIQ Core candidate and scoring
-`1.0.6`. Its public metadata digest is
-`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
+Repository source now targets the public AIQ Core `1.0.7` candidate. Its task
+scorer remains `1.0.6` and aggregate scorer is `1.0.7`. Its public metadata digest is
+`sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
 and its public release digest is
-`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The public catalog is deterministic and identity-frozen. The prior controlled
-tree and database commitment bind the retired deadline policy. Fresh independent
-Core and Contrast seals, the focused canary, full calibration, a real Official run,
+tree and database commitment bind the retired bounded policy. Fresh independent
+Core and Contrast seals, full calibration, fixed-bank admission, a real Official run,
 publication, and final deployment are pending. This pre-release state does not
 claim that an Official production matrix is live.
 
@@ -53,15 +54,16 @@ locked dependencies.
 npm ci --ignore-scripts
 ```
 
-The aggregate repository checks are:
+The single aggregate repository gate is:
 
 ```sh
-cargo make fmt-check
-cargo make check
-cargo make lint
-cargo make test
-cargo make build
+cargo make verify
 ```
+
+It runs formatting, static contracts, lint, all unit and integration tests, the
+Rust build, one Web production build, and every local browser suite. Do not run
+the component tasks before or after it in the same pass. Use
+`cargo make test-typescript-coverage` only when a coverage report is needed.
 
 ## Local synthetic demonstration
 
@@ -104,11 +106,11 @@ Before a live run:
 1. Put the 72 private tasks, baseline workspaces, evaluator registry, current
    corpus commitment, Node.js runtime, and toolchain in controlled storage.
 2. Verify the ordered task-metadata catalog digest is
-   `sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
-   the release-policy identity is `aiq-core/1.0.6`, and the public catalog
+   `sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
+   the release-policy identity is `aiq-core/1.0.7`, and the public catalog
    release-identity digest is
-   `sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
-   Use the final clean-commit controlled regeneration for the focused canary.
+   `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
+   Use the final clean-commit controlled regeneration for calibration.
    Keep its scorer-manifest, evaluator, runtime task-set, generated-task tree,
    task-commitment manifest, and Core corpus identities distinct. Generate the
    separate Contrast corpus before release admission. Do not substitute one
@@ -257,23 +259,12 @@ an Official admission receipt, can be replay-verified and published to its
 separate public register, but never classifies or publishes as Official or ranking
 eligible. Use `run --help` for the complete controlled input contract.
 
-The first `1.0.4` calibration completed all 1,224 cells but failed the
-statistical release gate. Preserve it as non-Official evidence; do not report it
-as 1,224 failed task executions. For `1.0.6`, first run the two Sol ultra cells
-that reached the old wall deadline as a focused no-deadline canary. The current
-`coding-06` revision is a priority keyed async
-executor repair with stable eligible-head scheduling, dynamic concurrency,
-bounded waiting work, AbortSignal, cancellation, close, and idle epochs. The
-other three targets are a quoted-record parser, a six-field layered service
-configuration loader, and a bounded Unicode log preview. All 72 formal model
-tasks use `wall_seconds: null`. Step and tool-call budgets remain enforced. The
-first `1.0.5` pilot completed 63 cells, timed out on 5, and
-was rejected because its completed task means were 0.933–0.992. The r11 pilot
-stopped on debugging-02 at 47/48 steps and 41/40 tool calls. A later 17-by-5
-pilot completed 83 semantic cells and recorded two Sol ultra wall-time failures.
-Old deadline evidence cannot be relabeled or mixed with the new corpus.
-Regenerate and revalidate the controlled catalog, task-commitment manifest, and
-evaluator bindings before the fresh canary, then run the full non-Official
+Earlier bounded runs remain immutable failed release evidence and cannot be
+relabeled or mixed with the new corpus. All 72 formal model tasks use null
+wall-time, step, and tool-call limits. The runner still records usage as
+auxiliary evidence, and hard safety boundaries remain separate. Regenerate and
+revalidate the controlled catalog, task-commitment manifest, and evaluator
+bindings, then run the fresh full non-Official
 17-by-72 calibration. The full calibration must pass the release limits and the
 informative-task, non-uniform-task, domain, and model-spread checks. An operator
 cannot override a failure. The interrupted `1.0.3` Official attempt remains
@@ -407,7 +398,7 @@ the source file, signs evidence, or enters a publication path.
 
 ## Fresh database initialization
 
-AIQ Core `1.0.6` uses one greenfield desired state with no migration chain. Use
+AIQ Core `1.0.7` uses one greenfield desired state with no migration chain. Use
 this flow with the existing target Supabase project after its AIQ namespace is
 empty. If residue exists, remove only `aiq_private`, the AIQ-owned roles, and the
 exact AIQ-owned public views and RPC overloads. Preserve all Supabase-managed and
@@ -427,7 +418,7 @@ The command uses one connection and one transaction. It rejects existing AIQ
 schema or roles. After the controlled corpus passes the model-free checks and
 the operator verifies the final native build as specified in
 [Deployment Handoff](deployment-handoff.md), prepare a separately controlled
-production reference containing a non-synthetic AIQ Core `1.0.6` corpus
+production reference containing a non-synthetic AIQ Core `1.0.7` corpus
 commitment, a canonical millisecond UTC `published_at`, and the three production
 identities. Retain the private final-build audit receipt separately; database
 initialization does not consume or validate it. Initialization validates the
@@ -520,12 +511,11 @@ browsers first, as the checked-in CI job does:
 ```sh
 npm exec --workspace @aiq/web -- \
   playwright install --with-deps chromium firefox webkit
-npm run check
-npm run lint
-npm run test --workspace @aiq/web
-npm run build --workspace @aiq/web
-npm run test:browser --workspace @aiq/web
+cargo make verify
 ```
+
+For a Web-only rerun, `npm run test:browser --workspace @aiq/web` builds once and
+runs all local browser suites. Do not also run its individual suite scripts.
 
 To validate a real PostgREST-to-Next public-read chain against a freshly
 initialized disposable database, supply its loopback PostgREST origin:
@@ -566,9 +556,10 @@ side effects. It checks the exact 17-run and 1,224-result public inventory,
 efficiency semantics, readiness response, mobile layout, selected accessibility
 rules, exact accepted matrix-batch and runner identity, cost-status distribution,
 and priced nanodollar subtotal. It deliberately fails when
-later runs appear until the release contract is revised. Use
-`npm run test:browser:production-contract --workspace @aiq/web` for the local
-published-data mock. These commands validate the public surface accepted in
+later runs appear until the release contract is revised. The local
+published-data mock is already part of `verify` and `test:browser`. Run
+`npm run test:browser:production-contract --workspace @aiq/web` only as a
+targeted rerun. These commands validate the public surface accepted in
 [Deployment Handoff](deployment-handoff.md); they do not start a server, deploy
 resources, or create recurring automation.
 

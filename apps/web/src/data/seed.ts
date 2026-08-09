@@ -180,6 +180,9 @@ const toolSets = [
 ] as const;
 const failureCodes = ['AGENT_TIMEOUT', 'MODEL_TIMEOUT', 'TOOL_TIMEOUT'] as const;
 const syntheticUnavailableEfficiency = {
+  agentSteps: 0,
+  toolCallCount: 0,
+  toolCallsByType: {},
   latencyMs: null,
   latencyEvidenceLevel: null,
   inputTokens: null,

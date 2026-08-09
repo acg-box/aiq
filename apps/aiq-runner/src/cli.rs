@@ -1502,7 +1502,7 @@ enum Command {
 		#[arg(long)]
 		output: PathBuf,
 	},
-	/// Generate a browser-only 1.0.6 public projection from deterministic test observations.
+	/// Generate a browser-only 1.0.7 public projection from deterministic test observations.
 	///
 	/// The output is explicitly test-generated and cannot be submitted, normalized, or
 	/// published as Official evidence.
@@ -2839,7 +2839,7 @@ fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::
 			)?,
 			CorpusValidationMode::Core => {
 				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
-					return Err("tasks do not match the immutable AIQ Core 1.0.6 catalog".into());
+					return Err("tasks do not match the immutable AIQ Core 1.0.7 catalog".into());
 				}
 
 				corpus_commitment::validate_core_corpus_commitment(

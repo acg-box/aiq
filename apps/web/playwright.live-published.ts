@@ -3,6 +3,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { defineConfig } from '@playwright/test';
 
 import { resolvePlaywrightCompanionPort, resolvePlaywrightPort } from './playwright-port.ts';
+import { nextWebServerCommand } from './playwright-web-server.ts';
 
 const applicationPort = resolvePlaywrightPort(4_179, process.env.AIQ_PLAYWRIGHT_PORT);
 const supabasePort = resolvePlaywrightCompanionPort(applicationPort);
@@ -38,7 +39,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${supabasePort}/health`,
     },
     {
-      command: `npm run build && npm run start -- --hostname 127.0.0.1 --port ${applicationPort}`,
+      command: nextWebServerCommand(applicationPort),
       env: {
         AIQ_PUBLISHER_NODE_ID: `node_${'f'.repeat(64)}`,
         AIQ_RUNNER_ARTIFACT_BUCKET: 'aiq-runner-artifacts',

@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 import { resolvePlaywrightPort } from './playwright-port.ts';
+import { nextWebServerCommand } from './playwright-web-server.ts';
 
 const port = resolvePlaywrightPort(4_173, process.env.AIQ_PLAYWRIGHT_PORT);
 const reuseExistingServer = process.env.AIQ_PLAYWRIGHT_REUSE_EXISTING_SERVER === '1';
@@ -48,7 +49,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build && npm run start -- --hostname 127.0.0.1 --port ${port}`,
+    command: nextWebServerCommand(port),
     env: {
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: '',
       NEXT_PUBLIC_SUPABASE_URL: '',
