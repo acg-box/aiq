@@ -2019,9 +2019,9 @@ begin
     or candidate ->> 'run_class' <> 'official'
     or not aiq_private.dto_identifier_is_valid(candidate -> 'corpus_release_id', 128)
     or candidate ->> 'catalog_digest' <>
-      'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91'
+      'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1'
     or candidate ->> 'task_set_digest' <>
-      'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
+      'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'
     or candidate ->> 'evaluator_digest' <>
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
@@ -2459,9 +2459,9 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
     where task_set.task_set_id = target_task_set_id
       and task_set.task_set_version = target_task_set_version
       and task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.6'
+      and task_set.task_set_version = '1.0.7'
       and scoring.scoring_version = '1.0.7'
-      and scoring.benchmark_version = 'aiq-core@1.0.6'
+      and scoring.benchmark_version = 'aiq-core@1.0.7'
       and scoring.is_published
       and not scoring.synthetic
       and task_set.task_count = 72
@@ -2471,14 +2471,14 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
       and not coalesce((task_set.metadata ->> 'synthetic')::boolean, true)
       and task_set.catalog_identity_scope = 'ordered_full_task_metadata'
       and task_set.catalog_sha256 =
-        'add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91'
+        '84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1'
       and task_set.hidden_payload_commitment is not null
       and task_set.metadata ->> 'corpus_commitment_schema' =
         'aiq.corpus-commitment.v2'
       and task_set.metadata ->> 'corpus_commitment_sha256' =
         'sha256:' || task_set.hidden_payload_commitment
       and task_set.metadata ->> 'catalog_release_identity_sha256' =
-        'sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f'
+        'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae'
       and task_set.metadata ->> 'evaluator_identity_sha256' =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
       and (
@@ -2492,7 +2492,7 @@ create function aiq_private.frozen_catalog_identity_is_valid(target_task_set_id 
         where catalog.task_set_id = task_set.task_set_id
           and catalog.task_set_version = task_set.task_set_version
           and catalog.fixture_commitment is not null
-      ) = 'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
+      ) = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'
       and task_set.metadata ->> 'quota_policy' =
         'frozen_domain_by_difficulty'
       and aiq_private.ordered_catalog_identity_sha256(
@@ -4403,7 +4403,7 @@ begin
   end loop;
 
   return candidate ->> 'catalog_digest' is not distinct from
-    'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91';
+    'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1';
 end;
 $_$;
 
@@ -4434,7 +4434,7 @@ begin
     or jsonb_typeof(stage -> 'signer' -> 'node_id') is distinct from 'string'
     or candidate ->> 'run_class' is distinct from stage ->> 'run_class'
     or candidate ->> 'task_set_digest' is distinct from
-      'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
+      'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'
     or candidate ->> 'evaluator_digest' is distinct from
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
     or candidate ->> 'task_set_digest' is distinct from stage ->> 'task_set_hash'
@@ -7605,7 +7605,7 @@ begin
     select
       count(*)::integer as scoring_count,
       count(*) filter (
-        where scoring.benchmark_version = 'aiq-core@1.0.6'
+        where scoring.benchmark_version = 'aiq-core@1.0.7'
           and scoring.is_published
           and not scoring.synthetic
           and scoring.formula = '{
@@ -7678,7 +7678,7 @@ begin
       end as task_set_identity_sha256
     from aiq_private.aiq_task_catalog task
     where task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.6'
+      and task.task_set_version = '1.0.7'
   ),
   catalog_facts as (
     select
@@ -7692,7 +7692,7 @@ begin
       end as evaluator_identity_sha256
     from aiq_private.aiq_task_sets task_set
     where task_set.task_set_id = 'aiq-core'
-      and task_set.task_set_version = '1.0.6'
+      and task_set.task_set_version = '1.0.7'
   ),
   eligible_nodes as (
     select node.node_id, 'runner'::text as approved_role
@@ -7801,7 +7801,7 @@ begin
       view_facts.*,
       role_facts.*,
       aiq_private.frozen_catalog_identity_is_valid(
-        'aiq-core', '1.0.6', '1.0.7'
+        'aiq-core', '1.0.7', '1.0.7'
       ) as frozen_catalog_valid
     from model_facts
     cross join scoring_facts
@@ -7824,7 +7824,7 @@ begin
       and planning_execution_count = 7 and tool_use_count = 7
       and instruction_following_count = 6 and reliability_recovery_count = 7
       and task_set_identity_sha256 =
-        'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'
+        'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'
       and frozen_catalog_valid
       and evaluator_identity_sha256 =
         'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
@@ -7856,7 +7856,7 @@ begin
     'catalog_identity_sha256', catalog_identity_sha256,
     'task_set_identity_sha256', task_set_identity_sha256,
     'task_set_identity_valid', task_set_identity_sha256 =
-      'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda',
+      'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72',
     'evaluator_identity_sha256', evaluator_identity_sha256,
     'evaluator_identity_valid', evaluator_identity_sha256 =
       'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c',
@@ -8643,8 +8643,8 @@ begin
     and config.expected_in_matrix
   where run.published
     and run.task_set_id = 'aiq-core'
-    and run.task_set_version = '1.0.6'
-    and run.benchmark_version = 'aiq-core@1.0.6'
+    and run.task_set_version = '1.0.7'
+    and run.benchmark_version = 'aiq-core@1.0.7'
     and run.scoring_version = '1.0.7';
 
   if latest_recorded_at is null then
@@ -8752,8 +8752,8 @@ begin
       and score.published
       and score.score_status = 'official'
       and run.task_set_id = 'aiq-core'
-      and run.task_set_version = '1.0.6'
-      and run.benchmark_version = 'aiq-core@1.0.6'
+      and run.task_set_version = '1.0.7'
+      and run.benchmark_version = 'aiq-core@1.0.7'
       and run.scoring_version = '1.0.7'
       and score.scoring_version = '1.0.7'
     order by run.scheduled_for desc, run.run_id desc
@@ -9899,8 +9899,8 @@ create view public.public_leaderboard with (security_invoker = true) as
              join aiq_private.aiq_score_snapshots score on ((score.run_id = run.run_id)))
           where (run.published and score.published)
             and run.task_set_id = 'aiq-core'
-            and run.task_set_version = '1.0.6'
-            and run.benchmark_version = 'aiq-core@1.0.6'
+            and run.task_set_version = '1.0.7'
+            and run.benchmark_version = 'aiq-core@1.0.7'
             and run.scoring_version = '1.0.7'
             and score.scoring_version = '1.0.7'
           ORDER BY run.model_config_id, run.scheduled_for DESC, score.calculated_at DESC
@@ -10091,8 +10091,8 @@ create view public.public_run_results with (security_invoker = true) as
     end as score,
     result.failure_code as explanation_code,
         case
-            when (result.outcome = 'timeout'::aiq_private.result_outcome) then 'The task exceeded its time limit.'::text
-            when (result.outcome = 'budget_exhausted'::aiq_private.result_outcome) then 'The task exceeded a resource budget.'::text
+            when (result.outcome = 'timeout'::aiq_private.result_outcome) then 'Execution ended at an external runtime or safety boundary; no semantic score was assigned.'::text
+            when (result.outcome = 'budget_exhausted'::aiq_private.result_outcome) then 'Execution ended at a non-scoring safety or provider boundary; no semantic score was assigned.'::text
             when (result.outcome = 'tool_failure'::aiq_private.result_outcome) then 'A permitted execution tool failed.'::text
             when (result.outcome = 'policy_failure'::aiq_private.result_outcome) then 'The result violated a controlled-output policy.'::text
             when (result.outcome = 'wrong_artifact'::aiq_private.result_outcome) then 'The expected artifact was not produced.'::text
@@ -10110,6 +10110,9 @@ create view public.public_run_results with (security_invoker = true) as
                     else '{}'::jsonb
                 end) tool_name(tool_name)
           ORDER BY tool_name.tool_name), '{}'::text[]) as tools,
+    (result.tool_usage ->> 'steps'::text)::bigint as agent_steps,
+    (result.tool_usage ->> 'total_calls'::text)::bigint as tool_call_count,
+    result.tool_usage -> 'by_tool'::text as tool_calls_by_type,
     result.latency_ms,
     result.latency_evidence_level,
     result.input_tokens,
@@ -10132,8 +10135,8 @@ create view public.public_run_results with (security_invoker = true) as
      left join aiq_private.aiq_task_catalog catalog on (((catalog.task_set_id = run.task_set_id) and (catalog.task_set_version = run.task_set_version) and (catalog.task_id = result.task_id) and (catalog.task_version = result.task_version))))
   where run.published
     and run.task_set_id = 'aiq-core'
-    and run.task_set_version = '1.0.6'
-    and run.benchmark_version = 'aiq-core@1.0.6'
+    and run.task_set_version = '1.0.7'
+    and run.benchmark_version = 'aiq-core@1.0.7'
     and run.scoring_version = '1.0.7';
 
 
@@ -10205,8 +10208,8 @@ create view public.public_runs with (security_invoker = true) as
                   GROUP BY result.domain) domain_summary) result_summary)
   where run.published
     and run.task_set_id = 'aiq-core'
-    and run.task_set_version = '1.0.6'
-    and run.benchmark_version = 'aiq-core@1.0.6'
+    and run.task_set_version = '1.0.7'
+    and run.benchmark_version = 'aiq-core@1.0.7'
     and run.scoring_version = '1.0.7';
 
 
@@ -10225,7 +10228,7 @@ create view public.public_scoring_versions with (security_invoker = true) as
     synthetic
    from aiq_private.aiq_scoring_versions
   where is_published
-    and benchmark_version = 'aiq-core@1.0.6'
+    and benchmark_version = 'aiq-core@1.0.7'
     and scoring_version = '1.0.7';
 
 
@@ -10257,7 +10260,7 @@ create view public.public_task_coverage with (security_invoker = true) as
    from (aiq_private.aiq_scoring_versions scoring
      join expected on (((expected.task_set_id = split_part(scoring.benchmark_version, '@'::text, 1)) and (expected.task_set_version = split_part(scoring.benchmark_version, '@'::text, 2)))))
   where scoring.is_published
-    and scoring.benchmark_version = 'aiq-core@1.0.6'
+    and scoring.benchmark_version = 'aiq-core@1.0.7'
     and scoring.scoring_version = '1.0.7';
 
 
@@ -15799,7 +15802,7 @@ join aiq_private.calibration_publications publication using (run_id)
 join aiq_private.efficiency_pricing_methods pricing using (pricing_digest)
 where not run.official_eligible and not run.ranking_eligible
   and run.task_set_id = 'aiq-core'
-  and run.task_set_version = '1.0.6'
+  and run.task_set_version = '1.0.7'
   and run.scoring_version = '1.0.7'
   and not publication.official_eligible and not publication.ranking_eligible;
 
@@ -15870,8 +15873,8 @@ join aiq_private.aiq_model_configs model using(model_config_id)
 join aiq_private.efficiency_pricing_methods pricing using(pricing_digest)
 where run.published and not run.synthetic
   and run.task_set_id = 'aiq-core'
-  and run.task_set_version = '1.0.6'
-  and run.benchmark_version = 'aiq-core@1.0.6'
+  and run.task_set_version = '1.0.7'
+  and run.benchmark_version = 'aiq-core@1.0.7'
   and run.scoring_version = '1.0.7'
   and run.started_at is not null and run.completed_at is not null
   and exists(select 1 from aiq_private.aiq_score_snapshots score
@@ -15908,8 +15911,8 @@ select result.result_id,
   result.failure_code,
   result.failure_code as explanation_code,
   case
-    when result.outcome='timeout' then 'The task exceeded its time limit.'
-    when result.outcome='budget_exhausted' then 'The task exceeded a resource budget.'
+    when result.outcome='timeout' then 'Execution ended at an external runtime or safety boundary; no semantic score was assigned.'
+    when result.outcome='budget_exhausted' then 'Execution ended at a non-scoring safety or provider boundary; no semantic score was assigned.'
     when result.outcome='tool_failure' then 'A permitted execution tool failed.'
     when result.outcome='policy_failure' then 'The result violated a controlled-output policy.'
     when result.outcome='wrong_artifact' then 'The expected artifact was not produced.'
@@ -15952,7 +15955,7 @@ join aiq_private.calibration_publications publication
 join aiq_private.efficiency_pricing_methods pricing
   on pricing.pricing_digest=result.pricing_digest
 where run.task_set_id = 'aiq-core'
-  and run.task_set_version = '1.0.6'
+  and run.task_set_version = '1.0.7'
   and run.scoring_version = '1.0.7'
   and not publication.official_eligible and not publication.ranking_eligible;
 
@@ -16013,7 +16016,7 @@ join aiq_private.calibration_publications publication
 join aiq_private.efficiency_pricing_methods pricing
   on pricing.pricing_digest=score.pricing_digest
 where run.task_set_id = 'aiq-core'
-  and run.task_set_version = '1.0.6'
+  and run.task_set_version = '1.0.7'
   and run.scoring_version = '1.0.7'
   and not publication.official_eligible and not publication.ranking_eligible;
 

@@ -9,8 +9,8 @@ tags: ['benchmark', 'method', 'scoring']
 
 ## Fixture
 
-Repository source targets the public AIQ Core `1.0.6` candidate, benchmark
-release `aiq-core@1.0.6`, and scoring implementation `1.0.7`. It contains 72 fixed
+Repository source targets the public AIQ Core `1.0.7` candidate, task scorer
+`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`. It contains 72 fixed
 private tasks in ten domains. This is the one greenfield scoring contract.
 
 | Domain                          | Tasks |
@@ -32,22 +32,21 @@ fixtures, expected outputs, and evaluators stay in controlled storage.
 The ordered public catalog digest is:
 
 ```text
-sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91
+sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1
 ```
 
-The release-policy identity is `aiq-core/1.0.6`. Its public catalog
+The release-policy identity is `aiq-core/1.0.7`. Its public catalog
 release-identity digest is
-`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
+`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The public catalog is deterministic and identity-frozen. The reviewed evaluator identity is
 `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`,
 the current no-deadline public-safe database task-set identity is
-`sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda`,
+`sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`,
 and its task-commitment manifest identity is
-`sha256:5515d602865ac1c30207957b0b6f36a9420ea7256809ce2c048ee881a74b78d6`.
-Independent no-deadline Core and Contrast A/B seals and both model-free
-validators produced these bindings. Re-seal from the final clean identity
-commit before the focused canary. Final controlled corpus identities are
-calibration candidates, not accepted release identities. Each final
+`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
+These are checked-in pre-seal bindings. Fresh Core and Contrast A/B seals and
+both model-free validators must establish the final controlled corpus
+identities. Each final
 corpus keeps
 `runner.identity_kind` as `source_only` and `runner.built_binary_sha256` as
 null. The shared Rust validator now fails closed on this runner subtree. The
@@ -68,8 +67,9 @@ bound by the corpus commitment.
 
 ## Published Official evidence
 
-Production can publish only one AIQ Core `1.0.6`, scoring `1.0.7`, measurement
-`2.0.0`, non-synthetic Official `72 × 17` matrix, or 1,224 results. The release gate checks all
+Production can publish only one AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
+scorer `1.0.7`, measurement `2.0.0`, non-synthetic Official `72 × 17` matrix, or
+1,224 results. The release gate checks all
 72 Core task definitions and their policy-valid acceptance suites. Every Core
 task requires `gold`, `alternate_correct`, `partial`, and `adversarial_format`;
 `empty` and `timeout` are permitted only as reviewed optional classes, and no
@@ -118,21 +118,12 @@ independent UTF-16 limits, and indexed syntax errors. `debugging-02` resolves a
 six-field layered service configuration with normalization, typed bounds,
 built-ins, an atomic disable sentinel, and exact provenance. `debugging-04`
 combines line-ending normalization, head and tail windows, grapheme-safe line
-budgets, complete ellipses, and omission metadata. A later `1.0.5` pilot exposed
-seven timeouts and three tool-budget failures at the common 900-second,
-40-step, and 28-tool-call envelope. The offline historical diagnostic excludes
-those runtime-null cells from semantic scoring without changing the preserved
-package or producing Official evidence. The r11 five-task pilot then stopped on
-debugging-02 at 47/48 steps and 41/40 tool calls after 1,060.042 seconds. A
-later 17-by-5 pilot completed 83 semantic cells and recorded two Sol ultra
-wall-time failures. AIQ Core `1.0.6` preserves task, fixture, evaluator, tool,
-and scoring semantics and removes the model wall deadline from all 72 tasks.
-Coding-07 retains 32 steps and 21 tool calls; debugging-02 retains 64 steps and
-56 tool calls; coding-06, debugging-01, and debugging-04 retain 48 steps and 40
-tool calls. The other 67 tasks retain their accepted step and tool-call limits.
-Old deadline evidence cannot be relabeled or mixed with the new corpus. Run the
-two previously timed-out Sol ultra cells as a focused no-deadline canary before
-the full 17-by-72 non-Official calibration. The full calibration must meet the release
+budgets, complete ellipses, and omission metadata. Earlier bounded runs remain
+immutable failed release evidence. AIQ Core `1.0.7` preserves task, fixture,
+evaluator, tool, and semantic scoring while removing benchmark-enforced
+wall-time, step, and tool-call termination from all 72 tasks. Elapsed time,
+steps, tool calls by type, tokens, and cost remain auxiliary measurements only.
+A fresh full 17-by-72 non-Official calibration must meet the release
 limits for universal semantic zeros and universal full scores, and it must show
 sufficient informative tasks, non-uniform tasks, domain spread, and model
 spread. The policy permits at most seven universal semantic-zero tasks and at
@@ -183,7 +174,7 @@ success-only artifact, and the native verifier resolves and checks it before
 publication. A durable checkpoint supports interruption recovery without
 replacing completed evidence.
 
-Live accounting excludes completed `error` items from the agent step budget;
+Live accounting excludes completed `error` items from the measured agent-step count;
 they remain in raw evidence. Known presentation and reasoning items are not
 tools, while unknown completed item types remain conservatively counted as
 steps and tool calls. The `codex.exec-json-items.v3` policy recognizes only the
@@ -200,12 +191,13 @@ counters.
 
 ## Time, tokens, and API-equivalent cost
 
-Formal model invocations have no wall-clock deadline. The runner waits for
-normal completion unless a live step or tool-call budget, an integrity boundary,
-or an operator cancellation ends the cell. Deterministic evaluator subprocesses
-remain bounded. These execution controls classify evidence; elapsed time,
-tokens, tool use, and cost never enter task scores, Rasch ability, quality,
-strict pass, ranking, or interval calculations.
+Formal model invocations have no benchmark-enforced wall-time, step, or
+tool-call termination. The runner waits for normal completion unless an
+integrity or safety boundary, provider boundary, or operator cancellation ends
+the cell. Deterministic evaluator subprocesses remain bounded. These execution
+controls classify evidence; elapsed time, steps, tool calls, tokens, and cost
+never enter task scores, Rasch ability, quality, strict pass, ranking, or
+interval calculations.
 
 Each result distinguishes selected, attempted, adapter-invoked, and
 elapsed-observed work. An attempt starts after capability admission. An adapter
@@ -288,7 +280,7 @@ method, not an actual ChatGPT or Codex subscription bill.
 
 ## Outcomes and scoring
 
-AIQ Core `1.0.6` uses the public task-score description before any `1.0.6`
+AIQ Core `1.0.7` uses task scorer `1.0.6` before any `1.0.7`
 model evidence is accepted. Each controlled evaluator contains at most 16
 binary checks. Its content-addressed configuration binds every check identifier,
 nonnegative integer weight, type, and hard-gate status. The task score is:

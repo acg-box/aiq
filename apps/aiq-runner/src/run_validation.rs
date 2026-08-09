@@ -1098,8 +1098,13 @@ fn validate_result_budgets(
 			.is_some_and(|failure| failure.kind == FailureKind::BudgetExceeded);
 
 		if exceeds_wall_budget
-			|| (!budget_failure && result.tool_usage.steps > task.budgets.max_steps)
-			|| (!budget_failure && result.tool_usage.total_calls > task.budgets.max_tool_calls)
+			|| (!budget_failure
+				&& task.budgets.max_steps.is_some_and(|limit| result.tool_usage.steps > limit))
+			|| (!budget_failure
+				&& task
+					.budgets
+					.max_tool_calls
+					.is_some_and(|limit| result.tool_usage.total_calls > limit))
 		{
 			return Err(RunValidationError::new(
 				"Codex adapter elapsed time or live tool counters exceed the task budgets",
@@ -1465,7 +1470,7 @@ mod tests {
 	}
 
 	#[test]
-	fn unbounded_tasks_accept_elapsed_time_but_still_enforce_step_and_tool_limits() {
+	fn unbounded_tasks_accept_elapsed_time_steps_and_tool_calls_as_measurements() {
 		let slot = ScheduleConfig::default()
 			.slot("2026-08-02", ScheduleOccurrence::Day)
 			.expect("fixture slot");
@@ -1488,14 +1493,22 @@ mod tests {
 		super::validate_result_budgets(result, Some(&tasks))
 			.expect("elapsed time is descriptive when the task has no wall deadline");
 
-		result.tool_usage.steps = tasks[task_index].budgets.max_steps + 1;
+		tasks[task_index].budgets.max_steps = None;
+		tasks[task_index].budgets.max_tool_calls = None;
+		result.tool_usage.steps = 10_000;
+		result.tool_usage.total_calls = 9_999;
+		result.tool_usage.by_tool =
+			BTreeMap::from([("command_execution".to_owned(), result.tool_usage.total_calls)]);
+
+		super::validate_result_budgets(result, Some(&tasks))
+			.expect("steps and tool calls are descriptive when their limits are null");
+
+		tasks[task_index].budgets.max_steps = Some(9_999);
 
 		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
 
-		result.tool_usage.steps = 0;
-		result.tool_usage.total_calls = tasks[task_index].budgets.max_tool_calls + 1;
-		result.tool_usage.by_tool =
-			BTreeMap::from([("command_execution".to_owned(), result.tool_usage.total_calls)]);
+		tasks[task_index].budgets.max_steps = None;
+		tasks[task_index].budgets.max_tool_calls = Some(9_998);
 
 		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
 	}

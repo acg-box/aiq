@@ -30,8 +30,8 @@ type CalibrationStatisticsEvidence<'a> =
 
 /// Current scoring implementation version.
 pub const AIQ_SCORING_VERSION: &str = "1.0.7";
-/// Frozen task-level evaluator contract. Aggregate ability scoring is versioned
-/// independently so the unchanged 1.0.6 task corpus keeps its content identity.
+/// Frozen task-level evaluator contract. Aggregate ability scoring and task-set
+/// execution semantics are versioned independently.
 pub const AIQ_TASK_SCORER_VERSION: &str = "1.0.6";
 /// Current measurement model version. This is deliberately separate from the
 /// task evaluator release: item scoring and ability estimation are different
@@ -44,12 +44,12 @@ pub const CALIBRATION_BANK_SCHEMA_VERSION: &str = "aiq.calibration-bank.v2";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
-pub const AIQ_TASK_SET_VERSION: &str = "1.0.6";
+pub const AIQ_TASK_SET_VERSION: &str = "1.0.7";
 /// Current benchmark release identifier.
-pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.6";
+pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.7";
 /// Frozen full-metadata commitment for the current AIQ Core release.
 pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
-	"sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91";
+	"sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -2343,7 +2343,7 @@ fn publication_tier(
 }
 
 fn frozen_catalog() -> Result<FrozenCatalog, serde_json::Error> {
-	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json"))
+	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"))
 }
 
 fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
@@ -3727,9 +3727,9 @@ mod tests {
 
 		for (index, result) in different_efficiency.iter_mut().enumerate() {
 			result.latency.wall_ms = 86_400_000 + index as u64;
-			result.tool_usage.steps = 1;
-			result.tool_usage.total_calls = 1;
-			result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), 1)]);
+			result.tool_usage.steps = 10_000 + index as u32;
+			result.tool_usage.total_calls = 9_999;
+			result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), 9_999)]);
 			result.tool_usage.provider_tokens = runner::ProviderTokenUsage {
 				input: Some(10_000 + index as u64),
 				cached_input: Some(1_000),

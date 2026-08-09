@@ -32,9 +32,9 @@
       "properties": {
         "schema_version": { "const": "aiq.catalog.v1" },
         "task_set_id": { "const": "aiq-core" },
-        "task_set_version": { "const": "1.0.6" },
+        "task_set_version": { "const": "1.0.7" },
         "identity_sha256": {
-          "const": "sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91"
+          "const": "sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1"
         },
         "identity_scope": { "const": "ordered_full_task_metadata" }
       }
@@ -559,7 +559,7 @@
           "pattern": "^[a-z0-9-]+-[0-9]{2}(?![\\s\\S])"
         },
         "task_version": {
-          "const": "1.0.6"
+          "const": "1.0.7"
         },
         "task_definition_sha256": { "$ref": "#/$defs/digest" },
         "catalog_entry_sha256": { "$ref": "#/$defs/digest" },

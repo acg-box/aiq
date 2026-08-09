@@ -18,7 +18,7 @@ import {
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.6/catalog.json');
+const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.7/catalog.json');
 const corpusSchemaPath = resolve(
   repositoryRoot,
   'benchmarks/schema/corpus-commitment-v2.schema.json',
@@ -27,9 +27,9 @@ const schemaPath = resolve(repositoryRoot, 'databases/schema.sql');
 const initPath = resolve(repositoryRoot, 'databases/init.ts');
 const taskCommitmentsPath = resolve(
   repositoryRoot,
-  'databases/aiq-core-1.0.6-task-commitments.json',
+  'databases/aiq-core-1.0.7-task-commitments.json',
 );
-const taskSetIdentity = 'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda';
+const taskSetIdentity = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
 const evaluatorIdentity = 'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 
 function isObject(value: unknown): value is JsonObject {
@@ -272,7 +272,7 @@ async function referenceFixture(): Promise<JsonObject> {
       catalog: {
         schema_version: 'aiq.catalog.v1',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.6',
+        task_set_version: '1.0.7',
         identity_sha256: object(catalog.task_metadata_identity).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
@@ -421,7 +421,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.6', '1\.0\.7'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.7', '1\.0\.7'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -464,11 +464,11 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   strictEqual(prepared.receipt.measurement_version, '2.0.0');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,
-    'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91',
+    'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1',
   );
   strictEqual(
     prepared.receipt.catalog_release_identity_sha256,
-    'sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f',
+    'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae',
   );
   strictEqual(prepared.receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(prepared.receipt.evaluator_identity_sha256, evaluatorIdentity);

@@ -8,6 +8,7 @@ skip_core_tasks = true
 # | ---------------------- | --------- | --- |
 # | check                   | composite |     |
 # | check-database          | command   |     |
+# | check-root-typescript   | command   |     |
 # | check-rust              | command   |     |
 # | check-typescript        | command   |     |
 # | storage-lifecycle       | command   |     |
@@ -25,6 +26,11 @@ dependencies = [
 workspace = false
 command = "node"
 args = ["scripts/check-database-schema.ts"]
+
+[tasks.check-root-typescript]
+workspace = false
+command = "npm"
+args = ["exec", "--", "tsc", "--project", "tsconfig.json"]
 
 [tasks.check-rust]
 workspace = false
@@ -332,10 +338,12 @@ args = [
 # | task                       | type      | cwd |
 # | -------------------------- | --------- | --- |
 # | test                      | composite |     |
+# | test-browser              | composite |     |
 # | test-database-concurrency | command   |     |
 # | test-real-codex-host      | command   |     |
 # | test-rust                 | command   |     |
 # | test-typescript           | command   |     |
+# | test-typescript-coverage  | command   |     |
 
 [tasks.test]
 clear = true
@@ -357,6 +365,17 @@ workspace = false
 command = "npm"
 args = ["run", "test"]
 
+[tasks.test-typescript-coverage]
+workspace = false
+command = "npm"
+args = ["run", "test:coverage", "--workspace", "@aiq/web"]
+
+[tasks.test-browser]
+workspace = false
+dependencies = ["build-web"]
+command = "npm"
+args = ["run", "test:browser:prebuilt", "--workspace", "@aiq/web"]
+
 [tasks.build-real-codex-host-probe]
 private = true
 workspace = false
@@ -376,6 +395,24 @@ args = [
 	"--",
 	"--ignored",
 	"--test-threads=1",
+]
+
+# Verify
+# | task   | type      | cwd |
+# | ------ | --------- | --- |
+# | verify | composite |     |
+
+[tasks.verify]
+clear = true
+workspace = false
+dependencies = [
+	"fmt-check",
+	"check-database",
+	"check-root-typescript",
+	"lint",
+	"test",
+	"build-rust",
+	"test-browser",
 ]
 
 [tasks.require-node-24-15]

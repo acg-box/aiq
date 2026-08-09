@@ -323,7 +323,7 @@ const resultId = (value: number) => `result_${hex(value)}`;
 const nodeId = `node_${'a'.repeat(64)}`;
 const publicKey = 'b'.repeat(64);
 const syntheticSourceNodeId = 'node_synthetic_demo';
-const catalogDigest = 'sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91';
+const catalogDigest = 'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1';
 const controlledGeneratedTaskTreeDigest =
   'sha256:e46f743a8f56b87cadcb4cd216a7b2ae679138a3259b42e8870a631f9ea31da4';
 
@@ -430,7 +430,7 @@ function normalizedResult(
     matrix_batch_id: runId(1),
     run_id: runId(modelIndex + 2),
     task_id: `task-${String(taskIndex + 1).padStart(2, '0')}`,
-    task_version: '1.0.6',
+    task_version: '1.0.7',
     task_hash: sha256(taskIndex + 1),
     domain: domains[taskIndex % domains.length],
     scorer_version: '1.0.6',
@@ -549,13 +549,13 @@ function normalizedBatch(): JsonObject {
     content_hash: sha256(2),
     signer: { node_id: nodeId, public_key: publicKey },
     task_set_id: 'aiq-core',
-    task_set_version: '1.0.6',
+    task_set_version: '1.0.7',
     task_set_hash: sha256(3),
     terminal_attempt_lineage_digest: sha256(23),
     capability_validation_digest: null,
     provenance: null,
     run_class: null,
-    benchmark_version: 'aiq-core@1.0.6',
+    benchmark_version: 'aiq-core@1.0.7',
     prompt_set_digest: sha256(4),
     scoring_version: '1.0.7',
     runner_commit: 'd'.repeat(40),
@@ -693,7 +693,7 @@ function attestation(): JsonObject {
     terminal_attempt_lineage_digest: sha256(23),
     capability_validation_digest: null,
     provenance: null,
-    benchmark_version: 'aiq-core@1.0.6',
+    benchmark_version: 'aiq-core@1.0.7',
     prompt_set_digest: sha256(4),
     scoring_version: '1.0.7',
     verifier: { node_id: nodeId, public_key: publicKey },
@@ -922,7 +922,7 @@ await test('the current corpus commitment has one direct state', async () => {
       requireObjectProperty(requireObjectProperty(properties, 'catalog'), 'properties'),
       'task_set_version',
     ).const,
-    '1.0.6',
+    '1.0.7',
   );
   strictEqual(schema.additionalProperties, false);
 
@@ -967,7 +967,7 @@ await test('corpus runtime components keep stable fields and bounded diagnostics
   strictEqual(additionalVersion.pattern, '^[A-Za-z0-9.+_-]{0,80}(?![\\s\\S])');
 });
 
-await test('public wire schemas bind only the active AIQ Core 1.0.6 release', async () => {
+await test('public wire schemas bind only the active AIQ Core 1.0.7 release', async () => {
   const schemas = await Promise.all(
     [
       'benchmarks/schema/result-package-v4.schema.json',
@@ -993,7 +993,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
       requireObjectProperty(requireObjectProperty(resultDefinitions, 'taskResult'), 'properties'),
       'task_version',
     ).const,
-    '1.0.6',
+    '1.0.7',
   );
   strictEqual(
     requireObjectProperty(
@@ -1008,10 +1008,10 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
 
   const normalizedProperties = requireObjectProperty(normalizedBatchSchema, 'properties');
   strictEqual(requireObjectProperty(normalizedProperties, 'task_set_id').const, 'aiq-core');
-  strictEqual(requireObjectProperty(normalizedProperties, 'task_set_version').const, '1.0.6');
+  strictEqual(requireObjectProperty(normalizedProperties, 'task_set_version').const, '1.0.7');
   strictEqual(
     requireObjectProperty(normalizedProperties, 'benchmark_version').const,
-    'aiq-core@1.0.6',
+    'aiq-core@1.0.7',
   );
   strictEqual(requireObjectProperty(normalizedProperties, 'scoring_version').const, '1.0.7');
   const normalizedDefinitions = requireObjectProperty(normalizedBatchSchema, '$defs');
@@ -1023,7 +1023,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
       ),
       'task_version',
     ).const,
-    '1.0.6',
+    '1.0.7',
   );
   strictEqual(
     requireObjectProperty(
@@ -1049,7 +1049,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
   const attestationProperties = requireObjectProperty(attestationSchema, 'properties');
   strictEqual(
     requireObjectProperty(attestationProperties, 'benchmark_version').const,
-    'aiq-core@1.0.6',
+    'aiq-core@1.0.7',
   );
   strictEqual(requireObjectProperty(attestationProperties, 'scoring_version').const, '1.0.7');
 
@@ -1068,7 +1068,7 @@ await test('public wire schemas bind only the active AIQ Core 1.0.6 release', as
       requireObjectProperty(requireObjectProperty(corpusDefinitions, 'task'), 'properties'),
       'task_version',
     ).const,
-    '1.0.6',
+    '1.0.7',
   );
 });
 
@@ -2012,10 +2012,10 @@ await test('calibration stage pricing and context-band evidence mirror the norma
 
   for (const [field, expected, changed] of [
     ['task_set_id', 'aiq-core', 'other'],
-    ['task_set_version', '1.0.6', '1.0.4'],
-    ['task_set_version', '1.0.6', '1.0.2'],
-    ['benchmark_version', 'aiq-core@1.0.6', 'aiq-core@1.0.4'],
-    ['benchmark_version', 'aiq-core@1.0.6', 'aiq-core@1.0.2'],
+    ['task_set_version', '1.0.7', '1.0.4'],
+    ['task_set_version', '1.0.7', '1.0.2'],
+    ['benchmark_version', 'aiq-core@1.0.7', 'aiq-core@1.0.4'],
+    ['benchmark_version', 'aiq-core@1.0.7', 'aiq-core@1.0.2'],
   ] as const) {
     const fieldSchema = requireObject(properties[field], `${field} schema`);
     strictEqual(matchesSchema(expected, fieldSchema, schema), true, `${field} current value`);
@@ -2168,8 +2168,8 @@ await test('verifier environment example binds the current public task release',
   );
 
   strictEqual(environment.task_set_id, 'aiq-core');
-  strictEqual(environment.task_set_version, '1.0.6');
-  strictEqual(environment.benchmark_version, 'aiq-core@1.0.6');
+  strictEqual(environment.task_set_version, '1.0.7');
+  strictEqual(environment.benchmark_version, 'aiq-core@1.0.7');
   strictEqual(
     requireObjectProperty(environment, 'expected_provenance').catalog_digest,
     catalogDigest,
