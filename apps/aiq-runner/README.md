@@ -164,6 +164,14 @@ runner lock. Do not give an untrusted process the same user identity or write
 access to these directories. Protected writes use macOS atomic rename
 primitives and fail closed when those primitives are unavailable.
 
+Before it commits a terminal cell, the live runner retries a retryable Codex
+non-zero exit or missing final response in a fresh copy of the task workspace.
+The content-addressed stdout keeps a versioned record of every invocation. Wall
+time, steps, tool calls, and provider token counters accumulate across the
+invocations. They remain auxiliary measurements. A semantic outcome, including
+an incorrect answer, is final and is never retried. Checkpoint resume does not
+retry a committed or indeterminate cell.
+
 ## Scoring, packaging, and submission
 
 `score` applies the checked-in AIQ 2.0 Rasch scoring rules to a saved run. The
