@@ -174,6 +174,13 @@ success-only artifact, and the native verifier resolves and checks it before
 publication. A durable checkpoint supports interruption recovery without
 replacing completed evidence.
 
+A retryable Codex non-zero exit or missing final response can start another
+invocation before the cell becomes terminal. Each invocation starts from a
+fresh task workspace. The runner retains versioned attempt markers and
+cumulative time, step, tool-call, and provider-token evidence. The verifier
+recomputes these auxiliary totals. An evaluator outcome is terminal and cannot
+be retried to improve AIQ.
+
 Live accounting excludes completed `error` items from the measured agent-step count;
 they remain in raw evidence. Known presentation and reasoning items are not
 tools, while unknown completed item types remain conservatively counted as
