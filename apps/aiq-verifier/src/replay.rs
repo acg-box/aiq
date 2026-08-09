@@ -1111,6 +1111,36 @@ mod tests {
 	}
 
 	#[test]
+	fn retry_attempt_evidence_replays_and_marker_tampering_is_rejected() {
+		let stdout = [
+			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"partial"}}"#,
+			r#"{"type":"turn.completed","usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16}}"#,
+			r#"{"type":"aiq.invocation-attempt.v1","attempt":1,"disposition":"retry","failure_kind":"non_zero_exit","exit_code":17,"wall_ms":2}"#,
+			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"OK"}}"#,
+			r#"{"type":"turn.completed","usage":{"input_tokens":7,"output_tokens":3,"total_tokens":10}}"#,
+			r#"{"type":"aiq.invocation-attempt.v1","attempt":2,"disposition":"selected","failure_kind":null,"exit_code":null,"wall_ms":3}"#,
+		]
+		.join("\n");
+		let mut fixture = Fixture::completed("OK");
+
+		fixture.run.results[0].latency.wall_ms = 5;
+		fixture.run.results[0].tool_usage =
+			runner::parse_codex_tool_usage(&stdout).expect("retry usage");
+
+		fixture.replace_artifact("stdout.jsonl", stdout.as_bytes().to_vec());
+		fixture.verify().expect("retry evidence replay");
+		fixture.replace_artifact(
+			"stdout.jsonl",
+			stdout.replacen(r#""attempt":2"#, r#""attempt":3"#, 1).into_bytes(),
+		);
+
+		assert_replay_error(
+			fixture.verify().expect_err("marker sequence tamper"),
+			ReasonCode::InvalidReplayEvidence,
+		);
+	}
+
+	#[test]
 	fn completed_result_requires_one_strict_utf8_stdout_artifact() {
 		let mut missing = Fixture::completed("OK");
 
@@ -2855,6 +2885,10 @@ fn verified_tool_usage(
 		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
 	})?;
 
+	runner::validate_invocation_attempt_evidence(result, stdout).map_err(|error| {
+		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
+	})?;
+
 	if observed.steps != result.tool_usage.steps
 		|| observed.total_calls != result.tool_usage.total_calls
 		|| observed.by_tool != result.tool_usage.by_tool
@@ -2925,6 +2959,10 @@ where
 		)
 	})?;
 	let observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
+		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
+	})?;
+
+	runner::validate_invocation_attempt_evidence(result, stdout).map_err(|error| {
 		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
 	})?;
 
