@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aiq.wiki/schema/calibration-admission-bundle-v2.schema.json",
-  "title": "AIQ calibration admission bundle v2",
+  "$id": "https://aiq.wiki/schema/calibration-admission-bundle-v3.schema.json",
+  "title": "AIQ calibration admission bundle v3",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "stage", "attestation", "admission"],
   "properties": {
-    "schema_version": { "const": "aiq.calibration-admission-bundle.v2" },
+    "schema_version": { "const": "aiq.calibration-admission-bundle.v3" },
     "stage": { "$ref": "calibration-verified-stage-v2.schema.json" },
     "attestation": { "$ref": "calibration-verifier-attestation-v2.schema.json" },
     "admission": {
@@ -21,7 +21,7 @@
         "signature"
       ],
       "properties": {
-        "schema_version": { "const": "aiq.calibration-admission.v2" },
+        "schema_version": { "const": "aiq.calibration-admission.v3" },
         "signature_algorithm": { "const": "ed25519" },
         "signature_version": { "const": "aiq.ed25519-jcs.v1" },
         "claims": {
@@ -77,7 +77,7 @@
             "task_set_hash": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
             "task_selection_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
             "model_selection_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
-            "scoring_version": { "const": "1.0.7" },
+            "scoring_version": { "const": "1.0.8" },
             "calibration_bank": { "$ref": "result-package-v4.schema.json#/$defs/calibrationBank" },
             "calibration_bank_digest": { "$ref": "result-package-v4.schema.json#/$defs/sha256" },
             "replay_provenance": { "$ref": "calibration-run-v4.schema.json#/$defs/provenance" },
@@ -121,7 +121,7 @@
         "min_latent_score_range"
       ],
       "properties": {
-        "version": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "version": { "const": "aiq.official-calibration-policy.v2" },
         "required_tasks": { "const": 72 },
         "required_model_configurations": { "const": 17 },
         "informative_facility_min": { "$ref": "#/$defs/finiteRate" },

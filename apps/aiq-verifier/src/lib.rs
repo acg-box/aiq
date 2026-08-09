@@ -37,7 +37,7 @@ use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
 	calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
-		CalibrationAdmissionBundleV2, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
 	corpus_commitment::{
 		self, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain,
@@ -486,10 +486,10 @@ struct VerifyLocalCli {
 		]
 	)]
 	calibration_admission: Option<PathBuf>,
-	/// Accept one exact signed 1.0.6 calibration package only for one-way,
-	/// no-model derivation of admission v2 and its frozen bank.
+	/// Accept one exact signed 1.0.7 calibration package only for one-way,
+	/// no-model derivation of admission v3 and its frozen bank.
 	#[arg(long, default_value_t = false, requires = "admission_output")]
-	calibration_source_1_0_6: bool,
+	calibration_source_1_0_7: bool,
 	/// New private verifier-signed admission output for an exact full 72-by-17 calibration.
 	#[arg(
 		long,
@@ -2035,7 +2035,7 @@ struct OperationalAdmissionPaths<'a> {
 }
 
 struct VerifiedOfficialCalibrationAdmission {
-	bundle: CalibrationAdmissionBundleV2,
+	bundle: CalibrationAdmissionBundleV3,
 	bindings: CalibrationAdmissionBindings,
 }
 
@@ -2245,7 +2245,7 @@ fn prepare_package_verification(
 	}
 }
 
-fn prepare_calibration_source_1_0_6_verification(
+fn prepare_calibration_source_1_0_7_verification(
 	request: PreparationRequest<'_>,
 ) -> Result<PreparedVerification, WorkerError> {
 	let observed_package_sha256 = hex::encode(Sha256::digest(request.package_bytes));
@@ -2273,7 +2273,7 @@ fn prepare_calibration_source_1_0_6_verification(
 		));
 	}
 
-	let verified = envelope.verify_calibration_source_v3().map_err(|_| {
+	let verified = envelope.verify_calibration_source_v4().map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidPackageSignature,
 			"calibration source identity, content hash, or signature is invalid",
@@ -2327,7 +2327,7 @@ fn prepare_calibration_source_1_0_6_verification(
 	};
 	let mut prepared = prepare_calibration_verification_inner(request, promoted, true)?;
 
-	prepared.calibration_source_scoring_version = Some("1.0.6".to_owned());
+	prepared.calibration_source_scoring_version = Some(AIQ_TASK_SCORER_VERSION.to_owned());
 
 	Ok(prepared)
 }
@@ -2534,7 +2534,7 @@ fn prepare_calibration_verification(
 fn prepare_calibration_verification_inner(
 	request: PreparationRequest<'_>,
 	verified: VerifiedSubmission,
-	calibration_source_1_0_6: bool,
+	calibration_source_1_0_7: bool,
 ) -> Result<PreparedVerification, WorkerError> {
 	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
 		WorkerError::terminal(
@@ -2543,8 +2543,8 @@ fn prepare_calibration_verification_inner(
 		)
 	})?;
 	let tasks = selected_calibration_tasks(&run, request.tasks)?;
-	let validation = if calibration_source_1_0_6 {
-		run_validation::validate_calibration_source_1_0_6_with_tasks(&run, &tasks)
+	let validation = if calibration_source_1_0_7 {
+		run_validation::validate_calibration_source_1_0_7_with_tasks(&run, &tasks)
 	} else {
 		run_validation::validate_calibration_run_record_with_tasks(&run, &tasks)
 	};
@@ -2607,8 +2607,8 @@ fn prepare_calibration_verification_inner(
 		content_hash: verified.content_hash,
 		signer: verified.signer,
 	};
-	let verification = if calibration_source_1_0_6 {
-		calibration_verification::verify_and_attest_calibration_source_1_0_6(
+	let verification = if calibration_source_1_0_7 {
+		calibration_verification::verify_and_attest_calibration_source_1_0_7(
 			request.signing_identity,
 			&run,
 			&tasks,
@@ -2744,7 +2744,7 @@ fn verify_and_write_local_with_admission(
 	attestation_output: &Path,
 	admission_output: &Path,
 	context: &OperationalAdmissionContext,
-	calibration_source_1_0_6: bool,
+	calibration_source_1_0_7: bool,
 ) -> Result<(), WorkerError> {
 	let stage_target = OutputTarget::new(stage_output, "stage output")?;
 	let attestation_target = OutputTarget::new(attestation_output, "attestation output")?;
@@ -2762,8 +2762,8 @@ fn verify_and_write_local_with_admission(
 	let replay_tasks = request.tasks;
 	let admission_tasks = context.tasks.as_slice();
 	let signing_identity = request.signing_identity;
-	let prepared = if calibration_source_1_0_6 {
-		prepare_calibration_source_1_0_6_verification(request)?
+	let prepared = if calibration_source_1_0_7 {
+		prepare_calibration_source_1_0_7_verification(request)?
 	} else {
 		prepare_package_verification(request)?
 	};
@@ -2819,7 +2819,7 @@ fn verify_and_write_local_with_admission(
 			format!("calibration admission failed: {error}"),
 		)
 	})?;
-	let bundle = CalibrationAdmissionBundleV2 {
+	let bundle = CalibrationAdmissionBundleV3 {
 		schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
 		stage: stage.clone(),
 		attestation: attestation.clone(),
@@ -3801,7 +3801,7 @@ fn load_verified_official_admission(
 	context: OperationalAdmissionContext,
 	tasks: &[TaskDefinition],
 ) -> Result<VerifiedOfficialCalibrationAdmission, WorkerError> {
-	let bundle: CalibrationAdmissionBundleV2 =
+	let bundle: CalibrationAdmissionBundleV3 =
 		read_regular_json(path, "calibration admission bundle")?;
 	let task_set_digest = task::task_set_hash(tasks)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
@@ -3850,7 +3850,7 @@ fn validate_official_calibration_admission(
 	let context = context.ok_or_else(|| {
 		WorkerError::configuration("Official calibration admission authority is missing")
 	})?;
-	let bundle: CalibrationAdmissionBundleV2 =
+	let bundle: CalibrationAdmissionBundleV3 =
 		read_regular_json(admission_path, "calibration admission bundle")?;
 	let run: RunRecord = serde_json::from_value(envelope.payload).map_err(|_| {
 		WorkerError::terminal(
@@ -3876,7 +3876,7 @@ fn validate_official_calibration_admission(
 
 fn verify_official_calibration_admission_binding(
 	run: &RunRecord,
-	bundle: &CalibrationAdmissionBundleV2,
+	bundle: &CalibrationAdmissionBundleV3,
 	bindings: &CalibrationAdmissionBindings,
 	tasks: &[TaskDefinition],
 ) -> Result<(), WorkerError> {
@@ -4106,7 +4106,7 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 			&cli.attestation_output,
 			output,
 			context,
-			cli.calibration_source_1_0_6,
+			cli.calibration_source_1_0_7,
 		)
 	} else {
 		verify_and_write_local(request, &cli.stage_output, &cli.attestation_output).map(|_| ())
@@ -5152,7 +5152,7 @@ mod tests {
 	};
 	use aiq_runner::calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
-		CalibrationAdmissionBundleV2, CalibrationAdmissionV2, CalibrationVerifiedStageV1,
+		CalibrationAdmissionBundleV3, CalibrationAdmissionV3, CalibrationVerifiedStageV1,
 		CalibrationVerifierAttestationV1,
 	};
 	use aiq_runner::{
@@ -6145,7 +6145,7 @@ mod tests {
 	}
 
 	fn assert_calibration_admission_mutations_rejected(
-		admission: &CalibrationAdmissionV2,
+		admission: &CalibrationAdmissionV3,
 		expected_bindings: &CalibrationAdmissionBindings,
 		fixture: &LocalReplayFixture,
 		run: &CalibrationRunRecord,
@@ -6183,7 +6183,7 @@ mod tests {
 		}
 	}
 
-	fn resign_calibration_admission(admission: &mut CalibrationAdmissionV2, secret: [u8; 32]) {
+	fn resign_calibration_admission(admission: &mut CalibrationAdmissionV3, secret: [u8; 32]) {
 		admission.admission_digest =
 			protocol::canonical_hash(&admission.claims).expect("mutated claims digest");
 
@@ -6203,11 +6203,11 @@ mod tests {
 		fixture: &LocalReplayFixture,
 		stage: &CalibrationVerifiedStageV1,
 		attestation: &CalibrationVerifierAttestationV1,
-		admission: &CalibrationAdmissionV2,
+		admission: &CalibrationAdmissionV3,
 		expected_bindings: &CalibrationAdmissionBindings,
 		official_run: &mut RunRecord,
 	) {
-		let bundle = CalibrationAdmissionBundleV2 {
+		let bundle = CalibrationAdmissionBundleV3 {
 			schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
 			stage: stage.clone(),
 			attestation: attestation.clone(),
@@ -6302,7 +6302,7 @@ mod tests {
 		fixture: &LocalReplayFixture,
 		stage: &CalibrationVerifiedStageV1,
 		attestation: &CalibrationVerifierAttestationV1,
-		admission: &CalibrationAdmissionV2,
+		admission: &CalibrationAdmissionV3,
 		expected_bindings: &CalibrationAdmissionBindings,
 		official_run: &RunRecord,
 		run: &CalibrationRunRecord,
@@ -6328,7 +6328,7 @@ mod tests {
 			attacker_bindings,
 		)
 		.expect("attacker-owned re-signed admission");
-		let attacker_bundle = CalibrationAdmissionBundleV2 {
+		let attacker_bundle = CalibrationAdmissionBundleV3 {
 			schema_version: CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION.to_owned(),
 			stage: stage.clone(),
 			attestation: attacker_attestation,
@@ -6543,6 +6543,18 @@ mod tests {
 
 		assert!(VerifyLocalCli::try_parse_from(&admitted).is_ok());
 		assert!(VerifyLocalCli::try_parse_from(&admitted[..admitted.len() - 2]).is_err());
+
+		let mut calibration_source = admitted.clone();
+
+		calibration_source.push("--calibration-source-1-0-7");
+
+		assert!(VerifyLocalCli::try_parse_from(calibration_source).is_ok());
+
+		let mut obsolete_calibration_source = admitted.clone();
+
+		obsolete_calibration_source.push("--calibration-source-1-0-6");
+
+		assert!(VerifyLocalCli::try_parse_from(obsolete_calibration_source).is_err());
 
 		let consuming = official_consumer_arguments(&arguments);
 
@@ -7229,7 +7241,7 @@ mod tests {
 			.prepare_admission(&stage, &attestation, &admission, &context)
 			.expect("atomic admitted replay");
 
-		let value: CalibrationAdmissionBundleV2 =
+		let value: CalibrationAdmissionBundleV3 =
 			serde_json::from_slice(&fs::read(&admission).expect("admission bytes"))
 				.expect("admission JSON");
 		let envelope: protocol::SubmissionEnvelope =

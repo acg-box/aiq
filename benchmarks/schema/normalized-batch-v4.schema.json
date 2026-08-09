@@ -99,7 +99,7 @@
       "$ref": "#/$defs/sha256"
     },
     "scoring_version": {
-      "const": "1.0.7"
+      "const": "1.0.8"
     },
     "runner_commit": {
       "type": "string",
@@ -1489,7 +1489,7 @@
           "const": "aiq.score-report.v2"
         },
         "scoring_version": {
-          "const": "1.0.7"
+          "const": "1.0.8"
         },
         "measurement_version": {
           "const": "2.0.0"

@@ -270,7 +270,7 @@ begin
     'slot', slot,
     'task_set_hash', task_set_hash,
     'models', models,
-    'scoring_version', '1.0.7'
+    'scoring_version', '1.0.8'
   )), 8);
 
   for task in
@@ -350,11 +350,11 @@ begin
     'run_id', run_id,
     'schedule_slot', slot,
     'task_set_hash', task_set_hash,
-    'scoring_version', '1.0.7',
+    'scoring_version', '1.0.8',
     'calibration_admission_digest', 'sha256:' || repeat('c', 64),
     'calibration_bank', jsonb_build_object(
       'schema_version', 'aiq.calibration-bank.v2',
-      'scoring_version', '1.0.7',
+      'scoring_version', '1.0.8',
       'measurement_version', '2.0.0',
       'method', 'rasch_fractional_fixed_bank_map_v2',
       'source_package_sha256', 'sha256:' || repeat('d', 64),
@@ -549,7 +549,7 @@ begin
       'results', normalized_results,
       'score', jsonb_build_object(
         'schema_version', 'aiq.score-report.v2',
-        'scoring_version', '1.0.7',
+        'scoring_version', '1.0.8',
         'measurement_version', '2.0.0',
         'model', model_identity,
         'tier', 'synthetic_complete',
@@ -611,7 +611,7 @@ begin
     'run_class', null,
     'benchmark_version', 'aiq-core@1.0.7',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
-    'scoring_version', '1.0.7',
+    'scoring_version', '1.0.8',
     'runner_commit', 'a7d91f4',
     'region', 'integration',
     'scheduled_unix_ms', payload -> 'started_unix_ms',
@@ -1046,7 +1046,7 @@ $$;
 select pg_temp.aiq_assert(
   (
     select count(*) = 17
-      and bool_and(batch.scoring_version = '1.0.7')
+      and bool_and(batch.scoring_version = '1.0.8')
       and bool_and(batch.source_scoring_version = '1.0.6')
       and bool_and(aiq_private.task_result_scorer_versions_match_catalog(
         run.run_id, batch.task_set_id, batch.task_set_version
@@ -1055,13 +1055,13 @@ select pg_temp.aiq_assert(
     join aiq_private.aiq_matrix_batches batch
       on batch.matrix_batch_id = run.matrix_batch_id
   ),
-  '1.0.6 task scorers must remain catalog-bound under 1.0.7 aggregate scoring'
+  '1.0.6 task scorers must remain catalog-bound under 1.0.8 aggregate scoring'
 );
 
 savepoint task_scorer_version_tamper;
 set local session_replication_role = replica;
 update aiq_private.aiq_task_results
-set scorer_version = '1.0.7'
+set scorer_version = '1.0.8'
 where result_id = (
   select result_id from aiq_private.aiq_task_results
   order by result_id limit 1
@@ -1076,7 +1076,7 @@ select pg_temp.aiq_assert(
     join aiq_private.aiq_matrix_batches batch
       on batch.matrix_batch_id = run.matrix_batch_id
     join aiq_private.aiq_task_results result on result.run_id = run.run_id
-    where result.scorer_version = '1.0.7'
+    where result.scorer_version = '1.0.8'
     limit 1
   ),
   'aggregate scoring version must not be accepted as a task scorer version'
@@ -1303,7 +1303,7 @@ select pg_temp.aiq_assert(
         > pg_catalog.date_trunc('milliseconds', recorded_at)
       and bucket_ended_at = recorded_at + interval '1 millisecond'
       and resolution_seconds = 1
-      and scoring_version = '1.0.7'
+      and scoring_version = '1.0.8'
     )
     from aiq_single_batch_trend
   ),

@@ -1,7 +1,7 @@
 # AIQ runner
 
 `aiq-runner` validates the controlled benchmark inputs, probes the local Codex
-subscription, executes tasks, scores runs, and creates signed v3 packages.
+subscription, executes tasks, scores runs, and creates signed v4 packages.
 
 The runner does not contain private tasks or production credentials. Operators
 provide those inputs at invocation time.
@@ -115,7 +115,7 @@ is `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
 The public catalog is deterministic and identity-frozen. The unbounded formal-task
 identity requires fresh independent Core and Contrast seals. The database task
 commitment must then be regenerated before database cutover. Final clean-commit
-regeneration, full calibration, and release acceptance
+regeneration, policy-v2 replay and admission, and release acceptance
 remain pending.
 
 ## Execution and evidence
@@ -124,13 +124,14 @@ The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
 
-For the `1.0.7` release, run one complete 17-by-72 calibration before any real
-Official publication path. Every formal model task has `wall_seconds: null`,
-`max_steps: null`, and `max_tool_calls: null`. The adapter waits for normal
-completion and records elapsed time, steps, tool calls, tokens, and estimated
-cost as auxiliary evidence. These measurements never affect semantic scoring.
-The non-Official calibration must pass the release policy without an operator
-override. Earlier bounded runs remain unpublished failed release evidence.
+The retained complete `1.0.7` calibration is replayed without model calls before
+the real Official publication path. Every formal model task has
+`wall_seconds: null`, `max_steps: null`, and `max_tool_calls: null`. The adapter
+waits for normal completion and records elapsed time, steps, tool calls, tokens,
+and estimated cost as auxiliary evidence. These measurements never affect
+semantic scoring. The replayed non-Official calibration must pass the release
+policy without an operator override. Earlier bounded runs remain unpublished
+failed release evidence.
 
 The runtime directory must contain exactly the native `codex` executable and
 its `codex-code-mode-host` sibling. Capability preflight records the exact local

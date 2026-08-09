@@ -27,7 +27,7 @@
   "properties": {
     "schema_version": { "const": "aiq.calibration-score-report.v2" },
     "run_class": { "const": "calibration" },
-    "scoring_version": { "const": "1.0.7" },
+    "scoring_version": { "const": "1.0.8" },
     "measurement_version": { "const": "2.0.0" },
     "model": { "$ref": "calibration-run-v4.schema.json#/$defs/model" },
     "descriptive_status": {
