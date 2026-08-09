@@ -263,7 +263,7 @@ begin
     select 'sha256:' || catalog_task.fixture_commitment as task_hash
     from aiq_private.aiq_task_catalog catalog_task
     where catalog_task.task_set_id = 'aiq-core'
-      and catalog_task.task_set_version = '1.0.6'
+      and catalog_task.task_set_version = '1.0.7'
   ) hashes;
   run_id := 'run_' || substr(aiq_private.jcs_sha256(jsonb_build_object(
     'schema_version', 'aiq.run-identity.v1',
@@ -275,7 +275,7 @@ begin
 
   for task in
     select * from aiq_private.aiq_task_catalog
-    where task_set_id = 'aiq-core' and task_set_version = '1.0.6'
+    where task_set_id = 'aiq-core' and task_set_version = '1.0.7'
     order by task_id
   loop
     for model in select value from jsonb_array_elements(models) loop
@@ -343,7 +343,7 @@ begin
   ) into strict bank_items
   from aiq_private.aiq_task_catalog catalog
   where catalog.task_set_id = 'aiq-core'
-    and catalog.task_set_version = '1.0.6';
+    and catalog.task_set_version = '1.0.7';
 
   payload := jsonb_build_object(
     'schema_version', 'aiq.run.v4',
@@ -360,7 +360,7 @@ begin
       'source_package_sha256', 'sha256:' || repeat('d', 64),
       'source_scoring_version', '1.0.6',
       'task_set_id', 'aiq-core',
-      'task_set_version', '1.0.6',
+      'task_set_version', '1.0.7',
       'task_set_digest', task_set_hash,
       'catalog_digest', 'sha256:' || repeat('e', 64),
       'evaluator_digest', 'sha256:' || repeat('f', 64),
@@ -483,7 +483,7 @@ begin
   from (
     select distinct task.domain
     from aiq_private.aiq_task_catalog task
-    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.6'
+    where task.task_set_id = 'aiq-core' and task.task_set_version = '1.0.7'
   ) catalog;
 
   for model in
@@ -535,7 +535,7 @@ begin
     from jsonb_array_elements(payload -> 'results') source(value)
     join aiq_private.aiq_task_catalog task
       on task.task_set_id = 'aiq-core'
-      and task.task_set_version = '1.0.6'
+      and task.task_set_version = '1.0.7'
       and task.task_id = source.value ->> 'task_id'
       and task.task_version = source.value ->> 'task_version'
     where source.value -> 'model' = model_identity;
@@ -602,14 +602,14 @@ begin
     'content_hash', envelope ->> 'content_hash',
     'signer', envelope -> 'signer',
     'task_set_id', 'aiq-core',
-    'task_set_version', '1.0.6',
+    'task_set_version', '1.0.7',
     'task_set_hash', payload ->> 'task_set_hash',
     'terminal_attempt_lineage_digest',
       aiq_private.jcs_sha256(payload -> 'terminal_attempt_lineage'),
     'capability_validation_digest', null,
     'provenance', null,
     'run_class', null,
-    'benchmark_version', 'aiq-core@1.0.6',
+    'benchmark_version', 'aiq-core@1.0.7',
     'prompt_set_digest', 'sha256:' || repeat('f', 64),
     'scoring_version', '1.0.7',
     'runner_commit', 'a7d91f4',
@@ -1285,6 +1285,18 @@ select pg_temp.aiq_assert(
   'the single-batch trend RPC must return every matrix series'
 );
 select pg_temp.aiq_assert(
+  (select count(*) = 1224 from public.public_run_results)
+  and not exists (
+    select 1 from public.public_run_results
+    where agent_steps <> 10000
+      or tool_call_count <> 9999
+      or tool_calls_by_type <> jsonb_build_object(
+        'filesystem_read',3333,'filesystem_write',3333,'web_search',3333
+      )
+  ),
+  'high auxiliary usage must publish unchanged without altering semantic result status or score'
+);
+select pg_temp.aiq_assert(
   (
     select bool_and(
       pg_catalog.date_trunc('milliseconds', bucket_ended_at)
@@ -1637,12 +1649,14 @@ select pg_temp.aiq_assert(
   'public Official result efficiency must omit private provider payloads and result-package digests'
 );
 select pg_temp.aiq_assert(
-  (select count(*) = 2
+  (select count(*) = 5
    from information_schema.columns
    where table_schema = 'public'
      and table_name = 'public_run_results'
-     and column_name in ('task_id','pricing_digest')),
-  'public Official result efficiency must expose task identity and its exact pricing-record digest'
+     and column_name in (
+       'task_id','pricing_digest','agent_steps','tool_call_count','tool_calls_by_type'
+     )),
+  'public Official results must expose task identity, exact pricing identity, and auxiliary usage'
 );
 
 rollback;

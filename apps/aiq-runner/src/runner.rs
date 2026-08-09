@@ -1706,7 +1706,7 @@ pub fn synthetic_tasks() -> Vec<TaskDefinition> {
 #[must_use]
 pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 	let catalog = serde_json::from_str::<SyntheticCatalog>(include_str!(
-		"../../../benchmarks/candidates/aiq-core-1.0.6/catalog.json"
+		"../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"
 	))
 	.expect("checked-in benchmark catalog must deserialize");
 	let catalog_entry_digests = scoring::frozen_catalog_entry_digests()
@@ -1730,7 +1730,11 @@ pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 				difficulty: catalog_task.difficulty,
 				prompt: "Synthetic task. No model invocation occurs.".to_owned(),
 				allowed_tools: vec!["none".to_owned()],
-				budgets: TaskBudgets { wall_seconds: Some(1), max_steps: 1, max_tool_calls: 0 },
+				budgets: TaskBudgets {
+					wall_seconds: Some(1),
+					max_steps: Some(1),
+					max_tool_calls: Some(0),
+				},
 				tags: vec!["synthetic".to_owned()],
 				cluster_id: Some(catalog_task.cluster_id),
 				catalog_entry_digest: Some(catalog_entry_digest),
@@ -3437,15 +3441,17 @@ fn evaluate_bound_evaluator(
 }
 
 fn result_budget_failure(task: &TaskDefinition, tool_usage: &ToolUsage) -> Option<String> {
-	if tool_usage.steps > task.budgets.max_steps {
+	if task.budgets.max_steps.is_some_and(|limit| tool_usage.steps > limit) {
 		Some(format!(
 			"observed {} steps, but the task permits {}",
-			tool_usage.steps, task.budgets.max_steps
+			tool_usage.steps,
+			task.budgets.max_steps.expect("checked step limit")
 		))
-	} else if tool_usage.total_calls > task.budgets.max_tool_calls {
+	} else if task.budgets.max_tool_calls.is_some_and(|limit| tool_usage.total_calls > limit) {
 		Some(format!(
 			"observed {} tool calls, but the task permits {}",
-			tool_usage.total_calls, task.budgets.max_tool_calls
+			tool_usage.total_calls,
+			task.budgets.max_tool_calls.expect("checked tool-call limit")
 		))
 	} else {
 		None
@@ -3672,10 +3678,18 @@ fn task_prompt(task: &TaskDefinition) -> String {
 		serde_json::to_string(&task.allowed_tools).unwrap_or_else(|_| "[]".to_owned());
 	let fixture_refs =
 		serde_json::to_string(&task.fixture_refs).unwrap_or_else(|_| "[]".to_owned());
+	let execution_measurement = match (task.budgets.max_steps, task.budgets.max_tool_calls) {
+		(None, None) => "Agent steps and tool calls are measured but are not limited.".to_owned(),
+		(max_steps, max_tool_calls) => format!(
+			"Maximum steps: {}\nMaximum tool calls: {}",
+			max_steps.map_or_else(|| "unbounded".to_owned(), |value| value.to_string()),
+			max_tool_calls.map_or_else(|| "unbounded".to_owned(), |value| value.to_string())
+		),
+	};
 
 	format!(
-		"{}\n\nAIQ controlled execution context:\nAllowed tools: {allowed_tools}\nFixture references: {fixture_refs}\nMaximum steps: {}\nMaximum tool calls: {}",
-		task.prompt, task.budgets.max_steps, task.budgets.max_tool_calls
+		"{}\n\nAIQ controlled execution context:\nAllowed tools: {allowed_tools}\nFixture references: {fixture_refs}\n{execution_measurement}",
+		task.prompt
 	)
 }
 
@@ -6026,8 +6040,8 @@ mod tests {
 		.join("\n");
 		let mut task = runner::synthetic_tasks().remove(0);
 
-		task.budgets.max_steps = 2;
-		task.budgets.max_tool_calls = 0;
+		task.budgets.max_steps = Some(2);
+		task.budgets.max_tool_calls = Some(0);
 		task.evaluator = Some(Evaluator::exact_match("OK", true));
 
 		let adapter = CodexAdapter::new(
@@ -6203,8 +6217,8 @@ mod tests {
 		let mut task = runner::synthetic_tasks().remove(0);
 
 		task.budgets.wall_seconds = Some(1);
-		task.budgets.max_steps = 10;
-		task.budgets.max_tool_calls = 10;
+		task.budgets.max_steps = Some(10);
+		task.budgets.max_tool_calls = Some(10);
 		task.evaluator = Some(Evaluator::exact_match("must not run", true));
 
 		let result = runner::execute_task(

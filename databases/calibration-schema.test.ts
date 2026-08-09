@@ -49,7 +49,7 @@ void test('runs calibration against the production initializer catalog authority
   const catalogAuthority =
     schema.match(/create function aiq_private\.task_catalog_is_exact[\s\S]*?\n\$\$;/i)?.[0] ?? '';
 
-  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.6'\)/);
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.7'\)/);
   assert.match(calibrationIntegration, /'calibration_admission_digest',null/);
   assert.match(calibrationIntegration, /'calibration_bank',null/);
   assert.match(calibrationIntegration, /'terminal_attempt_lineage',terminal_attempt_lineage/);
@@ -820,7 +820,7 @@ void test('production readiness attests the exact schema and gateway role shape'
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:768a9322f22c5be4d0fcd67dbe4360bd78392c7d0ef47ee9c0b8cedea2374dda'/,
+    /task_set_identity_sha256 =\s*'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'/,
   );
   assert.match(
     schema,

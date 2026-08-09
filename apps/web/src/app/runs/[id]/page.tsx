@@ -346,7 +346,18 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
                 </div>
               ) : null}
               <footer>
-                <span>Tools: {task.tools.length > 0 ? task.tools.join(', ') : 'none'}</span>
+                <span>
+                  Auxiliary usage: {task.agentSteps.toLocaleString()} agent steps ·{' '}
+                  {task.toolCallCount.toLocaleString()} tool calls
+                  {task.tools.length > 0
+                    ? ` (${task.tools
+                        .map(
+                          (tool) =>
+                            `${tool} ${task.toolCallsByType[tool]?.toLocaleString() ?? '0'}`,
+                        )
+                        .join(', ')})`
+                    : ''}
+                </span>
                 <span>
                   Codex adapter elapsed:{' '}
                   {task.latencyMs === null

@@ -44,11 +44,11 @@ use crate::{
 };
 
 const PUBLIC_TASK_BYTES_SHA256: &str =
-	"sha256:57d5c4ef0dbd571c18946a56816eec67e7074e8444182b60f56fa37ad74d5958";
+	"sha256:ee63db09873a5bc3813d64615363f61ead66cc528dc799d5980f242348b79af5";
 const PUBLIC_TASK_ID: &str = "public-example-instruction-following-01";
 const PUBLIC_RUN_ID: &str = "subscription_smoke_fixed_public_example";
 const CONTROLLED_TASK_ID: &str = "documentation-communication-01";
-const CONTROLLED_TASK_VERSION: &str = "1.0.6";
+const CONTROLLED_TASK_VERSION: &str = "1.0.7";
 const CONTROLLED_RUN_ID: &str = "controlled_subscription_smoke_fixed_hidden_task";
 
 static SMOKE_TEMP_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
@@ -571,8 +571,8 @@ fn chatgpt_subscription_request(
 		stdin: Vec::new(),
 		timeout: Some(Duration::from_secs(10)),
 		max_capture_bytes: 4_096,
-		max_steps: u32::MAX,
-		max_tool_calls: u32::MAX,
+		max_steps: None,
+		max_tool_calls: None,
 		clear_environment: true,
 		environment,
 	}

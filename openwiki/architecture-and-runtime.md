@@ -20,26 +20,19 @@ tags: ['architecture', 'runtime', 'security']
 The operator supplies the private corpus, evaluator files, workspaces, runtime,
 Codex profile, and keys. These inputs are not repository data.
 
-Repository source has one active public candidate, task, and scorer contract:
-AIQ Core `1.0.6` with task-metadata digest
-`sha256:add2a0514b6cdab99b3329d7065565f5606d13af93338e4bc37a0fbd30019b91`,
-release-policy identity `aiq-core/1.0.6`, and public release digest
-`sha256:5b33cd2daa5efe15e49de34b7137d35bc2ff980a7f619063e7e8b819a857508f`.
-This public candidate removes the model wall-clock deadline from all 72 tasks.
-Coding-07 retains 32 steps and 21 tool calls; debugging-02 retains 64 steps and
-56 tool calls; coding-06, debugging-01, and debugging-04 retain 48 steps and 40
-tool calls. The other 67 tasks retain their accepted step and tool-call limits.
-Prompt, evaluator, semantic scoring, and tool permissions are unchanged. The
-preceding `1.0.5` pilots remain immutable non-Official evidence. The first had
-63 completed cells, five timeouts, and saturated completed means. The r11 pilot
-stopped on debugging-02 at 47/48 steps and 41/40 tool calls; coding-06 and
-debugging-01 had high utilization but no runtime failure. The current task
-semantics and calibration implications are
-canonicalized in [Benchmark Method](benchmark-method.md).
-The public catalog is deterministic and identity-frozen. Independent
-no-deadline Core and Contrast A/B seals and both model-free validators produced
-the current database task and fixture commitments. One final clean-source seal
-is required before calibration. The
+Repository source has one active public contract: AIQ Core `1.0.7`, task scorer
+`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0`, with task-metadata digest
+`sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
+release-policy identity `aiq-core/1.0.7`, and public release digest
+`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
+Every formal task has null wall-time, step, and tool-call limits. The runner
+records elapsed time, steps, tool calls, tokens, and estimated cost without
+using them in semantic scoring, AIQ, intervals, eligibility, or ranking. Prompt,
+evaluator, semantic scoring, and tool permissions are unchanged. The current
+method is canonicalized in [Benchmark Method](benchmark-method.md).
+The public catalog is deterministic and identity-frozen. Fresh Core and
+Contrast A/B seals and both model-free validators are required before
+calibration. The
 shared Rust validator fails closed
 unless the runner subtree remains `identity_kind: source_only` with a null
 `built_binary_sha256`. The checked Core schema enforces the same rule. Contrast
@@ -59,23 +52,18 @@ exact source commit and tree identity and SHA-256 values for the native runner,
 verifier, Codex executable, and Codex code-mode host. The offline native
 verifier validates the receipt against an independently supplied digest. It
 does not publish this reproducibility evidence. Node.js and ripgrep identities
-remain bound by the corpus. Full calibration, native build
-verification, real Official execution, publication, and final deployment of
-`1.0.6` are pending. The `1.0.3` Official attempt was interrupted after an
-already-conclusive ceiling failure and was rejected as unpublished calibration
-evidence. No hidden responses or hidden task details were published. The first
-`1.0.4` calibration completed all 1,224 cells but failed the statistical release
-gate. It remains non-Official evidence; this does not mean every task execution
-failed. The `1.0.6` sequence uses a focused no-deadline canary for the two
-previously timed-out Sol ultra cells, followed by the complete 17-by-72
-non-Official calibration. Real calibration
+remain bound by the corpus. Full calibration, fixed-bank admission, native
+build verification, separate real Official execution, publication, and final
+deployment of `1.0.7` are pending. Earlier bounded runs remain immutable failed
+release evidence. Real calibration
 can enter the public calibration register only after signed verifier admission
 and distinct publication, and it remains non-Official after acceptance.
 The accepted production package must be non-synthetic. Its 1,224 task-level
 results are one 17-by-72 matrix, not 1,224 separate benchmark runs. The native
 verifier must replay the committed evaluators before the distinct publisher can
-complete publication. Production exposes only the AIQ Core `1.0.6`, scoring
-`1.0.7`, measurement `2.0.0` matrix as `trusted_verified`. No legacy matrix is a
+complete publication. Production exposes only the AIQ Core `1.0.7`, task scorer
+`1.0.6`, aggregate scorer `1.0.7`, and measurement `2.0.0` matrix as
+`trusted_verified`. No legacy matrix is a
 fallback. The outcome and efficiency semantics are detailed in [Benchmark
 Method](benchmark-method.md).
 
@@ -177,9 +165,9 @@ untrusted, non-Official, and ineligible for ranking.
 
 The complete Official matrix is one run with 1,224 task-model cells, not 1,224
 runs. The admitted plan fixes `--jobs`; scheduling must not start a second run
-while the first remains active. Formal task invocations have no wall-clock
-deadline. Live step and tool-call budgets still terminate runaway work, and
-deterministic evaluator subprocesses remain bounded. A corpus, toolchain, or permission-evidence
+while the first remains active. Formal task invocations have no benchmark wall,
+step, or tool-call termination. Usage remains measured. Deterministic evaluator
+subprocesses and hard safety boundaries remain bounded. A corpus, toolchain, or permission-evidence
 digest change defines a different plan. It requires a new admission, preflight,
 checkpoint, run, score, package, verifier environment, replay stage, and
 attestation; evidence from the changed plan cannot authorize the new one.
@@ -265,7 +253,7 @@ Browser roles do not have private-table write access.
 
 `databases/init.ts` is a one-connection, one-transaction initializer for a new
 AIQ database. There is no migration chain. The pre-release desired state
-targets the public AIQ Core `1.0.6` catalog and scoring `1.0.7`.
+targets the public AIQ Core `1.0.7` catalog and aggregate scoring `1.0.7`.
 The controlled production reference must supply a non-synthetic corpus
 commitment, a canonical millisecond UTC `published_at`, and the runner,
 verifier, and publisher identities. Operationally,
