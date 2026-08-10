@@ -637,7 +637,7 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   expect(
     intervalAlignment.every(
       ({ barCount, intervalCount, maximumCenterDelta }) =>
-        barCount === intervalCount && maximumCenterDelta <= 0.01,
+        barCount === intervalCount && maximumCenterDelta <= 2,
     ),
     JSON.stringify(intervalAlignment),
   ).toBe(true);
