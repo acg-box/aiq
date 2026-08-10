@@ -3,11 +3,10 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 
 import { CompactRanking } from '../components/compact-ranking.tsx';
-import { ConfigurationDecisionTable } from '../components/configuration-decision-table.tsx';
+import { ConfigurationWorkbench } from '../components/configuration-workbench-view.tsx';
 import { DataNote } from '../components/data-note.tsx';
 import {
   DeferredCalibrationEfficiency,
-  DeferredEfficiencyPlot,
   DeferredModelMatrixChart,
 } from '../components/homepage-analytics.tsx';
 import { LeaderboardTable } from '../components/leaderboard-table.tsx';
@@ -24,7 +23,6 @@ import { presentLeaderboardEntry } from '../data/leaderboard-presentation.ts';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
 import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
-import ComparePage from './compare/page.tsx';
 import MethodPage from './method/page.tsx';
 import RadarPage from './radar/page.tsx';
 import RunsPage from './runs/page.tsx';
@@ -133,11 +131,6 @@ export default async function OverviewPage({
     ),
   ]);
 
-  const taskCellCounts = leaderboard.map((entry) => entry.sampleSize);
-  const sampleTotal =
-    taskCellCounts.length > 0 && taskCellCounts.every((count): count is number => count !== null)
-      ? taskCellCounts.reduce((sum, count) => sum + count, 0)
-      : null;
   const selectedRun = selectedRunResult.data;
   const selectedEstimateEvidence =
     selectedDescriptiveEstimate && selectedRun
@@ -224,36 +217,21 @@ export default async function OverviewPage({
         </header>
 
         {hasEfficiencyEvidence ? (
-          <ConfigurationDecisionTable rows={exactOfficialEfficiency.rows} />
-        ) : null}
-
-        <div className={hasEfficiencyEvidence ? 'tradeoff-analysis' : 'results-main-grid'}>
-          <section
-            className="analysis-panel efficiency-panel"
-            id={hasEfficiencyEvidence ? undefined : 'matrix'}
-            aria-label="Score and efficiency"
-          >
-            {hasEfficiencyEvidence ? (
-              <DeferredEfficiencyPlot
-                entries={leaderboard}
-                runSummaries={officialRunSummariesResult.data}
-                rows={officialEfficiencyResult.data}
-                eager
-              />
-            ) : (
-              <>
-                <DeferredModelMatrixChart entries={leaderboard} eager />
-                {rankedEntries.length === 0 && leaderboard.length > 0 ? (
-                  <details className="data-disclosure empty-matrix-table">
-                    <summary>Read all configuration values as a table</summary>
-                    <LeaderboardTable entries={leaderboard} />
-                  </details>
-                ) : null}
-              </>
-            )}
-          </section>
-          {hasEfficiencyEvidence ? null : <CompactRanking entries={leaderboard} />}
-        </div>
+          <ConfigurationWorkbench rows={exactOfficialEfficiency.rows} />
+        ) : (
+          <div className="results-main-grid" id="compare">
+            <section className="analysis-panel efficiency-panel" aria-label="Score comparison">
+              <DeferredModelMatrixChart entries={leaderboard} eager />
+              {rankedEntries.length === 0 && leaderboard.length > 0 ? (
+                <details className="data-disclosure empty-matrix-table">
+                  <summary>Read all configuration values as a table</summary>
+                  <LeaderboardTable entries={leaderboard} />
+                </details>
+              ) : null}
+            </section>
+            <CompactRanking entries={leaderboard} />
+          </div>
+        )}
 
         {highlightedRun ? (
           <RunOutcomeCard run={highlightedRun} />
@@ -262,35 +240,6 @@ export default async function OverviewPage({
             result={{ state: 'unavailable', detail: EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE }}
             subject="Top configuration domain profile"
           />
-        ) : null}
-
-        {hasEfficiencyEvidence ? (
-          <section
-            className="analysis-panel matrix-panel"
-            id="matrix"
-            aria-labelledby="matrix-heading"
-          >
-            <div className="panel-heading">
-              <div>
-                <h2 id="matrix-heading">All configurations</h2>
-                <p>
-                  Switch between dots, bars, and ordered views without changing the underlying
-                  scores.
-                </p>
-              </div>
-              <span className="panel-meta">
-                {sampleTotal === null
-                  ? 'Task cells unavailable'
-                  : `${sampleTotal.toLocaleString()} task cells`}
-              </span>
-            </div>
-            <ReadStateNote result={leaderboardResult} subject="Configuration matrix" />
-            <DeferredModelMatrixChart entries={leaderboard} headingLevel={3} />
-            <details className="data-disclosure">
-              <summary>Read all configuration values as a table</summary>
-              <LeaderboardTable entries={leaderboard} />
-            </details>
-          </section>
         ) : null}
 
         <details className="evidence-notes" open={leaderboardResult.state === 'unavailable'}>
@@ -356,6 +305,7 @@ export default async function OverviewPage({
               </dl>
             </div>
             <DataNote provenance={overviewProvenance} />
+            <DataNote provenance={overviewProvenance} subject="Comparison matrix" />
             <ReadStateNote result={officialEfficiencyResult} subject="Official efficiency" />
             {selectedEstimateIdentityUnavailable ? (
               <ReadStateNote
@@ -409,17 +359,6 @@ export default async function OverviewPage({
       >
         <Suspense fallback={<WorkspaceSectionLoading label="history" />}>
           <TrendsPage searchParams={searchParams} />
-        </Suspense>
-      </div>
-
-      <div
-        className="workspace-section"
-        id="compare"
-        data-workspace-section
-        data-nav-section="compare"
-      >
-        <Suspense fallback={<WorkspaceSectionLoading label="comparison" />}>
-          <ComparePage />
         </Suspense>
       </div>
 

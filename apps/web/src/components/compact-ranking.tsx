@@ -40,10 +40,6 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
         <ol className="ranking-list">
           {visibleEntries.map((entry, index) => {
             const presentation = presentLeaderboardEntry(entry);
-            const compareWith = visibleEntries.find((candidate) => candidate.id !== entry.id);
-            const compareHref = compareWith
-              ? `/?compareFirst=${encodeURIComponent(entry.id)}&compareSecond=${encodeURIComponent(compareWith.id)}#compare`
-              : '/#compare';
             return (
               <li key={entry.id}>
                 <span className="ranking-position" aria-label={`Position ${index + 1}`}>
@@ -70,17 +66,11 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
                   </small>
                 </div>
                 <strong className="ranking-score">{presentation.score}</strong>
-                <Link className="quiet-button" href={compareHref}>
-                  Compare
-                </Link>
               </li>
             );
           })}
         </ol>
       )}
-      <Link className="panel-link" href="#matrix">
-        View all {entries.length} configurations
-      </Link>
     </section>
   );
 }
