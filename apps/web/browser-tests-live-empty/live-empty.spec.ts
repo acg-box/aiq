@@ -99,9 +99,7 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   await expect(
     page.getByText('17 configurations · Publication pending', { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('heading', { name: 'Choose by ability, time, or cost.' }),
-  ).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Compare all 17 at once.' })).toHaveCount(0);
   const ranking = page.getByRole('region', { name: 'Top configurations' });
   await expect(ranking).toContainText('Publication pending');
   await expect(ranking).toContainText('Score unavailable');
