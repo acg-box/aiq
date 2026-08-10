@@ -329,7 +329,11 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 
   let resultCount = 0;
   let pricedCostSubtotalUsdNanos = 0n;
-  const taskCostStatuses = new Map<string, number>();
+  const taskCostStatuses = new Map<string, number>([
+    ['estimated', 0],
+    ['unavailable-context-band', 0],
+    ['unavailable-missing-usage', 0],
+  ]);
   const provenance = {
     benchmark: new Set<string>(),
     scoring: new Set<string>(),
