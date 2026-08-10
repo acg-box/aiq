@@ -143,6 +143,7 @@ async function expectTransparentEfficiency(rows: Locator, expectVariants = false
   const tokenCounts = new Set<number>();
   const durationCounts = new Set<number>();
   const costStatuses = new Set<string>();
+  const executionConcurrencies = new Set<number>();
   for (const row of await rows.all()) {
     const cells = row.getByRole('cell');
     await expect(cells).toHaveCount(4);
@@ -157,7 +158,8 @@ async function expectTransparentEfficiency(rows: Locator, expectVariants = false
     const duration = (await cells.nth(0).innerText()).trim();
     expect(duration).toMatch(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h) summed)/);
     expect(duration).toMatch(/(?:\d+\/72 retained|median unavailable)/);
-    expect(duration).toMatch(/concurrency 17/);
+    const durationConcurrency = /concurrency (\d+)/.exec(duration);
+    expect(durationConcurrency, 'duration must show execution concurrency').not.toBeNull();
 
     const cost = (await cells.nth(1).innerText()).trim();
     expect(cost).toMatch(/^(?:Unavailable|\$\d+\.\d{4})/);
@@ -173,7 +175,14 @@ async function expectTransparentEfficiency(rows: Locator, expectVariants = false
     expect(tokens).toMatch(/total (?:[\d,]+|unavailable)/);
 
     const trust = (await cells.nth(3).innerText()).trim();
-    expect(trust).toMatch(/^72 results · \d+ attempted · \d+ adapter-invoked · concurrency 17/);
+    const trustConcurrency =
+      /^72 results · \d+ attempted · \d+ adapter-invoked · concurrency (\d+)/.exec(trust);
+    expect(trustConcurrency, 'trust evidence must show execution concurrency').not.toBeNull();
+    const executionConcurrency = Number(trustConcurrency?.[1]);
+    expect(executionConcurrency).toBeGreaterThanOrEqual(1);
+    expect(executionConcurrency).toBeLessThanOrEqual(32);
+    expect(Number(durationConcurrency?.[1])).toBe(executionConcurrency);
+    executionConcurrencies.add(executionConcurrency);
     expect(trust).toContain('Pricing:');
 
     const evidence = await efficiencyEvidenceFromRow(row);
@@ -184,6 +193,7 @@ async function expectTransparentEfficiency(rows: Locator, expectVariants = false
   }
   expect(new Set(runIds).size).toBe(17);
   expect(batchIds.size).toBe(1);
+  expect(executionConcurrencies.size).toBe(1);
   if (expectVariants) {
     expect(tokenCounts).toEqual(new Set([0, 36, 72]));
     expect(durationCounts).toEqual(new Set([0, 72]));
