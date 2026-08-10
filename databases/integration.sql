@@ -582,7 +582,7 @@ begin
           'upper', 100,
           'central_mass', 0.95,
           'samples', 10000,
-          'seed', 71783153620529
+          'seed', 71783153620530
         ),
         'binary_micro_diagnostic', jsonb_build_object(
           'sample_size', 72,
