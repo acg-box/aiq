@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   createBoundedSupabaseFetch,
   createBoundedSupabaseFetchForTests,
+  createSupabaseApiKeyFetch,
   createVerificationSupabaseFetch,
   VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
 } from './supabase-http.ts';
@@ -33,6 +34,17 @@ void describe('bounded Supabase HTTP fetch', () => {
     assert.equal(observedSignal?.aborted, false);
     t.mock.timers.tick(1);
     await assert.rejects(verificationRequest, { name: 'SupabaseHttpTimeoutError' });
+
+    const submissionRequest = createSupabaseApiKeyFetch(
+      'private-test-key',
+      undefined,
+      globalThis.fetch,
+      VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
+    )('https://example.supabase.co/rest/v1/rpc/aiq_enqueue_submission');
+    t.mock.timers.tick(119_999);
+    assert.equal(observedSignal?.aborted, false);
+    t.mock.timers.tick(1);
+    await assert.rejects(submissionRequest, { name: 'SupabaseHttpTimeoutError' });
   });
 
   void it('returns a successful response unchanged', async () => {
