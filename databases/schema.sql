@@ -5926,7 +5926,7 @@ begin
       = 'finite_cluster_calibrated_percentile_sensitivity_v1'
     and (candidate ->> 'central_mass')::numeric = 0.95
     and (candidate ->> 'samples')::numeric = 10000
-    and (candidate ->> 'seed')::numeric = 71783153620529
+    and (candidate ->> 'seed')::numeric = 71783153620530
     and (candidate ->> 'lower')::numeric between 0 and 100
     and (candidate ->> 'upper')::numeric between 0 and 100
     and (candidate ->> 'lower')::numeric <= (candidate ->> 'upper')::numeric,
