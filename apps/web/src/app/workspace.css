@@ -1838,6 +1838,11 @@ dd {
 		content: attr(data-label);
 	}
 
+	.decision-metric {
+		min-width: 0;
+		white-space: normal;
+	}
+
 	.decision-metric strong {
 		font-size: 0.7rem;
 	}
