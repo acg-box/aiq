@@ -382,9 +382,12 @@ test('radar separates synthetic registry, observation, and aggregation evidence'
   );
   await expect(page.getByRole('heading', { name: 'Trust-layer aggregation' })).toHaveCount(3);
   await expect(page.getByText('Receiver-verified trusted', { exact: true })).toHaveCount(3);
-  await expect(
-    page.getByText('Registry status is not a live heartbeat.', { exact: false }),
-  ).toBeVisible();
+  const registry = page.getByRole('region', { name: 'Runner registry evidence' });
+  await expect(registry.getByRole('columnheader', { name: 'Telemetry' })).toBeVisible();
+  await expect(registry.getByRole('columnheader', { name: 'Registry record' })).toHaveCount(0);
+  await expect(registry.getByText('ready · signature unverified', { exact: true })).toBeVisible();
+  await expect(registry.getByText('busy · signature rejected', { exact: true })).toBeVisible();
+  await expect(registry.getByText('offline · signature unverified', { exact: true })).toBeVisible();
   await expectNoDocumentOverflow(page, testInfo);
   await expectAccessible(page);
   expect(runtimeFailures).toEqual([]);
