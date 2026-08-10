@@ -578,13 +578,27 @@ void describe('bounded readiness probe', () => {
     );
   });
 
-  void it('requires the exact public trend and gateway role probe contracts', () => {
+  void it('requires the exact public trend, speed trend, and gateway role probe contracts', () => {
     assert.deepEqual(REQUIRED_RPC_CONTRACT.public_trend_points, {
       arguments: 'supplied_range text',
       result:
         'TABLE(matrix_id text, run_id text, scoring_version text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, score numeric, theta numeric, standard_error numeric, theta_ci_low numeric, theta_ci_high numeric, score_ci_low numeric, score_ci_high numeric, information numeric, quality_score numeric, strict_pass_rate numeric, strict_pass_low numeric, strict_pass_high numeric, strict_pass_sample_size integer, strict_pass_successes integer, reliability_status text, calibration_status text, sensitivity_low numeric, sensitivity_high numeric, sample_size integer, represented_run_count bigint, resolution_seconds bigint, synthetic boolean)',
       defaultCount: 0,
       modes: ['i', ...Array<string>(28).fill('t')],
+      grants: {
+        anon: true,
+        authenticated: true,
+        service_role: false,
+        aiq_verifier: false,
+        aiq_publisher: false,
+      },
+    });
+    assert.deepEqual(REQUIRED_RPC_CONTRACT.public_speed_trend_points, {
+      arguments: 'supplied_range text',
+      result:
+        'TABLE(model_family text, reasoning_effort text, mode text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, attempted_trials bigint, completed_trials bigint, represented_batch_count bigint, median_elapsed_ms bigint, p95_elapsed_ms bigint, median_aggregate_output_tps_millis bigint, estimated_credits_nanos numeric, input_tokens numeric, cached_input_tokens numeric, output_tokens numeric, total_tokens numeric, median_agent_steps bigint, median_tool_call_count bigint, resolution_seconds bigint)',
+      defaultCount: 0,
+      modes: ['i', ...Array<string>(20).fill('t')],
       grants: {
         anon: true,
         authenticated: true,
