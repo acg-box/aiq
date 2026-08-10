@@ -99,13 +99,13 @@ test('the live empty overview preserves all 17 fixed matrix identities without s
   await expect(
     page.getByText('17 configurations · Publication pending', { exact: true }),
   ).toBeVisible();
-  const highlights = page.getByRole('region', { name: 'Latest benchmark highlights' });
-  await expect(highlights.getByText('Top score', { exact: true }).locator('..')).toContainText(
-    'Unavailable',
-  );
-  await expect(highlights.getByText('Coverage', { exact: true }).locator('..')).toContainText(
-    'Unavailable',
-  );
+  await expect(
+    page.getByRole('heading', { name: 'Choose by ability, time, or cost.' }),
+  ).toHaveCount(0);
+  const ranking = page.getByRole('region', { name: 'Top configurations' });
+  await expect(ranking).toContainText('Publication pending');
+  await expect(ranking).toContainText('Score unavailable');
+  await expect(ranking).toContainText('No scored configurations are available.');
   await expect(page.getByText('17 configurations · 0 task cells', { exact: true })).toHaveCount(0);
   const deferredMatrix = page.locator('[data-homepage-analytics="matrix"]');
   await expect(deferredMatrix).toHaveClass(/homepage-analytics-empty/);
