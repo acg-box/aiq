@@ -809,7 +809,7 @@ select
       else least(100, round(score.fixed_score + 2, 3)) end,
     'central_mass', 0.95,
     'samples', 10000,
-    'seed', 71783153620529
+    'seed', 71783153620530
   ),
   false,
   run.completed_at + interval '3 minutes',
