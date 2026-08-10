@@ -260,6 +260,7 @@ function signedVerification(
     task_set_id: 'aiq-core',
     task_set_version: '1.0.7',
     task_set_hash: digest('4'),
+    terminal_attempt_lineage_digest: digest('2'),
     capability_validation_digest: capabilityValidationDigest,
     provenance,
     run_class: synthetic ? null : 'official',
@@ -293,6 +294,7 @@ function signedVerification(
     content_hash: stage.content_hash,
     normalization_digest: stage.normalization_digest,
     task_set_hash: stage.task_set_hash,
+    terminal_attempt_lineage_digest: stage.terminal_attempt_lineage_digest,
     capability_validation_digest: stage.capability_validation_digest,
     provenance: structuredClone(stage.provenance),
     benchmark_version: stage.benchmark_version,
@@ -408,6 +410,7 @@ function signedCalibrationVerification(
     ranking_eligible: false,
     trust: 'untrusted',
     task_set_hash: digest('4'),
+    terminal_attempt_lineage_digest: digest('2'),
     task_selection_digest: `sha256:${sha256Hex(canonicalJson(taskIds))}`,
     model_selection_digest: `sha256:${sha256Hex(canonicalJson(models))}`,
     score_reports_digest: `sha256:${sha256Hex(canonicalJson(scores))}`,
@@ -455,6 +458,7 @@ function signedCalibrationVerification(
     ranking_eligible: false,
     trust: 'untrusted',
     task_set_hash: stage.task_set_hash,
+    terminal_attempt_lineage_digest: stage.terminal_attempt_lineage_digest,
     task_selection_digest: stage.task_selection_digest,
     model_selection_digest: stage.model_selection_digest,
     score_reports_digest: stage.score_reports_digest,
@@ -561,6 +565,27 @@ void describe('verifier ingress contract', () => {
   void it('accepts synthetic null and production non-null capability evidence', () => {
     assert.equal(validateVerification(signedVerification()).ok, true);
     assert.equal(validateVerification(signedVerification({ synthetic: false })).ok, true);
+  });
+
+  void it('requires and binds the complete terminal-attempt lineage digest', () => {
+    const missing = signedVerification({ synthetic: false });
+    delete missing.stage.terminal_attempt_lineage_digest;
+    const missingResult = validateVerification(missing);
+    assert.equal(missingResult.ok, false);
+    if (!missingResult.ok) assert.equal(missingResult.code, 'INVALID_VERIFICATION');
+
+    const officialMismatch = signedVerification({ synthetic: false });
+    officialMismatch.attestation.terminal_attempt_lineage_digest = digest('f');
+    const officialResult = validateVerification(officialMismatch);
+    assert.equal(officialResult.ok, false);
+    if (!officialResult.ok) assert.equal(officialResult.code, 'ATTESTATION_BINDING_MISMATCH');
+
+    const calibrationMismatch = signedCalibrationVerification();
+    calibrationMismatch.attestation.terminal_attempt_lineage_digest = digest('f');
+    const calibrationResult = validateVerification(calibrationMismatch);
+    assert.equal(calibrationResult.ok, false);
+    if (!calibrationResult.ok)
+      assert.equal(calibrationResult.code, 'CALIBRATION_ATTESTATION_BINDING_MISMATCH');
   });
 
   void it('accepts a separate replayed untrusted calibration stage and rejects trust mutations', async () => {
