@@ -179,6 +179,7 @@ const stageKeys = [
   'task_set_hash',
   'task_set_id',
   'task_set_version',
+  'terminal_attempt_lineage_digest',
 ] as const;
 const attestationKeys = [
   'benchmark_version',
@@ -199,6 +200,7 @@ const attestationKeys = [
   'signature_version',
   'synthetic',
   'task_set_hash',
+  'terminal_attempt_lineage_digest',
   'verifier',
 ] as const;
 const calibrationStageKeys = [
@@ -236,6 +238,7 @@ const calibrationStageKeys = [
   'task_set_id',
   'task_set_version',
   'telemetry_digest',
+  'terminal_attempt_lineage_digest',
   'trust',
 ] as const;
 const calibrationAttestationKeys = [
@@ -262,6 +265,7 @@ const calibrationAttestationKeys = [
   'task_selection_digest',
   'task_set_hash',
   'telemetry_digest',
+  'terminal_attempt_lineage_digest',
   'trust',
   'verifier',
 ] as const;
@@ -287,6 +291,7 @@ export interface NormalizedStage extends Readonly<JsonRecord> {
   content_hash: string;
   signer: { node_id: string; public_key: string };
   task_set_hash: string;
+  terminal_attempt_lineage_digest: string;
   capability_validation_digest: string | null;
   provenance: RunProvenance | null;
   run_class: 'official' | null;
@@ -311,6 +316,7 @@ export interface VerifierAttestation extends Readonly<JsonRecord> {
   content_hash: string;
   normalization_digest: string;
   task_set_hash: string;
+  terminal_attempt_lineage_digest: string;
   capability_validation_digest: string | null;
   provenance: RunProvenance | null;
   benchmark_version: string;
@@ -342,6 +348,7 @@ export interface CalibrationVerifiedStage extends Readonly<JsonRecord> {
   ranking_eligible: false;
   trust: 'untrusted';
   task_set_hash: string;
+  terminal_attempt_lineage_digest: string;
   task_selection_digest: string;
   model_selection_digest: string;
   score_reports_digest: string;
@@ -374,6 +381,7 @@ export interface CalibrationVerifierAttestation extends Readonly<JsonRecord> {
   ranking_eligible: false;
   trust: 'untrusted';
   task_set_hash: string;
+  terminal_attempt_lineage_digest: string;
   task_selection_digest: string;
   model_selection_digest: string;
   score_reports_digest: string;
@@ -761,6 +769,8 @@ function hasValidStageShape(value: JsonRecord): value is NormalizedStage {
     typeof value.task_set_version === 'string' &&
     typeof value.task_set_hash === 'string' &&
     digestPattern.test(value.task_set_hash) &&
+    typeof value.terminal_attempt_lineage_digest === 'string' &&
+    digestPattern.test(value.terminal_attempt_lineage_digest) &&
     isDigestOrNull(value.capability_validation_digest) &&
     isRunProvenanceOrNull(value.provenance) &&
     (value.run_class === null || value.run_class === 'official') &&
@@ -817,6 +827,8 @@ function hasValidAttestationShape(value: JsonRecord): value is VerifierAttestati
     digestPattern.test(value.normalization_digest) &&
     typeof value.task_set_hash === 'string' &&
     digestPattern.test(value.task_set_hash) &&
+    typeof value.terminal_attempt_lineage_digest === 'string' &&
+    digestPattern.test(value.terminal_attempt_lineage_digest) &&
     isDigestOrNull(value.capability_validation_digest) &&
     isRunProvenanceOrNull(value.provenance) &&
     typeof value.benchmark_version === 'string' &&
@@ -853,6 +865,8 @@ function hasValidCalibrationStageShape(value: JsonRecord): value is CalibrationV
     value.trust !== 'untrusted' ||
     typeof value.task_set_hash !== 'string' ||
     !digestPattern.test(value.task_set_hash) ||
+    typeof value.terminal_attempt_lineage_digest !== 'string' ||
+    !digestPattern.test(value.terminal_attempt_lineage_digest) ||
     typeof value.task_selection_digest !== 'string' ||
     !digestPattern.test(value.task_selection_digest) ||
     typeof value.model_selection_digest !== 'string' ||
@@ -973,6 +987,8 @@ function hasValidCalibrationAttestationShape(
     value.trust === 'untrusted' &&
     typeof value.task_set_hash === 'string' &&
     digestPattern.test(value.task_set_hash) &&
+    typeof value.terminal_attempt_lineage_digest === 'string' &&
+    digestPattern.test(value.terminal_attempt_lineage_digest) &&
     typeof value.task_selection_digest === 'string' &&
     digestPattern.test(value.task_selection_digest) &&
     typeof value.model_selection_digest === 'string' &&
@@ -1064,6 +1080,7 @@ function bindingsMatch(stage: NormalizedStage, attestation: VerifierAttestation)
     attestation.content_hash === stage.content_hash &&
     attestation.normalization_digest === stage.normalization_digest &&
     attestation.task_set_hash === stage.task_set_hash &&
+    attestation.terminal_attempt_lineage_digest === stage.terminal_attempt_lineage_digest &&
     attestation.capability_validation_digest === stage.capability_validation_digest &&
     runProvenanceEquals(stage.provenance, attestation.provenance) &&
     attestation.benchmark_version === stage.benchmark_version &&
@@ -1113,6 +1130,7 @@ function calibrationBindingsMatch(
     attestation.ranking_eligible === stage.ranking_eligible &&
     attestation.trust === stage.trust &&
     attestation.task_set_hash === stage.task_set_hash &&
+    attestation.terminal_attempt_lineage_digest === stage.terminal_attempt_lineage_digest &&
     attestation.task_selection_digest === stage.task_selection_digest &&
     attestation.model_selection_digest === stage.model_selection_digest &&
     attestation.score_reports_digest === stage.score_reports_digest &&
