@@ -210,6 +210,10 @@ void describe('route-scoped production configuration', () => {
         'inspectArtifactIngressConfiguration(process.env)',
       ],
       [
+        'apps/web/src/app/api/observations/speed/route.ts',
+        'inspectArtifactIngressConfiguration(process.env)',
+      ],
+      [
         'apps/web/src/app/api/artifacts/resolve/route.ts',
         'inspectVerifierClaimConfiguration(process.env)',
       ],

@@ -1,0 +1,15 @@
+{
+  "schema_version": "aiq.continuous-observation-config.v1",
+  "release_root": "/absolute/private/path/to/frozen-aiq-release",
+  "source_root": "/absolute/path/to/clean-detached-release-worktree",
+  "observer_runner": "/absolute/private/path/to/current-aiq-runner",
+  "state_root": "/absolute/private/path/to/continuous-observation-state",
+  "codex_auth_source": "/absolute/private/path/to/codex/auth.json",
+  "endpoint": "https://aiq.wiki",
+  "official_jobs": 32,
+  "verifier_replay_jobs": 32,
+  "speed_jobs": 17,
+  "speed_trials": 5,
+  "production_reference_sha256": "sha256:replace_with_exact_production_reference_digest",
+  "build_receipt_sha256": "sha256:replace_with_exact_final_build_receipt_digest"
+}

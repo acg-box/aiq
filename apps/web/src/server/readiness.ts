@@ -101,6 +101,14 @@ export const REQUIRED_RPC_CONTRACT = {
     modes: ['i', ...Array<string>(28).fill('t')],
     grants: ROLE_GRANTS.publicRead,
   },
+  public_speed_trend_points: {
+    arguments: 'supplied_range text',
+    result:
+      'TABLE(model_family text, reasoning_effort text, mode text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, attempted_trials bigint, completed_trials bigint, represented_batch_count bigint, median_elapsed_ms bigint, p95_elapsed_ms bigint, median_aggregate_output_tps_millis bigint, estimated_credits_nanos numeric, input_tokens numeric, cached_input_tokens numeric, output_tokens numeric, total_tokens numeric, median_agent_steps bigint, median_tool_call_count bigint, resolution_seconds bigint)',
+    defaultCount: 0,
+    modes: ['i', ...Array<string>(19).fill('t')],
+    grants: ROLE_GRANTS.publicRead,
+  },
   aiq_gateway_role_probe: {
     arguments: '',
     result: 'text',
@@ -118,6 +126,13 @@ export const REQUIRED_RPC_CONTRACT = {
   aiq_record_artifact_ingress: {
     arguments:
       'target_run_id text, supplied_kind text, supplied_sha256 text, supplied_byte_size bigint, object_identity jsonb',
+    result: 'text',
+    defaultCount: 0,
+    modes: [],
+    grants: ROLE_GRANTS.service,
+  },
+  aiq_record_speed_observation: {
+    arguments: 'supplied_batch jsonb, supplied_object_id uuid, supplied_object_identity jsonb',
     result: 'text',
     defaultCount: 0,
     modes: [],
@@ -979,6 +994,79 @@ const PUBLIC_VIEW_PROBES: Readonly<
       json: ['pricing_rates'],
     },
   ),
+  public_speed_observations: publicViewProbe(
+    [
+      'batch_id',
+      'observed_at',
+      'model_family',
+      'reasoning_effort',
+      'mode',
+      'availability_status',
+      'availability_reason',
+      'trials_per_mode',
+      'attempted_trials',
+      'completed_trials',
+      'invalid_response_trials',
+      'failed_trials',
+      'median_elapsed_ms',
+      'p95_elapsed_ms',
+      'median_aggregate_output_tps_millis',
+      'estimated_credits_nanos',
+      'estimated_credit_sample_count',
+      'input_tokens',
+      'cached_input_tokens',
+      'output_tokens',
+      'total_tokens',
+      'median_agent_steps',
+      'median_tool_call_count',
+      'median_ttft_ms',
+      'ttft_status',
+      'median_post_first_token_output_tps_millis',
+      'post_first_token_output_tps_status',
+      'catalog_status',
+      'codex_version',
+      'credit_rate_card_version',
+      'scoring_impact',
+    ],
+    {
+      nullable: [
+        'availability_reason',
+        'median_elapsed_ms',
+        'p95_elapsed_ms',
+        'median_aggregate_output_tps_millis',
+        'estimated_credits_nanos',
+        'input_tokens',
+        'cached_input_tokens',
+        'output_tokens',
+        'total_tokens',
+        'median_agent_steps',
+        'median_tool_call_count',
+        'median_ttft_ms',
+        'median_post_first_token_output_tps_millis',
+        'codex_version',
+      ],
+      numbers: [
+        'trials_per_mode',
+        'attempted_trials',
+        'completed_trials',
+        'invalid_response_trials',
+        'failed_trials',
+        'median_elapsed_ms',
+        'p95_elapsed_ms',
+        'median_aggregate_output_tps_millis',
+        'estimated_credits_nanos',
+        'estimated_credit_sample_count',
+        'input_tokens',
+        'cached_input_tokens',
+        'output_tokens',
+        'total_tokens',
+        'median_agent_steps',
+        'median_tool_call_count',
+        'median_ttft_ms',
+        'median_post_first_token_output_tps_millis',
+      ],
+    },
+  ),
 };
 
 export const PUBLIC_VIEW_SELECTS: Readonly<
@@ -996,6 +1084,7 @@ export const PUBLIC_VIEW_SELECTS: Readonly<
   public_calibration_results: PUBLIC_VIEW_PROBES.public_calibration_results.columns,
   public_calibration_scores: PUBLIC_VIEW_PROBES.public_calibration_scores.columns,
   public_model_efficiency: PUBLIC_VIEW_PROBES.public_model_efficiency.columns,
+  public_speed_observations: PUBLIC_VIEW_PROBES.public_speed_observations.columns,
 };
 
 async function fetchJson(
@@ -1225,10 +1314,10 @@ async function probeProductionReference(
     document.runner_count !== 1 ||
     document.verifier_count !== 1 ||
     document.publisher_count !== 1 ||
-    document.private_table_count !== 40 ||
-    document.forced_rls_table_count !== 40 ||
-    document.public_view_count !== 12 ||
-    document.security_invoker_view_count !== 12 ||
+    document.private_table_count !== 42 ||
+    document.forced_rls_table_count !== 42 ||
+    document.public_view_count !== 13 ||
+    document.security_invoker_view_count !== 13 ||
     document.hardened_gateway_role_count !== 2
   ) {
     throw new Error('production reference status is invalid');

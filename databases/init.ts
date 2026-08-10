@@ -98,10 +98,10 @@ export interface InitializationReceipt {
   readonly task_count: 72;
   readonly model_config_count: 17;
   readonly public_node_count: 3;
-  readonly private_table_count: 40;
-  readonly forced_rls_table_count: 40;
-  readonly public_view_count: 12;
-  readonly security_invoker_view_count: 12;
+  readonly private_table_count: 42;
+  readonly forced_rls_table_count: 42;
+  readonly public_view_count: 13;
+  readonly security_invoker_view_count: 13;
   readonly hardened_gateway_role_count: 2;
   readonly node_ids: Readonly<Record<NodeRole, string>>;
 }
@@ -1167,7 +1167,8 @@ begin
           'public_nodes', 'public_run_results', 'public_runs',
           'public_scoring_versions', 'public_task_coverage',
           'public_calibration_runs', 'public_model_efficiency',
-          'public_calibration_results', 'public_calibration_scores'
+          'public_calibration_results', 'public_calibration_scores',
+          'public_speed_observations'
         )
     )
     or exists (
@@ -1192,7 +1193,8 @@ begin
           'aiq_retry_storage_deletion', 'aiq_set_storage_legal_hold',
           'aiq_stage_calibration_verification', 'aiq_stage_verifier_result',
           'aiq_storage_lifecycle_status', 'aiq_verify_and_publish',
-          'public_trend_points'
+          'public_trend_points', 'public_speed_trend_points',
+          'aiq_record_speed_observation'
         )
     )
   then
@@ -1232,10 +1234,10 @@ commit;
       task_count: 72,
       model_config_count: 17,
       public_node_count: 3,
-      private_table_count: 40,
-      forced_rls_table_count: 40,
-      public_view_count: 12,
-      security_invoker_view_count: 12,
+      private_table_count: 42,
+      forced_rls_table_count: 42,
+      public_view_count: 13,
+      security_invoker_view_count: 13,
       hardened_gateway_role_count: 2,
       node_ids: nodeIds,
     },

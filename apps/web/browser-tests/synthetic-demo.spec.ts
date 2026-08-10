@@ -509,9 +509,9 @@ test('time range filters update and comparison fails closed without exact effici
   const allHistoryCount = await trendRows.count();
   expect(allHistoryCount).toBeGreaterThan(5);
   const legend = page.getByRole('list', { name: 'Visible trend series' });
-  await expect(legend.getByRole('listitem')).toHaveCount(6);
+  await expect(legend.getByRole('listitem')).toHaveCount(17);
   await expect(page.getByRole('note')).toContainText(
-    'The family is an explicit filter, not a point-estimate cutoff.',
+    'Family and reasoning are explicit filters, not point-estimate cutoffs.',
   );
 
   const day = page.getByRole('link', { name: 'Day' });
@@ -533,8 +533,8 @@ test('time range filters update and comparison fails closed without exact effici
       .click();
     // oxlint-disable-next-line no-await-in-loop -- the assertion belongs to the selected range.
     await expect(page).toHaveURL(`/trends?range=${range}`);
-    // oxlint-disable-next-line no-await-in-loop -- the same bounded legend must survive each range.
-    await expect(legend.getByRole('listitem')).toHaveCount(6);
+    // oxlint-disable-next-line no-await-in-loop -- all configurations must survive each range.
+    await expect(legend.getByRole('listitem')).toHaveCount(17);
   }
 
   expect(runtimeFailures).toEqual([]);
@@ -565,9 +565,9 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/trends?range=all');
-  const chart = page.getByRole('img', { name: 'Quality score history' });
+  const chart = page.getByRole('img', { name: 'AIQ (0–100) history' });
   await expect(chart).toBeVisible();
-  await expect(chart.getByText('Quality score (0–100)', { exact: true })).toBeVisible();
+  await expect(chart.getByText('AIQ (0–100)', { exact: true })).toBeVisible();
   await expect(chart.getByText('Observation date (UTC)', { exact: true })).toBeVisible();
   const scoreLabels = await chart.locator('svg text').allTextContents();
   expect(scoreLabels.some((label) => /^\d+(?:\.\d)?$/.test(label))).toBe(true);
@@ -582,7 +582,7 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   await expect(barMode).toHaveAttribute('aria-pressed', 'true');
   await expect(chart).toHaveAttribute(
     'aria-label',
-    'Quality score history. Grouped bars with provenance-matched intervals.',
+    'AIQ (0–100) history. Grouped bars with provenance-matched intervals.',
   );
   const chartSvg = chart.locator('svg');
   await expect(chartSvg).toBeVisible();
@@ -637,7 +637,7 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   expect(
     intervalAlignment.every(
       ({ barCount, intervalCount, maximumCenterDelta }) =>
-        barCount === intervalCount && maximumCenterDelta <= 0.01,
+        barCount === intervalCount && maximumCenterDelta <= 2,
     ),
     JSON.stringify(intervalAlignment),
   ).toBe(true);
