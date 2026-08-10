@@ -110,7 +110,10 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(source, /const hasEfficiencyEvidence =/);
     assert.match(source, /hasEfficiencyEvidence \? \([\s\S]+<ConfigurationWorkbench/);
     assert.match(source, /\) : \([\s\S]+<DeferredModelMatrixChart/);
-    assert.match(source, /<div className="results-main-grid" id="compare">/);
+    assert.match(
+      source,
+      /<div[\s\S]+className="results-main-grid"[\s\S]+id="compare"[\s\S]+data-workspace-section[\s\S]+data-nav-section="compare"/,
+    );
     assert.doesNotMatch(source, /<div id="compare" className="sr-only"/);
     assert.match(source, /rankedEntries\.length === 0[\s\S]+<LeaderboardTable entries=/);
     assert.doesNotMatch(source, /standardApiEquivalentUsdNanos: [0-9]/);
