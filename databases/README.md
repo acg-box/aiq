@@ -6,12 +6,14 @@
 removes only the existing AIQ prelaunch namespace and then calls the production
 initializer. It is not a migration or an upgrade path.
 
-The initializer opens one direct PostgreSQL connection, starts one transaction,
-applies the schema, inserts public reference data, checks readiness, and commits.
-The production connection must use PostgreSQL, host
-`db.xxnszykaeapolqdnhalx.supabase.co`, database and user `postgres`, and the
-direct port `5432` or its omitted default. This binds initialization to the
-personal Supabase project documented by repository authority. Tests and local
+The initializer opens one PostgreSQL connection, starts one transaction, applies
+the schema, inserts public reference data, checks readiness, and commits. The
+production connection must use either the direct host
+`db.xxnszykaeapolqdnhalx.supabase.co` as user `postgres`, or the exact session
+pooler `aws-0-ca-central-1.pooler.supabase.com:5432` as user
+`postgres.xxnszykaeapolqdnhalx`. Both forms require database `postgres` and bind
+initialization to the personal Supabase project documented by repository
+authority. The transaction-pooler port is not accepted. Tests and local
 development can target only a loopback host when
 `NODE_ENV` is `test` or `development` and
 `AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true` is set explicitly. Production
@@ -35,7 +37,7 @@ with one of those exact names rejects initialization. It does not use a broad
 outside the cleanup boundary.
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
@@ -146,24 +148,24 @@ private object paths to the dry-run result, reset receipt, or standard output.
 It rejects an unexpected AIQ schema, role, function, bucket, or bucket identity.
 It also rejects a non-canonical policy or role membership that depends on an
 AIQ role, a non-view relation that uses a canonical public view name, and any
-object outside the canonical AIQ surface that depends on `aiq_private`. Thus,
-the internal schema cascade cannot remove an external dependent.
+object outside the canonical AIQ surface that depends on `aiq_private`. The
+only platform-managed membership exception is the exact `supabase_admin` grant
+of each AIQ gateway role to `postgres`; Supabase creates these grants with a new
+role. Thus, the internal schema cascade cannot remove an external dependent.
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
-AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
-cargo make reset-database -- --dry-run
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
+cargo make reset-database --dry-run
 ```
 
 Review the inventory. Then run the one-step replacement with the exact project
 and namespace confirmation:
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
-cargo make reset-database -- \
-  --confirm xxnszykaeapolqdnhalx:aiq_private
+cargo make reset-database --confirm xxnszykaeapolqdnhalx:aiq_private
 ```
 
 Before it makes a Storage request or starts PostgreSQL cleanup, the destructive
@@ -171,11 +173,12 @@ command reads, parses, and validates the production reference plus the
 checked-in schema, catalog, corpus schema, and current task commitments. A
 missing, malformed, or inconsistent authority stops the reset without mutation.
 
-The command uses the supported Supabase Storage API to list and delete objects
-before it removes a bucket. Listing uses pages of 100 objects. Object deletion
-uses batches of 100 and at most four concurrent requests. The command reads the
-buckets again before it removes them. It does not delete rows directly from
-`storage.objects`.
+The command reads the exact AIQ bucket object names through its protected
+PostgreSQL inventory and keeps them only in memory. The dry-run output and reset
+receipt contain only counts and ordered-path SHA-256 commitments. Object
+deletion uses the supported Supabase Storage API in batches of 100 with at most
+four concurrent requests. The command reads each bucket through the Storage API
+before it removes it. It never deletes rows directly from `storage.objects`.
 
 Storage deletion and database replacement cannot share one transaction. The
 command processes `aiq-runner-artifacts` and then `aiq-submission-packages`.
@@ -351,7 +354,7 @@ initialized disposable database. It uses the initializer-owned exact catalog
 and does not add or replace catalog rows.
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-calibration-database
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make smoke-calibration-database
 ```
 
 Run `synthetic-demo.sql`, `integration.sql`, and `calibration-integration.sql`

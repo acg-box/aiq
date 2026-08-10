@@ -213,9 +213,10 @@ inputs. Neither smoke creates a benchmark result.
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization entry point. There is
 no migration chain. It opens
-one direct PostgreSQL connection and applies the schema plus public reference
-data in one transaction. It accepts the direct host for personal Supabase
-project `xxnszykaeapolqdnhalx`. An explicit test/development override accepts
+one PostgreSQL connection and applies the schema plus public reference data in
+one transaction. It accepts the direct host or exact port-5432 session pooler
+identity for personal Supabase project `xxnszykaeapolqdnhalx`. An explicit
+test/development override accepts
 only a loopback target and cannot apply in production. It rejects a database
 that already contains the AIQ schema, gateway roles, or either exact AIQ
 Storage bucket identity. Apply this one greenfield desired state to the existing
@@ -232,7 +233,7 @@ names from the desired state. It rejects every overload of those exact RPC
 names without matching unrelated public objects.
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
@@ -254,7 +255,7 @@ calibration publication checks:
 
 ```sh
 cargo make smoke-database
-AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-calibration-database
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make smoke-calibration-database
 ```
 
 Use a separate fresh PostgreSQL 17 database for the deterministic synthetic
