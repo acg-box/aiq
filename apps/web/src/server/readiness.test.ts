@@ -182,10 +182,10 @@ async function withDependencyFetch(
         runner_count: 1,
         verifier_count: 1,
         publisher_count: 1,
-        private_table_count: 40,
-        forced_rls_table_count: 40,
-        public_view_count: 12,
-        security_invoker_view_count: 12,
+        private_table_count: 42,
+        forced_rls_table_count: 42,
+        public_view_count: 13,
+        security_invoker_view_count: 13,
         hardened_gateway_role_count: 2,
       };
       assert.equal(Object.keys(reference).length, 24);
@@ -233,6 +233,7 @@ async function withDependencyFetch(
         'public_calibration_results',
         'public_calibration_scores',
         'public_model_efficiency',
+        'public_speed_observations',
       ]),
     );
     assert.equal(trendProbeCount, 1);
@@ -514,7 +515,7 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('keeps empty public views ready and uses exact required-column selects', async () => {
-    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 12);
+    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 13);
     assert.ok(Object.values(PUBLIC_VIEW_SELECTS).every((select) => select !== '*'));
     await withDependencyFetch();
   });
@@ -642,7 +643,7 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('requires the exact calibration verification and publication RPC contracts', async () => {
-    assert.equal(Object.keys(REQUIRED_RPC_CONTRACT).length, 17);
+    assert.equal(Object.keys(REQUIRED_RPC_CONTRACT).length, 19);
     assert.deepEqual(REQUIRED_RPC_CONTRACT.aiq_stage_calibration_verification, {
       arguments:
         'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer',
@@ -807,7 +808,7 @@ void describe('bounded readiness probe', () => {
       '39 forced-RLS tables',
       (status: Record<string, unknown>) => (status.forced_rls_table_count = 39),
     ],
-    ['11 public views', (status: Record<string, unknown>) => (status.public_view_count = 11)],
+    ['12 public views', (status: Record<string, unknown>) => (status.public_view_count = 12)],
     [
       '11 security-invoker views',
       (status: Record<string, unknown>) => (status.security_invoker_view_count = 11),

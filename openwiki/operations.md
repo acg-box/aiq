@@ -34,18 +34,12 @@ scorer remains `1.0.6` and aggregate scorer is `1.0.8`. Its public metadata dige
 `sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`,
 and its public release digest is
 `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
-The public catalog is deterministic and identity-frozen. The prior controlled
-tree and database commitment bind the retired bounded policy. Fresh independent
-Core and Contrast seals, policy-v2 replay of the retained complete calibration,
-fixed-bank admission v3, a real Official run, publication, and final deployment
-are pending. This pre-release state does not claim that an Official production
-matrix is live.
-
-No cloud runner or verifier worker and no recurring benchmark or Storage
-schedule exist. The repository validates supplied schedule occurrences but does
-not create a scheduler. The twice-daily benchmark schedule and its next run are
-pending operator work; do not authorize recurring automation through this
-runbook.
+The public catalog is deterministic and identity-frozen. Controlled release
+evidence remains outside Git. The production runner and verifier execute natively
+on the approved Apple Silicon macOS host; Linux, Docker, and cloud workers remain
+future targets. The continuous-observation entrypoint and `launchd` template are
+repository-owned, while the concrete configuration, secrets, and mutable state
+remain private operator assets.
 
 ## Toolchain
 
@@ -276,6 +270,41 @@ failure. Do not publish hidden responses or hidden task details. Real
 calibration remains permanently non-Official even after signed verifier
 admission and distinct publication to the calibration register.
 
+## Continuous observations
+
+`scripts/continuous-observation.ts` selects the latest due `03:00` or `15:00`
+UTC slot. It holds one global nonblocking lock, creates one immutable state
+directory per slot, and resumes only that unchanged slot. A wake outside the due
+window does no model work. The checked-in `launchd` template wakes hourly at
+minute 5, which gives a failed current slot retry opportunities without changing
+the twice-daily model schedule.
+
+Each due slot runs two independent paths: paired Normal/Fast auxiliary
+observation and the complete Official runner, verifier, and publisher chain.
+Both use fresh isolated copies of `auth.json` under private `CODEX_HOME` roots.
+Formal benchmark tasks and speed trials have no benchmark-enforced wall, step,
+or tool-call termination. The runner continues exact time, token, step, tool, and
+credit accounting. Safety or infrastructure termination remains a structured
+runtime-null observation and never becomes a semantic score.
+
+Start from the checked-in examples and keep the concrete copies outside Git:
+
+```sh
+node scripts/continuous-observation.ts status \
+  /absolute/private/path/to/continuous-observation.json
+node scripts/continuous-observation.ts run-due \
+  /absolute/private/path/to/continuous-observation.json
+```
+
+The protected launcher supplies only `AIQ_RUNNER_SIGNING_KEY`,
+`AIQ_RUNNER_SUBMISSION_TOKEN`, `AIQ_VERIFIER_INGRESS_TOKEN`, and
+`AIQ_VERIFIER_SIGNING_KEY` to the child process. Do not put values in the plist,
+configuration file, command arguments, or logs. A failed slot retains checkpoints
+and raw artifacts for exact resume. After both publication paths succeed, retain
+the compact batch, package, score, stage, attestation, and receipts; remove copied
+Codex credentials, raw local artifacts, replay scratch, checkpoints, and
+disposable workspaces.
+
 ## Score, package, and submit
 
 Scoring consumes evaluator-backed semantic task scores only. Elapsed time,
@@ -409,7 +438,14 @@ non-AIQ objects. This cleanup is a deployment prerequisite, not a migration or
 compatibility path. Do not apply AIQ objects or create AIQ Storage buckets
 before initialization. Do not reset or initialize until the new real signed
 17-by-72 package passes native verifier replay. Use the exact direct or
-port-5432 session-pooler PostgreSQL URL, not the public Data API URL.
+port-5432 session-pooler PostgreSQL URL, not the public Data API URL. The
+initializer accepts either the direct production host or the personal Supabase
+session pooler at `aws-0-ca-central-1.pooler.supabase.com:5432` with the
+`postgres.xxnszykaeapolqdnhalx` user; other production targets fail closed.
+The reset inventory now reads Storage object paths through PostgreSQL, so a
+read-only dry run does not require the service-role key. The key is required only
+when deletion begins. Storage list API retries are limited to transient `429` and
+`5xx` responses, while mutation failures remain terminal.
 
 ```sh
 AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
@@ -564,7 +600,7 @@ published-data mock is already part of `verify` and `test:browser`. Run
 `npm run test:browser:production-contract --workspace @aiq/web` only as a
 targeted rerun. These commands validate the public surface accepted in
 [Deployment Handoff](deployment-handoff.md); they do not start a server, deploy
-resources, or create recurring automation.
+resources, or alter the installed observation schedule.
 
 ## Storage lifecycle
 

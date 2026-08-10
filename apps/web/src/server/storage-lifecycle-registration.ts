@@ -7,6 +7,7 @@ import {
 import { AIQ_RUNNER_ARTIFACT_BUCKET, AIQ_SUBMISSION_PACKAGE_BUCKET } from './storage-buckets.ts';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1_000;
 const MAX_STORAGE_OBJECT_BYTES = 4 * 1024 * 1024;
 const digestPattern = /^[a-f0-9]{64}(?![\s\S])/;
 const uuidPattern =
@@ -32,7 +33,7 @@ export type StorageLifecycleObject =
     }>
   | Readonly<{
       objectType: 'runner_artifact';
-      artifactKind: ArtifactKind;
+      artifactKind: ArtifactKind | 'speed-observation.json';
       bucket: string;
       path: string;
       digest: string;
@@ -41,12 +42,12 @@ export type StorageLifecycleObject =
 
 export interface StorageRegistrationRpcArguments {
   supplied_object_type: StorageLifecycleObject['objectType'];
-  supplied_artifact_kind: ArtifactKind | null;
+  supplied_artifact_kind: ArtifactKind | 'speed-observation.json' | null;
   supplied_bucket: string;
   supplied_path: string;
   supplied_sha256: string;
   supplied_bytes: number;
-  supplied_retention_class: 'ephemeral_30d';
+  supplied_retention_class: 'ephemeral_30d' | 'audit_1y';
   supplied_expires_at: string;
 }
 
@@ -81,8 +82,10 @@ function isValidObject(object: StorageLifecycleObject): boolean {
   return (
     object.objectType === 'runner_artifact' &&
     object.bucket === AIQ_RUNNER_ARTIFACT_BUCKET &&
-    artifactKinds.has(object.artifactKind) &&
-    object.bytes <= ARTIFACT_KIND_MAX_BYTES[object.artifactKind] &&
+    (object.artifactKind === 'speed-observation.json'
+      ? object.bytes <= MAX_STORAGE_OBJECT_BYTES
+      : artifactKinds.has(object.artifactKind) &&
+        object.bytes <= ARTIFACT_KIND_MAX_BYTES[object.artifactKind]) &&
     object.path === `sha256/${object.digest}/${object.artifactKind}`
   );
 }
@@ -95,15 +98,18 @@ export async function registerStorageObject({
   object,
   rpc,
   now = () => new Date(),
+  retentionClass = 'ephemeral_30d',
 }: Readonly<{
   object: StorageLifecycleObject;
   rpc: StorageRegistrationRpc;
   now?: () => Date;
+  retentionClass?: 'ephemeral_30d' | 'audit_1y';
 }>): Promise<string> {
   try {
     if (!isValidObject(object)) throw registrationFailure();
     const nowMilliseconds = now().getTime();
-    const expiresAtMilliseconds = nowMilliseconds + THIRTY_DAYS_MS;
+    const expiresAtMilliseconds =
+      nowMilliseconds + (retentionClass === 'audit_1y' ? ONE_YEAR_MS : THIRTY_DAYS_MS);
     if (
       !Number.isSafeInteger(nowMilliseconds) ||
       nowMilliseconds < 0 ||
@@ -118,7 +124,7 @@ export async function registerStorageObject({
       supplied_path: object.path,
       supplied_sha256: object.digest,
       supplied_bytes: object.bytes,
-      supplied_retention_class: 'ephemeral_30d',
+      supplied_retention_class: retentionClass,
       supplied_expires_at: new Date(expiresAtMilliseconds).toISOString(),
     });
     if (result.error || typeof result.data !== 'string' || !uuidPattern.test(result.data)) {

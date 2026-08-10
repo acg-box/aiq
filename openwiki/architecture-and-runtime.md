@@ -99,8 +99,12 @@ at the declared commit, exact executable digests, mode-private writable roots,
 create-new outputs, and macOS atomic file operations. Before paid preflight and
 paid run dispatch, the operator reruns the model-free binding checks. Codex uses
 the host's direct network connection. Production does not depend on or run Linux
-or Docker. They remain future deployment targets. No cloud runner or verifier
-worker and no recurring schedule currently exist.
+or Docker. They remain future deployment targets. The native macOS host runs the
+repository continuous-observation entrypoint for the `03:00` and `15:00` UTC
+slots. The entrypoint owns the non-overlap lock, per-slot resume state, isolated
+Codex homes, verified publication sequence, and post-success cleanup. `launchd`
+only wakes the entrypoint; canonical slot selection decides whether model work
+is due.
 
 After model-free validation, the only Official path runs one complete
 `72 × 17` matrix of 1,224 observations, replays it with the native verifier,
@@ -202,6 +206,12 @@ It resolves and digest/size-checks every signed capability-probe artifact so
 publication retention can prove ownership of that run-level evidence, then
 reconstructs submitted workspaces and replays committed evaluators with the
 committed runtime. Production requires the `evaluator_replayed` disposition.
+The normalized stage and verifier attestation also carry a required
+`terminal_attempt_lineage_digest`; `apps/web/src/server/verification-contract.ts`
+requires that digest to be a valid digest and matches it across stage and
+attestation bindings. Selected evaluator provenance remains bound to the replayed
+stage rather than inferred from a nearby or earlier result.
+
 
 The offline `diagnose-rescore` mode is separate from verification and
 publication. It verifies the source package signature, provenance, artifacts,
@@ -300,18 +310,14 @@ consistent task counts and status totals, valid timing and token evidence, and
 verifier-recomputed cost consistent with the published pricing digest. The
 readiness probe verifies the same expanded result-view contract.
 
-The overview leads with the publication identity, three compact benchmark
-insights, and the top five configurations. On narrow screens the complete top
-five precedes analytical charts in the first viewport. When exact Official
-efficiency evidence exists, the primary chart compares calibrated ability with
-either summed adapter time or estimated Standard API-equivalent cost. When that
-evidence does not exist, the primary chart falls back to the scored
-17-configuration matrix. The full matrix still supports dot, bar, and
-ordered-horizontal presentations with the interval that matches its primary
-metric. If the live
-matrix has identities but no scores, the page preserves all 17 identities in an
-explicit unavailable-values table instead of displaying zeros or removing the
-matrix contract.
+The overview leads with the publication identity and the complete configuration
+workbench when exact Official efficiency evidence exists. The workbench compares
+all 17 configurations and provides duration, estimated-cost, and optional
+three-axis views without combining those measures with AIQ. When exact evidence
+does not exist, the primary surface falls back to the scored 17-configuration
+matrix and compact ranking. If the live matrix has identities but no scores, the
+page preserves all 17 identities in an explicit unavailable-values table instead
+of displaying zeros or removing the matrix contract.
 
 Score, run context, and efficiency displays resolve only after an exact run,
 configuration, scoring-version, and synthetic/provenance identity join. The
@@ -384,6 +390,52 @@ select a public-data repository.
 `GET /api/readiness` checks configuration shape and bounded production
 dependencies. It does not claim that a deployment or benchmark run is complete,
 and it fails closed when a required production dependency is absent.
+
+## Configuration workbench
+
+The homepage and `/compare` route now share `ConfigurationWorkbench` rather than
+maintaining separate comparison and efficiency plot implementations. The server
+first resolves an exact score, run, and efficiency join through
+`resolveExactEfficiencyRowsWithAvailability`; incomplete, unavailable, rejected, or
+ambiguous evidence is not rendered as a partial comparison. The workbench then
+filters and orders the complete rows by model family, reasoning tier, exact
+configuration, estimated-cost availability, or Pareto frontier. Its URL state uses
+`compareFamilies`, `compareReasoning`, `compareConfigs`, `compareCost`,
+`compareFrontier`, `compareView`, `compareOrder`, and `compareFocus`, with
+`encodeWorkbenchSelection` keeping default selections canonical.
+
+The three views have deliberately different meanings: duration and cost charts
+show one auxiliary measure against ability, while the optional three-axis view
+requires all three values and normalizes only its display axes. Cost remains a
+Standard API-equivalent estimate and never becomes part of AIQ. Pareto membership
+is calculated only among rows with comparable duration and estimated cost; it is a
+trade-off aid, not a combined ranking. The implementation seams are
+`apps/web/src/components/configuration-workbench.ts`,
+`apps/web/src/components/configuration-workbench-view.tsx`,
+`apps/web/src/components/configuration-workbench-chart.tsx`,
+`apps/web/src/components/configuration-workbench-three.ts`, and
+`apps/web/src/components/configuration-decision.ts`.
+
+```mermaid
+flowchart TD
+    Evidence["Exact score run and efficiency join"] --> Complete{"Complete 17 configuration evidence"}
+    Complete -->|no| Unavailable["Show unavailable state"]
+    Complete -->|yes| State["Read analytical URL state"]
+    State --> Filter["Filter and order rows"]
+    Filter --> Duration["Duration view"]
+    Filter --> Cost["Cost view"]
+    Filter --> Three["Three-axis view when all values exist"]
+```
+
+The workbench flow keeps evidence resolution ahead of interactive presentation and
+never fills missing time or cost values. Focused unit coverage is in
+`apps/web/src/components/configuration-workbench.test.ts`,
+`configuration-workbench-chart.test.ts`,
+`configuration-workbench-three.test.ts`, and `configuration-decision.test.ts`;
+the compare and homepage browser contracts remain in
+`apps/web/browser-tests/synthetic-demo.spec.ts` and the live browser suites.
+Use `npm run test --workspace @aiq/web` for the Web package tests, or use the
+repository's `cargo make verify` gate for the complete Web contract.
 
 ## Distributed radar
 

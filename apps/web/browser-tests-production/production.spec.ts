@@ -460,19 +460,19 @@ test('production method, trends, and radar preserve transparent evidence semanti
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
   await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
-  await expect(page.getByRole('img', { name: 'Calibrated ability history' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'AIQ (0–100) history' })).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
-  ).toHaveCount(6);
+  ).toHaveCount(17);
   await page.getByText('Evidence notes and visible values', { exact: true }).click();
   await expect(page.getByRole('note')).toContainText(
-    'Showing all 6 Sol configurations in canonical matrix order',
+    'Showing 17 configurations in canonical matrix order',
   );
   await expect(page.getByRole('note')).toContainText(
-    'The family is an explicit filter, not a point-estimate cutoff.',
+    'Family and reasoning are explicit filters, not point-estimate cutoffs.',
   );
   const trendValues = page.getByRole('region', { name: 'Visible trend values' });
-  await expect(trendValues.locator('tbody tr')).toHaveCount(6);
+  await expect(trendValues.locator('tbody tr')).toHaveCount(17);
   for (const heading of [
     'Coverage',
     'Runtime',

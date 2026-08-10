@@ -32,10 +32,10 @@ const initializationReceipt = {
   task_count: 72,
   model_config_count: 17,
   public_node_count: 3,
-  private_table_count: 40,
-  forced_rls_table_count: 40,
-  public_view_count: 12,
-  security_invoker_view_count: 12,
+  private_table_count: 42,
+  forced_rls_table_count: 42,
+  public_view_count: 13,
+  security_invoker_view_count: 13,
   hardened_gateway_role_count: 2,
   node_ids: { runner: 'runner', verifier: 'verifier', publisher: 'publisher' },
 } satisfies InitializationReceipt;
@@ -165,8 +165,8 @@ function storageFetch(calls: { url: string; method: string; body: unknown }[]): 
 
 void test('canonical names come from schema.sql and include all overload names once', async () => {
   const names = canonicalSchemaNames(await readFile(resolve(root, 'databases/schema.sql'), 'utf8'));
-  strictEqual(names.views.length, 12);
-  strictEqual(names.policies.length, 19);
+  strictEqual(names.views.length, 13);
+  strictEqual(names.policies.length, 21);
   strictEqual(
     names.policies.every(({ schema }) => schema === 'aiq_private'),
     true,

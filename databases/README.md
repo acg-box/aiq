@@ -287,6 +287,17 @@ raw provider counters and the immutable pricing record. This evidence supports
 later contemporaneous and rebased price views without changing the recorded
 estimate.
 
+Normal/Fast transport observations use separate append-only private batch and
+trial tables. `public_speed_observations` exposes the latest published
+capability state plus bounded aggregate completion, elapsed time, throughput,
+token, tool-use, and estimated-credit fields. `public_speed_trend_points(range)`
+returns at most 20 time buckets per exact model, reasoning, and mode series for
+`day`, `week`, `month`, or `all`. Both public contracts have no scoring effect;
+no database formula or publication gate can use these values to change AIQ,
+uncertainty, status, or rank. TTFT and post-first-token throughput remain
+explicitly unavailable while the current Codex transport lacks a trustworthy
+first-token timestamp.
+
 An attempted result passed capability admission and entered task preparation.
 The adapter-invoked count also excludes cells stopped by workspace preflight.
 The elapsed-observed count can be lower than the adapter-invoked count when the
