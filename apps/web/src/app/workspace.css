@@ -97,43 +97,180 @@
 	font-size: 0.76rem;
 }
 
-.insight-grid {
+.configuration-decision {
+	margin: 12px 0 56px;
+}
+
+.decision-heading {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 32px;
-	margin: 12px 0 48px;
-	border: 0;
-	background: transparent;
+	grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
+	gap: 48px;
+	align-items: end;
 }
 
-.insight-card {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr);
-	align-items: start;
-	min-height: 68px;
-	padding: 0;
+.decision-heading .eyebrow {
+	display: block;
+	margin-bottom: 7px;
 }
 
-.insight-card + .insight-card {
-	border: 0;
+.decision-heading h2 {
+	margin: 0;
+	font-size: clamp(1.55rem, 2.8vw, 2.3rem);
+	font-weight: 600;
+	line-height: 1.05;
+	letter-spacing: -0.048em;
 }
 
-.insight-card div {
-	display: grid;
-	gap: 2px;
-}
-
-.insight-card span,
-.insight-card small {
+.decision-heading p {
+	max-width: 700px;
+	margin: 0;
 	color: var(--muted);
-	font-size: 0.75rem;
+	font-size: 0.82rem;
+	line-height: 1.62;
+}
+
+.decision-priorities {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 30px;
+	margin-top: 28px;
+	border-block: 1px solid var(--line);
+}
+
+.decision-priorities button {
+	display: grid;
+	min-width: 0;
+	min-height: 106px;
+	padding: 16px 0 15px;
+	align-content: center;
+	text-align: left;
+	cursor: pointer;
+	transition: color 140ms ease;
+}
+
+.decision-priorities button:hover,
+.decision-priorities button[aria-pressed='true'] {
+	color: var(--accent);
+}
+
+.decision-priorities button[aria-pressed='true'] > span {
+	text-decoration: underline;
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 5px;
+}
+
+.decision-priorities span,
+.decision-priorities small {
+	color: var(--muted);
+	font-size: 0.69rem;
 	line-height: 1.45;
 }
 
-.insight-card strong {
-	font-size: 1.18rem;
+.decision-priorities strong {
+	overflow: hidden;
+	margin-top: 4px;
+	font-size: 0.98rem;
 	font-weight: 640;
-	letter-spacing: -0.025em;
+	letter-spacing: -0.022em;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.decision-table {
+	width: 100%;
+	overflow: auto;
+	overscroll-behavior-inline: contain;
+	border-bottom: 1px solid var(--line);
+}
+
+.decision-table table {
+	font-size: 0.76rem;
+}
+
+.decision-table th,
+.decision-table td {
+	padding: 12px 10px;
+	vertical-align: middle;
+}
+
+.decision-table th:first-child,
+.decision-table td:first-child {
+	padding-left: 0;
+}
+
+.decision-table th:last-child,
+.decision-table td:last-child {
+	padding-right: 0;
+}
+
+.decision-identity {
+	width: 25%;
+}
+
+.decision-identity a {
+	display: block;
+	font-size: 0.84rem;
+	font-weight: 650;
+	text-decoration: none;
+}
+
+.decision-identity small,
+.decision-metric small {
+	display: block;
+	margin-top: 2px;
+	color: var(--muted);
+	font-size: 0.64rem;
+	font-weight: 450;
+	line-height: 1.35;
+}
+
+.decision-metric {
+	white-space: nowrap;
+}
+
+.decision-metric strong {
+	display: block;
+	font:
+		650 0.82rem/1.25 var(--font-mono),
+		monospace;
+}
+
+.decision-action {
+	width: 72px;
+	text-align: right;
+}
+
+.decision-footer {
+	display: flex;
+	gap: 24px;
+	align-items: start;
+	justify-content: space-between;
+	padding-top: 12px;
+}
+
+.decision-footer p {
+	max-width: 850px;
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.69rem;
+	line-height: 1.55;
+}
+
+.decision-footer button {
+	flex: 0 0 auto;
+	color: var(--accent);
+	font-size: 0.72rem;
+	font-weight: 650;
+	cursor: pointer;
+}
+
+.decision-footer button:hover {
+	text-decoration: underline;
+	text-underline-offset: 4px;
+}
+
+.tradeoff-analysis {
+	margin-top: 0;
 }
 
 .results-main-grid {
@@ -1367,6 +1504,25 @@ dd {
 	grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.radar-telemetry-state,
+.radar-telemetry-state strong,
+.radar-telemetry-state small {
+	display: block;
+}
+
+.radar-telemetry-state strong {
+	font-family: var(--font-sans), system-ui, sans-serif;
+	font-size: 0.77rem;
+	font-weight: 620;
+}
+
+.radar-telemetry-state small {
+	margin-top: 3px;
+	color: var(--muted);
+	font-size: 0.66rem;
+	line-height: 1.45;
+}
+
 .node-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1593,35 +1749,112 @@ dd {
 		display: none;
 	}
 
-	.insight-grid {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 14px;
-		margin-block: 8px 36px;
+	.configuration-decision {
+		margin: 8px 0 48px;
 	}
 
-	.insight-card {
-		display: block;
+	.decision-heading {
+		grid-template-columns: 1fr;
+		gap: 10px;
+	}
+
+	.decision-heading h2 {
+		font-size: 1.55rem;
+	}
+
+	.decision-heading p {
+		font-size: 0.75rem;
+	}
+
+	.decision-priorities {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0 18px;
+		margin-top: 20px;
+	}
+
+	.decision-priorities button {
 		min-height: 84px;
-		padding: 0;
+		padding-block: 12px;
+		border-bottom: 1px solid var(--line);
 	}
 
-	.insight-card + .insight-card {
+	.decision-priorities button:nth-last-child(-n + 2) {
+		border-bottom: 0;
+	}
+
+	.decision-priorities strong {
+		font-size: 0.86rem;
+	}
+
+	.decision-table {
+		overflow: visible;
+	}
+
+	.decision-table table,
+	.decision-table tbody {
+		display: block;
+	}
+
+	.decision-table thead {
+		display: none;
+	}
+
+	.decision-table tr {
+		display: grid;
+		grid-template-columns: minmax(112px, 1.25fr) repeat(3, minmax(58px, 0.75fr));
+		gap: 10px;
+		align-items: center;
+		padding: 11px 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.decision-table tr:last-child {
+		border-bottom: 0;
+	}
+
+	.decision-table th,
+	.decision-table td {
+		width: auto;
+		padding: 0;
 		border: 0;
 	}
 
-	.insight-card div {
-		gap: 3px;
+	.decision-identity a {
+		font-size: 0.78rem;
 	}
 
-	.insight-card span,
-	.insight-card small {
-		font-size: 0.65rem;
-		line-height: 1.35;
+	.decision-identity small {
+		font-size: 0.59rem;
 	}
 
-	.insight-card strong {
-		font-size: 0.9rem;
-		line-height: 1.12;
+	.decision-metric::before {
+		display: block;
+		margin-bottom: 2px;
+		color: var(--muted);
+		font-size: 0.55rem;
+		font-weight: 650;
+		text-transform: uppercase;
+		letter-spacing: 0.045em;
+		content: attr(data-label);
+	}
+
+	.decision-metric {
+		min-width: 0;
+		white-space: normal;
+	}
+
+	.decision-metric strong {
+		font-size: 0.7rem;
+	}
+
+	.decision-metric small,
+	.decision-action {
+		display: none;
+	}
+
+	.decision-footer {
+		display: grid;
+		gap: 8px;
 	}
 
 	.results-main-grid {
@@ -1937,10 +2170,6 @@ dd {
 }
 
 @media (max-width: 430px) {
-	.insight-card strong {
-		font-size: 1rem;
-	}
-
 	.comparison-row {
 		grid-template-columns: 84px repeat(2, minmax(0, 1fr));
 	}
