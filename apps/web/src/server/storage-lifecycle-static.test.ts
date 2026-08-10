@@ -6,21 +6,36 @@ import test from 'node:test';
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 
 await test('upload routes register Storage lifecycle before attaching metadata references', async () => {
-  const [submissionRoute, artifactRoute, submissionHandler, artifactHandler, registration] =
-    await Promise.all(
-      [
-        'apps/web/src/app/api/submissions/route.ts',
-        'apps/web/src/app/api/artifacts/route.ts',
-        'apps/web/src/server/submission-handler.ts',
-        'apps/web/src/server/artifact-handler.ts',
-        'apps/web/src/server/storage-lifecycle-registration.ts',
-      ].map((path) => readFile(resolve(repositoryRoot, path), 'utf8')),
-    );
+  const [
+    submissionRoute,
+    artifactRoute,
+    speedRoute,
+    submissionHandler,
+    artifactHandler,
+    speedHandler,
+    registration,
+  ] = await Promise.all(
+    [
+      'apps/web/src/app/api/submissions/route.ts',
+      'apps/web/src/app/api/artifacts/route.ts',
+      'apps/web/src/app/api/observations/speed/route.ts',
+      'apps/web/src/server/submission-handler.ts',
+      'apps/web/src/server/artifact-handler.ts',
+      'apps/web/src/server/speed-observation-handler.ts',
+      'apps/web/src/server/storage-lifecycle-registration.ts',
+    ].map((path) => readFile(resolve(repositoryRoot, path), 'utf8')),
+  );
   assert.ok(
-    submissionRoute && artifactRoute && submissionHandler && artifactHandler && registration,
+    submissionRoute &&
+      artifactRoute &&
+      speedRoute &&
+      submissionHandler &&
+      artifactHandler &&
+      speedHandler &&
+      registration,
   );
 
-  for (const route of [submissionRoute, artifactRoute]) {
+  for (const route of [submissionRoute, artifactRoute, speedRoute]) {
     assert.match(route, /registerStorageObject/);
     assert.match(route, /signal(?:Orphan|Reconciliation)[\s\S]*reason/);
     assert.match(route, /console\.error\([\s\S]*JSON\.stringify/);
@@ -28,6 +43,7 @@ await test('upload routes register Storage lifecycle before attaching metadata r
   }
   assert.match(submissionRoute, /event: 'aiq_submission_orphan_reconciliation_required'/);
   assert.match(artifactRoute, /event: 'aiq_artifact_reconciliation_required'/);
+  assert.match(speedRoute, /event: 'aiq_speed_observation_reconciliation_required'/);
   assert.match(artifactRoute, /bucket: identity\.bucket[\s\S]*key: identity\.key/);
   assert.match(registration, /rpc\('aiq_register_storage_object'/);
   assert.ok(
@@ -37,5 +53,9 @@ await test('upload routes register Storage lifecycle before attaching metadata r
   assert.ok(
     artifactHandler.indexOf('dependencies.registerStoredObject') <
       artifactHandler.indexOf('dependencies.recordArtifact'),
+  );
+  assert.ok(
+    speedHandler.indexOf('dependencies.registerStoredObject') <
+      speedHandler.indexOf('dependencies.recordObservation'),
   );
 });

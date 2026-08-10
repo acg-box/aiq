@@ -543,6 +543,30 @@ attestation to the gateway. Production requires `evaluator_replayed`. A distinct
 publisher identity completes publication. A queue receipt alone is not a
 published result.
 
+## Recurring macOS observations
+
+Use `config/continuous-observation.example.json` as the private configuration
+shape and `config/com.acgbox.aiq.continuous-observations.plist.example` as the
+macOS `launchd` shape. The approved model slots are `03:00` and `15:00` UTC. The
+plist wakes the protected launcher hourly at minute 5; the repository script
+selects the latest due slot, refuses overlap, and resumes an interrupted slot.
+Do not encode secrets in either file.
+
+The protected launcher resolves and exports the exact runner-signing,
+runner-submission, verifier-ingress, and verifier-signing variables only for the
+child process. It then runs:
+
+```sh
+node scripts/continuous-observation.ts run-due \
+  /absolute/private/path/to/continuous-observation.json
+```
+
+After installation, inspect `status` and require the latest completed slot,
+absence of an active stale lock, and the exact next UTC slot. A failed slot keeps
+the material needed for exact resume. After successful publication, retain the
+compact Official and speed evidence and remove raw local artifacts, replay
+scratch, checkpoints, disposable task workspaces, and isolated Codex homes.
+
 ## Domain and DNS
 
 `aiq.wiki` is attached to the personal Vercel project `aiq` with valid TLS and
@@ -597,8 +621,8 @@ Do not run deletion if reconciliation fails or reports unresolved mismatches.
       Core `1.0.7` matrix. Then run `cargo make check-aiq-2-cutover` and deploy
       the exact source only after the count gate passes. Do not use a legacy
       publication as fallback.
-- [ ] Provision the separately owned twice-daily benchmark schedule and record its
-      next run without changing the accepted execution contract.
+- [ ] Install the private macOS `launchd` configuration, complete one due slot,
+      and record the next `03:00` or `15:00` UTC slot.
 
 ## Production acceptance evidence
 
@@ -653,7 +677,6 @@ only the exact AIQ-owned objects and preserve all Supabase-managed and non-AIQ
 objects before retrying the existing target project.
 
 The project-bound Vercel commands above perform deployment only when an operator
-runs them. They do not create recurring automation. No cloud runner or verifier
-worker and no benchmark or Storage schedule currently exist. The twice-daily
-benchmark schedule and its next run remain pending operator work; this
-documentation does not authorize recurring automation.
+runs them. The separately installed macOS `launchd` job invokes only the
+repository-owned continuous-observation entrypoint and does not depend on Vercel
+or Supabase scheduling.

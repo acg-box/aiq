@@ -47,8 +47,24 @@ const ranges: ReadonlyArray<{ value: TrendRange; label: string }> = [
   { value: 'month', label: 'Month' },
   { value: 'all', label: 'All history' },
 ];
-type SeriesFilter = ModelFamily;
-const seriesFilters: readonly SeriesFilter[] = ['Sol', 'Terra', 'Luna'];
+type SeriesFilter = ModelFamily | 'All';
+type ReasoningFilter = LeaderboardEntry['reasoningTier'] | 'All';
+type TrendMetric = 'aiq' | 'duration' | 'cost';
+const seriesFilters: readonly SeriesFilter[] = ['All', 'Sol', 'Terra', 'Luna'];
+const reasoningFilters: readonly ReasoningFilter[] = [
+  'All',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+];
+const trendMetrics: ReadonlyArray<{ value: TrendMetric; label: string }> = [
+  { value: 'aiq', label: 'AIQ' },
+  { value: 'duration', label: 'Time' },
+  { value: 'cost', label: 'Cost' },
+];
 const TREND_ZOOM_DATE_COUNT = 12;
 const formatDate = (value: string) => value.slice(0, 10);
 const pointProvenance = (point: TrendPoint) => (point.synthetic ? 'Synthetic' : 'Published');
@@ -116,6 +132,8 @@ interface TrendScientificContext {
   duration: string;
   cost: string;
   exactJoinUnavailable: boolean;
+  durationMs: number | null;
+  costUsd: number | null;
 }
 
 const unavailableTrendContext: TrendScientificContext = {
@@ -125,6 +143,8 @@ const unavailableTrendContext: TrendScientificContext = {
   duration: 'Unavailable',
   cost: 'Unavailable',
   exactJoinUnavailable: false,
+  durationMs: null,
+  costUsd: null,
 };
 
 function resolveTrendScientificContext({
@@ -172,7 +192,33 @@ function resolveTrendScientificContext({
         ? `$${(exactEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`
         : 'Unavailable',
     exactJoinUnavailable: false,
+    durationMs: exactEfficiency?.summedCellAdapterElapsedMs ?? null,
+    costUsd:
+      exactEfficiency?.costEstimatorStatus === 'estimated' &&
+      exactEfficiency.standardApiEquivalentUsdNanos !== null
+        ? exactEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000
+        : null,
   };
+}
+
+function trendMetricValue(
+  metric: TrendMetric,
+  point: TrendPoint,
+  context: TrendScientificContext | undefined,
+): number | null {
+  if (metric === 'duration') {
+    return context?.durationMs === null || context?.durationMs === undefined
+      ? null
+      : context.durationMs / 3_600_000;
+  }
+  if (metric === 'cost') return context?.costUsd ?? null;
+  return presentScoreMetric(point).score;
+}
+
+function trendMetricLabel(metric: TrendMetric): string {
+  if (metric === 'duration') return 'Summed adapter time (hours)';
+  if (metric === 'cost') return 'API-equivalent cost (USD)';
+  return 'AIQ (0–100)';
 }
 
 export function TrendExplorer({
@@ -191,11 +237,18 @@ export function TrendExplorer({
   const searchParams = useAnalyticalSearchParams();
   const pathname = usePathname();
   const mode = readEnumParam(searchParams, 'trendEncoding', ['line', 'bar'], 'line');
-  const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'Sol');
+  const seriesFilter = readEnumParam(searchParams, 'trendFamily', seriesFilters, 'All');
+  const reasoningFilter = readEnumParam(searchParams, 'trendReasoning', reasoningFilters, 'All');
+  const metric = readEnumParam(searchParams, 'trendMetric', ['aiq', 'duration', 'cost'], 'aiq');
   const [isPending, startTransition] = useTransition();
   const selectedEntries = useMemo(
-    () => entries.filter((entry) => entry.modelFamily === seriesFilter),
-    [entries, seriesFilter],
+    () =>
+      entries.filter(
+        (entry) =>
+          (seriesFilter === 'All' || entry.modelFamily === seriesFilter) &&
+          (reasoningFilter === 'All' || entry.reasoningTier === reasoningFilter),
+      ),
+    [entries, reasoningFilter, seriesFilter],
   );
   const selectedIds = useMemo(() => selectedEntries.map((entry) => entry.id), [selectedEntries]);
   const familyPoints = useMemo(() => {
@@ -235,23 +288,24 @@ export function TrendExplorer({
   );
   const latestVisiblePoint = sortByPresentedScore(latestVisiblePoints)[0];
   const latestVisibleRange = presentedScoreRange(latestVisiblePoints);
-  const visibleMetricExample = zoomWindowPoints[0] ? presentScoreMetric(zoomWindowPoints[0]) : null;
   const intervalPoints = useMemo(
     () =>
-      zoomWindowPoints.flatMap((point) => {
-        const metric = presentScoreMetric(point);
-        return metric.intervalLow === null || metric.intervalHigh === null
-          ? []
-          : [
-              {
-                entryId: point.entryId,
-                recordedAt: point.recordedAt,
-                intervalLow: metric.intervalLow,
-                intervalHigh: metric.intervalHigh,
-              },
-            ];
-      }),
-    [zoomWindowPoints],
+      metric === 'aiq'
+        ? zoomWindowPoints.flatMap((point) => {
+            const scoreMetric = presentScoreMetric(point);
+            return scoreMetric.intervalLow === null || scoreMetric.intervalHigh === null
+              ? []
+              : [
+                  {
+                    entryId: point.entryId,
+                    recordedAt: point.recordedAt,
+                    intervalLow: scoreMetric.intervalLow,
+                    intervalHigh: scoreMetric.intervalHigh,
+                  },
+                ];
+          })
+        : [],
+    [metric, zoomWindowPoints],
   );
   const scientificContexts = useMemo(
     () =>
@@ -270,6 +324,13 @@ export function TrendExplorer({
   const exactJoinUnavailable = [...scientificContexts.values()].some(
     (context) => context.exactJoinUnavailable,
   );
+  const latestMetricValues = latestVisiblePoints.flatMap((point) => {
+    const value = trendMetricValue(metric, point, scientificContexts.get(point));
+    return value === null ? [] : [{ point, value }];
+  });
+  const latestMetricBest = latestMetricValues.toSorted((left, right) =>
+    metric === 'aiq' ? right.value - left.value : left.value - right.value,
+  )[0];
   const chartOption = useMemo<EChartsCoreOption>(() => {
     const series = selectedEntries.map((entry, index) => {
       const byTime = new Map(
@@ -279,13 +340,13 @@ export function TrendExplorer({
       );
       return {
         type: mode,
-        id: `trend-value-${entry.id}`,
+        id: `trend-value-${metric}-${entry.id}`,
         name: `${entry.modelFamily} · ${entry.reasoningTier}`,
         connectNulls: false,
         smooth: false,
         barMaxWidth: TREND_BAR_MAX_WIDTH,
         barGap: 0,
-        showSymbol: mode === 'line',
+        showSymbol: false,
         symbol: ['circle', 'rect', 'triangle', 'diamond', 'roundRect'][index % 5],
         symbolSize: 7,
         lineStyle: {
@@ -293,10 +354,12 @@ export function TrendExplorer({
           type: index % 3 === 1 ? 'dashed' : index % 3 === 2 ? 'dotted' : 'solid',
         },
         itemStyle: { color: TREND_SERIES_STYLES[index]?.color },
+        emphasis: { focus: 'series', scale: false, lineStyle: { width: 2.4 } },
         data: zoomWindowTimes.map((time) => {
           const point = byTime.get(time);
           const context = point ? scientificContexts.get(point) : undefined;
-          const metric = point ? presentScoreMetric(point) : null;
+          const scoreMetric = point ? presentScoreMetric(point) : null;
+          const value = point ? trendMetricValue(metric, point, context) : null;
           const strictPass =
             !point || point.strictPassRate === null || point.strictPassSampleSize === null
               ? 'Unavailable'
@@ -304,9 +367,9 @@ export function TrendExplorer({
           return point
             ? [
                 mode === 'bar' ? String(time) : time,
-                metric?.score ?? point.score,
-                metric?.intervalLow ?? point.score,
-                metric?.intervalHigh ?? point.score,
+                value,
+                metric === 'aiq' ? (scoreMetric?.intervalLow ?? point.score) : value,
+                metric === 'aiq' ? (scoreMetric?.intervalHigh ?? point.score) : value,
                 point.sampleSize,
                 point.representedRunCount,
                 point.synthetic ? 'synthetic' : 'published',
@@ -317,53 +380,56 @@ export function TrendExplorer({
                 context?.missing ?? 'Unavailable',
                 context?.duration ?? 'Unavailable',
                 context?.cost ?? 'Unavailable',
-                metric?.scoreLabel ?? 'Primary score',
-                metric?.intervalLabel ?? 'Primary interval',
+                metric === 'aiq' ? (scoreMetric?.scoreLabel ?? 'AIQ') : trendMetricLabel(metric),
+                metric === 'aiq' ? (scoreMetric?.intervalLabel ?? 'Primary interval') : 'none',
                 strictPass,
               ]
             : [mode === 'bar' ? String(time) : time, null];
         }),
       };
     });
-    const intervalSeries = selectedEntries.map((entry, seriesIndex) => {
-      const color = TREND_SERIES_STYLES[seriesIndex]?.color ?? '#83909c';
-      return {
-        type: 'custom',
-        id: `trend-interval-${entry.id}`,
-        name: `${entry.modelFamily} · ${entry.reasoningTier} primary interval`,
-        silent: true,
-        z: 4,
-        encode: { x: 0, y: [1, 2] },
-        data: trendIntervalData(intervalPoints, entry.id).map(([time, low, high]) => [
-          mode === 'bar' ? String(time) : time,
-          low,
-          high,
-        ]),
-        renderItem: (_params: unknown, api: TrendRenderItemApi) => {
-          const layout =
-            mode === 'bar'
-              ? api.barLayout({
-                  count: selectedEntries.length,
-                  barMaxWidth: TREND_BAR_MAX_WIDTH,
-                  barGap: 0,
-                })
-              : undefined;
-          const xOffset = trendIntervalXOffset(mode, seriesIndex, layout);
-          if (xOffset === null) return null;
-          const time = api.value(0);
-          const low = api.coord([time, Number(api.value(1))]);
-          const high = api.coord([time, Number(api.value(2))]);
-          return {
-            type: 'group',
-            children: trendIntervalLineShapes(low, high, xOffset).map((shape) => ({
-              type: 'line',
-              shape,
-              style: { stroke: color, lineWidth: 1.2, opacity: 0.9 },
-            })),
-          };
-        },
-      };
-    });
+    const intervalSeries =
+      metric === 'aiq'
+        ? selectedEntries.map((entry, seriesIndex) => {
+            const color = TREND_SERIES_STYLES[seriesIndex]?.color ?? '#83909c';
+            return {
+              type: 'custom',
+              id: `trend-interval-${entry.id}`,
+              name: `${entry.modelFamily} · ${entry.reasoningTier} primary interval`,
+              silent: true,
+              z: 4,
+              encode: { x: 0, y: [1, 2] },
+              data: trendIntervalData(intervalPoints, entry.id).map(([time, low, high]) => [
+                mode === 'bar' ? String(time) : time,
+                low,
+                high,
+              ]),
+              renderItem: (_params: unknown, api: TrendRenderItemApi) => {
+                const layout =
+                  mode === 'bar'
+                    ? api.barLayout({
+                        count: selectedEntries.length,
+                        barMaxWidth: TREND_BAR_MAX_WIDTH,
+                        barGap: 0,
+                      })
+                    : undefined;
+                const xOffset = trendIntervalXOffset(mode, seriesIndex, layout);
+                if (xOffset === null) return null;
+                const time = api.value(0);
+                const low = api.coord([time, Number(api.value(1))]);
+                const high = api.coord([time, Number(api.value(2))]);
+                return {
+                  type: 'group',
+                  children: trendIntervalLineShapes(low, high, xOffset).map((shape) => ({
+                    type: 'line',
+                    shape,
+                    style: { stroke: color, lineWidth: 1.2, opacity: 0.9 },
+                  })),
+                };
+              },
+            };
+          })
+        : [];
     const xAxis =
       mode === 'bar'
         ? {
@@ -402,15 +468,19 @@ export function TrendExplorer({
             return item.seriesName;
           }
           if (data[1] === null) return `${item.seriesName}<br/>No observation in this bucket`;
-          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>${data[14]} ${Number(data[1]).toFixed(1)} · ${String(data[15]).toLowerCase()} ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}<br/>strict pass ${data[16]}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
+          const primary =
+            metric === 'aiq'
+              ? `${data[14]} ${Number(data[1]).toFixed(1)} · ${String(data[15]).toLowerCase()} ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}`
+              : `${data[14]} ${Number(data[1]).toFixed(metric === 'cost' ? 4 : 2)}`;
+          return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>${primary}<br/>strict pass ${data[16]}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
         },
       },
       xAxis,
       yAxis: {
         type: 'value',
         min: 0,
-        max: 100,
-        name: `${visibleMetricExample?.scoreLabel ?? 'Primary score'} (0–100)`,
+        max: metric === 'aiq' ? 100 : undefined,
+        name: trendMetricLabel(metric),
         nameLocation: 'middle',
         nameGap: 40,
         axisLabel: { color: 'var(--muted)' },
@@ -422,17 +492,43 @@ export function TrendExplorer({
     };
   }, [
     intervalPoints,
+    metric,
     mode,
     scientificContexts,
     selectedEntries,
-    visibleMetricExample?.scoreLabel,
     zoomWindowPoints,
     zoomWindowTimes,
   ]);
+  const visibleScoringVersions = [
+    ...new Set(zoomWindowPoints.map((point) => point.scoringVersion)),
+  ];
+  const visibleSeriesProvenance = seriesProvenance(zoomWindowPoints);
 
   return (
     <>
       <div className="trend-mode-control" aria-label="Trend controls">
+        <div className="chart-control">
+          <span>Measure</span>
+          <div className="chart-switch" role="group" aria-label="Trend measure">
+            {trendMetrics.map((candidate) => (
+              <button
+                key={candidate.value}
+                type="button"
+                aria-pressed={metric === candidate.value}
+                onClick={() =>
+                  startTransition(() =>
+                    pushAnalyticalUrl(
+                      { trendMetric: candidate.value },
+                      { hasSemanticChange: candidate.value !== metric },
+                    ),
+                  )
+                }
+              >
+                {candidate.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="chart-control">
           <span>Period</span>
           <nav className="range-tabs" aria-label="Trend time range">
@@ -471,6 +567,28 @@ export function TrendExplorer({
               </button>
             ))}
           </div>
+        </div>
+        <div className="chart-control">
+          <label htmlFor="trend-reasoning-filter">Reasoning</label>
+          <select
+            id="trend-reasoning-filter"
+            className="chart-select"
+            value={reasoningFilter}
+            onChange={(event) =>
+              startTransition(() =>
+                pushAnalyticalUrl(
+                  { trendReasoning: event.target.value, trendZoom: null },
+                  { hasSemanticChange: event.target.value !== reasoningFilter },
+                ),
+              )
+            }
+          >
+            {reasoningFilters.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate === 'All' ? 'All levels' : candidate}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="chart-control">
           <span>View</span>
@@ -556,8 +674,8 @@ export function TrendExplorer({
               option={chartOption}
               label={
                 mode === 'bar'
-                  ? `${visibleMetricExample?.scoreLabel ?? 'Score'} history. Grouped bars with provenance-matched intervals.`
-                  : `${visibleMetricExample?.scoreLabel ?? 'Score'} history. Lines with provenance-matched intervals.`
+                  ? `${trendMetricLabel(metric)} history. Grouped bars${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
+                  : `${trendMetricLabel(metric)} history. Lines${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
               }
             />
           ) : (
@@ -569,7 +687,10 @@ export function TrendExplorer({
             const series = zoomWindowPoints.filter((point) => point.entryId === entry.id);
             const scoringVersions = [...new Set(series.map((point) => point.scoringVersion))];
             return (
-              <li key={entry.id}>
+              <li
+                key={entry.id}
+                title={`${seriesProvenance(series)} · scoring ${scoringVersions.join(', ') || 'unavailable'}`}
+              >
                 <i
                   className={`series-symbol series-symbol-${index + 1}`}
                   style={{ background: TREND_SERIES_STYLES[index]?.color }}
@@ -578,16 +699,18 @@ export function TrendExplorer({
                 <strong>
                   {entry.modelFamily} · {entry.reasoningTier}
                 </strong>
-                <small>
-                  {seriesProvenance(series)} · scoring {scoringVersions.join(', ') || '—'}
-                  {mode === 'line' ? ' · connected observations; no interpolation' : ''}
-                </small>
               </li>
             );
           })}
         </ul>
       </div>
-      {latestVisiblePoint &&
+      <p className="trend-legend-note">
+        {selectedEntries.length} {visibleSeriesProvenance} series · scoring{' '}
+        {visibleScoringVersions.join(', ') || 'unavailable'}
+        {mode === 'line' ? ' · connected observations; no interpolation' : ' · grouped bars'}
+      </p>
+      {metric === 'aiq' &&
+      latestVisiblePoint &&
       latestVisibleRange &&
       latestScientificContext &&
       latestVisibleMetric ? (
@@ -605,17 +728,27 @@ export function TrendExplorer({
           scoring {latestVisiblePoint.scoringVersion} ·{' '}
           {pointProvenance(latestVisiblePoint).toLowerCase()}
         </p>
+      ) : metric !== 'aiq' && latestMetricBest ? (
+        <p className="trend-resolution" aria-live="polite">
+          Latest visible date: {formatDate(latestMetricBest.point.recordedAt)} UTC ·{' '}
+          {latestMetricValues.length} measured configurations · lowest {trendMetricLabel(metric)}:{' '}
+          {latestMetricBest.point.entryId} ·{' '}
+          {metric === 'duration'
+            ? formatHumanDuration(latestMetricBest.value * 3_600_000)
+            : `$${latestMetricBest.value.toFixed(4)}`}
+          . AIQ ranking is unchanged by this measure.
+        </p>
       ) : null}
       <details className="data-disclosure">
         <summary>Evidence notes and visible values</summary>
         <p className="trend-resolution" role="note">
-          Showing all {selectedEntries.length} {seriesFilter} configurations in canonical matrix
-          order. The family is an explicit filter, not a point-estimate cutoff. Published buckets
-          retain the latest exact Official run; synthetic fixture buckets expose no run detail.
-          Lines connect observations for continuity only; they do not interpolate or estimate values
-          between dates. Absent buckets remain gaps, bars use a zero baseline, and the server
-          returns at most 20 buckets per configuration. Each point requires matching run,
-          configuration, scoring version, and provenance identity. Scoring versions:{' '}
+          Showing {selectedEntries.length} configurations in canonical matrix order. Family and
+          reasoning are explicit filters, not point-estimate cutoffs. Published buckets retain the
+          latest exact Official run; synthetic fixture buckets expose no run detail. Lines connect
+          observations for continuity only; they do not interpolate or estimate values between
+          dates. Absent buckets remain gaps, bars use a zero baseline, and the server returns at
+          most 20 buckets per configuration. Each point requires matching run, configuration,
+          scoring version, and provenance identity. Scoring versions:{' '}
           {[...new Set(zoomWindowPoints.map((point) => point.scoringVersion))].join(', ') ||
             'unavailable'}
           .
@@ -654,16 +787,25 @@ export function TrendExplorer({
                 )
                 .map((point) => {
                   const context = scientificContexts.get(point) ?? unavailableTrendContext;
-                  const metric = presentScoreMetric(point);
+                  const scoreMetric = presentScoreMetric(point);
+                  const selectedMetricValue = trendMetricValue(metric, point, context);
                   return (
                     <tr key={`${point.entryId}-${point.recordedAt}`}>
                       <td>{formatDate(point.recordedAt)}</td>
                       <th scope="row">{point.entryId}</th>
                       <td>
-                        {metric.scoreText} · {metric.scoreLabel}
+                        {selectedMetricValue === null
+                          ? 'Unavailable'
+                          : metric === 'aiq'
+                            ? `${scoreMetric.scoreText} · ${scoreMetric.scoreLabel}`
+                            : metric === 'duration'
+                              ? formatHumanDuration(selectedMetricValue * 3_600_000)
+                              : `$${selectedMetricValue.toFixed(4)}`}
                       </td>
                       <td>
-                        {metric.interval} · {metric.intervalLabel}
+                        {metric === 'aiq'
+                          ? `${scoreMetric.interval} · ${scoreMetric.intervalLabel}`
+                          : 'Not applicable to auxiliary measures'}
                       </td>
                       <td>
                         {point.strictPassRate === null

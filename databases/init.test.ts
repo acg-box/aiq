@@ -447,10 +447,10 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       task_count: 72,
       model_config_count: 17,
       public_node_count: 3,
-      private_table_count: 40,
-      forced_rls_table_count: 40,
-      public_view_count: 12,
-      security_invoker_view_count: 12,
+      private_table_count: 42,
+      forced_rls_table_count: 42,
+      public_view_count: 13,
+      security_invoker_view_count: 13,
       hardened_gateway_role_count: 2,
     },
   );
@@ -633,10 +633,10 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(receipt.task_count, 72);
   strictEqual(receipt.model_config_count, 17);
   strictEqual(receipt.public_node_count, 3);
-  strictEqual(receipt.private_table_count, 40);
-  strictEqual(receipt.forced_rls_table_count, 40);
-  strictEqual(receipt.public_view_count, 12);
-  strictEqual(receipt.security_invoker_view_count, 12);
+  strictEqual(receipt.private_table_count, 42);
+  strictEqual(receipt.forced_rls_table_count, 42);
+  strictEqual(receipt.public_view_count, 13);
+  strictEqual(receipt.security_invoker_view_count, 13);
   strictEqual(receipt.hardened_gateway_role_count, 2);
   strictEqual(receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(receipt.evaluator_identity_sha256, evaluatorIdentity);
@@ -698,8 +698,8 @@ void test('greenfield preflight enumerates every AIQ public view and RPC name ex
   );
   const expectedViews = capturedNames(desiredSchema, /create view public\.([a-z0-9_]+)/gi);
   const expectedRpcs = capturedNames(desiredSchema, /create function public\.([a-z0-9_]+)/gi);
-  assert.equal(expectedViews.length, 12);
-  assert.equal(expectedRpcs.length, 33);
+  assert.equal(expectedViews.length, 13);
+  assert.equal(expectedRpcs.length, 35);
   for (const name of [...expectedViews, ...expectedRpcs]) {
     assert.match(preflight, new RegExp(`'${name}'`));
   }
@@ -1323,10 +1323,10 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(receipt.task_count, 72);
     strictEqual(receipt.model_config_count, 17);
     strictEqual(receipt.public_node_count, 3);
-    strictEqual(receipt.private_table_count, 40);
-    strictEqual(receipt.forced_rls_table_count, 40);
-    strictEqual(receipt.public_view_count, 12);
-    strictEqual(receipt.security_invoker_view_count, 12);
+    strictEqual(receipt.private_table_count, 42);
+    strictEqual(receipt.forced_rls_table_count, 42);
+    strictEqual(receipt.public_view_count, 13);
+    strictEqual(receipt.security_invoker_view_count, 13);
     strictEqual(receipt.hardened_gateway_role_count, 2);
     strictEqual(receipt.task_set_identity_sha256, taskSetIdentity);
     strictEqual(receipt.evaluator_identity_sha256, evaluatorIdentity);
@@ -1334,10 +1334,10 @@ select public.aiq_production_reference_status('${receipt.node_ids.publisher}')::
     strictEqual(readiness.task_count, 72);
     strictEqual(readiness.model_config_count, 17);
     strictEqual(readiness.production_node_count, 3);
-    strictEqual(readiness.private_table_count, 40);
-    strictEqual(readiness.forced_rls_table_count, 40);
-    strictEqual(readiness.public_view_count, 12);
-    strictEqual(readiness.security_invoker_view_count, 12);
+    strictEqual(readiness.private_table_count, 42);
+    strictEqual(readiness.forced_rls_table_count, 42);
+    strictEqual(readiness.public_view_count, 13);
+    strictEqual(readiness.security_invoker_view_count, 13);
     strictEqual(readiness.hardened_gateway_role_count, 2);
     strictEqual(readiness.task_set_identity_sha256, taskSetIdentity);
     strictEqual(readiness.task_set_identity_valid, true);
@@ -1397,8 +1397,8 @@ rollback;`,
       ),
     );
     strictEqual(residueReadiness.initialized, true);
-    strictEqual(residueReadiness.public_view_count, 12);
-    strictEqual(residueReadiness.security_invoker_view_count, 12);
+    strictEqual(residueReadiness.public_view_count, 13);
+    strictEqual(residueReadiness.security_invoker_view_count, 13);
 
     const expectedPublicShape = {
       distributed_radar_count: 3,

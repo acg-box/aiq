@@ -859,7 +859,7 @@ test('Official trends expose current time and cost evidence', async ({ page }) =
   await page.goto('/trends?range=all');
   await page.getByText('Evidence notes and visible values', { exact: true }).click();
   const values = page.getByRole('region', { name: 'Visible trend values' });
-  await expect(values.getByRole('row')).toHaveCount(7);
+  await expect(values.getByRole('row')).toHaveCount(18);
   await expect(values.getByRole('columnheader', { name: 'Coverage' })).toBeVisible();
   await expect(values.getByRole('columnheader', { name: 'Runtime' })).toBeVisible();
   await expect(values.getByRole('columnheader', { name: 'Missing' })).toBeVisible();

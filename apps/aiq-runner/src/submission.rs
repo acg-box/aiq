@@ -27,6 +27,7 @@ use crate::{
 	protocol::{self, SubmissionEnvelope},
 	run_validation,
 	runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult},
+	speed_observation::{self, SpeedObservationBatch},
 };
 
 /// Maximum signed package size accepted for submission.
@@ -607,6 +608,45 @@ where
 	)
 }
 
+/// Validates and submits one non-scoring Normal/Fast observation batch.
+pub fn submit_speed_observation<T>(
+	transport: &T,
+	endpoint: &str,
+	batch: &SpeedObservationBatch,
+	bearer_token: SecretToken,
+) -> Result<SubmissionOutcome, SubmissionError>
+where
+	T: SubmissionTransport,
+{
+	submit_speed_observation_policy(
+		transport,
+		endpoint,
+		batch,
+		bearer_token,
+		TransportPolicy::production(false),
+	)
+}
+
+/// Allows a speed observation through plain HTTP only for an explicit loopback test origin.
+#[doc(hidden)]
+pub fn submit_speed_observation_allowing_loopback<T>(
+	transport: &T,
+	endpoint: &str,
+	batch: &SpeedObservationBatch,
+	bearer_token: SecretToken,
+) -> Result<SubmissionOutcome, SubmissionError>
+where
+	T: SubmissionTransport,
+{
+	submit_speed_observation_policy(
+		transport,
+		endpoint,
+		batch,
+		bearer_token,
+		TransportPolicy::production(true),
+	)
+}
+
 /// Reads and verifies the evaluator-results artifact bound by a saved run.
 pub fn read_evaluator_results_artifact(
 	artifact_root: &Path,
@@ -1180,6 +1220,62 @@ where
 		status: Some(response.status),
 		server_disposition: "Accepted packages enter an unverified queue. Official eligibility requires a separate verifier attestation."
 			.to_owned(),
+	})
+}
+
+fn submit_speed_observation_policy<T>(
+	transport: &T,
+	endpoint: &str,
+	batch: &SpeedObservationBatch,
+	bearer_token: SecretToken,
+	policy: TransportPolicy,
+) -> Result<SubmissionOutcome, SubmissionError>
+where
+	T: SubmissionTransport,
+{
+	validate_endpoint(endpoint, policy.allow_loopback_http)?;
+
+	speed_observation::validate_speed_observation_batch(batch).map_err(|error| {
+		SubmissionError::new(SubmissionOutcomeKind::Configuration, error.to_string())
+	})?;
+
+	let body = protocol::canonical_json(batch).map_err(|error| {
+		SubmissionError::new(SubmissionOutcomeKind::Configuration, error.to_string())
+	})?;
+
+	if body.len() > MAX_SUBMISSION_BYTES {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"speed observation exceeds the guarded submission limit",
+		));
+	}
+
+	let response = send_with_retry(
+		transport,
+		&SubmissionRequest {
+			url: format!("{}/api/observations/speed", endpoint.trim_end_matches('/')),
+			body,
+			idempotency_key: batch.batch_id.clone(),
+			bearer_token,
+		},
+		policy.retry,
+	)
+	.map_err(classify_transport_failure)?;
+	let kind = match response.status {
+		200..=207 | 209..=299 => SubmissionOutcomeKind::Accepted,
+		208 => SubmissionOutcomeKind::Duplicate,
+		409 => SubmissionOutcomeKind::Conflict,
+		400..=499 => SubmissionOutcomeKind::ClientError,
+		500..=599 => SubmissionOutcomeKind::ServerError,
+		_ => SubmissionOutcomeKind::Network,
+	};
+
+	Ok(SubmissionOutcome {
+		kind,
+		status: Some(response.status),
+		server_disposition:
+			"Normal/Fast observations are auxiliary evidence and never enter AIQ scoring."
+				.to_owned(),
 	})
 }
 
