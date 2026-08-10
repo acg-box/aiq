@@ -21,8 +21,8 @@ void describe('homepage evidence and loading contract', () => {
 
   void it('presents fixed-task analysis without winner or batch-aggregate implications', async () => {
     const source = await readFile(pageSourceUrl, 'utf8');
-    const decisionSource = await readFile(
-      new URL('../components/configuration-decision-table.tsx', import.meta.url),
+    const workbenchSource = await readFile(
+      new URL('../components/configuration-workbench-view.tsx', import.meta.url),
       'utf8',
     );
     const outcomeSource = await readFile(
@@ -32,40 +32,43 @@ void describe('homepage evidence and loading contract', () => {
 
     assert.match(source, /conditional\s+95%\s+interval/i);
     assert.doesNotMatch(source, /general intelligence/);
-    assert.match(decisionSource, /Choose by ability, time, or cost/);
-    assert.match(decisionSource, /never score inputs/);
-    assert.match(decisionSource, /Not dominated on AIQ, time, and cost/);
-    assert.doesNotMatch(decisionSource, /overall score|efficiency score/i);
+    assert.match(workbenchSource, /Compare all 17 at once/);
+    assert.match(workbenchSource, /remain independent observations/);
+    assert.match(workbenchSource, /Pareto trade-offs/);
+    assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
     assert.match(outcomeSource, /A zero\s+is a scored outcome, not missing data/);
     assert.match(outcomeSource, /runs\/\$\{run\.id\}/);
   });
 
-  void it('keeps ECharts consumers behind a viewport-deferred client boundary', async () => {
+  void it('keeps first-screen analysis in one client boundary and 3D behind an optional chunk', async () => {
     const [pageSource, analyticsSource, workspaceStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
       readFile(analyticsSourceUrl, 'utf8'),
       readFile(workspaceStylesUrl, 'utf8'),
     ]);
 
-    assert.doesNotMatch(pageSource, /components\/(model-matrix-chart|efficiency-plot)/);
+    const workbenchSource = await readFile(
+      new URL('../components/configuration-workbench-view.tsx', import.meta.url),
+      'utf8',
+    );
+    assert.doesNotMatch(pageSource, /components\/(model-matrix-chart|efficiency-plot|three)/);
     assert.match(analyticsSource, /dynamic\(/);
     assert.match(analyticsSource, /ssr: false/);
     assert.match(analyticsSource, /IntersectionObserver/);
     assert.match(analyticsSource, /rootMargin: '500px 0px'/);
     assert.match(analyticsSource, /useNearViewport\(eager\)/);
-    assert.match(pageSource, /<DeferredEfficiencyPlot[\s\S]+eager/);
+    assert.match(pageSource, /<ConfigurationWorkbench rows={exactOfficialEfficiency\.rows} \/>/);
     assert.match(pageSource, /<DeferredModelMatrixChart entries={leaderboard} eager \/>/);
+    assert.match(workbenchSource, /import\('\.\/configuration-three-chart\.tsx'\)/);
+    assert.match(workbenchSource, /ssr: false/);
     assert.match(analyticsSource, /loading: \(\) => <AnalyticsLoading/);
     assert.match(analyticsSource, /role="status"/);
     assert.match(analyticsSource, /aria-live="polite"/);
     assert.match(workspaceStyles, /\.homepage-analytics-loading \{[\s\S]+min-height: 320px;/);
-    assert.match(
-      workspaceStyles,
-      /\.efficiency-panel > \.homepage-analytics,[\s\S]+min-height: 465px;/,
-    );
-    assert.match(workspaceStyles, /@media \(max-width: 760px\)[\s\S]+min-height: 430px;/);
+    assert.match(workspaceStyles, /\.workbench-visualization \{[\s\S]+min-height: 430px;/);
+    assert.match(workspaceStyles, /@media \(max-width: 760px\)[\s\S]+min-height: 360px;/);
     assert.match(analyticsSource, /onVisualizationPresenceChange={setHasVisualization}/);
   });
 
@@ -84,7 +87,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workspaceStyles, /\.evidence-notes/);
   });
 
-  void it('keeps the decision table readable on a narrow viewport', async () => {
+  void it('keeps the filtered table readable on a narrow viewport', async () => {
     const [source, workspaceStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
       readFile(workspaceStylesUrl, 'utf8'),
@@ -93,39 +96,48 @@ void describe('homepage evidence and loading contract', () => {
     assert.doesNotMatch(source, /TrophyIcon|ChartBarIcon|TargetIcon/);
     assert.match(
       workspaceStyles,
-      /@media \(max-width: 760px\)[\s\S]+\.decision-priorities \{[\s\S]+grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
+      /@media \(max-width: 760px\)[\s\S]+\.workbench-summaries \{[\s\S]+grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
     );
     assert.match(
       workspaceStyles,
-      /\.decision-table tr \{[\s\S]+grid-template-columns: minmax\(112px, 1\.25fr\) repeat\(3, minmax\(58px, 0\.75fr\)\);/,
+      /\.workbench-table tr \{[\s\S]+grid-template-columns: minmax\(110px, 1\.2fr\) repeat\(3, minmax\(58px, 0\.72fr\)\);/,
     );
-    assert.match(workspaceStyles, /\.decision-action \{\s+display: none;/);
+    assert.match(workspaceStyles, /\.workbench-evidence \{\s+display: none;/);
   });
 
   void it('uses real efficiency evidence when present and a real score matrix otherwise', async () => {
     const source = await readFile(pageSourceUrl, 'utf8');
     assert.match(source, /const hasEfficiencyEvidence =/);
-    assert.match(source, /hasEfficiencyEvidence \? \([\s\S]+<DeferredEfficiencyPlot/);
+    assert.match(source, /hasEfficiencyEvidence \? \([\s\S]+<ConfigurationWorkbench/);
     assert.match(source, /\) : \([\s\S]+<DeferredModelMatrixChart/);
-    assert.match(source, /id={hasEfficiencyEvidence \? undefined : 'matrix'}/);
-    assert.doesNotMatch(source, /<div id="matrix" className="sr-only"/);
+    assert.match(
+      source,
+      /<div[\s\S]+className="results-main-grid"[\s\S]+id="compare"[\s\S]+data-workspace-section[\s\S]+data-nav-section="compare"/,
+    );
+    assert.doesNotMatch(source, /<div id="compare" className="sr-only"/);
     assert.match(source, /rankedEntries\.length === 0[\s\S]+<LeaderboardTable entries=/);
     assert.doesNotMatch(source, /standardApiEquivalentUsdNanos: [0-9]/);
   });
 
   void it('composes the primary product into one anchored workspace', async () => {
     const source = await readFile(pageSourceUrl, 'utf8');
+    const workbenchSource = await readFile(
+      new URL('../components/configuration-workbench-view.tsx', import.meta.url),
+      'utf8',
+    );
 
-    assert.match(source, /import ComparePage from '\.\/compare\/page\.tsx'/);
+    assert.doesNotMatch(source, /import ComparePage from '\.\/compare\/page\.tsx'/);
     assert.match(source, /import TrendsPage from '\.\/trends\/page\.tsx'/);
     assert.match(source, /import RunsPage from '\.\/runs\/page\.tsx'/);
     assert.match(source, /import MethodPage from '\.\/method\/page\.tsx'/);
     assert.match(source, /import RadarPage from '\.\/radar\/page\.tsx'/);
-    for (const section of ['results', 'trends', 'compare', 'runs', 'method', 'radar']) {
+    for (const section of ['results', 'trends', 'runs', 'method', 'radar']) {
       assert.match(source, new RegExp(`id="${section}"[\\s\\S]+data-workspace-section`));
     }
+    assert.match(workbenchSource, /id="compare"[\s\S]+data-workspace-section/);
+    assert.match(workbenchSource, /data-nav-section="compare"/);
     assert.match(source, /<TrendsPage searchParams={searchParams} \/>/);
-    assert.match(source, /<ComparePage \/>/);
+    assert.match(source, /<ConfigurationWorkbench rows={exactOfficialEfficiency\.rows} \/>/);
     assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
     assert.match(source, /<MethodPage \/>/);
     assert.match(source, /<RadarPage \/>/);

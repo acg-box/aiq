@@ -22,6 +22,10 @@ void describe('analytical chart interaction contracts', () => {
     assert.match(coarsePointerRules, /\.chart-switch button/);
     assert.match(coarsePointerRules, /\.chart-controls select/);
     assert.match(coarsePointerRules, /\.range-tabs a/);
+    assert.match(coarsePointerRules, /\.workbench-filter-options button/);
+    assert.match(coarsePointerRules, /\.configuration-three-actions button/);
+    assert.match(coarsePointerRules, /\.configuration-three-focus button/);
+    assert.match(coarsePointerRules, /\.workbench-configuration-options label/);
     assert.match(coarsePointerRules, /min-height: 44px/);
     assert.match(
       globalStyles,
@@ -30,8 +34,24 @@ void describe('analytical chart interaction contracts', () => {
   });
 
   void it('qualifies the efficiency frontier in the chart legend', () => {
-    const efficiency = source('./efficiency-plot.tsx');
-    assert.match(efficiency, /Frontier · descriptive within matching bindings/);
+    const workbench = source('./configuration-workbench-chart.tsx');
+    assert.match(workbench, /Pareto frontier/);
+    assert.match(workbench, /AIQ stays on its own axis/);
+  });
+
+  void it('renders 3D only on demand without a continuous animation loop', () => {
+    const workbench = source('./configuration-workbench-view.tsx');
+    const three = source('./configuration-three-chart.tsx');
+    assert.match(workbench, /dynamic\(/);
+    assert.match(workbench, /configuration-three-chart/);
+    assert.doesNotMatch(three, /requestAnimationFrame/);
+    assert.match(three, /canCreateWebGlContext/);
+    assert.match(three, /Keyboard 3D view controls/);
+    assert.match(three, /controls\.rotateLeft/);
+    assert.match(three, /controls\.dollyIn/);
+    assert.match(three, /webglcontextlost/);
+    assert.match(three, /3D is unavailable in this browser/);
+    assert.match(three, /renderer\.setPixelRatio\(Math\.min\([^,]+, 1\.75\)\)/);
   });
 
   void it('states that connected trend observations are not interpolated', () => {

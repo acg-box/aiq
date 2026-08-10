@@ -222,13 +222,13 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     ).toHaveCount(0);
   }
 
-  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  await page.getByText('Read all configuration values as a table', { exact: true }).click();
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
   await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Time, token, and cost table', { exact: true }).click();
 
-  const leaderboard = page.getByRole('region', {
-    name: 'Descriptively ordered public index table',
+  const leaderboard = workbench.getByRole('region', {
+    name: 'Filtered configuration comparison table',
   });
   const leaderboardRows = leaderboard.locator('tbody tr');
   await expect(leaderboardRows).toHaveCount(17);
@@ -237,22 +237,24 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
 
   for (const row of await leaderboardRows.all()) {
     const cells = row.getByRole('cell');
-    await expect(cells).toHaveCount(10);
-    configurations.add((await row.getByRole('rowheader').innerText()).trim());
+    await expect(cells).toHaveCount(4);
+    const configurationId = await row.getAttribute('data-configuration-id');
+    expect(configurationId).toMatch(/^(?:sol|terra|luna)-(?:low|medium|high|xhigh|max|ultra)$/);
+    configurations.add(configurationId ?? '');
 
     const score = Number((await cells.nth(0).innerText()).split('\n')[0]?.trim());
     expect(Number.isFinite(score)).toBe(true);
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
-    await expect(cells.nth(1)).toContainText('Conditional 95% interval');
-    await expect(cells.nth(2)).toContainText('Wilson 95%');
-    await expect(cells.nth(3)).toHaveText('72');
-    await expect(cells.nth(4)).toHaveText('100.0%');
-    await expect(cells.nth(6)).not.toHaveText('—');
-    await expect(cells.nth(7)).toHaveText('Official · 72/72');
-    await expect(cells.nth(8)).toHaveText('Published');
+    await expect(cells.nth(0)).toContainText('95% interval');
+    await expect(cells.nth(1)).toContainText('72-task sum');
+    await expect(cells.nth(2)).not.toHaveText('');
+    await expect(cells.nth(3)).toContainText('100% coverage');
 
-    const href = await cells.nth(9).getByRole('link', { name: 'Inspect' }).getAttribute('href');
+    const href = await cells
+      .nth(3)
+      .getByRole('link', { name: 'Official run' })
+      .getAttribute('href');
     expect(href).toMatch(/^\/runs\/[A-Za-z0-9._:-]+$/);
     runHrefs.add(href ?? '');
   }
