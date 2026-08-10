@@ -363,9 +363,9 @@ export function cleanupSql(names: SchemaNames): string {
   return `\\set ON_ERROR_STOP on
 begin;
 select pg_advisory_xact_lock(hashtextextended('aiq-production-reset:${PROJECT_REF}', 0));
-lock table pg_catalog.pg_depend, pg_catalog.pg_shdepend, pg_catalog.pg_auth_members,
-  pg_catalog.pg_authid, pg_catalog.pg_proc, pg_catalog.pg_class,
-  pg_catalog.pg_namespace in share mode;
+-- Supabase project owners cannot lock system catalogs. The project advisory
+-- lock serializes AIQ resets, and the access-exclusive relation locks below
+-- prevent new dependencies on the owned relations after the boundary guard.
 lock table storage.buckets in share mode;
 do $aiq_reset_relation_locks$
 declare target record;
