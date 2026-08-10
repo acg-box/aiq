@@ -87,6 +87,89 @@ const matrix = [
   })),
 );
 
+const speedBatchId = `speed_${'c'.repeat(64)}`;
+const speedObservedAt = '2026-08-10T15:00:00.000Z';
+const speedObservationRows = matrix.flatMap((entry, index) => {
+  const normalElapsed = 18_000 + index * 650;
+  const normalCredits =
+    entry.model_family === 'Sol'
+      ? 7_900_000_000
+      : entry.model_family === 'Terra'
+        ? 3_200_000_000
+        : 320_000_000;
+  return ['normal', 'fast'].map((mode) => {
+    const fast = mode === 'fast';
+    const elapsed = fast ? Math.round(normalElapsed * (0.62 + (index % 4) * 0.04)) : normalElapsed;
+    return {
+      batch_id: speedBatchId,
+      observed_at: speedObservedAt,
+      model_family: entry.model_family.toLowerCase(),
+      reasoning_effort: entry.reasoning_tier,
+      mode,
+      availability_status: 'available',
+      availability_reason: 'live_catalog_advertised',
+      trials_per_mode: 5,
+      attempted_trials: 5,
+      completed_trials: index === 15 && fast ? 4 : 5,
+      invalid_response_trials: index === 15 && fast ? 1 : 0,
+      failed_trials: 0,
+      median_elapsed_ms: elapsed,
+      p95_elapsed_ms: Math.round(elapsed * 1.13),
+      median_aggregate_output_tps_millis: Math.round((803 * 1_000_000) / elapsed),
+      estimated_credits_nanos: fast ? Math.round(normalCredits * 2.5) : normalCredits,
+      estimated_credit_sample_count: 5,
+      input_tokens: 39_200 + index * 10,
+      cached_input_tokens: 0,
+      output_tokens: 4_015,
+      total_tokens: 43_215 + index * 10,
+      median_agent_steps: 1,
+      median_tool_call_count: 0,
+      median_ttft_ms: null,
+      ttft_status: 'unavailable',
+      median_post_first_token_output_tps_millis: null,
+      post_first_token_output_tps_status: 'unavailable',
+      catalog_status: 'available',
+      codex_version: 'codex-cli 0.147.0-alpha.6.5',
+      credit_rate_card_version: 'openai-codex-rate-card-2026-08-10',
+      scoring_impact: 'none',
+    };
+  });
+});
+
+const speedTrendDates = [
+  '2026-08-06T15:00:00.000Z',
+  '2026-08-07T15:00:00.000Z',
+  '2026-08-08T15:00:00.000Z',
+  '2026-08-09T15:00:00.000Z',
+  speedObservedAt,
+];
+const speedTrendRows = speedTrendDates.flatMap((recordedAt, dateIndex) =>
+  speedObservationRows.map((row, rowIndex) => ({
+    model_family: row.model_family,
+    reasoning_effort: row.reasoning_effort,
+    mode: row.mode,
+    recorded_at: recordedAt,
+    bucket_started_at: recordedAt,
+    bucket_ended_at: new Date(new Date(recordedAt).getTime() + 12 * 60 * 60 * 1_000).toISOString(),
+    attempted_trials: 5,
+    completed_trials: row.completed_trials,
+    represented_batch_count: 1,
+    median_elapsed_ms: Math.round(
+      row.median_elapsed_ms * (1 + (dateIndex - 2) * 0.018 + (rowIndex % 3) * 0.004),
+    ),
+    p95_elapsed_ms: Math.round(row.p95_elapsed_ms * (1 + (dateIndex - 2) * 0.018)),
+    median_aggregate_output_tps_millis: row.median_aggregate_output_tps_millis,
+    estimated_credits_nanos: row.estimated_credits_nanos,
+    input_tokens: row.input_tokens,
+    cached_input_tokens: row.cached_input_tokens,
+    output_tokens: row.output_tokens,
+    total_tokens: row.total_tokens,
+    median_agent_steps: 1,
+    median_tool_call_count: 0,
+    resolution_seconds: 43_200,
+  })),
+);
+
 const provenanceHash = `sha256:${'1'.repeat(64)}`;
 const currentRunStartedAt = '2025-12-31T23:00:00.000Z';
 const currentRunCompletedAt = '2025-12-31T23:59:59.000Z';
@@ -831,6 +914,15 @@ function trendRowsForRange(range) {
   return trends.filter((point) => allowedDates.has(point.recorded_at));
 }
 
+/**
+ * @param {string} range
+ */
+function speedTrendRowsForRange(range) {
+  const dateCount = range === 'day' ? 1 : range === 'week' ? 5 : 5;
+  const allowedDates = new Set(speedTrendDates.slice(-dateCount));
+  return speedTrendRows.filter((point) => allowedDates.has(point.recorded_at));
+}
+
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? '/', `http://127.0.0.1:${port}`);
   if (url.pathname === '/health') {
@@ -870,6 +962,27 @@ const server = createServer((request, response) => {
           : undefined;
       const range = typeof suppliedRange === 'string' ? suppliedRange : 'all';
       json(response, trendRowsForRange(range));
+    });
+    return;
+  }
+  if (url.pathname === '/rest/v1/rpc/public_speed_trend_points') {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      body += chunk;
+    });
+    request.on('end', () => {
+      /** @type {unknown} */
+      const payload = JSON.parse(body || '{}');
+      const suppliedRange =
+        typeof payload === 'object' &&
+        payload !== null &&
+        !Array.isArray(payload) &&
+        'supplied_range' in payload
+          ? payload.supplied_range
+          : undefined;
+      const range = typeof suppliedRange === 'string' ? suppliedRange : 'all';
+      json(response, speedTrendRowsForRange(range));
     });
     return;
   }
@@ -1003,6 +1116,10 @@ const server = createServer((request, response) => {
         ? publishedModelEfficiency
         : publishedModelEfficiency.filter((entry) => selectedIds.has(entry.run_id));
     json(response, limited(url, rows));
+    return;
+  }
+  if (url.pathname === '/rest/v1/public_speed_observations') {
+    json(response, limited(url, speedObservationRows));
     return;
   }
   if (url.pathname === '/rest/v1/public_distributed_radar') {

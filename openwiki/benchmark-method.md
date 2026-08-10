@@ -259,6 +259,16 @@ Signed result packages retain measured latency and any available
 usage fields. Public aggregates include only verified, coverage-qualified timing,
 token, and Standard API-equivalent cost evidence.
 
+Normal/Fast observation is a separate non-scoring protocol. Before paid work,
+the runner reads the live Codex model catalog and records each mode as available,
+unsupported, or unavailable for the exact model and reasoning configuration. It
+alternates Normal-first and Fast-first trial order and retains completion,
+runner-observed elapsed time, aggregate output throughput, tokens, tool use, and
+versioned estimated ChatGPT credits. The current Codex event stream does not
+expose a trustworthy first-token timestamp, so TTFT and post-first-token output
+throughput remain null with an explicit unavailable status. None of these fields
+can alter AIQ, task scores, ability, intervals, eligibility, or ranking.
+
 ### External reference decisions
 
 Product research on 2026-08-03 reviewed the
@@ -359,7 +369,12 @@ in the denominator. Runtime-failed, infrastructure-invalid, and unscored tasks
 are excluded and reported through coverage and status. The Wilson interval and
 `strictPassSampleSize` use this same denominator. The fixed-fixture
 task-resampling interval remains a calibrated sensitivity interval for task-mix
-sensitivity, not a universal confidence interval for model capability.
+sensitivity, not a universal confidence interval for model capability. Its
+normalized-batch contract also carries the deterministic resampling seed and
+related sensitivity identity; the seed is part of verified batch evidence rather
+than an implicit runtime choice. Changes to this contract must stay synchronized
+across `benchmarks/schema/normalized-batch-v4.schema.json`, `databases/schema.sql`,
+`databases/integration.sql`, and `scripts/check-normalization-schemas.test.ts`.
 
 An Official result requires non-synthetic evidence for all 72 tasks in one model
 configuration, valid evidence for the complete 17-configuration batch, and the

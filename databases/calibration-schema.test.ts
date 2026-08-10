@@ -825,9 +825,9 @@ void test('production readiness attests the exact schema and gateway role shape'
   ]) {
     assert.match(schema, new RegExp(`'${field}'`));
   }
-  assert.match(schema, /private_table_count=40 and forced_rls_table_count=40/);
-  assert.match(schema, /public_view_count=12 and security_invoker_view_count=12/);
-  assert.match(schema, /canonical_public_view_count=12/);
+  assert.match(schema, /private_table_count=42 and forced_rls_table_count=42/);
+  assert.match(schema, /public_view_count=13 and security_invoker_view_count=13/);
+  assert.match(schema, /canonical_public_view_count=13/);
   assert.match(
     schema,
     /scoring\.formula = '\{[\s\S]*?"aggregate":"rasch_fractional_fixed_bank_map_v2"[\s\S]*?"measurement_method":"rasch_fractional_fixed_bank_map_v2"[\s\S]*?"measurement_version":"2\.0\.0"[\s\S]*?\}'::jsonb/,

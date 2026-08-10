@@ -311,9 +311,13 @@ package.
 Provide the runner signing key only to `package`, the submission token only to
 `submit`, and verifier credentials only to the verifier command.
 The current production runner is native macOS. Linux and Docker remain future
-deployment targets. No cloud runner or verifier worker and no benchmark or
-Storage schedule currently exist. The twice-daily schedule and its next run are
-pending operations work, not part of the current production state.
+deployment targets. The repository-owned continuous-observation entrypoint runs
+the approved Official chain at `03:00` and `15:00` UTC. It selects one canonical
+12-hour slot, holds a global nonblocking lock, reuses only that slot's exact
+checkpoint after interruption, and does not start overlapping work. The macOS
+`launchd` template wakes hourly at minute 5; idempotent slot selection means it
+executes model work only for the current due slot and gives a failed slot regular
+retry opportunities.
 The subscription runner uses a protected copy of `~/.codex/auth.json` in an
 isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
 as its writable runtime directory. It also uses a private two-file copy of the
@@ -323,6 +327,38 @@ content-bound marker in a fresh disposable workspace.
 See [Operations and Validation](openwiki/operations.md) for the native command
 contract. Repository support does not prove that private inputs, credentials,
 or live model capabilities are configured.
+
+## Continuous observations
+
+Normal/Fast transport measurements are auxiliary evidence. `observe-speed`
+reads the live Codex model catalog before any paid turn, records an exact
+available, unsupported, or unavailable state for each selected configuration,
+and runs paired Normal/Fast fixed-response trials only for advertised modes.
+It records completion, total elapsed time, aggregate output throughput, token
+usage, tool use, and estimated ChatGPT credits. It does not calculate or modify
+AIQ. The current Codex JSONL stream does not expose a trustworthy first-token
+timestamp, so TTFT and post-first-token throughput remain explicit unavailable
+values instead of estimates.
+
+```sh
+cargo run -p aiq-runner -- observe-speed --help
+cargo run -p aiq-runner -- submit-speed --help
+node scripts/continuous-observation.ts status \
+  /absolute/private/path/to/continuous-observation.json
+node scripts/continuous-observation.ts run-due \
+  /absolute/private/path/to/continuous-observation.json
+```
+
+Start from `config/continuous-observation.example.json` and
+`config/com.acgbox.aiq.continuous-observations.plist.example`. Keep the concrete
+configuration and `launchd` plist outside Git. The protected launcher must pass
+the exact runner, submission, verifier-ingress, and verifier-signing variables
+without writing their values to a file or command argument. Each slot uses two
+fresh isolated `CODEX_HOME` directories. A failed slot retains checkpoints and
+raw artifacts for exact resume. After both publication paths succeed, it keeps
+the compact batch, package, score, attestation, and receipts, then removes copied
+credentials, raw local artifacts, replay scratch, checkpoints, and disposable
+workspaces.
 
 ## Security boundaries
 

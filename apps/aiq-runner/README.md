@@ -63,6 +63,8 @@ cargo run -p aiq-runner -- score --help
 cargo run -p aiq-runner -- historical-diagnostic-rescore --help
 cargo run -p aiq-runner -- package --help
 cargo run -p aiq-runner -- submit --help
+cargo run -p aiq-runner -- observe-speed --help
+cargo run -p aiq-runner -- submit-speed --help
 cargo run -p aiq-runner -- normalize --help
 ```
 
@@ -149,6 +151,18 @@ versioned cost field is a Standard short-context API-equivalent estimate. It is
 not the actual cost of a ChatGPT or Codex subscription. Time, tokens, tool use,
 and estimated cost never enter AIQ, Rasch ability, quality, strict-pass,
 ranking, or interval calculations.
+
+`observe-speed` is a separate non-scoring path for paired Normal/Fast
+subscription measurements. It probes the live model catalog first and invokes
+only modes that the current catalog advertises for the exact model and reasoning
+configuration. Trials alternate Normal-first and Fast-first ordering, use no
+benchmark time, step, or tool-call limit, and write create-once resumable
+checkpoints. The fixed response checks completion fidelity and provides enough
+output for aggregate throughput measurement. TTFT and post-first-token
+throughput stay null until the Codex event stream provides a trustworthy
+first-token timestamp. `submit-speed` sends the validated batch to the narrow
+`/api/observations/speed` gateway; the batch is auxiliary evidence and cannot
+enter any scoring, eligibility, or ranking path.
 
 Task workspaces are fresh copies. The runner stores content-addressed workspace
 and evaluator artifacts under the controlled artifact root. It writes a durable

@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const privateTableCount = 40;
-const publicViewCount = 12;
+const privateTableCount = 42;
+const publicViewCount = 13;
 const hardenedGatewayRoleCount = 2;
 const evidencePrivateTables = [
   'efficiency_pricing_methods',
@@ -17,6 +17,8 @@ const evidencePrivateTables = [
   'calibration_task_results',
   'calibration_verification_audit',
   'calibration_publications',
+  'aiq_speed_observation_batches',
+  'aiq_speed_observation_trials',
 ] as const;
 const corePublicViews = [
   'public_distributed_radar',
@@ -34,7 +36,8 @@ const evidencePublicViews = [
   'public_calibration_results',
   'public_calibration_scores',
 ] as const;
-const publicViews = [...corePublicViews, ...evidencePublicViews] as const;
+const auxiliaryPublicViews = ['public_speed_observations'] as const;
+const publicViews = [...corePublicViews, ...evidencePublicViews, ...auxiliaryPublicViews] as const;
 
 type JsonObject = Record<string, unknown>;
 
@@ -775,6 +778,18 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
       `The evidence read surface must grant ${viewName} to browser roles.`,
     );
   }
+  for (const viewName of auxiliaryPublicViews) {
+    assert.match(
+      browserReadSurfaceRevocation,
+      new RegExp(`public\\.${viewName}(?:,|\\s|$)`),
+      `The auxiliary read surface must revoke provider defaults from ${viewName}.`,
+    );
+    assert.match(
+      schema,
+      new RegExp(`grant select on table public\\.${viewName} to anon,\\s*authenticated;`, 'i'),
+      `The auxiliary read surface must grant ${viewName} to browser roles.`,
+    );
+  }
   assert.match(schema, /'synthetic_complete'/);
   assert.match(schema, /score ->> 'tier' = 'synthetic_complete' and not is_synthetic/);
   assert.match(schema, /score ->> 'tier' = 'official' and is_synthetic/);
@@ -1090,14 +1105,14 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   );
   assert.match(
     schema,
-    /private_table_count=40 and forced_rls_table_count=40\s+and public_view_count=12 and security_invoker_view_count=12\s+and canonical_public_view_count=12\s+and hardened_gateway_role_count=2/,
+    /private_table_count=42 and forced_rls_table_count=42\s+and public_view_count=13 and security_invoker_view_count=13\s+and canonical_public_view_count=13\s+and hardened_gateway_role_count=2/,
     'Production readiness must bind the complete schema, RLS, view, and gateway-role inventory.',
   );
   const readinessViewFacts =
     schema.match(/view_facts as \([\s\S]*?\n  \),\n  role_facts as \(/i)?.[0] ?? '';
   assert.match(
     readinessViewFacts,
-    /where namespace\.nspname='public' and relation\.relkind='v'\s+and relation\.relname in \([\s\S]*?'public_model_efficiency'[\s\S]*?\)/,
+    /where namespace\.nspname='public' and relation\.relkind='v'\s+and relation\.relname in \([\s\S]*?'public_model_efficiency'[\s\S]*?'public_speed_observations'[\s\S]*?\)/,
     'Production readiness must count only the canonical AIQ public views.',
   );
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { ReadStateNote } from '../../components/read-state-note.tsx';
+import { SpeedObservationExplorer } from '../../components/speed-observation-explorer.tsx';
 import { TrendExplorer } from '../../components/trend-explorer.tsx';
 import { readPublicData } from '../../data/read-state.ts';
 import { createAiqRepository } from '../../data/repository.ts';
@@ -32,7 +33,7 @@ export default async function TrendsPage({
   }
   const range: TrendRange = requestedRange ?? 'all';
   const repository = createAiqRepository();
-  const [entriesResult, pointsResult] = await Promise.all([
+  const [entriesResult, pointsResult, speedResult, speedTrendResult] = await Promise.all([
     readPublicData(
       repository,
       () => repository.listLeaderboard(),
@@ -46,6 +47,20 @@ export default async function TrendsPage({
       [],
       (value) => value.length === 0,
       (value) => value.map((point) => point.synthetic),
+    ),
+    readPublicData(
+      repository,
+      () => repository.listSpeedObservations(),
+      [],
+      (value) => value.length === 0,
+      () => [],
+    ),
+    readPublicData(
+      repository,
+      () => repository.listSpeedTrendPoints(range),
+      [],
+      (value) => value.length === 0,
+      () => [],
     ),
   ]);
   const historicalRunIds = pointsResult.data.flatMap((point) =>
@@ -99,6 +114,10 @@ export default async function TrendsPage({
           range={range}
         />
       ) : null}
+      <SpeedObservationExplorer
+        observations={speedResult.data}
+        trendPoints={speedTrendResult.data}
+      />
       <details className="evidence-status-disclosure" open={evidenceNeedsAttention}>
         <summary>
           <span>Evidence availability</span>
