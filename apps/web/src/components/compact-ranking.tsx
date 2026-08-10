@@ -12,7 +12,11 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
   const source = official.length > 0 ? official : scored;
   const visibleEntries = sortLeaderboardByPointEstimate(source).slice(0, visibleRankingCount);
   const isOfficial = official.length > 0;
-  const metricLabel = isOfficial ? 'Calibrated ability' : 'Quality score';
+  const metricLabel = isOfficial
+    ? 'Calibrated ability'
+    : scored.length > 0
+      ? 'Quality score'
+      : 'Score unavailable';
 
   return (
     <section className="compact-ranking analysis-panel" aria-labelledby="compact-ranking-heading">
@@ -23,7 +27,9 @@ export function CompactRanking({ entries }: { entries: readonly LeaderboardEntry
           <p>
             {isOfficial
               ? 'Official calibrated estimates'
-              : 'Synthetic quality preview · not Official'}
+              : scored.length > 0
+                ? 'Synthetic quality preview · not Official'
+                : 'Publication pending'}
           </p>
         </div>
         <span className="panel-meta">{metricLabel} ↓</span>

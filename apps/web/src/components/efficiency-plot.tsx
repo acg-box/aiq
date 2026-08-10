@@ -467,10 +467,10 @@ export function EfficiencyPlot({
           <span className="eyebrow">Efficiency frontier</span>
           <h2 id="efficiency-plot-heading">
             {visibleMetric?.scoreLabel ?? 'Score'} vs{' '}
-            {metric === 'cost' ? 'API-equivalent cost' : 'total run time'}
+            {metric === 'cost' ? 'API-equivalent cost' : 'summed task time'}
           </h2>
           <p>
-            Higher is better. Lower and left is more efficient. Vertical lines show the matching{' '}
+            Higher ability is better; lower time or cost is better. Vertical lines show the matching{' '}
             {visibleMetric?.intervalLabel.toLowerCase() ?? 'score interval'}.
           </p>
         </div>

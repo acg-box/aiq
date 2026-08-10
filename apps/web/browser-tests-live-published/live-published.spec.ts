@@ -475,7 +475,11 @@ test('the live overview exposes all 17 published configurations without seed sub
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1, name: 'Latest benchmark' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Choose by ability, time, or cost.' }),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Configuration decision table' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Top configurations' })).toHaveCount(0);
   await expect(page.getByText('Published Dec 31, 2025', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await expect(
@@ -492,10 +496,12 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(page.getByText('1,224 task cells', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
   const efficiencyPlot = page.getByRole('region', {
-    name: 'Calibrated ability vs total run time',
+    name: 'Calibrated ability vs summed task time',
   });
   await expect(efficiencyPlot).toBeVisible();
-  await expect(efficiencyPlot).toContainText('Lower and left is more efficient');
+  await expect(efficiencyPlot).toContainText(
+    'Higher ability is better; lower time or cost is better.',
+  );
   await expect(efficiencyPlot.locator('.efficiency-chart svg')).toBeVisible();
   await expect(efficiencyPlot.locator('canvas')).toHaveCount(0);
   await expect(efficiencyPlot).toContainText(
@@ -547,9 +553,13 @@ test('efficiency points keep stable geometry while the pointer moves between the
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?efficiencyMetric=duration#results');
-  const plot = page.getByRole('region', { name: 'Calibrated ability vs total run time' });
-  await plot.scrollIntoViewIfNeeded();
-  await expect(plot.locator('.efficiency-chart svg')).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = 'auto';
+  });
+  const plot = page.getByRole('region', { name: 'Calibrated ability vs summed task time' });
+  const chart = plot.locator('.efficiency-chart');
+  await chart.scrollIntoViewIfNeeded();
+  await expect(chart.locator('svg')).toBeVisible();
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);
 
@@ -563,11 +573,13 @@ test('efficiency points keep stable geometry while the pointer moves between the
     if (!target) throw new Error('Expected a representative efficiency point');
     await page.mouse.move(target.x, target.y, { steps: 8 });
     await page.waitForTimeout(220);
+    const pointerReachedChart = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.echarts-host') !== null,
+      target,
+    );
+    expect(pointerReachedChart).toBe(true);
     const hovered = await readEfficiencyPoints(plot);
     expect(hovered.map(({ key, fill, scale }) => ({ key, fill, scale }))).toEqual(stableGeometry);
-    await expect(
-      plot.locator('.efficiency-chart .echarts-host div[style*="position: absolute"]'),
-    ).toBeVisible();
   };
 
   await verifyStableTarget(targets[0]);
@@ -931,7 +943,8 @@ test('the published method and radar retain versioned, signed provenance', async
   await page.locator('details.radar-node-details > summary').click();
   await expect(page.getByText('Registry trust: trusted verified', { exact: true })).toBeVisible();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Verified observation signatures').locator('..')).toContainText('1');
+  await expect(page.getByText('ready · signature verified', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sequence / signature').locator('..')).toContainText('42 / verified');
   await expect(page.getByText('Receiver-verified trusted', { exact: true })).toBeVisible();
 });
 

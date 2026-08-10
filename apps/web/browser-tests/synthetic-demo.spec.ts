@@ -339,10 +339,15 @@ test('matrix points remain visible while the pointer moves across them', async (
 
 test('synthetic calibration evidence stays visibly separate and selectable', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#results > details.evidence-notes > summary').click();
-  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).press('Enter');
+  const evidenceNotes = page.locator('#results > details.evidence-notes');
+  await evidenceNotes.locator(':scope > summary').click();
+  const calibrationDisclosure = evidenceNotes
+    .locator('details.data-disclosure')
+    .filter({ hasText: 'Latest non-ranking calibration evidence' });
+  await calibrationDisclosure.locator(':scope > summary').click();
+  await expect(calibrationDisclosure).toHaveAttribute('open', '');
   await expect(
-    page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
+    calibrationDisclosure.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
   ).toBeVisible();
 
   await page.goto('/calibrations');
@@ -382,9 +387,12 @@ test('radar separates synthetic registry, observation, and aggregation evidence'
   );
   await expect(page.getByRole('heading', { name: 'Trust-layer aggregation' })).toHaveCount(3);
   await expect(page.getByText('Receiver-verified trusted', { exact: true })).toHaveCount(3);
-  await expect(
-    page.getByText('Registry status is not a live heartbeat.', { exact: false }),
-  ).toBeVisible();
+  const registry = page.getByRole('region', { name: 'Runner registry evidence' });
+  await expect(registry.getByRole('columnheader', { name: 'Telemetry' })).toBeVisible();
+  await expect(registry.getByRole('columnheader', { name: 'Registry record' })).toHaveCount(0);
+  await expect(registry.getByText('ready · signature unverified', { exact: true })).toBeVisible();
+  await expect(registry.getByText('busy · signature rejected', { exact: true })).toBeVisible();
+  await expect(registry.getByText('offline · signature unverified', { exact: true })).toBeVisible();
   await expectNoDocumentOverflow(page, testInfo);
   await expectAccessible(page);
   expect(runtimeFailures).toEqual([]);
