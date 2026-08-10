@@ -7,6 +7,10 @@ export const AIQ_CORE_TASK_METADATA_IDENTITY =
   'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1';
 export const AIQ_CORE_CATALOG_RELEASE_IDENTITY =
   'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae';
+export const AIQ_CORE_TASK_SET_IDENTITY =
+  'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
+export const AIQ_CORE_EVALUATOR_IDENTITY =
+  'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
 
 export const AIQ_CORE_TASK_SCORING_CONTRACT = {
   aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
