@@ -16,7 +16,7 @@ const routes = [
     heading: 'Calibration run',
     navigation: 'Evidence',
   },
-  { path: '/compare', heading: 'Compare configurations', navigation: 'Compare' },
+  { path: '/compare', heading: 'Compare the complete matrix', navigation: 'Compare' },
   { path: '/trends', heading: 'AIQ over time', navigation: 'Trends' },
   { path: '/radar', heading: 'Runner network', navigation: 'Evidence' },
   {

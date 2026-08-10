@@ -42,29 +42,40 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
     if (pathname !== '/') return undefined;
     const alignmentTimers: number[] = [];
     const observedSections = new Set<HTMLElement>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .toSorted((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
-        const section = visible?.target;
-        if (section instanceof HTMLElement && section.dataset.navSection) {
-          const visibleSection = section.dataset.navSection;
-          if (navigationTarget.current !== null && navigationTarget.current !== visibleSection) {
-            return;
-          }
-          if (navigationTarget.current === visibleSection) {
-            navigationTarget.current = null;
-            if (navigationTargetFallback.current !== null) {
-              window.clearTimeout(navigationTargetFallback.current);
-              navigationTargetFallback.current = null;
-            }
-          }
-          setActiveSection(visibleSection);
+    let navigationFrame: number | null = null;
+
+    const updateActiveSection = () => {
+      navigationFrame = null;
+      const activationOffset = Math.min(120, Math.max(96, window.innerHeight * 0.2));
+      const activationPosition = window.scrollY + activationOffset;
+      const section = [...observedSections]
+        .map((candidate) => ({
+          candidate,
+          position: candidate.getBoundingClientRect().top + window.scrollY,
+        }))
+        .filter(({ position }) => position <= activationPosition)
+        .toSorted((left, right) => right.position - left.position)[0]?.candidate;
+      const visibleSection = section?.dataset.navSection;
+      if (!visibleSection) return;
+      if (navigationTarget.current !== null && navigationTarget.current !== visibleSection) return;
+      if (navigationTarget.current === visibleSection) {
+        navigationTarget.current = null;
+        if (navigationTargetFallback.current !== null) {
+          window.clearTimeout(navigationTargetFallback.current);
+          navigationTargetFallback.current = null;
         }
-      },
-      { rootMargin: '-24% 0px -62% 0px', threshold: [0, 0.05, 0.2] },
-    );
+      }
+      setActiveSection(visibleSection);
+    };
+
+    const scheduleNavigationUpdate = () => {
+      if (navigationFrame !== null) return;
+      navigationFrame = window.requestAnimationFrame(updateActiveSection);
+    };
+
+    const observer = new IntersectionObserver(scheduleNavigationUpdate, {
+      threshold: [0, 0.05, 0.2],
+    });
 
     const observeSections = () => {
       document.querySelectorAll<HTMLElement>('[data-workspace-section]').forEach((section) => {
@@ -72,6 +83,7 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
         observedSections.add(section);
         observer.observe(section);
       });
+      scheduleNavigationUpdate();
     };
 
     const alignToHash = () => {
@@ -95,8 +107,11 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
     mutationObserver.observe(document.body, { childList: true, subtree: true });
     alignToHash();
     window.addEventListener('hashchange', alignToHash);
+    window.addEventListener('scroll', scheduleNavigationUpdate, { passive: true });
+    window.addEventListener('resize', scheduleNavigationUpdate);
     return () => {
       alignmentTimers.forEach((timer) => window.clearTimeout(timer));
+      if (navigationFrame !== null) window.cancelAnimationFrame(navigationFrame);
       if (navigationTargetFallback.current !== null) {
         window.clearTimeout(navigationTargetFallback.current);
         navigationTargetFallback.current = null;
@@ -105,6 +120,8 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
       mutationObserver.disconnect();
       observer.disconnect();
       window.removeEventListener('hashchange', alignToHash);
+      window.removeEventListener('scroll', scheduleNavigationUpdate);
+      window.removeEventListener('resize', scheduleNavigationUpdate);
     };
   }, [activateNavigationTarget, pathname]);
 

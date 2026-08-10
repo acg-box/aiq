@@ -99,7 +99,7 @@
 
 .configuration-workbench {
 	margin: 12px 0 64px;
-	scroll-margin-top: 84px;
+	scroll-margin-top: 0;
 }
 
 .workbench-heading {
