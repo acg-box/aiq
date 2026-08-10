@@ -108,11 +108,12 @@ export function createSupabaseApiKeyFetch(
   apiKey: string,
   parentSignal?: AbortSignal,
   fetchImplementation: typeof fetch = globalThis.fetch,
+  timeoutMs = DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
 ): typeof fetch {
   const boundedFetch = createBoundedFetch({
     fetchImplementation,
     parentSignal,
-    timeoutMs: DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
+    timeoutMs,
   });
   return async (input, init) => {
     const headers = new Headers(init?.headers);

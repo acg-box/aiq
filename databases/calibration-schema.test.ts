@@ -271,7 +271,9 @@ void test('separates verifier and publisher RPC authority', () => {
   assert.match(schema, /production_publisher_identity_is_authorized\(/);
 });
 
-void test('bounds the full Official staging and publication RPCs', () => {
+void test('bounds the full Official ingestion, staging, and publication RPCs', () => {
+  const enqueueFunction =
+    schema.match(/create function public\.aiq_enqueue_submission\([\s\S]*?\n\$_\$;/)?.[0] ?? '';
   const stageFunction =
     schema.match(
       /create function public\.aiq_stage_verifier_result\(stage jsonb,[\s\S]*?\n\$\$;/,
@@ -279,9 +281,21 @@ void test('bounds the full Official staging and publication RPCs', () => {
   const publishFunction =
     schema.match(/create function public\.aiq_verify_and_publish\([\s\S]*?\n\$\$;/)?.[0] ?? '';
 
+  assert.match(enqueueFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
   assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
   assert.match(publishFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
-  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 2);
+  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 3);
+});
+
+void test('reports the complete Web RPC contract including speed observations', () => {
+  const contractFunction =
+    schema.match(/create function public\.aiq_describe_web_rpc_contract\(\)[\s\S]*?\n\$\$;/)?.[0] ??
+    '';
+
+  assert.match(contractFunction, /\('public_speed_trend_points', 'text'\)/);
+  assert.match(contractFunction, /\('aiq_record_speed_observation', 'jsonb, uuid, jsonb'\)/);
+  assert.match(contractFunction, /when count\(\*\) = 19/);
+  assert.match(contractFunction, /and count\(distinct function_name\) = 19/);
 });
 
 void test('compares stored task-resampling bounds at their declared precision', () => {
