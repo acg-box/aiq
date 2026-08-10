@@ -58,87 +58,94 @@ async function getActualRunPath(page: Page): Promise<string> {
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
-  const decisionTable = page.getByRole('region', { name: 'Configuration decision table' });
-  const analytics = page.getByRole('region', { name: 'Score and efficiency' });
-  await expect(page.getByRole('button', { name: /Highest ability/ })).toBeVisible();
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' }).first();
+  await expect(page.getByRole('button', { name: /Highest AIQ/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Shortest task time/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Lowest estimated cost/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Efficient trade-offs/ })).toBeVisible();
-  await expect(decisionTable).toBeVisible();
-  await expect(decisionTable.locator('tbody tr')).toHaveCount(6);
-  const firstDecisionRowBox = await decisionTable.locator('tbody tr').first().boundingBox();
-  expect(firstDecisionRowBox).not.toBeNull();
-  expect(firstDecisionRowBox?.y ?? 844).toBeLessThan(844);
-  const analyticsBox = await analytics.boundingBox();
-  expect(analyticsBox).not.toBeNull();
-  expect(firstDecisionRowBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
-    analyticsBox?.y ?? Number.NEGATIVE_INFINITY,
-  );
-  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  const chart = page.getByRole('region', { name: 'Calibrated ability by configuration' });
-  await expect(chart.getByRole('button', { name: 'All', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(page.getByRole('button', { name: /Pareto trade-offs/ })).toBeVisible();
+  await expect(workbench).toBeVisible();
+  await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
+  const firstSummaryBox = await workbench
+    .getByRole('button', { name: /Highest AIQ/ })
+    .boundingBox();
+  expect(firstSummaryBox).not.toBeNull();
+  expect(firstSummaryBox?.y ?? 844).toBeLessThan(844);
+  const chart = workbench.getByRole('region', { name: 'AIQ against summed task time' });
+  await chart.scrollIntoViewIfNeeded();
+  await expect(chart.locator('svg')).toBeVisible();
+  await expect(chart.locator('canvas')).toHaveCount(0);
   await expect(
-    chart.getByRole('button', { name: 'Ordered + interval', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
-  await expect(
-    chart.getByText('All 17 scored configurations shown', { exact: false }),
-  ).toBeVisible();
-  await expect(chart.getByText('Read 17 configuration values', { exact: true })).toBeVisible();
-  const labels = await chart
-    .locator('svg text')
-    .evaluateAll((elements) =>
-      elements
-        .filter((element) => /^[STL]·/.test(element.textContent ?? ''))
-        .map((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
-    );
-  expect(labels).toHaveLength(17);
-  expect(labels.every((fontSize) => fontSize >= 12)).toBe(true);
+    workbench
+      .getByRole('region', { name: 'Filtered configuration comparison table' })
+      .locator('tbody tr'),
+  ).toHaveCount(17);
+  await workbench.getByRole('button', { name: '3D · AIQ × time × cost', exact: true }).click();
+  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
+  await expect(three).toBeVisible();
+  await expect(three.getByRole('button', { name: 'Reset view', exact: true })).toBeVisible();
+  await expect(three.getByText('AIQ · Y', { exact: true })).toBeVisible();
 }
 
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expectPublishedNonSyntheticPage(page, '/compare');
   await page.waitForLoadState('networkidle');
-  const comparison = page.getByRole('table', { name: 'Selected comparison' });
-  const first = page.getByLabel('First configuration');
-  const second = page.getByLabel('Second configuration');
-  const secondValue = await second.inputValue();
-  const optionEntries = await first.locator('option').evaluateAll((options) =>
-    options.map((option) => ({
-      value: option instanceof HTMLOptionElement ? option.value : '',
-      label: option.textContent?.trim() ?? '',
-    })),
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const status = workbench.getByRole('status');
+  const comparison = workbench.getByRole('region', {
+    name: 'Filtered configuration comparison table',
+  });
+  await expect(status).toContainText('17/17 configurations visible');
+  await expect(comparison.locator('tbody tr')).toHaveCount(17);
+  const snapshots = await comparison.locator('tbody tr').allInnerTexts();
+  expect(snapshots.some((row) => row.includes('Not estimated'))).toBe(true);
+  expect(snapshots.some((row) => /\$\d/.test(row))).toBe(true);
+
+  await workbench.getByRole('button', { name: 'Cost measured', exact: true }).click();
+  await expect(page).toHaveURL(/compareCost=estimated/);
+  const measuredRows = comparison.locator('tbody tr');
+  const measuredCount = await measuredRows.count();
+  expect(measuredCount).toBeGreaterThan(0);
+  expect(measuredCount).toBeLessThan(17);
+  await expect(status).toContainText(`${measuredCount}/17 configurations visible`);
+  expect((await measuredRows.allInnerTexts()).every((row) => !row.includes('Not estimated'))).toBe(
+    true,
   );
-  const snapshots: string[] = [];
-  let hasUnavailableCost = false;
-  for (const { value, label } of optionEntries) {
-    if (value === secondValue) continue;
-    await first.selectOption(value);
-    const labelMatch = /^(.+) · (.+) \((.+)\)$/.exec(label);
-    expect(labelMatch, `canonical configuration option: ${label}`).not.toBeNull();
-    await expect(page.locator('.compare-model').first()).toContainText(
-      `${labelMatch?.[2] ?? ''} reasoning`,
-    );
-    const snapshot = await comparison.innerText();
-    snapshots.push(snapshot);
-    const costRow = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
-    const costs = (await costRow.getByRole('cell').allInnerTexts()).map((cost) => cost.trim());
-    if (costs.includes('Unavailable')) hasUnavailableCost = true;
-    expect(costs).not.toContain('$0');
-  }
-  await expect(comparison.getByRole('row').filter({ hasText: 'Total adapter time' })).toBeVisible();
-  await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
-  const evidence = page.getByRole('table', { name: 'Comparison evidence details' });
-  await expect(evidence.getByRole('row').filter({ hasText: 'Batch wall-clock' })).toBeVisible();
-  await expect(evidence.getByRole('row').filter({ hasText: 'Duration coverage' })).toBeVisible();
-  await expect(evidence.getByRole('row').filter({ hasText: 'Cost coverage' })).toBeVisible();
-  expect(hasUnavailableCost, 'at least one selected Official cost must be unavailable').toBe(true);
+
+  await workbench.getByRole('button', { name: 'Reset filters', exact: true }).click();
+  await expect(status).toContainText('17/17 configurations visible');
+  const firstId = await comparison
+    .locator('tbody tr')
+    .first()
+    .getAttribute('data-configuration-id');
+  expect(firstId).toMatch(/^(?:sol|terra|luna)-/);
+  await page.goto(`/compare?compareConfigs=${encodeURIComponent(firstId ?? '')}#compare`);
+  const singleWorkbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  await expect(singleWorkbench.getByRole('status')).toContainText('1/17 configurations visible');
+  await page.reload({ waitUntil: 'networkidle' });
+  await expect(
+    page.getByRole('region', { name: 'Compare all 17 at once.' }).getByRole('status'),
+  ).toContainText('1/17 configurations visible');
+
+  await page.goto('/compare');
+  const restoredWorkbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  await restoredWorkbench.getByText(/Custom selection · 17\/17/).click();
+  await restoredWorkbench.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(restoredWorkbench.locator('.workbench-configuration-picker')).not.toHaveAttribute(
+    'open',
+    '',
+  );
+  await expect(restoredWorkbench.getByRole('status').first()).toContainText(
+    '0/17 configurations visible',
+  );
+  await expect(
+    restoredWorkbench.getByText('No configuration matches these filters.'),
+  ).toBeVisible();
+  await restoredWorkbench.getByRole('button', { name: 'Show all 17', exact: true }).click();
+  await expect(restoredWorkbench.getByRole('status')).toContainText('17/17 configurations visible');
   return snapshots;
 }
 
-test('production compare exposes selected-run efficiency and honest unavailable cost', async ({
+test('production compare exposes filterable all-configuration evidence and honest unavailable cost', async ({
   page,
 }) => {
   await compareEvidenceSnapshot(page);
