@@ -10,6 +10,7 @@ import {
   PUBLIC_VIEW_SELECTS,
   type ProductionDependencyProbe,
 } from './readiness.ts';
+import { AIQ_CORE_EVALUATOR_IDENTITY, AIQ_CORE_TASK_SET_IDENTITY } from '../aiq-core-contract.ts';
 import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const privateJwk = {
@@ -172,6 +173,10 @@ async function withDependencyFetch(
         },
         catalog_identity_sha256: FROZEN_CATALOG_DIGEST,
         frozen_catalog_valid: true,
+        task_set_identity_sha256: AIQ_CORE_TASK_SET_IDENTITY,
+        task_set_identity_valid: true,
+        evaluator_identity_sha256: AIQ_CORE_EVALUATOR_IDENTITY,
+        evaluator_identity_valid: true,
         production_node_count: 3,
         distinct_production_node_count: 3,
         runner_count: 1,
@@ -183,7 +188,7 @@ async function withDependencyFetch(
         security_invoker_view_count: 12,
         hardened_gateway_role_count: 2,
       };
-      assert.equal(Object.keys(reference).length, 20);
+      assert.equal(Object.keys(reference).length, 24);
       mutateReference?.(reference);
       return replaceRpcResponse?.('reference', reference) ?? Response.json(reference);
     }
@@ -819,6 +824,24 @@ void describe('bounded readiness probe', () => {
     [
       'invalid frozen catalog',
       (status: Record<string, unknown>) => (status.frozen_catalog_valid = false),
+    ],
+    [
+      'wrong task-set identity',
+      (status: Record<string, unknown>) =>
+        (status.task_set_identity_sha256 = `sha256:${'0'.repeat(64)}`),
+    ],
+    [
+      'invalid task-set identity',
+      (status: Record<string, unknown>) => (status.task_set_identity_valid = false),
+    ],
+    [
+      'wrong evaluator identity',
+      (status: Record<string, unknown>) =>
+        (status.evaluator_identity_sha256 = `sha256:${'0'.repeat(64)}`),
+    ],
+    [
+      'invalid evaluator identity',
+      (status: Record<string, unknown>) => (status.evaluator_identity_valid = false),
     ],
     ['malformed response', (status: Record<string, unknown>) => delete status.task_count],
   ] as const) {
