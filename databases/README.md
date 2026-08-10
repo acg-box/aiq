@@ -73,6 +73,8 @@ A successful receipt reports:
   `sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`;
 - reviewed evaluator identity
   `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
+- ordered selected-evaluator provenance commitment
+  `sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
   Contrast corpus identities from the final controlled production reference.
 
@@ -80,10 +82,11 @@ The controlled tree identity is not a runtime task-set hash. The database does
 not write it to `task_set_hash` or `task_set_digest`. Those fields use the
 canonical runtime hash of the 72 task definitions. The initializer derives
 that hash with the same sorted-address RFC 8785 algorithm as the Rust
-protocol. The database binds the exact
-evaluator identity in signed `evaluator_digest` provenance and in the frozen
-task-set metadata that production readiness checks. It does not copy the
-scorer-manifest identity into an unrelated field.
+protocol. The frozen task-set metadata and production readiness bind the
+reviewed evaluator executable identity. Signed `evaluator_digest` provenance
+instead binds the ordered selected-evaluator commitment computed across all 72
+task definitions. These identities have different semantics and values. The
+database does not copy either identity into an unrelated field.
 The native corpus commitment owns the scorer-manifest identity. The
 database binds its output through aggregate scoring version `1.0.8` and recomputes
 the score from normalized result evidence.
