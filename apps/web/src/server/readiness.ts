@@ -106,7 +106,7 @@ export const REQUIRED_RPC_CONTRACT = {
     result:
       'TABLE(model_family text, reasoning_effort text, mode text, recorded_at timestamp with time zone, bucket_started_at timestamp with time zone, bucket_ended_at timestamp with time zone, attempted_trials bigint, completed_trials bigint, represented_batch_count bigint, median_elapsed_ms bigint, p95_elapsed_ms bigint, median_aggregate_output_tps_millis bigint, estimated_credits_nanos numeric, input_tokens numeric, cached_input_tokens numeric, output_tokens numeric, total_tokens numeric, median_agent_steps bigint, median_tool_call_count bigint, resolution_seconds bigint)',
     defaultCount: 0,
-    modes: ['i', ...Array<string>(19).fill('t')],
+    modes: ['i', ...Array<string>(20).fill('t')],
     grants: ROLE_GRANTS.publicRead,
   },
   aiq_gateway_role_probe: {

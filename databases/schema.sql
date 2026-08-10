@@ -7126,8 +7126,10 @@ create function public.aiq_describe_web_rpc_contract() returns jsonb
   with expected(function_name, identity_arguments) as (
     values
       ('public_trend_points'::text, 'text'::text),
+      ('public_speed_trend_points', 'text'),
       ('aiq_gateway_role_probe', ''),
       ('aiq_enqueue_submission', 'jsonb, jsonb, jsonb'),
+      ('aiq_record_speed_observation', 'jsonb, uuid, jsonb'),
       ('aiq_record_artifact_ingress', 'text, text, text, bigint, jsonb'),
       ('aiq_register_storage_object', 'text, text, text, text, text, bigint, text, timestamp with time zone'),
       ('aiq_production_reference_status', 'text'),
@@ -7175,8 +7177,8 @@ create function public.aiq_describe_web_rpc_contract() returns jsonb
     where namespace.nspname = 'public'
   )
   select case
-    when count(*) = 17
-      and count(distinct function_name) = 17
+    when count(*) = 19
+      and count(distinct function_name) = 19
       and not exists (
         select 1
         from pg_catalog.pg_proc unexpected
@@ -7337,6 +7339,7 @@ $$;
 create function public.aiq_enqueue_submission(envelope jsonb, request_context jsonb, object_identity jsonb) returns table(inbox_id uuid, disposition text, object_recorded boolean)
     language plpgsql security DEFINER
     SET search_path to ''
+    SET statement_timeout to '110s'
     as $_$
 declare
   result_record record;

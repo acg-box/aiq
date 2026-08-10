@@ -12,7 +12,10 @@ import {
 } from '../../../server/submission-contract.ts';
 import { storeExactPrivateStorageObject } from '../../../server/private-storage-object.ts';
 import { inspectSubmissionConfiguration } from '../../../server/production-configuration.ts';
-import { createSupabaseApiKeyFetch } from '../../../server/supabase-http.ts';
+import {
+  createSupabaseApiKeyFetch,
+  VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
+} from '../../../server/supabase-http.ts';
 import { registerStorageObject } from '../../../server/storage-lifecycle-registration.ts';
 
 export const runtime = 'nodejs';
@@ -25,7 +28,14 @@ export async function POST(request: Request): Promise<Response> {
     if (!configuration) throw new Error('Submission service is not configured.');
     client ??= createClient(configuration.serviceUrl, configuration.secretKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: { fetch: createSupabaseApiKeyFetch(configuration.secretKey, request.signal) },
+      global: {
+        fetch: createSupabaseApiKeyFetch(
+          configuration.secretKey,
+          request.signal,
+          globalThis.fetch,
+          VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
+        ),
+      },
     });
     return client;
   }

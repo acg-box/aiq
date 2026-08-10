@@ -30,6 +30,19 @@ select pg_temp.aiq_assert(
     from pg_catalog.pg_proc routine
     join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
     where namespace.nspname = 'public'
+      and routine.proname = 'aiq_enqueue_submission'
+      and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+        'envelope jsonb, request_context jsonb, object_identity jsonb'
+  ),
+  'submission enqueue must have exactly the bounded 110-second function timeout'
+);
+select pg_temp.aiq_assert(
+  (
+    select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
+      and cardinality(routine.proconfig) = 2
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    where namespace.nspname = 'public'
       and routine.proname = 'aiq_stage_verifier_result'
       and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
         'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
@@ -58,6 +71,10 @@ select pg_temp.aiq_assert(
       and not (
         namespace.nspname = 'public' and (
           (
+            routine.proname = 'aiq_enqueue_submission'
+            and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+              'envelope jsonb, request_context jsonb, object_identity jsonb'
+          ) or (
             routine.proname = 'aiq_stage_verifier_result'
             and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
               'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
@@ -70,6 +87,16 @@ select pg_temp.aiq_assert(
       )
   ),
   'Official timeout overrides must not widen to another database function'
+);
+
+select pg_temp.aiq_assert(
+  (
+    select jsonb_array_length(contract) = 19
+      and contract @> '[{"name":"public_speed_trend_points"}]'::jsonb
+      and contract @> '[{"name":"aiq_record_speed_observation"}]'::jsonb
+    from (select public.aiq_describe_web_rpc_contract() as contract) described
+  ),
+  'the service RPC contract must include both auxiliary speed routines'
 );
 
 select pg_temp.aiq_assert(
