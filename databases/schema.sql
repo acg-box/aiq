@@ -2023,7 +2023,7 @@ begin
     or candidate ->> 'task_set_digest' <>
       'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'
     or candidate ->> 'evaluator_digest' <>
-      'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
+      'sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8'
     or candidate ->> 'task_set_digest' is distinct from task_set_hash
     or candidate ->> 'preflight_digest' is distinct from preflight_digest
   then return false;
@@ -4436,7 +4436,7 @@ begin
     or candidate ->> 'task_set_digest' is distinct from
       'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'
     or candidate ->> 'evaluator_digest' is distinct from
-      'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'
+      'sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8'
     or candidate ->> 'task_set_digest' is distinct from stage ->> 'task_set_hash'
     or candidate ->> 'preflight_digest' is distinct from
       stage ->> 'capability_validation_digest'
