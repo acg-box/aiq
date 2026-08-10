@@ -349,9 +349,11 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
   );
 }
 
-function checkReviewedEvaluatorIdentity(schema: string): void {
+function checkEvaluatorIdentities(schema: string): void {
   const evaluatorIdentity =
     'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+  const selectedEvaluatorDigest =
+    'sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -372,13 +374,13 @@ function checkReviewedEvaluatorIdentity(schema: string): void {
 
   assert.match(
     officialValidator,
-    new RegExp(`candidate ->> 'evaluator_digest' <>\\s*'${evaluatorIdentity}'`),
-    'Official provenance must compare the evaluator digest with the reviewed identity.',
+    new RegExp(`candidate ->> 'evaluator_digest' <>\\s*'${selectedEvaluatorDigest}'`),
+    'Official provenance must compare the evaluator digest with the ordered selected-evaluator commitment.',
   );
   assert.match(
     stageMatcher,
-    new RegExp(`candidate ->> 'evaluator_digest' is distinct from\\s*'${evaluatorIdentity}'`),
-    'Official stage admission must compare the evaluator digest with the reviewed identity.',
+    new RegExp(`candidate ->> 'evaluator_digest' is distinct from\\s*'${selectedEvaluatorDigest}'`),
+    'Official stage admission must compare the evaluator digest with the ordered selected-evaluator commitment.',
   );
   assert.match(
     catalogValidator,
@@ -828,7 +830,7 @@ export function checkDatabaseSchemaSources(schema: string, syntheticDemo: string
   checkActivePublicReadVersionFilters(schema);
   checkCurrentReleaseAndPricing(schema, syntheticDemo);
   checkReviewedTaskSetIdentity(schema);
-  checkReviewedEvaluatorIdentity(schema);
+  checkEvaluatorIdentities(schema);
 
   for (const requiredName of [
     'aiq_enqueue_submission',
