@@ -219,7 +219,12 @@ export default async function OverviewPage({
         {hasEfficiencyEvidence ? (
           <ConfigurationWorkbench rows={exactOfficialEfficiency.rows} />
         ) : (
-          <div className="results-main-grid" id="compare">
+          <div
+            className="results-main-grid"
+            id="compare"
+            data-workspace-section
+            data-nav-section="compare"
+          >
             <section className="analysis-panel efficiency-panel" aria-label="Score comparison">
               <DeferredModelMatrixChart entries={leaderboard} eager />
               {rankedEntries.length === 0 && leaderboard.length > 0 ? (
