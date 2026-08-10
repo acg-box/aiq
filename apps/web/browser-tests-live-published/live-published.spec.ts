@@ -223,48 +223,6 @@ function scorerGeneratedAggregate(matrixId: string) {
   return aggregate;
 }
 
-async function expectAlignedControlGroup(group: Locator) {
-  await expect(group).toBeAttached();
-  const controls = await group.locator(':scope > .chart-control').evaluateAll((elements) =>
-    elements.map((control) => {
-      const action = control.lastElementChild;
-      if (!(action instanceof HTMLElement)) {
-        throw new Error('Expected each analytical control to contain one action');
-      }
-      const explicitLabel = control.firstElementChild === action ? null : control.firstElementChild;
-      const textLabel = [...control.childNodes].find(
-        (node) => node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
-      );
-      const labelRange = document.createRange();
-      if (textLabel) labelRange.selectNodeContents(textLabel);
-      const labelBox =
-        explicitLabel instanceof HTMLElement
-          ? explicitLabel.getBoundingClientRect()
-          : labelRange.getBoundingClientRect();
-      const actionBox = action.getBoundingClientRect();
-      return {
-        labelTop: labelBox.top,
-        labelBottom: labelBox.bottom,
-        actionTop: actionBox.top,
-        actionHeight: actionBox.height,
-      };
-    }),
-  );
-  expect(controls.length).toBeGreaterThan(1);
-  const labelTops = controls.map(({ labelTop }) => labelTop);
-  const actionTops = controls.map(({ actionTop }) => actionTop);
-  // Anonymous text nodes and explicit spans can differ by one subpixel-rounded CSS pixel while
-  // sharing the same grid row and baseline. The actionable row must still align exactly.
-  expect(Math.max(...labelTops) - Math.min(...labelTops)).toBeLessThanOrEqual(1);
-  expect(Math.max(...actionTops) - Math.min(...actionTops)).toBeLessThanOrEqual(0.5);
-  expect(
-    controls.every(
-      ({ actionHeight, actionTop, labelBottom }) =>
-        actionHeight >= 38 && Math.abs(actionTop - labelBottom - 6) <= 0.5,
-    ),
-  ).toBe(true);
-}
-
 const routes = [
   '/',
   '/runs',
@@ -418,7 +376,7 @@ async function expectNoDocumentOverflow(page: Page, testInfo: TestInfo) {
 
 async function readEfficiencyPoints(plot: Locator): Promise<EfficiencyPointState[]> {
   const states = await plot
-    .locator('.efficiency-chart svg path')
+    .locator('.workbench-chart-canvas svg path')
     .evaluateAll<EfficiencyPointState[], undefined, SVGPathElement>((paths: SVGPathElement[]) => {
       const points: EfficiencyPointState[] = [];
       for (const path of paths) {
@@ -457,7 +415,7 @@ for (const route of routes) {
       await evidenceDisclosure.locator('summary').click();
       await expect(evidenceDisclosure).toHaveAttribute('open', '');
     }
-    if (route === '/compare') {
+    if (route === '/' || route === '/compare') {
       await page.locator('main details.evidence-notes > summary').first().click();
     }
     await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
@@ -475,50 +433,32 @@ test('the live overview exposes all 17 published configurations without seed sub
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1, name: 'Latest benchmark' })).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'Choose by ability, time, or cost.' }),
-  ).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Configuration decision table' })).toBeVisible();
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  await expect(workbench).toBeVisible();
+  await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
   await expect(page.getByRole('region', { name: 'Top configurations' })).toHaveCount(0);
   await expect(page.getByText('Published Dec 31, 2025', { exact: false })).toBeVisible();
-  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  await expect(
-    page.getByRole('heading', { name: 'Calibrated ability by configuration' }),
-  ).toBeVisible();
-  await expect(page.locator('.matrix-chart-svg svg')).toBeVisible();
-  await expect(page.locator('.matrix-chart-svg canvas')).toHaveCount(0);
-  await page.getByText('Read all configuration values as a table', { exact: true }).click();
-  const leaderboardRegion = page.getByRole('region', {
-    name: 'Descriptively ordered public index table',
+  const comparisonTable = workbench.getByRole('region', {
+    name: 'Filtered configuration comparison table',
   });
-  await expect(leaderboardRegion.getByRole('row')).toHaveCount(18);
-  await expect(leaderboardRegion.getByRole('link', { name: 'Inspect' })).toHaveCount(17);
-  await expect(page.getByText('1,224 task cells', { exact: false })).toBeVisible();
-  await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
-  const efficiencyPlot = page.getByRole('region', {
-    name: 'Calibrated ability vs summed task time',
-  });
-  await expect(efficiencyPlot).toBeVisible();
-  await expect(efficiencyPlot).toContainText(
-    'Higher ability is better; lower time or cost is better.',
-  );
-  await expect(efficiencyPlot.locator('.efficiency-chart svg')).toBeVisible();
-  await expect(efficiencyPlot.locator('canvas')).toHaveCount(0);
-  await expect(efficiencyPlot).toContainText(
-    '16/17 configurations plotted in the canonical matrix',
-  );
-  await Promise.all([
-    expectAlignedControlGroup(efficiencyPlot.locator('.chart-controls')),
-    expectAlignedControlGroup(page.locator('.matrix-chart .chart-controls')),
-    expectAlignedControlGroup(page.locator('.trend-mode-control')),
-  ]);
-  await efficiencyPlot.getByRole('button', { name: 'Cost', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Calibrated ability vs API-equivalent cost' }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('region', { name: 'Calibrated ability vs API-equivalent cost' }),
-  ).toContainText('1/17 configurations plotted in the canonical matrix');
+  await expect(comparisonTable.locator('tbody tr')).toHaveCount(17);
+  await expect(comparisonTable).toContainText('Not estimated');
+  await expect(comparisonTable).not.toContainText('$0\n');
+  const timePlot = workbench.getByRole('region', { name: 'AIQ against summed task time' });
+  await expect(timePlot).toHaveAttribute('data-workbench-point-count', '16');
+  await expect(timePlot.locator('.workbench-chart-canvas svg')).toBeVisible();
+  await expect(timePlot.locator('canvas')).toHaveCount(0);
+  await workbench.getByRole('button', { name: 'AIQ × cost', exact: true }).click();
+  const costPlot = workbench.getByRole('region', { name: 'AIQ against API-equivalent cost' });
+  await expect(costPlot).toHaveAttribute('data-workbench-point-count', '1');
+  await workbench.getByRole('button', { name: '3D · AIQ × time × cost', exact: true }).click();
+  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
+  await expect(three).toBeVisible();
+  await expect(three).toHaveAttribute('data-three-render-state', 'ready');
+  await expect(three.getByRole('button', { name: /Sol · low/ })).toHaveCount(1);
+  await expect(three.getByText('AIQ · Y', { exact: true })).toBeVisible();
+  await workbench.getByRole('button', { name: 'AIQ × time', exact: true }).click();
+  await expect(comparisonTable.getByText('72-task sum', { exact: true })).toHaveCount(17);
   await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
   await expect(
@@ -548,16 +488,16 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(officialEfficiency).not.toContainText('$0');
 });
 
-test('efficiency points keep stable geometry while the pointer moves between them', async ({
+test('comparison points keep stable geometry while the pointer moves between them', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/?efficiencyMetric=duration#results');
+  await page.goto('/?compareView=duration#compare');
   await page.evaluate(() => {
     document.documentElement.style.scrollBehavior = 'auto';
   });
-  const plot = page.getByRole('region', { name: 'Calibrated ability vs summed task time' });
-  const chart = plot.locator('.efficiency-chart');
+  const plot = page.getByRole('region', { name: 'AIQ against summed task time' });
+  const chart = plot.locator('.workbench-chart-canvas');
   await chart.scrollIntoViewIfNeeded();
   await expect(chart.locator('svg')).toBeVisible();
   await page.mouse.move(0, 0);
@@ -587,19 +527,67 @@ test('efficiency points keep stable geometry while the pointer moves between the
   await verifyStableTarget(targets[2]);
 });
 
-test('the public index reports runtime issues without conflating evaluator outcomes', async ({
+test('the optional 3D view fails closed to the same table when WebGL is unavailable', async ({
+  page,
+}) => {
+  await page.addInitScript({
+    content: `{
+      const original = HTMLCanvasElement.prototype.getContext;
+      Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+        configurable: true,
+        value(contextId, ...arguments_) {
+          if (contextId === 'webgl' || contextId === 'webgl2' || contextId === 'experimental-webgl') return null;
+          return Reflect.apply(original, this, [contextId, ...arguments_]);
+        },
+      });
+    }`,
+  });
+  await page.goto('/?compareView=three#compare');
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
+  await expect(three).toHaveAttribute('data-three-render-state', 'unavailable');
+  await expect(three.getByRole('status')).toContainText('3D is unavailable in this browser.');
+  await expect(
+    workbench
+      .getByRole('region', { name: 'Filtered configuration comparison table' })
+      .locator('tbody tr'),
+  ).toHaveCount(17);
+  await workbench.getByRole('button', { name: 'AIQ × time', exact: true }).click();
+  await expect(
+    workbench.getByRole('region', { name: 'AIQ against summed task time' }),
+  ).toBeVisible();
+});
+
+test('the comparison remains accessible in light, dark, and reduced-motion 3D states', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
+  await page.goto('/?compareView=three#compare');
+  await page.getByRole('button', { name: 'Use light theme', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
+  await expect(three).toHaveAttribute('data-three-render-state', 'ready');
+  await page.getByRole('button', { name: 'Use dark theme', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect(three).toHaveAttribute('data-three-render-state', 'ready');
+  await three.getByRole('button', { name: 'Rotate left', exact: true }).click();
+  await three.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await three.getByRole('button', { name: 'Reset view', exact: true }).click();
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+});
+
+test('the public comparison keeps all complete Official rows and run links visible', async ({
   page,
 }) => {
   await page.goto('/');
-  await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
-  await page.getByText('Read all configuration values as a table', { exact: true }).click();
   const publicIndex = page.getByRole('region', {
-    name: 'Descriptively ordered public index table',
+    name: 'Filtered configuration comparison table',
   });
   await expect(publicIndex.getByRole('row')).toHaveCount(18);
-  const runtimeIssues = await publicIndex.locator('tbody tr td:nth-child(7)').allTextContents();
-  expect(runtimeIssues.reduce((sum, value) => sum + Number(value.trim()), 0)).toBe(0);
-  await expect(publicIndex.getByRole('columnheader', { name: 'Runtime issues' })).toBeVisible();
+  await expect(publicIndex.getByRole('link', { name: 'Official run' })).toHaveCount(17);
+  await expect(publicIndex.getByText('100% coverage', { exact: true })).toHaveCount(17);
+  await expect(publicIndex.getByRole('columnheader', { name: 'AIQ' })).toBeVisible();
 });
 
 test('a partial Terra-only calibration derives a valid default and reports its selected subset', async ({
@@ -688,22 +676,28 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   expectNoStore(invalid);
 });
 
-test('Official compare efficiency is limited to the two selected run identities', async ({
+test('Official comparison selection is limited to the selected run identities', async ({
   page,
 }) => {
-  await page.goto('/compare');
-  const comparison = page.getByRole('table', { name: 'Selected comparison' });
-  await expect(comparison.getByRole('row')).toHaveCount(8);
-  const cost = comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' });
-  await expect(cost.getByRole('cell').first()).toHaveText('$12.3456');
-  await expect(cost.getByRole('cell').nth(1)).toHaveText('Unavailable');
-  await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
-  const evidence = page.getByRole('table', { name: 'Comparison evidence details' });
-  await expect(evidence.getByRole('row')).toHaveCount(11);
-  const batch = evidence.getByRole('row').filter({ hasText: 'Batch wall-clock' });
-  await expect(batch.getByRole('cell')).toHaveText(['1.6 h', '1.6 h']);
-  const durationCoverage = evidence.getByRole('row').filter({ hasText: 'Duration coverage' });
-  await expect(durationCoverage.getByRole('cell')).toHaveText(['72/72 (100.0%)', '72/72 (100.0%)']);
+  await page.goto('/compare?compareConfigs=sol-low,sol-medium#compare');
+  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  await expect(workbench.getByRole('status')).toContainText('2/17 configurations visible');
+  const comparison = workbench.getByRole('region', {
+    name: 'Filtered configuration comparison table',
+  });
+  await expect(comparison.locator('tbody tr')).toHaveCount(2);
+  const low = comparison.locator('[data-configuration-id="sol-low"]');
+  const medium = comparison.locator('[data-configuration-id="sol-medium"]');
+  await expect(low).toContainText('$12.35');
+  await expect(medium).toContainText('Not estimated');
+  await expect(low.getByRole('link', { name: 'Official run' })).toHaveAttribute(
+    'href',
+    `/runs/${scorerGeneratedAggregate('sol-low').run_id}`,
+  );
+  await expect(medium.getByRole('link', { name: 'Official run' })).toHaveAttribute(
+    'href',
+    `/runs/${scorerGeneratedAggregate('sol-medium').run_id}`,
+  );
   await expect(comparison).not.toContainText(calibrationRunId);
   await expect(comparison).not.toContainText('$0');
 });

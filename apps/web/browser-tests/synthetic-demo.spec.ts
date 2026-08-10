@@ -498,7 +498,9 @@ test('a user can discover and inspect a missing-result run from history', async 
   expect(runtimeFailures).toEqual([]);
 });
 
-test('time range and comparison filters update the visible result', async ({ page }) => {
+test('time range filters update and comparison fails closed without exact efficiency', async ({
+  page,
+}) => {
   const runtimeFailures = monitorErrors(page);
   await page.goto('/trends');
   const disclosure = page.getByText('Evidence notes and visible values', { exact: true });
@@ -547,27 +549,13 @@ test('time range and comparison filters update the visible result', async ({ pag
   await page.getByRole('link', { name: 'Compare', exact: true }).click();
   await expect(page).toHaveURL('/#compare');
   await expect(page.getByLabel('Selected run context status')).toHaveCount(0);
-  const firstModel = page.getByLabel('First configuration');
-  const difference = page.getByRole('heading', { name: /points apart/ });
-  const initialDifference = await difference.textContent();
-  await firstModel.selectOption({ index: 3 });
-  await expect(difference).not.toHaveText(initialDifference ?? '');
-  const comparison = page.getByRole('table', { name: 'Selected comparison' });
-  await expect(comparison.getByRole('row').filter({ hasText: 'Total adapter time' })).toContainText(
-    'Unavailable',
+  await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Compare all 17 at once.' })).toHaveCount(0);
+  await page.goto('/compare');
+  await expect(page.getByLabel('Comparison workspace status')).toContainText(
+    'The exact 17-configuration score, run, and efficiency join is unavailable.',
   );
-  await expect(
-    comparison.getByRole('row').filter({ hasText: 'API-equivalent cost' }),
-  ).toContainText('Unavailable');
-  await page.getByText('Exact run, provenance, and metric coverage', { exact: true }).click();
-  const evidence = page.getByRole('table', { name: 'Comparison evidence details' });
-  await Promise.all(
-    ['Batch wall-clock', 'Duration coverage', 'Cost coverage'].map((metric) =>
-      expect(evidence.getByRole('row').filter({ hasText: metric })).toContainText('Unavailable'),
-    ),
-  );
-  await expect(page.getByLabel('Comparison compatibility checks')).toContainText('Scoring');
-  await expect(page.locator('.comparison-caution')).toContainText('Aggregate rows are not enough');
+  await expect(page.getByRole('region', { name: 'Compare all 17 at once.' })).toHaveCount(0);
   expect(runtimeFailures).toEqual([]);
 });
 
