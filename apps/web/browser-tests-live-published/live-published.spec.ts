@@ -475,7 +475,11 @@ test('the live overview exposes all 17 published configurations without seed sub
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1, name: 'Latest benchmark' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Choose by ability, time, or cost.' }),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Configuration decision table' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Top configurations' })).toHaveCount(0);
   await expect(page.getByText('Published Dec 31, 2025', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   await expect(
@@ -495,7 +499,9 @@ test('the live overview exposes all 17 published configurations without seed sub
     name: 'Calibrated ability vs summed task time',
   });
   await expect(efficiencyPlot).toBeVisible();
-  await expect(efficiencyPlot).toContainText('Lower and left is more efficient');
+  await expect(efficiencyPlot).toContainText(
+    'Higher ability is better; lower time or cost is better.',
+  );
   await expect(efficiencyPlot.locator('.efficiency-chart svg')).toBeVisible();
   await expect(efficiencyPlot.locator('canvas')).toHaveCount(0);
   await expect(efficiencyPlot).toContainText(
