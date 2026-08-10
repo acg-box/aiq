@@ -408,11 +408,11 @@ exact AIQ-owned public views and RPC overloads. Preserve all Supabase-managed an
 non-AIQ objects. This cleanup is a deployment prerequisite, not a migration or
 compatibility path. Do not apply AIQ objects or create AIQ Storage buckets
 before initialization. Do not reset or initialize until the new real signed
-17-by-72 package passes native verifier replay. Use a direct PostgreSQL URL, not
-the public Data API URL.
+17-by-72 package passes native verifier replay. Use the exact direct or
+port-5432 session-pooler PostgreSQL URL, not the public Data API URL.
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
@@ -438,8 +438,8 @@ Against an already initialized disposable production-shape database, run the
 read/RLS smoke test and the rollback-only calibration publication proof:
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-database
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make smoke-database
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
   cargo make smoke-calibration-database
 ```
 

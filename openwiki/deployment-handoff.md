@@ -238,7 +238,7 @@ reset manifest, migration input, compatibility source, or publication gate.
 After publication, run this read-only query gate against the new database:
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' cargo make check-aiq-2-cutover
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make check-aiq-2-cutover
 ```
 
 It fails unless the database contains exactly one published, non-synthetic
@@ -365,11 +365,12 @@ synthetic fixtures into this project.
    document. Bind the 72-task AIQ Core `1.0.7` corpus, current catalog identities,
    and distinct runner, verifier, and publisher
    public identities.
-3. Apply the desired state once through a direct PostgreSQL connection. The
-   schema creates both AIQ Storage buckets and sets them to private:
+3. Apply the desired state once through the exact direct or port-5432 session
+   pooler PostgreSQL identity. The schema creates both AIQ Storage buckets and
+   sets them to private:
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE='/controlled/production-reference.json' \
 cargo make init-database
 ```
@@ -383,7 +384,7 @@ Run the database checks:
 
 ```sh
 cargo make check-database
-AIQ_DATABASE_URL='<direct-connection-url>' cargo make smoke-database
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make smoke-database
 ```
 
 Do not load `databases/synthetic-demo.sql` into production.

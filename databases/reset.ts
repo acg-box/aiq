@@ -23,6 +23,8 @@ const PAGE_SIZE = 100;
 const MAX_PAGES_PER_BUCKET = 10_000;
 const DELETE_BATCH_SIZE = 100;
 const DELETE_CONCURRENCY = 4;
+const STORAGE_LIST_MAX_ATTEMPTS = 5;
+const STORAGE_LIST_RETRY_BASE_MS = 250;
 const MAX_PSQL_OUTPUT_BYTES = 1_000_000;
 
 interface SchemaNames {
@@ -188,6 +190,10 @@ function inventoryExpression(names: SchemaNames): string {
   'public_functions', coalesce((select json_agg(distinct proname order by proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and proname in (${functions})), '[]'::json),
   'public_views', coalesce((select json_agg(c.relname order by c.relname) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind in ('v','m') and c.relname in (${views})), '[]'::json),
   'storage_buckets', coalesce((select json_agg(json_build_object('id', id, 'name', name) order by id) from storage.buckets where id in ('aiq-runner-artifacts', 'aiq-submission-packages') or name in ('aiq-runner-artifacts', 'aiq-submission-packages')), '[]'::json),
+  'storage_object_paths', json_build_object(
+    'aiq-runner-artifacts', coalesce((select json_agg(name order by name) from storage.objects where bucket_id = 'aiq-runner-artifacts'), '[]'::json),
+    'aiq-submission-packages', coalesce((select json_agg(name order by name) from storage.objects where bucket_id = 'aiq-submission-packages'), '[]'::json)
+  ),
   'unexpected_namespaces', coalesce((select json_agg(nspname order by nspname) from pg_namespace where nspname like 'aiq\\_%' escape '\\' and nspname <> '${PRIVATE_SCHEMA}'), '[]'::json),
   'unexpected_external_dependencies', coalesce((
     with aiq_objects(classid, objid) as (
@@ -287,12 +293,19 @@ function inventoryExpression(names: SchemaNames): string {
       from pg_auth_members membership
       join pg_roles granted on granted.oid = membership.roleid
       join pg_roles member on member.oid = membership.member
+      join pg_roles grantor on grantor.oid = membership.grantor
       where (
         granted.rolname in ('aiq_publisher', 'aiq_verifier')
         or member.rolname in ('aiq_publisher', 'aiq_verifier')
       ) and not (
-        member.rolname = 'authenticator'
-        and granted.rolname in ('aiq_publisher', 'aiq_verifier')
+        (
+          member.rolname = 'authenticator'
+          and granted.rolname in ('aiq_publisher', 'aiq_verifier')
+        ) or (
+          member.rolname = 'postgres'
+          and granted.rolname in ('aiq_publisher', 'aiq_verifier')
+          and grantor.rolname = 'supabase_admin'
+        )
       )
     ) role_membership
   ), '[]'::json),
@@ -487,6 +500,47 @@ function parseInventory(output: string): DatabaseInventory {
   };
 }
 
+function parseStoragePaths(
+  output: string,
+): Readonly<Record<(typeof BUCKETS)[number], readonly string[]>> {
+  let value: unknown;
+  try {
+    value = JSON.parse(output.trim()) as unknown;
+  } catch {
+    throw new Error('AIQ database inventory did not return one JSON document');
+  }
+  if (!isRecord(value) || !isRecord(value.storage_object_paths)) {
+    throw new Error('AIQ database inventory has invalid Storage object paths');
+  }
+  const pathDocument = value.storage_object_paths;
+  const actualKeys = Object.keys(pathDocument).toSorted();
+  const expectedKeys = [...BUCKETS].toSorted();
+  if (
+    actualKeys.length !== BUCKETS.length ||
+    actualKeys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    throw new Error('AIQ database inventory has invalid Storage object paths');
+  }
+  function pathsFor(bucket: (typeof BUCKETS)[number]): string[] {
+    const paths = stringList(pathDocument[bucket]);
+    const sortedPaths = paths?.toSorted();
+    if (
+      paths === undefined ||
+      sortedPaths === undefined ||
+      paths.some((path) => path === '' || path.includes('\0')) ||
+      new Set(paths).size !== paths.length ||
+      paths.some((path, index) => path !== sortedPaths[index])
+    ) {
+      throw new Error(`AIQ database inventory has invalid paths for ${bucket}`);
+    }
+    return paths;
+  }
+  return {
+    'aiq-runner-artifacts': pathsFor('aiq-runner-artifacts'),
+    'aiq-submission-packages': pathsFor('aiq-submission-packages'),
+  };
+}
+
 function storageHeaders(token: string): HeadersInit {
   return { apikey: token, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
@@ -497,13 +551,28 @@ async function storageRequest(
   path: string,
   init: RequestInit,
 ): Promise<Response> {
-  const response = await fetchImplementation(`${STORAGE_ORIGIN}/storage/v1${path}`, {
-    ...init,
-    headers: storageHeaders(token),
-  });
-  if (!response.ok)
-    throw new Error(`Supabase Storage API rejected ${init.method ?? 'GET'} ${path}`);
-  return response;
+  const listRequest = path.startsWith('/object/list/');
+  for (let attempt = 0; attempt < STORAGE_LIST_MAX_ATTEMPTS; attempt += 1) {
+    // Storage list requests are read-only and safe to retry after transient
+    // provider failures. Mutation requests retain the existing readback flow.
+    // eslint-disable-next-line no-await-in-loop
+    const response = await fetchImplementation(`${STORAGE_ORIGIN}/storage/v1${path}`, {
+      ...init,
+      headers: storageHeaders(token),
+    });
+    if (response.ok) return response;
+    const retryable = response.status === 429 || response.status >= 500;
+    if (!listRequest || !retryable || attempt === STORAGE_LIST_MAX_ATTEMPTS - 1) {
+      throw new Error(
+        `Supabase Storage API rejected ${init.method ?? 'GET'} ${path} (${response.status})`,
+      );
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolvePromise) =>
+      setTimeout(resolvePromise, STORAGE_LIST_RETRY_BASE_MS * 2 ** attempt),
+    );
+  }
+  throw new Error(`Supabase Storage API rejected ${init.method ?? 'GET'} ${path}`);
 }
 
 async function listBucket(
@@ -643,17 +712,13 @@ export async function resetDatabase(options: {
       options.dependencies?.prepare ?? prepareInitializationFromFiles
     )({ referencePath, repositoryRoot });
   }
-  const storageToken = environment.AIQ_SUPABASE_SERVICE_ROLE_KEY;
-  if (!storageToken)
-    throw new Error('AIQ_SUPABASE_SERVICE_ROLE_KEY is required for Storage inventory');
   const schema =
     preparedInitialization?.schema ??
     (await readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'));
   const names = canonicalSchemaNames(schema);
   const psqlCommand = options.dependencies?.psqlCommand ?? 'psql';
-  const database = parseInventory(
-    await runPsql(psqlCommand, databaseUrl, inventorySql(names), environment),
-  );
+  const inventoryOutput = await runPsql(psqlCommand, databaseUrl, inventorySql(names), environment);
+  const database = parseInventory(inventoryOutput);
   if (database.storage_buckets.some(({ id, name }) => id !== name || !BUCKET_SET.has(id))) {
     throw new Error('AIQ Storage bucket identity drift is outside the reset ownership boundary');
   }
@@ -670,24 +735,15 @@ export async function resetDatabase(options: {
   ) {
     throw new Error('AIQ namespace drift is outside the reset ownership boundary');
   }
-  const fetchImplementation = options.dependencies?.fetch ?? fetch;
   const existingBuckets = new Set(database.storage_buckets.map(({ id }) => id));
-  const storageEntries = await Promise.all(
-    BUCKETS.map(
-      async (bucket) =>
-        [
-          bucket,
-          existingBuckets.has(bucket)
-            ? await listBucket(fetchImplementation, storageToken, bucket)
-            : [],
-        ] as const,
-    ),
-  );
+  const inventoriedStoragePaths = parseStoragePaths(inventoryOutput);
   const storagePaths: Readonly<Record<(typeof BUCKETS)[number], readonly string[]>> = {
-    'aiq-runner-artifacts':
-      storageEntries.find(([bucket]) => bucket === 'aiq-runner-artifacts')?.[1] ?? [],
-    'aiq-submission-packages':
-      storageEntries.find(([bucket]) => bucket === 'aiq-submission-packages')?.[1] ?? [],
+    'aiq-runner-artifacts': existingBuckets.has('aiq-runner-artifacts')
+      ? inventoriedStoragePaths['aiq-runner-artifacts']
+      : [],
+    'aiq-submission-packages': existingBuckets.has('aiq-submission-packages')
+      ? inventoriedStoragePaths['aiq-submission-packages']
+      : [],
   };
   const storage: ResetInventory['storage'] = {
     'aiq-runner-artifacts': summarizeStoragePaths(storagePaths['aiq-runner-artifacts']),
@@ -701,6 +757,10 @@ export async function resetDatabase(options: {
   };
   if (options.dryRun) return inventory;
 
+  const storageToken = environment.AIQ_SUPABASE_SERVICE_ROLE_KEY;
+  if (!storageToken)
+    throw new Error('AIQ_SUPABASE_SERVICE_ROLE_KEY is required for Storage deletion');
+  const fetchImplementation = options.dependencies?.fetch ?? fetch;
   for (const bucket of BUCKETS) {
     // The fixed order bounds partial failure and makes a retry resume at the remaining bucket.
     if (existingBuckets.has(bucket))
