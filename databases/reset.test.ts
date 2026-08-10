@@ -179,7 +179,8 @@ void test('canonical names come from schema.sql and include all overload names o
   strictEqual(inventory.includes("'unexpected_role_memberships'"), true);
   strictEqual(inventory.includes("member.rolname = 'postgres'"), true);
   strictEqual(inventory.includes("grantor.rolname = 'supabase_admin'"), true);
-  strictEqual(cleanup.includes('pg_catalog.pg_auth_members'), true);
+  strictEqual(cleanup.includes('lock table pg_catalog.'), false);
+  strictEqual(cleanup.includes('lock table storage.buckets in share mode'), true);
   strictEqual(cleanup.includes('$aiq_reset_boundary_guard$'), true);
   strictEqual(cleanup.includes('-- AIQ_RESET_BOUNDARY_LOCKED'), true);
 });
