@@ -19,6 +19,7 @@ pub mod run_validation;
 pub mod runner;
 pub mod schedule;
 pub mod scoring;
+pub mod speed_observation;
 pub mod submission;
 pub mod task;
 

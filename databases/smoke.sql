@@ -19,8 +19,8 @@ begin
   where namespace.nspname = 'aiq_private'
     and relation.relkind in ('r', 'p');
 
-  if private_table_count <> 40 then
-    raise exception 'expected 40 private AIQ, pricing, and calibration tables, found %', private_table_count;
+  if private_table_count <> 42 then
+    raise exception 'expected 42 private AIQ, pricing, calibration, and speed-observation tables, found %', private_table_count;
   end if;
 
   select count(*) into forced_rls_count
@@ -52,15 +52,16 @@ begin
       'public_nodes','public_run_results','public_runs',
       'public_scoring_versions','public_task_coverage',
       'public_calibration_runs','public_calibration_results',
-      'public_calibration_scores','public_model_efficiency'
+      'public_calibration_scores','public_model_efficiency',
+      'public_speed_observations'
     );
 
-  if public_view_count <> 12
-    or security_invoker_view_count <> 12
-    or canonical_public_view_count <> 12
+  if public_view_count <> 13
+    or security_invoker_view_count <> 13
+    or canonical_public_view_count <> 13
   then
     raise exception
-      'expected 12 canonical security-invoker AIQ public views, found % views and % invoker views',
+      'expected 13 canonical security-invoker AIQ public views, found % views and % invoker views',
       public_view_count, security_invoker_view_count;
   end if;
 
@@ -73,6 +74,17 @@ begin
     )
   then
     raise exception 'the bounded public trend RPC is missing or not browser-readable';
+  end if;
+
+  if pg_catalog.to_regprocedure('public.public_speed_trend_points(text)') is null
+    or not pg_catalog.has_function_privilege(
+      'anon', 'public.public_speed_trend_points(text)', 'EXECUTE'
+    )
+    or not pg_catalog.has_function_privilege(
+      'authenticated', 'public.public_speed_trend_points(text)', 'EXECUTE'
+    )
+  then
+    raise exception 'the bounded public speed trend RPC is missing or not browser-readable';
   end if;
 
   select count(*) into browser_write_count

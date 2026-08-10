@@ -657,6 +657,8 @@ pub struct CodexExecutionConfig {
 	pub permission_probe_executable: Option<PathBuf>,
 	/// Committed model-visible Node.js and ripgrep toolchain.
 	pub model_toolchain: Option<ValidatedModelToolchain>,
+	/// Explicit subscription transport. Standard preserves the existing invocation contract.
+	pub service_tier: CodexServiceTier,
 }
 impl CodexExecutionConfig {
 	/// Builds an explicit environment allowlist. Provider/API-key variables are never included.
@@ -694,6 +696,7 @@ impl CodexExecutionConfig {
 					None
 				}
 			},
+			service_tier: CodexServiceTier::Standard,
 		}
 	}
 
@@ -729,6 +732,14 @@ impl CodexExecutionConfig {
 		self.allowed_environment.insert("PATHEXT".to_owned(), ".COM;.EXE;.BAT;.CMD".to_owned());
 
 		self.model_toolchain = Some(toolchain);
+
+		self
+	}
+
+	/// Selects an explicit subscription transport for later model invocations.
+	#[must_use]
+	pub fn with_service_tier(mut self, service_tier: CodexServiceTier) -> Self {
+		self.service_tier = service_tier;
 
 		self
 	}
@@ -848,6 +859,19 @@ where
 		Ok(version)
 	}
 
+	/// Reads the current model catalog without starting a model turn.
+	pub(crate) fn probe_model_catalog(&self) -> Result<CodexOutput, AdapterFailure> {
+		let capture = self.execute_request(
+			vec!["debug".to_owned(), "models".to_owned()],
+			Vec::new(),
+			Duration::from_secs(30),
+			None,
+			None,
+		)?;
+
+		classify_capture(capture, &self.sink, false)
+	}
+
 	/// Runs one model configuration through the isolated subscription environment.
 	pub(crate) fn invoke(
 		&self,
@@ -898,6 +922,7 @@ where
 				&invocation.workspace_dir,
 				&self.config.denied_roots,
 				self.config.model_toolchain.as_ref(),
+				self.config.service_tier,
 			)?,
 			invocation.prompt.as_bytes().to_vec(),
 			invocation.timeout,
@@ -1335,6 +1360,7 @@ where
 				&scratch.path,
 				&self.config.denied_roots,
 				self.config.model_toolchain.as_ref(),
+				self.config.service_tier,
 			)?,
 			format!(
 				"Do not send commentary before the command. Do not use a file-editing, patch, or file-change tool. Use the terminal or shell command execution tool exactly once. Run exactly this command in the current workspace: {PREFLIGHT_MARKER_COMMAND}. Do not run any other command. After the command completes, reply with exactly AIQ_PREFLIGHT_OK and no other text."
@@ -1589,12 +1615,6 @@ pub(crate) struct NormalizedCodexItem {
 	pub counts_as_step: bool,
 	pub collaboration: Option<CodexCollaborationItem>,
 	pub collaboration_sender: Option<String>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CodexCollaborationItem {
-	/// The exact inert `wait` status item observed from the bundled Codex CLI.
-	InertWait,
 }
 
 #[derive(Default)]
@@ -2299,10 +2319,14 @@ impl PermissionCanaryObservation {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum CodexItemPhase {
-	Started,
-	Completed,
+/// Subscription transport selected for one Codex adapter.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum CodexServiceTier {
+	/// Normal ChatGPT subscription transport.
+	#[default]
+	Standard,
+	/// Fast ChatGPT subscription transport for models that advertise support.
+	Fast,
 }
 
 /// A live budget that caused the executor to terminate the child.
@@ -2458,6 +2482,18 @@ pub enum CapabilityValidationStatus {
 	Unsupported,
 	/// Current evidence cannot establish support.
 	Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CodexCollaborationItem {
+	/// The exact inert `wait` status item observed from the bundled Codex CLI.
+	InertWait,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CodexItemPhase {
+	Started,
+	Completed,
 }
 
 enum JsonRpcStdoutEvent {
@@ -2806,6 +2842,30 @@ pub(crate) fn safe_codex_version(value: &str) -> bool {
 	!value.is_empty()
 		&& value.len() <= MAX_CODEX_VERSION_BYTES
 		&& value.bytes().all(|byte| (b' '..=b'~').contains(&byte) && !matches!(byte, b'"' | b'\\'))
+}
+
+pub(crate) fn extract_probe_response(stdout: &str) -> Option<String> {
+	let mut response = None;
+
+	for line in stdout.lines() {
+		let Ok(value) = serde_json::from_str::<Value>(line) else {
+			continue;
+		};
+		let item = value.get("item").unwrap_or(&value);
+
+		if matches!(item.get("type").and_then(Value::as_str), Some("agent_message" | "message"))
+			&& let Some(text) = item.get("text").and_then(Value::as_str)
+		{
+			response = Some(text.trim().to_owned());
+		}
+	}
+
+	response.or_else(|| {
+		let trimmed = stdout.trim();
+
+		(!trimmed.is_empty() && serde_json::from_str::<Value>(stdout).is_err())
+			.then(|| trimmed.to_owned())
+	})
 }
 
 fn validate_inert_collaboration_wait(
@@ -4979,36 +5039,13 @@ fn sha256(bytes: &[u8]) -> Result<String, ExecutorError> {
 	Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
 }
 
-fn extract_probe_response(stdout: &str) -> Option<String> {
-	let mut response = None;
-
-	for line in stdout.lines() {
-		let Ok(value) = serde_json::from_str::<Value>(line) else {
-			continue;
-		};
-		let item = value.get("item").unwrap_or(&value);
-
-		if matches!(item.get("type").and_then(Value::as_str), Some("agent_message" | "message"))
-			&& let Some(text) = item.get("text").and_then(Value::as_str)
-		{
-			response = Some(text.trim().to_owned());
-		}
-	}
-
-	response.or_else(|| {
-		let trimmed = stdout.trim();
-
-		(!trimmed.is_empty() && serde_json::from_str::<Value>(stdout).is_err())
-			.then(|| trimmed.to_owned())
-	})
-}
-
 fn invocation_args(
 	model: ModelConfig,
 	sandbox: SandboxPolicy,
 	workspace: &Path,
 	denied_roots: &[PathBuf],
 	model_toolchain: Option<&ValidatedModelToolchain>,
+	service_tier: CodexServiceTier,
 ) -> Result<Vec<String>, AdapterFailure> {
 	let workspace = utf8_path(workspace, "benchmark workspace")?;
 	let toolchain = model_toolchain.ok_or_else(|| {
@@ -5060,6 +5097,15 @@ fn invocation_args(
 		"--json".to_owned(),
 		"-".to_owned(),
 	];
+
+	if service_tier == CodexServiceTier::Fast {
+		args.extend([
+			"--enable".to_owned(),
+			"fast_mode".to_owned(),
+			"--config".to_owned(),
+			"service_tier=\"fast\"".to_owned(),
+		]);
+	}
 
 	#[cfg(windows)]
 	args.extend([
@@ -6757,6 +6803,7 @@ mod tests {
 			PathBuf::from(".").as_path(),
 			&[],
 			Some(&toolchain),
+			super::CodexServiceTier::Standard,
 		)
 		.expect("no-tools arguments");
 
@@ -6776,6 +6823,7 @@ mod tests {
 			PathBuf::from(".").as_path(),
 			&[],
 			Some(&toolchain),
+			super::CodexServiceTier::Standard,
 		)
 		.expect("web-only arguments");
 
@@ -6789,6 +6837,7 @@ mod tests {
 			PathBuf::from("/controlled/a\"b\\c").as_path(),
 			&[PathBuf::from("/controlled")],
 			Some(&toolchain),
+			super::CodexServiceTier::Standard,
 		)
 		.expect("workspace-write arguments");
 
@@ -6799,6 +6848,20 @@ mod tests {
 					"permissions.aiq_benchmark.filesystem={\":minimal\"=\"read\",\"/controlled\"=\"deny\",\"/toolchain\"=\"read\",\"/controlled/a\\\"b\\\\c\"=\"write\"}",
 				]
 		}));
+
+		let fast_args = super::invocation_args(
+			MODEL_MATRIX[0],
+			SandboxPolicy::NoTools,
+			PathBuf::from(".").as_path(),
+			&[],
+			Some(&toolchain),
+			super::CodexServiceTier::Fast,
+		)
+		.expect("fast transport arguments");
+
+		assert!(fast_args.windows(2).any(|pair| pair == ["--enable", "fast_mode"]));
+		assert!(fast_args.windows(2).any(|pair| pair == ["--config", "service_tier=\"fast\""]));
+		assert!(!none_args.iter().any(|argument| argument == "service_tier=\"fast\""));
 	}
 
 	#[test]
