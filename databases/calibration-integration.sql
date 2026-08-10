@@ -291,7 +291,7 @@ select pg_temp.aiq_assert(
         '"official"'::jsonb
       ),
       '{evaluator_digest}',
-      '"sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c"'::jsonb
+      '"sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8"'::jsonb
     ),
     envelope#>>'{payload,task_set_hash}',
     envelope#>>'{payload,provenance,preflight_digest}'
@@ -300,6 +300,22 @@ select pg_temp.aiq_assert(
     envelope,'{payload,provenance,run_class}','"official"'::jsonb
   )),
   'Official and calibration callers must reject cross-class provenance substitution'
+) from aiq_calibration_input;
+select pg_temp.aiq_assert(
+  not aiq_private.dto_run_provenance_is_valid(
+    jsonb_set(
+      jsonb_set(
+        envelope#>'{payload,provenance}',
+        '{run_class}',
+        '"official"'::jsonb
+      ),
+      '{evaluator_digest}',
+      '"sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c"'::jsonb
+    ),
+    envelope#>>'{payload,task_set_hash}',
+    envelope#>>'{payload,provenance,preflight_digest}'
+  ),
+  'Official provenance must not substitute the evaluator executable identity for the selected-evaluator commitment'
 ) from aiq_calibration_input;
 
 set local role service_role;
