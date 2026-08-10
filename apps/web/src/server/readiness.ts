@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-import { AIQ_CORE_TASK_METADATA_IDENTITY } from '../aiq-core-contract.ts';
+import {
+  AIQ_CORE_EVALUATOR_IDENTITY,
+  AIQ_CORE_TASK_METADATA_IDENTITY,
+  AIQ_CORE_TASK_SET_IDENTITY,
+} from '../aiq-core-contract.ts';
 import { PUBLIC_VIEW_NAMES } from '../data/repository.ts';
 import {
   inspectProductionConfiguration,
@@ -1197,7 +1201,7 @@ async function probeProductionReference(
     isRecord(document) && isRecord(document.domain_counts) ? document.domain_counts : undefined;
   if (
     !isRecord(document) ||
-    Object.keys(document).length !== 20 ||
+    Object.keys(document).length !== 24 ||
     document.initialized !== true ||
     document.model_config_count !== 17 ||
     document.model_config_mismatch_count !== 0 ||
@@ -1212,6 +1216,10 @@ async function probeProductionReference(
     ) ||
     document.catalog_identity_sha256 !== EXPECTED_CATALOG_IDENTITY ||
     document.frozen_catalog_valid !== true ||
+    document.task_set_identity_sha256 !== AIQ_CORE_TASK_SET_IDENTITY ||
+    document.task_set_identity_valid !== true ||
+    document.evaluator_identity_sha256 !== AIQ_CORE_EVALUATOR_IDENTITY ||
+    document.evaluator_identity_valid !== true ||
     document.production_node_count !== 3 ||
     document.distinct_production_node_count !== 3 ||
     document.runner_count !== 1 ||
