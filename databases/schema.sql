@@ -2265,7 +2265,7 @@ begin
       and (
         supplied_artifact_kind not in (
           'capability-marker.txt', 'evaluator-results.json', 'final-response.txt', 'stderr.txt', 'stdout.jsonl',
-          'workspace-manifest.json', 'workspace-snapshot.json'
+          'speed-observation.json', 'workspace-manifest.json', 'workspace-snapshot.json'
         )
         or supplied_path is distinct from
           'sha256/' || supplied_sha256 || '/' || supplied_artifact_kind
@@ -7777,7 +7777,8 @@ begin
         'public_nodes','public_run_results','public_runs',
         'public_scoring_versions','public_task_coverage',
         'public_calibration_runs','public_calibration_results',
-        'public_calibration_scores','public_model_efficiency'
+        'public_calibration_scores','public_model_efficiency',
+        'public_speed_observations'
       )
   ),
   role_facts as (
@@ -7831,9 +7832,9 @@ begin
       and node_count = 3 and distinct_node_count = 3
       and runner_count = 1
       and verifier_count = 1 and publisher_count = 1
-      and private_table_count=40 and forced_rls_table_count=40
-      and public_view_count=12 and security_invoker_view_count=12
-      and canonical_public_view_count=12
+      and private_table_count=42 and forced_rls_table_count=42
+      and public_view_count=13 and security_invoker_view_count=13
+      and canonical_public_view_count=13
       and hardened_gateway_role_count=2,
     'model_config_count', enabled_count,
     'model_config_mismatch_count', mismatch_count,
@@ -9446,7 +9447,7 @@ create table aiq_private.aiq_storage_objects (
     registered_at timestamp with time zone default now() not null,
     updated_at timestamp with time zone default now() not null,
     constraint aiq_storage_objects_bucket_name_check check ((((object_type = 'submission_package'::text) and (bucket_name = 'aiq-submission-packages'::text)) or ((object_type = 'runner_artifact'::text) and (bucket_name = 'aiq-runner-artifacts'::text)))),
-    constraint aiq_storage_objects_check check ((((object_type = 'submission_package'::text) and (artifact_kind IS null) and (object_path = ('sha256/'::text || content_sha256))) or ((object_type = 'runner_artifact'::text) and (artifact_kind = ANY (ARRAY['capability-marker.txt'::text, 'evaluator-results.json'::text, 'final-response.txt'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text])) and (object_path = ((('sha256/'::text || content_sha256) || '/'::text) || artifact_kind))))),
+    constraint aiq_storage_objects_check check ((((object_type = 'submission_package'::text) and (artifact_kind IS null) and (object_path = ('sha256/'::text || content_sha256))) or ((object_type = 'runner_artifact'::text) and (artifact_kind = ANY (ARRAY['capability-marker.txt'::text, 'evaluator-results.json'::text, 'final-response.txt'::text, 'speed-observation.json'::text, 'stderr.txt'::text, 'stdout.jsonl'::text, 'workspace-manifest.json'::text, 'workspace-snapshot.json'::text])) and (object_path = ((('sha256/'::text || content_sha256) || '/'::text) || artifact_kind))))),
     constraint aiq_storage_objects_check1 check (
         byte_size between 1 and case
             when artifact_kind = 'capability-marker.txt'::text then 36
@@ -16340,5 +16341,641 @@ alter table aiq_private.aiq_task_catalog force row level security;
 alter table aiq_private.aiq_task_results force row level security;
 alter table aiq_private.aiq_task_sets force row level security;
 alter table aiq_private.aiq_verification_audit force row level security;
+
+-- Auxiliary Normal/Fast transport observations are stored independently from
+-- benchmark outcomes. No column in this surface is a scoring input.
+create table aiq_private.aiq_speed_observation_batches (
+  batch_id text primary key,
+  observed_at timestamptz not null,
+  observed_unix_ms bigint not null unique,
+  schema_version text not null,
+  content_sha256 text not null unique,
+  prompt_sha256 text not null,
+  runner_executable_sha256 text not null,
+  codex_executable_sha256 text not null,
+  codex_code_mode_host_sha256 text not null,
+  credit_rate_card_version text not null,
+  trials_per_mode smallint not null,
+  catalog jsonb not null,
+  capabilities jsonb not null,
+  unavailable_metrics jsonb not null,
+  object_id uuid not null,
+  object_sha256 text not null,
+  object_bytes bigint not null,
+  published boolean default true not null,
+  received_at timestamptz default clock_timestamp() not null,
+  constraint aiq_speed_observation_batches_id_check check (
+    batch_id = 'speed_' || substr(content_sha256, 8)
+  ),
+  constraint aiq_speed_observation_batches_schema_check check (
+    schema_version = 'aiq.speed-observation-batch.v1'
+  ),
+  constraint aiq_speed_observation_batches_digest_check check (
+    content_sha256 ~ '^sha256:[0-9a-f]{64}$'
+    and prompt_sha256 ~ '^sha256:[0-9a-f]{64}$'
+    and runner_executable_sha256 ~ '^sha256:[0-9a-f]{64}$'
+    and codex_executable_sha256 ~ '^sha256:[0-9a-f]{64}$'
+    and codex_code_mode_host_sha256 ~ '^sha256:[0-9a-f]{64}$'
+    and object_sha256 ~ '^[0-9a-f]{64}$'
+  ),
+  constraint aiq_speed_observation_batches_rate_check check (
+    credit_rate_card_version = 'openai-codex-rate-card-2026-08-10'
+  ),
+  constraint aiq_speed_observation_batches_trials_check check (
+    trials_per_mode between 1 and 10
+  ),
+  constraint aiq_speed_observation_batches_object_check check (
+    object_bytes between 1 and 4194304
+  ),
+  constraint aiq_speed_observation_batches_object_fkey foreign key (
+    object_id,object_sha256
+  ) references aiq_private.aiq_storage_objects(object_id,content_sha256) on delete restrict
+);
+
+comment on table aiq_private.aiq_speed_observation_batches is
+  'Trusted runner observations of Normal/Fast transport. They are auxiliary and never affect AIQ.';
+
+create table aiq_private.aiq_speed_observation_trials (
+  trial_id text primary key,
+  batch_id text not null references aiq_private.aiq_speed_observation_batches(batch_id)
+    on delete restrict,
+  model_family text not null,
+  reasoning_effort text not null,
+  mode text not null,
+  trial_index smallint not null,
+  status text not null,
+  elapsed_ms bigint not null,
+  aggregate_output_tps_millis bigint,
+  input_tokens bigint,
+  cached_input_tokens bigint,
+  cache_write_input_tokens bigint,
+  output_tokens bigint,
+  reasoning_output_tokens bigint,
+  total_tokens bigint,
+  agent_steps bigint not null,
+  tool_call_count bigint not null,
+  estimated_credits_nanos bigint,
+  response_sha256 text,
+  failure_kind text,
+  artifact_count smallint not null,
+  constraint aiq_speed_observation_trials_identity_key unique (
+    batch_id,model_family,reasoning_effort,mode,trial_index
+  ),
+  constraint aiq_speed_observation_trials_id_check check (
+    trial_id ~ '^speed_trial_[0-9a-f]{64}$'
+  ),
+  constraint aiq_speed_observation_trials_model_check check (
+    model_family in ('sol','terra','luna')
+    and reasoning_effort in ('low','medium','high','xhigh','max','ultra')
+    and not (model_family='luna' and reasoning_effort='ultra')
+  ),
+  constraint aiq_speed_observation_trials_mode_check check (mode in ('normal','fast')),
+  constraint aiq_speed_observation_trials_index_check check (trial_index between 0 and 9),
+  constraint aiq_speed_observation_trials_status_check check (
+    status in ('completed','invalid_response','failed')
+  ),
+  constraint aiq_speed_observation_trials_measurement_check check (
+    elapsed_ms between 0 and 9007199254740991
+    and aggregate_output_tps_millis between 0 and 9007199254740991
+    and input_tokens between 0 and 9007199254740991
+    and cached_input_tokens between 0 and 9007199254740991
+    and cache_write_input_tokens between 0 and 9007199254740991
+    and output_tokens between 0 and 9007199254740991
+    and reasoning_output_tokens between 0 and 9007199254740991
+    and total_tokens between 0 and 9007199254740991
+    and agent_steps between 0 and 9007199254740991
+    and tool_call_count = 0
+    and estimated_credits_nanos between 0 and 9007199254740991
+  ),
+  constraint aiq_speed_observation_trials_terminal_check check (
+    (status='completed' and response_sha256 =
+      'sha256:659b7a9d71c7a0bb41467c74cfe3d8be4bbbc6a2f15962a315b1c95de975b6a2'
+      and failure_kind is null)
+    or (status='invalid_response' and response_sha256 ~ '^sha256:[0-9a-f]{64}$'
+      and response_sha256 <>
+        'sha256:659b7a9d71c7a0bb41467c74cfe3d8be4bbbc6a2f15962a315b1c95de975b6a2'
+      and failure_kind is null)
+    or (status='failed' and response_sha256 is null and failure_kind is not null)
+  ),
+  constraint aiq_speed_observation_trials_artifact_count_check check (
+    artifact_count between 0 and 2
+  )
+);
+
+comment on table aiq_private.aiq_speed_observation_trials is
+  'Compact timing, token, tool, and credit measurements. No semantic score is stored.';
+
+create trigger aiq_speed_observation_batches_append_only before update or delete on aiq_private.aiq_speed_observation_batches
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+create trigger aiq_speed_observation_trials_append_only before update or delete on aiq_private.aiq_speed_observation_trials
+  for each row execute function aiq_private.reject_calibration_evidence_mutation();
+
+create index aiq_speed_observation_trials_batch_idx
+  on aiq_private.aiq_speed_observation_trials(batch_id);
+create index aiq_speed_observation_trials_series_idx
+  on aiq_private.aiq_speed_observation_trials(
+    model_family,reasoning_effort,mode,batch_id
+  );
+
+create function aiq_private.speed_model_is_valid(candidate jsonb) returns boolean
+language plpgsql immutable set search_path to '' as $$
+begin
+  return aiq_private.has_exact_jsonb_keys(
+      candidate,array['family','reasoning_effort']::text[]
+    )
+    and candidate->>'family' in ('sol','terra','luna')
+    and candidate->>'reasoning_effort' in ('low','medium','high','xhigh','max','ultra')
+    and not (
+      candidate->>'family'='luna' and candidate->>'reasoning_effort'='ultra'
+    );
+exception when others then return false;
+end;
+$$;
+
+create function aiq_private.speed_tokens_are_valid(candidate jsonb) returns boolean
+language plpgsql immutable set search_path to '' as $$
+begin
+  return jsonb_typeof(candidate)='object'
+    and not exists (
+      select 1 from jsonb_object_keys(candidate) key
+      where key not in (
+        'input','cached_input','cache_write_input','output','reasoning','total'
+      )
+    )
+    and not exists (
+      select 1 from jsonb_each(candidate) entry
+      where not aiq_private.dto_uint_is_valid(entry.value,9007199254740991)
+    )
+    and (
+      not (candidate ? 'cached_input') or not (candidate ? 'input')
+      or (candidate->>'cached_input')::numeric <= (candidate->>'input')::numeric
+    );
+exception when others then return false;
+end;
+$$;
+
+create function aiq_private.speed_credit_estimate_nanos(
+  supplied_family text,supplied_mode text,candidate_tokens jsonb
+) returns bigint
+language plpgsql immutable set search_path to '' as $$
+declare
+  input_tokens numeric;
+  cached_tokens numeric;
+  output_tokens numeric;
+  input_rate numeric;
+  cached_rate numeric;
+  output_rate numeric;
+  multiplier numeric;
+  result numeric;
+begin
+  if not aiq_private.speed_tokens_are_valid(candidate_tokens)
+    or not (candidate_tokens ? 'input') or not (candidate_tokens ? 'output')
+  then return null; end if;
+  input_tokens := (candidate_tokens->>'input')::numeric;
+  cached_tokens := coalesce((candidate_tokens->>'cached_input')::numeric,0);
+  output_tokens := (candidate_tokens->>'output')::numeric;
+  if cached_tokens > input_tokens then return null; end if;
+  select rates.input_rate,rates.cached_rate,rates.output_rate into
+    input_rate,cached_rate,output_rate
+  from (values
+    ('sol'::text,125000::numeric,12500::numeric,750000::numeric),
+    ('terra',50000,5000,300000),
+    ('luna',5000,500,30000)
+  ) rates(family,input_rate,cached_rate,output_rate)
+  where rates.family=supplied_family;
+  multiplier := case supplied_mode when 'normal' then 10000 when 'fast' then 25000 end;
+  if input_rate is null or multiplier is null then return null; end if;
+  result := trunc(((input_tokens-cached_tokens)*input_rate
+    + cached_tokens*cached_rate + output_tokens*output_rate)*multiplier/10000);
+  if result not between 0 and 9007199254740991 then return null; end if;
+  return result::bigint;
+exception when others then return null;
+end;
+$$;
+
+create function aiq_private.speed_observation_v1_is_valid(candidate jsonb) returns boolean
+language plpgsql stable set search_path to '' as $$
+declare
+  capability jsonb;
+  trial jsonb;
+  trial_elapsed bigint;
+  expected_tps bigint;
+  expected_credits bigint;
+  trials_per_mode integer;
+  observed_ms numeric;
+begin
+  if not aiq_private.has_exact_jsonb_keys(candidate,array[
+      'batch_id','capabilities','catalog','codex_code_mode_host_sha256',
+      'codex_executable_sha256','content_sha256','credit_rate_card_version',
+      'observed_at','prompt_sha256','runner_executable_sha256','schema_version',
+      'trials','trials_per_mode','unavailable_metrics'
+    ]::text[])
+    or candidate->>'schema_version'<>'aiq.speed-observation-batch.v1'
+    or candidate->>'credit_rate_card_version'<>'openai-codex-rate-card-2026-08-10'
+    or candidate->>'batch_id' !~ '^speed_[0-9a-f]{64}$'
+    or candidate->>'observed_at' !~ '^unix-ms:[1-9][0-9]*$'
+    or candidate->>'prompt_sha256'<>
+      'sha256:17647bf92eb56120675a925451c9e6bcf9a2d27d43dae67b98d0588acfa62ca8'
+    or not aiq_private.dto_sha256_is_valid(candidate->'runner_executable_sha256')
+    or not aiq_private.dto_sha256_is_valid(candidate->'codex_executable_sha256')
+    or not aiq_private.dto_sha256_is_valid(candidate->'codex_code_mode_host_sha256')
+    or not aiq_private.dto_sha256_is_valid(candidate->'content_sha256')
+    or not aiq_private.dto_uint_is_valid(candidate->'trials_per_mode',10)
+    or (candidate->>'trials_per_mode')::integer not between 1 and 10
+    or not aiq_private.jcs_bytes_is_within(candidate,4194304)
+    or candidate->>'content_sha256' is distinct from
+      aiq_private.jcs_sha256(candidate-'batch_id'-'content_sha256')
+    or candidate->>'batch_id' is distinct from
+      'speed_'||substr(candidate->>'content_sha256',8)
+    or candidate->'unavailable_metrics' <> '[
+      {"metric":"ttft_ms","reason":"current_codex_jsonl_has_no_first_token_timestamp"},
+      {"metric":"post_first_token_output_tps_millis","reason":"current_codex_jsonl_has_no_first_token_timestamp"}
+    ]'::jsonb
+    or jsonb_typeof(candidate->'catalog')<>'object'
+    or not aiq_private.has_exact_jsonb_keys(candidate->'catalog',array[
+      'catalog_sha256','codex_version','status','unavailable_reason'
+    ]::text[])
+    or candidate->'catalog'->>'status' not in ('available','unavailable')
+    or (
+      candidate->'catalog'->>'status'='available' and (
+        not aiq_private.dto_ascii_is_valid(candidate->'catalog'->'codex_version',128)
+        or not aiq_private.dto_sha256_is_valid(candidate->'catalog'->'catalog_sha256')
+        or candidate->'catalog'->'unavailable_reason'<>'null'::jsonb
+      )
+    )
+    or (
+      candidate->'catalog'->>'status'='unavailable' and (
+        candidate->'catalog'->'codex_version'<>'null'::jsonb
+        or candidate->'catalog'->'catalog_sha256'<>'null'::jsonb
+        or candidate->'catalog'->>'unavailable_reason' !~ '^[a-z][a-z_]{0,127}$'
+      )
+    )
+    or jsonb_typeof(candidate->'capabilities')<>'array'
+    or jsonb_array_length(candidate->'capabilities') not between 2 and 34
+    or jsonb_typeof(candidate->'trials')<>'array'
+    or jsonb_array_length(candidate->'trials')>340
+  then return false; end if;
+
+  observed_ms := substr(candidate->>'observed_at',9)::numeric;
+  if observed_ms not between 1 and 4102444800000 then return false; end if;
+  trials_per_mode := (candidate->>'trials_per_mode')::integer;
+
+  for capability in select value from jsonb_array_elements(candidate->'capabilities') loop
+    if not aiq_private.has_exact_jsonb_keys(
+        capability,array['mode','model','reason','status']::text[]
+      )
+      or not aiq_private.speed_model_is_valid(capability->'model')
+      or capability->>'mode' not in ('normal','fast')
+      or capability->>'status' not in ('available','unsupported','unavailable')
+      or capability->>'reason' !~ '^[a-z][a-z_]{0,127}$'
+      or (
+        candidate->'catalog'->>'status'='unavailable'
+        and capability->>'status'<>'unavailable'
+      )
+    then return false; end if;
+  end loop;
+  if exists (
+    select 1
+    from jsonb_array_elements(candidate->'capabilities') capability
+    group by capability->'model'->>'family',capability->'model'->>'reasoning_effort'
+    having count(*)<>2 or count(distinct capability->>'mode')<>2
+  ) or (
+    select count(*) from jsonb_array_elements(candidate->'capabilities')
+  ) <> (
+    select count(distinct (capability->'model'->>'family',capability->'model'->>'reasoning_effort'))*2
+    from jsonb_array_elements(candidate->'capabilities') capability
+  ) then return false; end if;
+
+  for trial in select value from jsonb_array_elements(candidate->'trials') loop
+    if not aiq_private.has_exact_jsonb_keys(trial,array[
+        'aggregate_output_tps_millis','artifacts','elapsed_ms','estimated_credits_nanos',
+        'failure','mode','model','observed_at','post_first_token_output_tps_millis',
+        'response_sha256','status','tokens','tool_usage','trial_id','trial_index','ttft_ms'
+      ]::text[])
+      or trial->>'trial_id' !~ '^speed_trial_[0-9a-f]{64}$'
+      or trial->>'observed_at'<>candidate->>'observed_at'
+      or not aiq_private.speed_model_is_valid(trial->'model')
+      or trial->>'mode' not in ('normal','fast')
+      or not aiq_private.dto_uint_is_valid(trial->'trial_index',trials_per_mode-1)
+      or trial->>'status' not in ('completed','invalid_response','failed')
+      or not aiq_private.dto_uint_is_valid(trial->'elapsed_ms',9007199254740991)
+      or trial->'ttft_ms'<>'null'::jsonb
+      or trial->'post_first_token_output_tps_millis'<>'null'::jsonb
+      or not aiq_private.speed_tokens_are_valid(trial->'tokens')
+      or not aiq_private.has_exact_jsonb_keys(
+        trial->'tool_usage',array['by_tool','steps','total_calls']::text[]
+      )
+      or not aiq_private.dto_uint_is_valid(
+        trial->'tool_usage'->'steps',9007199254740991
+      )
+      or trial->'tool_usage'->'total_calls'<>'0'::jsonb
+      or trial->'tool_usage'->'by_tool'<>'{}'::jsonb
+      or not aiq_private.dto_artifact_array_is_valid(
+        trial->'artifacts',array['stdout.jsonl','stderr.txt'],2
+      )
+      or not exists (
+        select 1 from jsonb_array_elements(candidate->'capabilities') capability
+        where capability->'model'=trial->'model'
+          and capability->>'mode'=trial->>'mode'
+          and capability->>'status'='available'
+      )
+    then return false; end if;
+
+    trial_elapsed := (trial->>'elapsed_ms')::bigint;
+    expected_tps := case
+      when not (trial->'tokens' ? 'output') or trial_elapsed=0 then null
+      else trunc((trial->'tokens'->>'output')::numeric*1000000/trial_elapsed)::bigint
+    end;
+    expected_credits := aiq_private.speed_credit_estimate_nanos(
+      trial->'model'->>'family',trial->>'mode',trial->'tokens'
+    );
+    if (
+      case when expected_tps is null then trial->'aggregate_output_tps_millis'<>'null'::jsonb
+        else not aiq_private.dto_uint_is_valid(
+          trial->'aggregate_output_tps_millis',9007199254740991
+        ) or (trial->>'aggregate_output_tps_millis')::bigint<>expected_tps end
+    ) or (
+      case when expected_credits is null then trial->'estimated_credits_nanos'<>'null'::jsonb
+        else not aiq_private.dto_uint_is_valid(
+          trial->'estimated_credits_nanos',9007199254740991
+        ) or (trial->>'estimated_credits_nanos')::bigint<>expected_credits end
+    ) or not (
+      (trial->>'status'='completed' and trial->>'response_sha256'=
+        'sha256:659b7a9d71c7a0bb41467c74cfe3d8be4bbbc6a2f15962a315b1c95de975b6a2'
+        and trial->'failure'='null'::jsonb)
+      or (trial->>'status'='invalid_response'
+        and aiq_private.dto_sha256_is_valid(trial->'response_sha256')
+        and trial->>'response_sha256'<>
+          'sha256:659b7a9d71c7a0bb41467c74cfe3d8be4bbbc6a2f15962a315b1c95de975b6a2'
+        and trial->'failure'='null'::jsonb)
+      or (trial->>'status'='failed' and trial->'response_sha256'='null'::jsonb
+        and aiq_private.has_exact_jsonb_keys(
+          trial->'failure',array['exit_code','kind','message']::text[]
+        ) and trial->'failure'->>'kind' ~ '^[a-z][a-z_]{0,63}$'
+        and jsonb_typeof(trial->'failure'->'message')='string'
+        and octet_length(trial->'failure'->>'message') between 1 and 512
+        and (trial->'failure'->'exit_code'='null'::jsonb or
+          aiq_private.dto_uint_is_valid(trial->'failure'->'exit_code',2147483647)))
+    ) then return false; end if;
+  end loop;
+
+  if (
+    select count(*) from jsonb_array_elements(candidate->'trials')
+  ) <> (
+    select count(distinct trial->>'trial_id') from jsonb_array_elements(candidate->'trials') trial
+  ) or exists (
+    select 1 from jsonb_array_elements(candidate->'capabilities') capability
+    where (
+      select count(*) from jsonb_array_elements(candidate->'trials') trial
+      where trial->'model'=capability->'model' and trial->>'mode'=capability->>'mode'
+    ) <> case when capability->>'status'='available' then trials_per_mode else 0 end
+  ) then return false; end if;
+  return true;
+exception when others then return false;
+end;
+$$;
+
+create function public.aiq_record_speed_observation(
+  supplied_batch jsonb,supplied_object_id uuid,supplied_object_identity jsonb
+) returns text
+language plpgsql security definer set search_path to '' as $$
+declare
+  existing aiq_private.aiq_speed_observation_batches%rowtype;
+  storage aiq_private.aiq_storage_objects%rowtype;
+  trial jsonb;
+  observed_ms bigint;
+begin
+  perform aiq_private.require_request_role('service_role');
+  if not aiq_private.speed_observation_v1_is_valid(supplied_batch)
+    or not aiq_private.has_exact_jsonb_keys(
+      supplied_object_identity,array['bucket','bytes','key','sha256']::text[]
+    )
+    or supplied_object_identity->>'bucket'<>'aiq-runner-artifacts'
+    or supplied_object_identity->>'key'<>
+      'sha256/'||supplied_object_identity->>'sha256'||'/speed-observation.json'
+    or supplied_object_identity->>'sha256' !~ '^[0-9a-f]{64}$'
+    or not aiq_private.dto_uint_is_valid(supplied_object_identity->'bytes',4194304)
+    or (supplied_object_identity->>'bytes')::bigint not between 1 and 4194304
+  then raise exception 'invalid speed observation' using errcode='22023'; end if;
+
+  select * into storage from aiq_private.aiq_storage_objects object
+  where object.object_id=supplied_object_id
+    and object.object_type='runner_artifact'
+    and object.artifact_kind='speed-observation.json'
+    and object.bucket_name=supplied_object_identity->>'bucket'
+    and object.object_path=supplied_object_identity->>'key'
+    and object.content_sha256=supplied_object_identity->>'sha256'
+    and object.byte_size=(supplied_object_identity->>'bytes')::bigint
+    and object.lifecycle_state='active'
+  for update;
+  if storage.object_id is null then
+    raise exception 'speed observation Storage evidence is absent' using errcode='55000';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(
+    supplied_batch->>'batch_id',71783153620529
+  ));
+  select * into existing from aiq_private.aiq_speed_observation_batches batch
+  where batch.batch_id=supplied_batch->>'batch_id' for update;
+  if existing.batch_id is not null then
+    if existing.content_sha256=supplied_batch->>'content_sha256'
+      and existing.object_id=supplied_object_id
+      and existing.object_sha256=supplied_object_identity->>'sha256'
+    then return 'duplicate'; end if;
+    raise exception 'conflicting speed observation identity' using errcode='23505';
+  end if;
+
+  observed_ms:=substr(supplied_batch->>'observed_at',9)::bigint;
+  insert into aiq_private.aiq_speed_observation_batches(
+    batch_id,observed_at,observed_unix_ms,schema_version,content_sha256,prompt_sha256,
+    runner_executable_sha256,codex_executable_sha256,codex_code_mode_host_sha256,
+    credit_rate_card_version,trials_per_mode,catalog,capabilities,unavailable_metrics,
+    object_id,object_sha256,object_bytes
+  ) values (
+    supplied_batch->>'batch_id',pg_catalog.to_timestamp(observed_ms::double precision/1000),
+    observed_ms,supplied_batch->>'schema_version',supplied_batch->>'content_sha256',
+    supplied_batch->>'prompt_sha256',supplied_batch->>'runner_executable_sha256',
+    supplied_batch->>'codex_executable_sha256',
+    supplied_batch->>'codex_code_mode_host_sha256',
+    supplied_batch->>'credit_rate_card_version',
+    (supplied_batch->>'trials_per_mode')::smallint,supplied_batch->'catalog',
+    supplied_batch->'capabilities',supplied_batch->'unavailable_metrics',
+    supplied_object_id,supplied_object_identity->>'sha256',
+    (supplied_object_identity->>'bytes')::bigint
+  );
+
+  for trial in select value from jsonb_array_elements(supplied_batch->'trials') loop
+    insert into aiq_private.aiq_speed_observation_trials(
+      trial_id,batch_id,model_family,reasoning_effort,mode,trial_index,status,
+      elapsed_ms,aggregate_output_tps_millis,input_tokens,cached_input_tokens,
+      cache_write_input_tokens,output_tokens,reasoning_output_tokens,total_tokens,
+      agent_steps,tool_call_count,estimated_credits_nanos,response_sha256,
+      failure_kind,artifact_count
+    ) values (
+      trial->>'trial_id',supplied_batch->>'batch_id',trial->'model'->>'family',
+      trial->'model'->>'reasoning_effort',trial->>'mode',(trial->>'trial_index')::smallint,
+      trial->>'status',(trial->>'elapsed_ms')::bigint,
+      (trial->>'aggregate_output_tps_millis')::bigint,(trial->'tokens'->>'input')::bigint,
+      (trial->'tokens'->>'cached_input')::bigint,
+      (trial->'tokens'->>'cache_write_input')::bigint,
+      (trial->'tokens'->>'output')::bigint,(trial->'tokens'->>'reasoning')::bigint,
+      (trial->'tokens'->>'total')::bigint,(trial->'tool_usage'->>'steps')::bigint,
+      (trial->'tool_usage'->>'total_calls')::bigint,
+      (trial->>'estimated_credits_nanos')::bigint,trial->>'response_sha256',
+      trial->'failure'->>'kind',jsonb_array_length(trial->'artifacts')
+    );
+  end loop;
+  return 'accepted';
+end;
+$$;
+
+create view public.public_speed_observations with (security_invoker=true) as
+select batch.batch_id,batch.observed_at,
+  capability->'model'->>'family' as model_family,
+  capability->'model'->>'reasoning_effort' as reasoning_effort,
+  capability->>'mode' as mode,capability->>'status' as availability_status,
+  capability->>'reason' as availability_reason,batch.trials_per_mode,
+  count(trial.trial_id)::integer as attempted_trials,
+  count(trial.trial_id) filter(where trial.status='completed')::integer as completed_trials,
+  count(trial.trial_id) filter(where trial.status='invalid_response')::integer
+    as invalid_response_trials,
+  count(trial.trial_id) filter(where trial.status='failed')::integer as failed_trials,
+  round(percentile_cont(0.5) within group(order by trial.elapsed_ms)
+    filter(where trial.status='completed'))::bigint as median_elapsed_ms,
+  round(percentile_cont(0.95) within group(order by trial.elapsed_ms)
+    filter(where trial.status='completed'))::bigint as p95_elapsed_ms,
+  round(percentile_cont(0.5) within group(order by trial.aggregate_output_tps_millis)
+    filter(where trial.status='completed' and trial.aggregate_output_tps_millis is not null))::bigint
+    as median_aggregate_output_tps_millis,
+  sum(trial.estimated_credits_nanos) as estimated_credits_nanos,
+  count(trial.estimated_credits_nanos)::integer as estimated_credit_sample_count,
+  sum(trial.input_tokens) as input_tokens,sum(trial.cached_input_tokens) as cached_input_tokens,
+  sum(trial.output_tokens) as output_tokens,sum(trial.total_tokens) as total_tokens,
+  round(percentile_cont(0.5) within group(order by trial.agent_steps)
+    filter(where trial.status='completed'))::bigint as median_agent_steps,
+  round(percentile_cont(0.5) within group(order by trial.tool_call_count)
+    filter(where trial.status='completed'))::bigint as median_tool_call_count,
+  null::bigint as median_ttft_ms,'unavailable'::text as ttft_status,
+  null::bigint as median_post_first_token_output_tps_millis,
+  'unavailable'::text as post_first_token_output_tps_status,
+  batch.catalog->>'status' as catalog_status,batch.catalog->>'codex_version' as codex_version,
+  batch.credit_rate_card_version,'none'::text as scoring_impact
+from aiq_private.aiq_speed_observation_batches batch
+cross join lateral jsonb_array_elements(batch.capabilities) capability
+left join aiq_private.aiq_speed_observation_trials trial
+  on trial.batch_id=batch.batch_id
+  and trial.model_family=capability->'model'->>'family'
+  and trial.reasoning_effort=capability->'model'->>'reasoning_effort'
+  and trial.mode=capability->>'mode'
+where batch.published
+group by batch.batch_id,batch.observed_at,capability,batch.trials_per_mode,
+  batch.catalog,batch.credit_rate_card_version;
+
+comment on view public.public_speed_observations is
+  'Normal/Fast timing, throughput, token, tool, and credit evidence. Scoring impact is always none.';
+
+create function public.public_speed_trend_points(supplied_range text)
+returns table(
+  model_family text,reasoning_effort text,mode text,recorded_at timestamptz,
+  bucket_started_at timestamptz,bucket_ended_at timestamptz,
+  attempted_trials bigint,completed_trials bigint,represented_batch_count bigint,
+  median_elapsed_ms bigint,p95_elapsed_ms bigint,
+  median_aggregate_output_tps_millis bigint,estimated_credits_nanos numeric,
+  input_tokens numeric,cached_input_tokens numeric,output_tokens numeric,total_tokens numeric,
+  median_agent_steps bigint,median_tool_call_count bigint,resolution_seconds bigint
+)
+language plpgsql stable set search_path to '' as $$
+declare
+  latest_recorded_at timestamptz;
+  oldest_recorded_at timestamptz;
+  range_started_at timestamptz;
+  range_ended_at timestamptz;
+  bucket_seconds bigint;
+begin
+  if supplied_range not in ('day','week','month','all') then
+    raise exception 'unsupported speed trend range' using errcode='22023';
+  end if;
+  select max(observed_at),min(observed_at) into latest_recorded_at,oldest_recorded_at
+  from aiq_private.aiq_speed_observation_batches where published;
+  if latest_recorded_at is null then return; end if;
+  range_started_at:=case supplied_range
+    when 'day' then latest_recorded_at-interval '1 day'
+    when 'week' then latest_recorded_at-interval '7 days'
+    when 'month' then latest_recorded_at-interval '31 days'
+    else oldest_recorded_at end;
+  range_ended_at:=latest_recorded_at+interval '1 millisecond';
+  bucket_seconds:=greatest(1,ceil(extract(epoch from range_ended_at-range_started_at)/20)::bigint);
+  return query
+  with observations as (
+    select trial.*,
+      batch.observed_at,
+      pg_catalog.to_timestamp(
+        floor(extract(epoch from batch.observed_at)/bucket_seconds)*bucket_seconds
+      ) as bucket_start
+    from aiq_private.aiq_speed_observation_trials trial
+    join aiq_private.aiq_speed_observation_batches batch using(batch_id)
+    where batch.published and batch.observed_at>=range_started_at
+      and batch.observed_at<range_ended_at
+  )
+  select observation.model_family,observation.reasoning_effort,observation.mode,
+    max(observation.observed_at),observation.bucket_start,
+    observation.bucket_start+pg_catalog.make_interval(secs=>bucket_seconds::double precision),
+    count(*)::bigint,count(*) filter(where observation.status='completed')::bigint,
+    count(distinct observation.batch_id)::bigint,
+    round(percentile_cont(0.5) within group(order by observation.elapsed_ms)
+      filter(where observation.status='completed'))::bigint,
+    round(percentile_cont(0.95) within group(order by observation.elapsed_ms)
+      filter(where observation.status='completed'))::bigint,
+    round(percentile_cont(0.5) within group(order by observation.aggregate_output_tps_millis)
+      filter(where observation.status='completed'
+        and observation.aggregate_output_tps_millis is not null))::bigint,
+    sum(observation.estimated_credits_nanos),sum(observation.input_tokens),
+    sum(observation.cached_input_tokens),sum(observation.output_tokens),sum(observation.total_tokens),
+    round(percentile_cont(0.5) within group(order by observation.agent_steps)
+      filter(where observation.status='completed'))::bigint,
+    round(percentile_cont(0.5) within group(order by observation.tool_call_count)
+      filter(where observation.status='completed'))::bigint,bucket_seconds
+  from observations observation
+  group by observation.model_family,observation.reasoning_effort,observation.mode,
+    observation.bucket_start
+  order by observation.model_family,observation.reasoning_effort,observation.mode,
+    observation.bucket_start;
+end;
+$$;
+
+alter table aiq_private.aiq_speed_observation_batches enable row level security;
+alter table aiq_private.aiq_speed_observation_batches force row level security;
+create policy aiq_speed_observation_batches_public_read on aiq_private.aiq_speed_observation_batches
+  for select to anon,authenticated
+  using(published);
+alter table aiq_private.aiq_speed_observation_trials enable row level security;
+alter table aiq_private.aiq_speed_observation_trials force row level security;
+create policy aiq_speed_observation_trials_public_read on aiq_private.aiq_speed_observation_trials
+  for select to anon,authenticated
+  using(exists(
+    select 1 from aiq_private.aiq_speed_observation_batches batch
+    where batch.batch_id=aiq_speed_observation_trials.batch_id and batch.published
+  ));
+
+revoke all on table aiq_private.aiq_speed_observation_batches,
+  aiq_private.aiq_speed_observation_trials from public,anon,authenticated;
+grant select(batch_id,observed_at,trials_per_mode,catalog,capabilities,
+  credit_rate_card_version,published)
+  on aiq_private.aiq_speed_observation_batches to anon,authenticated;
+grant select(trial_id,batch_id,model_family,reasoning_effort,mode,status,elapsed_ms,
+  aggregate_output_tps_millis,input_tokens,cached_input_tokens,output_tokens,total_tokens,
+  agent_steps,tool_call_count,estimated_credits_nanos)
+  on aiq_private.aiq_speed_observation_trials to anon,authenticated;
+revoke all on table public.public_speed_observations from public, anon, authenticated;
+grant select on table public.public_speed_observations to anon, authenticated;
+revoke all on function public.public_speed_trend_points(text) from public;
+grant execute on function public.public_speed_trend_points(text) to anon,authenticated;
+revoke all on function public.aiq_record_speed_observation(jsonb,uuid,jsonb)
+  from public,anon,authenticated,aiq_verifier,aiq_publisher;
+grant execute on function public.aiq_record_speed_observation(jsonb,uuid,jsonb) to service_role;
+revoke all on function aiq_private.speed_model_is_valid(jsonb),
+  aiq_private.speed_tokens_are_valid(jsonb),
+  aiq_private.speed_credit_estimate_nanos(text,text,jsonb),
+  aiq_private.speed_observation_v1_is_valid(jsonb) from public;
 
 commit;

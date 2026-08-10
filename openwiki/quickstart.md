@@ -69,11 +69,14 @@ The scorer-owned browser fixture in
 Rust `generate-test-public-fixture` command. Its outer contract rejects
 production publication, Official eligibility, and ranking eligibility.
 
-Production still has no cloud runner or verifier worker and no recurring
-benchmark or Storage schedule. The twice-daily benchmark schedule and its next
-run remain pending operations work; documentation must not authorize recurring
-automation. See [Deployment Handoff](deployment-handoff.md) for the remaining
-operational boundary.
+Production uses the native macOS runner and verifier. The repository-owned
+continuous-observation entrypoint selects the due `03:00` or `15:00` UTC slot,
+prevents overlapping work, resumes the unchanged slot after interruption, and
+publishes only signed verifier-accepted evidence. Its `launchd` template wakes
+hourly at minute 5 so a failed current slot can retry without creating extra
+model runs. The concrete configuration, launcher, credentials, and state root
+remain private operator assets. See [Operations](operations.md#continuous-observations)
+and [Deployment Handoff](deployment-handoff.md#recurring-macos-observations).
 
 The native subscription runner copies `~/.codex/auth.json` into an isolated,
 mode-private `CODEX_HOME` and passes that directory to the Codex subprocess.
@@ -184,6 +187,17 @@ and Codex code-mode host. The offline native verifier validates the receipt
 against an independently supplied digest. The receipt is not published, and
 database initialization does not consume it. Node.js and ripgrep identities
 remain in the corpus commitment.
+
+## Task routing
+
+| Change area or user intent | Relevant wiki page | Exact source entry points | Important symbols or types | Focused tests | Minimal validation command |
+| --- | --- | --- | --- | --- | --- |
+| Change the all-configuration analysis workbench | [Architecture and runtime](architecture-and-runtime.md#configuration-workbench) | `apps/web/src/app/page.tsx`, `apps/web/src/app/compare/page.tsx`, `apps/web/src/components/configuration-workbench-view.tsx` | `ConfigurationWorkbench`, `readConfigurationWorkbenchState`, `filterConfigurationWorkbenchRows` | `apps/web/src/components/configuration-workbench.test.ts`, `configuration-workbench-three.test.ts` | `npm run test --workspace @aiq/web` |
+| Change verification or publication evidence bindings | [Architecture and runtime](architecture-and-runtime.md#verification-flow) and [Benchmark method](benchmark-method.md#verification) | `apps/web/src/server/verification-contract.ts`, `apps/aiq-verifier/src/lib.rs` | `NormalizedStage`, `VerifierAttestation`, `terminal_attempt_lineage_digest` | `apps/web/src/server/verification.test.ts`, verifier tests | `cargo make verify` |
+| Change scoring, calibration, or normalized-batch semantics | [Benchmark method](benchmark-method.md) | `apps/aiq-runner/src/scoring.rs`, `apps/aiq-runner/src/calibration_verification.rs`, `benchmarks/schema/normalized-batch-v4.schema.json` | aggregate scoring `1.0.8`, fixed bank, task-resampling identity | `apps/aiq-runner` tests, `scripts/check-normalization-schemas.test.ts` | `cargo run -p aiq-runner -- matrix` |
+| Change database initialization, reset, or Supabase targeting | [Operations](operations.md#fresh-database-initialization) and [Deployment handoff](deployment-handoff.md) | `databases/init.ts`, `databases/reset.ts`, `databases/schema.sql` | `assertDatabaseTarget`, `inventorySql`, `resetDatabase` | `databases/init.test.ts`, `databases/reset.test.ts` | `node --test databases/*.test.ts` |
+| Change public navigation or radar telemetry presentation | [Architecture and runtime](architecture-and-runtime.md#public-application) | `apps/web/src/app/page.tsx`, `apps/web/src/app/radar/page.tsx`, `apps/web/src/components/site-header.tsx` | anchored workspace sections, reporting telemetry state | static contracts and browser suites | `cargo make verify` |
+| Change twice-daily Official or Normal/Fast observation operations | [Operations](operations.md#continuous-observations) and [Deployment handoff](deployment-handoff.md#recurring-macos-observations) | `scripts/continuous-observation.ts`, `config/continuous-observation.example.json`, `config/com.acgbox.aiq.continuous-observations.plist.example` | canonical UTC slots, global lock, per-slot state, isolated `CODEX_HOME` | `scripts/continuous-observation.test.ts`, speed-observation runner tests | `node --test scripts/continuous-observation.test.ts` |
 
 ## Next reading
 

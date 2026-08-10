@@ -57,7 +57,7 @@ void describe('analytical chart interaction contracts', () => {
   void it('states that connected trend observations are not interpolated', () => {
     const trend = source('./trend-explorer.tsx');
     assert.match(trend, /connected observations; no interpolation/);
-    assert.match(trend, /they do not interpolate or estimate\s+values\s+between dates/);
+    assert.match(trend, /they do not interpolate or estimate\s+values\s+between\s+dates/);
     assert.match(trend, /connectNulls: false/);
     assert.match(trend, /smooth: false/);
   });

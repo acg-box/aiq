@@ -75,6 +75,7 @@ use aiq_runner::{
 		CalibrationScoreReport, FalseOnly, FrozenCalibrationBankV2, ScoreContext, ScoreOptions,
 		ScoreReport,
 	},
+	speed_observation::{self, SpeedObservationBatch, SpeedObservationOptions},
 	submission::{
 		self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY,
 		MAX_SUBMISSION_BYTES, SecretToken, SubmissionBundleOutcome,
@@ -1142,6 +1143,48 @@ enum Command {
 		#[arg(long, default_value = "-")]
 		output: PathBuf,
 	},
+	/// Observe Normal and Fast subscription transport without changing any AIQ score.
+	ObserveSpeed {
+		/// Current corpus commitment used only to validate the controlled command toolchain.
+		#[arg(long)]
+		corpus_commitment: PathBuf,
+		/// Exact Node.js executable committed by the corpus.
+		#[arg(long)]
+		evaluator_runtime: PathBuf,
+		/// Exact controlled Node.js and ripgrep directory.
+		#[arg(long)]
+		codex_toolchain_root: PathBuf,
+		/// Absolute controlled Codex executable with its required sibling host.
+		#[arg(long, value_parser = parse_controlled_codex_binary)]
+		codex_binary: String,
+		/// Isolated existing ChatGPT subscription Codex home.
+		#[arg(long, value_parser = parse_controlled_codex_home)]
+		codex_home: PathBuf,
+		/// Private content-addressed raw artifact root.
+		#[arg(long)]
+		artifact_root: PathBuf,
+		/// Private resumable workspace root for this scheduled observation.
+		#[arg(long)]
+		workspace_root: PathBuf,
+		/// Private create-once per-trial checkpoint root.
+		#[arg(long)]
+		checkpoint_root: PathBuf,
+		/// Canonical observation identity.
+		#[arg(long, value_parser = parse_run_observed_at)]
+		observed_at: String,
+		/// Exact model key to observe. Repeat to select a subset; omit for all 17.
+		#[arg(long = "model")]
+		models: Vec<String>,
+		/// Trials per transport and model configuration.
+		#[arg(long, default_value_t = 5)]
+		trials: u8,
+		/// Maximum model configurations observed concurrently.
+		#[arg(long, default_value_t = 4)]
+		jobs: usize,
+		/// New machine-readable observation batch.
+		#[arg(long)]
+		output: PathBuf,
+	},
 	/// Validate the immutable 72-task AIQ Core corpus without invoking Codex.
 	ValidateCoreCorpus {
 		#[arg(long)]
@@ -1566,6 +1609,24 @@ enum Command {
 		#[arg(long, default_value_t = false)]
 		allow_loopback_http: bool,
 	},
+	/// Submit one validated auxiliary Normal/Fast observation to the controlled gateway.
+	SubmitSpeed {
+		/// Persisted `aiq.speed-observation-batch.v1` JSON.
+		#[arg(long)]
+		observation: PathBuf,
+		/// Vercel deployment origin. The runner posts to `/api/observations/speed`.
+		#[arg(long)]
+		endpoint: String,
+		/// Environment variable that contains the runner bearer token.
+		#[arg(long, default_value = "AIQ_RUNNER_SUBMISSION_TOKEN")]
+		token_env: String,
+		/// Global HTTPS timeout in seconds.
+		#[arg(long, default_value_t = 30)]
+		timeout_seconds: u64,
+		/// Permit plain HTTP only when the endpoint is a loopback origin.
+		#[arg(long, default_value_t = false)]
+		allow_loopback_http: bool,
+	},
 	/// Sign a saved run as a content-addressed submission envelope.
 	Package {
 		/// Saved run JSON.
@@ -1775,6 +1836,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			&output,
 			&MatrixReport { schema_version: "aiq.matrix.v1", models: MODEL_MATRIX.to_vec() },
 		)?,
+		command @ Command::ObserveSpeed { .. } => dispatch_speed_observation(command)?,
 		command @ (Command::ValidateCoreCorpus { .. }
 		| Command::ValidateContrastCorpus { .. }
 		| Command::Validate { .. }) => dispatch_corpus_validation(command)?,
@@ -1878,6 +1940,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 			artifact_upload_concurrency,
 			allow_loopback_http,
 		)?,
+		command @ Command::SubmitSpeed { .. } => dispatch_submit_speed(command)?,
 		command @ Command::Package { .. } => dispatch_package(command)?,
 		Command::Identity { signing_key_env } => run_identity(&signing_key_env)?,
 		command @ Command::Normalize { .. } => run_normalize_command(command)?,
@@ -1885,6 +1948,98 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 	}
 
 	Ok(())
+}
+
+fn dispatch_submit_speed(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::SubmitSpeed {
+		observation,
+		endpoint,
+		token_env,
+		timeout_seconds,
+		allow_loopback_http,
+	} = command
+	else {
+		return Err("speed submission dispatcher received another command".into());
+	};
+
+	run_submit_speed(&observation, &endpoint, &token_env, timeout_seconds, allow_loopback_http)
+}
+
+fn dispatch_speed_observation(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::ObserveSpeed {
+		corpus_commitment,
+		evaluator_runtime,
+		codex_toolchain_root,
+		codex_binary,
+		codex_home,
+		artifact_root,
+		workspace_root,
+		checkpoint_root,
+		observed_at,
+		models,
+		trials,
+		jobs,
+		output,
+	} = command
+	else {
+		return Err("speed dispatcher received another command".into());
+	};
+
+	run_speed_observation(
+		&corpus_commitment,
+		&evaluator_runtime,
+		&codex_toolchain_root,
+		&codex_binary,
+		&codex_home,
+		&artifact_root,
+		&workspace_root,
+		&checkpoint_root,
+		observed_at,
+		&models,
+		trials,
+		jobs,
+		&output,
+	)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_speed_observation(
+	corpus_commitment: &Path,
+	evaluator_runtime: &Path,
+	codex_toolchain_root: &Path,
+	codex_binary: &str,
+	codex_home: &Path,
+	artifact_root: &Path,
+	workspace_root: &Path,
+	checkpoint_root: &Path,
+	observed_at: String,
+	model_selectors: &[String],
+	trials: u8,
+	jobs: usize,
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	validate_new_output_set(&[("speed observation output", output)])?;
+
+	let codex_binary = controlled_codex_binary(codex_binary)?;
+	let codex_home = controlled_codex_home(codex_home)?;
+	let evaluator_runtime = EvaluatorRuntime::resolve(evaluator_runtime)?;
+	let tool_policy = corpus_commitment::read_execution_tool_policy(corpus_commitment)?;
+	let model_toolchain =
+		preflight_model_toolchain(codex_toolchain_root, &tool_policy, &evaluator_runtime)?;
+	let batch = speed_observation::observe_speed(&SpeedObservationOptions {
+		models: select_models(model_selectors)?,
+		observed_at,
+		trials_per_mode: trials,
+		jobs,
+		codex_binary,
+		codex_home,
+		workspace_root: workspace_root.to_owned(),
+		checkpoint_root: checkpoint_root.to_owned(),
+		artifact_root: artifact_root.to_owned(),
+		model_toolchain,
+	})?;
+
+	write_json(output, &batch)
 }
 
 fn dispatch_corpus_seal(command: Command) -> Result<(), Box<dyn std::error::Error>> {
@@ -5271,6 +5426,33 @@ fn run_submit(
 	write_json(Path::new("-"), &outcome)?;
 
 	require_successful_package_submission(&outcome)
+}
+
+fn run_submit_speed(
+	observation: &Path,
+	endpoint: &str,
+	token_env: &str,
+	timeout_seconds: u64,
+	allow_loopback_http: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let token = env::var(token_env)
+		.map_err(|_| format!("submission token environment variable {token_env} is unset"))?;
+	let transport = HttpsTransport::new(Duration::from_secs(timeout_seconds), allow_loopback_http);
+	let batch = read_json::<SpeedObservationBatch>(observation)?;
+	let token = SecretToken::new(token)?;
+	let outcome = if allow_loopback_http {
+		submission::submit_speed_observation_allowing_loopback(&transport, endpoint, &batch, token)?
+	} else {
+		submission::submit_speed_observation(&transport, endpoint, &batch, token)?
+	};
+
+	write_json(Path::new("-"), &outcome)?;
+
+	if outcome.kind.is_success() {
+		Ok(())
+	} else {
+		Err(format!("speed observation submission failed with {}", outcome.kind.as_str()).into())
+	}
 }
 
 fn require_successful_package_submission(

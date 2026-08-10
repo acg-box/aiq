@@ -66,6 +66,7 @@ const uuidPattern =
 const artifactKinds = new Set([
   'evaluator-results.json',
   'final-response.txt',
+  'speed-observation.json',
   'stderr.txt',
   'stdout.jsonl',
   'workspace-manifest.json',

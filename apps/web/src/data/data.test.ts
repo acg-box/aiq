@@ -48,6 +48,7 @@ import {
   PUBLIC_VIEW_NAMES,
   RUN_HISTORY_PAGE_SIZE,
   SeedAiqRepository,
+  SPEED_TREND_MAX_POINTS,
   SupabaseAiqRepository,
   type DistributedRadarRow,
   type LeaderboardRow,
@@ -400,6 +401,7 @@ void describe('seed repository', () => {
       'public_calibration_results',
       'public_calibration_scores',
       'public_model_efficiency',
+      'public_speed_observations',
     ]);
   });
 
@@ -1392,6 +1394,153 @@ void describe('presentation aggregates', () => {
         await assert.rejects(invalid.listTrendPoints(), /public_trend_points/);
       }),
     );
+  });
+
+  void it('reads the complete latest Normal/Fast matrix and bounded auxiliary history', async () => {
+    const observedAt = '2026-08-10T15:00:00.000Z';
+    const batchId = `speed_${'a'.repeat(64)}`;
+    const latestRows = CANONICAL_MODEL_MATRIX_IDS.flatMap((entryId) => {
+      const [family, reasoning] = entryId.split('-');
+      return (['normal', 'fast'] as const).map((mode) => ({
+        batch_id: batchId,
+        observed_at: observedAt,
+        model_family: family,
+        reasoning_effort: reasoning,
+        mode,
+        availability_status: 'available',
+        availability_reason: 'live_catalog_advertised',
+        trials_per_mode: 5,
+        attempted_trials: 5,
+        completed_trials: 5,
+        invalid_response_trials: 0,
+        failed_trials: 0,
+        median_elapsed_ms: mode === 'fast' ? 800 : 1200,
+        p95_elapsed_ms: mode === 'fast' ? 900 : 1400,
+        median_aggregate_output_tps_millis: mode === 'fast' ? 180_000 : 120_000,
+        estimated_credits_nanos: mode === 'fast' ? 2_500_000 : 1_000_000,
+        estimated_credit_sample_count: 5,
+        input_tokens: 500,
+        cached_input_tokens: 100,
+        output_tokens: 2000,
+        total_tokens: 2500,
+        median_agent_steps: 1,
+        median_tool_call_count: 0,
+        median_ttft_ms: null,
+        ttft_status: 'unavailable',
+        median_post_first_token_output_tps_millis: null,
+        post_first_token_output_tps_status: 'unavailable',
+        catalog_status: 'available',
+        codex_version: 'codex-cli 0.147.0-alpha.6.5',
+        credit_rate_card_version: 'openai-codex-rate-card-2026-08-10',
+        scoring_impact: 'none',
+      }));
+    });
+    const speedTrendRow = {
+      model_family: 'sol',
+      reasoning_effort: 'low',
+      mode: 'fast',
+      recorded_at: observedAt,
+      bucket_started_at: '2026-08-10T14:00:00.000Z',
+      bucket_ended_at: '2026-08-10T16:00:00.000Z',
+      attempted_trials: 5,
+      completed_trials: 5,
+      represented_batch_count: 1,
+      median_elapsed_ms: 800,
+      p95_elapsed_ms: 900,
+      median_aggregate_output_tps_millis: 180_000,
+      estimated_credits_nanos: 2_500_000,
+      input_tokens: 500,
+      cached_input_tokens: 100,
+      output_tokens: 2000,
+      total_tokens: 2500,
+      median_agent_steps: 1,
+      median_tool_call_count: 0,
+      resolution_seconds: 7200,
+    };
+    const requests: Request[] = [];
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        requests.push(request.clone());
+        return Response.json(
+          new URL(request.url).pathname.endsWith('/rpc/public_speed_trend_points')
+            ? [speedTrendRow]
+            : latestRows,
+        );
+      },
+    );
+    const latest = await repository.listSpeedObservations();
+    assert.equal(latest.length, 34);
+    assert.deepEqual(latest[0], {
+      batchId,
+      observedAt,
+      entryId: 'sol-low',
+      modelFamily: 'Sol',
+      reasoningTier: 'low',
+      mode: 'fast',
+      availabilityStatus: 'available',
+      availabilityReason: 'live_catalog_advertised',
+      trialsPerMode: 5,
+      attemptedTrials: 5,
+      completedTrials: 5,
+      invalidResponseTrials: 0,
+      failedTrials: 0,
+      medianElapsedMs: 800,
+      p95ElapsedMs: 900,
+      medianAggregateOutputTps: 180,
+      estimatedCredits: 0.0025,
+      estimatedCreditSampleCount: 5,
+      inputTokens: 500,
+      cachedInputTokens: 100,
+      outputTokens: 2000,
+      totalTokens: 2500,
+      medianAgentSteps: 1,
+      medianToolCallCount: 0,
+      medianTtftMs: null,
+      ttftStatus: 'unavailable',
+      medianPostFirstTokenOutputTps: null,
+      postFirstTokenOutputTpsStatus: 'unavailable',
+      catalogStatus: 'available',
+      codexVersion: 'codex-cli 0.147.0-alpha.6.5',
+      creditRateCardVersion: 'openai-codex-rate-card-2026-08-10',
+      scoringImpact: 'none',
+    });
+    assert.deepEqual((await repository.listSpeedTrendPoints('week'))[0], {
+      entryId: 'sol-low',
+      modelFamily: 'Sol',
+      reasoningTier: 'low',
+      mode: 'fast',
+      recordedAt: observedAt,
+      bucketStartedAt: '2026-08-10T14:00:00.000Z',
+      bucketEndedAt: '2026-08-10T16:00:00.000Z',
+      attemptedTrials: 5,
+      completedTrials: 5,
+      representedBatchCount: 1,
+      medianElapsedMs: 800,
+      p95ElapsedMs: 900,
+      medianAggregateOutputTps: 180,
+      estimatedCredits: 0.0025,
+      inputTokens: 500,
+      cachedInputTokens: 100,
+      outputTokens: 2000,
+      totalTokens: 2500,
+      medianAgentSteps: 1,
+      medianToolCallCount: 0,
+      resolutionSeconds: 7200,
+    });
+    assert.deepEqual(JSON.parse((await requests[1]?.text()) ?? '{}'), {
+      supplied_range: 'week',
+    });
+
+    const oversized = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async () =>
+        Response.json(Array.from({ length: SPEED_TREND_MAX_POINTS + 1 }, () => speedTrendRow)),
+    );
+    await assert.rejects(oversized.listSpeedTrendPoints(), /response exceeded 680 rows/);
   });
 
   void it('reads exact run summaries in bounded, deduplicated batches', async () => {

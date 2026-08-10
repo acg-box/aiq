@@ -46,6 +46,8 @@ export type CapabilityRecordStatus = 'declared' | 'validated' | 'rejected' | 'ex
 export type ObservationState = 'ready' | 'busy' | 'draining' | 'degraded' | 'offline';
 export type ObservationRecordStatus = 'observed' | 'accepted' | 'rejected' | 'stale';
 export type TrendRange = 'day' | 'week' | 'month' | 'all';
+export type SpeedMode = 'normal' | 'fast';
+export type SpeedAvailabilityStatus = 'available' | 'unsupported' | 'unavailable';
 
 export interface LeaderboardEntry {
   id: string;
@@ -196,6 +198,65 @@ export interface TrendPoint {
   representedRunCount: number;
   resolutionSeconds: number;
   synthetic: boolean;
+}
+
+export interface PublicSpeedObservation {
+  batchId: string;
+  observedAt: string;
+  entryId: string;
+  modelFamily: ModelFamily;
+  reasoningTier: ReasoningTier;
+  mode: SpeedMode;
+  availabilityStatus: SpeedAvailabilityStatus;
+  availabilityReason: string | null;
+  trialsPerMode: number;
+  attemptedTrials: number;
+  completedTrials: number;
+  invalidResponseTrials: number;
+  failedTrials: number;
+  medianElapsedMs: number | null;
+  p95ElapsedMs: number | null;
+  medianAggregateOutputTps: number | null;
+  estimatedCredits: number | null;
+  estimatedCreditSampleCount: number;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  medianAgentSteps: number | null;
+  medianToolCallCount: number | null;
+  medianTtftMs: null;
+  ttftStatus: 'unavailable';
+  medianPostFirstTokenOutputTps: null;
+  postFirstTokenOutputTpsStatus: 'unavailable';
+  catalogStatus: 'available' | 'unavailable';
+  codexVersion: string | null;
+  creditRateCardVersion: string;
+  scoringImpact: 'none';
+}
+
+export interface SpeedTrendPoint {
+  entryId: string;
+  modelFamily: ModelFamily;
+  reasoningTier: ReasoningTier;
+  mode: SpeedMode;
+  recordedAt: string;
+  bucketStartedAt: string;
+  bucketEndedAt: string;
+  attemptedTrials: number;
+  completedTrials: number;
+  representedBatchCount: number;
+  medianElapsedMs: number | null;
+  p95ElapsedMs: number | null;
+  medianAggregateOutputTps: number | null;
+  estimatedCredits: number | null;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  outputTokens: number | null;
+  totalTokens: number | null;
+  medianAgentSteps: number | null;
+  medianToolCallCount: number | null;
+  resolutionSeconds: number;
 }
 
 export interface TaskResult {
@@ -563,6 +624,8 @@ export interface AiqRepository {
   readonly configuration: PublicDataConfiguration;
   listLeaderboard(): Promise<readonly LeaderboardEntry[]>;
   listTrendPoints(range?: TrendRange): Promise<readonly TrendPoint[]>;
+  listSpeedObservations(): Promise<readonly PublicSpeedObservation[]>;
+  listSpeedTrendPoints(range?: TrendRange): Promise<readonly SpeedTrendPoint[]>;
   listRunPage(request?: RunHistoryPageRequest): Promise<RunHistoryPage>;
   listRunSummaries(runIds: readonly string[]): Promise<readonly BenchmarkRunSummary[]>;
   getNewestCompletedRun(): Promise<BenchmarkRunSummary | null>;
