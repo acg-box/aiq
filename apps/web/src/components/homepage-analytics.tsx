@@ -3,21 +3,12 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 
-import type {
-  BenchmarkRunSummary,
-  LeaderboardEntry,
-  PublicCalibrationScore,
-  PublicModelEfficiency,
-} from '../data/types.ts';
+import type { LeaderboardEntry, PublicCalibrationScore } from '../data/types.ts';
 import { isScoredLeaderboardEntry } from '../data/types.ts';
 
 const ModelMatrixChart = dynamic(
   () => import('./model-matrix-chart.tsx').then(({ ModelMatrixChart: Component }) => Component),
   { ssr: false, loading: () => <AnalyticsLoading kind="matrix" /> },
-);
-const EfficiencyPlot = dynamic(
-  () => import('./efficiency-plot.tsx').then(({ EfficiencyPlot: Component }) => Component),
-  { ssr: false, loading: () => <AnalyticsLoading kind="efficiency" /> },
 );
 const CalibrationEfficiency = dynamic(
   () =>
@@ -27,11 +18,10 @@ const CalibrationEfficiency = dynamic(
   { ssr: false, loading: () => <AnalyticsLoading kind="calibration" /> },
 );
 
-type AnalyticsKind = 'matrix' | 'efficiency' | 'calibration';
+type AnalyticsKind = 'matrix' | 'calibration';
 
 const loadingLabels: Readonly<Record<AnalyticsKind, string>> = {
   matrix: 'Loading interactive configuration matrix',
-  efficiency: 'Loading interactive efficiency analysis',
   calibration: 'Loading interactive calibration analysis',
 };
 
@@ -105,41 +95,6 @@ export function DeferredModelMatrixChart({
         />
       ) : (
         <AnalyticsLoading kind="matrix" />
-      )}
-    </div>
-  );
-}
-
-export function DeferredEfficiencyPlot({
-  entries,
-  runSummaries,
-  rows,
-  eager = false,
-}: {
-  entries: readonly LeaderboardEntry[];
-  runSummaries: readonly BenchmarkRunSummary[];
-  rows: readonly PublicModelEfficiency[];
-  eager?: boolean;
-}) {
-  const { host, shouldLoad } = useNearViewport(eager);
-  const [hasVisualization, setHasVisualization] = useState(
-    () => rows.length > 0 && runSummaries.length > 0 && entries.some(isScoredLeaderboardEntry),
-  );
-  return (
-    <div
-      ref={host}
-      className={`homepage-analytics homepage-analytics-efficiency${hasVisualization ? '' : ' homepage-analytics-empty'}`}
-      data-homepage-analytics="efficiency"
-    >
-      {shouldLoad ? (
-        <EfficiencyPlot
-          entries={entries}
-          runSummaries={runSummaries}
-          rows={rows}
-          onVisualizationPresenceChange={setHasVisualization}
-        />
-      ) : (
-        <AnalyticsLoading kind="efficiency" />
       )}
     </div>
   );
