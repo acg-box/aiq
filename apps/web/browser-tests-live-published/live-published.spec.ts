@@ -492,7 +492,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(page.getByText('1,224 task cells', { exact: false })).toBeVisible();
   await page.locator('[data-homepage-analytics="efficiency"]').scrollIntoViewIfNeeded();
   const efficiencyPlot = page.getByRole('region', {
-    name: 'Calibrated ability vs total run time',
+    name: 'Calibrated ability vs summed task time',
   });
   await expect(efficiencyPlot).toBeVisible();
   await expect(efficiencyPlot).toContainText('Lower and left is more efficient');
@@ -547,7 +547,7 @@ test('efficiency points keep stable geometry while the pointer moves between the
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?efficiencyMetric=duration#results');
-  const plot = page.getByRole('region', { name: 'Calibrated ability vs total run time' });
+  const plot = page.getByRole('region', { name: 'Calibrated ability vs summed task time' });
   await plot.scrollIntoViewIfNeeded();
   await expect(plot.locator('.efficiency-chart svg')).toBeVisible();
   await page.mouse.move(0, 0);

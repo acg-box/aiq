@@ -31,14 +31,23 @@ export default async function RadarPage() {
   const nodes = result.data;
   const now = new Date();
   const recency = nodes.map((node) => classifyObservationRecency(node.registryLastSeenAt, now));
+  const reportingNodes = nodes.filter(
+    (node) =>
+      node.registryLastSeenAt !== null ||
+      node.latestCapability !== null ||
+      node.latestObservation !== null,
+  );
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">Distributed radar</span>
         <h1>Runner network</h1>
         <p>
-          See which machines can run AIQ, when they were last observed, and how much of their
-          evidence the receiver verified. Registry status is not a live heartbeat.
+          AIQ has {nodes.length} registered production{' '}
+          {nodes.length === 1 ? 'identity' : 'identities'}.
+          {reportingNodes.length === 0
+            ? ' Radar telemetry is not enabled, so live online or offline state is unknown.'
+            : ' This view separates registry identity from signed telemetry and receiver trust.'}
         </p>
       </div>
       <ReadStateNote result={result} subject="Runner network" />
@@ -58,24 +67,24 @@ export default async function RadarPage() {
                 <dd>{nodes.length}</dd>
               </div>
               <div>
+                <dt>Reporting telemetry</dt>
+                <dd>
+                  {reportingNodes.length}/{nodes.length}
+                </dd>
+              </div>
+              <div>
                 <dt>Recently observed</dt>
                 <dd>
                   {recency.filter((value) => value === 'recent').length}/{nodes.length}
                 </dd>
               </div>
               <div>
-                <dt>Verified observation signatures</dt>
+                <dt>Verified observations</dt>
                 <dd>
                   {
                     nodes.filter((node) => node.latestObservation?.signatureStatus === 'verified')
                       .length
                   }
-                </dd>
-              </div>
-              <div>
-                <dt>Published capabilities</dt>
-                <dd>
-                  {nodes.filter((node) => node.latestCapability !== null).length}/{nodes.length}
                 </dd>
               </div>
               <div>
@@ -114,9 +123,7 @@ export default async function RadarPage() {
                   <th scope="col">Node</th>
                   <th scope="col">Registry</th>
                   <th scope="col">Trust</th>
-                  <th scope="col">Registry record</th>
-                  <th scope="col">Capability evidence</th>
-                  <th scope="col">Observation evidence</th>
+                  <th scope="col">Telemetry</th>
                   <th scope="col">Provenance</th>
                 </tr>
               </thead>
@@ -129,16 +136,34 @@ export default async function RadarPage() {
                     </th>
                     <td>{formatRegistryStatus(node.registryStatus)}</td>
                     <td>{formatTrustLevel(node.registryTrust)}</td>
-                    <td>{formatLastObservation(node.registryLastSeenAt, now)}</td>
                     <td>
-                      {node.latestCapability
-                        ? `${formatProtocolToken(node.latestCapability.status)} · signature ${formatProtocolToken(node.latestCapability.signatureStatus)} · ${formatLastObservation(node.latestCapability.observedAt, now)}`
-                        : 'No published record'}
-                    </td>
-                    <td>
-                      {node.latestObservation
-                        ? `${formatProtocolToken(node.latestObservation.state)} · ${formatProtocolToken(node.latestObservation.recordStatus)} · signature ${formatProtocolToken(node.latestObservation.signatureStatus)} · ${formatLastObservation(node.latestObservation.observedAt, now)}`
-                        : 'No published record'}
+                      {node.latestCapability ||
+                      node.latestObservation ||
+                      node.registryLastSeenAt ? (
+                        <span className="radar-telemetry-state">
+                          <strong>
+                            {node.latestObservation
+                              ? `${formatProtocolToken(node.latestObservation.state)} · signature ${formatProtocolToken(node.latestObservation.signatureStatus)}`
+                              : node.latestCapability
+                                ? `${formatProtocolToken(node.latestCapability.status)} · signature ${formatProtocolToken(node.latestCapability.signatureStatus)}`
+                                : 'Registry telemetry only'}
+                          </strong>
+                          <small>
+                            Last record{' '}
+                            {formatLastObservation(
+                              node.latestObservation?.observedAt ??
+                                node.latestCapability?.observedAt ??
+                                node.registryLastSeenAt,
+                              now,
+                            )}
+                          </small>
+                        </span>
+                      ) : (
+                        <span className="radar-telemetry-state">
+                          <strong>Registered identity</strong>
+                          <small>Radar telemetry not enabled · live state unknown</small>
+                        </span>
+                      )}
                     </td>
                     <td>{node.synthetic ? 'Synthetic and unverified' : 'Published'}</td>
                   </tr>
@@ -174,7 +199,11 @@ export default async function RadarPage() {
                     </div>
                     <div>
                       <dt>Registry last-seen record</dt>
-                      <dd>{formatLastObservation(node.registryLastSeenAt)}</dd>
+                      <dd>
+                        {node.registryLastSeenAt
+                          ? formatLastObservation(node.registryLastSeenAt)
+                          : 'No registry telemetry record'}
+                      </dd>
                     </div>
                     <div>
                       <dt>Evidence</dt>
@@ -211,7 +240,7 @@ export default async function RadarPage() {
                         </div>
                       </dl>
                     ) : (
-                      <p>No capability record is published.</p>
+                      <p>Capability telemetry is not enabled for this identity.</p>
                     )}
                   </section>
                   <section
@@ -254,7 +283,7 @@ export default async function RadarPage() {
                         </div>
                       </dl>
                     ) : (
-                      <p>No observation record is published.</p>
+                      <p>Observation telemetry is not enabled for this identity.</p>
                     )}
                   </section>
                   <section

@@ -58,16 +58,20 @@ async function getActualRunPath(page: Page): Promise<string> {
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
-  const ranking = page.getByRole('region', { name: 'Top configurations' });
+  const decisionTable = page.getByRole('region', { name: 'Configuration decision table' });
   const analytics = page.getByRole('region', { name: 'Score and efficiency' });
-  await expect(ranking).toBeVisible();
-  await expect(ranking.getByRole('listitem')).toHaveCount(5);
-  const rankingBox = await ranking.boundingBox();
-  expect(rankingBox).not.toBeNull();
-  expect((rankingBox?.y ?? 844) + (rankingBox?.height ?? 0)).toBeLessThanOrEqual(844);
+  await expect(page.getByRole('button', { name: /Highest ability/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Shortest task time/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Lowest estimated cost/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Efficient trade-offs/ })).toBeVisible();
+  await expect(decisionTable).toBeVisible();
+  await expect(decisionTable.locator('tbody tr')).toHaveCount(6);
+  const firstDecisionRowBox = await decisionTable.locator('tbody tr').first().boundingBox();
+  expect(firstDecisionRowBox).not.toBeNull();
+  expect(firstDecisionRowBox?.y ?? 844).toBeLessThan(844);
   const analyticsBox = await analytics.boundingBox();
   expect(analyticsBox).not.toBeNull();
-  expect(rankingBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
+  expect(firstDecisionRowBox?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(
     analyticsBox?.y ?? Number.NEGATIVE_INFINITY,
   );
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();

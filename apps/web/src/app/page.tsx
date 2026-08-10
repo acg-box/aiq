@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 
 import { CompactRanking } from '../components/compact-ranking.tsx';
+import { ConfigurationDecisionTable } from '../components/configuration-decision-table.tsx';
 import { DataNote } from '../components/data-note.tsx';
 import {
   DeferredCalibrationEfficiency,
@@ -19,7 +20,7 @@ import {
   resolveExactScientificEvidence,
 } from '../components/scientific-evidence-resolution.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
-import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
+import { presentLeaderboardEntry } from '../data/leaderboard-presentation.ts';
 import { createAiqRepository } from '../data/repository.ts';
 import { readPublicData } from '../data/read-state.ts';
 import { isScoredLeaderboardEntry, type BenchmarkRun } from '../data/types.ts';
@@ -85,9 +86,6 @@ export default async function OverviewPage({
     (left, right) => right.score - left.score,
   );
   const selectedDescriptiveEstimate = rankedEntries[0];
-  const topFive = rankedEntries.slice(0, 5);
-  const topFiveSpread =
-    topFive.length > 1 ? (topFive[0]?.score ?? 0) - (topFive.at(-1)?.score ?? 0) : null;
   const latestCalibration = calibrationRunsResult.data.runs[0];
   const officialRunIds = leaderboard.flatMap((entry) =>
     entry.scoreStatus === 'official' && entry.runId ? [entry.runId] : [],
@@ -140,13 +138,6 @@ export default async function OverviewPage({
     taskCellCounts.length > 0 && taskCellCounts.every((count): count is number => count !== null)
       ? taskCellCounts.reduce((sum, count) => sum + count, 0)
       : null;
-  const coveredEntries = leaderboard.filter((entry) => entry.coveragePercent !== null);
-  const averageCoverage =
-    coveredEntries.length === 0
-      ? null
-      : coveredEntries.reduce((sum, entry) => sum + (entry.coveragePercent ?? 0), 0) /
-        coveredEntries.length;
-  const completeCoverageCount = leaderboard.filter((entry) => entry.coveragePercent === 100).length;
   const selectedRun = selectedRunResult.data;
   const selectedEstimateEvidence =
     selectedDescriptiveEstimate && selectedRun
@@ -172,7 +163,6 @@ export default async function OverviewPage({
     selectedEstimateEvidence?.state === 'exact'
       ? selectedEstimateEvidence.evidence.efficiency
       : undefined;
-  const highlightedMetric = highlightedScore ? presentScoreMetric(highlightedScore) : null;
   const highlightedPresentation = highlightedScore
     ? presentLeaderboardEntry(highlightedScore)
     : null;
@@ -202,7 +192,10 @@ export default async function OverviewPage({
       ? `$${(highlightedEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(2)}`
       : 'Unavailable';
   const hasEfficiencyEvidence =
-    officialEfficiencyResult.data.length > 0 && officialRunSummariesResult.data.length > 0;
+    exactOfficialEfficiency.expectedCount > 0 &&
+    exactOfficialEfficiency.rows.length === exactOfficialEfficiency.expectedCount &&
+    exactOfficialEfficiency.unavailableCount === 0 &&
+    exactOfficialEfficiency.rejectedCount === 0;
 
   return (
     <div className="page-shell results-page one-page-workspace">
@@ -230,49 +223,11 @@ export default async function OverviewPage({
           </Link>
         </header>
 
-        <section className="insight-grid" aria-label="Latest benchmark highlights">
-          <article className="insight-card">
-            <div>
-              <span>Top {highlightedMetric?.scoreLabel.toLowerCase() ?? 'score'}</span>
-              <strong>
-                {highlightedScore
-                  ? `${highlightedScore.modelFamily} ${highlightedScore.reasoningTier} ${highlightedMetric?.scoreText ?? '—'}`
-                  : 'Unavailable'}
-              </strong>
-              <small>
-                {highlightedMetric
-                  ? `${highlightedMetric.intervalLabel} ${highlightedMetric.interval}`
-                  : 'Exact run evidence is unavailable'}
-              </small>
-            </div>
-          </article>
-          <article className="insight-card">
-            <div>
-              <span>Top five spread</span>
-              <strong>
-                {topFiveSpread === null ? 'Unavailable' : `${topFiveSpread.toFixed(1)} points`}
-              </strong>
-              <small>
-                {topFive.length > 1
-                  ? `${topFive.at(-1)?.score.toFixed(1)}–${topFive[0]?.score.toFixed(1)} ${highlightedMetric?.scoreLabel.toLowerCase() ?? 'score'}`
-                  : 'At least two scored configurations are required'}
-              </small>
-            </div>
-          </article>
-          <article className="insight-card">
-            <div>
-              <span>Coverage</span>
-              <strong>
-                {averageCoverage === null ? 'Unavailable' : `${averageCoverage.toFixed(1)}%`}
-              </strong>
-              <small>
-                {completeCoverageCount}/{leaderboard.length} configurations at 100%
-              </small>
-            </div>
-          </article>
-        </section>
+        {hasEfficiencyEvidence ? (
+          <ConfigurationDecisionTable rows={exactOfficialEfficiency.rows} />
+        ) : null}
 
-        <div className="results-main-grid">
+        <div className={hasEfficiencyEvidence ? 'tradeoff-analysis' : 'results-main-grid'}>
           <section
             className="analysis-panel efficiency-panel"
             id={hasEfficiencyEvidence ? undefined : 'matrix'}
@@ -297,7 +252,7 @@ export default async function OverviewPage({
               </>
             )}
           </section>
-          <CompactRanking entries={leaderboard} />
+          {hasEfficiencyEvidence ? null : <CompactRanking entries={leaderboard} />}
         </div>
 
         {highlightedRun ? (

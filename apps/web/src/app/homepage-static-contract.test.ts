@@ -21,8 +21,8 @@ void describe('homepage evidence and loading contract', () => {
 
   void it('presents fixed-task analysis without winner or batch-aggregate implications', async () => {
     const source = await readFile(pageSourceUrl, 'utf8');
-    const rankingSource = await readFile(
-      new URL('../components/compact-ranking.tsx', import.meta.url),
+    const decisionSource = await readFile(
+      new URL('../components/configuration-decision-table.tsx', import.meta.url),
       'utf8',
     );
     const outcomeSource = await readFile(
@@ -30,14 +30,12 @@ void describe('homepage evidence and loading contract', () => {
       'utf8',
     );
 
-    assert.match(source, /highlightedMetric\?\.scoreLabel/);
-    assert.match(source, /Top five spread/);
     assert.match(source, /conditional\s+95%\s+interval/i);
     assert.doesNotMatch(source, /general intelligence/);
-    assert.match(rankingSource, /presentation\.intervalLabel/);
-    assert.match(rankingSource, /presentation\.interval/);
-    assert.match(rankingSource, /sortLeaderboardByPointEstimate/);
-    assert.match(rankingSource, /Synthetic quality preview · not Official/);
+    assert.match(decisionSource, /Choose by ability, time, or cost/);
+    assert.match(decisionSource, /never score inputs/);
+    assert.match(decisionSource, /Not dominated on AIQ, time, and cost/);
+    assert.doesNotMatch(decisionSource, /overall score|efficiency score/i);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
     assert.match(outcomeSource, /A zero\s+is a scored outcome, not missing data/);
@@ -86,20 +84,22 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workspaceStyles, /\.evidence-notes/);
   });
 
-  void it('keeps the answer and compact ranking readable on a narrow viewport', async () => {
+  void it('keeps the decision table readable on a narrow viewport', async () => {
     const [source, workspaceStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
       readFile(workspaceStylesUrl, 'utf8'),
     ]);
 
+    assert.doesNotMatch(source, /TrophyIcon|ChartBarIcon|TargetIcon/);
     assert.match(
       workspaceStyles,
-      /@media \(max-width: 760px\)[\s\S]+\.insight-grid \{\s+grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/,
+      /@media \(max-width: 760px\)[\s\S]+\.decision-priorities \{[\s\S]+grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/,
     );
-    assert.doesNotMatch(source, /TrophyIcon|ChartBarIcon|TargetIcon/);
-    assert.doesNotMatch(workspaceStyles, /\.insight-card > svg/);
-    assert.match(workspaceStyles, /\.ranking-list li \{[\s\S]+grid-template-columns:/);
-    assert.match(workspaceStyles, /\.ranking-list \.quiet-button \{\s+display: none;/);
+    assert.match(
+      workspaceStyles,
+      /\.decision-table tr \{[\s\S]+grid-template-columns: minmax\(112px, 1\.25fr\) repeat\(3, minmax\(58px, 0\.75fr\)\);/,
+    );
+    assert.match(workspaceStyles, /\.decision-action \{\s+display: none;/);
   });
 
   void it('uses real efficiency evidence when present and a real score matrix otherwise', async () => {
