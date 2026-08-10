@@ -381,7 +381,7 @@ function score(model: { family: string; reasoning_effort: string }): JsonObject 
       upper: 100,
       central_mass: 0.95,
       samples: 10_000,
-      seed: 71_783_153_620_529,
+      seed: 71_783_153_620_530,
     },
     binary_micro_diagnostic: {
       sample_size: 72,
