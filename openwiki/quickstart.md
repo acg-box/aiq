@@ -128,8 +128,9 @@ They are diagnostics, not benchmark results.
 ## Database authority
 
 `databases/schema.sql` is the sole desired database state.
-`databases/init.ts` connects directly to the Supabase PostgreSQL database and
-applies the schema plus public reference data in one transaction. There is no
+`databases/init.ts` connects through the exact direct or port-5432 session-pooler
+identity for the personal Supabase project and applies the schema plus public
+reference data in one transaction. There is no
 migration chain. It rejects an
 existing AIQ namespace. Apply the repository's one greenfield desired state to
 the existing target project only after its AIQ namespace is empty. If residue
@@ -140,7 +141,7 @@ creates both AIQ Storage buckets as private and rejects either existing bucket
 identity. Do not create the buckets in a separate operator step.
 
 ```sh
-AIQ_DATABASE_URL='<direct-connection-url>' \
+AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
 cargo make init-database
 ```
