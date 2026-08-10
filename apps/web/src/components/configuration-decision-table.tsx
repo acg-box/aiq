@@ -158,7 +158,9 @@ export function ConfigurationDecisionTable({ rows }: { rows: readonly ExactEffic
               <th scope="col">AIQ</th>
               <th scope="col">Task time</th>
               <th scope="col">API-equivalent cost</th>
-              <th scope="col" aria-label="Comparison action" />
+              <th scope="col">
+                <span className="sr-only">Compare</span>
+              </th>
             </tr>
           </thead>
           <tbody>

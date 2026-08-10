@@ -553,9 +553,13 @@ test('efficiency points keep stable geometry while the pointer moves between the
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/?efficiencyMetric=duration#results');
+  await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = 'auto';
+  });
   const plot = page.getByRole('region', { name: 'Calibrated ability vs summed task time' });
-  await plot.scrollIntoViewIfNeeded();
-  await expect(plot.locator('.efficiency-chart svg')).toBeVisible();
+  const chart = plot.locator('.efficiency-chart');
+  await chart.scrollIntoViewIfNeeded();
+  await expect(chart.locator('svg')).toBeVisible();
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);
 
@@ -569,11 +573,13 @@ test('efficiency points keep stable geometry while the pointer moves between the
     if (!target) throw new Error('Expected a representative efficiency point');
     await page.mouse.move(target.x, target.y, { steps: 8 });
     await page.waitForTimeout(220);
+    const pointerReachedChart = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.echarts-host') !== null,
+      target,
+    );
+    expect(pointerReachedChart).toBe(true);
     const hovered = await readEfficiencyPoints(plot);
     expect(hovered.map(({ key, fill, scale }) => ({ key, fill, scale }))).toEqual(stableGeometry);
-    await expect(
-      plot.locator('.efficiency-chart .echarts-host div[style*="position: absolute"]'),
-    ).toBeVisible();
   };
 
   await verifyStableTarget(targets[0]);
@@ -937,7 +943,8 @@ test('the published method and radar retain versioned, signed provenance', async
   await page.locator('details.radar-node-details > summary').click();
   await expect(page.getByText('Registry trust: trusted verified', { exact: true })).toBeVisible();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Verified observation signatures').locator('..')).toContainText('1');
+  await expect(page.getByText('ready · signature verified', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sequence / signature').locator('..')).toContainText('42 / verified');
   await expect(page.getByText('Receiver-verified trusted', { exact: true })).toBeVisible();
 });
 
