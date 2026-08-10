@@ -66,10 +66,10 @@ function EfficiencyMethod() {
             Sum, median, and p95 of Codex adapter elapsed time: model plus allowed tools. It
             excludes workspace setup, artifact sealing, and evaluator replay. Runtime-issue tasks
             consume time; missing or non-invoked cells do not. Full-matrix timings are operational
-            resource-profile evidence under the recorded node, execution order, and concurrency (17
-            jobs for the current run). Model, tool, network, and local contention vary. This is not
-            pure task latency or an isolated API-frontier latency test. Cell durations can overlap
-            under concurrency. Signed matrix-stage start and finish times provide the full batch
+            resource-profile evidence under the recorded node, execution order, and concurrency
+            shown with each run. Model, tool, network, and local contention vary. This is not pure
+            task latency or an isolated API-frontier latency test. Cell durations can overlap under
+            concurrency. Signed matrix-stage start and finish times provide the full batch
             wall-clock, which is counted once across the 17 configurations. TTFT and TPS are
             unavailable and are not inferred.
           </dd>
