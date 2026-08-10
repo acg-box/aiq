@@ -52,6 +52,8 @@ function storageCommitment(paths: readonly string[]): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(paths)).digest('hex')}`;
 }
 
+const fixtureStoragePaths = ['folder/nested.txt', 'root.txt'];
+
 const occupiedInventory = {
   schema_exists: true,
   roles: ['aiq_publisher', 'aiq_verifier'],
@@ -61,6 +63,10 @@ const occupiedInventory = {
     { id: 'aiq-runner-artifacts', name: 'aiq-runner-artifacts' },
     { id: 'aiq-submission-packages', name: 'aiq-submission-packages' },
   ],
+  storage_object_paths: {
+    'aiq-runner-artifacts': fixtureStoragePaths,
+    'aiq-submission-packages': fixtureStoragePaths,
+  },
   unexpected_namespaces: [],
   unexpected_external_dependencies: [],
   unexpected_public_functions: [],
@@ -78,6 +84,10 @@ const emptyInventory = {
   public_functions: [],
   public_views: [],
   storage_buckets: [],
+  storage_object_paths: {
+    'aiq-runner-artifacts': [],
+    'aiq-submission-packages': [],
+  },
   unexpected_namespaces: [],
   unexpected_external_dependencies: [],
   unexpected_public_functions: [],
@@ -89,7 +99,11 @@ const emptyInventory = {
   unexpected_role_dependencies: [],
 };
 
-const storageClearedInventory = { ...occupiedInventory, storage_buckets: [] };
+const storageClearedInventory = {
+  ...occupiedInventory,
+  storage_buckets: [],
+  storage_object_paths: emptyInventory.storage_object_paths,
+};
 
 async function psqlFixture(inventories: readonly unknown[]): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'aiq-reset-test-'));
@@ -118,6 +132,7 @@ process.stdin.on('end', () => {
 
 function storageFetch(calls: { url: string; method: string; body: unknown }[]): typeof fetch {
   const listed = new Map<string, number>();
+  const emptiedBuckets = new Set<string>();
   return async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input instanceof URL ? input.href : input;
     const method = init?.method ?? 'GET';
@@ -126,7 +141,13 @@ function storageFetch(calls: { url: string; method: string; body: unknown }[]): 
     }
     const body: unknown = init?.body === undefined ? undefined : JSON.parse(init.body);
     calls.push({ url, method, body });
+    if (method === 'DELETE' && url.includes('/object/')) {
+      emptiedBuckets.add(url.slice(url.lastIndexOf('/') + 1));
+      return Response.json({});
+    }
     if (url.includes('/object/list/')) {
+      const bucket = url.slice(url.lastIndexOf('/') + 1);
+      if (emptiedBuckets.has(bucket)) return Response.json([]);
       const key = `${url}:${JSON.stringify(body)}`;
       const count = listed.get(key) ?? 0;
       listed.set(key, count + 1);
@@ -156,6 +177,8 @@ void test('canonical names come from schema.sql and include all overload names o
   const inventory = inventorySql(names);
   const cleanup = cleanupSql(names);
   strictEqual(inventory.includes("'unexpected_role_memberships'"), true);
+  strictEqual(inventory.includes("member.rolname = 'postgres'"), true);
+  strictEqual(inventory.includes("grantor.rolname = 'supabase_admin'"), true);
   strictEqual(cleanup.includes('pg_catalog.pg_auth_members'), true);
   strictEqual(cleanup.includes('$aiq_reset_boundary_guard$'), true);
   strictEqual(cleanup.includes('-- AIQ_RESET_BOUNDARY_LOCKED'), true);
@@ -222,14 +245,13 @@ void test('dry run inventories database and recursively inventories both private
     },
   });
   if (!('storage' in result)) throw new Error('expected dry-run inventory');
-  const privatePaths = ['folder/nested.txt', 'root.txt'];
   deepStrictEqual(result.storage['aiq-runner-artifacts'], {
     object_count: 2,
-    object_paths_sha256: storageCommitment(privatePaths),
+    object_paths_sha256: storageCommitment(fixtureStoragePaths),
   });
   deepStrictEqual(result.storage['aiq-submission-packages'], {
     object_count: 2,
-    object_paths_sha256: storageCommitment(privatePaths),
+    object_paths_sha256: storageCommitment(fixtureStoragePaths),
   });
   strictEqual(JSON.stringify(result).includes('nested.txt'), false);
   strictEqual(JSON.stringify(result).includes('root.txt'), false);
@@ -237,6 +259,36 @@ void test('dry run inventories database and recursively inventories both private
     calls.some(({ method }) => method === 'DELETE'),
     false,
   );
+  deepStrictEqual(calls, []);
+});
+
+void test('reset retries one transient Storage readback rejection', async () => {
+  const calls: { url: string; method: string; body: unknown }[] = [];
+  const stableFetch = storageFetch(calls);
+  let rejectNextList = true;
+  const fetchImplementation: typeof fetch = async (input, init) => {
+    const requestUrl =
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (rejectNextList && requestUrl.includes('/object/list/aiq-runner-artifacts')) {
+      rejectNextList = false;
+      return new Response(null, { status: 429 });
+    }
+    return stableFetch(input, init);
+  };
+  const result = await resetDatabase({
+    dryRun: false,
+    confirmation: 'xxnszykaeapolqdnhalx:aiq_private',
+    referencePath: '/controlled/reference.json',
+    environment,
+    dependencies: {
+      psqlCommand: await psqlFixture([occupiedInventory, storageClearedInventory, emptyInventory]),
+      fetch: fetchImplementation,
+      prepare: prepareFixture,
+      initialize: async () => initializationReceipt,
+    },
+  });
+  strictEqual('reset' in result && result.reset, true);
+  strictEqual(rejectNextList, false);
 });
 
 void test('reset removes Storage objects before buckets, reads back database cleanup, and delegates initialization', async () => {
@@ -391,6 +443,13 @@ void test('Storage request failure waits for readback, reports partial state, an
           {
             ...occupiedInventory,
             storage_buckets: [{ id: 'aiq-runner-artifacts', name: 'aiq-runner-artifacts' }],
+            storage_object_paths: {
+              'aiq-runner-artifacts': Array.from(
+                { length: 101 },
+                (_, index) => `object-${String(index).padStart(3, '0')}.txt`,
+              ),
+              'aiq-submission-packages': [],
+            },
           },
         ]),
         fetch: fetchImplementation,
@@ -403,7 +462,7 @@ void test('Storage request failure waits for readback, reports partial state, an
     }),
     /deletion for aiq-runner-artifacts was partial; 1 objects remain; rerun the reset/,
   );
-  strictEqual(listCount, 3);
+  strictEqual(listCount, 1);
   strictEqual(deleteCount, 2);
   strictEqual(readbackStartedBeforeWorkersSettled, false);
   strictEqual(initialized, false);

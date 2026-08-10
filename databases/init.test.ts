@@ -643,11 +643,17 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(Object.keys(receipt.node_ids).length, 3);
 });
 
-void test('database target guard binds the exact direct production tuple', () => {
+void test('database target guard binds the exact direct or session-pooler tuple', () => {
   const productionEnvironment = { NODE_ENV: 'production' };
   assert.doesNotThrow(() =>
     assertDatabaseTarget(
       'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres',
+      productionEnvironment,
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertDatabaseTarget(
+      'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
       productionEnvironment,
     ),
   );
@@ -656,6 +662,9 @@ void test('database target guard binds the exact direct production tuple', () =>
     'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/other_database',
     'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:6543/postgres',
     'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+    'postgresql://postgres.otherproject:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
+    'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-us-east-1.pooler.supabase.com:5432/postgres',
+    'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:6543/postgres',
   ]) {
     assert.throws(
       () => assertDatabaseTarget(target, productionEnvironment),

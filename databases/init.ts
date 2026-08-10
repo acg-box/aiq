@@ -11,6 +11,8 @@ const CATALOG_RELEASE_IDENTITY =
   'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae';
 const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
 const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
+const PRODUCTION_DATABASE_POOLER_HOST = 'aws-0-ca-central-1.pooler.supabase.com';
+const PRODUCTION_DATABASE_POOLER_USER = `postgres.${PRODUCTION_SUPABASE_PROJECT_REF}`;
 const TASK_SET_IDENTITY = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
 const REVIEWED_TASK_COMMITMENTS_IDENTITY =
   'sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d';
@@ -1401,14 +1403,21 @@ export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.Pr
     throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
   }
   const postgresProtocol = parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:';
-  const productionTarget =
+  const directProductionTarget =
     postgresProtocol &&
     parsed.hostname === PRODUCTION_DATABASE_HOST &&
     parsed.pathname === '/postgres' &&
     (parsed.port === '' || parsed.port === '5432') &&
     parsed.username === 'postgres' &&
     parsed.hash === '';
-  if (productionTarget) return;
+  const sessionPoolerProductionTarget =
+    postgresProtocol &&
+    parsed.hostname === PRODUCTION_DATABASE_POOLER_HOST &&
+    parsed.pathname === '/postgres' &&
+    parsed.port === '5432' &&
+    parsed.username === PRODUCTION_DATABASE_POOLER_USER &&
+    parsed.hash === '';
+  if (directProductionTarget || sessionPoolerProductionTarget) return;
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
   const localOverride =
     postgresProtocol &&

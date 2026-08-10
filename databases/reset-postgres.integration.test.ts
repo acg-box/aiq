@@ -227,12 +227,22 @@ void test(
     await psql(`create schema if not exists storage;
 create table if not exists storage.buckets (
   id text primary key, name text not null, public boolean not null default false
+);
+create table if not exists storage.objects (
+  bucket_id text not null references storage.buckets(id) on delete cascade,
+  name text not null,
+  primary key (bucket_id, name)
 );`);
     await cleanupFixture(names);
     try {
       await psql(`
 create schema if not exists storage;
 create table if not exists storage.buckets (id text primary key, name text not null, public boolean not null default false);
+create table if not exists storage.objects (
+  bucket_id text not null references storage.buckets(id) on delete cascade,
+  name text not null,
+  primary key (bucket_id, name)
+);
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticator') then create role authenticator nologin; end if;
   if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
