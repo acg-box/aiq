@@ -5,6 +5,7 @@ import {
   summarizeConfigurationDecisions,
 } from './configuration-decision.ts';
 import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
+import { resolveConfigurationCost } from './configuration-cost.ts';
 
 export const CONFIGURATION_FAMILIES = ['Sol', 'Terra', 'Luna'] as const;
 export const CONFIGURATION_REASONING_TIERS = [
@@ -16,7 +17,7 @@ export const CONFIGURATION_REASONING_TIERS = [
   'ultra',
 ] as const;
 
-export type ConfigurationWorkbenchView = 'duration' | 'cost' | 'three';
+export type ConfigurationWorkbenchView = 'duration' | 'cost' | 'decision';
 export type ConfigurationWorkbenchOrder = 'ability' | 'time' | 'cost' | 'family';
 
 export interface ConfigurationWorkbenchState {
@@ -75,7 +76,7 @@ export function readConfigurationWorkbenchState(
     configurationIds: readSelection(params, 'compareConfigs', configurationIds),
     costOnly: params.get('compareCost') === 'estimated',
     frontierOnly: params.get('compareFrontier') === 'only',
-    view: readEnum(params, 'compareView', ['duration', 'cost', 'three'] as const, 'duration'),
+    view: readEnum(params, 'compareView', ['duration', 'cost', 'decision'] as const, 'duration'),
     order: readEnum(
       params,
       'compareOrder',
@@ -132,10 +133,18 @@ export function summarizeConfigurationWorkbench(
     ({ row }) =>
       row.costEstimatorStatus === 'estimated' && row.standardApiEquivalentUsdNanos !== null,
   ).length;
+  const costBoundedCount = visibleRows.filter(
+    ({ row }) => resolveConfigurationCost(row).kind === 'bounded',
+  ).length;
+  const costComparableCount = visibleRows.filter(
+    ({ row }) => resolveConfigurationCost(row).kind !== 'unavailable',
+  ).length;
   return {
     ...visibleSummary,
     visibleFrontierCount,
     costMeasuredCount,
+    costBoundedCount,
+    costComparableCount,
     visibleCount: visibleRows.length,
     totalCount: rows.length,
   };

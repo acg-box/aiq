@@ -61,8 +61,8 @@ async function expectMobileMatrixLegibility(page: Page) {
   const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' }).first();
   await expect(page.getByRole('button', { name: /Highest AIQ/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Shortest task time/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Lowest estimated cost/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Pareto trade-offs/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Lowest cost upper bound/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Cost evidence/ })).toBeVisible();
   await expect(workbench).toBeVisible();
   await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
   const firstSummaryBox = await workbench
@@ -79,11 +79,12 @@ async function expectMobileMatrixLegibility(page: Page) {
       .getByRole('region', { name: 'Filtered configuration comparison table' })
       .locator('tbody tr'),
   ).toHaveCount(17);
-  await workbench.getByRole('button', { name: '3D · AIQ × time × cost', exact: true }).click();
-  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
-  await expect(three).toBeVisible();
-  await expect(three.getByRole('button', { name: 'Reset view', exact: true })).toBeVisible();
-  await expect(three.getByText('AIQ · Y', { exact: true })).toBeVisible();
+  await workbench.getByRole('button', { name: 'Decision map', exact: true }).click();
+  await expect(
+    workbench.getByRole('region', {
+      name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
+    }),
+  ).toBeVisible();
 }
 
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
@@ -97,17 +98,17 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expect(status).toContainText('17/17 configurations visible');
   await expect(comparison.locator('tbody tr')).toHaveCount(17);
   const snapshots = await comparison.locator('tbody tr').allInnerTexts();
-  expect(snapshots.some((row) => row.includes('Not estimated'))).toBe(true);
+  expect(snapshots.some((row) => row.includes('Unavailable'))).toBe(true);
   expect(snapshots.some((row) => /\$\d/.test(row))).toBe(true);
 
-  await workbench.getByRole('button', { name: 'Cost measured', exact: true }).click();
+  await workbench.getByRole('button', { name: 'Exact cost only', exact: true }).click();
   await expect(page).toHaveURL(/compareCost=estimated/);
   const measuredRows = comparison.locator('tbody tr');
   const measuredCount = await measuredRows.count();
   expect(measuredCount).toBeGreaterThan(0);
   expect(measuredCount).toBeLessThan(17);
   await expect(status).toContainText(`${measuredCount}/17 configurations visible`);
-  expect((await measuredRows.allInnerTexts()).every((row) => !row.includes('Not estimated'))).toBe(
+  expect((await measuredRows.allInnerTexts()).every((row) => !row.includes('Unavailable'))).toBe(
     true,
   );
 

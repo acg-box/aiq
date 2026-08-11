@@ -41,11 +41,38 @@ void describe('configuration workbench plot evidence', () => {
     );
   });
 
-  void it('plots only explicit cost estimates without creating zeroes', () => {
-    const rows = [row('one', 10, 1_000_000_000), row('two', 20, null)];
+  void it('plots exact and bounded cost evidence without creating zeroes', () => {
+    const rows = [
+      row('one', 10, 1_000_000_000),
+      configurationWorkbenchFixture({ id: 'bounded', duration: 20, boundedCost: true }),
+      row('missing', 30, null),
+    ];
     assert.deepEqual(
       resolveWorkbenchPlotRows(rows, 'cost').map(({ entry, x }) => [entry.id, x]),
-      [['one', 1]],
+      [
+        ['one', 1],
+        ['bounded', 5.4],
+      ],
+    );
+  });
+
+  void it('keeps every timed row in the decision map and carries cost evidence separately', () => {
+    const rows = [
+      row('exact', 10, 1_000_000_000),
+      configurationWorkbenchFixture({ id: 'bounded', duration: 20, boundedCost: true }),
+      row('missing', 30, null),
+    ];
+    assert.deepEqual(
+      resolveWorkbenchPlotRows(rows, 'decision').map(({ entry, x, cost }) => [
+        entry.id,
+        x,
+        cost.kind,
+      ]),
+      [
+        ['exact', 10, 'exact'],
+        ['bounded', 20, 'bounded'],
+        ['missing', 30, 'unavailable'],
+      ],
     );
   });
 });

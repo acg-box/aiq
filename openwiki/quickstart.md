@@ -30,13 +30,13 @@ time, agent steps, tool calls by type, tokens, and estimated cost. These values
 are auxiliary evidence only and cannot change any semantic score, AIQ value,
 interval, status, or ranking.
 
-The public catalog is deterministic and identity-frozen. One complete real
-1.0.7 calibration package is retained unchanged. Fresh independent Core and
-Contrast A/B seals, policy-v2 replay and admission v3, final native build
-verification, a separate complete Official run, publication, and deployment
-are pending. Earlier bounded runs remain immutable failed release evidence and
-cannot be relabeled or combined with selected reruns. An operator cannot
-override a failed release gate.
+The public catalog is deterministic and identity-frozen. Production retains the
+complete real `1.0.7` calibration evidence and one separate, complete,
+non-synthetic Official `17 × 72` matrix. The native verifier replayed all 1,224
+task results before publication. Production also retains one real 170-trial
+Normal/Fast observation batch. Earlier bounded runs remain immutable failed
+release evidence and cannot be relabeled or combined with selected reruns. An
+operator cannot override a failed release gate.
 
 ## Deployment status
 
@@ -56,6 +56,9 @@ The accepted Official publication must be one real non-synthetic `72 × 17`
 batch, or 1,224 task-level results, under the sole production tuple. The native
 verifier must replay the deterministic evaluators before the distinct publisher
 can publish it as `trusted_verified`. A legacy publication is not a fallback.
+The current production database satisfies this gate with 17 Official runs,
+1,224 Official task results, one published matrix, and no synthetic Official
+rows.
 
 The public site is a professional analysis workbench over verified production
 evidence. It separates semantic task outcomes from runtime states. Official
@@ -192,7 +195,7 @@ remain in the corpus commitment.
 
 | Change area or user intent | Relevant wiki page | Exact source entry points | Important symbols or types | Focused tests | Minimal validation command |
 | --- | --- | --- | --- | --- | --- |
-| Change the all-configuration analysis workbench | [Architecture and runtime](architecture-and-runtime.md#configuration-workbench) | `apps/web/src/app/page.tsx`, `apps/web/src/app/compare/page.tsx`, `apps/web/src/components/configuration-workbench-view.tsx` | `ConfigurationWorkbench`, `readConfigurationWorkbenchState`, `filterConfigurationWorkbenchRows` | `apps/web/src/components/configuration-workbench.test.ts`, `configuration-workbench-three.test.ts` | `npm run test --workspace @aiq/web` |
+| Change the all-configuration analysis workbench | [Architecture and runtime](architecture-and-runtime.md#configuration-workbench) | `apps/web/src/app/page.tsx`, `apps/web/src/app/compare/page.tsx`, `apps/web/src/components/configuration-workbench-view.tsx` | `ConfigurationWorkbench`, `resolveConfigurationCost`, `resolveWorkbenchPlotRows` | `apps/web/src/components/configuration-workbench.test.ts`, `configuration-cost.test.ts`, `configuration-workbench-chart.test.ts` | `npm run test --workspace @aiq/web` |
 | Change verification or publication evidence bindings | [Architecture and runtime](architecture-and-runtime.md#verification-flow) and [Benchmark method](benchmark-method.md#verification) | `apps/web/src/server/verification-contract.ts`, `apps/aiq-verifier/src/lib.rs` | `NormalizedStage`, `VerifierAttestation`, `terminal_attempt_lineage_digest` | `apps/web/src/server/verification.test.ts`, verifier tests | `cargo make verify` |
 | Change scoring, calibration, or normalized-batch semantics | [Benchmark method](benchmark-method.md) | `apps/aiq-runner/src/scoring.rs`, `apps/aiq-runner/src/calibration_verification.rs`, `benchmarks/schema/normalized-batch-v4.schema.json` | aggregate scoring `1.0.8`, fixed bank, task-resampling identity | `apps/aiq-runner` tests, `scripts/check-normalization-schemas.test.ts` | `cargo run -p aiq-runner -- matrix` |
 | Change database initialization, reset, or Supabase targeting | [Operations](operations.md#fresh-database-initialization) and [Deployment handoff](deployment-handoff.md) | `databases/init.ts`, `databases/reset.ts`, `databases/schema.sql` | `assertDatabaseTarget`, `inventorySql`, `resetDatabase` | `databases/init.test.ts`, `databases/reset.test.ts` | `node --test databases/*.test.ts` |
