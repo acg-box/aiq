@@ -126,6 +126,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function parseCommandReceipt(stdout: string, stepName: string): Record<string, unknown> {
+  assert.ok(stdout.trim(), `${stepName} did not produce a receipt`);
+  const record: unknown = JSON.parse(stdout);
+  assert.ok(isRecord(record), `${stepName} receipt is invalid`);
+  return record;
+}
+
 function canonicalAbsolutePath(value: unknown, label: string): string {
   assert.ok(typeof value === 'string', `${label} must be a string`);
   assert.ok(isAbsolute(value), `${label} must be absolute`);
@@ -432,10 +439,7 @@ function runCreateOnceStep(step: CommandStep, paths: SlotPaths, slot: ScheduledS
   writeStatus(paths.status, slot, step.name, 'running');
   const stdout = runCommand(step, paths.log);
   if (!step.capture || !step.output) return;
-  const lines = stdout.split('\n').filter(Boolean);
-  assert.ok(lines.length > 0, `${step.name} did not produce a receipt`);
-  const record: unknown = JSON.parse(lines.at(-1) ?? 'null');
-  assert.ok(isRecord(record), `${step.name} receipt is invalid`);
+  const record = parseCommandReceipt(stdout, step.name);
   if (step.capture === 'submission') {
     const kind = isRecord(record.package) ? record.package.kind : record.kind;
     assert.ok(kind === 'accepted' || kind === 'duplicate', `${step.name} was not accepted`);
