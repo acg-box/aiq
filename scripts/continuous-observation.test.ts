@@ -7,6 +7,7 @@ import test from 'node:test';
 import {
   parseCommandReceipt,
   readContinuousObservationConfiguration,
+  summarizeOfficialRunPublication,
   surroundingScheduledSlots,
   verifierRetryPolicyArguments,
 } from './continuous-observation.ts';
@@ -71,4 +72,29 @@ void test('configuration is exact, absolute, bounded, and contains no secret val
   assert.throws(() => readContinuousObservationConfiguration(path), /HTTPS/);
   writeFileSync(path, JSON.stringify({ ...document, speed_trials: 11 }));
   assert.throws(() => readContinuousObservationConfiguration(path), /between 1 and 10/);
+});
+
+void test('Official publication summary distinguishes semantic scores from infrastructure gaps', () => {
+  const root = mkdtempSync(join(tmpdir(), 'aiq-continuous-run-'));
+  const path = join(root, 'run.json');
+  writeFileSync(
+    path,
+    JSON.stringify({
+      results: [
+        { status: 'completed', task_score: 0 },
+        { status: 'completed', task_score: 0.75 },
+        {
+          status: 'failed',
+          task_score: null,
+          failure: { kind: 'evaluator_failure', retryable: true },
+        },
+      ],
+    }),
+  );
+
+  assert.deepEqual(summarizeOfficialRunPublication(path), {
+    total_results: 3,
+    non_semantic_results: 1,
+    failure_kinds: { evaluator_failure: 1 },
+  });
 });
