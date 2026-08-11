@@ -51,6 +51,25 @@ export function resolveWorkbenchXAxisBounds(
   return [Math.max(0, observedMinimum - span * 0.12), observedMaximum + span * 0.12];
 }
 
+export function resolveWorkbenchYAxisBounds(
+  points: readonly WorkbenchPlotRow[],
+): readonly [number, number] {
+  if (points.length === 0) return [0, 100];
+  const values = points.flatMap(({ entry }) => [
+    entry.score,
+    entry.scoreCiLow ?? entry.score,
+    entry.scoreCiHigh ?? entry.score,
+  ]);
+  const observedMinimum = Math.min(...values);
+  const observedMaximum = Math.max(...values);
+  const span = Math.max(observedMaximum - observedMinimum, 10);
+  const padding = Math.max(span * 0.08, 2);
+  return [
+    Math.max(0, Math.floor(observedMinimum - padding)),
+    Math.min(100, Math.ceil(observedMaximum + padding)),
+  ];
+}
+
 function formatDurationAxis(value: number): string {
   const minutes = value / 60_000;
   if (minutes < 60) return `${Math.round(minutes)}m`;
@@ -150,6 +169,7 @@ export function ConfigurationWorkbenchChart({
   const scalePoints = useMemo(() => resolveWorkbenchPlotRows(allRows, metric), [allRows, metric]);
   const frontierKeys = useMemo(() => configurationFrontierKeys(allRows), [allRows]);
   const [xMinimum, xMaximum] = resolveWorkbenchXAxisBounds(scalePoints, metric);
+  const [yMinimum, yMaximum] = resolveWorkbenchYAxisBounds(scalePoints);
   const allCosts = scalePoints.flatMap(({ cost }) =>
     cost.kind === 'unavailable'
       ? []
@@ -182,7 +202,7 @@ export function ConfigurationWorkbenchChart({
         entry.id,
         scoreMetric.intervalLow ?? entry.score,
         scoreMetric.intervalHigh ?? entry.score,
-        frontierKeys.has(entry.id) ? 'Pareto frontier' : 'Not on Pareto frontier',
+        frontierKeys.has(entry.id) ? 'Trade-off option' : 'Other option',
         `${entry.sampleSize} tasks · ${entry.coveragePercent.toFixed(0)}% coverage`,
         row.summedCellAdapterElapsedMs ?? -1,
         costLow,
@@ -200,8 +220,8 @@ export function ConfigurationWorkbenchChart({
         selectedMode: false,
         textStyle: { color: 'var(--muted)' },
         data: decision
-          ? ['Sol', 'Terra', 'Luna', 'Cost range', 'Pareto frontier']
-          : ['Sol', 'Terra', 'Luna', 'Pareto frontier'],
+          ? ['Sol', 'Terra', 'Luna', 'Published cost range', 'Trade-off option']
+          : ['Sol', 'Terra', 'Luna', 'Trade-off option'],
       },
       tooltip: {
         trigger: 'item',
@@ -248,8 +268,8 @@ export function ConfigurationWorkbenchChart({
       },
       yAxis: {
         type: 'value',
-        min: 0,
-        max: 100,
+        min: yMinimum,
+        max: yMaximum,
         name: 'AIQ · higher is better',
         nameLocation: 'middle',
         nameGap: 43,
@@ -351,7 +371,7 @@ export function ConfigurationWorkbenchChart({
           ? [
               {
                 type: 'scatter' as const,
-                name: 'Cost range',
+                name: 'Published cost range',
                 silent: true,
                 z: 1,
                 symbol: 'circle',
@@ -424,7 +444,7 @@ export function ConfigurationWorkbenchChart({
         }),
         {
           type: 'scatter',
-          name: 'Pareto frontier',
+          name: 'Trade-off option',
           silent: true,
           z: 4,
           symbolSize: 22,
@@ -435,7 +455,18 @@ export function ConfigurationWorkbenchChart({
         },
       ],
     };
-  }, [costMaximum, costMinimum, focusId, frontierKeys, metric, points, xMaximum, xMinimum]);
+  }, [
+    costMaximum,
+    costMinimum,
+    focusId,
+    frontierKeys,
+    metric,
+    points,
+    xMaximum,
+    xMinimum,
+    yMaximum,
+    yMinimum,
+  ]);
 
   if (points.length === 0) {
     return (
@@ -469,9 +500,9 @@ export function ConfigurationWorkbenchChart({
         onBlankClick={clearFocus}
       />
       <p className="workbench-chart-note">
-        {points.length}/{rows.length} filtered configurations plotted · Cost evidence: {exactCount}{' '}
-        exact · {boundedCount} range · {unavailableCostCount} unavailable
-        {metric === 'cost' ? '' : ' · time axis spans observed values'} · AIQ remains independent.
+        {points.length}/{rows.length} shown · cost: {exactCount} exact, {boundedCount} range
+        {unavailableCostCount > 0 ? `, ${unavailableCostCount} unavailable` : ''} · axes span
+        observed evidence · AIQ stays independent.
       </p>
     </div>
   );

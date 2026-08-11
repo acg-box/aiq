@@ -127,9 +127,9 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
 
   return (
     <header className="site-header">
-      <Link className="brand" href="/" aria-label="AIQ home" prefetch={false}>
+      <a className="brand" href="/" aria-label="AIQ home">
         <span>AIQ</span>
-      </Link>
+      </a>
       <nav aria-label="Main navigation">
         {workspaceNavigation.map(([label, section]) => {
           const navigationSection = section === 'runs' ? 'evidence' : section;
