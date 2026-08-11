@@ -524,8 +524,8 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
           <p className="workbench-footnote">
             Time is the sum of retained adapter durations across 72 tasks. Cost is a Standard
             API-equivalent estimate for rows with complete supported token evidence, not billed
-            ChatGPT subscription spend. No paired Fast-mode evidence is published, so Fast is not
-            shown.
+            ChatGPT subscription spend. Paired Normal/Fast transport measurements appear in the
+            history section below and never change AIQ.
           </p>
         </>
       )}
