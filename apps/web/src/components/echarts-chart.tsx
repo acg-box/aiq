@@ -33,21 +33,32 @@ export function EChartsChart({
   option,
   label,
   className,
+  onDataPointClick,
+  onBlankClick,
 }: {
   option: EChartsCoreOption;
   label: string;
   className: string;
+  onDataPointClick?: (event: unknown) => void;
+  onBlankClick?: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
+  const chart = useRef<ReturnType<typeof init> | null>(null);
+  const optionRef = useRef(option);
+  const appliedOptionRef = useRef<EChartsCoreOption | null>(null);
+  const interactionRef = useRef({ onDataPointClick, onBlankClick });
   const descriptionId = useId();
   const [description, setDescription] = useState(
     'Interactive chart. The complete values are available in the following data table.',
   );
+  optionRef.current = option;
+  interactionRef.current = { onDataPointClick, onBlankClick };
 
   useEffect(() => {
     if (!host.current) return undefined;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const chart = init(host.current, undefined, { renderer: 'svg' });
+    const instance = init(host.current, undefined, { renderer: 'svg' });
+    chart.current = instance;
     const syncDescription = () => {
       const generated = host.current?.querySelector('[aria-label]')?.getAttribute('aria-label');
       setDescription(
@@ -58,29 +69,59 @@ export function EChartsChart({
     const render = () => {
       const motionEnabled = !reducedMotion.matches;
       const themedOption: EChartsCoreOption = {
-        ...option,
+        ...optionRef.current,
         animation: motionEnabled,
         animationDuration: motionEnabled ? 260 : 0,
         animationDurationUpdate: motionEnabled ? 180 : 0,
         animationEasing: 'cubicOut',
         animationEasingUpdate: 'cubicOut',
       };
-      chart.setOption(themedOption, { notMerge: true });
-      syncDescription();
+      instance.setOption(themedOption, { notMerge: true });
+      appliedOptionRef.current = optionRef.current;
     };
-    chart.on('finished', syncDescription);
+    const pointClick = (event: unknown) => interactionRef.current.onDataPointClick?.(event);
+    const blankClick = (event: unknown) => {
+      if (typeof event === 'object' && event !== null && 'target' in event && event.target) {
+        return;
+      }
+      interactionRef.current.onBlankClick?.();
+    };
+    instance.on('finished', syncDescription);
+    instance.on('click', pointClick);
+    instance.getZr().on('click', blankClick);
     render();
     window.addEventListener('aiq-themechange', render);
     reducedMotion.addEventListener('change', render);
-    const resize = new ResizeObserver(() => chart.resize());
+    const resize = new ResizeObserver(() => instance.resize());
     resize.observe(host.current);
     return () => {
       window.removeEventListener('aiq-themechange', render);
       reducedMotion.removeEventListener('change', render);
       resize.disconnect();
-      chart.off('finished', syncDescription);
-      chart.dispose();
+      instance.off('finished', syncDescription);
+      instance.off('click', pointClick);
+      instance.getZr().off('click', blankClick);
+      instance.dispose();
+      chart.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const instance = chart.current;
+    if (!instance || appliedOptionRef.current === option) return;
+    const motionEnabled = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    instance.setOption(
+      {
+        ...option,
+        animation: motionEnabled,
+        animationDuration: motionEnabled ? 260 : 0,
+        animationDurationUpdate: motionEnabled ? 180 : 0,
+        animationEasing: 'cubicOut',
+        animationEasingUpdate: 'cubicOut',
+      },
+      { notMerge: true },
+    );
+    appliedOptionRef.current = option;
   }, [option]);
 
   return (

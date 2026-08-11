@@ -211,7 +211,7 @@ export default async function OverviewPage({
                 : 'Publication pending'}
             </p>
           </div>
-          <Link className="text-link" href="#method">
+          <Link className="text-link" href="/#method">
             Scoring &amp; evidence <span aria-hidden="true">→</span>
           </Link>
         </header>

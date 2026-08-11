@@ -81,10 +81,11 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workspaceStyles, /\.evidence-notes/);
   });
 
-  void it('keeps the filtered table readable on a narrow viewport', async () => {
-    const [source, workspaceStyles] = await Promise.all([
+  void it('keeps sortable table headings available on a narrow viewport', async () => {
+    const [source, workspaceStyles, globalStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
       readFile(workspaceStylesUrl, 'utf8'),
+      readFile(globalStylesUrl, 'utf8'),
     ]);
 
     assert.doesNotMatch(source, /TrophyIcon|ChartBarIcon|TargetIcon/);
@@ -94,9 +95,20 @@ void describe('homepage evidence and loading contract', () => {
     );
     assert.match(
       workspaceStyles,
-      /\.workbench-table tr \{[\s\S]+grid-template-columns: minmax\(110px, 1\.2fr\) repeat\(3, minmax\(58px, 0\.72fr\)\);/,
+      /@media \(max-width: 760px\)[\s\S]+\.workbench-table \{[\s\S]+overflow-x: auto;/,
     );
-    assert.match(workspaceStyles, /\.workbench-evidence \{\s+display: none;/);
+    assert.match(
+      workspaceStyles,
+      /@media \(max-width: 760px\)[\s\S]+\.workbench-table table \{[\s\S]+min-width: 760px;/,
+    );
+    assert.doesNotMatch(workspaceStyles, /\.workbench-table thead \{\s+display: none;/);
+    assert.match(globalStyles, /html \{[\s\S]+overflow-x: clip;/);
+  });
+
+  void it('keeps methodology detail typography subordinate to the page hierarchy', async () => {
+    const workspaceStyles = await readFile(workspaceStylesUrl, 'utf8');
+    assert.match(workspaceStyles, /\.method-layout > article > h2 \{[\s\S]+font-size: 0\.96rem;/);
+    assert.match(workspaceStyles, /\.principle-list li \{[\s\S]+font-size: 0\.78rem;/);
   });
 
   void it('uses real efficiency evidence when present and a real score matrix otherwise', async () => {
@@ -135,7 +147,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
     assert.match(source, /<MethodPage \/>/);
     assert.match(source, /<RadarPage \/>/);
-    assert.match(source, /href="#method"/);
+    assert.match(source, /href="\/#method"/);
   });
 
   void it('keeps embedded archive pagination inside the one-page workspace', async () => {
