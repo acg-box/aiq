@@ -147,8 +147,8 @@ export default async function MethodPage() {
         <span className="eyebrow">Method</span>
         <h1>How AIQ is scored</h1>
         <p>
-          AIQ measures outcomes on one committed set of 72 practical tasks. It is a transparent
-          benchmark score, not a claim about general intelligence.
+          See what AIQ measures, how uncertainty is calculated, and which operational metrics stay
+          outside the score.
         </p>
       </div>
       <ReadStateNote result={result} subject="Benchmark method" />

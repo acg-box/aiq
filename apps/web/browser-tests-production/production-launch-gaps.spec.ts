@@ -58,7 +58,7 @@ async function getActualRunPath(page: Page): Promise<string> {
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' }).first();
+  const workbench = page.getByRole('region', { name: 'Compare configurations' }).first();
   await expect(page.getByRole('button', { name: /Highest AIQ/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Shortest task time/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Lowest cost upper bound/ })).toBeVisible();
@@ -90,7 +90,7 @@ async function expectMobileMatrixLegibility(page: Page) {
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expectPublishedNonSyntheticPage(page, '/compare');
   await page.waitForLoadState('networkidle');
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const workbench = page.getByRole('region', { name: 'Compare configurations' });
   const status = workbench.getByRole('status');
   const comparison = workbench.getByRole('region', {
     name: 'Filtered configuration comparison table',
@@ -120,15 +120,15 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
     .getAttribute('data-configuration-id');
   expect(firstId).toMatch(/^(?:sol|terra|luna)-/);
   await page.goto(`/compare?compareConfigs=${encodeURIComponent(firstId ?? '')}#compare`);
-  const singleWorkbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const singleWorkbench = page.getByRole('region', { name: 'Compare configurations' });
   await expect(singleWorkbench.getByRole('status')).toContainText('1/17 configurations visible');
   await page.reload({ waitUntil: 'networkidle' });
   await expect(
-    page.getByRole('region', { name: 'Compare all 17 at once.' }).getByRole('status'),
+    page.getByRole('region', { name: 'Compare configurations' }).getByRole('status'),
   ).toContainText('1/17 configurations visible');
 
   await page.goto('/compare');
-  const restoredWorkbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const restoredWorkbench = page.getByRole('region', { name: 'Compare configurations' });
   await restoredWorkbench.getByText(/Custom selection · 17\/17/).click();
   await restoredWorkbench.getByRole('button', { name: 'Clear', exact: true }).click();
   await expect(restoredWorkbench.locator('.workbench-configuration-picker')).not.toHaveAttribute(
