@@ -1,7 +1,10 @@
 'use client';
 
+import { CaretDownIcon } from '@phosphor-icons/react/dist/csr/CaretDown';
+import { CaretUpIcon } from '@phosphor-icons/react/dist/csr/CaretUp';
+import { CaretUpDownIcon } from '@phosphor-icons/react/dist/csr/CaretUpDown';
 import Link from 'next/link';
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { formatHumanDuration } from '../data/format-duration.ts';
 import { pushAnalyticalUrl, useAnalyticalSearchParams } from './analytical-url-state.ts';
@@ -15,11 +18,13 @@ import {
 import {
   CONFIGURATION_FAMILIES,
   CONFIGURATION_REASONING_TIERS,
+  defaultWorkbenchDirection,
   encodeWorkbenchSelection,
   filterConfigurationWorkbenchRows,
   orderConfigurationWorkbenchRows,
   readConfigurationWorkbenchState,
   summarizeConfigurationWorkbench,
+  type ConfigurationWorkbenchOrder,
   type ConfigurationWorkbenchView,
 } from './configuration-workbench.ts';
 import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
@@ -56,7 +61,6 @@ function toggleSelection<Value extends string>(
 
 export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficiencyRow[] }) {
   const searchParams = useAnalyticalSearchParams();
-  const configurationPicker = useRef<HTMLDetailsElement>(null);
   const state = useMemo(
     () => readConfigurationWorkbenchState(searchParams, rows),
     [rows, searchParams],
@@ -80,8 +84,8 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     return filterConfigurationWorkbenchRows(rows, filterState);
   }, [filterQuery, rows]);
   const orderedRows = useMemo(
-    () => orderConfigurationWorkbenchRows(visibleRows, state.order),
-    [state.order, visibleRows],
+    () => orderConfigurationWorkbenchRows(visibleRows, state.order, state.direction),
+    [state.direction, state.order, visibleRows],
   );
   const summary = useMemo(
     () => summarizeConfigurationWorkbench(rows, visibleRows),
@@ -94,6 +98,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     [visibleRows],
   );
   const focusId = state.focusId !== null && visibleIds.has(state.focusId) ? state.focusId : null;
+  const focusedRow = visibleRows.find(({ entry }) => entry.id === focusId) ?? null;
 
   const updateSelection = useCallback(
     (key: string, selected: readonly string[], allowed: readonly string[]) => {
@@ -110,9 +115,53 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       compareFrontier: null,
       compareView: null,
       compareOrder: null,
+      compareDirection: null,
       compareFocus: null,
     });
   }, []);
+  const updateFocus = useCallback((configurationId: string | null) => {
+    pushAnalyticalUrl({ compareFocus: configurationId });
+  }, []);
+  const updateOrder = useCallback(
+    (order: ConfigurationWorkbenchOrder) => {
+      const direction =
+        state.order === order
+          ? state.direction === 'asc'
+            ? 'desc'
+            : 'asc'
+          : defaultWorkbenchDirection(order);
+      pushAnalyticalUrl({
+        compareOrder: order === 'ability' ? null : order,
+        compareDirection: direction === defaultWorkbenchDirection(order) ? null : direction,
+      });
+    },
+    [state.direction, state.order],
+  );
+  const sortHeader = (order: ConfigurationWorkbenchOrder, label: string) => {
+    const active = state.order === order;
+    const direction = active ? state.direction : null;
+    const SortIcon =
+      direction === 'asc' ? CaretUpIcon : direction === 'desc' ? CaretDownIcon : CaretUpDownIcon;
+    return (
+      <th
+        scope="col"
+        aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}
+      >
+        <button
+          type="button"
+          aria-label={
+            direction === null
+              ? `Sort by ${label}`
+              : `${label}, sorted ${direction === 'asc' ? 'ascending' : 'descending'}; activate to reverse`
+          }
+          onClick={() => updateOrder(order)}
+        >
+          <span>{label}</span>
+          <SortIcon aria-hidden="true" size={14} weight="bold" />
+        </button>
+      </th>
+    );
+  };
 
   const summaryItems: ReadonlyArray<{
     label: string;
@@ -130,9 +179,10 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: null,
+          compareDirection: null,
           compareFocus: summary.highestAbility?.entry.id ?? null,
         }),
-      pressed: state.order === 'ability',
+      pressed: state.order === 'ability' && state.direction === 'desc',
     },
     {
       label: 'Shortest task time',
@@ -141,10 +191,11 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: 'time',
+          compareDirection: null,
           compareView: 'duration',
           compareFocus: summary.shortestTime?.entry.id ?? null,
         }),
-      pressed: state.order === 'time' && state.view === 'duration',
+      pressed: state.order === 'time' && state.direction === 'asc' && state.view === 'duration',
     },
     {
       label: 'Lowest cost upper bound',
@@ -153,10 +204,11 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: 'cost',
+          compareDirection: null,
           compareView: 'cost',
           compareFocus: summary.lowestCost?.entry.id ?? null,
         }),
-      pressed: state.order === 'cost' && state.view === 'cost',
+      pressed: state.order === 'cost' && state.direction === 'asc' && state.view === 'cost',
     },
     {
       label: 'Cost evidence',
@@ -277,10 +329,14 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       </div>
 
       <div className="workbench-selection-row">
-        <details ref={configurationPicker} className="workbench-configuration-picker">
-          <summary>
-            Custom selection · {state.configurationIds.length}/{configurationIds.length}
-          </summary>
+        <div className="workbench-selection-heading">
+          <div>
+            <span className="workbench-control-label">Configurations</span>
+            <span className="workbench-filter-result" role="status" aria-live="polite">
+              {state.configurationIds.length}/{configurationIds.length} selected ·{' '}
+              {summary.visibleCount}/{summary.totalCount} configurations visible
+            </span>
+          </div>
           <div className="workbench-picker-actions">
             <button
               type="button"
@@ -290,41 +346,47 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
             </button>
             <button
               type="button"
-              onClick={() => {
-                updateSelection('compareConfigs', [], configurationIds);
-                if (configurationPicker.current) configurationPicker.current.open = false;
-              }}
+              onClick={() => updateSelection('compareConfigs', [], configurationIds)}
             >
               Clear
             </button>
+            <button className="workbench-reset" type="button" onClick={reset}>
+              Reset filters
+            </button>
           </div>
-          <div className="workbench-configuration-options">
-            {rows.map(({ entry }) => (
-              <label key={entry.id}>
-                <input
-                  type="checkbox"
-                  checked={state.configurationIds.includes(entry.id)}
-                  onChange={() =>
-                    updateSelection(
-                      'compareConfigs',
-                      toggleSelection(state.configurationIds, entry.id, configurationIds),
-                      configurationIds,
-                    )
-                  }
-                />
-                <span>
-                  {entry.modelFamily} · {entry.reasoningTier}
-                </span>
-              </label>
-            ))}
-          </div>
-        </details>
-        <span className="workbench-filter-result" role="status" aria-live="polite">
-          {summary.visibleCount}/{summary.totalCount} configurations visible
-        </span>
-        <button className="workbench-reset" type="button" onClick={reset}>
-          Reset filters
-        </button>
+        </div>
+        <div
+          className="workbench-configuration-options"
+          role="group"
+          aria-label="Configuration selection"
+        >
+          {CONFIGURATION_FAMILIES.map((family) => (
+            <div className="workbench-configuration-row" key={family}>
+              <span className="workbench-configuration-family">{family}</span>
+              <div role="group" aria-label={`${family} configurations`}>
+                {rows
+                  .filter(({ entry }) => entry.modelFamily === family)
+                  .map(({ entry }) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      aria-label={`${entry.modelFamily} ${entry.reasoningTier} configuration`}
+                      aria-pressed={state.configurationIds.includes(entry.id)}
+                      onClick={() =>
+                        updateSelection(
+                          'compareConfigs',
+                          toggleSelection(state.configurationIds, entry.id, configurationIds),
+                          configurationIds,
+                        )
+                      }
+                    >
+                      {entry.reasoningTier}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {visibleRows.length === 0 ? (
@@ -356,22 +418,18 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
                 </button>
               ))}
             </div>
-            <label>
-              <span>Highlight</span>
-              <select
-                value={focusId ?? ''}
-                onChange={(event) =>
-                  pushAnalyticalUrl({ compareFocus: event.target.value || null })
-                }
-              >
-                <option value="">None · show all equally</option>
-                {visibleRows.map(({ entry }) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.modelFamily} · {entry.reasoningTier}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="workbench-focus-status" aria-live="polite">
+              <span>
+                {focusedRow
+                  ? `${focusedRow.entry.modelFamily} · ${focusedRow.entry.reasoningTier} focused`
+                  : 'Click a point or row to focus'}
+              </span>
+              {focusedRow ? (
+                <button type="button" onClick={() => updateFocus(null)}>
+                  Clear
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="workbench-visualization">
@@ -380,37 +438,13 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
               rows={visibleRows}
               metric={state.view}
               focusId={focusId}
+              onFocusChange={updateFocus}
             />
           </div>
 
           <div className="workbench-table-heading">
-            <div>
-              <h3>Filtered configurations</h3>
-              <p>Every visible row uses the same filters as the chart above.</p>
-            </div>
-            <label>
-              <span>Order</span>
-              <select
-                value={state.order}
-                onChange={(event) => {
-                  const order = event.target.value;
-                  if (
-                    order !== 'ability' &&
-                    order !== 'time' &&
-                    order !== 'cost' &&
-                    order !== 'family'
-                  ) {
-                    return;
-                  }
-                  pushAnalyticalUrl({ compareOrder: order === 'ability' ? null : order });
-                }}
-              >
-                <option value="ability">AIQ · high to low</option>
-                <option value="time">Time · low to high</option>
-                <option value="cost">Cost upper bound · low to high</option>
-                <option value="family">Model family</option>
-              </select>
-            </label>
+            <h3>Filtered configurations</h3>
+            <p>Click a column heading to sort. Click a configuration to focus it in the chart.</p>
           </div>
           <div
             className="workbench-table"
@@ -424,10 +458,10 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Configuration</th>
-                  <th scope="col">AIQ</th>
-                  <th scope="col">Task time</th>
-                  <th scope="col">API-equivalent cost</th>
+                  {sortHeader('family', 'Configuration')}
+                  {sortHeader('ability', 'AIQ')}
+                  {sortHeader('time', 'Task time')}
+                  {sortHeader('cost', 'API-equivalent cost')}
                   <th scope="col">Evidence</th>
                 </tr>
               </thead>
@@ -490,11 +524,11 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
             </table>
           </div>
           <p className="workbench-footnote">
-            Time is the sum of retained adapter durations across 72 tasks. Cost is a Standard
-            API-equivalent evidence is either exact or a conservative published-rate range when
-            aggregate task usage cannot identify each long-context request. It is not billed ChatGPT
-            subscription spend. Paired Normal/Fast transport measurements appear in the history
-            section below and never change AIQ.
+            Time is the sum of retained adapter durations across 72 tasks. Standard API-equivalent
+            cost evidence is either exact or a conservative published-rate range when aggregate task
+            usage cannot identify each long-context request. It is not billed ChatGPT subscription
+            spend. Paired Normal/Fast transport measurements appear in the history section below and
+            never change AIQ.
           </p>
         </>
       )}

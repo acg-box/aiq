@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import type { EChartsCoreOption } from 'echarts/core';
 
 import { formatHumanDuration } from '../data/format-duration.ts';
@@ -123,11 +123,13 @@ export function ConfigurationWorkbenchChart({
   rows,
   metric,
   focusId,
+  onFocusChange,
 }: {
   allRows: readonly ExactEfficiencyRow[];
   rows: readonly ExactEfficiencyRow[];
   metric: Metric;
   focusId: string | null;
+  onFocusChange: (configurationId: string | null) => void;
 }) {
   const points = useMemo(() => resolveWorkbenchPlotRows(rows, metric), [metric, rows]);
   const scalePoints = useMemo(() => resolveWorkbenchPlotRows(allRows, metric), [allRows, metric]);
@@ -142,6 +144,15 @@ export function ConfigurationWorkbenchChart({
   const costMaximum = Math.max(...allCosts, 1);
   const exactCount = points.filter(({ cost }) => cost.kind === 'exact').length;
   const boundedCount = points.filter(({ cost }) => cost.kind === 'bounded').length;
+  const focusPoint = useCallback(
+    (event: unknown) => {
+      const datum = readDatum(event);
+      if (!datum) return;
+      onFocusChange(datum[3] === focusId ? null : datum[3]);
+    },
+    [focusId, onFocusChange],
+  );
+  const clearFocus = useCallback(() => onFocusChange(null), [onFocusChange]);
   const option = useMemo<EChartsCoreOption>(() => {
     const duration = metric !== 'cost';
     const decision = metric === 'decision';
@@ -371,6 +382,9 @@ export function ConfigurationWorkbenchChart({
               return {
                 value: datum,
                 symbolSize: point.entry.id === focusId ? normalSize + 6 : normalSize,
+                itemStyle: {
+                  opacity: focusId === null || point.entry.id === focusId ? 0.92 : 0.24,
+                },
                 label:
                   point.entry.id === focusId
                     ? {
@@ -423,7 +437,13 @@ export function ConfigurationWorkbenchChart({
       }
       data-workbench-point-count={points.length}
     >
-      <EChartsChart className="workbench-chart-canvas" option={option} label={label} />
+      <EChartsChart
+        className="workbench-chart-canvas"
+        option={option}
+        label={label}
+        onDataPointClick={focusPoint}
+        onBlankClick={clearFocus}
+      />
       <p className="workbench-chart-note">
         {points.length}/{rows.length} filtered configurations plotted · {exactCount} exact cost ·{' '}
         {boundedCount} published-rate range · AIQ remains independent.

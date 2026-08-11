@@ -114,6 +114,43 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
 
   await workbench.getByRole('button', { name: 'Reset filters', exact: true }).click();
   await expect(status).toContainText('17/17 configurations visible');
+  const aiqHeading = comparison.getByRole('columnheader', { name: /AIQ/ });
+  const timeHeading = comparison.getByRole('columnheader', { name: /Task time/ });
+  await expect(aiqHeading).toHaveAttribute('aria-sort', 'descending');
+  const ascendingFirstId = await comparison
+    .locator('tbody tr')
+    .first()
+    .getAttribute('data-configuration-id');
+  await timeHeading.getByRole('button').click();
+  await expect(page).toHaveURL(/compareOrder=time/);
+  await expect(timeHeading).toHaveAttribute('aria-sort', 'ascending');
+  const fastestId = await comparison
+    .locator('tbody tr')
+    .first()
+    .getAttribute('data-configuration-id');
+  await timeHeading.getByRole('button').click();
+  await expect(page).toHaveURL(/compareDirection=desc/);
+  await expect(timeHeading).toHaveAttribute('aria-sort', 'descending');
+  const slowestId = await comparison
+    .locator('tbody tr')
+    .first()
+    .getAttribute('data-configuration-id');
+  expect(fastestId).not.toBe(slowestId);
+  expect(ascendingFirstId).not.toBeNull();
+
+  const timePlot = workbench.getByRole('region', { name: 'AIQ against summed task time' });
+  const firstPoint = timePlot
+    .locator('.echarts-host path[fill="var(--data-lime)"][stroke="var(--panel)"]')
+    .first();
+  await firstPoint.click({ force: true });
+  await expect.poll(() => new URL(page.url()).searchParams.get('compareFocus')).not.toBeNull();
+  await expect(comparison.locator('tbody tr[data-focused="true"]')).toHaveCount(1);
+  await timePlot
+    .locator('.echarts-host path[fill="var(--data-lime)"][stroke="var(--panel)"]')
+    .first()
+    .click({ force: true });
+  await expect.poll(() => new URL(page.url()).searchParams.get('compareFocus')).toBeNull();
+
   const firstId = await comparison
     .locator('tbody tr')
     .first()
@@ -129,12 +166,10 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
 
   await page.goto('/compare');
   const restoredWorkbench = page.getByRole('region', { name: 'Compare configurations' });
-  await restoredWorkbench.getByText(/Custom selection · 17\/17/).click();
+  await expect(
+    restoredWorkbench.getByRole('group', { name: 'Configuration selection' }),
+  ).toBeVisible();
   await restoredWorkbench.getByRole('button', { name: 'Clear', exact: true }).click();
-  await expect(restoredWorkbench.locator('.workbench-configuration-picker')).not.toHaveAttribute(
-    'open',
-    '',
-  );
   await expect(restoredWorkbench.getByRole('status').first()).toContainText(
     '0/17 configurations visible',
   );
