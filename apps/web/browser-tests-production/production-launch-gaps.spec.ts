@@ -169,6 +169,15 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expect(
     restoredWorkbench.getByRole('group', { name: 'Configuration selection' }),
   ).toBeVisible();
+  await expect(
+    restoredWorkbench.getByRole('group', { name: 'Sol configurations' }).getByRole('button'),
+  ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+  await expect(
+    restoredWorkbench.getByRole('group', { name: 'Terra configurations' }).getByRole('button'),
+  ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+  await expect(
+    restoredWorkbench.getByRole('group', { name: 'Luna configurations' }).getByRole('button'),
+  ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max']);
   await restoredWorkbench.getByRole('button', { name: 'Clear', exact: true }).click();
   await expect(restoredWorkbench.getByRole('status').first()).toContainText(
     '0/17 configurations visible',
