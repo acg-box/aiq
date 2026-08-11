@@ -223,7 +223,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   }
 
   const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
+  await expect(workbench.locator('.workbench-filter-toggle small')).toContainText('17/17 visible');
   await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Time, token, and cost table', { exact: true }).click();
 
@@ -458,13 +458,11 @@ test('production method, trends, and radar preserve transparent evidence semanti
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
-  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
+  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'Latest AIQ snapshot');
   await expect(
     page.getByRole('img', { name: /AIQ \(0–100\) first-observation snapshot/ }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
-  ).toHaveCount(17);
+  await expect(page.getByRole('list', { name: 'Visible trend series' })).toHaveCount(0);
   await page.getByText('Evidence notes and visible values', { exact: true }).click();
   await expect(page.getByRole('note')).toContainText(
     'Showing 17 configurations in canonical matrix order',
