@@ -185,6 +185,29 @@ test('workspace navigation keeps the selected destination active while scrolling
   await expect(compare).toHaveAttribute('aria-current', 'page');
 });
 
+test('the scoring shortcut preserves analysis state and reaches the embedded method', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile-chromium', 'The compact header uses Evidence nav.');
+  await page.goto('/?compareView=cost#compare');
+
+  await page.getByRole('link', { name: 'Scoring & evidence', exact: true }).click();
+
+  await expect(page).toHaveURL('/?compareView=cost#method');
+  await expect
+    .poll(() =>
+      page
+        .locator('#method')
+        .evaluate((section) => Math.round(section.getBoundingClientRect().top)),
+    )
+    .toBeLessThanOrEqual(85);
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Main navigation' })
+      .getByRole('link', { name: 'Evidence', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
+});
+
 test('crawler metadata routes expose only the public surface', async ({ request }) => {
   const robotsResponse = await request.get('/robots.txt');
   expect(robotsResponse.status()).toBe(200);

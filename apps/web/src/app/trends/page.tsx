@@ -94,12 +94,18 @@ export default async function TrendsPage({
   const evidenceStateSummary = [...new Set(evidenceStates)]
     .map((state) => (state === 'synthetic' ? 'synthetic / seed' : state))
     .join(' + ');
+  const observationCount = new Set(pointsResult.data.map((point) => point.recordedAt)).size;
+  const isSingleObservation = observationCount === 1;
   return (
     <section className="page-shell inner-page">
       <div className="page-intro">
         <span className="eyebrow">History</span>
-        <h1>AIQ over time</h1>
-        <p>Compare AIQ, time, cost, and Normal/Fast measurements across every published run.</p>
+        <h1>{isSingleObservation ? 'Latest AIQ snapshot' : 'AIQ over time'}</h1>
+        <p>
+          {isSingleObservation
+            ? 'Compare every published configuration now; trend lines begin after the next Official cycle.'
+            : 'Compare AIQ, time, cost, and Normal/Fast measurements across every published run.'}
+        </p>
       </div>
       {evidenceNeedsAttention ? <ReadStateNote result={pointsResult} subject="History" /> : null}
       {entriesResult.state !== 'unavailable' && pointsResult.state !== 'unavailable' ? (

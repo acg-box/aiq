@@ -280,7 +280,8 @@ export function SpeedObservationExplorer({
           <h2 id="speed-observation-title">Normal vs Fast</h2>
           <p>
             Same fixed response task, paired modes, {observations[0]?.trialsPerMode ?? 0} trials per
-            mode. AIQ is not recomputed from speed, time, tokens, or credits.
+            mode. AIQ is not recomputed from speed, time, tokens, or credits. TTFT is not shown
+            because the current CLI does not expose first-token timestamps.
           </p>
         </div>
         <time dateTime={observations[0]?.observedAt}>
@@ -304,8 +305,11 @@ export function SpeedObservationExplorer({
           <dd>{unavailableCount}</dd>
         </div>
         <div>
-          <dt>TTFT</dt>
-          <dd>Not exposed by current CLI</dd>
+          <dt>Paired configurations</dt>
+          <dd>
+            {pairRows.length}/
+            {new Set(visibleObservations.map((observation) => observation.entryId)).size}
+          </dd>
         </div>
       </dl>
 
