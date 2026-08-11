@@ -317,7 +317,9 @@ the approved Official chain at `03:00` and `15:00` UTC. It selects one canonical
 checkpoint after interruption, and does not start overlapping work. The macOS
 `launchd` template wakes hourly at minute 5; idempotent slot selection means it
 executes model work only for the current due slot and gives a failed slot regular
-retry opportunities.
+retry opportunities. A completed run with a non-semantic infrastructure result
+is retained as unpublished evidence and is not retried or presented as an AIQ
+score; the next 12-hour slot remains independent.
 The subscription runner uses a protected copy of `~/.codex/auth.json` in an
 isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
 as its writable runtime directory. It also uses a private two-file copy of the
@@ -355,10 +357,10 @@ configuration and `launchd` plist outside Git. The protected launcher must pass
 the exact runner, submission, verifier-ingress, and verifier-signing variables
 without writing their values to a file or command argument. Each slot uses two
 fresh isolated `CODEX_HOME` directories. A failed slot retains checkpoints and
-raw artifacts for exact resume. After both publication paths succeed, it keeps
-the compact batch, package, score, attestation, and receipts, then removes copied
-credentials, raw local artifacts, replay scratch, checkpoints, and disposable
-workspaces.
+raw artifacts for exact resume, while copied credentials are removed after each
+invocation. After both publication paths succeed, it keeps the compact batch,
+package, score, attestation, and receipts, then removes raw local artifacts,
+replay scratch, checkpoints, and disposable workspaces.
 
 ## Security boundaries
 

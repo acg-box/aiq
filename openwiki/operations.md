@@ -276,8 +276,10 @@ admission and distinct publication to the calibration register.
 UTC slot. It holds one global nonblocking lock, creates one immutable state
 directory per slot, and resumes only that unchanged slot. A wake outside the due
 window does no model work. The checked-in `launchd` template wakes hourly at
-minute 5, which gives a failed current slot retry opportunities without changing
-the twice-daily model schedule.
+minute 5, which gives interrupted create-once steps retry opportunities without
+changing the twice-daily model schedule. If a completed run contains a
+non-semantic infrastructure result, the entrypoint preserves that run as
+unpublished evidence and stops retrying the slot; it does not rerun any model.
 
 Each due slot runs two independent paths: paired Normal/Fast auxiliary
 observation and the complete Official runner, verifier, and publisher chain.
@@ -300,10 +302,10 @@ The protected launcher supplies only `AIQ_RUNNER_SIGNING_KEY`,
 `AIQ_RUNNER_SUBMISSION_TOKEN`, `AIQ_VERIFIER_INGRESS_TOKEN`, and
 `AIQ_VERIFIER_SIGNING_KEY` to the child process. Do not put values in the plist,
 configuration file, command arguments, or logs. A failed slot retains checkpoints
-and raw artifacts for exact resume. After both publication paths succeed, retain
-the compact batch, package, score, stage, attestation, and receipts; remove copied
-Codex credentials, raw local artifacts, replay scratch, checkpoints, and
-disposable workspaces.
+and raw artifacts for exact resume. Isolated Codex credentials are removed after
+each invocation. After both publication paths succeed, retain the compact batch,
+package, score, stage, attestation, and receipts; remove raw local artifacts,
+replay scratch, checkpoints, and disposable workspaces.
 
 ## Score, package, and submit
 
