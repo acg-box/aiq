@@ -133,6 +133,10 @@ export function parseCommandReceipt(stdout: string, stepName: string): Record<st
   return record;
 }
 
+export function verifierRetryPolicyArguments(): readonly string[] {
+  return ['--max-retries', '10', '--backoff-ms', '1000'];
+}
+
 function canonicalAbsolutePath(value: unknown, label: string): string {
   assert.ok(typeof value === 'string', `${label} must be a string`);
   assert.ok(isAbsolute(value), `${label} must be absolute`);
@@ -722,6 +726,7 @@ function officialSteps(
         '1',
         '--max-idle-polls',
         '1',
+        ...verifierRetryPolicyArguments(),
       ],
     },
   ];
