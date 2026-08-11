@@ -1868,6 +1868,10 @@ process.stdin.on('end', () => {{
 
 		binding.arguments.clear();
 
+		// This test exercises replay retry semantics, not the timeout boundary.
+		// Leave enough process-start headroom for contended CI hosts.
+		binding.timeout_ms = 5_000;
+
 		let observation =
 			evaluate_observation_fixture(&binding, "candidate output", &root, &workspace)
 				.expect("the second checked attempt must accept two identical outputs");

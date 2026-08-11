@@ -8,7 +8,7 @@ test('the homepage keeps exact evidence in server markup and defers analytics', 
   expect(response?.status()).toBe(200);
 
   const serverMarkup = await response?.text();
-  expect(serverMarkup).toContain('Synthetic benchmark');
+  expect(serverMarkup).toContain('Synthetic preview');
   expect(serverMarkup).toContain('Top configurations');
   expect(serverMarkup).toContain('Domain profile');
   expect(serverMarkup).toContain('data-homepage-analytics-loading="matrix"');

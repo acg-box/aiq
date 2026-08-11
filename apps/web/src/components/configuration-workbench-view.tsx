@@ -179,16 +179,12 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       data-nav-section="compare"
       aria-labelledby="configuration-workbench-heading"
     >
-      <header className="workbench-heading">
-        <div>
-          <span className="eyebrow">Configuration comparison</span>
-          <h2 id="configuration-workbench-heading">Compare all 17 at once.</h2>
-        </div>
-        <p>
-          Filter the same evidence across every view. AIQ measures task performance only; time and
-          Standard API-equivalent cost remain independent observations.
-        </p>
-      </header>
+      <h2 className="sr-only" id="configuration-workbench-heading">
+        Compare configurations
+      </h2>
+      <p className="sr-only">
+        AIQ ranks task outcomes; time and cost remain independent observations.
+      </p>
 
       <div className="workbench-summaries" aria-label="Filtered comparison shortcuts">
         {summaryItems.map((item) => (

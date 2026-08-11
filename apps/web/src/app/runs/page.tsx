@@ -69,8 +69,8 @@ export default async function RunsPage({
         <span className="eyebrow">Evidence archive</span>
         <h1>Run archive</h1>
         <p>
-          Each row is one model configuration. One complete benchmark batch contains 17 runs × 72
-          tasks: 1,224 task attempts, not 1,224 benchmark runs.
+          Open any configuration to inspect its 72 task results, failures, timing, cost, and
+          provenance.
         </p>
       </div>
       <ReadStateNote result={runsResult} subject="Run archive" />
