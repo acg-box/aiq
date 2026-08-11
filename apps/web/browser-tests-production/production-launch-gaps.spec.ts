@@ -61,8 +61,8 @@ async function expectMobileMatrixLegibility(page: Page) {
   const workbench = page.getByRole('region', { name: 'Compare configurations' }).first();
   await expect(page.getByRole('button', { name: /Highest AIQ/ }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /Shortest task time/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Lowest cost upper bound/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Cost evidence/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Lowest cost ceiling/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Cost coverage/ })).toBeVisible();
   await expect(workbench).toBeVisible();
   await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
   const firstSummaryBox = await workbench

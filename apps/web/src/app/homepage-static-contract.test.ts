@@ -34,7 +34,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.doesNotMatch(source, /general intelligence/);
     assert.match(workbenchSource, /Compare configurations/);
     assert.match(workbenchSource, /remain independent observations/);
-    assert.match(workbenchSource, /Cost evidence/);
+    assert.match(workbenchSource, /Cost coverage/);
     assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
@@ -82,8 +82,9 @@ void describe('homepage evidence and loading contract', () => {
   });
 
   void it('keeps sortable table headings available on a narrow viewport', async () => {
-    const [source, workspaceStyles, globalStyles] = await Promise.all([
+    const [source, workbenchSource, workspaceStyles, globalStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
+      readFile(new URL('../components/configuration-workbench-view.tsx', import.meta.url), 'utf8'),
       readFile(workspaceStylesUrl, 'utf8'),
       readFile(globalStylesUrl, 'utf8'),
     ]);
@@ -100,6 +101,11 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(
       workspaceStyles,
       /@media \(max-width: 760px\)[\s\S]+\.workbench-table table \{[\s\S]+min-width: 760px;/,
+    );
+    assert.match(workbenchSource, /aria-controls="workbench-filter-content"/);
+    assert.match(
+      workspaceStyles,
+      /@media \(max-width: 760px\)[\s\S]+\.workbench-filter-content\[data-open='false'\] \{[\s\S]+display: none;/,
     );
     assert.doesNotMatch(workspaceStyles, /\.workbench-table thead \{\s+display: none;/);
     assert.match(globalStyles, /html \{[\s\S]+overflow-x: clip;/);

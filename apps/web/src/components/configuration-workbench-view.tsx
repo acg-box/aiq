@@ -4,7 +4,7 @@ import { CaretDownIcon } from '@phosphor-icons/react/dist/csr/CaretDown';
 import { CaretUpIcon } from '@phosphor-icons/react/dist/csr/CaretUp';
 import { CaretUpDownIcon } from '@phosphor-icons/react/dist/csr/CaretUpDown';
 import Link from 'next/link';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { formatHumanDuration } from '../data/format-duration.ts';
 import { pushAnalyticalUrl, useAnalyticalSearchParams } from './analytical-url-state.ts';
@@ -60,6 +60,7 @@ function toggleSelection<Value extends string>(
 }
 
 export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficiencyRow[] }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const searchParams = useAnalyticalSearchParams();
   const state = useMemo(
     () => readConfigurationWorkbenchState(searchParams, rows),
@@ -99,6 +100,12 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
   );
   const focusId = state.focusId !== null && visibleIds.has(state.focusId) ? state.focusId : null;
   const focusedRow = visibleRows.find(({ entry }) => entry.id === focusId) ?? null;
+  const hasActiveFilters =
+    state.families.length !== CONFIGURATION_FAMILIES.length ||
+    state.reasoningTiers.length !== CONFIGURATION_REASONING_TIERS.length ||
+    state.configurationIds.length !== configurationIds.length ||
+    state.costOnly ||
+    state.frontierOnly;
 
   const updateSelection = useCallback(
     (key: string, selected: readonly string[], allowed: readonly string[]) => {
@@ -198,7 +205,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'time' && state.direction === 'asc' && state.view === 'duration',
     },
     {
-      label: 'Lowest cost upper bound',
+      label: 'Lowest cost ceiling',
       identity: configurationName(summary.lowestCost),
       value: formatCost(summary.lowestCost),
       onClick: () =>
@@ -211,9 +218,9 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'cost' && state.direction === 'asc' && state.view === 'cost',
     },
     {
-      label: 'Cost evidence',
+      label: 'Cost coverage',
       identity: `${summary.costComparableCount}/${summary.visibleCount} comparable`,
-      value: `${summary.costMeasuredCount} exact · ${summary.costBoundedCount} bounded`,
+      value: `${summary.costMeasuredCount} exact · ${summary.costBoundedCount} ranges`,
       onClick: () =>
         pushAnalyticalUrl({
           compareView: 'decision',
@@ -254,143 +261,172 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
         ))}
       </div>
 
-      <div className="workbench-filter-bar" aria-label="Comparison filters">
-        <fieldset>
-          <legend>Model family</legend>
-          <div className="workbench-filter-options">
-            {CONFIGURATION_FAMILIES.map((family) => (
-              <button
-                key={family}
-                type="button"
-                aria-pressed={state.families.includes(family)}
-                onClick={() =>
-                  updateSelection(
-                    'compareFamilies',
-                    toggleSelection(state.families, family, CONFIGURATION_FAMILIES),
-                    CONFIGURATION_FAMILIES,
-                  )
-                }
-              >
-                {family}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Reasoning</legend>
-          <div className="workbench-filter-options workbench-filter-options-wide">
-            {CONFIGURATION_REASONING_TIERS.map((tier) => (
-              <button
-                key={tier}
-                type="button"
-                aria-pressed={state.reasoningTiers.includes(tier)}
-                onClick={() =>
-                  updateSelection(
-                    'compareReasoning',
-                    toggleSelection(state.reasoningTiers, tier, CONFIGURATION_REASONING_TIERS),
-                    CONFIGURATION_REASONING_TIERS,
-                  )
-                }
-              >
-                {tier}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>Evidence</legend>
-          <div className="workbench-filter-options">
-            <button
-              type="button"
-              aria-pressed={state.costOnly}
-              onClick={() =>
-                pushAnalyticalUrl({
-                  compareCost: state.costOnly ? null : 'estimated',
-                  compareFocus: null,
-                })
-              }
-            >
-              Exact cost only
-            </button>
-            <button
-              type="button"
-              aria-pressed={state.frontierOnly}
-              onClick={() =>
-                pushAnalyticalUrl({
-                  compareFrontier: state.frontierOnly ? null : 'only',
-                  compareFocus: null,
-                })
-              }
-            >
-              Pareto only
-            </button>
-          </div>
-        </fieldset>
-      </div>
+      <button
+        className="workbench-filter-toggle"
+        type="button"
+        aria-expanded={filtersOpen}
+        aria-controls="workbench-filter-content"
+        onClick={() => setFiltersOpen((open) => !open)}
+      >
+        <span>
+          <strong>Filters & configurations</strong>
+          <small role="status" aria-live="polite">
+            {summary.visibleCount}/{summary.totalCount} visible
+            {hasActiveFilters ? ' · filtered' : ''}
+          </small>
+        </span>
+        {filtersOpen ? (
+          <CaretUpIcon aria-hidden="true" size={16} weight="bold" />
+        ) : (
+          <CaretDownIcon aria-hidden="true" size={16} weight="bold" />
+        )}
+      </button>
 
-      <div className="workbench-selection-row">
-        <div className="workbench-selection-heading">
-          <div>
-            <span className="workbench-control-label">Configurations</span>
-            <span className="workbench-filter-result" role="status" aria-live="polite">
-              {state.configurationIds.length}/{configurationIds.length} selected ·{' '}
-              {summary.visibleCount}/{summary.totalCount} configurations visible
-            </span>
-          </div>
-          <div className="workbench-picker-actions">
-            <button
-              type="button"
-              onClick={() => updateSelection('compareConfigs', configurationIds, configurationIds)}
-            >
-              Select all
-            </button>
-            <button
-              type="button"
-              onClick={() => updateSelection('compareConfigs', [], configurationIds)}
-            >
-              Clear
-            </button>
-            <button className="workbench-reset" type="button" onClick={reset}>
-              Reset filters
-            </button>
-          </div>
-        </div>
-        <div
-          className="workbench-configuration-options"
-          role="group"
-          aria-label="Configuration selection"
-        >
-          {CONFIGURATION_FAMILIES.map((family) => (
-            <div className="workbench-configuration-row" key={family}>
-              <span className="workbench-configuration-family">{family}</span>
-              <div role="group" aria-label={`${family} configurations`}>
-                {rows
-                  .filter(({ entry }) => entry.modelFamily === family)
-                  .toSorted(
-                    (left, right) =>
-                      CONFIGURATION_REASONING_TIERS.indexOf(left.entry.reasoningTier) -
-                      CONFIGURATION_REASONING_TIERS.indexOf(right.entry.reasoningTier),
-                  )
-                  .map(({ entry }) => (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      aria-label={`${entry.modelFamily} ${entry.reasoningTier} configuration`}
-                      aria-pressed={state.configurationIds.includes(entry.id)}
-                      onClick={() =>
-                        updateSelection(
-                          'compareConfigs',
-                          toggleSelection(state.configurationIds, entry.id, configurationIds),
-                          configurationIds,
-                        )
-                      }
-                    >
-                      {entry.reasoningTier}
-                    </button>
-                  ))}
-              </div>
+      <div
+        className="workbench-filter-content"
+        id="workbench-filter-content"
+        data-open={filtersOpen ? 'true' : 'false'}
+      >
+        <div className="workbench-filter-bar" aria-label="Comparison filters">
+          <fieldset>
+            <legend>Model family</legend>
+            <div className="workbench-filter-options">
+              {CONFIGURATION_FAMILIES.map((family) => (
+                <button
+                  key={family}
+                  type="button"
+                  aria-pressed={state.families.includes(family)}
+                  onClick={() =>
+                    updateSelection(
+                      'compareFamilies',
+                      toggleSelection(state.families, family, CONFIGURATION_FAMILIES),
+                      CONFIGURATION_FAMILIES,
+                    )
+                  }
+                >
+                  {family}
+                </button>
+              ))}
             </div>
-          ))}
+          </fieldset>
+          <fieldset>
+            <legend>Reasoning</legend>
+            <div className="workbench-filter-options workbench-filter-options-wide">
+              {CONFIGURATION_REASONING_TIERS.map((tier) => (
+                <button
+                  key={tier}
+                  type="button"
+                  aria-pressed={state.reasoningTiers.includes(tier)}
+                  onClick={() =>
+                    updateSelection(
+                      'compareReasoning',
+                      toggleSelection(state.reasoningTiers, tier, CONFIGURATION_REASONING_TIERS),
+                      CONFIGURATION_REASONING_TIERS,
+                    )
+                  }
+                >
+                  {tier}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>Evidence</legend>
+            <div className="workbench-filter-options">
+              <button
+                type="button"
+                aria-pressed={state.costOnly}
+                onClick={() =>
+                  pushAnalyticalUrl({
+                    compareCost: state.costOnly ? null : 'estimated',
+                    compareFocus: null,
+                  })
+                }
+              >
+                Exact cost only
+              </button>
+              <button
+                type="button"
+                aria-pressed={state.frontierOnly}
+                onClick={() =>
+                  pushAnalyticalUrl({
+                    compareFrontier: state.frontierOnly ? null : 'only',
+                    compareFocus: null,
+                  })
+                }
+              >
+                Pareto only
+              </button>
+            </div>
+          </fieldset>
+        </div>
+
+        <div className="workbench-selection-row">
+          <div className="workbench-selection-heading">
+            <div>
+              <span className="workbench-control-label">Configurations</span>
+              <span className="workbench-filter-result" role="status" aria-live="polite">
+                {state.configurationIds.length}/{configurationIds.length} selected ·{' '}
+                {summary.visibleCount}/{summary.totalCount} configurations visible
+              </span>
+            </div>
+            <div className="workbench-picker-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  updateSelection('compareConfigs', configurationIds, configurationIds)
+                }
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={() => updateSelection('compareConfigs', [], configurationIds)}
+              >
+                Clear
+              </button>
+              <button className="workbench-reset" type="button" onClick={reset}>
+                Reset filters
+              </button>
+            </div>
+          </div>
+          <div
+            className="workbench-configuration-options"
+            role="group"
+            aria-label="Configuration selection"
+          >
+            {CONFIGURATION_FAMILIES.map((family) => (
+              <div className="workbench-configuration-row" key={family}>
+                <span className="workbench-configuration-family">{family}</span>
+                <div role="group" aria-label={`${family} configurations`}>
+                  {rows
+                    .filter(({ entry }) => entry.modelFamily === family)
+                    .toSorted(
+                      (left, right) =>
+                        CONFIGURATION_REASONING_TIERS.indexOf(left.entry.reasoningTier) -
+                        CONFIGURATION_REASONING_TIERS.indexOf(right.entry.reasoningTier),
+                    )
+                    .map(({ entry }) => (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        aria-label={`${entry.modelFamily} ${entry.reasoningTier} configuration`}
+                        aria-pressed={state.configurationIds.includes(entry.id)}
+                        onClick={() =>
+                          updateSelection(
+                            'compareConfigs',
+                            toggleSelection(state.configurationIds, entry.id, configurationIds),
+                            configurationIds,
+                          )
+                        }
+                      >
+                        {entry.reasoningTier}
+                      </button>
+                    ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
