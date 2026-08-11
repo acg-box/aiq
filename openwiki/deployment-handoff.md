@@ -563,9 +563,12 @@ node scripts/continuous-observation.ts run-due \
 
 After installation, inspect `status` and require the latest completed slot,
 absence of an active stale lock, and the exact next UTC slot. A failed slot keeps
-the material needed for exact resume. After successful publication, retain the
-compact Official and speed evidence and remove raw local artifacts, replay
-scratch, checkpoints, disposable task workspaces, and isolated Codex homes.
+the material needed for exact resume. A completed run with a non-semantic
+infrastructure result is retained as unpublished evidence without a model rerun;
+the scheduler proceeds only when the next 12-hour slot becomes due. Isolated
+Codex homes are removed after each invocation. After successful publication,
+retain the compact Official and speed evidence and remove raw local artifacts,
+replay scratch, checkpoints, and disposable task workspaces.
 
 ## Domain and DNS
 
