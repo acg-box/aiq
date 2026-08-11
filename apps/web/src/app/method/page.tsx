@@ -49,15 +49,14 @@ function EfficiencyMethod() {
           <dt>Coverage</dt>
           <dd>
             Raw token counters are provider-reported. The verifier recomputes aggregates and the
-            cost estimate from those counters. USD displays only when estimator status is estimated
-            and token coverage is complete. Missing, invalid, or JCS-overflowed aggregate usage
-            displays as unavailable, never zero.{' '}
+            exact cost estimate from those counters when token coverage is complete.{' '}
             <a href="https://developers.openai.com/api/docs/pricing">
               Prompts above 272,000 input tokens use 2× input and 1.5× output rates
             </a>
-            . AIQ cannot identify each request context band from aggregate usage, so a result above
-            272,000 aggregate input tokens uses the unavailable context band status and is not
-            priced.
+            . Aggregate counters cannot identify which requests crossed that threshold, so AIQ
+            displays a published-rate range: all-standard rates as the lower bound and the full
+            long-context uplift as the upper bound. The range is not an exact invoice. Missing,
+            invalid, or JCS-overflowed aggregate usage remains unavailable, never zero.
           </dd>
         </div>
         <div>

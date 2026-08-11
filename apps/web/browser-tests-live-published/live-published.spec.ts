@@ -915,7 +915,7 @@ test('the published method and radar retain versioned, signed provenance', async
       name: 'Prompts above 272,000 input tokens use 2× input and 1.5× output rates',
     }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
-  await expect(page.getByText('unavailable context band status', { exact: false })).toBeVisible();
+  await expect(page.getByText('displays a published-rate range', { exact: false })).toBeVisible();
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();
