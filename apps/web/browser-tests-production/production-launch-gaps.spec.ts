@@ -64,7 +64,7 @@ async function expectMobileMatrixLegibility(page: Page) {
   await expect(page.getByRole('button', { name: /Lowest cost ceiling/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /Cost coverage/ })).toBeVisible();
   await expect(workbench).toBeVisible();
-  await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
+  await expect(workbench.getByRole('status')).toContainText('17/17 visible');
   const firstSummaryBox = await workbench
     .getByRole('button', { name: /Highest AIQ/ })
     .boundingBox();
