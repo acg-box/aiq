@@ -903,6 +903,7 @@ begin
     or jsonb_typeof(stage -> 'region') is distinct from 'string'
     or jsonb_typeof(stage -> 'runner_commit') is distinct from 'string'
     or jsonb_typeof(stage -> 'scoring_version') is distinct from 'string'
+    or stage ->> 'scoring_version' is distinct from '1.0.8'
     or jsonb_typeof(stage -> 'synthetic') is distinct from 'boolean'
     or jsonb_typeof(stage -> 'task_set_hash') is distinct from 'string'
     or not aiq_private.dto_sha256_is_valid(stage -> 'terminal_attempt_lineage_digest')
@@ -954,6 +955,35 @@ begin
     or not aiq_private.jsonb_sha256_field_is_valid(
       stage, 'prompt_set_digest', true
     )
+    or not coalesce(stage ->> 'runner_commit' ~ '^[0-9a-f]{7,40}$', false)
+    or octet_length(stage ->> 'region') not between 1 and 64
+    or octet_length(stage ->> 'task_set_id') not between 1 and 128
+    or not coalesce(
+      stage ->> 'task_set_version'
+        ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$',
+      false
+    )
+    or not coalesce(stage -> 'signer' ->> 'node_id' ~ '^node_[0-9a-f]{64}$', false)
+    or not coalesce(stage -> 'signer' ->> 'public_key' ~ '^[0-9a-f]{64}$', false)
+    or (
+      stage -> 'capability_validation_digest' is distinct from 'null'::jsonb
+      and not aiq_private.jsonb_sha256_field_is_valid(
+        stage, 'capability_validation_digest', true
+      )
+    )
+    or not aiq_private.safe_unsigned_integer_jsonb_is_valid(
+      stage -> 'scheduled_unix_ms'
+    )
+    or not aiq_private.safe_unsigned_integer_jsonb_is_valid(
+      stage -> 'started_unix_ms'
+    )
+    or not aiq_private.safe_unsigned_integer_jsonb_is_valid(
+      stage -> 'finished_unix_ms'
+    )
+    or (stage ->> 'started_unix_ms')::numeric
+      < (stage ->> 'scheduled_unix_ms')::numeric
+    or (stage ->> 'finished_unix_ms')::numeric
+      < (stage ->> 'started_unix_ms')::numeric
   then
     raise exception 'invalid aiq.normalized-batch.v4 envelope'
       using errcode = '22023';
@@ -4574,112 +4604,11 @@ declare
   result_efficiency_by_id jsonb;
 begin
   perform aiq_private.require_request_role('aiq_verifier');
-  if jsonb_typeof(stage) is distinct from 'object' then
-    raise exception 'invalid aiq.normalized-batch.v4 envelope' using errcode = '22023';
-  end if;
-  if octet_length(stage::text) > 4 * 1024 * 1024
-    or not aiq_private.has_exact_jsonb_keys(
-      stage,
-      array[
-        'benchmark_version', 'capability_validation_digest', 'content_hash',
-        'efficiency', 'execution_concurrency', 'finished_unix_ms',
-        'matrix_batch_id', 'normalization_digest',
-        'package_sha256', 'pricing', 'prompt_set_digest', 'provenance', 'region',
-        'result_efficiency', 'run_class', 'runner_commit', 'runs', 'scheduled_unix_ms',
-        'schema_version', 'scoring_version', 'signer', 'started_unix_ms',
-        'synthetic', 'task_set_hash', 'task_set_id', 'task_set_version',
-        'terminal_attempt_lineage_digest'
-      ]::text[]
-    )
-    or stage ->> 'schema_version' is distinct from 'aiq.normalized-batch.v4'
-    or stage ->> 'scoring_version' is distinct from '1.0.8'
-    or jsonb_typeof(stage -> 'benchmark_version') is distinct from 'string'
-    or jsonb_typeof(stage -> 'content_hash') is distinct from 'string'
-    or jsonb_typeof(stage -> 'matrix_batch_id') is distinct from 'string'
-    or jsonb_typeof(stage -> 'normalization_digest') is distinct from 'string'
-    or jsonb_typeof(stage -> 'package_sha256') is distinct from 'string'
-    or jsonb_typeof(stage -> 'prompt_set_digest') is distinct from 'string'
-    or jsonb_typeof(stage -> 'region') is distinct from 'string'
-    or jsonb_typeof(stage -> 'runner_commit') is distinct from 'string'
-    or jsonb_typeof(stage -> 'schema_version') is distinct from 'string'
-    or jsonb_typeof(stage -> 'scoring_version') is distinct from 'string'
-    or jsonb_typeof(stage -> 'task_set_hash') is distinct from 'string'
-    or not aiq_private.dto_sha256_is_valid(stage -> 'terminal_attempt_lineage_digest')
-    or jsonb_typeof(stage -> 'task_set_id') is distinct from 'string'
-    or jsonb_typeof(stage -> 'task_set_version') is distinct from 'string'
-    or jsonb_typeof(stage -> 'signer') is distinct from 'object'
-    or not aiq_private.has_exact_jsonb_keys(
-      stage -> 'signer', array['node_id', 'public_key']::text[]
-    )
-    or jsonb_typeof(stage -> 'signer' -> 'node_id') is distinct from 'string'
-    or jsonb_typeof(stage -> 'signer' -> 'public_key') is distinct from 'string'
-    or jsonb_typeof(stage -> 'runs') is distinct from 'array'
-    or jsonb_array_length(stage -> 'runs') is distinct from 17
-    or not aiq_private.dto_uint_is_valid(stage -> 'execution_concurrency',32)
-    or (stage->>'execution_concurrency')::integer not between 1 and 32
-    or jsonb_typeof(stage->'result_efficiency') is distinct from 'array'
-    or jsonb_array_length(stage->'result_efficiency') is distinct from 1224
-    or jsonb_typeof(stage->'efficiency') is distinct from 'array'
-    or jsonb_array_length(stage->'efficiency') is distinct from 17
-    or aiq_private.efficiency_pricing_v1_is_valid(stage->'pricing') is not true
-    or exists(select 1 from jsonb_array_elements(stage->'result_efficiency') evidence
-      where aiq_private.result_efficiency_v1_is_valid(evidence) is not true)
-    or exists(select 1 from jsonb_array_elements(stage->'efficiency') aggregate
-      where aiq_private.efficiency_aggregate_v1_is_valid(aggregate) is not true)
-    or exists(select 1 from jsonb_array_elements(stage->'efficiency') aggregate
-      where aiq_private.efficiency_aggregate_matches_results(
-        aggregate,stage->'result_efficiency'
-      ) is not true)
-    or (select count(distinct evidence->>'source_result_id')
-      from jsonb_array_elements(stage->'result_efficiency') evidence)<>1224
-    or (select count(distinct (evidence->'model',evidence->>'task_id'))
-      from jsonb_array_elements(stage->'result_efficiency') evidence)<>1224
-    or (select count(distinct aggregate->'model')
-      from jsonb_array_elements(stage->'efficiency') aggregate)<>17
-    or aiq_private.official_model_matrix_is_exact((
-      select jsonb_agg(aggregate.value->'model' order by aggregate.ordinality)
-      from jsonb_array_elements(stage->'efficiency') with ordinality aggregate(value,ordinality)
-    )) is not true
-    or not coalesce(stage ->> 'matrix_batch_id' ~ '^run_[0-9a-f]{64}$', false)
-    or not coalesce(stage ->> 'normalization_digest' ~ '^sha256:[0-9a-f]{64}$', false)
-    or not coalesce(stage ->> 'package_sha256' ~ '^[0-9a-f]{64}$', false)
-    or not coalesce(stage ->> 'content_hash' ~ '^sha256:[0-9a-f]{64}$', false)
-    or not coalesce(stage ->> 'task_set_hash' ~ '^sha256:[0-9a-f]{64}$', false)
-    or not coalesce(stage ->> 'prompt_set_digest' ~ '^sha256:[0-9a-f]{64}$', false)
-    or not coalesce(stage ->> 'runner_commit' ~ '^[0-9a-f]{7,40}$', false)
-    or octet_length(stage ->> 'region') not between 1 and 64
-    or octet_length(stage ->> 'task_set_id') not between 1 and 128
-    or not coalesce(
-      stage ->> 'task_set_version'
-        ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$',
-      false
-    )
-    or not coalesce(stage -> 'signer' ->> 'node_id' ~ '^node_[0-9a-f]{64}$', false)
-    or not coalesce(stage -> 'signer' ->> 'public_key' ~ '^[0-9a-f]{64}$', false)
-    or (
-      stage -> 'capability_validation_digest' is distinct from 'null'::jsonb
-      and not coalesce(
-        stage ->> 'capability_validation_digest' ~ '^sha256:[0-9a-f]{64}$',
-        false
-      )
-    )
-    or jsonb_typeof(stage -> 'synthetic') is distinct from 'boolean'
-    or not aiq_private.safe_unsigned_integer_jsonb_is_valid(
-      stage -> 'scheduled_unix_ms'
-    )
-    or not aiq_private.safe_unsigned_integer_jsonb_is_valid(
-      stage -> 'started_unix_ms'
-    )
-    or not aiq_private.safe_unsigned_integer_jsonb_is_valid(
-      stage -> 'finished_unix_ms'
-    )
-    or (stage ->> 'started_unix_ms')::numeric
-      < (stage ->> 'scheduled_unix_ms')::numeric
-    or (stage ->> 'finished_unix_ms')::numeric
-      < (stage ->> 'started_unix_ms')::numeric
-  then
-    raise exception 'invalid aiq.normalized-batch.v4 envelope' using errcode = '22023';
-  end if;
+  -- aiq_stage_verifier_result_unbound_core is this private mutator's only
+  -- caller. It validates and package-binds the full normalized envelope once,
+  -- before this function performs the 17-run/1,224-result staging mutation.
+  -- Repeating those set-wide JSON scans here exceeds the production gateway
+  -- budget without adding a second trust boundary.
 
   batch_id := stage ->> 'matrix_batch_id';
   package_id := stage ->> 'package_sha256';
@@ -8511,7 +8440,7 @@ $_$;
 create function public.aiq_stage_verifier_result(stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer) returns text
     language plpgsql security DEFINER
     SET search_path to ''
-    SET statement_timeout to '110s'
+    SET statement_timeout to '280s'
     as $$
 begin
   perform aiq_private.require_request_role('aiq_verifier');
