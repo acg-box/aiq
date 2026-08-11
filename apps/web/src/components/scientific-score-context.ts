@@ -7,6 +7,7 @@ import {
   type RunResultSummary,
   type ScoredLeaderboardEntry,
 } from '../data/types.ts';
+import { formatConfigurationCost, resolveConfigurationCost } from './configuration-cost.ts';
 
 export const UNAVAILABLE = 'Unavailable';
 
@@ -156,9 +157,7 @@ export function buildRunScientificSummary({
   const { score, efficiency: exactEfficiency } = evidence;
   const metric = score ? presentScoreMetric(score) : null;
   const presentation = score ? presentLeaderboardEntry(score) : null;
-  const costAvailable =
-    exactEfficiency?.costEstimatorStatus === 'estimated' &&
-    exactEfficiency.standardApiEquivalentUsdNanos !== null;
+  const cost = exactEfficiency ? resolveConfigurationCost(exactEfficiency) : null;
   return {
     score: metric?.scoreText ?? UNAVAILABLE,
     scoreLabel: metric?.scoreLabel ?? (run.synthetic ? 'Quality score' : 'Calibrated ability'),
@@ -188,9 +187,7 @@ export function buildRunScientificSummary({
       exactEfficiency?.matrixBatchElapsedMs == null
         ? UNAVAILABLE
         : formatHumanDuration(exactEfficiency.matrixBatchElapsedMs),
-    cost: costAvailable
-      ? `$${((exactEfficiency?.standardApiEquivalentUsdNanos ?? 0) / 1_000_000_000).toFixed(4)}`
-      : UNAVAILABLE,
+    cost: cost ? formatConfigurationCost(cost) : UNAVAILABLE,
     metricCoverage: exactEfficiency
       ? `time ${exactEfficiency.observedTimeSampleCount}/${exactEfficiency.resultCount} · cost ${exactEfficiency.pricedResultCount}/${exactEfficiency.resultCount}`
       : UNAVAILABLE,

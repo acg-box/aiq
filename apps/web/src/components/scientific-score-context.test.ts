@@ -12,6 +12,7 @@ import {
   resolveExactScientificEvidence,
 } from './scientific-evidence-resolution.ts';
 import type { LeaderboardEntry, PublicModelEfficiency } from '../data/types.ts';
+import { configurationWorkbenchFixture } from './configuration-workbench.fixture.ts';
 
 function scoredEntry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
   return {
@@ -200,6 +201,37 @@ void describe('scientific score context', () => {
     assert.equal(summary.missing, '2');
     assert.equal(summary.adapterDuration, 'Unavailable');
     assert.equal(summary.cost, 'Unavailable');
+  });
+
+  void it('shows the same bounded cost range in run history and configuration comparison', () => {
+    const candidate = configurationWorkbenchFixture({ id: 'sol-low', boundedCost: true });
+    const summary = buildRunScientificSummary({
+      run: {
+        id: candidate.row.runId,
+        entryId: candidate.entry.id,
+        scoringVersion: candidate.entry.scoringVersion,
+        synthetic: false,
+      },
+      resultSummary: {
+        resultCount: 72,
+        observedCount: 72,
+        coveragePercent: 100,
+        coveredDomainCount: 10,
+        provisionalDomainCount: 10,
+        correctCount: 24,
+        partialCount: 12,
+        incorrectCount: 36,
+        runtimeIssueCount: 0,
+        invalidCount: 0,
+        missingCount: 0,
+        notApplicableCount: 0,
+        completedCount: 72,
+      },
+      leaderboardEntry: candidate.entry,
+      efficiency: candidate.row,
+    });
+
+    assert.equal(summary.cost, '$3.08–$5.40');
   });
 
   void it('renders joined evidence drift as unavailable without throwing', () => {
