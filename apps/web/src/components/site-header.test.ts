@@ -13,6 +13,7 @@ void describe('site header one-page navigation', () => {
     assert.match(source, /\['Compare', 'compare'\]/);
     assert.match(source, /\['Evidence', 'runs'\]/);
     assert.match(source, /href={`\/#\$\{section\}`}/);
+    assert.match(source, /<a className="brand" href="\/" aria-label="AIQ home">/);
     assert.doesNotMatch(source, /site-more|DotsThreeIcon|<details/);
   });
 
