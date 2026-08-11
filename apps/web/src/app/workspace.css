@@ -136,8 +136,8 @@
 .workbench-summaries button {
 	display: grid;
 	min-width: 0;
-	min-height: 106px;
-	padding: 16px 0 15px;
+	min-height: 92px;
+	padding: 13px 0;
 	align-content: center;
 	text-align: left;
 	cursor: pointer;
@@ -172,11 +172,19 @@
 	text-overflow: ellipsis;
 }
 
+.workbench-filter-toggle {
+	display: none;
+}
+
+.workbench-filter-content {
+	display: contents;
+}
+
 .workbench-filter-bar {
 	display: grid;
 	grid-template-columns: minmax(180px, 0.72fr) minmax(360px, 1.38fr) minmax(240px, 0.9fr);
 	gap: 28px;
-	padding: 22px 0 18px;
+	padding: 16px 0 12px;
 	border-bottom: 1px solid var(--line);
 }
 
@@ -239,8 +247,8 @@
 
 .workbench-selection-row {
 	display: grid;
-	gap: 12px;
-	padding: 16px 0 18px;
+	gap: 10px;
+	padding: 12px 0 14px;
 	border-bottom: 1px solid var(--line);
 }
 
@@ -1185,6 +1193,33 @@ dd {
 	transition: opacity 140ms ease;
 }
 
+.trend-snapshot-control strong {
+	display: inline-flex;
+	min-height: var(--control-row-height, 38px);
+	align-items: center;
+	font-size: 0.76rem;
+	font-weight: 680;
+}
+
+.trend-snapshot-note {
+	margin: 10px 0 0;
+	color: var(--muted);
+	font-size: 0.76rem;
+	line-height: 1.5;
+}
+
+.trend-snapshot-note strong {
+	color: var(--ink);
+}
+
+.trend-layout-snapshot .chart-frame {
+	min-height: 560px;
+}
+
+.trend-layout-snapshot .trend-chart-echarts {
+	height: 540px;
+}
+
 .trend-layout.is-pending,
 .matrix-chart.is-pending {
 	opacity: 0.55;
@@ -1258,7 +1293,13 @@ dd {
 	min-width: 460px;
 }
 
-.run-history-primary,
+.run-history-primary {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 8px;
+	margin: 0;
+}
+
 .run-history-context dl {
 	display: grid;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1903,6 +1944,42 @@ dd {
 		padding-block: 18px;
 	}
 
+	.workbench-filter-toggle {
+		display: flex;
+		width: 100%;
+		min-height: 52px;
+		padding: 11px 0;
+		align-items: center;
+		justify-content: space-between;
+		text-align: left;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.workbench-filter-toggle > span,
+	.workbench-filter-toggle strong,
+	.workbench-filter-toggle small {
+		display: block;
+	}
+
+	.workbench-filter-toggle strong {
+		font-size: 0.78rem;
+		font-weight: 650;
+	}
+
+	.workbench-filter-toggle small {
+		margin-top: 2px;
+		color: var(--muted);
+		font-size: 0.66rem;
+	}
+
+	.workbench-filter-content {
+		display: block;
+	}
+
+	.workbench-filter-content[data-open='false'] {
+		display: none;
+	}
+
 	.workbench-filter-options {
 		gap: 14px;
 	}
@@ -2011,6 +2088,36 @@ dd {
 	.trend-mode-control {
 		grid-template-columns: 1fr;
 		gap: 16px;
+	}
+
+	.trend-mode-control:not(.speed-controls) {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 14px 18px;
+	}
+
+	.trend-mode-control:not(.speed-controls) > :nth-child(1) {
+		grid-column: 1;
+		grid-row: 1;
+	}
+
+	.trend-mode-control:not(.speed-controls) > :nth-child(5) {
+		grid-column: 2;
+		grid-row: 1;
+	}
+
+	.trend-mode-control:not(.speed-controls) > :nth-child(2) {
+		grid-column: 1 / -1;
+		grid-row: 2;
+	}
+
+	.trend-mode-control:not(.speed-controls) > :nth-child(3) {
+		grid-column: 1;
+		grid-row: 3;
+	}
+
+	.trend-mode-control:not(.speed-controls) > :nth-child(4) {
+		grid-column: 2;
+		grid-row: 3;
 	}
 
 	.speed-observation-heading {
@@ -2149,6 +2256,14 @@ dd {
 		height: 390px;
 	}
 
+	.trend-layout-snapshot .chart-frame {
+		min-height: 560px;
+	}
+
+	.trend-layout-snapshot .trend-chart-echarts {
+		height: 540px;
+	}
+
 	.run-heading {
 		display: grid;
 		align-items: start;
@@ -2162,8 +2277,7 @@ dd {
 
 	.run-history table,
 	.run-history tbody,
-	.run-history tr,
-	.run-history td {
+	.run-history tr {
 		display: block;
 		min-width: 0;
 		width: 100%;
@@ -2184,8 +2298,15 @@ dd {
 	}
 
 	.run-history tr {
+		display: grid;
+		grid-template-areas:
+			'configuration started'
+			'score score'
+			'evidence evidence';
+		grid-template-columns: minmax(0, 1fr) max-content;
+		gap: 12px 18px;
 		overflow: visible;
-		padding-block: 8px;
+		padding-block: 16px;
 		border: 0;
 		border-bottom: 1px solid var(--line);
 		border-radius: 0;
@@ -2193,10 +2314,10 @@ dd {
 	}
 
 	.run-history td {
-		display: grid;
-		grid-template-columns: 108px minmax(0, 1fr);
-		gap: 10px;
-		padding: 8px 0;
+		display: block;
+		min-width: 0;
+		width: auto;
+		padding: 0;
 		border-bottom: 0;
 	}
 
@@ -2205,12 +2326,55 @@ dd {
 	}
 
 	.run-history td::before {
+		content: none;
+	}
+
+	.run-history-started {
+		grid-area: started;
+		align-self: start;
 		color: var(--muted);
+		font:
+			0.66rem/1.45 var(--font-mono),
+			monospace;
+		text-align: right;
+	}
+
+	.run-history-configuration {
+		grid-area: configuration;
+	}
+
+	.run-history-configuration strong,
+	.run-history-configuration small,
+	.run-history-evidence small {
+		display: block;
+	}
+
+	.run-history-configuration small {
+		margin-top: 2px;
+	}
+
+	.run-history-score {
+		grid-area: score;
+		padding-block: 10px 12px;
+		border-block: 1px solid var(--line-soft);
+	}
+
+	.run-history-score > strong {
+		display: block;
+		margin-bottom: 8px;
+		color: var(--positive);
 		font-size: 0.66rem;
-		font-weight: 650;
-		text-transform: uppercase;
+		font-weight: 680;
 		letter-spacing: 0.04em;
-		content: attr(data-label);
+		text-transform: uppercase;
+	}
+
+	.run-history td.run-history-evidence {
+		display: flex;
+		grid-area: evidence;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
 	}
 
 	.run-history-summary {
@@ -2220,6 +2384,10 @@ dd {
 	.run-history-primary,
 	.run-history-context dl {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.run-history-primary {
+		gap: 12px 18px;
 	}
 
 	.run-heading > code {
@@ -2255,6 +2423,7 @@ dd {
 	.chart-controls select,
 	.range-tabs a,
 	.workbench-filter-options button,
+	.workbench-filter-toggle,
 	.workbench-view-switch button,
 	.workbench-reset,
 	.workbench-picker-actions button,
@@ -2262,13 +2431,6 @@ dd {
 	.workbench-focus-status button,
 	.workbench-table thead th > button {
 		min-height: 44px;
-	}
-}
-
-@media (max-width: 360px) {
-	.run-history-primary,
-	.run-history-context dl {
-		grid-template-columns: 1fr;
 	}
 }
 

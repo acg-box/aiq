@@ -852,7 +852,7 @@ test('Official trends expose current time and cost evidence', async ({ page }) =
   await expect(values.getByRole('columnheader', { name: 'Missing' })).toBeVisible();
   await expect(values.getByRole('columnheader', { name: 'Summed adapter duration' })).toBeVisible();
   await expect(values.getByRole('columnheader', { name: 'API-equivalent cost' })).toBeVisible();
-  await expect(values).toContainText('$12.3456');
+  await expect(values).toContainText('$12.35');
   await expect(values).toContainText('Unavailable');
   await expect(values).not.toContainText('$0');
 });

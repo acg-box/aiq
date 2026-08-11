@@ -460,7 +460,9 @@ test('production method, trends, and radar preserve transparent evidence semanti
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
   await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
-  await expect(page.getByRole('img', { name: 'AIQ (0–100) history' })).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: /AIQ \(0–100\) first-observation snapshot/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
   ).toHaveCount(17);
@@ -489,7 +491,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
     await expect(cells.nth(7)).not.toHaveText('Unavailable');
     await expect(cells.nth(8)).toHaveText(/^\d+$/);
     await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
-    await expect(cells.nth(10)).toHaveText(/^(?:Unavailable|\$\d+\.\d{4})$/);
+    await expect(cells.nth(10)).toHaveText(/^(?:Unavailable|\$\d+\.\d{2,4}(?:–\$\d+\.\d{2,4})?)$/);
   }
 
   await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner network');
