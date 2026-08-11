@@ -23,7 +23,8 @@ void describe('analytical chart interaction contracts', () => {
     assert.match(coarsePointerRules, /\.chart-controls select/);
     assert.match(coarsePointerRules, /\.range-tabs a/);
     assert.match(coarsePointerRules, /\.workbench-filter-options button/);
-    assert.match(coarsePointerRules, /\.workbench-configuration-options label/);
+    assert.match(coarsePointerRules, /\.workbench-configuration-options button/);
+    assert.match(coarsePointerRules, /\.workbench-table thead th > button/);
     assert.match(coarsePointerRules, /min-height: 44px/);
     assert.match(
       globalStyles,
@@ -46,6 +47,20 @@ void describe('analytical chart interaction contracts', () => {
     assert.match(chart, /Cost range/);
     assert.match(chart, /bubbleSize/);
     assert.match(chart, /EChartsChart/);
+  });
+
+  void it('focuses chart points directly and sorts through interactive table headings', () => {
+    const workbench = source('./configuration-workbench-view.tsx');
+    const chart = source('./configuration-workbench-chart.tsx');
+    const chartSurface = source('./echarts-chart.tsx');
+    assert.doesNotMatch(workbench, />Highlight</);
+    assert.doesNotMatch(workbench, />Order</);
+    assert.match(workbench, /aria-sort=/);
+    assert.match(workbench, /updateOrder\(order\)/);
+    assert.match(chart, /onDataPointClick=\{focusPoint\}/);
+    assert.match(chart, /onBlankClick=\{clearFocus\}/);
+    assert.match(chartSurface, /instance\.on\('click', pointClick\)/);
+    assert.match(chartSurface, /instance\.getZr\(\)\.on\('click', blankClick\)/);
   });
 
   void it('states that connected trend observations are not interpolated', () => {
