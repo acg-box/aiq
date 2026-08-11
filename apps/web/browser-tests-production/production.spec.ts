@@ -449,9 +449,8 @@ test('production method, trends, and radar preserve transparent evidence semanti
   await expect(
     page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
   ).toBeVisible();
-  await expect(
-    page.getByText('displays as unavailable, never zero', { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText('displays a published-rate range', { exact: false })).toBeVisible();
+  await expect(page.getByText('remains unavailable, never zero', { exact: false })).toBeVisible();
   await expect(
     page.getByText('Signed matrix-stage start and finish times', { exact: false }),
   ).toBeVisible();
