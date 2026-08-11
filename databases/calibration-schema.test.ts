@@ -298,6 +298,24 @@ void test('reports the complete Web RPC contract including speed observations', 
   assert.match(contractFunction, /and count\(distinct function_name\) = 19/);
 });
 
+void test('builds the speed observation object path from text fields', () => {
+  assert.match(
+    schema,
+    /'sha256\/'\|\|\(supplied_object_identity->>'sha256'\)\|\|'\/speed-observation\.json'/,
+  );
+});
+
+void test('keeps speed observation query aliases distinct from PL/pgSQL loop variables', () => {
+  const speedValidator =
+    schema.match(
+      /create function aiq_private\.speed_observation_v1_is_valid\([\s\S]*?\n\$\$;/,
+    )?.[0] ?? '';
+  assert.doesNotMatch(speedValidator, /jsonb_array_elements\([^\n]+\) capability(?:\s|$)/);
+  assert.doesNotMatch(speedValidator, /jsonb_array_elements\([^\n]+\) trial(?:\s|$)/);
+  assert.match(speedValidator, /jsonb_array_elements\([^\n]+\) capability_row/);
+  assert.match(speedValidator, /jsonb_array_elements\([^\n]+\) trial_row/);
+});
+
 void test('compares stored task-resampling bounds at their declared precision', () => {
   assert.match(
     schema,

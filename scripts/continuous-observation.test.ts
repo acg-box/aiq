@@ -5,9 +5,19 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
+  parseCommandReceipt,
   readContinuousObservationConfiguration,
   surroundingScheduledSlots,
 } from './continuous-observation.ts';
+
+void test('parses the runner pretty-printed JSON receipt as one document', () => {
+  assert.deepEqual(parseCommandReceipt('{\n  "kind": "accepted",\n  "status": 201\n}', 'submit'), {
+    kind: 'accepted',
+    status: 201,
+  });
+  assert.throws(() => parseCommandReceipt('', 'submit'), /did not produce a receipt/);
+  assert.throws(() => parseCommandReceipt('}', 'submit'), /not valid JSON/);
+});
 
 void test('UTC schedule selects one exact 03:00 or 15:00 slot and the next 12-hour slot', () => {
   const beforeNight = surroundingScheduledSlots(new Date('2026-08-10T02:59:59.999Z'));
