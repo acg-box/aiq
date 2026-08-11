@@ -122,6 +122,12 @@ interface CommandStep {
   capture?: 'submission' | 'verifier';
 }
 
+interface OfficialRunPublicationSummary {
+  total_results: number;
+  non_semantic_results: number;
+  failure_kinds: Record<string, number>;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -407,6 +413,55 @@ function writeStatus(path: string, slot: ScheduledSlot, phase: string, detail: s
   });
   chmodSync(temporary, 0o600);
   renameSync(temporary, path);
+}
+
+function retainedStatusPhase(path: string): string | null {
+  if (!existsSync(path)) return null;
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  assert.ok(isRecord(value), 'continuous observation status must be an object');
+  return typeof value.phase === 'string' ? value.phase : null;
+}
+
+export function summarizeOfficialRunPublication(path: string): OfficialRunPublicationSummary {
+  const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  assert.ok(isRecord(value) && Array.isArray(value.results), 'Official run results are invalid');
+  assert.ok(value.results.length > 0, 'Official run results are empty');
+
+  const failureKinds: Record<string, number> = {};
+  let nonSemanticResults = 0;
+  for (const result of value.results) {
+    assert.ok(isRecord(result), 'Official run result is invalid');
+    const semantic =
+      result.status === 'completed' &&
+      typeof result.task_score === 'number' &&
+      Number.isFinite(result.task_score) &&
+      result.task_score >= 0 &&
+      result.task_score <= 1;
+    if (semantic) continue;
+
+    nonSemanticResults += 1;
+    const kind =
+      isRecord(result.failure) && typeof result.failure.kind === 'string'
+        ? result.failure.kind
+        : typeof result.status === 'string'
+          ? result.status
+          : 'unknown';
+    failureKinds[kind] = (failureKinds[kind] ?? 0) + 1;
+  }
+
+  return {
+    total_results: value.results.length,
+    non_semantic_results: nonSemanticResults,
+    failure_kinds: failureKinds,
+  };
+}
+
+function unpublishedOfficialDetail(summary: OfficialRunPublicationSummary): string {
+  const failures = Object.entries(summary.failure_kinds)
+    .toSorted(([left], [right]) => left.localeCompare(right))
+    .map(([kind, count]) => `${kind}=${count}`)
+    .join(', ');
+  return `speed published; Official preserved but not published: ${summary.non_semantic_results}/${summary.total_results} non-semantic result(s)${failures ? ` (${failures})` : ''}; no model rerun`;
 }
 
 function commandFailure(step: CommandStep, stderr: string, status: number | null): Error {
@@ -798,6 +853,13 @@ function cleanupCompletedSlot(paths: SlotPaths): void {
   }
 }
 
+function cleanupCompletedSpeed(paths: SlotPaths): void {
+  cleanupCodexHome(paths.speed.home);
+  for (const path of [paths.speed.workspace, paths.speed.artifacts, paths.speed.checkpoints]) {
+    rmSync(path, { recursive: true, force: true });
+  }
+}
+
 export function scheduleStatus(
   configuration: ContinuousObservationConfiguration,
   now = new Date(),
@@ -830,18 +892,44 @@ export function runDueContinuousObservation(
   const releaseLock = acquireLock(configuration.state_root);
   try {
     prepareSlotDirectories(paths);
+    if (retainedStatusPhase(paths.status) === 'complete_with_unpublished_official') {
+      cleanupCodexHome(paths.speed.home);
+      cleanupCodexHome(paths.official.home);
+      return;
+    }
     if (existsSync(paths.official.verifierRecords) && existsSync(paths.speed.receipt)) {
       cleanupCompletedSlot(paths);
       writeStatus(paths.status, slot, 'complete', 'already complete');
       return;
     }
     prepareCodexHome(paths.speed.home, configuration.codex_auth_source);
-    for (const step of speedSteps(configuration, release, paths, slot)) {
-      runCreateOnceStep(step, paths, slot);
+    try {
+      for (const step of speedSteps(configuration, release, paths, slot)) {
+        runCreateOnceStep(step, paths, slot);
+      }
+    } finally {
+      cleanupCodexHome(paths.speed.home);
     }
+    cleanupCompletedSpeed(paths);
     prepareCodexHome(paths.official.home, configuration.codex_auth_source);
-    for (const step of officialSteps(configuration, release, paths, slot)) {
-      runCreateOnceStep(step, paths, slot);
+    try {
+      for (const step of officialSteps(configuration, release, paths, slot)) {
+        runCreateOnceStep(step, paths, slot);
+        if (step.name !== 'official_run') continue;
+
+        const summary = summarizeOfficialRunPublication(paths.official.run);
+        if (summary.non_semantic_results === 0) continue;
+
+        writeStatus(
+          paths.status,
+          slot,
+          'complete_with_unpublished_official',
+          unpublishedOfficialDetail(summary),
+        );
+        return;
+      }
+    } finally {
+      cleanupCodexHome(paths.official.home);
     }
     writeStatus(paths.status, slot, 'complete', 'speed and Official evidence published');
     cleanupCompletedSlot(paths);
