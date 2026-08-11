@@ -316,6 +316,16 @@ void test('keeps speed observation query aliases distinct from PL/pgSQL loop var
   assert.match(speedValidator, /jsonb_array_elements\([^\n]+\) trial_row/);
 });
 
+void test('keeps the public speed trend RPC within anon column grants', () => {
+  const speedTrendFunction =
+    schema.match(/create function public\.public_speed_trend_points\([\s\S]*?\n\$\$;/)?.[0] ?? '';
+  assert.doesNotMatch(speedTrendFunction, /select trial\.\*/);
+  assert.match(
+    speedTrendFunction,
+    /select trial\.batch_id,trial\.model_family,trial\.reasoning_effort,trial\.mode,trial\.status/,
+  );
+});
+
 void test('compares stored task-resampling bounds at their declared precision', () => {
   assert.match(
     schema,
