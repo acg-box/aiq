@@ -460,7 +460,9 @@ test('production method, trends, and radar preserve transparent evidence semanti
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
   await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'AIQ over time');
-  await expect(page.getByRole('img', { name: 'AIQ (0–100) history' })).toBeVisible();
+  await expect(
+    page.getByRole('img', { name: /AIQ \(0–100\) first-observation snapshot/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole('list', { name: 'Visible trend series' }).getByRole('listitem'),
   ).toHaveCount(17);
