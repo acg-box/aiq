@@ -42,14 +42,16 @@ function metricValue(
   if (metric === 'completion') {
     return row.attemptedTrials === 0 ? null : (row.completedTrials / row.attemptedTrials) * 100;
   }
-  if (metric === 'duration') return row.medianElapsedMs;
+  if (metric === 'duration') {
+    return row.medianElapsedMs === null ? null : row.medianElapsedMs / 1_000;
+  }
   if (metric === 'throughput') return row.medianAggregateOutputTps;
   return row.estimatedCredits;
 }
 
 function metricLabel(metric: SpeedMetric): string {
   if (metric === 'completion') return 'Fixed-task completion rate';
-  if (metric === 'duration') return 'Median elapsed time';
+  if (metric === 'duration') return 'Median elapsed time (seconds)';
   if (metric === 'throughput') return 'Aggregate output tokens/s';
   return 'Estimated ChatGPT credits';
 }
@@ -57,7 +59,7 @@ function metricLabel(metric: SpeedMetric): string {
 function formatMetric(metric: SpeedMetric, value: number | null): string {
   if (value === null) return 'Unavailable';
   if (metric === 'completion') return `${value.toFixed(1)}%`;
-  if (metric === 'duration') return formatHumanDuration(value);
+  if (metric === 'duration') return formatHumanDuration(value * 1_000);
   if (metric === 'throughput') return `${value.toFixed(1)} tok/s`;
   return `${value.toFixed(3)} credits`;
 }
@@ -434,8 +436,18 @@ export function SpeedObservationExplorer({
                         : (fast.completedTrials / fast.attemptedTrials) * 100,
                     )}
                   </td>
-                  <td>{formatMetric('duration', normal.medianElapsedMs)}</td>
-                  <td>{formatMetric('duration', fast.medianElapsedMs)}</td>
+                  <td>
+                    {formatMetric(
+                      'duration',
+                      normal.medianElapsedMs === null ? null : normal.medianElapsedMs / 1_000,
+                    )}
+                  </td>
+                  <td>
+                    {formatMetric(
+                      'duration',
+                      fast.medianElapsedMs === null ? null : fast.medianElapsedMs / 1_000,
+                    )}
+                  </td>
                   <td>{speedup.toFixed(2)}×</td>
                   <td>{formatMetric('throughput', normal.medianAggregateOutputTps)}</td>
                   <td>{formatMetric('throughput', fast.medianAggregateOutputTps)}</td>
