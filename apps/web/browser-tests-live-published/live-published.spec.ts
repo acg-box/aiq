@@ -435,7 +435,7 @@ test('the live overview exposes all 17 published configurations without seed sub
   await expect(page.getByRole('heading', { level: 1, name: 'Latest results' })).toBeVisible();
   const workbench = page.getByRole('region', { name: 'Compare configurations' });
   await expect(workbench).toBeVisible();
-  await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
+  await expect(workbench.locator('.workbench-filter-toggle small')).toContainText('17/17 visible');
   await expect(page.getByRole('region', { name: 'Top configurations' })).toHaveCount(0);
   await expect(page.getByText('Published Dec 31, 2025', { exact: false })).toBeVisible();
   const comparisonTable = workbench.getByRole('region', {
@@ -668,7 +668,7 @@ test('Official comparison selection is limited to the selected run identities', 
 }) => {
   await page.goto('/compare?compareConfigs=sol-low,sol-medium#compare');
   const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(workbench.getByRole('status')).toContainText('2/17 configurations visible');
+  await expect(workbench.locator('.workbench-filter-toggle small')).toContainText('2/17 visible');
   const comparison = workbench.getByRole('region', {
     name: 'Filtered configuration comparison table',
   });
