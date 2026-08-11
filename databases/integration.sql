@@ -38,7 +38,7 @@ select pg_temp.aiq_assert(
 );
 select pg_temp.aiq_assert(
   (
-    select routine.proconfig @> array['search_path=""', 'statement_timeout=110s']::text[]
+    select routine.proconfig @> array['search_path=""', 'statement_timeout=280s']::text[]
       and cardinality(routine.proconfig) = 2
     from pg_catalog.pg_proc routine
     join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
@@ -47,7 +47,7 @@ select pg_temp.aiq_assert(
       and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
         'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
   ),
-  'Official staging must have exactly the bounded 110-second function timeout'
+  'Official staging must have exactly the bounded 280-second function timeout'
 );
 select pg_temp.aiq_assert(
   (
@@ -75,10 +75,6 @@ select pg_temp.aiq_assert(
             and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
               'envelope jsonb, request_context jsonb, object_identity jsonb'
           ) or (
-            routine.proname = 'aiq_stage_verifier_result'
-            and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
-              'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
-          ) or (
             routine.proname = 'aiq_verify_and_publish'
             and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
               'target_run_id text, target_package_sha256 text, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
@@ -87,6 +83,21 @@ select pg_temp.aiq_assert(
       )
   ),
   'Official timeout overrides must not widen to another database function'
+);
+select pg_temp.aiq_assert(
+  not exists (
+    select 1
+    from pg_catalog.pg_proc routine
+    join pg_catalog.pg_namespace namespace on namespace.oid = routine.pronamespace
+    where routine.proconfig @> array['statement_timeout=280s']::text[]
+      and not (
+        namespace.nspname = 'public'
+        and routine.proname = 'aiq_stage_verifier_result'
+        and pg_catalog.pg_get_function_identity_arguments(routine.oid) =
+          'stage jsonb, target_inbox_id uuid, supplied_lease_token uuid, supplied_attempt integer'
+      )
+  ),
+  'the extended staging timeout must not widen to another database function'
 );
 
 select pg_temp.aiq_assert(
