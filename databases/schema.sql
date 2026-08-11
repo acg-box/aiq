@@ -16639,14 +16639,16 @@ begin
   end loop;
   if exists (
     select 1
-    from jsonb_array_elements(candidate->'capabilities') capability
-    group by capability->'model'->>'family',capability->'model'->>'reasoning_effort'
-    having count(*)<>2 or count(distinct capability->>'mode')<>2
+    from jsonb_array_elements(candidate->'capabilities') capability_row
+    group by capability_row->'model'->>'family',capability_row->'model'->>'reasoning_effort'
+    having count(*)<>2 or count(distinct capability_row->>'mode')<>2
   ) or (
     select count(*) from jsonb_array_elements(candidate->'capabilities')
   ) <> (
-    select count(distinct (capability->'model'->>'family',capability->'model'->>'reasoning_effort'))*2
-    from jsonb_array_elements(candidate->'capabilities') capability
+    select count(distinct (
+      capability_row->'model'->>'family',capability_row->'model'->>'reasoning_effort'
+    ))*2
+    from jsonb_array_elements(candidate->'capabilities') capability_row
   ) then return false; end if;
 
   for trial in select value from jsonb_array_elements(candidate->'trials') loop
@@ -16677,10 +16679,10 @@ begin
         trial->'artifacts',array['stdout.jsonl','stderr.txt'],2
       )
       or not exists (
-        select 1 from jsonb_array_elements(candidate->'capabilities') capability
-        where capability->'model'=trial->'model'
-          and capability->>'mode'=trial->>'mode'
-          and capability->>'status'='available'
+        select 1 from jsonb_array_elements(candidate->'capabilities') capability_row
+        where capability_row->'model'=trial->'model'
+          and capability_row->>'mode'=trial->>'mode'
+          and capability_row->>'status'='available'
       )
     then return false; end if;
 
@@ -16725,13 +16727,15 @@ begin
   if (
     select count(*) from jsonb_array_elements(candidate->'trials')
   ) <> (
-    select count(distinct trial->>'trial_id') from jsonb_array_elements(candidate->'trials') trial
+    select count(distinct trial_row->>'trial_id')
+    from jsonb_array_elements(candidate->'trials') trial_row
   ) or exists (
-    select 1 from jsonb_array_elements(candidate->'capabilities') capability
+    select 1 from jsonb_array_elements(candidate->'capabilities') capability_row
     where (
-      select count(*) from jsonb_array_elements(candidate->'trials') trial
-      where trial->'model'=capability->'model' and trial->>'mode'=capability->>'mode'
-    ) <> case when capability->>'status'='available' then trials_per_mode else 0 end
+      select count(*) from jsonb_array_elements(candidate->'trials') trial_row
+      where trial_row->'model'=capability_row->'model'
+        and trial_row->>'mode'=capability_row->>'mode'
+    ) <> case when capability_row->>'status'='available' then trials_per_mode else 0 end
   ) then return false; end if;
   return true;
 exception when others then return false;
@@ -16755,7 +16759,7 @@ begin
     )
     or supplied_object_identity->>'bucket'<>'aiq-runner-artifacts'
     or supplied_object_identity->>'key'<>
-      'sha256/'||supplied_object_identity->>'sha256'||'/speed-observation.json'
+      'sha256/'||(supplied_object_identity->>'sha256')||'/speed-observation.json'
     or supplied_object_identity->>'sha256' !~ '^[0-9a-f]{64}$'
     or not aiq_private.dto_uint_is_valid(supplied_object_identity->'bytes',4194304)
     or (supplied_object_identity->>'bytes')::bigint not between 1 and 4194304
