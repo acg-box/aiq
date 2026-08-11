@@ -8,6 +8,7 @@ import {
   parseCommandReceipt,
   readContinuousObservationConfiguration,
   surroundingScheduledSlots,
+  verifierRetryPolicyArguments,
 } from './continuous-observation.ts';
 
 void test('parses the runner pretty-printed JSON receipt as one document', () => {
@@ -17,6 +18,10 @@ void test('parses the runner pretty-printed JSON receipt as one document', () =>
   });
   assert.throws(() => parseCommandReceipt('', 'submit'), /did not produce a receipt/);
   assert.throws(() => parseCommandReceipt('}', 'submit'), /not valid JSON/);
+});
+
+void test('recurring verifier uses the bounded production retry policy', () => {
+  assert.deepEqual(verifierRetryPolicyArguments(), ['--max-retries', '10', '--backoff-ms', '1000']);
 });
 
 void test('UTC schedule selects one exact 03:00 or 15:00 slot and the next 12-hour slot', () => {
