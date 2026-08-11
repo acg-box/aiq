@@ -192,7 +192,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'ability' && state.direction === 'desc',
     },
     {
-      label: 'Shortest task time',
+      label: 'Lowest task-time total',
       identity: configurationName(summary.shortestTime),
       value: formatDuration(summary.shortestTime),
       onClick: () =>
@@ -205,9 +205,9 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'time' && state.direction === 'asc' && state.view === 'duration',
     },
     {
-      label: 'Lowest cost ceiling',
+      label: 'Lowest API-equivalent cost',
       identity: configurationName(summary.lowestCost),
-      value: formatCost(summary.lowestCost),
+      value: `${formatCost(summary.lowestCost)} · ${summary.costComparableCount}/${summary.visibleCount} comparable`,
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: 'cost',
@@ -218,15 +218,16 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'cost' && state.direction === 'asc' && state.view === 'cost',
     },
     {
-      label: 'Cost coverage',
-      identity: `${summary.costComparableCount}/${summary.visibleCount} comparable`,
-      value: `${summary.costMeasuredCount} exact · ${summary.costBoundedCount} ranges`,
+      label: 'Trade-off shortlist',
+      identity: `${summary.visibleFrontierCount} Pareto options`,
+      value: `${summary.costComparableCount}/${summary.visibleCount} with time + cost`,
       onClick: () =>
         pushAnalyticalUrl({
+          compareFrontier: 'only',
           compareView: 'decision',
           compareFocus: null,
         }),
-      pressed: state.view === 'decision',
+      pressed: state.frontierOnly && state.view === 'decision',
     },
   ];
 
@@ -462,8 +463,10 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
             <div className="workbench-focus-status" aria-live="polite">
               <span>
                 {focusedRow
-                  ? `${focusedRow.entry.modelFamily} · ${focusedRow.entry.reasoningTier} focused`
-                  : 'Click a point or row to focus'}
+                  ? `Selected: ${focusedRow.entry.modelFamily} · ${focusedRow.entry.reasoningTier}`
+                  : state.view === 'decision'
+                    ? 'Select a point · hollow means cost unavailable'
+                    : 'Select a point or row for details'}
               </span>
               {focusedRow ? (
                 <button type="button" onClick={() => updateFocus(null)}>
