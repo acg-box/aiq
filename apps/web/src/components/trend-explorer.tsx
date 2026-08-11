@@ -877,27 +877,29 @@ export function TrendExplorer({
             <p>No observations fall in this range.</p>
           )}
         </div>
-        <ul className="chart-legend" aria-label="Visible trend series">
-          {selectedEntries.map((entry, index) => {
-            const series = zoomWindowPoints.filter((point) => point.entryId === entry.id);
-            const scoringVersions = [...new Set(series.map((point) => point.scoringVersion))];
-            return (
-              <li
-                key={entry.id}
-                title={`${seriesProvenance(series)} · scoring ${scoringVersions.join(', ') || 'unavailable'}`}
-              >
-                <i
-                  className={`series-symbol series-symbol-${index + 1}`}
-                  style={{ background: TREND_SERIES_STYLES[index]?.color }}
-                  aria-hidden="true"
-                />
-                <strong>
-                  {entry.modelFamily} · {entry.reasoningTier}
-                </strong>
-              </li>
-            );
-          })}
-        </ul>
+        {allTimes.length > 1 ? (
+          <ul className="chart-legend" aria-label="Visible trend series">
+            {selectedEntries.map((entry, index) => {
+              const series = zoomWindowPoints.filter((point) => point.entryId === entry.id);
+              const scoringVersions = [...new Set(series.map((point) => point.scoringVersion))];
+              return (
+                <li
+                  key={entry.id}
+                  title={`${seriesProvenance(series)} · scoring ${scoringVersions.join(', ') || 'unavailable'}`}
+                >
+                  <i
+                    className={`series-symbol series-symbol-${index + 1}`}
+                    style={{ background: TREND_SERIES_STYLES[index]?.color }}
+                    aria-hidden="true"
+                  />
+                  <strong>
+                    {entry.modelFamily} · {entry.reasoningTier}
+                  </strong>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
       </div>
       <p className="trend-legend-note">
         {selectedEntries.length} {visibleSeriesProvenance} series · scoring{' '}

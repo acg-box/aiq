@@ -36,6 +36,21 @@ export type WorkbenchPlotRow = ExactEfficiencyRow & {
   cost: ConfigurationCostEvidence;
 };
 
+export function resolveWorkbenchXAxisBounds(
+  points: readonly WorkbenchPlotRow[],
+  metric: Metric,
+): readonly [number, number] {
+  if (points.length === 0) return [0, 1];
+  const values = points.map(({ x }) => x);
+  const maximum = Math.max(...values, 1);
+  if (metric === 'cost') return [0, Math.max(maximum * 1.06, 1)];
+
+  const observedMinimum = Math.min(...values);
+  const observedMaximum = Math.max(...values);
+  const span = Math.max(observedMaximum - observedMinimum, observedMaximum * 0.06, 1);
+  return [Math.max(0, observedMinimum - span * 0.12), observedMaximum + span * 0.12];
+}
+
 function formatDurationAxis(value: number): string {
   const minutes = value / 60_000;
   if (minutes < 60) return `${Math.round(minutes)}m`;
@@ -134,7 +149,7 @@ export function ConfigurationWorkbenchChart({
   const points = useMemo(() => resolveWorkbenchPlotRows(rows, metric), [metric, rows]);
   const scalePoints = useMemo(() => resolveWorkbenchPlotRows(allRows, metric), [allRows, metric]);
   const frontierKeys = useMemo(() => configurationFrontierKeys(allRows), [allRows]);
-  const xMaximum = Math.max(...scalePoints.map(({ x }) => x), 1);
+  const [xMinimum, xMaximum] = resolveWorkbenchXAxisBounds(scalePoints, metric);
   const allCosts = scalePoints.flatMap(({ cost }) =>
     cost.kind === 'unavailable'
       ? []
@@ -144,6 +159,7 @@ export function ConfigurationWorkbenchChart({
   const costMaximum = Math.max(...allCosts, 1);
   const exactCount = points.filter(({ cost }) => cost.kind === 'exact').length;
   const boundedCount = points.filter(({ cost }) => cost.kind === 'bounded').length;
+  const unavailableCostCount = points.length - exactCount - boundedCount;
   const focusPoint = useCallback(
     (event: unknown) => {
       const datum = readDatum(event);
@@ -207,13 +223,14 @@ export function ConfigurationWorkbenchChart({
               : datum[9] === datum[10]
                 ? `$${datum[9].toFixed(datum[9] < 1 ? 4 : 2)}`
                 : `$${datum[9].toFixed(datum[9] < 1 ? 4 : 2)}–$${datum[10].toFixed(datum[10] < 1 ? 4 : 2)}`;
-          return `${datum[2]}<br/>AIQ ${datum[1].toFixed(1)} · conditional 95% ${datum[4].toFixed(1)}–${datum[5].toFixed(1)}<br/>Task time ${formatHumanDuration(datum[8])}<br/>API-equivalent cost ${cost}<br/>${datum[12]}<br/>${datum[6]} · ${datum[7]}`;
+          const taskTime = datum[8] < 0 ? 'Unavailable' : formatHumanDuration(datum[8]);
+          return `${datum[2]}<br/>AIQ ${datum[1].toFixed(1)} · conditional 95% ${datum[4].toFixed(1)}–${datum[5].toFixed(1)}<br/>Task time ${taskTime}<br/>API-equivalent cost ${cost}<br/>${datum[12]}<br/>${datum[6]} · ${datum[7]}`;
         },
       },
       xAxis: {
         type: 'value',
-        min: 0,
-        max: xMaximum * 1.06,
+        min: xMinimum,
+        max: xMaximum,
         name: duration
           ? 'Summed task time · lower is better'
           : 'API-equivalent cost upper bound · lower is better',
@@ -317,7 +334,7 @@ export function ConfigurationWorkbenchChart({
                       {
                         type: 'line',
                         shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
-                        style: { stroke: 'var(--interval)', lineWidth: 3, opacity: 0.8 },
+                        style: { stroke: 'var(--interval)', lineWidth: 2, opacity: 0.48 },
                       },
                       {
                         type: 'line',
@@ -357,47 +374,54 @@ export function ConfigurationWorkbenchChart({
               },
             ]
           : []),
-        ...(['Sol', 'Terra', 'Luna'] as const).map((family, index) => ({
-          type: 'scatter' as const,
-          name: family,
-          symbol: decision ? 'circle' : (['circle', 'diamond', 'triangle'][index] ?? 'circle'),
-          emphasis: { disabled: true },
-          itemStyle: {
-            color:
-              index === 0
-                ? 'var(--data-lime)'
-                : index === 1
-                  ? 'var(--data-cyan)'
-                  : 'var(--data-violet)',
-            borderColor: 'var(--panel)',
-            borderWidth: 1.5,
-            opacity: 0.9,
-          },
-          data: points
-            .filter(({ entry }) => entry.modelFamily === family)
-            .map((point) => {
-              const [costLow] = costDollars(point.cost);
-              const datum = datumFor(point);
-              const normalSize = decision ? bubbleSize(costLow, costMinimum, costMaximum) : 13;
-              return {
-                value: datum,
-                symbolSize: point.entry.id === focusId ? normalSize + 6 : normalSize,
-                itemStyle: {
-                  opacity: focusId === null || point.entry.id === focusId ? 0.92 : 0.24,
-                },
-                label:
-                  point.entry.id === focusId
-                    ? {
-                        show: true,
-                        position: 'top' as const,
-                        color: 'var(--ink)',
-                        fontWeight: 700,
-                        formatter: `${point.entry.modelFamily} · ${point.entry.reasoningTier}`,
-                      }
-                    : undefined,
-              };
-            }),
-        })),
+        ...(['Sol', 'Terra', 'Luna'] as const).map((family, index) => {
+          const familyColor =
+            index === 0
+              ? 'var(--data-lime)'
+              : index === 1
+                ? 'var(--data-cyan)'
+                : 'var(--data-violet)';
+          return {
+            type: 'scatter' as const,
+            name: family,
+            symbol: decision ? 'circle' : (['circle', 'diamond', 'triangle'][index] ?? 'circle'),
+            emphasis: { disabled: true },
+            itemStyle: {
+              color: familyColor,
+              borderColor: 'var(--panel)',
+              borderWidth: 1.5,
+              opacity: 0.9,
+            },
+            data: points
+              .filter(({ entry }) => entry.modelFamily === family)
+              .map((point) => {
+                const [costLow] = costDollars(point.cost);
+                const datum = datumFor(point);
+                const costUnavailable = decision && point.cost.kind === 'unavailable';
+                const normalSize = decision ? bubbleSize(costLow, costMinimum, costMaximum) : 13;
+                const symbolSize = point.entry.id === focusId ? normalSize + 6 : normalSize;
+                const opacity = focusId === null || point.entry.id === focusId ? 0.92 : 0.24;
+                if (costUnavailable) {
+                  return {
+                    value: datum,
+                    symbol: 'circle',
+                    symbolSize,
+                    itemStyle: {
+                      color: 'transparent',
+                      borderColor: familyColor,
+                      borderWidth: 2,
+                      opacity,
+                    },
+                  };
+                }
+                return {
+                  value: datum,
+                  symbolSize,
+                  itemStyle: { opacity },
+                };
+              }),
+          };
+        }),
         {
           type: 'scatter',
           name: 'Pareto frontier',
@@ -411,7 +435,7 @@ export function ConfigurationWorkbenchChart({
         },
       ],
     };
-  }, [costMaximum, costMinimum, focusId, frontierKeys, metric, points, xMaximum]);
+  }, [costMaximum, costMinimum, focusId, frontierKeys, metric, points, xMaximum, xMinimum]);
 
   if (points.length === 0) {
     return (
@@ -424,7 +448,7 @@ export function ConfigurationWorkbenchChart({
 
   const label =
     metric === 'decision'
-      ? `${points.length} filtered configurations plotted on a three-metric decision map: AIQ by time, with API-equivalent cost encoded by bubble area and a range ring`
+      ? `${points.length} filtered configurations plotted on a three-metric decision map: AIQ by time, with available API-equivalent cost encoded by bubble area and a range ring; hollow fixed-size markers have no cost estimate`
       : `${points.length} filtered configurations plotted by AIQ and ${metric === 'cost' ? 'API-equivalent cost range' : 'summed task time'}; AIQ is not calculated from the horizontal axis`;
   return (
     <div
@@ -445,8 +469,9 @@ export function ConfigurationWorkbenchChart({
         onBlankClick={clearFocus}
       />
       <p className="workbench-chart-note">
-        {points.length}/{rows.length} filtered configurations plotted · {exactCount} exact cost ·{' '}
-        {boundedCount} published-rate range · AIQ remains independent.
+        {points.length}/{rows.length} filtered configurations plotted · Cost evidence: {exactCount}{' '}
+        exact · {boundedCount} range · {unavailableCostCount} unavailable
+        {metric === 'cost' ? '' : ' · time axis spans observed values'} · AIQ remains independent.
       </p>
     </div>
   );

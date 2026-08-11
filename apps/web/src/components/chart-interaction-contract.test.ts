@@ -46,6 +46,8 @@ void describe('analytical chart interaction contracts', () => {
     assert.match(chart, /Three-metric decision map/);
     assert.match(chart, /Cost range/);
     assert.match(chart, /bubbleSize/);
+    assert.match(chart, /hollow fixed-size markers have no cost estimate/);
+    assert.match(chart, /if \(costUnavailable\)[\s\S]+symbol: 'circle'/);
     assert.match(chart, /EChartsChart/);
   });
 
@@ -61,6 +63,14 @@ void describe('analytical chart interaction contracts', () => {
     assert.match(chart, /onBlankClick=\{clearFocus\}/);
     assert.match(chartSurface, /instance\.on\('click', pointClick\)/);
     assert.match(chartSurface, /instance\.getZr\(\)\.on\('click', blankClick\)/);
+  });
+
+  void it('keeps unavailable TTFT subordinate to the paired transport evidence', () => {
+    const speed = source('./speed-observation-explorer.tsx');
+
+    assert.match(speed, /Paired configurations/);
+    assert.match(speed, /TTFT is not shown/);
+    assert.doesNotMatch(speed, /<dt>TTFT<\/dt>/);
   });
 
   void it('states that connected trend observations are not interpolated', () => {

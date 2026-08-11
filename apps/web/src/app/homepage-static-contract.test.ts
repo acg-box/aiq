@@ -34,7 +34,8 @@ void describe('homepage evidence and loading contract', () => {
     assert.doesNotMatch(source, /general intelligence/);
     assert.match(workbenchSource, /Compare configurations/);
     assert.match(workbenchSource, /remain independent observations/);
-    assert.match(workbenchSource, /Cost coverage/);
+    assert.match(workbenchSource, /Trade-off shortlist/);
+    assert.match(workbenchSource, /Pareto options/);
     assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
@@ -105,7 +106,11 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workbenchSource, /aria-controls="workbench-filter-content"/);
     assert.match(
       workspaceStyles,
-      /@media \(max-width: 760px\)[\s\S]+\.workbench-filter-content\[data-open='false'\] \{[\s\S]+display: none;/,
+      /\.workbench-filter-content\[data-open='false'\] \{[\s\S]+display: none;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.workbench-filter-toggle \{[\s\S]+display: flex;[\s\S]+border-bottom: 1px solid var\(--line\);/,
     );
     assert.doesNotMatch(workspaceStyles, /\.workbench-table thead \{\s+display: none;/);
     assert.match(globalStyles, /html \{[\s\S]+overflow-x: clip;/);
@@ -153,7 +158,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(source, /<RunsPage searchParams={searchParams} \/>/);
     assert.match(source, /<MethodPage \/>/);
     assert.match(source, /<RadarPage \/>/);
-    assert.match(source, /href="\/#method"/);
+    assert.match(source, /<a className="text-link" href="#method">/);
   });
 
   void it('keeps embedded archive pagination inside the one-page workspace', async () => {

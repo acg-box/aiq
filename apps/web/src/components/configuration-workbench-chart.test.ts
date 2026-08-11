@@ -24,7 +24,8 @@ registerHooks({
 
 import { configurationWorkbenchFixture } from './configuration-workbench.fixture.ts';
 
-const { resolveWorkbenchPlotRows } = await import('./configuration-workbench-chart.tsx');
+const { resolveWorkbenchPlotRows, resolveWorkbenchXAxisBounds } =
+  await import('./configuration-workbench-chart.tsx');
 
 const row = (id: string, duration: number | null, cost: number | null) =>
   configurationWorkbenchFixture({ id, duration, cost });
@@ -74,5 +75,22 @@ void describe('configuration workbench plot evidence', () => {
         ['missing', 30, 'unavailable'],
       ],
     );
+  });
+
+  void it('zooms time comparisons to observed values but keeps cost anchored at zero', () => {
+    const rows = [row('short', 12 * 60_000, 1_000_000_000), row('long', 23 * 60_000, null)];
+    const durationPoints = resolveWorkbenchPlotRows(rows, 'duration');
+    const [durationMinimum, durationMaximum] = resolveWorkbenchXAxisBounds(
+      durationPoints,
+      'duration',
+    );
+    assert.ok(durationMinimum > 0);
+    assert.ok(durationMinimum < 12 * 60_000);
+    assert.ok(durationMaximum > 23 * 60_000);
+
+    const costPoints = resolveWorkbenchPlotRows(rows, 'cost');
+    const [costMinimum, costMaximum] = resolveWorkbenchXAxisBounds(costPoints, 'cost');
+    assert.equal(costMinimum, 0);
+    assert.ok(costMaximum > 1);
   });
 });

@@ -60,9 +60,9 @@ async function getActualRunPath(page: Page): Promise<string> {
 async function expectMobileMatrixLegibility(page: Page) {
   const workbench = page.getByRole('region', { name: 'Compare configurations' }).first();
   await expect(page.getByRole('button', { name: /Highest AIQ/ }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Shortest task time/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Lowest cost ceiling/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Cost coverage/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Lowest task-time total/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Lowest API-equivalent cost/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Trade-off shortlist/ })).toBeVisible();
   await expect(workbench).toBeVisible();
   await expect(workbench.getByRole('status')).toContainText('17/17 visible');
   const firstSummaryBox = await workbench
@@ -91,29 +91,30 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   await expectPublishedNonSyntheticPage(page, '/compare');
   await page.waitForLoadState('networkidle');
   const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  const status = workbench.getByRole('status');
+  const status = workbench.locator('.workbench-filter-toggle small');
   const comparison = workbench.getByRole('region', {
     name: 'Filtered configuration comparison table',
   });
-  await expect(status).toContainText('17/17 configurations visible');
+  await expect(status).toContainText('17/17 visible');
   await expect(comparison.locator('tbody tr')).toHaveCount(17);
   const snapshots = await comparison.locator('tbody tr').allInnerTexts();
   expect(snapshots.some((row) => row.includes('Unavailable'))).toBe(true);
   expect(snapshots.some((row) => /\$\d/.test(row))).toBe(true);
 
+  await workbench.getByRole('button', { name: /Filters & configurations/ }).click();
   await workbench.getByRole('button', { name: 'Exact cost only', exact: true }).click();
   await expect(page).toHaveURL(/compareCost=estimated/);
   const measuredRows = comparison.locator('tbody tr');
   const measuredCount = await measuredRows.count();
   expect(measuredCount).toBeGreaterThan(0);
   expect(measuredCount).toBeLessThan(17);
-  await expect(status).toContainText(`${measuredCount}/17 configurations visible`);
+  await expect(status).toContainText(`${measuredCount}/17 visible`);
   expect((await measuredRows.allInnerTexts()).every((row) => !row.includes('Unavailable'))).toBe(
     true,
   );
 
   await workbench.getByRole('button', { name: 'Reset filters', exact: true }).click();
-  await expect(status).toContainText('17/17 configurations visible');
+  await expect(status).toContainText('17/17 visible');
   const aiqHeading = comparison.getByRole('columnheader', { name: /AIQ/ });
   const timeHeading = comparison.getByRole('columnheader', { name: /Task time/ });
   await expect(aiqHeading).toHaveAttribute('aria-sort', 'descending');
@@ -158,14 +159,19 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   expect(firstId).toMatch(/^(?:sol|terra|luna)-/);
   await page.goto(`/compare?compareConfigs=${encodeURIComponent(firstId ?? '')}#compare`);
   const singleWorkbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(singleWorkbench.getByRole('status')).toContainText('1/17 configurations visible');
+  await expect(singleWorkbench.locator('.workbench-filter-toggle small')).toContainText(
+    '1/17 visible',
+  );
   await page.reload({ waitUntil: 'networkidle' });
   await expect(
-    page.getByRole('region', { name: 'Compare configurations' }).getByRole('status'),
-  ).toContainText('1/17 configurations visible');
+    page
+      .getByRole('region', { name: 'Compare configurations' })
+      .locator('.workbench-filter-toggle small'),
+  ).toContainText('1/17 visible');
 
   await page.goto('/compare');
   const restoredWorkbench = page.getByRole('region', { name: 'Compare configurations' });
+  await restoredWorkbench.getByRole('button', { name: /Filters & configurations/ }).click();
   await expect(
     restoredWorkbench.getByRole('group', { name: 'Configuration selection' }),
   ).toBeVisible();
@@ -179,14 +185,16 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
     restoredWorkbench.getByRole('group', { name: 'Luna configurations' }).getByRole('button'),
   ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max']);
   await restoredWorkbench.getByRole('button', { name: 'Clear', exact: true }).click();
-  await expect(restoredWorkbench.getByRole('status').first()).toContainText(
-    '0/17 configurations visible',
+  await expect(restoredWorkbench.locator('.workbench-filter-toggle small')).toContainText(
+    '0/17 visible',
   );
   await expect(
     restoredWorkbench.getByText('No configuration matches these filters.'),
   ).toBeVisible();
   await restoredWorkbench.getByRole('button', { name: 'Show all 17', exact: true }).click();
-  await expect(restoredWorkbench.getByRole('status')).toContainText('17/17 configurations visible');
+  await expect(restoredWorkbench.locator('.workbench-filter-toggle small')).toContainText(
+    '17/17 visible',
+  );
   return snapshots;
 }
 

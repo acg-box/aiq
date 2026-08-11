@@ -149,6 +149,33 @@
 	color: var(--accent);
 }
 
+.workbench-summaries button:focus-visible,
+.workbench-filter-toggle:focus-visible {
+	outline: none;
+	background: color-mix(in srgb, var(--focus) 8%, transparent);
+}
+
+.workbench-summaries button:focus-visible > span,
+.workbench-filter-toggle:focus-visible strong {
+	text-decoration: underline;
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 5px;
+}
+
+.workbench-filter-options button:focus-visible,
+.workbench-view-switch button:focus-visible,
+.workbench-reset:focus-visible,
+.workbench-picker-actions button:focus-visible,
+.workbench-configuration-options button:focus-visible,
+.workbench-focus-status button:focus-visible,
+.workbench-table button:focus-visible {
+	outline: none;
+	color: var(--ink);
+	text-decoration: underline;
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 4px;
+}
+
 .workbench-summaries button[aria-pressed='true'] > span {
 	text-decoration: underline;
 	text-decoration-thickness: 1.5px;
@@ -173,11 +200,39 @@
 }
 
 .workbench-filter-toggle {
-	display: none;
+	display: flex;
+	width: 100%;
+	min-height: 48px;
+	padding: 10px 0;
+	align-items: center;
+	justify-content: space-between;
+	text-align: left;
+	border-bottom: 1px solid var(--line);
 }
 
 .workbench-filter-content {
-	display: contents;
+	display: block;
+}
+
+.workbench-filter-content[data-open='false'] {
+	display: none;
+}
+
+.workbench-filter-toggle > span,
+.workbench-filter-toggle strong,
+.workbench-filter-toggle small {
+	display: block;
+}
+
+.workbench-filter-toggle strong {
+	font-size: 0.76rem;
+	font-weight: 650;
+}
+
+.workbench-filter-toggle small {
+	margin-top: 2px;
+	color: var(--muted);
+	font-size: 0.66rem;
 }
 
 .workbench-filter-bar {
@@ -1945,39 +2000,12 @@ dd {
 	}
 
 	.workbench-filter-toggle {
-		display: flex;
-		width: 100%;
 		min-height: 52px;
 		padding: 11px 0;
-		align-items: center;
-		justify-content: space-between;
-		text-align: left;
-		border-bottom: 1px solid var(--line);
-	}
-
-	.workbench-filter-toggle > span,
-	.workbench-filter-toggle strong,
-	.workbench-filter-toggle small {
-		display: block;
 	}
 
 	.workbench-filter-toggle strong {
 		font-size: 0.78rem;
-		font-weight: 650;
-	}
-
-	.workbench-filter-toggle small {
-		margin-top: 2px;
-		color: var(--muted);
-		font-size: 0.66rem;
-	}
-
-	.workbench-filter-content {
-		display: block;
-	}
-
-	.workbench-filter-content[data-open='false'] {
-		display: none;
 	}
 
 	.workbench-filter-options {

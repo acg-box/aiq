@@ -6,6 +6,14 @@ const pageSourceUrl = new URL('./page.tsx', import.meta.url);
 const workspaceStylesUrl = new URL('../workspace.css', import.meta.url);
 
 void describe('trend-page evidence hierarchy', () => {
+  void it('names a single date as a snapshot instead of implying a time series', async () => {
+    const pageSource = await readFile(pageSourceUrl, 'utf8');
+
+    assert.match(pageSource, /const observationCount = new Set/);
+    assert.match(pageSource, /isSingleObservation \? 'Latest AIQ snapshot' : 'AIQ over time'/);
+    assert.match(pageSource, /trend lines begin after the next Official cycle/);
+  });
+
   void it('keeps repeated source provenance behind a compact disclosure', async () => {
     const [pageSource, workspaceStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
