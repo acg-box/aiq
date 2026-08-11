@@ -25,21 +25,27 @@ export function RunScientificSummaryPanel({
     ['metricCoverage', 'Time / cost coverage'],
   ];
   if (compact) {
-    const primaryFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
+    const hasObservedIssues =
+      summary.coverage !== '100.0%' || summary.runtime !== '0' || summary.missing !== '0';
+    const primaryFields: ReadonlyArray<readonly [keyof RunScientificSummary, string]> = [
       ['score', summary.scoreLabel],
       ['interval', summary.intervalLabel],
-      ['strictPass', 'Strict pass'],
-      ['sampleSize', 'n'],
-      ['coverage', 'Coverage'],
-      ['runtime', 'Runtime issues'],
-      ['missing', 'Missing'],
+      ['adapterDuration', 'Task time'],
+      ['cost', 'API-equivalent cost'],
+      ...(hasObservedIssues
+        ? ([
+            ['coverage', 'Coverage'],
+            ['runtime', 'Runtime issues'],
+            ['missing', 'Missing'],
+          ] as const)
+        : []),
     ];
     const contextFields: ReadonlyArray<[keyof RunScientificSummary, string]> = [
+      ['strictPass', 'Strict pass'],
+      ['sampleSize', 'n'],
       ['provenance', 'Provenance'],
       ['scoring', 'Scoring'],
-      ['adapterDuration', 'Summed adapter duration'],
       ['batchWallClock', 'Batch wall-clock'],
-      ['cost', 'API-equivalent cost'],
       ['metricCoverage', 'Time / cost coverage'],
       ['qualityScore', 'Quality score'],
       ['sensitivityInterval', 'Task-mix sensitivity'],
@@ -55,8 +61,8 @@ export function RunScientificSummaryPanel({
           ))}
         </dl>
         <details className="run-history-context">
-          <summary>Provenance, time, and cost</summary>
-          <dl aria-label="Run provenance, time, and cost">
+          <summary>More evidence</summary>
+          <dl aria-label="Additional run evidence">
             {contextFields.map(([key, label]) => (
               <div key={key}>
                 <dt>{label}</dt>

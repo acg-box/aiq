@@ -27,6 +27,7 @@ import {
   readEnumParam,
   useAnalyticalSearchParams,
 } from './analytical-url-state.ts';
+import { formatConfigurationCost, resolveConfigurationCost } from './configuration-cost.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { ReadStateNote } from './read-state-note.tsx';
 import {
@@ -99,20 +100,28 @@ function readTrendTooltipItem(value: unknown): {
   seriesName: string;
   data: readonly (number | string | null)[];
 } | null {
+  const data =
+    typeof value === 'object' &&
+    value !== null &&
+    'data' in value &&
+    typeof value.data === 'object' &&
+    value.data !== null &&
+    'value' in value.data
+      ? value.data.value
+      : typeof value === 'object' && value !== null && 'data' in value
+        ? value.data
+        : null;
   if (
     typeof value !== 'object' ||
     value === null ||
     !('seriesName' in value) ||
     typeof value.seriesName !== 'string' ||
-    !('data' in value) ||
-    !Array.isArray(value.data) ||
-    !value.data.every(
-      (item) => typeof item === 'number' || typeof item === 'string' || item === null,
-    )
+    !Array.isArray(data) ||
+    !data.every((item) => typeof item === 'number' || typeof item === 'string' || item === null)
   ) {
     return null;
   }
-  return { seriesName: value.seriesName, data: value.data };
+  return { seriesName: value.seriesName, data };
 }
 
 interface TrendRenderItemApi {
@@ -175,6 +184,7 @@ function resolveTrendScientificContext({
   }
   const exactRun = resolution.run;
   const exactEfficiency = resolution.evidence.efficiency;
+  const costEvidence = exactEfficiency ? resolveConfigurationCost(exactEfficiency) : null;
   return {
     coverage:
       exactRun.resultSummary.coveragePercent === null
@@ -186,17 +196,12 @@ function resolveTrendScientificContext({
       exactEfficiency?.summedCellAdapterElapsedMs == null
         ? 'Unavailable'
         : formatHumanDuration(exactEfficiency.summedCellAdapterElapsedMs),
-    cost:
-      exactEfficiency?.costEstimatorStatus === 'estimated' &&
-      exactEfficiency.standardApiEquivalentUsdNanos !== null
-        ? `$${(exactEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`
-        : 'Unavailable',
+    cost: costEvidence ? formatConfigurationCost(costEvidence) : 'Unavailable',
     exactJoinUnavailable: false,
     durationMs: exactEfficiency?.summedCellAdapterElapsedMs ?? null,
     costUsd:
-      exactEfficiency?.costEstimatorStatus === 'estimated' &&
-      exactEfficiency.standardApiEquivalentUsdNanos !== null
-        ? exactEfficiency.standardApiEquivalentUsdNanos / 1_000_000_000
+      costEvidence && costEvidence.kind !== 'unavailable'
+        ? costEvidence.upperUsdNanos / 1_000_000_000
         : null,
   };
 }
@@ -217,7 +222,7 @@ function trendMetricValue(
 
 function trendMetricLabel(metric: TrendMetric): string {
   if (metric === 'duration') return 'Summed adapter time (hours)';
-  if (metric === 'cost') return 'API-equivalent cost (USD)';
+  if (metric === 'cost') return 'API-equivalent cost ceiling (USD)';
   return 'AIQ (0–100)';
 }
 
@@ -263,6 +268,8 @@ export function TrendExplorer({
       ),
     [familyPoints],
   );
+  const isSingleObservationDate = allTimes.length === 1;
+  const chartMode = isSingleObservationDate ? 'bar' : mode;
   const maximumZoomStart = Math.max(0, allTimes.length - TREND_ZOOM_DATE_COUNT);
   const zoomStart =
     allTimes.length > TREND_ZOOM_DATE_COUNT
@@ -332,6 +339,174 @@ export function TrendExplorer({
     metric === 'aiq' ? right.value - left.value : left.value - right.value,
   )[0];
   const chartOption = useMemo<EChartsCoreOption>(() => {
+    if (isSingleObservationDate) {
+      const visibleTime = zoomWindowTimes[0];
+      const snapshotRows = selectedEntries
+        .flatMap((entry, styleIndex) => {
+          const point = zoomWindowPoints.find(
+            (candidate) =>
+              candidate.entryId === entry.id &&
+              new Date(candidate.recordedAt).getTime() === visibleTime,
+          );
+          if (!point) return [];
+          const context = scientificContexts.get(point);
+          const value = trendMetricValue(metric, point, context);
+          if (value === null) return [];
+          const scoreMetric = presentScoreMetric(point);
+          const strictPass =
+            point.strictPassRate === null || point.strictPassSampleSize === null
+              ? 'Unavailable'
+              : `${(point.strictPassRate * 100).toFixed(1)}% (n=${point.strictPassSampleSize})`;
+          return [
+            {
+              name: `${entry.modelFamily} · ${entry.reasoningTier}`,
+              point,
+              context,
+              value,
+              scoreMetric,
+              strictPass,
+              color: TREND_SERIES_STYLES[styleIndex]?.color ?? '#83909c',
+            },
+          ];
+        })
+        .toSorted((left, right) =>
+          metric === 'aiq' ? right.value - left.value : left.value - right.value,
+        );
+      const snapshotData = snapshotRows.map(
+        ({ name, point, context, value, scoreMetric, strictPass, color }) => ({
+          value: [
+            name,
+            value,
+            metric === 'aiq' ? (scoreMetric.intervalLow ?? point.score) : value,
+            metric === 'aiq' ? (scoreMetric.intervalHigh ?? point.score) : value,
+            point.sampleSize,
+            point.representedRunCount,
+            point.synthetic ? 'synthetic' : 'published',
+            point.scoringVersion,
+            point.runId,
+            context?.coverage ?? 'Unavailable',
+            context?.runtime ?? 'Unavailable',
+            context?.missing ?? 'Unavailable',
+            context?.duration ?? 'Unavailable',
+            context?.cost ?? 'Unavailable',
+            metric === 'aiq' ? scoreMetric.scoreLabel : trendMetricLabel(metric),
+            metric === 'aiq' ? scoreMetric.intervalLabel : 'none',
+            strictPass,
+            new Date(point.recordedAt).getTime(),
+          ],
+          itemStyle: { color },
+        }),
+      );
+      const snapshotIntervals =
+        metric === 'aiq'
+          ? snapshotRows.map(({ name, scoreMetric, point, color }) => [
+              name,
+              scoreMetric.intervalLow ?? point.score,
+              scoreMetric.intervalHigh ?? point.score,
+              color,
+            ])
+          : [];
+      return {
+        aria: { enabled: true, decal: { show: true } },
+        grid: { left: 112, right: 28, top: 12, bottom: 50 },
+        tooltip: {
+          trigger: 'item',
+          formatter: (value: unknown) => {
+            const item = readTrendTooltipItem(value);
+            if (!item) return 'Snapshot evidence unavailable';
+            const data = item.data;
+            const primary =
+              metric === 'aiq'
+                ? `${data[14]} ${Number(data[1]).toFixed(1)} · ${String(data[15]).toLowerCase()} ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}`
+                : metric === 'cost'
+                  ? `${data[14]} ${data[13]}`
+                  : `${data[14]} ${Number(data[1]).toFixed(2)}`;
+            return `${data[0]}<br/>${formatAxisDate(Number(data[17]))}<br/>${primary}<br/>strict pass ${data[16]}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
+          },
+        },
+        xAxis: {
+          type: 'value',
+          min: 0,
+          max: metric === 'aiq' ? 100 : undefined,
+          name: trendMetricLabel(metric),
+          nameLocation: 'middle',
+          nameGap: 34,
+          axisLabel: { color: 'var(--muted)' },
+          nameTextStyle: { color: 'var(--muted)' },
+          axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+          splitLine: { lineStyle: { color: 'var(--line)' } },
+        },
+        yAxis: {
+          type: 'category',
+          inverse: true,
+          data: snapshotRows.map((row) => row.name),
+          axisLabel: { color: 'var(--muted)', fontSize: 11 },
+          axisTick: { show: false },
+          axisLine: { lineStyle: { color: 'var(--line-bright)' } },
+        },
+        series: [
+          {
+            type: 'bar',
+            id: `trend-snapshot-${metric}`,
+            name: 'Published observation',
+            encode: { y: 0, x: 1 },
+            barMaxWidth: 20,
+            emphasis: { focus: 'self', scale: false },
+            data: snapshotData,
+          },
+          ...(metric === 'aiq'
+            ? [
+                {
+                  type: 'custom',
+                  id: 'trend-snapshot-intervals',
+                  name: 'Primary interval',
+                  silent: true,
+                  z: 4,
+                  encode: { y: 0, x: [1, 2] },
+                  data: snapshotIntervals,
+                  renderItem: (_params: unknown, api: TrendRenderItemApi) => {
+                    const category = api.value(0);
+                    const low = api.coord([api.value(1), category]);
+                    const high = api.coord([api.value(2), category]);
+                    const cap = 4;
+                    const stroke = String(api.value(3));
+                    return {
+                      type: 'group',
+                      children: [
+                        {
+                          type: 'line',
+                          shape: { x1: low[0], y1: low[1], x2: high[0], y2: high[1] },
+                          style: { stroke, lineWidth: 1.2, opacity: 0.9 },
+                        },
+                        {
+                          type: 'line',
+                          shape: {
+                            x1: low[0],
+                            y1: low[1] - cap,
+                            x2: low[0],
+                            y2: low[1] + cap,
+                          },
+                          style: { stroke, lineWidth: 1.2, opacity: 0.9 },
+                        },
+                        {
+                          type: 'line',
+                          shape: {
+                            x1: high[0],
+                            y1: high[1] - cap,
+                            x2: high[0],
+                            y2: high[1] + cap,
+                          },
+                          style: { stroke, lineWidth: 1.2, opacity: 0.9 },
+                        },
+                      ],
+                    };
+                  },
+                },
+              ]
+            : []),
+        ],
+      };
+    }
     const series = selectedEntries.map((entry, index) => {
       const byTime = new Map(
         zoomWindowPoints
@@ -339,7 +514,7 @@ export function TrendExplorer({
           .map((point) => [new Date(point.recordedAt).getTime(), point]),
       );
       return {
-        type: mode,
+        type: chartMode,
         id: `trend-value-${metric}-${entry.id}`,
         name: `${entry.modelFamily} · ${entry.reasoningTier}`,
         connectNulls: false,
@@ -366,7 +541,7 @@ export function TrendExplorer({
               : `${(point.strictPassRate * 100).toFixed(1)}% (n=${point.strictPassSampleSize})`;
           return point
             ? [
-                mode === 'bar' ? String(time) : time,
+                chartMode === 'bar' ? String(time) : time,
                 value,
                 metric === 'aiq' ? (scoreMetric?.intervalLow ?? point.score) : value,
                 metric === 'aiq' ? (scoreMetric?.intervalHigh ?? point.score) : value,
@@ -384,7 +559,7 @@ export function TrendExplorer({
                 metric === 'aiq' ? (scoreMetric?.intervalLabel ?? 'Primary interval') : 'none',
                 strictPass,
               ]
-            : [mode === 'bar' ? String(time) : time, null];
+            : [chartMode === 'bar' ? String(time) : time, null];
         }),
       };
     });
@@ -400,20 +575,20 @@ export function TrendExplorer({
               z: 4,
               encode: { x: 0, y: [1, 2] },
               data: trendIntervalData(intervalPoints, entry.id).map(([time, low, high]) => [
-                mode === 'bar' ? String(time) : time,
+                chartMode === 'bar' ? String(time) : time,
                 low,
                 high,
               ]),
               renderItem: (_params: unknown, api: TrendRenderItemApi) => {
                 const layout =
-                  mode === 'bar'
+                  chartMode === 'bar'
                     ? api.barLayout({
                         count: selectedEntries.length,
                         barMaxWidth: TREND_BAR_MAX_WIDTH,
                         barGap: 0,
                       })
                     : undefined;
-                const xOffset = trendIntervalXOffset(mode, seriesIndex, layout);
+                const xOffset = trendIntervalXOffset(chartMode, seriesIndex, layout);
                 if (xOffset === null) return null;
                 const time = api.value(0);
                 const low = api.coord([time, Number(api.value(1))]);
@@ -431,7 +606,7 @@ export function TrendExplorer({
           })
         : [];
     const xAxis =
-      mode === 'bar'
+      chartMode === 'bar'
         ? {
             type: 'category',
             data: zoomWindowTimes.map(String),
@@ -471,7 +646,9 @@ export function TrendExplorer({
           const primary =
             metric === 'aiq'
               ? `${data[14]} ${Number(data[1]).toFixed(1)} · ${String(data[15]).toLowerCase()} ${Number(data[2]).toFixed(1)}–${Number(data[3]).toFixed(1)}`
-              : `${data[14]} ${Number(data[1]).toFixed(metric === 'cost' ? 4 : 2)}`;
+              : metric === 'cost'
+                ? `${data[14]} ${data[13]}`
+                : `${data[14]} ${Number(data[1]).toFixed(2)}`;
           return `${item.seriesName}<br/>${formatAxisDate(Number(data[0]))}<br/>${primary}<br/>strict pass ${data[16]}<br/>n=${data[4]} tasks · coverage ${data[9]}<br/>runtime issues ${data[10]} · missing ${data[11]}<br/>summed adapter duration ${data[12]} · API-equivalent cost ${data[13]}<br/>latest of ${data[5]} run(s) · scoring ${data[7]} · ${data[6]}<br/>run ${data[8] ?? 'Unavailable'}`;
         },
       },
@@ -493,7 +670,8 @@ export function TrendExplorer({
   }, [
     intervalPoints,
     metric,
-    mode,
+    chartMode,
+    isSingleObservationDate,
     scientificContexts,
     selectedEntries,
     zoomWindowPoints,
@@ -590,28 +768,35 @@ export function TrendExplorer({
             ))}
           </select>
         </div>
-        <div className="chart-control">
-          <span>View</span>
-          <div className="chart-switch" role="group" aria-label="Trend chart mode">
-            {(['line', 'bar'] as const).map((candidate) => (
-              <button
-                key={candidate}
-                type="button"
-                aria-pressed={mode === candidate}
-                onClick={() =>
-                  startTransition(() =>
-                    pushAnalyticalUrl(
-                      { trendEncoding: candidate },
-                      { hasSemanticChange: candidate !== mode },
-                    ),
-                  )
-                }
-              >
-                {candidate === 'line' ? 'Line' : 'Bar'}
-              </button>
-            ))}
+        {!isSingleObservationDate ? (
+          <div className="chart-control">
+            <span>View</span>
+            <div className="chart-switch" role="group" aria-label="Trend chart mode">
+              {(['line', 'bar'] as const).map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  aria-pressed={mode === candidate}
+                  onClick={() =>
+                    startTransition(() =>
+                      pushAnalyticalUrl(
+                        { trendEncoding: candidate },
+                        { hasSemanticChange: candidate !== mode },
+                      ),
+                    )
+                  }
+                >
+                  {candidate === 'line' ? 'Line' : 'Bar'}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="chart-control trend-snapshot-control">
+            <span>View</span>
+            <strong>Snapshot</strong>
+          </div>
+        )}
       </div>
       {allTimes.length > TREND_ZOOM_DATE_COUNT ? (
         <div className="trend-window-control" aria-label="Visible trend date range">
@@ -666,16 +851,26 @@ export function TrendExplorer({
           </div>
         </div>
       ) : null}
-      <div className={`trend-layout${isPending ? ' is-pending' : ''}`}>
+      {allTimes.length === 1 ? (
+        <p className="trend-snapshot-note" role="status">
+          <strong>First published observation.</strong> Compare the configurations in this snapshot;
+          trend lines begin after the next published cycle.
+        </p>
+      ) : null}
+      <div
+        className={`trend-layout${allTimes.length === 1 ? ' trend-layout-snapshot' : ''}${isPending ? ' is-pending' : ''}`}
+      >
         <div className="chart-frame">
           {zoomWindowPoints.length > 0 ? (
             <EChartsChart
               className="trend-chart-echarts"
               option={chartOption}
               label={
-                mode === 'bar'
-                  ? `${trendMetricLabel(metric)} history. Grouped bars${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
-                  : `${trendMetricLabel(metric)} history. Lines${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
+                allTimes.length === 1
+                  ? `${trendMetricLabel(metric)} first-observation snapshot. Configurations ordered from best to worst${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
+                  : chartMode === 'bar'
+                    ? `${trendMetricLabel(metric)} history. Grouped bars${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
+                    : `${trendMetricLabel(metric)} history. Lines${metric === 'aiq' ? ' with provenance-matched intervals' : ''}.`
               }
             />
           ) : (
@@ -707,7 +902,11 @@ export function TrendExplorer({
       <p className="trend-legend-note">
         {selectedEntries.length} {visibleSeriesProvenance} series · scoring{' '}
         {visibleScoringVersions.join(', ') || 'unavailable'}
-        {mode === 'line' ? ' · connected observations; no interpolation' : ' · grouped bars'}
+        {allTimes.length === 1
+          ? ' · first observation; trend begins with the next published cycle'
+          : chartMode === 'line'
+            ? ' · connected observations; no interpolation'
+            : ' · grouped bars'}
       </p>
       {metric === 'aiq' &&
       latestVisiblePoint &&
