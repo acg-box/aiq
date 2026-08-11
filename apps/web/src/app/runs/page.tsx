@@ -86,7 +86,7 @@ export default async function RunsPage({
               <tr>
                 <th scope="col">Started</th>
                 <th scope="col">Configuration</th>
-                <th scope="col">Scientific summary</th>
+                <th scope="col">AIQ, time, and cost</th>
                 <th scope="col">Evidence</th>
               </tr>
             </thead>
@@ -108,18 +108,18 @@ export default async function RunsPage({
                 });
                 return (
                   <tr key={run.id}>
-                    <td data-label="Started">
+                    <td className="run-history-started" data-label="Started">
                       <time dateTime={run.startedAt}>
                         {new Date(run.startedAt).toLocaleDateString()}
                       </time>
                     </td>
-                    <td data-label="Configuration">
+                    <td className="run-history-configuration" data-label="Configuration">
                       <strong>
                         {entry ? `${entry.modelFamily} · ${entry.reasoningTier}` : run.entryId}
                       </strong>
                       <small>{entry?.modelName ?? 'Public matrix identity'}</small>
                     </td>
-                    <td data-label="Scientific summary">
+                    <td className="run-history-score" data-label="AIQ, time, and cost">
                       <strong>{completeness.label}</strong>
                       <RunScientificSummaryPanel
                         compact
@@ -133,7 +133,7 @@ export default async function RunsPage({
                         })}
                       />
                     </td>
-                    <td data-label="Evidence">
+                    <td className="run-history-evidence" data-label="Evidence">
                       <Link href={`/runs/${run.id}`}>Inspect run</Link>
                       <small>{run.synthetic ? 'Synthetic seed' : 'Published'}</small>
                     </td>

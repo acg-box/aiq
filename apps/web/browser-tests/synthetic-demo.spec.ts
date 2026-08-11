@@ -466,7 +466,7 @@ test('a user can discover and inspect a missing-result run from history', async 
   await expect(missingRun.getByText('Coverage', { exact: true })).toBeVisible();
   await expect(missingRun.getByText('Runtime issues', { exact: true })).toBeVisible();
   await expect(missingRun.getByText('Missing', { exact: true })).toBeVisible();
-  await missingRun.getByText('Provenance, time, and cost', { exact: true }).click();
+  await missingRun.getByText('More evidence', { exact: true }).click();
   await expect(missingRun.getByText('Time / cost coverage', { exact: true })).toBeVisible();
   await missingRun.getByRole('link', { name: 'Inspect run' }).click();
 
