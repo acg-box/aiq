@@ -93,7 +93,7 @@ authentication stay outside Git.
 
 ## Local demonstration
 
-Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, Rust `1.97.1`, and the
+Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, the stable Rust toolchain, and the
 locked dependencies.
 
 ```sh

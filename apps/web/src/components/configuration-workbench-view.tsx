@@ -139,6 +139,14 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
   );
   const focusId = state.focusId !== null && visibleIds.has(state.focusId) ? state.focusId : null;
   const focusedRow = visibleRows.find(({ entry }) => entry.id === focusId) ?? null;
+  const frontierPreview = visibleRows
+    .filter(({ entry }) => frontierKeys.has(entry.id))
+    .toSorted((left, right) => right.entry.score - left.entry.score)
+    .map(({ entry }) => `${entry.modelFamily} ${entry.reasoningTier}`);
+  const frontierPreviewLabel = [
+    ...frontierPreview.slice(0, 2),
+    ...(frontierPreview.length > 2 ? [`+${frontierPreview.length - 2} more`] : []),
+  ].join(' · ');
   const hasActiveFilters =
     state.families.length !== CONFIGURATION_FAMILIES.length ||
     state.reasoningTiers.length !== CONFIGURATION_REASONING_TIERS.length ||
@@ -257,7 +265,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     {
       label: 'Trade-off shortlist',
       identity: `${summary.visibleFrontierCount} options`,
-      value: 'No other option is better on AIQ, time, and cost',
+      value: frontierPreviewLabel || 'No trade-off option is visible',
       onClick: () =>
         pushAnalyticalUrl({
           compareFrontier: 'only',
@@ -299,26 +307,68 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
         ))}
       </div>
 
-      <button
-        className="workbench-filter-toggle"
-        type="button"
-        aria-expanded={filtersOpen}
-        aria-controls="workbench-filter-content"
-        onClick={() => setFiltersOpen((open) => !open)}
-      >
-        <span>
-          <strong>Filters & configurations</strong>
-          <small role="status" aria-live="polite">
-            {summary.visibleCount}/{summary.totalCount} visible
-            {hasActiveFilters ? ' · filtered' : ''}
-          </small>
-        </span>
-        {filtersOpen ? (
-          <CaretUpIcon aria-hidden="true" size={16} weight="bold" />
-        ) : (
-          <CaretDownIcon aria-hidden="true" size={16} weight="bold" />
-        )}
-      </button>
+      <div className="workbench-view-bar">
+        <div className="workbench-view-switch" role="group" aria-label="Comparison view">
+          {(
+            [
+              ['duration', 'AIQ × time'],
+              ['cost', 'AIQ × cost range'],
+              ['decision', 'Decision map'],
+            ] as const satisfies ReadonlyArray<readonly [ConfigurationWorkbenchView, string]>
+          ).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={state.view === view}
+              onClick={() => pushAnalyticalUrl({ compareView: view, compareFocus: null })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="workbench-view-actions">
+          {visibleRows.length > 0 ? (
+            <div className="workbench-focus-status" aria-live="polite">
+              <span>
+                {focusedRow
+                  ? `Selected: ${focusedRow.entry.modelFamily} · ${focusedRow.entry.reasoningTier}`
+                  : state.view === 'decision'
+                    ? summary.costComparableCount === summary.visibleCount
+                      ? 'Select a point · bubble area shows cost'
+                      : 'Select a point · hollow means cost unavailable'
+                    : 'Select a point or row for details'}
+              </span>
+              {focusedRow ? (
+                <button type="button" onClick={() => updateFocus(null)}>
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <button
+            className="workbench-filter-toggle"
+            type="button"
+            aria-label="Filters & configurations"
+            aria-expanded={filtersOpen}
+            aria-controls="workbench-filter-content"
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            <span>
+              <strong>Filters</strong>
+              <small role="status" aria-live="polite">
+                {summary.visibleCount}/{summary.totalCount}
+                <span className="sr-only"> visible</span>
+                {hasActiveFilters ? ' filtered' : ''}
+              </small>
+            </span>
+            {filtersOpen ? (
+              <CaretUpIcon aria-hidden="true" size={14} weight="bold" />
+            ) : (
+              <CaretDownIcon aria-hidden="true" size={14} weight="bold" />
+            )}
+          </button>
+        </div>
+      </div>
 
       <div
         className="workbench-filter-content"
@@ -478,43 +528,6 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
         </div>
       ) : (
         <>
-          <div className="workbench-view-bar">
-            <div className="workbench-view-switch" role="group" aria-label="Comparison view">
-              {(
-                [
-                  ['duration', 'AIQ × time'],
-                  ['cost', 'AIQ × cost range'],
-                  ['decision', 'Decision map'],
-                ] as const satisfies ReadonlyArray<readonly [ConfigurationWorkbenchView, string]>
-              ).map(([view, label]) => (
-                <button
-                  key={view}
-                  type="button"
-                  aria-pressed={state.view === view}
-                  onClick={() => pushAnalyticalUrl({ compareView: view, compareFocus: null })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="workbench-focus-status" aria-live="polite">
-              <span>
-                {focusedRow
-                  ? `Selected: ${focusedRow.entry.modelFamily} · ${focusedRow.entry.reasoningTier}`
-                  : state.view === 'decision'
-                    ? summary.costComparableCount === summary.visibleCount
-                      ? 'Select a point · bubble area shows cost'
-                      : 'Select a point · hollow means cost unavailable'
-                    : 'Select a point or row for details'}
-              </span>
-              {focusedRow ? (
-                <button type="button" onClick={() => updateFocus(null)}>
-                  Clear
-                </button>
-              ) : null}
-            </div>
-          </div>
-
           <div className="workbench-analysis-grid">
             <section
               className="workbench-at-a-glance"
