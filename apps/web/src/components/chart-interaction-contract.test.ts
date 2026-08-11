@@ -34,8 +34,8 @@ void describe('analytical chart interaction contracts', () => {
 
   void it('qualifies the efficiency frontier in the chart legend', () => {
     const workbench = source('./configuration-workbench-chart.tsx');
-    assert.match(workbench, /Pareto frontier/);
-    assert.match(workbench, /AIQ remains independent/);
+    assert.match(workbench, /Trade-off option/);
+    assert.match(workbench, /AIQ stays independent/);
   });
 
   void it('uses one accessible ECharts surface for the three-metric decision map', () => {
@@ -44,7 +44,7 @@ void describe('analytical chart interaction contracts', () => {
     assert.match(workbench, /Decision map/);
     assert.doesNotMatch(workbench, /configuration-three-chart|3D/);
     assert.match(chart, /Three-metric decision map/);
-    assert.match(chart, /Cost range/);
+    assert.match(chart, /Published cost range/);
     assert.match(chart, /bubbleSize/);
     assert.match(chart, /hollow fixed-size markers have no cost estimate/);
     assert.match(chart, /if \(costUnavailable\)[\s\S]+symbol: 'circle'/);
