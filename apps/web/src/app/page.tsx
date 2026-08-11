@@ -177,7 +177,7 @@ export default async function OverviewPage({
           ? 'mixed'
           : 'unavailable';
   const benchmarkLabel =
-    overviewProvenance === 'synthetic' ? 'Synthetic benchmark' : 'Latest benchmark';
+    overviewProvenance === 'synthetic' ? 'Synthetic preview' : 'Latest results';
   const taskCount = highlightedScore?.sampleSize ?? selectedDescriptiveEstimate?.sampleSize;
   const cost =
     highlightedEfficiency?.costEstimatorStatus === 'estimated' &&
@@ -212,7 +212,7 @@ export default async function OverviewPage({
             </p>
           </div>
           <Link className="text-link" href="#method">
-            How AIQ works <span aria-hidden="true">→</span>
+            Scoring &amp; evidence <span aria-hidden="true">→</span>
           </Link>
         </header>
 

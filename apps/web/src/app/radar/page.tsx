@@ -43,7 +43,7 @@ export default async function RadarPage() {
         <span className="eyebrow">Distributed radar</span>
         <h1>Runner network</h1>
         <p>
-          AIQ has {nodes.length} registered production{' '}
+          Trace where published results came from. AIQ has {nodes.length} registered production{' '}
           {nodes.length === 1 ? 'identity' : 'identities'}.
           {reportingNodes.length === 0
             ? ' Radar telemetry is not enabled, so live online or offline state is unknown.'

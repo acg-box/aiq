@@ -214,7 +214,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'Latest benchmark');
+  await expectPublishedPage(page, expectedOrigin, '/', 'Latest results');
   await expectNoDocumentOverflow(page, testInfo);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
     await expect(
@@ -222,7 +222,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
     ).toHaveCount(0);
   }
 
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const workbench = page.getByRole('region', { name: 'Compare configurations' });
   await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
   await page.locator('#results > details.evidence-notes > summary').click();
   await page.getByText('Time, token, and cost table', { exact: true }).click();
