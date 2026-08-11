@@ -41,7 +41,7 @@
 
 .workspace-section {
 	margin-top: 0;
-	padding-top: 72px;
+	padding-top: 52px;
 	scroll-margin-top: 0;
 }
 
@@ -51,12 +51,32 @@
 }
 
 .workspace-section .page-intro {
-	max-width: 780px;
-	margin-bottom: 48px;
+	display: grid;
+	grid-template-columns: minmax(180px, 0.5fr) minmax(360px, 1.5fr);
+	gap: 48px;
+	align-items: baseline;
+	max-width: none;
+	margin-bottom: 28px;
+	padding-bottom: 18px;
+	border-bottom: 1px solid var(--line);
 }
 
 .workspace-section .page-intro h1 {
-	font-size: clamp(2.15rem, 4vw, 3.15rem);
+	font-size: 1.35rem;
+	font-weight: 620;
+	line-height: 1.2;
+	letter-spacing: -0.032em;
+}
+
+.workspace-section .page-intro .eyebrow {
+	display: none;
+}
+
+.workspace-section .page-intro > p {
+	max-width: 720px;
+	margin: 0;
+	font-size: 0.82rem;
+	line-height: 1.6;
 }
 
 .workspace-section-loading {
@@ -98,43 +118,15 @@
 }
 
 .configuration-workbench {
-	margin: 12px 0 64px;
+	margin: 4px 0 64px;
 	scroll-margin-top: 0;
-}
-
-.workbench-heading {
-	display: grid;
-	grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.1fr);
-	gap: 48px;
-	align-items: end;
-}
-
-.workbench-heading .eyebrow {
-	display: block;
-	margin-bottom: 7px;
-}
-
-.workbench-heading h2 {
-	margin: 0;
-	font-size: clamp(1.55rem, 2.8vw, 2.3rem);
-	font-weight: 600;
-	line-height: 1.05;
-	letter-spacing: -0.048em;
-}
-
-.workbench-heading p {
-	max-width: 700px;
-	margin: 0;
-	color: var(--muted);
-	font-size: 0.82rem;
-	line-height: 1.62;
 }
 
 .workbench-summaries {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
 	gap: 30px;
-	margin-top: 28px;
+	margin-top: 0;
 	border-block: 1px solid var(--line);
 }
 
@@ -1817,16 +1809,23 @@ dd {
 	}
 
 	.workspace-section {
-		padding-top: 64px;
+		padding-top: 44px;
 		scroll-margin-top: 0;
 	}
 
 	.workspace-section .page-intro {
-		margin-bottom: 32px;
+		grid-template-columns: 1fr;
+		gap: 7px;
+		margin-bottom: 22px;
+		padding-bottom: 14px;
 	}
 
 	.workspace-section .page-intro h1 {
-		font-size: 2rem;
+		font-size: 1.2rem;
+	}
+
+	.workspace-section .page-intro > p {
+		font-size: 0.76rem;
 	}
 
 	.benchmark-strip {
@@ -1840,19 +1839,6 @@ dd {
 	.configuration-workbench {
 		margin: 8px 0 48px;
 		scroll-margin-top: 72px;
-	}
-
-	.workbench-heading {
-		grid-template-columns: 1fr;
-		gap: 10px;
-	}
-
-	.workbench-heading h2 {
-		font-size: 1.55rem;
-	}
-
-	.workbench-heading p {
-		font-size: 0.75rem;
 	}
 
 	.workbench-summaries {

@@ -432,8 +432,8 @@ test('the live overview exposes all 17 published configurations without seed sub
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Latest benchmark' })).toBeVisible();
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  await expect(page.getByRole('heading', { level: 1, name: 'Latest results' })).toBeVisible();
+  const workbench = page.getByRole('region', { name: 'Compare configurations' });
   await expect(workbench).toBeVisible();
   await expect(workbench.getByRole('status')).toContainText('17/17 configurations visible');
   await expect(page.getByRole('region', { name: 'Top configurations' })).toHaveCount(0);
@@ -530,7 +530,7 @@ test('comparison points keep stable geometry while the pointer moves between the
 
 test('the decision map keeps the same complete comparison table', async ({ page }) => {
   await page.goto('/?compareView=decision#compare');
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const workbench = page.getByRole('region', { name: 'Compare configurations' });
   const decision = workbench.getByRole('region', {
     name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
   });
@@ -553,7 +553,7 @@ test('the comparison remains accessible in light, dark, and reduced-motion decis
   await page.goto('/?compareView=decision#compare');
   await page.getByRole('button', { name: 'Use light theme', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const workbench = page.getByRole('region', { name: 'Compare configurations' });
   const decision = workbench.getByRole('region', {
     name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
   });
@@ -667,7 +667,7 @@ test('Official comparison selection is limited to the selected run identities', 
   page,
 }) => {
   await page.goto('/compare?compareConfigs=sol-low,sol-medium#compare');
-  const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
+  const workbench = page.getByRole('region', { name: 'Compare configurations' });
   await expect(workbench.getByRole('status')).toContainText('2/17 configurations visible');
   const comparison = workbench.getByRole('region', {
     name: 'Filtered configuration comparison table',
