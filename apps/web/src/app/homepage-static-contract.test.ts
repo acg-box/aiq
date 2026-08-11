@@ -35,7 +35,8 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workbenchSource, /Compare configurations/);
     assert.match(workbenchSource, /remain independent observations/);
     assert.match(workbenchSource, /Trade-off shortlist/);
-    assert.match(workbenchSource, /No other option is better on AIQ, time, and cost/);
+    assert.match(workbenchSource, /frontierPreviewLabel/);
+    assert.match(workbenchSource, /<span className="sr-only"> visible<\/span>/);
     assert.match(workbenchSource, /At a glance/);
     assert.match(workbenchSource, /AIQ first · task time and cost below/);
     assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
@@ -111,9 +112,18 @@ void describe('homepage evidence and loading contract', () => {
       workspaceStyles,
       /\.workbench-filter-content\[data-open='false'\] \{[\s\S]+display: none;/,
     );
+    assert.match(workspaceStyles, /\.workbench-view-actions \{[\s\S]+display: flex;/);
     assert.match(
       workspaceStyles,
-      /\.workbench-filter-toggle \{[\s\S]+display: flex;[\s\S]+border-bottom: 1px solid var\(--line\);/,
+      /\.workbench-filter-toggle \{[\s\S]+display: flex;[\s\S]+width: auto;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /@media \(max-width: 760px\)[\s\S]+\.workbench-at-a-glance table \{[\s\S]+min-width: 560px;/,
+    );
+    assert.match(
+      workspaceStyles,
+      /\.workbench-at-a-glance-empty \.sr-only \{[\s\S]+position: static;[\s\S]+clip-path: inset\(50%\);/,
     );
     assert.doesNotMatch(workspaceStyles, /\.workbench-table thead \{\s+display: none;/);
     assert.match(globalStyles, /html \{[\s\S]+overflow-x: clip;/);
