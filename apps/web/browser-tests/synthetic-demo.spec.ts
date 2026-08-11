@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page, type TestInfo } from '@playwrigh
 const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
 
 const routes = [
-  { path: '/', heading: 'Synthetic benchmark', navigation: 'Results' },
+  { path: '/', heading: 'Synthetic preview', navigation: 'Results' },
   { path: '/runs', heading: 'Run archive', navigation: 'Evidence' },
   {
     path: '/calibrations',
@@ -448,9 +448,11 @@ test('a user can discover and inspect a missing-result run from history', async 
   await page.goto('/');
   await page.getByRole('link', { name: 'Evidence', exact: true }).click();
   await expect(page).toHaveURL('/#runs');
-  await expect(page.getByText('17 runs × 72 tasks', { exact: false })).toBeVisible();
-  await expect(page.getByText('1,224 task attempts', { exact: false })).toBeVisible();
-  await expect(page.getByText('not 1,224 benchmark runs', { exact: false })).toBeVisible();
+  await expect(page.getByText('Open any configuration', { exact: false })).toBeVisible();
+  await expect(page.getByText('72 task results', { exact: false })).toBeVisible();
+  await expect(
+    page.getByText('failures, timing, cost, and provenance', { exact: false }),
+  ).toBeVisible();
 
   const history = page.getByRole('region', { name: 'Public run history' });
   await expect(history.getByRole('row')).toHaveCount(11);
@@ -568,12 +570,12 @@ test('time range filters update and comparison fails closed without exact effici
   await expect(page).toHaveURL('/#compare');
   await expect(page.getByLabel('Selected run context status')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Top configurations' })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Compare all 17 at once.' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Compare configurations' })).toHaveCount(0);
   await page.goto('/compare');
   await expect(page.getByLabel('Comparison workspace status')).toContainText(
     'The exact 17-configuration score, run, and efficiency join is unavailable.',
   );
-  await expect(page.getByRole('region', { name: 'Compare all 17 at once.' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Compare configurations' })).toHaveCount(0);
   expect(runtimeFailures).toEqual([]);
 });
 
@@ -692,7 +694,7 @@ test('the index reflows at a 320 CSS pixel narrow viewport', async ({ page }, te
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Synthetic benchmark' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Synthetic preview' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
   await page.locator('[data-homepage-analytics="matrix"]').scrollIntoViewIfNeeded();
   const chart = page.getByRole('region', { name: 'Quality score by configuration' });

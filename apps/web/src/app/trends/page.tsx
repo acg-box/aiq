@@ -99,10 +99,7 @@ export default async function TrendsPage({
       <div className="page-intro">
         <span className="eyebrow">History</span>
         <h1>AIQ over time</h1>
-        <p>
-          Track how each configuration changes across retained benchmark runs. Switch the time
-          window, model family, and chart type without losing uncertainty or coverage context.
-        </p>
+        <p>Compare AIQ, time, cost, and Normal/Fast measurements across every published run.</p>
       </div>
       {evidenceNeedsAttention ? <ReadStateNote result={pointsResult} subject="History" /> : null}
       {entriesResult.state !== 'unavailable' && pointsResult.state !== 'unavailable' ? (

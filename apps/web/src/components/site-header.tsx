@@ -9,8 +9,8 @@ import { ThemeControl } from './theme-control.tsx';
 
 const workspaceNavigation = [
   ['Results', 'results'],
-  ['Trends', 'trends'],
   ['Compare', 'compare'],
+  ['Trends', 'trends'],
   ['Evidence', 'runs'],
 ] as const;
 

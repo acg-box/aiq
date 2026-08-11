@@ -32,7 +32,7 @@ void describe('homepage evidence and loading contract', () => {
 
     assert.match(source, /conditional\s+95%\s+interval/i);
     assert.doesNotMatch(source, /general intelligence/);
-    assert.match(workbenchSource, /Compare all 17 at once/);
+    assert.match(workbenchSource, /Compare configurations/);
     assert.match(workbenchSource, /remain independent observations/);
     assert.match(workbenchSource, /Cost evidence/);
     assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
