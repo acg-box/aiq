@@ -3815,7 +3815,8 @@ fn prepare_live_runtime(
 	options.codex_binary = controlled_codex_binary(&options.codex_binary)?;
 
 	let evaluator_root = controlled_evaluator_root(&options.evaluator_root)?;
-	let evaluator_runtime = EvaluatorRuntime::resolve(&options.evaluator_runtime)?;
+	let evaluator_runtime =
+		EvaluatorRuntime::resolve(&options.evaluator_runtime)?.serialize_external_evaluators();
 
 	corpus.validate_evaluator_runtime(&evaluator_runtime)?;
 

@@ -346,7 +346,7 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn production_evaluator_gate_enforces_the_seventeen_permit_bound() {
+	fn production_evaluator_gate_enforces_the_default_permit_bound() {
 		let gate = Arc::new(ExternalEvaluatorGate::new(super::MAX_PARALLEL_EXTERNAL_EVALUATORS));
 		let mut permits = (0..super::MAX_PARALLEL_EXTERNAL_EVALUATORS)
 			.map(|_| gate.enter().expect("configured permit"))
@@ -373,7 +373,7 @@ process.stdin.on('end', () => {{
 
 		acquired_rx
 			.recv_timeout(Duration::from_secs(1))
-			.expect("eighteenth evaluator must acquire after one release");
+			.expect("queued evaluator must acquire after one release");
 		release_tx.send(()).expect("release worker");
 		worker.join().expect("permit worker must not panic");
 	}
@@ -393,10 +393,7 @@ process.stdin.on('end', () => {{
 			fs::create_dir_all(workspace).expect("candidate workspace");
 		}
 
-		let mut runtime = resolve_node_runtime(&runtime_root);
-
-		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
-
+		let runtime = resolve_node_runtime(&runtime_root).serialize_external_evaluators();
 		let binding = gate_test_binding(&evaluator_root, &runtime, 75, 1_000);
 		let start = Arc::new(Barrier::new(workspaces.len() + 1));
 		let pass_starts = Arc::new(Mutex::new(Vec::new()));
@@ -1828,6 +1825,58 @@ process.stdin.on('end', () => {{
 
 		fs::remove_dir_all(&root).expect("fixture root must be removed");
 	}
+
+	#[test]
+	fn checked_observation_retries_a_transient_replay_mismatch() {
+		let unique = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.expect("fixture clock must follow Unix epoch")
+			.as_nanos();
+		let root =
+			env::temp_dir().join(format!("aiq-evaluator-replay-retry-{}-{unique}", process::id()));
+		let workspace = root.join("workspace");
+
+		fs::create_dir_all(&workspace).expect("fixture workspace must be created");
+
+		let executable = root.join("evaluator");
+
+		fs::write(
+			&executable,
+			concat!(
+				"import fs from 'node:fs';\n",
+				"process.stdin.resume();\n",
+				"process.stdin.on('end', () => {\n",
+				" const path = 'replay-count';\n",
+				" const count = fs.existsSync(path) ? Number(fs.readFileSync(path, 'utf8')) : 0;\n",
+				" fs.writeFileSync(path, String(count + 1));\n",
+				" const passed = count > 0;\n",
+				" process.stdout.write(JSON.stringify({schema_version:'aiq.evaluator-result.v3',",
+				"outcome:passed?'correct':'incorrect',score:passed?1:0,checks:[{check_id:'x',",
+				"weight:1,passed,failure_class:passed?'none':'value',evidence_digest:",
+				"'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}]}));\n",
+				"});\n",
+			),
+		)
+		.expect("fixture evaluator must be written");
+		fs::set_permissions(&executable, Permissions::from_mode(0o700))
+			.expect("fixture evaluator must be executable");
+
+		let mut binding = echo_binding(&result_json(true));
+
+		binding.executable_ref = Path::new("evaluator").to_owned();
+		binding.executable_digest = executable_digest(&executable);
+
+		binding.arguments.clear();
+
+		let observation =
+			evaluate_observation_fixture(&binding, "candidate output", &root, &workspace)
+				.expect("the second checked attempt must accept two identical outputs");
+
+		assert_eq!(observation.result.outcome, EvaluatorOutcome::Correct);
+		assert_eq!(fs::read_to_string(root.join("replay-count")).expect("attempt count"), "4");
+
+		fs::remove_dir_all(&root).expect("fixture root must be removed");
+	}
 }
 
 #[cfg(target_os = "linux")]
@@ -1892,6 +1941,8 @@ pub const EVALUATOR_CONFIG_SCHEMA_VERSION: &str = "aiq.evaluator-config.v1";
 pub const MAX_EVALUATOR_CHECKS_PER_RESULT: usize = 16;
 /// Number of identical external evaluator passes in one checked evaluation.
 pub const EXTERNAL_EVALUATOR_REPLAY_PASSES: u64 = 2;
+/// Maximum checked attempts for a transient two-pass replay mismatch.
+pub const MAX_CHECKED_EVALUATOR_ATTEMPTS: usize = 3;
 /// Per-scenario reserve for copying the controlled scenario workspace.
 pub const NODE_SCENARIO_COPY_RESERVE_MS: u64 = 2_000;
 /// Per-scenario reserve for starting the committed Node.js scenario process.
@@ -2079,6 +2130,13 @@ impl EvaluatorRuntime {
 
 	fn enter_external_evaluator(&self) -> Result<ExternalEvaluatorPermit<'_>, EvaluationError> {
 		self.external_evaluator_gate.enter()
+	}
+
+	/// Serializes model-bound evaluator work while model processes are active.
+	pub(crate) fn serialize_external_evaluators(mut self) -> Self {
+		self.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
+
+		self
 	}
 }
 
@@ -2401,23 +2459,37 @@ impl ExternalEvaluatorBinding {
 			}
 		}
 
-		let mut observer = RawStdoutObserver::default();
-		let result = self.evaluate_at_root_observed_inner(
-			evaluator_kind,
-			context,
-			root,
-			runtime,
-			&mut observer,
-		)?;
-		let [first, second] = observer.digests.as_slice() else {
-			return Err(EvaluationError::replay_mismatch());
-		};
+		for attempt in 0..MAX_CHECKED_EVALUATOR_ATTEMPTS {
+			let mut observer = RawStdoutObserver::default();
+			let checked = self
+				.evaluate_at_root_observed_inner(
+					evaluator_kind,
+					context,
+					root,
+					runtime,
+					&mut observer,
+				)
+				.and_then(|result| {
+					let [first, second] = observer.digests.as_slice() else {
+						return Err(EvaluationError::replay_mismatch());
+					};
 
-		if first != second {
-			return Err(EvaluationError::replay_mismatch());
+					if first != second {
+						return Err(EvaluationError::replay_mismatch());
+					}
+
+					Ok(CheckedEvaluatorObservation { result, raw_stdout_sha256: first.clone() })
+				});
+
+			match checked {
+				Err(error)
+					if error.kind() == EvaluationErrorKind::ReplayMismatch
+						&& attempt + 1 < MAX_CHECKED_EVALUATOR_ATTEMPTS => {},
+				result => return result,
+			}
 		}
 
-		Ok(CheckedEvaluatorObservation { result, raw_stdout_sha256: first.clone() })
+		unreachable!("checked evaluator attempts are nonzero")
 	}
 
 	/// Executes twice and reports the exact start and terminal edge of each child pass.
