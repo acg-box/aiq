@@ -24,7 +24,7 @@ registerHooks({
 
 import { configurationWorkbenchFixture } from './configuration-workbench.fixture.ts';
 
-const { resolveWorkbenchPlotRows, resolveWorkbenchXAxisBounds } =
+const { resolveWorkbenchPlotRows, resolveWorkbenchXAxisBounds, resolveWorkbenchYAxisBounds } =
   await import('./configuration-workbench-chart.tsx');
 
 const row = (id: string, duration: number | null, cost: number | null) =>
@@ -92,5 +92,20 @@ void describe('configuration workbench plot evidence', () => {
     const [costMinimum, costMaximum] = resolveWorkbenchXAxisBounds(costPoints, 'cost');
     assert.equal(costMinimum, 0);
     assert.ok(costMaximum > 1);
+  });
+
+  void it('zooms AIQ to the observed estimates and intervals without exceeding its scale', () => {
+    const points = resolveWorkbenchPlotRows(
+      [
+        configurationWorkbenchFixture({ id: 'lower', score: 68 }),
+        configurationWorkbenchFixture({ id: 'upper', score: 82 }),
+      ],
+      'duration',
+    );
+    const [minimum, maximum] = resolveWorkbenchYAxisBounds(points);
+    assert.ok(minimum > 0);
+    assert.ok(minimum < 66);
+    assert.ok(maximum > 84);
+    assert.ok(maximum <= 100);
   });
 });
