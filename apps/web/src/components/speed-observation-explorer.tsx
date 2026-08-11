@@ -227,14 +227,17 @@ export function SpeedObservationExplorer({
           type: 'line',
           connectNulls: false,
           smooth: false,
-          showSymbol: false,
-          symbolSize: 6,
+          showSymbol: true,
+          symbolSize: 7,
           lineStyle: {
             width: 1.5,
             type: mode === 'fast' ? 'solid' : 'dashed',
             opacity: 0.72 + (index % 3) * 0.08,
           },
-          itemStyle: { color },
+          itemStyle:
+            mode === 'fast'
+              ? { color }
+              : { color: 'transparent', borderColor: color, borderWidth: 2 },
           emphasis: { focus: 'series', lineStyle: { width: 2.5 } },
           data: visibleTrends
             .filter((row) => row.entryId === entryId && row.mode === mode)
