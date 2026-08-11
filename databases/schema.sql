@@ -16914,7 +16914,10 @@ begin
   bucket_seconds:=greatest(1,ceil(extract(epoch from range_ended_at-range_started_at)/20)::bigint);
   return query
   with observations as (
-    select trial.*,
+    select trial.batch_id,trial.model_family,trial.reasoning_effort,trial.mode,trial.status,
+      trial.elapsed_ms,trial.aggregate_output_tps_millis,trial.estimated_credits_nanos,
+      trial.input_tokens,trial.cached_input_tokens,trial.output_tokens,trial.total_tokens,
+      trial.agent_steps,trial.tool_call_count,
       batch.observed_at,
       pg_catalog.to_timestamp(
         floor(extract(epoch from batch.observed_at)/bucket_seconds)*bucket_seconds
