@@ -255,6 +255,15 @@ that boundary is therefore unpriced rather than guessed. Regional uplift,
 hosted-tool fees, and subscription pricing are excluded. The value is an
 API-equivalent comparison, not actual subscription spend.
 
+The public comparison does not translate this state as “outside the published
+price range.” When all required aggregate counters and the signed rate record
+are present, it derives a conservative display range: the lower bound applies
+the Standard rates to all observed tokens, and the upper bound applies the
+published 2x input and 1.5x output multipliers to all observed tokens. The exact
+published aggregate stays null, so the range cannot be mistaken for a
+verifier-recomputed scalar cost. The table reports exact task-price coverage, and the
+exact-cost filter excludes bounded ranges.
+
 Signed result packages retain measured latency and any available
 usage fields. Public aggregates include only verified, coverage-qualified timing,
 token, and Standard API-equivalent cost evidence.

@@ -165,6 +165,24 @@ test('workspace navigation keeps the selected destination active while scrolling
     .toBeLessThanOrEqual(85);
   await expect(page).toHaveURL('/#compare');
   await expect(compare).toHaveAttribute('aria-current', 'page');
+
+  await navigation.getByRole('link', { name: 'Trends', exact: true }).click();
+  await page.getByLabel('Trend measure').getByRole('button', { name: 'Time', exact: true }).click();
+  await page
+    .getByLabel('Trend chart mode')
+    .getByRole('button', { name: 'Bar', exact: true })
+    .click();
+  await expect(page).toHaveURL('/?trendEncoding=bar&trendMetric=duration#trends');
+  await compare.click();
+  await expect(page).toHaveURL('/?trendEncoding=bar&trendMetric=duration#compare');
+  await expect
+    .poll(() =>
+      page
+        .locator('#compare')
+        .evaluate((section) => Math.round(section.getBoundingClientRect().top)),
+    )
+    .toBeLessThanOrEqual(85);
+  await expect(compare).toHaveAttribute('aria-current', 'page');
 });
 
 test('crawler metadata routes expose only the public surface', async ({ request }) => {
