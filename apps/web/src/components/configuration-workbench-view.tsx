@@ -48,6 +48,25 @@ function configurationName(candidate: ExactEfficiencyRow | null): string {
     : 'Unavailable';
 }
 
+function configurationMetrics(
+  candidate: ExactEfficiencyRow | null,
+  lead: 'ability' | 'cost' | 'time' = 'ability',
+): string {
+  if (!candidate) return 'Evidence unavailable';
+  const metrics = {
+    ability: `${candidate.entry.score.toFixed(1)} AIQ`,
+    cost: formatCost(candidate),
+    time: formatDuration(candidate),
+  };
+  const order =
+    lead === 'ability'
+      ? (['ability', 'time', 'cost'] as const)
+      : lead === 'time'
+        ? (['time', 'ability', 'cost'] as const)
+        : (['cost', 'ability', 'time'] as const);
+  return order.map((metric) => metrics[metric]).join(' · ');
+}
+
 function toggleSelection<Value extends string>(
   selection: readonly Value[],
   value: Value,
@@ -97,6 +116,26 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
   const visibleIds = useMemo(
     () => new Set(visibleRows.map(({ entry }) => entry.id)),
     [visibleRows],
+  );
+  const visibleRowsByIdentity = useMemo(
+    () =>
+      new Map(
+        visibleRows.map((candidate) => [
+          `${candidate.entry.modelFamily}:${candidate.entry.reasoningTier}`,
+          candidate,
+        ]),
+      ),
+    [visibleRows],
+  );
+  const allRowsByIdentity = useMemo(
+    () =>
+      new Map(
+        rows.map((candidate) => [
+          `${candidate.entry.modelFamily}:${candidate.entry.reasoningTier}`,
+          candidate,
+        ]),
+      ),
+    [rows],
   );
   const focusId = state.focusId !== null && visibleIds.has(state.focusId) ? state.focusId : null;
   const focusedRow = visibleRows.find(({ entry }) => entry.id === focusId) ?? null;
@@ -180,9 +219,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     {
       label: 'Highest AIQ',
       identity: configurationName(summary.highestAbility),
-      value: summary.highestAbility
-        ? `${summary.highestAbility.entry.score.toFixed(1)} AIQ`
-        : 'Unavailable',
+      value: configurationMetrics(summary.highestAbility),
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: null,
@@ -194,7 +231,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     {
       label: 'Lowest task-time total',
       identity: configurationName(summary.shortestTime),
-      value: formatDuration(summary.shortestTime),
+      value: configurationMetrics(summary.shortestTime, 'time'),
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: 'time',
@@ -207,7 +244,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     {
       label: 'Lowest API-equivalent cost',
       identity: configurationName(summary.lowestCost),
-      value: `${formatCost(summary.lowestCost)} · ${summary.costComparableCount}/${summary.visibleCount} comparable`,
+      value: configurationMetrics(summary.lowestCost, 'cost'),
       onClick: () =>
         pushAnalyticalUrl({
           compareOrder: 'cost',
@@ -219,8 +256,8 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
     },
     {
       label: 'Trade-off shortlist',
-      identity: `${summary.visibleFrontierCount} Pareto options`,
-      value: `${summary.costComparableCount}/${summary.visibleCount} with time + cost`,
+      identity: `${summary.visibleFrontierCount} options`,
+      value: 'No other option is better on AIQ, time, and cost',
       onClick: () =>
         pushAnalyticalUrl({
           compareFrontier: 'only',
@@ -465,7 +502,9 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
                 {focusedRow
                   ? `Selected: ${focusedRow.entry.modelFamily} · ${focusedRow.entry.reasoningTier}`
                   : state.view === 'decision'
-                    ? 'Select a point · hollow means cost unavailable'
+                    ? summary.costComparableCount === summary.visibleCount
+                      ? 'Select a point · bubble area shows cost'
+                      : 'Select a point · hollow means cost unavailable'
                     : 'Select a point or row for details'}
               </span>
               {focusedRow ? (
@@ -476,14 +515,94 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
             </div>
           </div>
 
-          <div className="workbench-visualization">
-            <ConfigurationWorkbenchChart
-              allRows={rows}
-              rows={visibleRows}
-              metric={state.view}
-              focusId={focusId}
-              onFocusChange={updateFocus}
-            />
+          <div className="workbench-analysis-grid">
+            <section
+              className="workbench-at-a-glance"
+              aria-labelledby="workbench-at-a-glance-heading"
+            >
+              <header>
+                <h3 id="workbench-at-a-glance-heading">At a glance</h3>
+                <p>AIQ first · task time and cost below</p>
+              </header>
+              <div className="workbench-at-a-glance-scroll" tabIndex={0}>
+                <table>
+                  <caption className="sr-only">
+                    Visible configurations arranged by model family and reasoning level. Each cell
+                    shows AIQ, task time, and API-equivalent cost.
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Model</th>
+                      {CONFIGURATION_REASONING_TIERS.map((tier) => (
+                        <th scope="col" key={tier}>
+                          {tier}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CONFIGURATION_FAMILIES.map((family) => (
+                      <tr key={family}>
+                        <th scope="row">{family}</th>
+                        {CONFIGURATION_REASONING_TIERS.map((tier) => {
+                          const identity = `${family}:${tier}`;
+                          const candidate = visibleRowsByIdentity.get(identity);
+                          const available = allRowsByIdentity.has(identity);
+                          if (!candidate) {
+                            return (
+                              <td
+                                className="workbench-at-a-glance-empty"
+                                data-filtered={available ? 'true' : undefined}
+                                key={tier}
+                              >
+                                <span aria-hidden="true">{available ? 'filtered' : '—'}</span>
+                                <span className="sr-only">
+                                  {available
+                                    ? `${family} ${tier} is filtered out`
+                                    : `${family} ${tier} is not in the benchmark matrix`}
+                                </span>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={tier}>
+                              <button
+                                type="button"
+                                aria-label={`${family} ${tier}: ${configurationMetrics(candidate)}${frontierKeys.has(candidate.entry.id) ? '; trade-off option' : ''}`}
+                                aria-pressed={focusId === candidate.entry.id}
+                                onClick={() =>
+                                  updateFocus(
+                                    focusId === candidate.entry.id ? null : candidate.entry.id,
+                                  )
+                                }
+                              >
+                                <strong>{candidate.entry.score.toFixed(1)}</strong>
+                                <span>{formatDuration(candidate)}</span>
+                                <small>{formatCost(candidate)}</small>
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="workbench-at-a-glance-note">
+                {summary.visibleCount}/{summary.totalCount} visible · click a cell to focus the
+                chart and detailed table
+              </p>
+            </section>
+
+            <div className="workbench-visualization">
+              <ConfigurationWorkbenchChart
+                allRows={rows}
+                rows={visibleRows}
+                metric={state.view}
+                focusId={focusId}
+                onFocusChange={updateFocus}
+              />
+            </div>
           </div>
 
           <div className="workbench-table-heading">
@@ -537,7 +656,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
                         </button>
                         <small>
                           {frontierKeys.has(candidate.entry.id)
-                            ? 'Pareto frontier'
+                            ? 'Trade-off option'
                             : `${candidate.row.resultCount} task results`}
                         </small>
                       </th>

@@ -168,6 +168,7 @@
 .workbench-picker-actions button:focus-visible,
 .workbench-configuration-options button:focus-visible,
 .workbench-focus-status button:focus-visible,
+.workbench-at-a-glance button:focus-visible,
 .workbench-table button:focus-visible {
 	outline: none;
 	color: var(--ink);
@@ -187,6 +188,10 @@
 	color: var(--muted);
 	font-size: 0.69rem;
 	line-height: 1.45;
+}
+
+.workbench-summaries small {
+	margin-top: 3px;
 }
 
 .workbench-summaries strong {
@@ -384,10 +389,164 @@
 	font-size: 0.7rem;
 }
 
-.workbench-visualization {
-	min-height: 430px;
+.workbench-analysis-grid {
+	display: grid;
+	grid-template-areas: 'chart glance';
+	grid-template-columns: minmax(0, 1.5fr) minmax(500px, 0.95fr);
+	gap: 30px;
+	align-items: stretch;
 	padding-bottom: 28px;
 	border-bottom: 1px solid var(--line);
+}
+
+.workbench-visualization {
+	grid-area: chart;
+	min-height: 430px;
+}
+
+.workbench-at-a-glance {
+	grid-area: glance;
+	min-width: 0;
+	overflow: hidden;
+	padding-left: 26px;
+	border-left: 1px solid var(--line);
+}
+
+.workbench-at-a-glance > header {
+	display: flex;
+	gap: 16px;
+	align-items: baseline;
+	justify-content: space-between;
+	min-height: 48px;
+	padding: 7px 0 9px;
+}
+
+.workbench-at-a-glance h3,
+.workbench-at-a-glance p {
+	margin: 0;
+}
+
+.workbench-at-a-glance h3 {
+	font-size: 0.88rem;
+	font-weight: 650;
+	letter-spacing: -0.02em;
+}
+
+.workbench-at-a-glance > header p,
+.workbench-at-a-glance-note {
+	color: var(--muted);
+	font-size: 0.66rem;
+	line-height: 1.45;
+}
+
+.workbench-at-a-glance-scroll {
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-inline: contain;
+}
+
+.workbench-at-a-glance table {
+	width: 100%;
+	min-width: 450px;
+	table-layout: fixed;
+	border-collapse: collapse;
+}
+
+.workbench-at-a-glance th,
+.workbench-at-a-glance td {
+	padding: 0;
+	border-bottom: 1px solid var(--line);
+	vertical-align: middle;
+}
+
+.workbench-at-a-glance thead th {
+	height: 28px;
+	color: var(--muted);
+	font-size: 0.58rem;
+	font-weight: 650;
+	text-align: center;
+	text-transform: uppercase;
+	letter-spacing: 0.045em;
+}
+
+.workbench-at-a-glance thead th:first-child,
+.workbench-at-a-glance tbody th {
+	width: 46px;
+	text-align: left;
+}
+
+.workbench-at-a-glance tbody th {
+	color: var(--muted);
+	font-size: 0.62rem;
+	font-weight: 680;
+	text-transform: uppercase;
+	letter-spacing: 0.045em;
+}
+
+.workbench-at-a-glance td {
+	border-left: 1px solid var(--line);
+}
+
+.workbench-at-a-glance td > button {
+	display: grid;
+	width: 100%;
+	min-height: 92px;
+	padding: 10px 6px;
+	place-content: center;
+	text-align: center;
+	cursor: pointer;
+	transition:
+		background-color 140ms ease,
+		color 140ms ease;
+}
+
+.workbench-at-a-glance td > button:hover,
+.workbench-at-a-glance td > button[aria-pressed='true'] {
+	background: var(--panel-soft);
+}
+
+.workbench-at-a-glance td > button[aria-pressed='true'] strong {
+	color: var(--accent);
+}
+
+.workbench-at-a-glance td strong,
+.workbench-at-a-glance td span,
+.workbench-at-a-glance td small {
+	display: block;
+}
+
+.workbench-at-a-glance td strong {
+	font-size: 1rem;
+	font-weight: 680;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.025em;
+}
+
+.workbench-at-a-glance td span,
+.workbench-at-a-glance td small {
+	margin-top: 3px;
+	color: var(--muted);
+	font-size: 0.59rem;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.3;
+}
+
+.workbench-at-a-glance-empty {
+	height: 92px;
+	color: var(--muted);
+	font-size: 0.58rem;
+	text-align: center;
+}
+
+.workbench-at-a-glance-empty[data-filtered='true'] {
+	opacity: 0.55;
+}
+
+.workbench-at-a-glance-note {
+	margin-top: 9px;
 }
 
 .workbench-chart-canvas {
@@ -1918,6 +2077,20 @@ dd {
 		grid-template-columns: 1fr;
 	}
 
+	.workbench-analysis-grid {
+		grid-template-areas:
+			'glance'
+			'chart';
+		grid-template-columns: minmax(0, 1fr);
+		gap: 22px;
+	}
+
+	.workbench-at-a-glance {
+		padding: 0 0 20px;
+		border-bottom: 1px solid var(--line);
+		border-left: 0;
+	}
+
 	.compact-ranking {
 		order: -1;
 	}
@@ -2051,6 +2224,18 @@ dd {
 
 	.workbench-view-switch {
 		gap: 16px;
+	}
+
+	.workbench-at-a-glance > header {
+		min-height: 40px;
+	}
+
+	.workbench-at-a-glance table {
+		min-width: 100%;
+	}
+
+	.workbench-at-a-glance td > button {
+		padding-inline: 2px;
 	}
 
 	.workbench-visualization {

@@ -35,7 +35,9 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(workbenchSource, /Compare configurations/);
     assert.match(workbenchSource, /remain independent observations/);
     assert.match(workbenchSource, /Trade-off shortlist/);
-    assert.match(workbenchSource, /Pareto options/);
+    assert.match(workbenchSource, /No other option is better on AIQ, time, and cost/);
+    assert.match(workbenchSource, /At a glance/);
+    assert.match(workbenchSource, /AIQ first · task time and cost below/);
     assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
@@ -63,6 +65,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(analyticsSource, /aria-live="polite"/);
     assert.match(workspaceStyles, /\.homepage-analytics-loading \{[\s\S]+min-height: 320px;/);
     assert.match(workspaceStyles, /\.workbench-visualization \{[\s\S]+min-height: 430px;/);
+    assert.match(workspaceStyles, /\.workbench-analysis-grid \{[\s\S]+grid-template-areas:/);
     assert.match(workspaceStyles, /@media \(max-width: 760px\)[\s\S]+min-height: 360px;/);
     assert.match(analyticsSource, /onVisualizationPresenceChange={setHasVisualization}/);
   });

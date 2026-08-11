@@ -70,6 +70,18 @@ async function expectMobileMatrixLegibility(page: Page) {
     .boundingBox();
   expect(firstSummaryBox).not.toBeNull();
   expect(firstSummaryBox?.y ?? 844).toBeLessThan(844);
+  const atAGlance = workbench.getByRole('region', { name: 'At a glance' });
+  await expect(atAGlance).toBeVisible();
+  await expect(atAGlance.getByRole('button')).toHaveCount(17);
+  const firstConfiguration = atAGlance.getByRole('button').first();
+  await firstConfiguration.click();
+  await expect(page).toHaveURL(/compareFocus=/);
+  await expect(firstConfiguration).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('link', { name: 'AIQ home' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole('region', { name: 'At a glance' }).locator("button[aria-pressed='true']"),
+  ).toHaveCount(0);
   const chart = workbench.getByRole('region', { name: 'AIQ against summed task time' });
   await chart.scrollIntoViewIfNeeded();
   await expect(chart.locator('svg')).toBeVisible();
