@@ -14,6 +14,12 @@ const workspaceNavigation = [
   ['Evidence', 'runs'],
 ] as const;
 
+function scrollWorkspaceSection(section: HTMLElement): void {
+  window.requestAnimationFrame(() =>
+    section.scrollIntoView({ behavior: 'instant', block: 'start' }),
+  );
+}
+
 export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
   const pathname = usePathname();
   const [activeSection, setActiveSection] = useState('results');
@@ -40,7 +46,6 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
 
   useEffect(() => {
     if (pathname !== '/') return undefined;
-    const alignmentTimers: number[] = [];
     const observedSections = new Set<HTMLElement>();
     let navigationFrame: number | null = null;
 
@@ -77,29 +82,25 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
       threshold: [0, 0.05, 0.2],
     });
 
-    const observeSections = () => {
-      document.querySelectorAll<HTMLElement>('[data-workspace-section]').forEach((section) => {
-        if (observedSections.has(section)) return;
-        observedSections.add(section);
-        observer.observe(section);
-      });
-      scheduleNavigationUpdate();
-    };
-
     const alignToHash = () => {
-      alignmentTimers.forEach((timer) => window.clearTimeout(timer));
-      alignmentTimers.length = 0;
       const id = window.location.hash.slice(1);
       const section = id ? document.getElementById(id) : null;
       if (!section) return;
       if (section.dataset.navSection) activateNavigationTarget(section.dataset.navSection);
-      const align = () => {
-        window.requestAnimationFrame(() => section.scrollIntoView({ block: 'start' }));
-      };
-      align();
-      for (const delay of [180, 520, 1100, 2000]) {
-        alignmentTimers.push(window.setTimeout(align, delay));
-      }
+      scrollWorkspaceSection(section);
+    };
+
+    const observeSections = () => {
+      const hashId = window.location.hash.slice(1);
+      let discoveredHashTarget = false;
+      document.querySelectorAll<HTMLElement>('[data-workspace-section]').forEach((section) => {
+        if (observedSections.has(section)) return;
+        observedSections.add(section);
+        observer.observe(section);
+        if (section.id === hashId) discoveredHashTarget = true;
+      });
+      if (discoveredHashTarget) alignToHash();
+      else scheduleNavigationUpdate();
     };
 
     observeSections();
@@ -110,7 +111,6 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
     window.addEventListener('scroll', scheduleNavigationUpdate, { passive: true });
     window.addEventListener('resize', scheduleNavigationUpdate);
     return () => {
-      alignmentTimers.forEach((timer) => window.clearTimeout(timer));
       if (navigationFrame !== null) window.cancelAnimationFrame(navigationFrame);
       if (navigationTargetFallback.current !== null) {
         window.clearTimeout(navigationTargetFallback.current);
@@ -163,15 +163,13 @@ export function SiteHeader({ configuration }: { configuration: AiqRepository['co
                 activateNavigationTarget(navigationSection);
                 if (pathname === '/') {
                   event.preventDefault();
-                  const destination = `/#${section}`;
+                  const destination = `${window.location.pathname}${window.location.search}#${section}`;
                   const currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
                   if (currentLocation !== destination) {
                     window.history.pushState(null, '', destination);
                   }
                   const target = document.getElementById(section);
-                  if (target) {
-                    window.requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
-                  }
+                  if (target) scrollWorkspaceSection(target);
                 }
               }}
             >

@@ -312,9 +312,9 @@ readiness probe verifies the same expanded result-view contract.
 
 The overview leads with the publication identity and the complete configuration
 workbench when exact Official efficiency evidence exists. The workbench compares
-all 17 configurations and provides duration, estimated-cost, and optional
-three-axis views without combining those measures with AIQ. When exact evidence
-does not exist, the primary surface falls back to the scored 17-configuration
+all 17 configurations and provides duration, exact-or-bounded cost, and
+three-metric decision views without combining those measures with AIQ. When
+exact evidence does not exist, the primary surface falls back to the scored 17-configuration
 matrix and compact ranking. If the live matrix has identities but no scores, the
 page preserves all 17 identities in an explicit unavailable-values table instead
 of displaying zeros or removing the matrix contract.
@@ -404,16 +404,19 @@ configuration, estimated-cost availability, or Pareto frontier. Its URL state us
 `compareFrontier`, `compareView`, `compareOrder`, and `compareFocus`, with
 `encodeWorkbenchSelection` keeping default selections canonical.
 
-The three views have deliberately different meanings: duration and cost charts
-show one auxiliary measure against ability, while the optional three-axis view
-requires all three values and normalizes only its display axes. Cost remains a
-Standard API-equivalent estimate and never becomes part of AIQ. Pareto membership
-is calculated only among rows with comparable duration and estimated cost; it is a
-trade-off aid, not a combined ranking. The implementation seams are
+The three views have deliberately different meanings. The duration chart shows
+time against ability. The cost chart shows exact costs and conservative
+published-rate ranges against ability. The decision map keeps time on the
+horizontal axis, AIQ on the vertical axis, and cost in bubble area; a separate
+outer ring shows the possible long-context uplift. All three views keep AIQ and
+auxiliary measures independent. The exact-cost filter never treats a bounded
+range as an exact estimate. Pareto membership uses the conservative cost upper
+bound when a complete exact total is unavailable; it is a trade-off aid, not a
+combined ranking. The implementation seams are
 `apps/web/src/components/configuration-workbench.ts`,
 `apps/web/src/components/configuration-workbench-view.tsx`,
 `apps/web/src/components/configuration-workbench-chart.tsx`,
-`apps/web/src/components/configuration-workbench-three.ts`, and
+`apps/web/src/components/configuration-cost.ts`, and
 `apps/web/src/components/configuration-decision.ts`.
 
 ```mermaid
@@ -423,15 +426,15 @@ flowchart TD
     Complete -->|yes| State["Read analytical URL state"]
     State --> Filter["Filter and order rows"]
     Filter --> Duration["Duration view"]
-    Filter --> Cost["Cost view"]
-    Filter --> Three["Three-axis view when all values exist"]
+    Filter --> Cost["Exact or bounded cost view"]
+    Filter --> Decision["Three-metric decision map"]
 ```
 
 The workbench flow keeps evidence resolution ahead of interactive presentation and
 never fills missing time or cost values. Focused unit coverage is in
 `apps/web/src/components/configuration-workbench.test.ts`,
-`configuration-workbench-chart.test.ts`,
-`configuration-workbench-three.test.ts`, and `configuration-decision.test.ts`;
+`configuration-workbench-chart.test.ts`, `configuration-cost.test.ts`, and
+`configuration-decision.test.ts`;
 the compare and homepage browser contracts remain in
 `apps/web/browser-tests/synthetic-demo.spec.ts` and the live browser suites.
 Use `npm run test --workspace @aiq/web` for the Web package tests, or use the

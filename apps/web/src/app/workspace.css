@@ -215,9 +215,7 @@
 .workbench-filter-options button,
 .workbench-view-switch button,
 .workbench-reset,
-.workbench-picker-actions button,
-.configuration-three-actions button,
-.configuration-three-focus button {
+.workbench-picker-actions button {
 	color: var(--muted);
 	font-size: 0.73rem;
 	font-weight: 620;
@@ -229,11 +227,8 @@
 .workbench-view-switch button:hover,
 .workbench-reset:hover,
 .workbench-picker-actions button:hover,
-.configuration-three-actions button:hover,
-.configuration-three-focus button:hover,
 .workbench-filter-options button[aria-pressed='true'],
-.workbench-view-switch button[aria-pressed='true'],
-.configuration-three-focus button[aria-pressed='true'] {
+.workbench-view-switch button[aria-pressed='true'] {
 	color: var(--ink);
 	text-decoration: underline;
 	text-underline-offset: 4px;
@@ -384,109 +379,11 @@
 	cursor: pointer;
 }
 
-.configuration-three {
-	margin: 0;
-}
-
-.configuration-three-heading,
 .workbench-table-heading {
 	display: flex;
 	gap: 24px;
 	align-items: end;
 	justify-content: space-between;
-}
-
-.configuration-three-heading strong {
-	display: block;
-	font-size: 0.92rem;
-}
-
-.configuration-three-heading span {
-	display: block;
-	margin-top: 2px;
-	color: var(--muted);
-	font-size: 0.69rem;
-}
-
-.configuration-three-actions {
-	display: flex;
-	gap: 18px;
-	min-height: 34px;
-	margin-top: 8px;
-	align-items: center;
-	flex-wrap: wrap;
-}
-
-.configuration-three-stage {
-	position: relative;
-	min-height: 430px;
-	margin-top: 10px;
-	background: var(--panel-soft);
-}
-
-.configuration-three-canvas {
-	width: 100%;
-	height: 430px;
-}
-
-.configuration-three-canvas canvas {
-	display: block;
-	width: 100%;
-	height: 100%;
-	touch-action: none;
-}
-
-.configuration-three-status {
-	position: absolute;
-	inset: 0;
-	display: grid;
-	margin: 0;
-	padding: 24px;
-	place-items: center;
-	text-align: center;
-	color: var(--muted);
-	font-size: 0.76rem;
-	pointer-events: none;
-}
-
-.configuration-three-axes {
-	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr));
-	gap: 24px;
-	margin: 0;
-	padding: 13px 0;
-	border-bottom: 1px solid var(--line);
-}
-
-.configuration-three-axes div {
-	min-width: 0;
-}
-
-.configuration-three-axes dt {
-	color: var(--ink);
-	font-size: 0.69rem;
-	font-weight: 650;
-}
-
-.configuration-three-axes dd {
-	margin: 2px 0 0;
-	color: var(--muted);
-	font:
-		500 0.64rem/1.45 var(--font-mono),
-		monospace;
-}
-
-.configuration-three-focus {
-	display: flex;
-	gap: 18px;
-	padding-top: 12px;
-	flex-wrap: wrap;
-}
-
-.configuration-three-focus button {
-	display: inline-flex;
-	gap: 7px;
-	align-items: center;
 }
 
 .workbench-table-heading {
@@ -2003,7 +1900,6 @@ dd {
 	}
 
 	.workbench-view-bar,
-	.configuration-three-heading,
 	.workbench-table-heading {
 		display: grid;
 		gap: 12px;
@@ -2023,20 +1919,9 @@ dd {
 		min-height: 360px;
 	}
 
-	.workbench-chart-canvas,
-	.configuration-three-canvas,
-	.configuration-three-stage {
+	.workbench-chart-canvas {
 		height: 350px;
 		min-height: 350px;
-	}
-
-	.configuration-three-axes {
-		grid-template-columns: 1fr;
-		gap: 9px;
-	}
-
-	.configuration-three-focus {
-		gap: 12px 16px;
 	}
 
 	.workbench-table {
@@ -2390,8 +2275,6 @@ dd {
 	.workbench-view-switch button,
 	.workbench-reset,
 	.workbench-picker-actions button,
-	.configuration-three-actions button,
-	.configuration-three-focus button,
 	.workbench-configuration-options label {
 		min-height: 44px;
 	}

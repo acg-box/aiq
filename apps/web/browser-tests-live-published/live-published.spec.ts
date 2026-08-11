@@ -442,21 +442,22 @@ test('the live overview exposes all 17 published configurations without seed sub
     name: 'Filtered configuration comparison table',
   });
   await expect(comparisonTable.locator('tbody tr')).toHaveCount(17);
-  await expect(comparisonTable).toContainText('Not estimated');
+  await expect(comparisonTable).toContainText('Unavailable');
   await expect(comparisonTable).not.toContainText('$0\n');
   const timePlot = workbench.getByRole('region', { name: 'AIQ against summed task time' });
   await expect(timePlot).toHaveAttribute('data-workbench-point-count', '16');
   await expect(timePlot.locator('.workbench-chart-canvas svg')).toBeVisible();
   await expect(timePlot.locator('canvas')).toHaveCount(0);
-  await workbench.getByRole('button', { name: 'AIQ × cost', exact: true }).click();
-  const costPlot = workbench.getByRole('region', { name: 'AIQ against API-equivalent cost' });
-  await expect(costPlot).toHaveAttribute('data-workbench-point-count', '1');
-  await workbench.getByRole('button', { name: '3D · AIQ × time × cost', exact: true }).click();
-  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
-  await expect(three).toBeVisible();
-  await expect(three).toHaveAttribute('data-three-render-state', 'ready');
-  await expect(three.getByRole('button', { name: /Sol · low/ })).toHaveCount(1);
-  await expect(three.getByText('AIQ · Y', { exact: true })).toBeVisible();
+  await workbench.getByRole('button', { name: 'AIQ × cost range', exact: true }).click();
+  const costPlot = workbench.getByRole('region', { name: 'AIQ against API-equivalent cost range' });
+  await expect(costPlot).toHaveAttribute('data-workbench-point-count', '2');
+  await workbench.getByRole('button', { name: 'Decision map', exact: true }).click();
+  const decision = workbench.getByRole('region', {
+    name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
+  });
+  await expect(decision).toBeVisible();
+  await expect(decision).toHaveAttribute('data-workbench-point-count', '16');
+  await expect(decision.locator('svg')).toBeVisible();
   await workbench.getByRole('button', { name: 'AIQ × time', exact: true }).click();
   await expect(comparisonTable.getByText('72-task sum', { exact: true })).toHaveCount(17);
   await page.locator('#results > details.evidence-notes > summary').click();
@@ -527,26 +528,13 @@ test('comparison points keep stable geometry while the pointer moves between the
   await verifyStableTarget(targets[2]);
 });
 
-test('the optional 3D view fails closed to the same table when WebGL is unavailable', async ({
-  page,
-}) => {
-  await page.addInitScript({
-    content: `{
-      const original = HTMLCanvasElement.prototype.getContext;
-      Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
-        configurable: true,
-        value(contextId, ...arguments_) {
-          if (contextId === 'webgl' || contextId === 'webgl2' || contextId === 'experimental-webgl') return null;
-          return Reflect.apply(original, this, [contextId, ...arguments_]);
-        },
-      });
-    }`,
-  });
-  await page.goto('/?compareView=three#compare');
+test('the decision map keeps the same complete comparison table', async ({ page }) => {
+  await page.goto('/?compareView=decision#compare');
   const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
-  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
-  await expect(three).toHaveAttribute('data-three-render-state', 'unavailable');
-  await expect(three.getByRole('status')).toContainText('3D is unavailable in this browser.');
+  const decision = workbench.getByRole('region', {
+    name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
+  });
+  await expect(decision.locator('svg')).toBeVisible();
   await expect(
     workbench
       .getByRole('region', { name: 'Filtered configuration comparison table' })
@@ -558,22 +546,21 @@ test('the optional 3D view fails closed to the same table when WebGL is unavaila
   ).toBeVisible();
 });
 
-test('the comparison remains accessible in light, dark, and reduced-motion 3D states', async ({
+test('the comparison remains accessible in light, dark, and reduced-motion decision states', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
-  await page.goto('/?compareView=three#compare');
+  await page.goto('/?compareView=decision#compare');
   await page.getByRole('button', { name: 'Use light theme', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   const workbench = page.getByRole('region', { name: 'Compare all 17 at once.' });
-  const three = workbench.getByRole('figure', { name: 'AIQ × time × cost' });
-  await expect(three).toHaveAttribute('data-three-render-state', 'ready');
+  const decision = workbench.getByRole('region', {
+    name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
+  });
+  await expect(decision.locator('svg')).toBeVisible();
   await page.getByRole('button', { name: 'Use dark theme', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(three).toHaveAttribute('data-three-render-state', 'ready');
-  await three.getByRole('button', { name: 'Rotate left', exact: true }).click();
-  await three.getByRole('button', { name: 'Zoom in', exact: true }).click();
-  await three.getByRole('button', { name: 'Reset view', exact: true }).click();
+  await expect(decision.locator('svg')).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
 
@@ -689,7 +676,7 @@ test('Official comparison selection is limited to the selected run identities', 
   const low = comparison.locator('[data-configuration-id="sol-low"]');
   const medium = comparison.locator('[data-configuration-id="sol-medium"]');
   await expect(low).toContainText('$12.35');
-  await expect(medium).toContainText('Not estimated');
+  await expect(medium).toContainText('Unavailable');
   await expect(low.getByRole('link', { name: 'Official run' })).toHaveAttribute(
     'href',
     `/runs/${scorerGeneratedAggregate('sol-low').run_id}`,

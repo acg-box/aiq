@@ -28,6 +28,7 @@ void describe('site header one-page navigation', () => {
     assert.match(source, /activateNavigationTarget\(navigationSection\)/);
     assert.match(source, /event\.preventDefault\(\)/);
     assert.match(source, /window\.history\.pushState\(null, '', destination\)/);
+    assert.match(source, /window\.location\.search/);
     assert.match(source, /document\.getElementById\(section\)/);
     assert.match(source, /section === 'trends' && pathname === '\/trends'/);
     assert.match(source, /section === 'compare' && pathname === '\/compare'/);
@@ -42,13 +43,14 @@ void describe('site header one-page navigation', () => {
     assert.match(source, /observer\.disconnect\(\)/);
   });
 
-  void it('realigns late-streamed hash targets and cleans up timers and listeners', async () => {
+  void it('realigns late-streamed hash targets without restarting smooth scrolling', async () => {
     const source = await readFile(sourceUrl, 'utf8');
 
-    assert.match(source, /for \(const delay of \[180, 520, 1100, 2000\]\)/);
-    assert.match(source, /section\.scrollIntoView\(\{ block: 'start' \}\)/);
+    assert.match(source, /discoveredHashTarget/);
+    assert.match(source, /if \(discoveredHashTarget\) alignToHash\(\)/);
+    assert.match(source, /section\.scrollIntoView\(\{ behavior: 'instant', block: 'start' \}\)/);
+    assert.doesNotMatch(source, /\[180, 520, 1100, 2000\]/);
     assert.match(source, /window\.addEventListener\('hashchange', alignToHash\)/);
-    assert.match(source, /alignmentTimers\.forEach\(\(timer\) => window\.clearTimeout\(timer\)\)/);
     assert.match(source, /window\.removeEventListener\('hashchange', alignToHash\)/);
   });
 });

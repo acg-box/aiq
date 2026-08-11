@@ -34,7 +34,7 @@ void describe('homepage evidence and loading contract', () => {
     assert.doesNotMatch(source, /general intelligence/);
     assert.match(workbenchSource, /Compare all 17 at once/);
     assert.match(workbenchSource, /remain independent observations/);
-    assert.match(workbenchSource, /Pareto trade-offs/);
+    assert.match(workbenchSource, /Cost evidence/);
     assert.doesNotMatch(workbenchSource, /overall score|efficiency score/i);
     assert.match(outcomeSource, /equal weight across/);
     assert.match(outcomeSource, /Any credit/);
@@ -42,17 +42,13 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(outcomeSource, /runs\/\$\{run\.id\}/);
   });
 
-  void it('keeps first-screen analysis in one client boundary and 3D behind an optional chunk', async () => {
+  void it('keeps first-screen analysis in one deferred client boundary', async () => {
     const [pageSource, analyticsSource, workspaceStyles] = await Promise.all([
       readFile(pageSourceUrl, 'utf8'),
       readFile(analyticsSourceUrl, 'utf8'),
       readFile(workspaceStylesUrl, 'utf8'),
     ]);
 
-    const workbenchSource = await readFile(
-      new URL('../components/configuration-workbench-view.tsx', import.meta.url),
-      'utf8',
-    );
     assert.doesNotMatch(pageSource, /components\/(model-matrix-chart|efficiency-plot|three)/);
     assert.match(analyticsSource, /dynamic\(/);
     assert.match(analyticsSource, /ssr: false/);
@@ -61,8 +57,6 @@ void describe('homepage evidence and loading contract', () => {
     assert.match(analyticsSource, /useNearViewport\(eager\)/);
     assert.match(pageSource, /<ConfigurationWorkbench rows={exactOfficialEfficiency\.rows} \/>/);
     assert.match(pageSource, /<DeferredModelMatrixChart entries={leaderboard} eager \/>/);
-    assert.match(workbenchSource, /import\('\.\/configuration-three-chart\.tsx'\)/);
-    assert.match(workbenchSource, /ssr: false/);
     assert.match(analyticsSource, /loading: \(\) => <AnalyticsLoading/);
     assert.match(analyticsSource, /role="status"/);
     assert.match(analyticsSource, /aria-live="polite"/);

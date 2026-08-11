@@ -1,4 +1,5 @@
 import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
+import { costUpperBoundNanos } from './configuration-cost.ts';
 
 export type ConfigurationPriority = 'ability' | 'time' | 'cost' | 'frontier';
 
@@ -15,7 +16,7 @@ function durationValue({ row }: ExactEfficiencyRow): number | null {
 }
 
 function costValue({ row }: ExactEfficiencyRow): number | null {
-  return row.costEstimatorStatus === 'estimated' ? row.standardApiEquivalentUsdNanos : null;
+  return costUpperBoundNanos(row);
 }
 
 function compareNullableAscending(left: number | null, right: number | null): number {

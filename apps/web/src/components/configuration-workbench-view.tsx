@@ -1,6 +1,5 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useMemo, useRef } from 'react';
 
@@ -8,6 +7,11 @@ import { formatHumanDuration } from '../data/format-duration.ts';
 import { pushAnalyticalUrl, useAnalyticalSearchParams } from './analytical-url-state.ts';
 import { configurationFrontierKeys } from './configuration-decision.ts';
 import { ConfigurationWorkbenchChart } from './configuration-workbench-chart.tsx';
+import {
+  describeConfigurationCost,
+  formatConfigurationCost,
+  resolveConfigurationCost,
+} from './configuration-cost.ts';
 import {
   CONFIGURATION_FAMILIES,
   CONFIGURATION_REASONING_TIERS,
@@ -20,35 +24,10 @@ import {
 } from './configuration-workbench.ts';
 import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
 
-const ConfigurationThreeChart = dynamic(
-  () =>
-    import('./configuration-three-chart.tsx').then(
-      ({ ConfigurationThreeChart: Component }) => Component,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <p className="workbench-empty-chart" role="status">
-        Loading the optional 3D view…
-      </p>
-    ),
-  },
-);
-
-const costStatusLabels = {
-  estimated: 'Standard API estimate',
-  unavailable_missing_usage: 'Token usage unavailable',
-  unavailable_invalid_usage: 'Usage evidence invalid',
-  unavailable_context_band: 'Outside the published price range',
-} as const satisfies Readonly<Record<ExactEfficiencyRow['row']['costEstimatorStatus'], string>>;
-
 function formatCost(candidate: ExactEfficiencyRow | null): string {
-  const nanos = candidate?.row.standardApiEquivalentUsdNanos;
-  if (candidate?.row.costEstimatorStatus !== 'estimated' || nanos === null || nanos === undefined) {
-    return 'Not estimated';
-  }
-  const dollars = nanos / 1_000_000_000;
-  return `$${dollars.toFixed(dollars < 1 ? 4 : 2)}`;
+  return candidate
+    ? formatConfigurationCost(resolveConfigurationCost(candidate.row))
+    : 'Unavailable';
 }
 
 function formatDuration(candidate: ExactEfficiencyRow | null): string {
@@ -168,7 +147,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'time' && state.view === 'duration',
     },
     {
-      label: 'Lowest estimated cost',
+      label: 'Lowest cost upper bound',
       identity: configurationName(summary.lowestCost),
       value: formatCost(summary.lowestCost),
       onClick: () =>
@@ -180,15 +159,15 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
       pressed: state.order === 'cost' && state.view === 'cost',
     },
     {
-      label: 'Pareto trade-offs',
-      identity: `${summary.visibleFrontierCount} in this view`,
-      value: `${summary.costMeasuredCount}/${summary.visibleCount} have cost evidence`,
+      label: 'Cost evidence',
+      identity: `${summary.costComparableCount}/${summary.visibleCount} comparable`,
+      value: `${summary.costMeasuredCount} exact · ${summary.costBoundedCount} bounded`,
       onClick: () =>
         pushAnalyticalUrl({
-          compareFrontier: state.frontierOnly ? null : 'only',
+          compareView: 'decision',
           compareFocus: null,
         }),
-      pressed: state.frontierOnly,
+      pressed: state.view === 'decision',
     },
   ];
 
@@ -283,7 +262,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
                 })
               }
             >
-              Cost measured
+              Exact cost only
             </button>
             <button
               type="button"
@@ -367,8 +346,8 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
               {(
                 [
                   ['duration', 'AIQ × time'],
-                  ['cost', 'AIQ × cost'],
-                  ['three', '3D · AIQ × time × cost'],
+                  ['cost', 'AIQ × cost range'],
+                  ['decision', 'Decision map'],
                 ] as const satisfies ReadonlyArray<readonly [ConfigurationWorkbenchView, string]>
               ).map(([view, label]) => (
                 <button
@@ -400,21 +379,12 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
           </div>
 
           <div className="workbench-visualization">
-            {state.view === 'three' ? (
-              <ConfigurationThreeChart
-                allRows={rows}
-                rows={visibleRows}
-                focusId={focusId}
-                onFocus={(id) => pushAnalyticalUrl({ compareFocus: id })}
-              />
-            ) : (
-              <ConfigurationWorkbenchChart
-                allRows={rows}
-                rows={visibleRows}
-                metric={state.view}
-                focusId={focusId}
-              />
-            )}
+            <ConfigurationWorkbenchChart
+              allRows={rows}
+              rows={visibleRows}
+              metric={state.view}
+              focusId={focusId}
+            />
           </div>
 
           <div className="workbench-table-heading">
@@ -441,7 +411,7 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
               >
                 <option value="ability">AIQ · high to low</option>
                 <option value="time">Time · low to high</option>
-                <option value="cost">Cost · low to high</option>
+                <option value="cost">Cost upper bound · low to high</option>
                 <option value="family">Model family</option>
               </select>
             </label>
@@ -509,7 +479,9 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
                       </td>
                       <td className="workbench-metric" data-label="Cost">
                         <strong>{formatCost(candidate)}</strong>
-                        <small>{costStatusLabels[candidate.row.costEstimatorStatus]}</small>
+                        <small>
+                          {describeConfigurationCost(resolveConfigurationCost(candidate.row))}
+                        </small>
                       </td>
                       <td className="workbench-evidence" data-label="Evidence">
                         <Link href={`/runs/${candidate.row.runId}`}>Official run</Link>
@@ -523,9 +495,10 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
           </div>
           <p className="workbench-footnote">
             Time is the sum of retained adapter durations across 72 tasks. Cost is a Standard
-            API-equivalent estimate for rows with complete supported token evidence, not billed
-            ChatGPT subscription spend. Paired Normal/Fast transport measurements appear in the
-            history section below and never change AIQ.
+            API-equivalent evidence is either exact or a conservative published-rate range when
+            aggregate task usage cannot identify each long-context request. It is not billed ChatGPT
+            subscription spend. Paired Normal/Fast transport measurements appear in the history
+            section below and never change AIQ.
           </p>
         </>
       )}
