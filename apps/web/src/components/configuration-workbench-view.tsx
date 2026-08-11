@@ -366,6 +366,11 @@ export function ConfigurationWorkbench({ rows }: { rows: readonly ExactEfficienc
               <div role="group" aria-label={`${family} configurations`}>
                 {rows
                   .filter(({ entry }) => entry.modelFamily === family)
+                  .toSorted(
+                    (left, right) =>
+                      CONFIGURATION_REASONING_TIERS.indexOf(left.entry.reasoningTier) -
+                      CONFIGURATION_REASONING_TIERS.indexOf(right.entry.reasoningTier),
+                  )
                   .map(({ entry }) => (
                     <button
                       key={entry.id}
