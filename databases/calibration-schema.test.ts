@@ -282,9 +282,10 @@ void test('bounds the full Official ingestion, staging, and publication RPCs', (
     schema.match(/create function public\.aiq_verify_and_publish\([\s\S]*?\n\$\$;/)?.[0] ?? '';
 
   assert.match(enqueueFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
-  assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
+  assert.match(stageFunction, /SET search_path to ''\n    SET statement_timeout to '280s'/);
   assert.match(publishFunction, /SET search_path to ''\n    SET statement_timeout to '110s'/);
-  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 3);
+  assert.equal(schema.match(/SET statement_timeout to '110s'/g)?.length, 2);
+  assert.equal(schema.match(/SET statement_timeout to '280s'/g)?.length, 1);
 });
 
 void test('reports the complete Web RPC contract including speed observations', () => {
@@ -526,19 +527,32 @@ void test('binds Official efficiency evidence to the exact payload matrix', () =
   const bound =
     schema.match(/create function aiq_private\.stage_verifier_result_core[\s\S]*?\n\$_\$;/)?.[0] ??
     '';
-  for (const validator of [unbound, bound]) {
-    for (const key of ['execution_concurrency', 'result_efficiency', 'efficiency', 'pricing']) {
-      assert.match(validator, new RegExp(`'${key}'`));
-    }
-    assert.match(validator, /execution_concurrency',32/);
-    assert.match(
-      validator,
-      /jsonb_array_length\(stage->'result_efficiency'\) is distinct from 1224/,
-    );
-    assert.match(validator, /jsonb_array_length\(stage->'efficiency'\) is distinct from 17/);
-    assert.match(validator, /efficiency_pricing_v1_is_valid\(stage->'pricing'\)/);
-    assert.match(validator, /efficiency_aggregate_matches_results/);
+  for (const key of ['execution_concurrency', 'result_efficiency', 'efficiency', 'pricing']) {
+    assert.match(unbound, new RegExp(`'${key}'`));
   }
+  assert.match(unbound, /execution_concurrency',32/);
+  assert.match(unbound, /jsonb_array_length\(stage->'result_efficiency'\) is distinct from 1224/);
+  assert.match(unbound, /jsonb_array_length\(stage->'efficiency'\) is distinct from 17/);
+  assert.match(unbound, /efficiency_pricing_v1_is_valid\(stage->'pricing'\)/);
+  assert.match(unbound, /efficiency_aggregate_matches_results/);
+  assert.match(unbound, /stage ->> 'scoring_version' is distinct from '1\.0\.8'/);
+  assert.match(unbound, /stage ->> 'runner_commit' ~ '\^\[0-9a-f\]\{7,40\}\$'/);
+  assert.match(unbound, /safe_unsigned_integer_jsonb_is_valid\(\s*stage -> 'scheduled_unix_ms'/);
+  assert.match(
+    unbound,
+    /\(stage ->> 'finished_unix_ms'\)::numeric\s*< \(stage ->> 'started_unix_ms'\)::numeric/,
+  );
+  assert.doesNotMatch(bound, /efficiency_aggregate_matches_results/);
+  assert.doesNotMatch(bound, /result_efficiency_v1_is_valid/);
+  assert.doesNotMatch(bound, /jsonb_array_length\(stage->'result_efficiency'\)/);
+  assert.equal(
+    schema.match(/return aiq_private\.stage_verifier_result_core\(stage\);/g)?.length,
+    1,
+  );
+  assert.match(
+    schema,
+    /revoke all on function aiq_private\.stage_verifier_result_core\(stage jsonb\) from PUBLIC/,
+  );
   assert.match(
     bound,
     /payload -> 'execution_concurrency' is distinct from stage -> 'execution_concurrency'/,
