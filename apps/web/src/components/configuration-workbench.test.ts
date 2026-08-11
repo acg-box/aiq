@@ -54,6 +54,8 @@ void describe('configuration workbench state', () => {
       rows.map(({ entry }) => entry.id),
     );
     assert.equal(state.view, 'duration');
+    assert.equal(state.order, 'ability');
+    assert.equal(state.direction, 'desc');
     assert.equal(state.focusId, null);
     assert.equal(filterConfigurationWorkbenchRows(rows, state).length, 4);
   });
@@ -74,7 +76,7 @@ void describe('configuration workbench state', () => {
   void it('preserves an explicit empty selection and ignores invalid URL values', () => {
     const state = readConfigurationWorkbenchState(
       new URLSearchParams(
-        'compareFamilies=unknown&compareReasoning=none&compareConfigs=none&compareView=invalid&compareFocus=unknown',
+        'compareFamilies=unknown&compareReasoning=none&compareConfigs=none&compareView=invalid&compareOrder=time&compareDirection=desc&compareFocus=unknown',
       ),
       rows,
     );
@@ -82,6 +84,8 @@ void describe('configuration workbench state', () => {
     assert.deepEqual(state.reasoningTiers, []);
     assert.deepEqual(state.configurationIds, []);
     assert.equal(state.view, 'duration');
+    assert.equal(state.order, 'time');
+    assert.equal(state.direction, 'desc');
     assert.equal(state.focusId, null);
     assert.equal(filterConfigurationWorkbenchRows(rows, state).length, 0);
   });
@@ -98,6 +102,14 @@ void describe('configuration workbench state', () => {
     assert.deepEqual(
       orderConfigurationWorkbenchRows(visible, 'time').map(({ entry }) => entry.id),
       ['luna-high', 'terra-medium', 'sol-low'],
+    );
+    assert.deepEqual(
+      orderConfigurationWorkbenchRows(visible, 'time', 'desc').map(({ entry }) => entry.id),
+      ['sol-low', 'terra-medium', 'luna-high'],
+    );
+    assert.deepEqual(
+      orderConfigurationWorkbenchRows(rows, 'cost', 'desc').map(({ entry }) => entry.id),
+      ['sol-high', 'sol-low', 'terra-medium', 'luna-high'],
     );
     assert.deepEqual(
       orderConfigurationWorkbenchRows(visible, 'family').map(({ entry }) => entry.id),

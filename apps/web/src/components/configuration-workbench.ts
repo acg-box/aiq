@@ -1,11 +1,10 @@
 import type { ModelFamily, ReasoningTier } from '../data/types.ts';
 import {
   configurationFrontierKeys,
-  orderConfigurationDecisions,
   summarizeConfigurationDecisions,
 } from './configuration-decision.ts';
 import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
-import { resolveConfigurationCost } from './configuration-cost.ts';
+import { costUpperBoundNanos, resolveConfigurationCost } from './configuration-cost.ts';
 
 export const CONFIGURATION_FAMILIES = ['Sol', 'Terra', 'Luna'] as const;
 export const CONFIGURATION_REASONING_TIERS = [
@@ -19,6 +18,7 @@ export const CONFIGURATION_REASONING_TIERS = [
 
 export type ConfigurationWorkbenchView = 'duration' | 'cost' | 'decision';
 export type ConfigurationWorkbenchOrder = 'ability' | 'time' | 'cost' | 'family';
+export type ConfigurationWorkbenchDirection = 'asc' | 'desc';
 
 export interface ConfigurationWorkbenchState {
   families: readonly ModelFamily[];
@@ -28,6 +28,7 @@ export interface ConfigurationWorkbenchState {
   frontierOnly: boolean;
   view: ConfigurationWorkbenchView;
   order: ConfigurationWorkbenchOrder;
+  direction: ConfigurationWorkbenchDirection;
   focusId: string | null;
 }
 
@@ -70,6 +71,12 @@ export function readConfigurationWorkbenchState(
 ): ConfigurationWorkbenchState {
   const configurationIds = rows.map(({ entry }) => entry.id);
   const focusCandidate = params.get('compareFocus');
+  const order = readEnum(
+    params,
+    'compareOrder',
+    ['ability', 'time', 'cost', 'family'] as const,
+    'ability',
+  );
   return {
     families: readSelection(params, 'compareFamilies', CONFIGURATION_FAMILIES),
     reasoningTiers: readSelection(params, 'compareReasoning', CONFIGURATION_REASONING_TIERS),
@@ -77,15 +84,40 @@ export function readConfigurationWorkbenchState(
     costOnly: params.get('compareCost') === 'estimated',
     frontierOnly: params.get('compareFrontier') === 'only',
     view: readEnum(params, 'compareView', ['duration', 'cost', 'decision'] as const, 'duration'),
-    order: readEnum(
+    order,
+    direction: readEnum(
       params,
-      'compareOrder',
-      ['ability', 'time', 'cost', 'family'] as const,
-      'ability',
+      'compareDirection',
+      ['asc', 'desc'] as const,
+      defaultWorkbenchDirection(order),
     ),
     focusId:
       focusCandidate !== null && configurationIds.includes(focusCandidate) ? focusCandidate : null,
   };
+}
+
+export function defaultWorkbenchDirection(
+  order: ConfigurationWorkbenchOrder,
+): ConfigurationWorkbenchDirection {
+  return order === 'ability' ? 'desc' : 'asc';
+}
+
+function compareNumber(
+  left: number,
+  right: number,
+  direction: ConfigurationWorkbenchDirection,
+): number {
+  return direction === 'asc' ? left - right : right - left;
+}
+
+function compareNullableNumber(
+  left: number | null,
+  right: number | null,
+  direction: ConfigurationWorkbenchDirection,
+): number {
+  if (left === null) return right === null ? 0 : 1;
+  if (right === null) return -1;
+  return compareNumber(left, right, direction);
 }
 
 export function filterConfigurationWorkbenchRows(
@@ -110,16 +142,47 @@ export function filterConfigurationWorkbenchRows(
 export function orderConfigurationWorkbenchRows(
   rows: readonly ExactEfficiencyRow[],
   order: ConfigurationWorkbenchOrder,
+  direction: ConfigurationWorkbenchDirection = defaultWorkbenchDirection(order),
 ): readonly ExactEfficiencyRow[] {
-  if (order !== 'family') return orderConfigurationDecisions(rows, order);
-  return rows.toSorted(
-    (left, right) =>
-      CONFIGURATION_FAMILIES.indexOf(left.entry.modelFamily) -
-        CONFIGURATION_FAMILIES.indexOf(right.entry.modelFamily) ||
-      CONFIGURATION_REASONING_TIERS.indexOf(left.entry.reasoningTier) -
-        CONFIGURATION_REASONING_TIERS.indexOf(right.entry.reasoningTier) ||
-      left.entry.id.localeCompare(right.entry.id),
-  );
+  return rows.toSorted((left, right) => {
+    const stableIdentity = () => left.entry.id.localeCompare(right.entry.id);
+    if (order === 'ability') {
+      return compareNumber(left.entry.score, right.entry.score, direction) || stableIdentity();
+    }
+    if (order === 'time') {
+      return (
+        compareNullableNumber(
+          left.row.summedCellAdapterElapsedMs,
+          right.row.summedCellAdapterElapsedMs,
+          direction,
+        ) ||
+        right.entry.score - left.entry.score ||
+        stableIdentity()
+      );
+    }
+    if (order === 'cost') {
+      return (
+        compareNullableNumber(
+          costUpperBoundNanos(left.row),
+          costUpperBoundNanos(right.row),
+          direction,
+        ) ||
+        right.entry.score - left.entry.score ||
+        stableIdentity()
+      );
+    }
+    const family = compareNumber(
+      CONFIGURATION_FAMILIES.indexOf(left.entry.modelFamily),
+      CONFIGURATION_FAMILIES.indexOf(right.entry.modelFamily),
+      direction,
+    );
+    const reasoning = compareNumber(
+      CONFIGURATION_REASONING_TIERS.indexOf(left.entry.reasoningTier),
+      CONFIGURATION_REASONING_TIERS.indexOf(right.entry.reasoningTier),
+      direction,
+    );
+    return family || reasoning || stableIdentity();
+  });
 }
 
 export function summarizeConfigurationWorkbench(

@@ -94,8 +94,9 @@
 }
 
 html {
+	overflow-x: clip;
 	scroll-behavior: smooth;
-	scroll-padding-top: 84px;
+	scroll-padding-top: 64px;
 }
 
 body {
@@ -784,6 +785,10 @@ th small {
 }
 
 @media (max-width: 760px) {
+	html {
+		scroll-padding-top: 84px;
+	}
+
 	:root {
 		--content: min(100% - 28px, 1440px);
 	}
