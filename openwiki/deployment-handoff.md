@@ -551,7 +551,7 @@ an unrelated later installation to replace the scheduled binary. Use
 `config/continuous-observation.example.json` as the private configuration
 shape and `config/com.acgbox.aiq.continuous-observations.plist.example` as the
 macOS `launchd` shape. The approved model slots are `03:00` and `15:00` UTC. On
-an `America/New_York` host, the plist wakes the protected launcher at 11:05,
+an `America/New_York` host, the plist wakes the pinned AIQ command at 11:05,
 11:35, 23:05, and 23:35 local time. These wakes cover EST and EDT with one
 bounded retry for each slot. The installed `aiq` command selects the latest due
 slot, refuses overlap, and resumes an interrupted slot only after validating
@@ -569,9 +569,7 @@ evaluator, and model processes in that session before it exits. This covers the
 separate process groups created by the frozen runner without adding another
 launchd job or host service.
 
-The protected launcher resolves and exports the exact runner-signing,
-runner-submission, verifier-ingress, and verifier-signing variables only for the
-child process. It then runs:
+The plist runs the same application command used by an operator:
 
 ```sh
 aiq doctor --config /absolute/private/path/to/continuous-observation.json
@@ -605,13 +603,22 @@ complete auxiliary speed batch exists before the grace window closes. This is
 terminal and must not trigger new model work. An already complete speed batch
 may still be submitted without another model call.
 
-The selected launcher must explicitly support unattended `launchd` execution.
-An adapter authorized only by an interactive parent process is invalid for this
-job. Bind its provider identity to only the four exact source keys, keep provider
-login credentials and access tokens inside the launcher, and pass only the four
-consumer variables to `aiq`. The fixed launcher accepts no operator arguments
-and owns the pinned `aiq run --config ...` command. Use absolute paths and omit
-`WorkingDirectory`; a launchd wake must not require any repository checkout.
+Use absolute AIQ and configuration paths, supply the service `HOME`, `USER`,
+`LOGNAME`, and pinned `PATH`, and omit `WorkingDirectory`; a launchd wake must
+not require any repository checkout. AIQ acquires its state lock before provider
+access. With no consumer variables present, it uses the complete non-secret
+`unattended_secrets` metadata to read the exact Keychain bootstrap, perform one
+Universal Auth login, retrieve only the four fixed `prod:/aiq` keys, and remove
+the private provider session. It gives each child only its declared consumer
+secret. Complete explicit four-variable delivery remains supported; partial
+delivery fails closed.
+
+The existing provider identity, privilege, and Keychain account are frozen
+external state. Do not run setup against them. The hidden `aiq operator
+provision-unattended` command exists only to create a separate new absent exact
+target. It refuses an existing Keychain account or identity and cannot reconcile,
+rotate, or replace provider state. Validate the controlled setup and shipped run
+boundaries with `cargo test --locked -p aiq --all-targets`.
 
 After installation, inspect `status` and require the latest completed slot,
 absence of an active stale lock, and the exact next UTC slot. A retryable slot
@@ -739,5 +746,5 @@ objects before retrying the existing target project.
 
 The project-bound Vercel commands above perform deployment only when an operator
 runs them. The separately installed macOS `launchd` job invokes only the
-installed `aiq` orchestrator through the protected launcher. It does not depend
-on a repository checkout, Vercel scheduling, or Supabase scheduling.
+installed `aiq run --config ...` command. It does not depend on a repository
+checkout, Vercel scheduling, or Supabase scheduling.

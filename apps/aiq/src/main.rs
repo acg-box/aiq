@@ -10,6 +10,7 @@ use libc as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
+use ureq as _;
 
 use aiq::cli::Cli;
 use aiq::supervisor;

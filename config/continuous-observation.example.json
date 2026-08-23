@@ -8,5 +8,23 @@
   "official_jobs": 32,
   "verifier_replay_jobs": 32,
   "speed_jobs": 17,
-  "speed_trials": 5
+  "speed_trials": 5,
+  "unattended_secrets": {
+    "infisical_executable": "/nix/store/replace-with-pinned-infisical/bin/infisical",
+    "timeout_executable": "/nix/store/replace-with-pinned-coreutils/bin/timeout",
+    "security_executable": "/usr/bin/security",
+    "api_url": "http://127.0.0.2:51888",
+    "project_id": "replace-with-exact-project-id",
+    "client_id": "replace-with-exact-universal-auth-client-id",
+    "keychain_service": "infisical-selfhost",
+    "keychain_account": "AIQ_OBSERVATION_UA_CLIENT_SECRET",
+    "environment": "prod",
+    "path": "/aiq",
+    "selectors": {
+      "runner_signing_key": "RUNNER_SIGNING_KEY",
+      "runner_submission_token": "RUNNER_SUBMISSION_TOKEN",
+      "verifier_ingress_token": "VERIFIER_INGRESS_TOKEN",
+      "verifier_signing_key": "VERIFIER_SIGNING_KEY"
+    }
+  }
 }

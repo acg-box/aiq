@@ -5,11 +5,25 @@
   <key>Label</key>
   <string>com.acgbox.aiq.continuous-observations</string>
   <key>ProgramArguments</key>
-  <!-- This fixed launcher owns the pinned aiq and configuration paths. It must
-       accept no operator arguments and inject only the four AIQ secrets. -->
+  <!-- launchd invokes the pinned AIQ application directly. AIQ owns unattended
+       provider login, exact secret delivery, overlap, and child isolation. -->
   <array>
-    <string>/absolute/immutable/path/to/acg-aiq-observation-launcher</string>
+    <string>/absolute/immutable/path/to/aiq</string>
+    <string>run</string>
+    <string>--config</string>
+    <string>/absolute/private/path/to/continuous-observation.json</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/absolute/service/user/home</string>
+    <key>LOGNAME</key>
+    <string>service-user</string>
+    <key>PATH</key>
+    <string>/nix/store/replace-with-pinned-git/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>USER</key>
+    <string>service-user</string>
+  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>StartCalendarInterval</key>
