@@ -72,14 +72,36 @@ The scorer-owned browser fixture in
 Rust `generate-test-public-fixture` command. Its outer contract rejects
 production publication, Official eligibility, and ranking eligibility.
 
-Production uses the native macOS runner and verifier. The repository-owned
-continuous-observation entrypoint selects the due `03:00` or `15:00` UTC slot,
-prevents overlapping work, resumes the unchanged slot after interruption, and
-publishes only signed verifier-accepted evidence. Its `launchd` template wakes
-hourly at minute 5 so a failed current slot can retry without creating extra
-model runs. The concrete configuration, launcher, credentials, and state root
-remain private operator assets. See [Operations](operations.md#continuous-observations)
-and [Deployment Handoff](deployment-handoff.md#recurring-macos-observations).
+Production uses the native macOS runner and verifier. The installed `aiq`
+orchestrator selects the due `03:00` or `15:00` UTC slot, prevents overlapping
+work, and resumes only valid same-slot checkpoints. It publishes only signed
+verifier-accepted evidence. It reconstructs the exact
+source from the installed release and does not use a repository worktree. On an
+`America/New_York` host, its `launchd` template wakes at 11:05, 11:35, 23:05,
+and 23:35 local time. The v2 configuration requires 32 Official workers, and
+the first two hours admit the primary wake and one retry for each UTC slot. An
+overlapping wake coalesces successfully. An operator can select one known
+canonical recovery slot with `aiq run --slot`. Task dispatch can start only in
+the first two hours of its current slot; a closed dispatch grace without a
+completed `aiq.run.v4` document containing all 1,224 results becomes terminal
+without new model work. A create-once reservation alone is not complete.
+Malformed or incomplete captured receipts are replaced before retry, while
+valid receipts are revalidated before reuse. The concrete configuration,
+launcher, credentials, release, and state root remain private
+operator assets. See
+[Operations](operations.md#continuous-observations) and
+[Deployment Handoff](deployment-handoff.md#recurring-macos-observations).
+The fixed launcher must support unattended execution, accept no operator
+arguments, and use absolute paths without a repository working directory. An
+interactive-session-only secret adapter is not a valid launchd boundary. The
+release source is reconstructed below
+`state_root/scratch/<release-id>--<slot-id>`, and failed step outputs are removed
+before retry so partial files cannot become checkpoints.
+
+Each worker step runs in a private process session below an internal `aiq`
+supervisor. A liveness pipe closes when the user-facing parent exits or is
+killed, and the supervisor applies bounded `SIGTERM` and `SIGKILL` cleanup to
+the runner, verifier, evaluator, and model process groups before it exits.
 
 The native subscription runner copies `~/.codex/auth.json` into an isolated,
 mode-private `CODEX_HOME` and passes that directory to the Codex subprocess.
@@ -196,11 +218,16 @@ remain in the corpus commitment.
 | Change area or user intent | Relevant wiki page | Exact source entry points | Important symbols or types | Focused tests | Minimal validation command |
 | --- | --- | --- | --- | --- | --- |
 | Change the all-configuration analysis workbench | [Architecture and runtime](architecture-and-runtime.md#configuration-workbench) | `apps/web/src/app/page.tsx`, `apps/web/src/app/compare/page.tsx`, `apps/web/src/components/configuration-workbench-view.tsx` | `ConfigurationWorkbench`, `resolveConfigurationCost`, `resolveWorkbenchPlotRows` | `apps/web/src/components/configuration-workbench.test.ts`, `configuration-cost.test.ts`, `configuration-workbench-chart.test.ts` | `npm run test --workspace @aiq/web` |
+| Change Normal/Fast speed evidence ingestion or trends | [Architecture and runtime](architecture-and-runtime.md#speed-observations) and [Operations](operations.md#continuous-observations) | `apps/aiq-runner/src/speed_observation.rs`, `apps/web/src/app/api/observations/speed/route.ts`, `apps/web/src/server/speed-observation-handler.ts`, `apps/web/src/components/speed-observation-explorer.tsx` | `observe_speed`, `handleSpeedObservation`, `listSpeedObservations`, `SpeedObservationExplorer` | `apps/web/src/server/speed-observation.test.ts`, `apps/web/src/components/speed-observation-analysis.test.ts`, `apps/web/src/data/data.test.ts` | `npm run test --workspace @aiq/web` |
 | Change verification or publication evidence bindings | [Architecture and runtime](architecture-and-runtime.md#verification-flow) and [Benchmark method](benchmark-method.md#verification) | `apps/web/src/server/verification-contract.ts`, `apps/aiq-verifier/src/lib.rs` | `NormalizedStage`, `VerifierAttestation`, `terminal_attempt_lineage_digest` | `apps/web/src/server/verification.test.ts`, verifier tests | `cargo make verify` |
 | Change scoring, calibration, or normalized-batch semantics | [Benchmark method](benchmark-method.md) | `apps/aiq-runner/src/scoring.rs`, `apps/aiq-runner/src/calibration_verification.rs`, `benchmarks/schema/normalized-batch-v4.schema.json` | aggregate scoring `1.0.8`, fixed bank, task-resampling identity | `apps/aiq-runner` tests, `scripts/check-normalization-schemas.test.ts` | `cargo run -p aiq-runner -- matrix` |
 | Change database initialization, reset, or Supabase targeting | [Operations](operations.md#fresh-database-initialization) and [Deployment handoff](deployment-handoff.md) | `databases/init.ts`, `databases/reset.ts`, `databases/schema.sql` | `assertDatabaseTarget`, `inventorySql`, `resetDatabase` | `databases/init.test.ts`, `databases/reset.test.ts` | `node --test databases/*.test.ts` |
 | Change public navigation or radar telemetry presentation | [Architecture and runtime](architecture-and-runtime.md#public-application) | `apps/web/src/app/page.tsx`, `apps/web/src/app/radar/page.tsx`, `apps/web/src/components/site-header.tsx` | anchored workspace sections, reporting telemetry state | static contracts and browser suites | `cargo make verify` |
-| Change twice-daily Official or Normal/Fast observation operations | [Operations](operations.md#continuous-observations) and [Deployment handoff](deployment-handoff.md#recurring-macos-observations) | `scripts/continuous-observation.ts`, `config/continuous-observation.example.json`, `config/com.acgbox.aiq.continuous-observations.plist.example` | canonical UTC slots, global lock, per-slot state, isolated `CODEX_HOME` | `scripts/continuous-observation.test.ts`, speed-observation runner tests | `node --test scripts/continuous-observation.test.ts` |
+| Change twice-daily Official or Normal/Fast observation operations | [Operations](operations.md#continuous-observations) and [Deployment handoff](deployment-handoff.md#recurring-macos-observations) | `apps/aiq/src/cli.rs`, `apps/aiq/src/config.rs`, `apps/aiq/src/release.rs`, `apps/aiq/src/schedule.rs`, `apps/aiq/src/supervisor.rs`, `apps/aiq/src/workflow.rs`, `apps/aiq/tests/supervisor_entrypoint.rs`, `apps/aiq/package.nix`, `config/continuous-observation.example.json`, `config/com.acgbox.aiq.continuous-observations.plist.example` | `Cli`, `Configuration`, `Release::open`, `Release::prepare_source`, `install_release`, `surrounding_slots`, `ProcessLock`, `supervisor::internal_exit_code`, `workflow::run`, `run_create_once_step`, `captured_receipt_is_complete`, `OfficialDispatch` | `apps/aiq/src/workflow.rs` receipt, dispatch, retry, and cleanup tests; `supervisor::tests::parent_pipe_close_terminates_descendants_in_separate_process_groups`; `apps/aiq/tests/supervisor_entrypoint.rs` shipped-binary and parent-`SIGKILL` tests; speed-observation tests in `apps/aiq-runner` | `cargo test --locked -p aiq --all-targets` |
+
+## Backlog
+
+- No source-backed documentation gaps remain from the current update range. Future changes to the speed batch schema, lifecycle RPC, or installed orchestrator release contract should update the linked architecture, operations, and deployment sections together.
 
 ## Next reading
 
