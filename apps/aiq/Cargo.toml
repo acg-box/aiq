@@ -1,0 +1,26 @@
+[package]
+authors.workspace    = true
+description          = "Reliable orchestration for scheduled AIQ observations"
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "aiq"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+# crates.io
+clap       = { workspace = true }
+hex        = { workspace = true }
+jiff       = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+sha2       = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+# crates.io
+libc = { version = "0.2" }
+
+[[bin]]
+name = "aiq"
+path = "src/main.rs"
