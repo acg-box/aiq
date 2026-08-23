@@ -3,8 +3,11 @@
 #[cfg(target_os = "linux")]
 use std::fs;
 use std::io::ErrorKind;
+#[cfg(target_os = "macos")]
+use std::mem;
 use std::os::unix::process::{CommandExt as _, ExitStatusExt as _};
 use std::process::Child;
+#[cfg(target_os = "macos")]
 use std::ptr;
 use std::sync::Arc;
 use std::thread::Builder;
@@ -13,7 +16,6 @@ use std::{
 	env,
 	ffi::{OsStr, OsString},
 	io::{self, Read},
-	mem,
 	path::Path,
 	process::{self, Command, ExitCode, ExitStatus, Stdio},
 	sync::atomic::{AtomicBool, AtomicI32, Ordering},
@@ -28,6 +30,7 @@ use libc::SIGINT;
 use libc::SIGKILL;
 use libc::SIGTERM;
 use libc::c_int;
+#[cfg(target_os = "macos")]
 use libc::c_void;
 use libc::pid_t;
 use libc::sighandler_t;
