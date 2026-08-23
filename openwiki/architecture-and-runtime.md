@@ -11,6 +11,7 @@ tags: ['architecture', 'runtime', 'security']
 
 | Component           | Responsibility                                                         |
 | ------------------- | ---------------------------------------------------------------------- |
+| `apps/aiq`          | Installed CLI for scheduled observation orchestration, release validation, and cleanup |
 | `apps/aiq-runner`   | Preflight, task execution, scoring, packaging, and submission          |
 | `apps/aiq-verifier` | Queue claims, reconstruction, evaluator replay, and attestations       |
 | `apps/web`          | Public reads and controlled submission, claim, and verification routes |
@@ -94,17 +95,122 @@ The runner copies `~/.codex/auth.json` into a mode-private, isolated release
 home and injects that directory as the Codex subprocess `CODEX_HOME`. It does
 not use the interactive Codex home as its writable execution home.
 
-The native runtime uses canonical non-overlapping paths, a clean source worktree
-at the declared commit, exact executable digests, mode-private writable roots,
-create-new outputs, and macOS atomic file operations. Before paid preflight and
-paid run dispatch, the operator reruns the model-free binding checks. Codex uses
-the host's direct network connection. Production does not depend on or run Linux
-or Docker. They remain future deployment targets. The native macOS host runs the
-repository continuous-observation entrypoint for the `03:00` and `15:00` UTC
-slots. The entrypoint owns the non-overlap lock, per-slot resume state, isolated
-Codex homes, verified publication sequence, and post-success cleanup. `launchd`
-only wakes the entrypoint; canonical slot selection decides whether model work
-is due.
+The native runtime uses canonical non-overlapping paths, exact executable
+digests, mode-private writable roots, create-new outputs, and macOS atomic file
+operations. The installed `aiq` orchestrator validates one self-contained
+release. That release contains the pinned worker binaries and an exact Git
+source bundle. For each slot, `aiq` reconstructs a clean detached checkout at a
+stable path below the private `state_root/scratch` directory. The path is outside
+the macOS platform-minimal roots that the Codex sandbox can read. It does not
+depend on a repository worktree.
+Before paid preflight and paid run dispatch, the operator runs the model-free
+`aiq doctor` check. Codex uses the host's direct network connection. Production
+does not depend on or run Linux or Docker. They remain future deployment
+targets. The native macOS host runs `aiq` for the `03:00` and `15:00` UTC slots.
+The orchestrator owns the non-overlap lock, per-slot resume state, isolated Codex
+homes, verified publication sequence, and terminal cleanup. `launchd` only
+wakes a protected launcher that is approved for unattended execution. An
+adapter whose authorization exists only inside an interactive parent process is
+not valid for this boundary. The launcher retains provider authentication
+material, gives `aiq` only its four declared consumer variables, and invokes
+absolute paths without a repository working directory. Canonical slot selection
+decides which model work is due.
+
+Within a due slot, the orchestrator starts or resumes Official work before the
+auxiliary Speed path. This preserves the P0 publication window while retaining
+one user-facing `aiq run` command.
+
+Every worker step runs below the same pinned `aiq` binary in its private internal
+supervisor mode. The supervisor becomes a new process-session leader, starts the
+runner or verifier in its own process group, and keeps runner-created model and
+evaluator process groups inside that session. A private stdin pipe binds the
+supervisor to the user-facing `aiq` parent. Parent exit, including `SIGKILL`,
+closes the pipe. The supervisor then enumerates the session and applies bounded
+two-second `SIGTERM` and `SIGKILL` phases before it exits. It also performs this
+cleanup when it receives `SIGHUP`, `SIGINT`, or `SIGTERM`, or when a worker exits
+with a live descendant. This boundary does not rely on the launchd job PGID.
+
+The installed `apps/aiq` binary is the scheduler boundary. `cli::Cli` exposes
+`run`, `status`, `doctor`, and `install-release`; `config::Configuration` accepts
+only the v2 private configuration and validates absolute paths, an HTTPS origin,
+bounded concurrency, and the pinned release manifest digest. `release::Release::open`
+checks the self-contained release before any model work, while
+`Release::prepare_source` clones the bundled Git source and verifies its detached
+commit, tree, and clean status at a private per-slot scratch path below
+`state_root`. The scheduled process therefore does not read a repository
+worktree or mutable worker paths.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Due
+    Due --> Running: acquire nonblocking lock
+    Due --> Skipped: lock already held
+    Running --> RetryableFailure: operational error
+    RetryableFailure --> Running: same slot run
+    Running --> Complete: publication succeeds
+    Running --> CompleteWithUnpublishedOfficial: Official infrastructure result
+    Running --> CompleteWithUnpublishedSpeed: Official published, speed late
+    Due --> MissedWindow: dispatch window closes
+    Complete --> [*]: cleanup disposable material
+    CompleteWithUnpublishedOfficial --> [*]: retain compact evidence
+    CompleteWithUnpublishedSpeed --> [*]: retain compact evidence
+    MissedWindow --> [*]: cleanup without task dispatch
+    Skipped --> [*]
+```
+
+This lifecycle shows how one canonical observation slot handles overlap, resume, terminal evidence, and cleanup.
+
+The state machine is per canonical slot. A completed slot, including
+`complete_with_unpublished_official`, `complete_with_unpublished_speed`, or
+`missed_window`, is a no-op on later wakes. A retryable failure retains
+checkpoint and raw material, but resume reuses only complete outputs: the
+checkpoint must have no indeterminate in-flight cell, captured submission and
+verifier receipts must validate, and an `official_admit` record must prove the
+model-free v2 admission contract. `workflow::run_create_once_step` removes a
+failed output before retry, including truncated captured receipts, so partial
+JSON cannot become a checkpoint. `lock::ProcessLock` uses a nonblocking OS lock
+at `state_root/active.lock`, so overlap coalesces without starting a second model process. `schedule::surrounding_slots` accepts only the
+03:00 and 15:00 UTC identities. An explicit `--slot` selects one known canonical
+slot, but task dispatch can start only during its first two hours. The v2
+configuration requires 32 Official workers for the fixed 1,224-cell matrix.
+After the dispatch grace or slot window closes, the workflow continues only
+when the complete Official run output already exists and only scoring or
+publication remains. If a complete speed batch already exists, the workflow may
+also submit that batch without another model call. Otherwise, it records a
+terminal missed or unpublished state without new model work.
+
+A complete Official result is an `aiq.run.v4` document with all 1,224 results.
+The runner's exact run-bound reservation is deliberately not complete: it can
+resume through the frozen checkpoint contract while dispatch remains open, but
+it cannot authorize model-free scoring or publication after the grace closes.
+
+The workflow treats output files as checkpoints only after the producing command
+has succeeded. `run_create_once_step` removes a regular or symlink output when the
+command fails, preventing partial output from masquerading as completed work. It
+also reopens `official_admit` when its JSON is malformed or does not prove the
+model-free eligible admission contract (`aiq.official-permission-admission.v2`).
+It replaces a captured submission or verifier receipt unless that receipt
+confirms acceptance or verified publication. An Official output is complete only
+when it is `aiq.run.v4` with 1,224 results. Other existing step outputs remain
+create-once. This distinction preserves exact resume for valid evidence while
+allowing failed admission, failed receipt capture, and failed commands to retry
+on the same slot. Focused coverage is in `apps/aiq/src/workflow.rs` tests
+`expired_slot_continues_only_after_a_complete_model_output`,
+`official_dispatch_starts_only_during_the_early_slot_grace`,
+`official_dispatch_requires_full_supported_concurrency`,
+`late_slot_closes_before_any_new_speed_or_official_model_work`,
+`official_reservation_is_resumable_only_inside_the_dispatch_grace`,
+`failed_command_output_is_removed_before_retry`, and
+`failed_permission_admission_is_replaced_on_retry`, and
+`retry_replaces_a_truncated_captured_receipt`; validate with
+`cargo test --locked -p aiq --all-targets`.
+
+Process-lifecycle coverage is in
+`supervisor::tests::parent_pipe_close_terminates_descendants_in_separate_process_groups`
+and the shipped-binary integration tests
+`internal_supervisor_runs_the_exact_worker_command` and
+`parent_sigkill_leaves_no_supervised_descendant`. The latter sends `SIGKILL` to
+the parent and requires the supervisor, worker, and a separate-PGID leaf to exit.
 
 After model-free validation, the only Official path runs one complete
 `72 × 17` matrix of 1,224 observations, replays it with the native verifier,
@@ -439,6 +545,50 @@ the compare and homepage browser contracts remain in
 `apps/web/browser-tests/synthetic-demo.spec.ts` and the live browser suites.
 Use `npm run test --workspace @aiq/web` for the Web package tests, or use the
 repository's `cargo make verify` gate for the complete Web contract.
+
+## Speed observations
+
+Normal/Fast subscription observations are a separate, non-scoring evidence path.
+The runner's `observe-speed` command in `apps/aiq-runner/src/cli.rs` calls
+`apps/aiq-runner/src/speed_observation.rs::observe_speed`, probes the live catalog,
+and runs only advertised model and reasoning combinations. It alternates
+Normal-first and Fast-first ordering, limits each mode to ten trials, writes
+create-once checkpoints, and records elapsed time, aggregate output throughput,
+tokens, tool usage, estimated credits, and content-addressed artifacts. TTFT and
+post-first-token throughput remain explicitly unavailable because the current
+Codex JSONL stream does not expose a trustworthy first-token timestamp. The
+batch is submitted by `submit-speed` to `apps/web/src/app/api/observations/speed/route.ts`;
+`handleSpeedObservation` validates canonical JSON, bearer auth, content length,
+idempotency, and the batch schema before storing the private object, registering
+its lifecycle, and calling `aiq_record_speed_observation`.
+
+```mermaid
+sequenceDiagram
+    participant Runner as aiq-runner
+    participant Gateway as Speed gateway
+    participant Storage as Private Storage
+    participant Database as PostgreSQL
+    participant Trends as Trends workspace
+    Runner->>Runner: Probe catalog and run resumable trials
+    Runner->>Gateway: POST canonical batch
+    Gateway->>Storage: Store content-addressed object
+    Gateway->>Database: Register object and record batch
+    Database-->>Gateway: accepted or duplicate
+    Gateway-->>Runner: status response
+    Trends->>Database: Read published summaries and trend points
+```
+
+This flow keeps paid runtime evidence separate from semantic scores and exposes
+only published summaries to the public trends explorer. The Web repository methods
+are `listSpeedObservations` and `listSpeedTrendPoints`; presentation is owned by
+`apps/web/src/components/speed-observation-explorer.tsx`. Focused coverage is in
+`apps/web/src/server/speed-observation.test.ts`,
+`apps/web/src/components/speed-observation-analysis.test.ts`,
+`apps/web/src/data/data.test.ts`, and the runner speed-observation tests. Validate
+with `cargo run -p aiq-runner -- observe-speed --help`,
+`npm run test --workspace @aiq/web`, and `cargo make verify` when changing the
+cross-boundary contract. The speed batch must never be used for AIQ scoring,
+eligibility, ranking, or Official publication.
 
 ## Distributed radar
 

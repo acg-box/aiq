@@ -37,9 +37,9 @@ and its public release digest is
 The public catalog is deterministic and identity-frozen. Controlled release
 evidence remains outside Git. The production runner and verifier execute natively
 on the approved Apple Silicon macOS host; Linux, Docker, and cloud workers remain
-future targets. The continuous-observation entrypoint and `launchd` template are
-repository-owned, while the concrete configuration, secrets, and mutable state
-remain private operator assets.
+future targets. The `aiq` observation orchestrator and `launchd` template are
+repository-owned. The concrete release, configuration, secrets, and mutable
+state remain private operator assets.
 
 ## Toolchain
 
@@ -272,40 +272,133 @@ admission and distinct publication to the calibration register.
 
 ## Continuous observations
 
-`scripts/continuous-observation.ts` selects the latest due `03:00` or `15:00`
-UTC slot. It holds one global nonblocking lock, creates one immutable state
-directory per slot, and resumes only that unchanged slot. A wake outside the due
-window does no model work. The checked-in `launchd` template wakes hourly at
-minute 5, which gives interrupted create-once steps retry opportunities without
-changing the twice-daily model schedule. If a completed run contains a
-non-semantic infrastructure result, the entrypoint preserves that run as
-unpublished evidence and stops retrying the slot; it does not rerun any model.
+The installed `aiq` command selects the latest due `03:00` or `15:00` UTC slot.
+It holds one global nonblocking lock, creates one immutable state directory per
+slot, and resumes only that unchanged slot. On an `America/New_York` host, the
+checked-in `launchd` template wakes at 11:05, 11:35, 23:05, and 23:35 local
+time. This covers EST and EDT with one bounded retry for each UTC slot. If a
+completed run contains a non-semantic infrastructure result, the command
+preserves that run as unpublished evidence and stops retrying the slot. It does
+not rerun a model.
 
-Each due slot runs two independent paths: paired Normal/Fast auxiliary
-observation and the complete Official runner, verifier, and publisher chain.
-Both use fresh isolated copies of `auth.json` under private `CODEX_HOME` roots.
+Install the small public command from the repository. Then install one minimal
+self-contained release in a versioned directory outside the repository:
+
+```sh
+cargo install --locked --path apps/aiq
+aiq install-release \
+  --source-release /absolute/path/to/frozen-release \
+  --source-repository /absolute/path/to/aiq-repository \
+  --destination /absolute/private/path/to/releases/aiq-core-1.0.7-7e4ff5f \
+  --release-id aiq-core-1.0.7-7e4ff5f
+```
+
+`cargo install` is suitable for local operator use. For an unattended service,
+pin the executable through `apps/aiq/package.nix` in the host configuration so
+a later unrelated Cargo installation cannot replace the scheduled binary. The
+package is Darwin-only, builds the `aiq` package with the locked workspace
+sources, and sets `AIQ_BUILD_GIT` to the packaged Git executable; it does not
+replace `install-release` or the sealed release-manifest checks.
+
+`install-release` copies only runtime inputs, creates an exact Git bundle from
+the source identity in the final build receipt, and prints the release manifest
+digest. The source repository is an installation input only. A scheduled run
+does not read it. At run time, `aiq` reconstructs the exact clean detached source
+at a stable per-release and per-slot path below the private
+`state_root/scratch` directory. This path must stay outside the macOS
+platform-minimal roots that model processes can read. The attempt directory is
+`state_root/scratch/<release-id>--<slot-id>`, and `Release::prepare_source`
+creates its private parents before cloning. Release Git commands use the
+build-time `AIQ_BUILD_GIT` path when supplied, otherwise `git`, so the installed
+orchestrator can use an explicit toolchain without changing the release
+contract. `Release::open` rejects a non-canonical release root, mismatched
+manifest digest, invalid manifest files, or an invalid build receipt before the
+workflow can invoke a worker.
+
+Each due slot runs two independent paths through one `aiq run` command. The
+complete Official runner, verifier, and publisher chain runs before the paired
+Normal/Fast auxiliary observation, so Speed cannot consume the Official
+dispatch window. Both use fresh isolated copies of `auth.json` under private
+`CODEX_HOME` roots.
+Each runner, verifier, and evaluator step also runs below an internal `aiq`
+session supervisor. A private liveness pipe closes on any user-facing `aiq`
+parent exit, including `SIGKILL`. The supervisor then sends bounded `SIGTERM`
+and `SIGKILL` phases to every remaining process in that session before it exits.
+Runner-created model and evaluator process groups therefore cannot survive only
+because they have a PGID different from the launchd job.
 Formal benchmark tasks and speed trials have no benchmark-enforced wall, step,
 or tool-call termination. The runner continues exact time, token, step, tool, and
 credit accounting. Safety or infrastructure termination remains a structured
 runtime-null observation and never becomes a semantic score.
 
+The auxiliary path is invoked through `aiq-runner observe-speed` and submitted
+through `submit-speed`. It probes catalog availability before paid trials, alternates
+Normal/Fast order, resumes create-once checkpoints, and retains explicit unavailable
+metrics rather than inferring TTFT. The Rust workflow executes Official first and
+runs Speed afterward only when the slot remains eligible or a complete Speed batch
+already exists. The resulting batch is validated at
+`/api/observations/speed`, stored content-addressably, registered for lifecycle
+retention, and recorded through `aiq_record_speed_observation`. A completed slot
+with infrastructure failure is terminal unpublished evidence: the orchestrator
+must not rerun its model work merely to obtain a publication.
+
 Start from the checked-in examples and keep the concrete copies outside Git:
 
 ```sh
-node scripts/continuous-observation.ts status \
-  /absolute/private/path/to/continuous-observation.json
-node scripts/continuous-observation.ts run-due \
-  /absolute/private/path/to/continuous-observation.json
+aiq status --config /absolute/private/path/to/continuous-observation.json
+aiq doctor --config /absolute/private/path/to/continuous-observation.json
+aiq run --config /absolute/private/path/to/continuous-observation.json
+aiq run --config /absolute/private/path/to/continuous-observation.json \
+  --slot 2026-08-12T03-00Z
 ```
+
+Use `--slot` only for one explicit canonical UTC slot. Official task dispatch
+can start only during the first two hours of its current slot. The v2
+configuration requires `official_jobs` to be `32` for the fixed 1,224-cell
+matrix. A completed Official run may finish with speed unpublished when no
+speed batch exists before the dispatch grace closes. This is terminal evidence,
+not a reason to rerun Official model work. If a complete batch exists, its
+model-free submission may still finish. The frozen runner resumes an unchanged
+same-slot checkpoint only when it has no indeterminate in-flight cell and all
+reused captured receipts validate. After the dispatch grace, or for a past slot,
+Official work can continue only when its complete run output already exists and
+only scoring or publication remains.
+Completeness requires an `aiq.run.v4` document with exactly 1,224 results; an
+interrupted runner's create-once reservation remains resumable only while new
+model dispatch is still allowed. Otherwise, `aiq` closes the slot as missed or unpublished without new model
+work. A terminal slot remains a no-op. If another observation
+holds the global lock, a scheduled `run` exits successfully without starting
+overlapping model work. `doctor` instead reports lock contention because it
+cannot validate safely during a run.
 
 The protected launcher supplies only `AIQ_RUNNER_SIGNING_KEY`,
 `AIQ_RUNNER_SUBMISSION_TOKEN`, `AIQ_VERIFIER_INGRESS_TOKEN`, and
-`AIQ_VERIFIER_SIGNING_KEY` to the child process. Do not put values in the plist,
-configuration file, command arguments, or logs. A failed slot retains checkpoints
-and raw artifacts for exact resume. Isolated Codex credentials are removed after
-each invocation. After both publication paths succeed, retain the compact batch,
-package, score, stage, attestation, and receipts; remove raw local artifacts,
-replay scratch, checkpoints, and disposable workspaces.
+`AIQ_VERIFIER_SIGNING_KEY` to `aiq`. Do not put values in the plist,
+configuration file, command arguments, or logs. `aiq` filters the child
+environment again. It gives each worker step only its required AIQ secret. A
+retryable slot retains valid checkpoints and raw artifacts. Automatic resume is
+available only when the checkpoint has no in-flight marker. The
+orchestrator removes a step output when its command fails, and replaces an
+incomplete `official_admit` JSON receipt or malformed captured submission or
+verifier receipt on retry. It accepts an Official output as complete only when it
+is `aiq.run.v4` with exactly 1,224 results; other valid create-once outputs are
+left untouched. Isolated Codex credentials are removed after each invocation. A
+terminal slot retains
+the compact batch, package, score, stage, attestation, and receipts. It removes
+raw local artifacts, detached source, replay scratch, checkpoints, and
+disposable workspaces.
+
+Run `cargo test --locked -p aiq --all-targets` to exercise the supervisor module
+and shipped binary. The `parent_sigkill_leaves_no_supervised_descendant`
+integration test kills the parent process and requires the supervisor, worker,
+and separate-process-group leaf to terminate.
+
+The launcher must be approved for unattended `launchd` execution. Do not use an
+adapter whose authorization exists only inside an interactive parent process.
+Grant its provider identity only the four exact source keys, and retain provider
+login material and access tokens inside the launcher. The fixed launcher accepts
+no operator arguments and owns the pinned `aiq run --config ...` command. Use
+absolute paths. The plist does not set a repository working directory.
 
 ## Score, package, and submit
 
