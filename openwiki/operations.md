@@ -371,13 +371,18 @@ holds the global lock, a scheduled `run` exits successfully without starting
 overlapping model work. `doctor` instead reports lock contention because it
 cannot validate safely during a run.
 
-The protected launcher supplies only `AIQ_RUNNER_SIGNING_KEY`,
-`AIQ_RUNNER_SUBMISSION_TOKEN`, `AIQ_VERIFIER_INGRESS_TOKEN`, and
-`AIQ_VERIFIER_SIGNING_KEY` to `aiq`. Do not put values in the plist,
-configuration file, command arguments, or logs. `aiq` filters the child
-environment again. It gives each worker step only its required AIQ secret. A
-retryable slot retains valid checkpoints and raw artifacts. Automatic resume is
-available only when the checkpoint has no in-flight marker. The
+`aiq run` supports two credential inputs. An interactive operator can supply
+all four of `AIQ_RUNNER_SIGNING_KEY`, `AIQ_RUNNER_SUBMISSION_TOKEN`,
+`AIQ_VERIFIER_INGRESS_TOKEN`, and `AIQ_VERIFIER_SIGNING_KEY`. When all four are
+absent, the complete `unattended_secrets` metadata is required. Partial ambient
+delivery fails closed. After the AIQ state lock coalesces overlap, unattended
+delivery reads the exact Keychain bootstrap, performs one Universal Auth login,
+retrieves only the fixed `prod:/aiq` keys, and removes the private provider
+session. Provider authentication material does not reach a worker. Do not put
+secret values in the plist, configuration file, command arguments, or logs.
+AIQ gives each worker step only its required consumer secret. A retryable slot
+retains valid checkpoints and raw artifacts. Automatic resume is available only
+when the checkpoint has no in-flight marker. The
 orchestrator removes a step output when its command fails, and replaces an
 incomplete `official_admit` JSON receipt or malformed captured submission or
 verifier receipt on retry. It accepts an Official output as complete only when it
@@ -393,12 +398,23 @@ and shipped binary. The `parent_sigkill_leaves_no_supervised_descendant`
 integration test kills the parent process and requires the supervisor, worker,
 and separate-process-group leaf to terminate.
 
-The launcher must be approved for unattended `launchd` execution. Do not use an
-adapter whose authorization exists only inside an interactive parent process.
-Grant its provider identity only the four exact source keys, and retain provider
-login material and access tokens inside the launcher. The fixed launcher accepts
-no operator arguments and owns the pinned `aiq run --config ...` command. Use
-absolute paths. The plist does not set a repository working directory.
+`launchd` invokes the pinned `aiq run --config ...` command directly. Use
+absolute paths, supply the service `HOME`, `USER`, `LOGNAME`, and pinned `PATH`,
+and omit a repository working directory. Grant the provider identity only the
+four exact source keys. AIQ retains provider login material and access tokens
+inside its private credential boundary.
+
+The existing `aiq-continuous-observation-host` identity,
+`aiq-continuous-observation-read` privilege, and Keychain account are frozen
+external state. Do not run setup against that target. For a separate new absent
+target only, the hidden `aiq operator provision-unattended` command consumes the
+non-secret `aiq.unattended-provider-provision.v1` configuration. It refuses an
+existing Keychain account or identity and is not a reconcile, rotate, or replace
+operation. Keep the provider admin credential inside Keychain. Focused
+validation is in
+`apps/aiq/src/config.rs`, `apps/aiq/src/provision.rs`, and
+`apps/aiq/src/credentials.rs`; validate the shipped boundary with
+`cargo test --locked -p aiq --all-targets`.
 
 ## Score, package, and submit
 

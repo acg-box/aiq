@@ -9,7 +9,11 @@ use clap::{Parser, Subcommand};
 use serde::Serialize;
 
 use crate::{
-	Result, ResultContext, config::Configuration, release, schedule::scheduled_slot, workflow,
+	Result, ResultContext,
+	config::{Configuration, ProvisionConfiguration},
+	provision, release,
+	schedule::scheduled_slot,
+	workflow,
 };
 
 /// Runs and inspects scheduled AIQ observations.
@@ -54,6 +58,13 @@ impl Cli {
 				&destination,
 				&release_id,
 			)?),
+			Commands::Operator { command } => match command {
+				OperatorCommands::ProvisionUnattended { config } => {
+					let configuration = ProvisionConfiguration::read(&config)?;
+
+					write_json(&provision::provision(&configuration)?)
+				},
+			},
 		}
 	}
 }
@@ -96,6 +107,23 @@ enum Commands {
 		#[arg(long)]
 		release_id: String,
 	},
+	/// Internal operator-only commands.
+	#[command(hide = true)]
+	Operator {
+		#[command(subcommand)]
+		command: OperatorCommands,
+	},
+}
+
+#[derive(Debug, Subcommand)]
+enum OperatorCommands {
+	/// Create the exact unattended provider identity and Keychain bootstrap once.
+	#[command(hide = true)]
+	ProvisionUnattended {
+		/// Absolute path to the non-secret exact provider setup configuration.
+		#[arg(long)]
+		config: PathBuf,
+	},
 }
 
 fn write_json(value: &impl Serialize) -> Result<()> {
@@ -109,7 +137,7 @@ fn write_json(value: &impl Serialize) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-	use clap::Parser as _;
+	use clap::{CommandFactory as _, Parser as _};
 
 	use crate::cli::Cli;
 
@@ -135,5 +163,25 @@ mod tests {
 			])
 			.is_ok()
 		);
+	}
+
+	#[test]
+	fn operator_setup_is_parseable_but_not_in_primary_help() {
+		assert!(
+			Cli::try_parse_from([
+				"aiq",
+				"operator",
+				"provision-unattended",
+				"--config",
+				"/private/provider.json",
+			])
+			.is_ok()
+		);
+
+		let mut help = Vec::new();
+
+		Cli::command().write_long_help(&mut help).expect("primary help");
+
+		assert!(!String::from_utf8(help).expect("UTF-8 help").contains("operator"));
 	}
 }
