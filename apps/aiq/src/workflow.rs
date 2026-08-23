@@ -5,6 +5,8 @@ use std::io::ErrorKind;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::process;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::{
 	collections::BTreeMap,
 	env,
@@ -12,7 +14,7 @@ use std::{
 	fs::{self, File, OpenOptions},
 	io::Write as _,
 	path::{Path, PathBuf},
-	process::{Command, Output, Stdio},
+	process::{Output, Stdio},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -1228,6 +1230,7 @@ fn cleanup_codex_home(home: &Path) -> Result<()> {
 		return Ok(());
 	}
 
+	#[cfg(target_os = "macos")]
 	let auth = home.join("auth.json");
 
 	#[cfg(target_os = "macos")]
@@ -1475,6 +1478,7 @@ fn current_unix_ms() -> Result<i64> {
 	i64::try_from(milliseconds).context("current system time is outside the supported range")
 }
 
+#[cfg(target_os = "macos")]
 fn run_utility<I, S>(executable: &str, arguments: I) -> Result<()>
 where
 	I: IntoIterator<Item = S>,
