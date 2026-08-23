@@ -1,0 +1,22 @@
+{
+  "schema_version": "aiq.unattended-provider-provision.v1",
+  "state_root": "/absolute/private/path/to/continuous-observation-state",
+  "infisical_executable": "/nix/store/replace-with-pinned-infisical/bin/infisical",
+  "timeout_executable": "/nix/store/replace-with-pinned-coreutils/bin/timeout",
+  "security_executable": "/usr/bin/security",
+  "api_url": "http://127.0.0.2:51888",
+  "project_id": "replace-with-exact-project-id",
+  "keychain_service": "infisical-selfhost",
+  "keychain_account": "AIQ_OBSERVATION_UA_CLIENT_SECRET",
+  "admin_keychain_account": "INSTANCE_ADMIN_TOKEN",
+  "identity_name": "aiq-continuous-observation-host",
+  "privilege_slug": "aiq-continuous-observation-read",
+  "environment": "prod",
+  "path": "/aiq",
+  "selectors": {
+    "runner_signing_key": "RUNNER_SIGNING_KEY",
+    "runner_submission_token": "RUNNER_SUBMISSION_TOKEN",
+    "verifier_ingress_token": "VERIFIER_INGRESS_TOKEN",
+    "verifier_signing_key": "VERIFIER_SIGNING_KEY"
+  }
+}

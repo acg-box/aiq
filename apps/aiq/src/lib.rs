@@ -7,7 +7,9 @@ pub mod schedule;
 pub mod supervisor;
 pub mod workflow;
 
+mod credentials;
 mod lock;
+mod provision;
 
 use std::{
 	error,
@@ -16,6 +18,9 @@ use std::{
 
 /// Result type used by the orchestrator.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+pub(crate) static TEST_ENVIRONMENT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub(crate) trait ResultContext<T> {
 	fn context(self, message: impl Display) -> Result<T>;

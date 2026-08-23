@@ -108,13 +108,15 @@ Before paid preflight and paid run dispatch, the operator runs the model-free
 does not depend on or run Linux or Docker. They remain future deployment
 targets. The native macOS host runs `aiq` for the `03:00` and `15:00` UTC slots.
 The orchestrator owns the non-overlap lock, per-slot resume state, isolated Codex
-homes, verified publication sequence, and terminal cleanup. `launchd` only
-wakes a protected launcher that is approved for unattended execution. An
-adapter whose authorization exists only inside an interactive parent process is
-not valid for this boundary. The launcher retains provider authentication
-material, gives `aiq` only its four declared consumer variables, and invokes
-absolute paths without a repository working directory. Canonical slot selection
-decides which model work is due.
+homes, verified publication sequence, unattended credential delivery, and
+terminal cleanup. `launchd` invokes the pinned `aiq run --config ...` command
+directly with absolute paths and no repository working directory. The AIQ state
+lock coalesces overlap before provider access. When all four consumer variables
+are absent, AIQ reads the exact Keychain bootstrap, performs one Universal Auth
+login in a private provider session, and retrieves only the four fixed
+`prod:/aiq` keys. It destroys the provider session before it starts a worker.
+Complete explicit four-variable delivery remains supported; partial delivery
+fails closed. Canonical slot selection decides which model work is due.
 
 Within a due slot, the orchestrator starts or resumes Official work before the
 auxiliary Speed path. This preserves the P0 publication window while retaining
@@ -132,13 +134,21 @@ with a live descendant. This boundary does not rely on the launchd job PGID.
 
 The installed `apps/aiq` binary is the scheduler boundary. `cli::Cli` exposes
 `run`, `status`, `doctor`, and `install-release`; `config::Configuration` accepts
-only the v2 private configuration and validates absolute paths, an HTTPS origin,
-bounded concurrency, and the pinned release manifest digest. `release::Release::open`
+only the v2 private configuration and validates absolute paths, the public HTTPS
+endpoint, an HTTPS or loopback Infisical origin, exact selectors, bounded
+concurrency, and the pinned release manifest digest. `release::Release::open`
 checks the self-contained release before any model work, while
 `Release::prepare_source` clones the bundled Git source and verifies its detached
 commit, tree, and clean status at a private per-slot scratch path below
 `state_root`. The scheduled process therefore does not read a repository
-worktree or mutable worker paths.
+worktree or mutable worker paths. The hidden `operator provision-unattended`
+command is a separate create-only bootstrap boundary: `provision::provision`
+creates the fixed provider identity and Keychain handoff, while
+`credentials` retrieves only the four declared consumer keys for the owning
+steps. Runtime configuration carries selectors and paths, not secret values.
+The existing production identity and Keychain account are frozen external
+state; the operator command is only for a new absent target and is not a
+reconciliation or rotation command.
 
 ```mermaid
 stateDiagram-v2
