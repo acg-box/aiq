@@ -143,6 +143,7 @@ or legacy data.
 
 | Path                 | Purpose                                                                   |
 | -------------------- | ------------------------------------------------------------------------- |
+| `apps/aiq/`          | Scheduled observation orchestration, release validation, and cleanup      |
 | `apps/aiq-runner/`   | Capability checks, task execution, scoring, packaging, and submission     |
 | `apps/aiq-verifier/` | Queue claims, artifact reconstruction, evaluator replay, and attestations |
 | `apps/web/`          | Public Next.js site and controlled server gateways                        |
@@ -311,15 +312,24 @@ package.
 Provide the runner signing key only to `package`, the submission token only to
 `submit`, and verifier credentials only to the verifier command.
 The current production runner is native macOS. Linux and Docker remain future
-deployment targets. The repository-owned continuous-observation entrypoint runs
-the approved Official chain at `03:00` and `15:00` UTC. It selects one canonical
-12-hour slot, holds a global nonblocking lock, reuses only that slot's exact
-checkpoint after interruption, and does not start overlapping work. The macOS
-`launchd` template wakes hourly at minute 5; idempotent slot selection means it
-executes model work only for the current due slot and gives a failed slot regular
-retry opportunities. A completed run with a non-semantic infrastructure result
-is retained as unpublished evidence and is not retried or presented as an AIQ
-score; the next 12-hour slot remains independent.
+deployment targets. The installed `aiq` command runs the approved Official
+chain at `03:00` and `15:00` UTC. It selects one canonical 12-hour slot, holds a
+global nonblocking lock, and does not start overlapping work. A self-contained release
+stores the pinned runner and verifier binaries and an exact Git source bundle.
+`aiq` restores the clean detached source at a stable per-slot path below the
+private `state_root/scratch` directory. This path stays outside the macOS
+platform-minimal roots that model processes can read. The command does not use a
+repository worktree at run time. On a host fixed to the `America/New_York` time
+zone, the macOS `launchd` template wakes at 11:05, 11:35, 23:05, and 23:35 local
+time. The four wakes cover EST and EDT with one bounded retry for each UTC slot.
+Official task dispatch must begin during the first two hours of a slot, and the
+v2 configuration requires all 32 supported workers for the fixed 1,224-cell
+matrix. A late wake does not start new model work. The single workflow
+prioritizes Official model work before the auxiliary Speed observation, so
+auxiliary work cannot consume the Official dispatch window. A completed run
+with a non-semantic infrastructure result is retained as unpublished evidence.
+It is not retried or presented as an AIQ score; the next 12-hour slot remains
+independent.
 The subscription runner uses a protected copy of `~/.codex/auth.json` in an
 isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
 as its writable runtime directory. It also uses a private two-file copy of the
@@ -345,22 +355,71 @@ values instead of estimates.
 ```sh
 cargo run -p aiq-runner -- observe-speed --help
 cargo run -p aiq-runner -- submit-speed --help
-node scripts/continuous-observation.ts status \
-  /absolute/private/path/to/continuous-observation.json
-node scripts/continuous-observation.ts run-due \
-  /absolute/private/path/to/continuous-observation.json
+cargo install --locked --path apps/aiq
+aiq status --config /absolute/private/path/to/continuous-observation.json
+aiq doctor --config /absolute/private/path/to/continuous-observation.json
+aiq run --config /absolute/private/path/to/continuous-observation.json
+aiq run --config /absolute/private/path/to/continuous-observation.json \
+  --slot 2026-08-12T03-00Z
 ```
+
+Use `--slot` only for one known canonical UTC slot. Official task dispatch can
+start only during the first two hours of its current slot. The frozen runner
+can resume an unchanged checkpoint during the same slot only when it contains
+no indeterminate in-flight cell. After the dispatch grace or 12-hour slot
+window closes, a slot can continue only when the complete Official run output
+already exists and only scoring or publication remains. `aiq` recognizes that
+output only as an `aiq.run.v4` document with all 1,224 results; the runner's
+create-once reservation is not a completed run. Otherwise, `aiq`
+records a terminal missed or unpublished state without new model work. A
+terminal slot remains a no-op. If another
+observation owns the global lock, a scheduled `run` coalesces successfully
+without starting another model process; `doctor` reports the contention instead.
+
+Each runner, verifier, and evaluator step runs below an internal supervisor that
+owns a separate process session. Runner-created model and evaluator process
+groups remain in that session. A private pipe binds the supervisor to the
+user-facing `aiq` parent. If that parent exits or is killed, the pipe closes and
+the supervisor repeatedly sends `SIGTERM`, then `SIGKILL`, to every remaining
+session process before it exits. This no-orphan boundary does not depend on
+`launchd` process-group cleanup.
 
 Start from `config/continuous-observation.example.json` and
 `config/com.acgbox.aiq.continuous-observations.plist.example`. Keep the concrete
-configuration and `launchd` plist outside Git. The protected launcher must pass
-the exact runner, submission, verifier-ingress, and verifier-signing variables
-without writing their values to a file or command argument. Each slot uses two
-fresh isolated `CODEX_HOME` directories. A failed slot retains checkpoints and
-raw artifacts for exact resume, while copied credentials are removed after each
-invocation. After both publication paths succeed, it keeps the compact batch,
-package, score, attestation, and receipts, then removes raw local artifacts,
-replay scratch, checkpoints, and disposable workspaces.
+configuration and `launchd` plist outside Git. Use `aiq install-release` once to
+copy the minimal frozen release, create its source bundle, and print the release
+manifest digest. Install the release in a versioned directory outside the
+repository. The private v2 configuration contains only stable paths, limits,
+the endpoint, and the manifest digest. It does not contain a source worktree
+path or worker executable path.
+
+`cargo install` is sufficient for local operator use. An unattended service
+must pin `apps/aiq/package.nix` in the host configuration so an unrelated Cargo
+install cannot replace the scheduled executable.
+
+Set `official_jobs` to `32`; lower values are rejected before model work. The
+protected launcher must inject the exact runner-signing, runner-submission,
+verifier-ingress, and verifier-signing variables without writing their values to
+a file or command argument. The orchestrator removes all four variables from
+the base child environment. It gives the signing key only to `package`, the
+submission token only to submission steps, and verifier credentials only to the
+verifier. Each slot uses fresh isolated `CODEX_HOME` directories. A retryable
+slot retains checkpoints and raw artifacts. Automatic resume is available only
+when the checkpoint has no in-flight marker. On resume, `aiq` revalidates the
+permission admission, complete Official run, submission receipts, and verifier
+receipt before it reuses them. Copied credentials are removed after each
+invocation. A terminal slot keeps the compact batch,
+package, score, attestation, and receipts. It removes the detached source, raw
+local artifacts, replay scratch, checkpoints, and disposable workspaces.
+
+The launcher used by `launchd` must be approved for unattended execution. An
+adapter whose authorization exists only inside an interactive parent process is
+not a scheduler adapter and must fail closed. Its provider identity must grant
+only the four declared source keys. Provider login credentials and short-lived
+access tokens stay inside the launcher; only the four consumer variables reach
+`aiq`. The fixed launcher accepts no operator arguments and invokes one pinned
+`aiq run --config ...` contract. Use absolute launcher, `aiq`, and configuration
+paths, and do not set a repository working directory.
 
 ## Security boundaries
 

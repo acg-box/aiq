@@ -5,20 +5,54 @@
   <key>Label</key>
   <string>com.acgbox.aiq.continuous-observations</string>
   <key>ProgramArguments</key>
+  <!-- This fixed launcher owns the pinned aiq and configuration paths. It must
+       accept no operator arguments and inject only the four AIQ secrets. -->
   <array>
-    <string>/absolute/private/path/to/protected-aiq-launcher</string>
+    <string>/absolute/immutable/path/to/acg-aiq-observation-launcher</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Minute</key>
-    <integer>5</integer>
-  </dict>
+  <!-- Requires the host time zone to be America/New_York. These events cover
+       both EST and EDT and stay inside the two-hour UTC dispatch grace. -->
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>11</integer>
+      <key>Minute</key>
+      <integer>5</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>11</integer>
+      <key>Minute</key>
+      <integer>35</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>23</integer>
+      <key>Minute</key>
+      <integer>5</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>23</integer>
+      <key>Minute</key>
+      <integer>35</integer>
+    </dict>
+  </array>
   <key>ProcessType</key>
   <string>Background</string>
   <key>LowPriorityIO</key>
   <true/>
+  <key>AbandonProcessGroup</key>
+  <!-- Keep same-PGID cleanup enabled. The aiq internal session supervisor owns
+       runner-created model and evaluator groups that leave the launchd PGID. -->
+  <false/>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+  <key>Umask</key>
+  <integer>63</integer>
   <key>StandardOutPath</key>
   <string>/absolute/private/path/to/scheduler.stdout.log</string>
   <key>StandardErrorPath</key>

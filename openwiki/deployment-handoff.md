@@ -545,30 +545,88 @@ published result.
 
 ## Recurring macOS observations
 
-Use `config/continuous-observation.example.json` as the private configuration
+For an unattended service, pin the `aiq` executable through
+`apps/aiq/package.nix` in the host configuration; `cargo install` alone permits
+an unrelated later installation to replace the scheduled binary. Use
+`config/continuous-observation.example.json` as the private configuration
 shape and `config/com.acgbox.aiq.continuous-observations.plist.example` as the
-macOS `launchd` shape. The approved model slots are `03:00` and `15:00` UTC. The
-plist wakes the protected launcher hourly at minute 5; the repository script
-selects the latest due slot, refuses overlap, and resumes an interrupted slot.
-Do not encode secrets in either file.
+macOS `launchd` shape. The approved model slots are `03:00` and `15:00` UTC. On
+an `America/New_York` host, the plist wakes the protected launcher at 11:05,
+11:35, 23:05, and 23:35 local time. These wakes cover EST and EDT with one
+bounded retry for each slot. The installed `aiq` command selects the latest due
+slot, refuses overlap, and resumes an interrupted slot only after validating
+same-slot checkpoints and captured receipts. Failed command outputs are removed
+before retry. Do not encode secrets in either file. The private v2 configuration
+pins a self-contained versioned release and its manifest digest. It has no
+`source_root` or `observer_runner` field.
+
+Keep `AbandonProcessGroup` set to `false` for same-PGID cleanup, but do not use it
+as the descendant-termination boundary. The `aiq` command starts each worker
+below an internal supervisor in a private process session. If the user-facing
+parent exits or is killed, its private liveness pipe closes and the supervisor
+applies bounded `SIGTERM` and `SIGKILL` phases to all runner, verifier,
+evaluator, and model processes in that session before it exits. This covers the
+separate process groups created by the frozen runner without adding another
+launchd job or host service.
 
 The protected launcher resolves and exports the exact runner-signing,
 runner-submission, verifier-ingress, and verifier-signing variables only for the
 child process. It then runs:
 
 ```sh
-node scripts/continuous-observation.ts run-due \
-  /absolute/private/path/to/continuous-observation.json
+aiq doctor --config /absolute/private/path/to/continuous-observation.json
+aiq run --config /absolute/private/path/to/continuous-observation.json
+aiq run --config /absolute/private/path/to/continuous-observation.json \
+  --slot 2026-08-12T03-00Z
 ```
 
+The `--slot` form is only for one known canonical recovery slot. Official task
+dispatch can start only during the first two hours of that slot, and the v2
+configuration requires `official_jobs` to be `32`. The frozen runner resumes a
+same-slot checkpoint only when it contains no indeterminate in-flight cell.
+After the dispatch grace or 12-hour window closes, the slot can continue only
+when the complete Official run output already exists and only scoring or
+publication remains. Complete means `aiq.run.v4` with exactly 1,224 results,
+not the runner's create-once reservation; captured submission and verifier
+receipts must also validate before reuse. Otherwise `aiq` closes it without new model work. The nonblocking global lock coalesces scheduled overlap without starting
+another model process. Do not add `--slot` to the recurring plist. `aiq doctor` acquires
+the same lock while validating the release and reconstructed source, so it
+reports contention rather than inspecting a moving run. The release reconstructs
+its detached source below the private `state_root/scratch/<release-id>--<slot-id>`
+path, not from the source worktree or a platform temporary root. Failed command
+outputs are removed before retry; only valid create-once outputs are reused, and
+an incomplete `official_admit` receipt is replaced on the same slot. An
+interrupted Official output reservation can resume only while its dispatch grace
+is still open.
+
+A completed Official run may be retained as
+`complete_with_unpublished_speed` when Official publication succeeds but no
+complete auxiliary speed batch exists before the grace window closes. This is
+terminal and must not trigger new model work. An already complete speed batch
+may still be submitted without another model call.
+
+The selected launcher must explicitly support unattended `launchd` execution.
+An adapter authorized only by an interactive parent process is invalid for this
+job. Bind its provider identity to only the four exact source keys, keep provider
+login credentials and access tokens inside the launcher, and pass only the four
+consumer variables to `aiq`. The fixed launcher accepts no operator arguments
+and owns the pinned `aiq run --config ...` command. Use absolute paths and omit
+`WorkingDirectory`; a launchd wake must not require any repository checkout.
+
 After installation, inspect `status` and require the latest completed slot,
-absence of an active stale lock, and the exact next UTC slot. A failed slot keeps
-the material needed for exact resume. A completed run with a non-semantic
+absence of an active stale lock, and the exact next UTC slot. A retryable slot
+keeps raw material, but only a checkpoint without an in-flight marker can resume
+automatically. A completed run with a non-semantic
 infrastructure result is retained as unpublished evidence without a model rerun;
 the scheduler proceeds only when the next 12-hour slot becomes due. Isolated
 Codex homes are removed after each invocation. After successful publication,
 retain the compact Official and speed evidence and remove raw local artifacts,
-replay scratch, checkpoints, and disposable task workspaces.
+replay scratch, checkpoints, and disposable task workspaces. Speed evidence is
+auxiliary only: its Normal/Fast batches must not be promoted into Official scoring
+or used as a publication fallback. The speed gateway retains the content-addressed
+batch object and lifecycle record before recording its database summary; a duplicate
+batch is safe to acknowledge, while identity or reconciliation failures require
+operator review.
 
 ## Domain and DNS
 
@@ -681,5 +739,5 @@ objects before retrying the existing target project.
 
 The project-bound Vercel commands above perform deployment only when an operator
 runs them. The separately installed macOS `launchd` job invokes only the
-repository-owned continuous-observation entrypoint and does not depend on Vercel
-or Supabase scheduling.
+installed `aiq` orchestrator through the protected launcher. It does not depend
+on a repository checkout, Vercel scheduling, or Supabase scheduling.
