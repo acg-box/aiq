@@ -22,6 +22,7 @@ use libc::pid_t;
 use serde as _;
 use serde_json as _;
 use sha2 as _;
+use ureq as _;
 
 const INTERNAL_SUPERVISOR_ENV: &str = "AIQ_INTERNAL_PROCESS_SUPERVISOR_V1";
 const PARENT_FIXTURE: &str = "AIQ_TEST_PARENT_DEATH_FIXTURE_V1";

@@ -389,37 +389,46 @@ Start from `config/continuous-observation.example.json` and
 configuration and `launchd` plist outside Git. Use `aiq install-release` once to
 copy the minimal frozen release, create its source bundle, and print the release
 manifest digest. Install the release in a versioned directory outside the
-repository. The private v2 configuration contains only stable paths, limits,
-the endpoint, and the manifest digest. It does not contain a source worktree
-path or worker executable path.
+repository. The private v2 configuration contains stable runtime paths, limits,
+the endpoint, the manifest digest, and optional non-secret unattended provider
+metadata. It does not contain a source worktree path, worker executable path,
+provider credential, or consumer secret.
 
 `cargo install` is sufficient for local operator use. An unattended service
 must pin `apps/aiq/package.nix` in the host configuration so an unrelated Cargo
 install cannot replace the scheduled executable.
 
 Set `official_jobs` to `32`; lower values are rejected before model work. The
-protected launcher must inject the exact runner-signing, runner-submission,
-verifier-ingress, and verifier-signing variables without writing their values to
-a file or command argument. The orchestrator removes all four variables from
-the base child environment. It gives the signing key only to `package`, the
-submission token only to submission steps, and verifier credentials only to the
-verifier. Each slot uses fresh isolated `CODEX_HOME` directories. A retryable
-slot retains checkpoints and raw artifacts. Automatic resume is available only
-when the checkpoint has no in-flight marker. On resume, `aiq` revalidates the
-permission admission, complete Official run, submission receipts, and verifier
-receipt before it reuses them. Copied credentials are removed after each
-invocation. A terminal slot keeps the compact batch,
+`aiq run` accepts either all four explicitly supplied consumer variables or no
+consumer variables. Partial ambient delivery fails closed. When all four are
+absent, `aiq` requires the complete `unattended_secrets` metadata, reads the
+exact Keychain bootstrap, performs one Universal Auth login, and retrieves only
+the four fixed `prod:/aiq` keys. It removes the provider session before it starts
+a downstream step. Provider credentials and tokens do not reach workers. The
+orchestrator gives the signing key only to `package`, the submission token only
+to submission steps, and verifier credentials only to the verifier. Each slot
+uses fresh isolated `CODEX_HOME` directories. A retryable slot retains
+checkpoints and raw artifacts. Automatic resume is available only when the
+checkpoint has no in-flight marker. On resume, `aiq` revalidates the permission
+admission, complete Official run, submission receipts, and verifier receipt
+before it reuses them. Copied credentials are removed after each invocation. A
+terminal slot keeps the compact batch,
 package, score, attestation, and receipts. It removes the detached source, raw
 local artifacts, replay scratch, checkpoints, and disposable workspaces.
 
-The launcher used by `launchd` must be approved for unattended execution. An
-adapter whose authorization exists only inside an interactive parent process is
-not a scheduler adapter and must fail closed. Its provider identity must grant
-only the four declared source keys. Provider login credentials and short-lived
-access tokens stay inside the launcher; only the four consumer variables reach
-`aiq`. The fixed launcher accepts no operator arguments and invokes one pinned
-`aiq run --config ...` contract. Use absolute launcher, `aiq`, and configuration
-paths, and do not set a repository working directory.
+`launchd` invokes the pinned `aiq run --config ...` command directly. Use
+absolute AIQ and configuration paths, supply `HOME`, `USER`, `LOGNAME`, and the
+pinned execution `PATH`, and do not set a repository working directory. The
+provider identity must grant only the four fixed source keys. The runtime keeps
+the Keychain bootstrap and short-lived provider token inside AIQ.
+
+The already-provisioned provider target is external frozen state. Do not run
+setup to reconcile, rotate, or replace it. For a new exact target only, the
+hidden `aiq operator provision-unattended --config ...` command uses
+`config/unattended-provider-provision.example.json`. It refuses an existing
+Keychain account or provider identity, creates only the fixed identity,
+four-key privilege, Universal Auth method, and Keychain bootstrap, and rolls
+back only known intermediate writes.
 
 ## Security boundaries
 

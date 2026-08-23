@@ -1,5 +1,8 @@
 //! End-to-end observation workflow.
 
+/// Protected runtime secret names.
+pub use crate::credentials::PROTECTED_SECRETS;
+
 use std::fs::Permissions;
 use std::io::ErrorKind;
 #[cfg(unix)]
@@ -25,19 +28,12 @@ use serde_json::Value;
 use crate::{
 	Error, Result, ResultContext,
 	config::Configuration,
+	credentials::RuntimeSecrets,
 	lock::ProcessLock,
 	release::{Release, ReleasePaths},
 	schedule::{self, ScheduledSlot, SurroundingSlots},
 	supervisor,
 };
-
-/// Protected runtime secret names.
-pub const PROTECTED_SECRETS: [&str; 4] = [
-	"AIQ_RUNNER_SIGNING_KEY",
-	"AIQ_RUNNER_SUBMISSION_TOKEN",
-	"AIQ_VERIFIER_INGRESS_TOKEN",
-	"AIQ_VERIFIER_SIGNING_KEY",
-];
 
 const STATUS_SCHEMA: &str = "aiq.continuous-observation-status.v2";
 const OFFICIAL_RUN_SCHEMA: &str = "aiq.run.v4";
@@ -399,8 +395,9 @@ fn run_locked(
 
 	if dispatch == OfficialDispatch::Close {
 		if existing_regular_file(&paths.speed.batch)? && !speed_is_published(paths)? {
-			require_runtime_secrets()?;
-			run_speed(configuration, release.paths(), paths, slot)?;
+			let secrets = RuntimeSecrets::resolve(configuration)?;
+
+			run_speed(configuration, release.paths(), paths, slot, &secrets)?;
 		}
 
 		return close_late_official_dispatch(&release, configuration, slot, paths);
@@ -409,8 +406,7 @@ fn run_locked(
 		require_official_dispatch_capacity(configuration.official_jobs)?;
 	}
 
-	require_runtime_secrets()?;
-
+	let secrets = RuntimeSecrets::resolve(configuration)?;
 	let source = release.prepare_source(&configuration.state_root, slot)?;
 	let dispatch = if dispatch == OfficialDispatch::StartModel {
 		official_dispatch(slot, paths, current_unix_ms()?)?
@@ -424,10 +420,10 @@ fn run_locked(
 
 	let summary = match dispatch {
 		OfficialDispatch::StartModel => {
-			run_official(configuration, &release, paths, slot, &source)?
+			run_official(configuration, &release, paths, slot, &source, &secrets)?
 		},
 		OfficialDispatch::ResumeAfterModel => {
-			run_official_after_model(configuration, &release, paths, slot, &source)?
+			run_official_after_model(configuration, &release, paths, slot, &source, &secrets)?
 		},
 		OfficialDispatch::Close => {
 			unreachable!("closed dispatch handled before source preparation")
@@ -435,7 +431,7 @@ fn run_locked(
 	};
 
 	if speed_can_continue(slot, paths, current_unix_ms()?)? {
-		run_speed(configuration, release.paths(), paths, slot)?;
+		run_speed(configuration, release.paths(), paths, slot, &secrets)?;
 	}
 
 	let speed_published = speed_is_published(paths)?;
@@ -471,6 +467,7 @@ fn run_speed(
 	release: &ReleasePaths,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
+	secrets: &RuntimeSecrets,
 ) -> Result<()> {
 	if existing_regular_file(&paths.speed.batch)? {
 		cleanup_codex_home(&paths.speed.home)?;
@@ -480,7 +477,7 @@ fn run_speed(
 
 	let result = speed_steps(configuration, release, paths, slot)
 		.iter()
-		.try_for_each(|step| run_create_once_step(step, paths, slot));
+		.try_for_each(|step| run_create_once_step(step, paths, slot, secrets));
 	let home_cleanup = cleanup_codex_home(&paths.speed.home);
 
 	result.and(home_cleanup)?;
@@ -494,6 +491,7 @@ fn run_official_after_model(
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
 	source: &Path,
+	secrets: &RuntimeSecrets,
 ) -> Result<OfficialRunSummary> {
 	cleanup_codex_home(&paths.official.home)?;
 
@@ -506,7 +504,7 @@ fn run_official_after_model(
 	let steps = official_steps(configuration, release, paths, slot, source);
 
 	for step in steps.iter().skip(3) {
-		run_create_once_step(step, paths, slot)?;
+		run_create_once_step(step, paths, slot, secrets)?;
 	}
 
 	summarize_official_run(&paths.official.run)
@@ -518,13 +516,14 @@ fn run_official(
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
 	source: &Path,
+	secrets: &RuntimeSecrets,
 ) -> Result<OfficialRunSummary> {
 	prepare_codex_home(&paths.official.home, &configuration.codex_auth_source)?;
 
 	let steps = official_steps(configuration, release, paths, slot, source);
 	let result = (|| {
 		for step in &steps {
-			run_create_once_step(step, paths, slot)?;
+			run_create_once_step(step, paths, slot, secrets)?;
 
 			if step.name == "official_run" {
 				let summary = summarize_official_run(&paths.official.run)?;
@@ -917,7 +916,12 @@ fn official_verifier_step(
 	}
 }
 
-fn run_create_once_step(step: &CommandStep, paths: &SlotPaths, slot: &ScheduledSlot) -> Result<()> {
+fn run_create_once_step(
+	step: &CommandStep,
+	paths: &SlotPaths,
+	slot: &ScheduledSlot,
+	secrets: &RuntimeSecrets,
+) -> Result<()> {
 	if existing_regular_file(&step.output)? {
 		if existing_step_output_is_complete(step)? {
 			return Ok(());
@@ -929,7 +933,7 @@ fn run_create_once_step(step: &CommandStep, paths: &SlotPaths, slot: &ScheduledS
 
 	write_status(&paths.status, slot, step.name, "running")?;
 
-	let stdout = match run_command(step, &paths.log) {
+	let stdout = match run_command(step, &paths.log, secrets) {
 		Ok(stdout) => stdout,
 		Err(error) => {
 			remove_failed_step_output(&step.output).map_err(|cleanup| {
@@ -1031,10 +1035,10 @@ fn remove_failed_step_output(path: &Path) -> Result<()> {
 	}
 }
 
-fn run_command(step: &CommandStep, log_path: &Path) -> Result<Vec<u8>> {
+fn run_command(step: &CommandStep, log_path: &Path, secrets: &RuntimeSecrets) -> Result<Vec<u8>> {
 	append_log(log_path, "step_started", step.name)?;
 
-	let environment = child_environment(env::vars_os(), step.secrets)?;
+	let environment = child_environment(env::vars_os(), step.secrets, secrets)?;
 	let mut command = supervisor::guarded_command(&step.executable, &step.args, &environment)?;
 	let output =
 		if step.capture.is_some() {
@@ -1079,7 +1083,11 @@ fn run_command(step: &CommandStep, log_path: &Path) -> Result<Vec<u8>> {
 	Ok(output.stdout)
 }
 
-fn child_environment<I>(parent: I, secrets: StepSecrets) -> Result<BTreeMap<OsString, OsString>>
+fn child_environment<I>(
+	parent: I,
+	step_secrets: StepSecrets,
+	runtime_secrets: &RuntimeSecrets,
+) -> Result<BTreeMap<OsString, OsString>>
 where
 	I: IntoIterator<Item = (OsString, OsString)>,
 {
@@ -1091,32 +1099,10 @@ where
 			selected.insert(OsString::from(name), value.clone());
 		}
 	}
-	for name in secrets.names() {
-		let value = parent
-			.get(OsStr::new(name))
-			.filter(|value| !value.to_string_lossy().trim().is_empty())
-			.ok_or_else(|| Error::new(format!("missing exact runtime secret: {name}")))?;
 
-		selected.insert(OsString::from(name), value.clone());
-	}
+	runtime_secrets.insert(step_secrets.names(), &mut selected)?;
 
 	Ok(selected)
-}
-
-fn require_runtime_secrets() -> Result<()> {
-	let missing = PROTECTED_SECRETS
-		.iter()
-		.filter(|name| {
-			env::var_os(name).is_none_or(|value| value.to_string_lossy().trim().is_empty())
-		})
-		.copied()
-		.collect::<Vec<_>>();
-
-	if missing.is_empty() {
-		Ok(())
-	} else {
-		Err(Error::new(format!("missing exact runtime secrets: {}", missing.join(", "))))
-	}
 }
 
 fn validate_receipt(record: &Value, kind: CaptureKind, step_name: &str) -> Result<()> {
@@ -1521,6 +1507,7 @@ mod tests {
 
 	use crate::{
 		config::{CONFIG_SCHEMA, Configuration},
+		credentials::RuntimeSecrets,
 		lock::ProcessLock,
 		schedule::{self},
 		workflow::{self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets},
@@ -1539,7 +1526,7 @@ mod tests {
 	}
 
 	fn environment_names(secrets: StepSecrets) -> BTreeSet<String> {
-		workflow::child_environment(parent_environment(), secrets)
+		workflow::child_environment(parent_environment(), secrets, &RuntimeSecrets::test())
 			.expect("child environment")
 			.keys()
 			.map(|name| name.to_string_lossy().into_owned())
@@ -1613,6 +1600,7 @@ mod tests {
 			verifier_replay_jobs: 1,
 			speed_jobs: 1,
 			speed_trials: 1,
+			unattended_secrets: None,
 		};
 		let slots = schedule::current_surrounding_slots().expect("current slots");
 
@@ -1649,6 +1637,7 @@ mod tests {
 			verifier_replay_jobs: 1,
 			speed_jobs: 1,
 			speed_trials: 1,
+			unattended_secrets: None,
 		};
 
 		assert!(workflow::run(&configuration, None).is_ok());
@@ -1827,7 +1816,8 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		workflow::run_create_once_step(&step, &paths, &slot).expect("completed step is skipped");
+		workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
+			.expect("completed step is skipped");
 		fs::remove_dir_all(root).expect("remove retry fixture");
 	}
 
@@ -1854,7 +1844,7 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		workflow::run_create_once_step(&step, &paths, &slot)
+		workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
 			.expect("truncated captured receipt is retried");
 
 		assert!(
@@ -1892,7 +1882,9 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		assert!(workflow::run_create_once_step(&step, &paths, &slot).is_err());
+		assert!(
+			workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test()).is_err()
+		);
 		assert!(!paths.speed.batch.exists());
 
 		fs::remove_dir_all(root).expect("remove failed output fixture");
@@ -1929,7 +1921,8 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		workflow::run_create_once_step(&step, &paths, &slot).expect("failed admission is retried");
+		workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
+			.expect("failed admission is retried");
 
 		let admission =
 			workflow::read_json_value(&paths.official.admission, "retried permission admission")

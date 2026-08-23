@@ -87,14 +87,15 @@ completed `aiq.run.v4` document containing all 1,224 results becomes terminal
 without new model work. A create-once reservation alone is not complete.
 Malformed or incomplete captured receipts are replaced before retry, while
 valid receipts are revalidated before reuse. The concrete configuration,
-launcher, credentials, release, and state root remain private
+credentials, release, and state root remain private
 operator assets. See
 [Operations](operations.md#continuous-observations) and
 [Deployment Handoff](deployment-handoff.md#recurring-macos-observations).
-The fixed launcher must support unattended execution, accept no operator
-arguments, and use absolute paths without a repository working directory. An
-interactive-session-only secret adapter is not a valid launchd boundary. The
-release source is reconstructed below
+`launchd` invokes the pinned `aiq run --config ...` command directly with
+absolute paths and no repository working directory. AIQ coalesces overlap
+before provider access, performs unattended exact-key delivery when the four
+consumer variables are absent, and fails closed on partial ambient delivery.
+The release source is reconstructed below
 `state_root/scratch/<release-id>--<slot-id>`, and failed step outputs are removed
 before retry so partial files cannot become checkpoints.
 
@@ -223,7 +224,7 @@ remain in the corpus commitment.
 | Change scoring, calibration, or normalized-batch semantics | [Benchmark method](benchmark-method.md) | `apps/aiq-runner/src/scoring.rs`, `apps/aiq-runner/src/calibration_verification.rs`, `benchmarks/schema/normalized-batch-v4.schema.json` | aggregate scoring `1.0.8`, fixed bank, task-resampling identity | `apps/aiq-runner` tests, `scripts/check-normalization-schemas.test.ts` | `cargo run -p aiq-runner -- matrix` |
 | Change database initialization, reset, or Supabase targeting | [Operations](operations.md#fresh-database-initialization) and [Deployment handoff](deployment-handoff.md) | `databases/init.ts`, `databases/reset.ts`, `databases/schema.sql` | `assertDatabaseTarget`, `inventorySql`, `resetDatabase` | `databases/init.test.ts`, `databases/reset.test.ts` | `node --test databases/*.test.ts` |
 | Change public navigation or radar telemetry presentation | [Architecture and runtime](architecture-and-runtime.md#public-application) | `apps/web/src/app/page.tsx`, `apps/web/src/app/radar/page.tsx`, `apps/web/src/components/site-header.tsx` | anchored workspace sections, reporting telemetry state | static contracts and browser suites | `cargo make verify` |
-| Change twice-daily Official or Normal/Fast observation operations | [Operations](operations.md#continuous-observations) and [Deployment handoff](deployment-handoff.md#recurring-macos-observations) | `apps/aiq/src/cli.rs`, `apps/aiq/src/config.rs`, `apps/aiq/src/release.rs`, `apps/aiq/src/schedule.rs`, `apps/aiq/src/supervisor.rs`, `apps/aiq/src/workflow.rs`, `apps/aiq/tests/supervisor_entrypoint.rs`, `apps/aiq/package.nix`, `config/continuous-observation.example.json`, `config/com.acgbox.aiq.continuous-observations.plist.example` | `Cli`, `Configuration`, `Release::open`, `Release::prepare_source`, `install_release`, `surrounding_slots`, `ProcessLock`, `supervisor::internal_exit_code`, `workflow::run`, `run_create_once_step`, `captured_receipt_is_complete`, `OfficialDispatch` | `apps/aiq/src/workflow.rs` receipt, dispatch, retry, and cleanup tests; `supervisor::tests::parent_pipe_close_terminates_descendants_in_separate_process_groups`; `apps/aiq/tests/supervisor_entrypoint.rs` shipped-binary and parent-`SIGKILL` tests; speed-observation tests in `apps/aiq-runner` | `cargo test --locked -p aiq --all-targets` |
+| Change twice-daily Official or Normal/Fast observation operations | [Operations](operations.md#continuous-observations) and [Deployment handoff](deployment-handoff.md#recurring-macos-observations) | `apps/aiq/src/cli.rs`, `apps/aiq/src/config.rs`, `apps/aiq/src/credentials.rs`, `apps/aiq/src/provision.rs`, `apps/aiq/src/release.rs`, `apps/aiq/src/schedule.rs`, `apps/aiq/src/supervisor.rs`, `apps/aiq/src/workflow.rs`, `apps/aiq/package.nix`, `config/continuous-observation.example.json`, `config/unattended-provider-provision.example.json`, `config/com.acgbox.aiq.continuous-observations.plist.example` | `Cli`, `Configuration`, `RuntimeSecrets`, `provision::provision`, `Release::open`, `Release::prepare_source`, `install_release`, `surrounding_slots`, `ProcessLock`, `supervisor::internal_exit_code`, `workflow::run`, `run_create_once_step`, `captured_receipt_is_complete`, `OfficialDispatch` | `apps/aiq/tests/unattended_run.rs`, `apps/aiq/tests/provision_unattended.rs`, `apps/aiq/tests/supervisor_entrypoint.rs`, workflow receipt/dispatch/retry/cleanup tests, and supervisor tests | `cargo test --locked -p aiq --all-targets` |
 
 ## Backlog
 
