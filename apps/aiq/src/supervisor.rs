@@ -22,6 +22,7 @@ use std::{
 };
 
 use libc::ESRCH;
+use libc::SIG_ERR;
 use libc::SIGHUP;
 use libc::SIGINT;
 use libc::SIGKILL;
@@ -29,6 +30,7 @@ use libc::SIGTERM;
 use libc::c_int;
 use libc::c_void;
 use libc::pid_t;
+use libc::sighandler_t;
 
 use crate::{Result, ResultContext};
 
@@ -232,20 +234,13 @@ extern "C" fn record_termination_signal(signal: c_int) {
 
 fn install_signal_handlers() -> Result<()> {
 	for signal in [SIGHUP, SIGINT, SIGTERM] {
-		// SAFETY: The action contains an async-signal-safe handler that only stores
-		// one integer in a lock-free atomic. The signal mask is initialized before use.
-		let result = unsafe {
-			let mut action: libc::sigaction = mem::zeroed();
+		// SAFETY: The handler only stores one integer in a lock-free atomic. One
+		// caught termination signal is sufficient because the supervisor drains its
+		// process session and exits immediately.
+		let previous =
+			unsafe { libc::signal(signal, record_termination_signal as *const () as sighandler_t) };
 
-			action.sa_sigaction = record_termination_signal as *const () as usize;
-			action.sa_flags = 0;
-
-			libc::sigemptyset(&raw mut action.sa_mask);
-
-			libc::sigaction(signal, &raw const action, ptr::null_mut())
-		};
-
-		if result != 0 {
+		if previous == SIG_ERR {
 			return Err(crate::Error::new(format!(
 				"cannot install process-supervisor signal handler: {}",
 				io::Error::last_os_error(),
