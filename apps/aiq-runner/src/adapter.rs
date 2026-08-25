@@ -5413,18 +5413,8 @@ where
 		.any(|needle| diagnostic.contains(needle))
 		{
 			(AdapterFailureKind::Unsupported, "Codex CLI exited unsuccessfully")
-		} else if ["rate limit"].iter().any(|needle| diagnostic.contains(needle)) {
-			(AdapterFailureKind::UsageLimit, "Codex subscription rate limit was reached")
-		} else if ["quota exceeded", "insufficient quota"]
-			.iter()
-			.any(|needle| diagnostic.contains(needle))
-		{
-			(AdapterFailureKind::UsageLimit, "Codex subscription quota was reached")
-		} else if ["usage limit", "subscription limit", "weighted tokens left"]
-			.iter()
-			.any(|needle| diagnostic.contains(needle))
-		{
-			(AdapterFailureKind::UsageLimit, "Codex subscription usage limit was reached")
+		} else if let Some(message) = subscription_limit_message(&stdout_full, &stderr_full) {
+			(AdapterFailureKind::UsageLimit, message)
 		} else if [
 			"not logged in",
 			"authentication",
@@ -5459,6 +5449,74 @@ where
 		artifacts,
 		stdout_full,
 	})
+}
+
+fn subscription_limit_message(stdout: &str, stderr: &str) -> Option<&'static str> {
+	let mut selected = classify_subscription_limit_text(stderr);
+	let mut saw_json = false;
+
+	for line in stdout.lines() {
+		let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
+
+		saw_json = true;
+
+		let message = match value.get("type").and_then(Value::as_str) {
+			Some("error") => value.get("message").and_then(Value::as_str),
+			Some("turn.failed") => {
+				value.get("error").and_then(|error| error.get("message")).and_then(Value::as_str)
+			},
+			_ => None,
+		};
+
+		selected = preferred_subscription_limit_message(
+			selected,
+			message.and_then(classify_subscription_limit_text),
+		);
+	}
+
+	if !saw_json {
+		selected = preferred_subscription_limit_message(
+			selected,
+			classify_subscription_limit_text(stdout),
+		);
+	}
+
+	selected
+}
+
+fn classify_subscription_limit_text(value: &str) -> Option<&'static str> {
+	let diagnostic = value.to_ascii_lowercase();
+
+	if diagnostic.contains("rate limit") {
+		Some("Codex subscription rate limit was reached")
+	} else if ["quota exceeded", "insufficient quota"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+	{
+		Some("Codex subscription quota was reached")
+	} else if ["usage limit", "subscription limit", "weighted tokens left"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+	{
+		Some("Codex subscription usage limit was reached")
+	} else {
+		None
+	}
+}
+
+fn preferred_subscription_limit_message(
+	left: Option<&'static str>,
+	right: Option<&'static str>,
+) -> Option<&'static str> {
+	const RATE: &str = "Codex subscription rate limit was reached";
+	const QUOTA: &str = "Codex subscription quota was reached";
+
+	match (left, right) {
+		(Some(RATE), _) | (_, Some(RATE)) => Some(RATE),
+		(Some(QUOTA), _) | (_, Some(QUOTA)) => Some(QUOTA),
+		(Some(message), _) | (_, Some(message)) => Some(message),
+		(None, None) => None,
+	}
 }
 
 fn normalize_preflight_report(report: &mut CapabilityValidationReport) {
@@ -7514,6 +7572,43 @@ mod tests {
 			assert!(stdout.is_empty() || !failure.message.contains(stdout));
 			assert!(stderr.is_empty() || !failure.message.contains(stderr));
 		}
+	}
+
+	#[test]
+	fn subscription_limit_requires_a_diagnostic_stream_or_structured_failure_event() {
+		let ordinary_message = serde_json::json!({
+			"type": "item.completed",
+			"item": {
+				"id": "message-1",
+				"type": "agent_message",
+				"text": "The rate limit policy is documented.",
+			}
+		})
+		.to_string();
+		let ordinary = adapter(vec![Ok(capture(1, ordinary_message.into_bytes(), Vec::new()))])
+			.invoke(&invocation())
+			.expect_err("an unrelated nonzero exit must remain generic");
+
+		assert_eq!(ordinary.kind, AdapterFailureKind::NonZeroExit);
+
+		let structured = [
+			serde_json::json!({
+				"type": "item.completed",
+				"item": {"id": "command-1", "type": "command_execution"},
+			})
+			.to_string(),
+			serde_json::json!({
+				"type": "turn.failed",
+				"error": {"message": "You've hit your usage limit. Try later."},
+			})
+			.to_string(),
+		]
+		.join("\n");
+		let structured = adapter(vec![Ok(capture(1, structured.into_bytes(), Vec::new()))])
+			.invoke(&invocation())
+			.expect_err("structured provider backpressure must be classified");
+
+		assert_eq!(structured.kind, AdapterFailureKind::UsageLimit);
 	}
 
 	#[test]

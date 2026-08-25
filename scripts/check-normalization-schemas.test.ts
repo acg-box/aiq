@@ -445,7 +445,7 @@ function normalizedResult(
     response_sha256: sha256(taskIndex + 100),
     evaluator_stdout_sha256: null,
     artifacts: [],
-    latency: { wall_ms: 1 },
+    latency: { wall_ms: 1, evaluator_ms: 1 },
     tool_usage: { steps: 1, total_calls: 0, by_tool: {} },
     provenance: {
       node_id: syntheticSourceNodeId,

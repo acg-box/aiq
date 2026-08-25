@@ -18,6 +18,7 @@ use ureq as _;
 use windows_sys as _;
 
 use aiq_runner::cli::Cli;
+use aiq_runner::runner::RunnerError;
 
 fn main() -> ExitCode {
 	match Cli::parse().run() {
@@ -25,7 +26,9 @@ fn main() -> ExitCode {
 		Err(error) => {
 			eprintln!("aiq-runner: {error}");
 
-			ExitCode::FAILURE
+			error
+				.downcast_ref::<RunnerError>()
+				.map_or(ExitCode::FAILURE, |error| ExitCode::from(error.exit_code()))
 		},
 	}
 }

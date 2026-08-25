@@ -126,6 +126,46 @@ await test('the 1.0.7 candidate schemas require null formal execution limits', a
   });
   deepStrictEqual(taskProperties.task_version, { const: '1.0.7' });
   deepStrictEqual(taskProperties.scorer_version, { const: '1.0.6' });
+  const taskDefinitions = objectProperty(taskSchema, '$defs', 'task definitions');
+  const externalEvaluator = objectProperty(
+    taskDefinitions,
+    'externalEvaluator',
+    'external evaluator',
+  );
+  const externalProperties = objectProperty(
+    externalEvaluator,
+    'properties',
+    'external evaluator properties',
+  );
+  strictEqual(Reflect.has(externalProperties, 'timeout_ms'), false);
+  const noFormalDeadlines = [
+    'timeout_ms',
+    'timeout_seconds',
+    'deadline_ms',
+    'deadline_seconds',
+    'max_elapsed_ms',
+    'max_duration_ms',
+    'scenario_timeout_ms',
+  ].map((field) => ({ not: { required: [field] } }));
+  deepStrictEqual(externalProperties.configuration, {
+    type: 'object',
+    additionalProperties: true,
+    required: ['schema_version', 'completion_policy'],
+    allOf: noFormalDeadlines,
+    properties: {
+      schema_version: { const: 'aiq.evaluator-config.v2' },
+      completion_policy: { const: 'natural_completion' },
+      checks: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 16,
+        items: {
+          type: 'object',
+          allOf: noFormalDeadlines,
+        },
+      },
+    },
+  });
 });
 
 await test('catalog invariants reject a numeric formal limit', async () => {

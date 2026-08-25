@@ -1779,12 +1779,15 @@ begin
     or jsonb_typeof(candidate -> 'evaluation') <> 'string'
     or candidate ->> 'evaluation' not in ('correct','partial','incorrect','not_evaluated')
     or jsonb_typeof(candidate -> 'latency') <> 'object'
-    or not aiq_private.has_exact_jsonb_keys(
-      candidate -> 'latency', array['wall_ms']::text[]
-    )
-    or not aiq_private.dto_uint_is_valid(
-      candidate #> '{latency,wall_ms}', 9007199254740991
-    )
+		or not aiq_private.has_exact_jsonb_keys(
+			candidate -> 'latency', array['evaluator_ms','wall_ms']::text[]
+		)
+		or not aiq_private.dto_uint_is_valid(
+			candidate #> '{latency,wall_ms}', 9007199254740991
+		)
+		or not aiq_private.dto_uint_is_valid(
+			candidate #> '{latency,evaluator_ms}', 9007199254740991
+		)
     or not aiq_private.dto_artifact_array_is_valid(
       candidate -> 'artifacts',
       array['stdout.jsonl','stderr.txt','final-response.txt','workspace-snapshot.json'],

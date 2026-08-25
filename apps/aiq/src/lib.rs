@@ -28,23 +28,39 @@ pub(crate) trait ResultContext<T> {
 
 /// An orchestration failure with a safe operator-facing message.
 #[derive(Debug)]
-pub struct Error(String);
+pub struct Error {
+	kind: ErrorKind,
+	message: String,
+}
 impl Error {
 	/// Creates an error from an operator-facing message.
 	#[must_use]
 	pub fn new(message: impl Into<String>) -> Self {
-		Self(message.into())
+		Self { kind: ErrorKind::General, message: message.into() }
+	}
+
+	pub(crate) fn subscription_backpressure(message: impl Into<String>) -> Self {
+		Self { kind: ErrorKind::SubscriptionBackpressure, message: message.into() }
+	}
+
+	pub(crate) fn is_subscription_backpressure(&self) -> bool {
+		self.kind == ErrorKind::SubscriptionBackpressure
 	}
 }
 
 impl Display for Error {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-		formatter.write_str(&self.0)
+		formatter.write_str(&self.message)
 	}
 }
 
 impl error::Error for Error {}
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ErrorKind {
+	General,
+	SubscriptionBackpressure,
+}
 impl<T, E> ResultContext<T> for std::result::Result<T, E>
 where
 	E: Display,

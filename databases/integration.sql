@@ -333,7 +333,7 @@ begin
         'evaluator_stdout_sha256', 'null'::jsonb,
         'artifacts', '[]'::jsonb,
         'failure', 'null'::jsonb,
-        'latency', jsonb_build_object('wall_ms', 1),
+        'latency', jsonb_build_object('wall_ms', 1, 'evaluator_ms', 1),
         'tool_usage', jsonb_build_object(
           'steps', 0, 'total_calls', 0, 'by_tool', '{}'::jsonb
         ),

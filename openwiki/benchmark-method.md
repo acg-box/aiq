@@ -187,8 +187,36 @@ A retryable Codex non-zero exit or missing final response can start another
 invocation before the cell becomes terminal. Each invocation starts from a
 fresh task workspace. The runner retains versioned attempt markers and
 cumulative time, step, tool-call, and provider-token evidence. The verifier
-recomputes these auxiliary totals. An evaluator outcome is terminal and cannot
-be retried to improve AIQ.
+recomputes these auxiliary totals.
+
+Formal evaluation is deliberately no-deadline. The sealed external evaluator
+configuration is `aiq.evaluator-config.v2` with
+`completion_policy: natural_completion`; it has neither an aggregate evaluator
+deadline nor a per-check deadline. The runner executes the formal evaluator once
+against the sealed response and workspace, records its parsed result and exact
+raw stdout digest, and records evaluator time separately as
+`latency.evaluator_ms` beside model time in `latency.wall_ms`. The evaluator
+outcome is terminal: an evaluator failure is not retried until it happens to
+match. The independent verifier executes the committed evaluator once again,
+compares the parsed result and raw-output digest, and rejects any mismatch
+without invoking the model. These fields remain auxiliary evidence; evaluator
+completion and semantic checks, not elapsed time, determine result validity.
+
+```mermaid
+sequenceDiagram
+    participant R as Runner
+    participant E as Evaluator
+    participant V as Verifier
+    R->>E: Execute once on sealed response and workspace
+    E-->>R: Parsed result and raw stdout digest
+    R-->>V: Signed result and evaluator observation
+    V->>E: Execute once in reconstructed workspace
+    E-->>V: Independent parsed result and raw stdout digest
+    V-->>R: Accept matching evidence or reject mismatch
+```
+
+This sequence shows the single runner evaluation and independent verifier replay;
+neither side performs match-driven evaluator retries.
 
 Live accounting excludes completed `error` items from the measured agent-step count;
 they remain in raw evidence. Known presentation and reasoning items are not
@@ -210,8 +238,9 @@ counters.
 Formal model invocations have no benchmark-enforced wall-time, step, or
 tool-call termination. The runner waits for normal completion unless an
 integrity or safety boundary, provider boundary, or operator cancellation ends
-the cell. Deterministic evaluator subprocesses remain bounded. These execution
-controls classify evidence; elapsed time, steps, tool calls, tokens, and cost
+the cell. Evaluator integrity and process-safety checks remain separate from
+benchmark deadlines. These execution controls classify evidence; elapsed time,
+steps, tool calls, tokens, and cost
 never enter task scores, Rasch ability, quality, strict pass, ranking, or
 interval calculations.
 

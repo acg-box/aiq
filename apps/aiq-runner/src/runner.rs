@@ -45,7 +45,10 @@ use crate::{
 	corpus_commitment::{RunClass, RunProvenanceCommitment},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
 	protocol::{self, ProtocolError, ResultProvenance, TrustTier},
-	resume::{self, InFlightCell, RunCheckpoint, RunCommitments},
+	resume::{
+		self, InFlightCell, PENDING_EVALUATION_SCHEMA_VERSION, PendingEvaluation, RunCheckpoint,
+		RunCommitments, SUBSCRIPTION_BACKPRESSURE_SCHEMA_VERSION, SubscriptionBackpressure,
+	},
 	schedule::{self, ScheduleSlot},
 	scoring::{self, AIQ_SCORING_VERSION, FrozenCalibrationBankV2},
 	task::{
@@ -54,6 +57,8 @@ use crate::{
 		NormalizedToolEvidence, TASK_SCHEMA_VERSION, TaskBudgets, TaskDefinition, Visibility,
 	},
 };
+
+type EvaluatorReadyCallback<'a> = dyn FnMut(&PendingEvaluation) -> Result<(), RunnerError> + 'a;
 
 /// Result schema version.
 pub const RESULT_SCHEMA_VERSION: &str = "aiq.result.v2";
@@ -83,6 +88,8 @@ pub const MAX_WORKSPACE_RAW_BYTES: u64 = (MAX_WORKSPACE_SNAPSHOT_BYTES / 3) as u
 pub const MAX_WORKSPACE_PATH_BYTES: usize = 256 * 1_024;
 /// Maximum live task workers accepted by the runner.
 pub const MAX_RUN_JOBS: usize = 32;
+/// Stable temporary-failure exit used by the outer observation orchestrator.
+pub const SUBSCRIPTION_BACKPRESSURE_EXIT_CODE: u8 = 75;
 
 /// Maximum combined JSONL retained across retryable Codex attempts for one cell.
 const MAX_RETRY_STDOUT_BYTES: usize = MAX_CAPTURE_BYTES;
@@ -313,13 +320,16 @@ pub struct ResultFailure {
 	pub retryable: bool,
 }
 
-/// Measured Codex adapter elapsed time. It includes model and local tool execution
-/// and excludes workspace setup, workspace sealing, and evaluator replay.
+/// Independent model and evaluator elapsed-time observations.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Latency {
-	/// Codex adapter elapsed time in wall-clock milliseconds.
+	/// Codex adapter elapsed time in wall-clock milliseconds. It includes model
+	/// and local tool execution and excludes evaluator replay.
 	pub wall_ms: u64,
+	/// Formal evaluator elapsed time in wall-clock milliseconds. This field is
+	/// auxiliary evidence and cannot change semantic or publication decisions.
+	pub evaluator_ms: u64,
 }
 
 /// Captured agent and tool usage.
@@ -898,14 +908,34 @@ pub struct CapacityEstimate {
 	pub feasibility_assessed: bool,
 }
 
-/// Runner orchestration error.
+/// Runner failure with a stable temporary-capacity disposition.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunnerError {
+	kind: RunnerErrorKind,
 	message: String,
 }
 impl RunnerError {
 	fn new(message: impl Into<String>) -> Self {
-		Self { message: message.into() }
+		Self { kind: RunnerErrorKind::General, message: message.into() }
+	}
+
+	fn subscription_backpressure() -> Self {
+		Self {
+			kind: RunnerErrorKind::SubscriptionBackpressure,
+			message: "subscription capacity unavailable; checkpoint retained for resume".to_owned(),
+		}
+	}
+
+	/// Reports the stable temporary-capacity outcome to the CLI entry point.
+	#[must_use]
+	pub fn is_subscription_backpressure(&self) -> bool {
+		self.kind == RunnerErrorKind::SubscriptionBackpressure
+	}
+
+	/// Returns the CLI exit code for this runner outcome.
+	#[must_use]
+	pub fn exit_code(&self) -> u8 {
+		if self.is_subscription_backpressure() { SUBSCRIPTION_BACKPRESSURE_EXIT_CODE } else { 1 }
 	}
 }
 
@@ -949,6 +979,8 @@ where
 		checkpoint: &mut RunCheckpoint,
 		committed: &mut BTreeMap<usize, TaskResult>,
 	) -> Result<(), RunnerError> {
+		self.complete_pending_evaluations(checkpoint, committed)?;
+
 		if !checkpoint.in_flight.is_empty() {
 			for cell in &checkpoint.in_flight {
 				let task = self
@@ -981,6 +1013,55 @@ where
 		}
 
 		self.execute_live_cells(&live_cells, checkpoint, committed)
+	}
+
+	fn complete_pending_evaluations(
+		&self,
+		checkpoint: &mut RunCheckpoint,
+		committed: &mut BTreeMap<usize, TaskResult>,
+	) -> Result<(), RunnerError> {
+		for pending in checkpoint.pending_evaluations.clone() {
+			let task_index = self
+				.tasks
+				.iter()
+				.position(|task| {
+					task.task_id == pending.task_id && task.task_version == pending.task_version
+				})
+				.ok_or_else(|| RunnerError::new("pending evaluator task is not selected"))?;
+			let model_index = self
+				.models
+				.iter()
+				.position(|model| *model == pending.model)
+				.ok_or_else(|| RunnerError::new("pending evaluator model is not selected"))?;
+			let index = model_index * self.tasks.len() + task_index;
+
+			if committed.contains_key(&index) {
+				return Err(RunnerError::new(
+					"pending evaluator cell already has a committed result",
+				));
+			}
+
+			let (mut result, sealed_workspace) = resume_pending_evaluation(
+				&pending,
+				&self.tasks[task_index],
+				self.commitments,
+				self.codex_version,
+				self.evaluator_root,
+				self.evaluator_runtime,
+			)?;
+
+			result.assign_result_id()?;
+			committed.insert(index, result);
+			checkpoint.pending_evaluations.retain(|candidate| {
+				candidate.task_id != pending.task_id
+					|| candidate.task_version != pending.task_version
+					|| candidate.model != pending.model
+			});
+			self.persist_checkpoint(checkpoint, committed)?;
+			sealed_workspace.cleanup().map_err(|error| RunnerError::new(error.to_string()))?;
+		}
+
+		Ok(())
 	}
 
 	fn prepare_pending(
@@ -1115,11 +1196,18 @@ where
 				break;
 			}
 
-			let result =
-				self.execute_live_cell_with_retries(index, model_index, task_index, cancelled);
+			let result = self.execute_live_cell_with_retries(
+				index,
+				model_index,
+				task_index,
+				cancelled,
+				event_tx,
+			);
 
 			if match result.as_ref() {
-				Ok((_, result)) => aborts_paid_run(result),
+				Ok(cell) => {
+					subscription_limit_result(&cell.result) || aborts_paid_run(&cell.result)
+				},
 				Err(_) => true,
 			} {
 				cancelled.store(true, Ordering::Release);
@@ -1136,7 +1224,8 @@ where
 		model_index: usize,
 		task_index: usize,
 		cancelled: &AtomicBool,
-	) -> Result<(usize, TaskResult), RunnerError> {
+		event_tx: &Sender<SelectedWorkerEvent>,
+	) -> Result<CompletedCell, RunnerError> {
 		let task = &self.tasks[task_index];
 		let model = self.models[model_index];
 		let mut attempt_number = 1_u32;
@@ -1144,6 +1233,25 @@ where
 		let mut prior_wall_ms = 0_u64;
 
 		loop {
+			let mut evaluator_ready = |pending: &PendingEvaluation| {
+				let (acknowledged_tx, acknowledged_rx) = mpsc::sync_channel(0);
+
+				event_tx
+					.send(SelectedWorkerEvent::EvaluationReady {
+						index,
+						pending: Box::new(pending.clone()),
+						acknowledged: acknowledged_tx,
+					})
+					.map_err(|_| RunnerError::new("cannot persist pending evaluator work"))?;
+
+				match acknowledged_rx.recv() {
+					Ok(Ok(())) => Ok(()),
+					Ok(Err(message)) => Err(RunnerError::new(message)),
+					Err(_) => {
+						Err(RunnerError::new("pending evaluator checkpoint was not acknowledged"))
+					},
+				}
+			};
 			let attempt = execute_task_attempt(
 				self.adapter,
 				self.workspace_provider,
@@ -1155,6 +1263,7 @@ where
 				self.observed_at,
 				self.evaluator_root,
 				self.evaluator_runtime,
+				Some(&mut evaluator_ready),
 			)?;
 			let retry = !cancelled.load(Ordering::Acquire)
 				&& retryable_invocation_result(&attempt.result)
@@ -1185,7 +1294,7 @@ where
 				continue;
 			}
 
-			let mut result = attempt.result;
+			let TaskExecutionAttempt { mut result, stdout_full, sealed_workspace } = attempt;
 
 			if !prior_stdout.is_empty() {
 				let disposition = if result.status == ResultStatus::Completed {
@@ -1196,7 +1305,7 @@ where
 
 				append_invocation_attempt(
 					&mut prior_stdout,
-					&attempt.stdout_full,
+					&stdout_full,
 					InvocationAttemptMarker::terminal(
 						attempt_number,
 						result.latency.wall_ms,
@@ -1224,7 +1333,7 @@ where
 
 			result.assign_result_id()?;
 
-			return Ok((index, result));
+			return Ok(CompletedCell { index, result, sealed_workspace });
 		}
 	}
 
@@ -1274,38 +1383,177 @@ where
 					},
 				}
 			},
+			SelectedWorkerEvent::EvaluationReady { index, pending, acknowledged } => self
+				.handle_evaluation_ready_event(
+					index,
+					*pending,
+					acknowledged,
+					checkpoint,
+					committed,
+				),
 			SelectedWorkerEvent::Completed(result) => {
-				let (index, result) = (*result)?;
-				let marker = InFlightCell {
-					task_id: result.task_id.clone(),
-					task_version: result.task_version.clone(),
-					model: result.model,
-				};
-				let position = checkpoint
-					.in_flight
+				self.handle_completed_event(*result, checkpoint, committed)
+			},
+		}
+	}
+
+	fn handle_evaluation_ready_event(
+		&self,
+		index: usize,
+		pending: PendingEvaluation,
+		acknowledged: SyncSender<Result<(), String>>,
+		checkpoint: &mut RunCheckpoint,
+		committed: &BTreeMap<usize, TaskResult>,
+	) -> Result<(), RunnerError> {
+		let marker = InFlightCell {
+			task_id: pending.task_id.clone(),
+			task_version: pending.task_version.clone(),
+			model: pending.model,
+		};
+		let expected_index =
+			self.models.iter().position(|model| *model == pending.model).and_then(|model_index| {
+				self.tasks
 					.iter()
-					.position(|candidate| candidate == &marker)
-					.ok_or_else(|| {
-						RunnerError::new("worker completed a cell without an in-flight marker")
-					})?;
+					.position(|task| {
+						task.task_id == pending.task_id && task.task_version == pending.task_version
+					})
+					.map(|task_index| model_index * self.tasks.len() + task_index)
+			});
+		let position = checkpoint.in_flight.iter().position(|cell| cell == &marker);
+		let duplicate = checkpoint.pending_evaluations.iter().any(|candidate| {
+			candidate.task_id == pending.task_id
+				&& candidate.task_version == pending.task_version
+				&& candidate.model == pending.model
+		});
+		let Some(position) = position else {
+			let message =
+				"worker produced pending evaluator work without an in-flight marker".to_owned();
+			let _ = acknowledged.send(Err(message.clone()));
 
-				checkpoint.in_flight.remove(position);
+			return Err(RunnerError::new(message));
+		};
 
-				if committed.insert(index, result).is_some() {
-					return Err(RunnerError::new("worker completed a duplicate selected cell"));
-				}
+		if expected_index != Some(index) || committed.contains_key(&index) || duplicate {
+			let message = "worker produced invalid or duplicate pending evaluator work".to_owned();
+			let _ = acknowledged.send(Err(message.clone()));
 
-				self.persist_checkpoint(checkpoint, committed)?;
+			return Err(RunnerError::new(message));
+		}
 
-				if aborts_paid_run(committed.get(&index).expect("just inserted result")) {
-					return Err(RunnerError::new(
-						"paid-run boundary failure aborted the remaining paid cells",
-					));
-				}
+		checkpoint.in_flight.remove(position);
+		checkpoint.pending_evaluations.push(pending);
+		checkpoint.pending_evaluations.sort_by(|left, right| {
+			(&left.task_id, &left.task_version, left.model).cmp(&(
+				&right.task_id,
+				&right.task_version,
+				right.model,
+			))
+		});
+
+		match self.persist_checkpoint(checkpoint, committed) {
+			Ok(()) => {
+				let _ = acknowledged.send(Ok(()));
 
 				Ok(())
 			},
+			Err(error) => {
+				let message = error.to_string();
+				let _ = acknowledged.send(Err(message.clone()));
+
+				Err(RunnerError::new(message))
+			},
 		}
+	}
+
+	fn handle_completed_event(
+		&self,
+		completed: Result<CompletedCell, RunnerError>,
+		checkpoint: &mut RunCheckpoint,
+		committed: &mut BTreeMap<usize, TaskResult>,
+	) -> Result<(), RunnerError> {
+		let CompletedCell { index, result, sealed_workspace } = completed?;
+		let marker = InFlightCell {
+			task_id: result.task_id.clone(),
+			task_version: result.task_version.clone(),
+			model: result.model,
+		};
+		let in_flight_position =
+			checkpoint.in_flight.iter().position(|candidate| candidate == &marker);
+		let pending_position = checkpoint.pending_evaluations.iter().position(|candidate| {
+			candidate.task_id == marker.task_id
+				&& candidate.task_version == marker.task_version
+				&& candidate.model == marker.model
+		});
+
+		match (in_flight_position, pending_position) {
+			(Some(position), None) => {
+				checkpoint.in_flight.remove(position);
+			},
+			(None, Some(position)) => {
+				checkpoint.pending_evaluations.remove(position);
+			},
+			_ => {
+				return Err(RunnerError::new(
+					"worker completed a cell without exactly one durable phase marker",
+				));
+			},
+		}
+
+		if subscription_limit_result(&result) {
+			let backpressure = checkpoint.subscription_backpressure.get_or_insert_with(|| {
+				SubscriptionBackpressure {
+					schema_version: SUBSCRIPTION_BACKPRESSURE_SCHEMA_VERSION.to_owned(),
+					deferred_results: Vec::new(),
+				}
+			});
+
+			if let Some(deferred) = backpressure.deferred_results.iter_mut().find(|deferred| {
+				deferred.task_id == marker.task_id
+					&& deferred.task_version == marker.task_version
+					&& deferred.model == marker.model
+			}) {
+				*deferred = result;
+			} else {
+				backpressure.deferred_results.push(result);
+			}
+
+			backpressure.deferred_results.sort_by(|left, right| {
+				(&left.task_id, &left.task_version, left.model).cmp(&(
+					&right.task_id,
+					&right.task_version,
+					right.model,
+				))
+			});
+			self.persist_checkpoint(checkpoint, committed)?;
+
+			return Err(RunnerError::subscription_backpressure());
+		}
+
+		if let Some(backpressure) = &mut checkpoint.subscription_backpressure {
+			backpressure.deferred_results.retain(|deferred| {
+				deferred.task_id != marker.task_id
+					|| deferred.task_version != marker.task_version
+					|| deferred.model != marker.model
+			});
+		}
+
+		if committed.insert(index, result).is_some() {
+			return Err(RunnerError::new("worker completed a duplicate selected cell"));
+		}
+
+		self.persist_checkpoint(checkpoint, committed)?;
+
+		if let Some(sealed_workspace) = sealed_workspace {
+			sealed_workspace.cleanup().map_err(|error| RunnerError::new(error.to_string()))?;
+		}
+
+		if aborts_paid_run(committed.get(&index).expect("just inserted result")) {
+			return Err(RunnerError::new(
+				"paid-run boundary failure aborted the remaining paid cells",
+			));
+		}
+
+		Ok(())
 	}
 
 	fn persist_checkpoint(
@@ -1417,6 +1665,28 @@ impl SealedWorkspace {
 		&self.path
 	}
 
+	fn retained(path: &Path) -> Result<Self, WorkspaceError> {
+		let metadata = fs::symlink_metadata(path).map_err(|error| {
+			WorkspaceError::new(format!("retained sealed workspace is unavailable: {error}"))
+		})?;
+
+		if metadata.file_type().is_symlink() || !metadata.is_dir() {
+			return Err(WorkspaceError::new(
+				"retained sealed workspace must be a regular directory",
+			));
+		}
+
+		let canonical = fs::canonicalize(path).map_err(|error| {
+			WorkspaceError::new(format!("cannot resolve retained sealed workspace: {error}"))
+		})?;
+
+		if canonical != path {
+			return Err(WorkspaceError::new("retained sealed workspace path is not canonical"));
+		}
+
+		Ok(Self { path: canonical })
+	}
+
 	fn cleanup(self) -> Result<(), WorkspaceError> {
 		remove_sealed_workspace(&self.path)
 	}
@@ -1442,7 +1712,7 @@ struct ResultEvaluationRequest<'a> {
 	task: &'a TaskDefinition,
 	model: ModelConfig,
 	run_id: &'a str,
-	output: &'a CodexOutput,
+	exit_code: Option<i32>,
 	complete_response: Option<&'a str>,
 	workspace_dir: &'a Path,
 	workspace_manifest: &'a ArtifactReference,
@@ -1504,6 +1774,13 @@ impl InvocationEvidence {
 struct TaskExecutionAttempt {
 	result: TaskResult,
 	stdout_full: String,
+	sealed_workspace: Option<SealedWorkspace>,
+}
+
+struct CompletedCell {
+	index: usize,
+	result: TaskResult,
+	sealed_workspace: Option<SealedWorkspace>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -1622,6 +1899,13 @@ pub enum SelectedRun {
 	Calibration(CalibrationRunRecord),
 }
 
+/// Runner orchestration error.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RunnerErrorKind {
+	General,
+	SubscriptionBackpressure,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum InvocationAttemptDisposition {
@@ -1659,7 +1943,12 @@ enum SelectedWorkerEvent {
 		task_index: usize,
 		acknowledged: SyncSender<Result<(), String>>,
 	},
-	Completed(Box<Result<(usize, TaskResult), RunnerError>>),
+	EvaluationReady {
+		index: usize,
+		pending: Box<PendingEvaluation>,
+		acknowledged: SyncSender<Result<(), String>>,
+	},
+	Completed(Box<Result<CompletedCell, RunnerError>>),
 }
 
 /// Validates retry-attempt markers bound inside one content-addressed stdout artifact.
@@ -1882,7 +2171,7 @@ where
 				evaluator_stdout_sha256: None,
 				artifacts: Vec::new(),
 				failure: None,
-				latency: Latency { wall_ms: 1 },
+				latency: Latency { wall_ms: 1, evaluator_ms: 0 },
 				tool_usage: ToolUsage::default(),
 				evaluator_checks: evaluation_result.checks,
 				workspace_manifest: None,
@@ -2406,6 +2695,10 @@ where
 		));
 	}
 
+	checkpoint.subscription_backpressure = None;
+
+	execution.persist_checkpoint(&mut checkpoint, &committed)?;
+
 	checkpoint.results = committed.into_values().collect();
 
 	accumulate_terminal_attempt_lineage(
@@ -2511,13 +2804,22 @@ fn validate_selected_run_commitments(
 
 fn aborts_paid_run(result: &TaskResult) -> bool {
 	result.failure.as_ref().is_some_and(|failure| {
-		matches!(
-			failure.kind,
-			FailureKind::Authentication
-				| FailureKind::SubscriptionLimit
-				| FailureKind::WorkspaceIntegrity
-		)
+		matches!(failure.kind, FailureKind::Authentication | FailureKind::WorkspaceIntegrity)
 	})
+}
+
+fn subscription_limit_result(result: &TaskResult) -> bool {
+	result.status == ResultStatus::Failed
+		&& result.evaluation == EvaluationOutcome::NotEvaluated
+		&& result.failure.as_ref().is_some_and(|failure| {
+			failure.kind == FailureKind::SubscriptionLimit
+				&& failure.retryable
+				&& result.task_score.is_none()
+				&& result.response.is_none()
+				&& result.response_sha256.is_none()
+				&& result.evaluator_result_sha256.is_none()
+				&& result.evaluator_stdout_sha256.is_none()
+		})
 }
 
 fn reject_inline_evaluator_checks<'de, D>(_deserializer: D) -> Result<Vec<EvaluatorCheck>, D::Error>
@@ -3445,6 +3747,7 @@ where
 		observed_at,
 		evaluator_root,
 		evaluator_runtime,
+		None,
 	)
 	.map(|attempt| attempt.result)
 }
@@ -3461,6 +3764,7 @@ fn execute_task_attempt<E, S, P>(
 	observed_at: &str,
 	evaluator_root: Option<&Path>,
 	evaluator_runtime: Option<&EvaluatorRuntime>,
+	evaluator_ready: Option<&mut EvaluatorReadyCallback<'_>>,
 ) -> Result<TaskExecutionAttempt, RunnerError>
 where
 	E: Executor,
@@ -3479,7 +3783,11 @@ where
 				observed_at,
 				&error.to_string(),
 			)
-			.map(|result| TaskExecutionAttempt { result, stdout_full: String::new() });
+			.map(|result| TaskExecutionAttempt {
+				result,
+				stdout_full: String::new(),
+				sealed_workspace: None,
+			});
 		},
 	};
 	let started = Instant::now();
@@ -3504,6 +3812,7 @@ where
 			.map(|result| TaskExecutionAttempt {
 				result,
 				stdout_full: invocation_evidence.stdout_full.clone(),
+				sealed_workspace: None,
 			});
 		},
 	};
@@ -3527,10 +3836,12 @@ where
 				.map(|result| TaskExecutionAttempt {
 					result,
 					stdout_full: invocation_evidence.stdout_full.clone(),
+					sealed_workspace: None,
 				});
 			},
 		};
 	let sealed_manifest_sha256 = workspace_manifest.content_hash.clone();
+	let mut retain_sealed_workspace = false;
 	let result = match invocation {
 		Ok(output) => successful_result(
 			adapter,
@@ -3547,6 +3858,8 @@ where
 			&workspace_snapshot,
 			evaluator_root,
 			evaluator_runtime,
+			evaluator_ready,
+			&mut retain_sealed_workspace,
 		),
 		Err(failure) => failed_result(
 			manifest,
@@ -3561,8 +3874,8 @@ where
 			workspace_snapshot,
 		),
 	};
-	let stdout_full = invocation_evidence.stdout_full.clone();
-	let result = finish_sealed_task_result(
+
+	finish_task_execution_attempt(
 		manifest,
 		task,
 		model,
@@ -3573,9 +3886,64 @@ where
 		sealed_workspace,
 		&sealed_manifest_sha256,
 		&invocation_evidence,
-	)?;
+		retain_sealed_workspace,
+	)
+}
 
-	Ok(TaskExecutionAttempt { result, stdout_full })
+#[allow(clippy::too_many_arguments)]
+fn finish_task_execution_attempt(
+	manifest: &CapabilityManifest,
+	task: &TaskDefinition,
+	model: ModelConfig,
+	run_id: &str,
+	codex_version: &str,
+	observed_at: &str,
+	result: Result<TaskResult, RunnerError>,
+	sealed_workspace: SealedWorkspace,
+	sealed_manifest_sha256: &str,
+	invocation_evidence: &InvocationEvidence,
+	retain_sealed_workspace: bool,
+) -> Result<TaskExecutionAttempt, RunnerError> {
+	let stdout_full = invocation_evidence.stdout_full.clone();
+	let (result, sealed_workspace) = if retain_sealed_workspace {
+		let result = match verify_sealed_workspace_unchanged(
+			sealed_workspace.path(),
+			sealed_manifest_sha256,
+		) {
+			Ok(()) => result,
+			Err(_) => workspace_integrity_result(
+				manifest,
+				task,
+				model,
+				run_id,
+				codex_version,
+				observed_at,
+				invocation_evidence,
+				result.ok(),
+				WorkspaceIntegrityFailure::PostEvaluationIntegrity,
+			),
+		}?;
+
+		(result, Some(sealed_workspace))
+	} else {
+		(
+			finish_sealed_task_result(
+				manifest,
+				task,
+				model,
+				run_id,
+				codex_version,
+				observed_at,
+				result,
+				sealed_workspace,
+				sealed_manifest_sha256,
+				invocation_evidence,
+			)?,
+			None,
+		)
+	};
+
+	Ok(TaskExecutionAttempt { result, stdout_full, sealed_workspace })
 }
 
 fn task_invocation_request(
@@ -3610,6 +3978,8 @@ fn successful_result<E, S>(
 	workspace_snapshot: &ArtifactReference,
 	evaluator_root: Option<&Path>,
 	evaluator_runtime: Option<&EvaluatorRuntime>,
+	mut evaluator_ready: Option<&mut EvaluatorReadyCallback<'_>>,
+	retain_sealed_workspace: &mut bool,
 ) -> Result<TaskResult, RunnerError>
 where
 	E: Executor,
@@ -3630,11 +4000,44 @@ where
 		&mut artifacts,
 		budget_failure.as_deref(),
 	)?;
+	let task_hash = task.content_hash()?;
+	let result_provenance = provenance(manifest, codex_version, observed_at, false);
+	let evaluator_is_ready =
+		budget_failure.is_none() && complete_response.is_some() && task.evaluator.is_some();
+
+	if evaluator_is_ready && let Some(callback) = evaluator_ready.as_mut() {
+		let pending = PendingEvaluation {
+			schema_version: PENDING_EVALUATION_SCHEMA_VERSION.to_owned(),
+			run_id: run_id.to_owned(),
+			task_id: task.task_id.clone(),
+			task_version: task.task_version.clone(),
+			task_hash: task_hash.clone(),
+			model,
+			final_response: complete_response.clone().expect("checked complete response"),
+			response: response.clone().expect("complete response has a preview"),
+			response_sha256: response_sha256.clone().expect("complete response has a digest"),
+			artifacts: artifacts.clone(),
+			exit_code: output.exit_code,
+			latency: Latency { wall_ms, evaluator_ms: 0 },
+			tool_usage: tool_usage.clone(),
+			workspace_manifest: workspace_manifest.clone(),
+			sealed_workspace: workspace_dir.to_owned(),
+			provenance: result_provenance.clone(),
+		};
+
+		callback(&pending)?;
+
+		*retain_sealed_workspace = true;
+	}
+
+	let evaluator_started =
+		(budget_failure.is_none() && complete_response.is_some() && task.evaluator.is_some())
+			.then(Instant::now);
 	let evaluated = evaluate_result(ResultEvaluationRequest {
 		task,
 		model,
 		run_id,
-		output,
+		exit_code: output.exit_code,
 		complete_response: complete_response.as_deref(),
 		workspace_dir,
 		workspace_manifest,
@@ -3643,13 +4046,14 @@ where
 		tool_usage: &tool_usage,
 		budget_failure: budget_failure.as_deref(),
 	})?;
+	let evaluator_ms = evaluator_started.map_or(0, elapsed_ms);
 	let mut result = TaskResult {
 		schema_version: RESULT_SCHEMA_VERSION.to_owned(),
 		result_id: String::new(),
 		run_id: run_id.to_owned(),
 		task_id: task.task_id.clone(),
 		task_version: task.task_version.clone(),
-		task_hash: task.content_hash()?,
+		task_hash,
 		model,
 		status: evaluated.status,
 		evaluation: evaluated.outcome,
@@ -3660,16 +4064,125 @@ where
 		evaluator_stdout_sha256: evaluated.raw_stdout_sha256,
 		artifacts,
 		failure: evaluated.failure,
-		latency: Latency { wall_ms },
+		latency: Latency { wall_ms, evaluator_ms },
 		tool_usage,
 		evaluator_checks: evaluated.checks,
 		workspace_manifest: Some(workspace_manifest.clone()),
-		provenance: provenance(manifest, codex_version, observed_at, false),
+		provenance: result_provenance,
 	};
 
 	result.bind_evaluator_result_digest()?;
 
 	Ok(result)
+}
+
+fn resume_pending_evaluation(
+	pending: &PendingEvaluation,
+	task: &TaskDefinition,
+	commitments: &RunCommitments,
+	codex_version: &str,
+	evaluator_root: Option<&Path>,
+	evaluator_runtime: Option<&EvaluatorRuntime>,
+) -> Result<(TaskResult, SealedWorkspace), RunnerError> {
+	let expected_task_hash = task.content_hash()?;
+	let response_sha256 =
+		format!("sha256:{}", hex::encode(Sha256::digest(pending.final_response.as_bytes())));
+	let response_preview_end = pending
+		.final_response
+		.floor_char_boundary(MAX_RESULT_PREVIEW_BYTES.min(pending.final_response.len()));
+	let response_preview = &pending.final_response[..response_preview_end];
+	let execution_root = Path::new(&commitments.execution_root);
+
+	if pending.schema_version != PENDING_EVALUATION_SCHEMA_VERSION
+		|| pending.run_id != commitments.run_id
+		|| pending.task_id != task.task_id
+		|| pending.task_version != task.task_version
+		|| pending.task_hash != expected_task_hash
+		|| pending.response_sha256 != response_sha256
+		|| pending.response != response_preview
+		|| pending.final_response.len() > MAX_CAPTURE_BYTES
+		|| pending.latency.evaluator_ms != 0
+		|| !pending.sealed_workspace.is_absolute()
+		|| !pending.sealed_workspace.starts_with(execution_root)
+		|| pending.provenance.synthetic
+		|| pending.provenance.runner_version != env!("CARGO_PKG_VERSION")
+		|| pending.provenance.codex_version != codex_version
+		|| pending.provenance.observed_at != commitments.observed_at
+	{
+		return Err(RunnerError::new(
+			"pending evaluator evidence does not match the selected model result",
+		));
+	}
+
+	let sealed_workspace = SealedWorkspace::retained(&pending.sealed_workspace)
+		.map_err(|error| RunnerError::new(error.to_string()))?;
+	let observed_manifest = build_workspace_manifest(sealed_workspace.path())?;
+	let observed_manifest_sha256 = protocol::canonical_hash(&observed_manifest)?;
+
+	if observed_manifest_sha256 != pending.workspace_manifest.content_hash {
+		return Err(RunnerError::new(
+			"retained sealed workspace does not match its pending evaluator manifest",
+		));
+	}
+
+	let evaluator = task
+		.evaluator
+		.as_ref()
+		.ok_or_else(|| RunnerError::new("pending evaluator task no longer has an evaluator"))?;
+	let tool_evidence = NormalizedToolEvidence {
+		steps: pending.tool_usage.steps,
+		total_calls: pending.tool_usage.total_calls,
+		by_tool: pending.tool_usage.by_tool.clone(),
+	};
+	let context = EvaluatorContext {
+		task_id: &pending.task_id,
+		task_version: &pending.task_version,
+		run_id: &pending.run_id,
+		model: pending.model,
+		final_response: &pending.final_response,
+		candidate_workspace: sealed_workspace.path(),
+		workspace_manifest_sha256: &pending.workspace_manifest.content_hash,
+		tool_evidence: &tool_evidence,
+	};
+	let started = Instant::now();
+	let (evaluated, raw_stdout_sha256) = evaluate_bound_evaluator(
+		evaluator,
+		&pending.final_response,
+		&context,
+		evaluator_root,
+		evaluator_runtime,
+	)?;
+	let evaluator_ms = elapsed_ms(started);
+	let (status, outcome, score, checks, failure) = evaluation_fields(evaluated, pending.exit_code);
+	let mut result = TaskResult {
+		schema_version: RESULT_SCHEMA_VERSION.to_owned(),
+		result_id: String::new(),
+		run_id: pending.run_id.clone(),
+		task_id: pending.task_id.clone(),
+		task_version: pending.task_version.clone(),
+		task_hash: pending.task_hash.clone(),
+		model: pending.model,
+		status,
+		evaluation: outcome,
+		task_score: score,
+		response: Some(pending.response.clone()),
+		response_sha256: Some(pending.response_sha256.clone()),
+		evaluator_result_sha256: None,
+		evaluator_stdout_sha256: raw_stdout_sha256,
+		artifacts: pending.artifacts.clone(),
+		failure,
+		latency: Latency { wall_ms: pending.latency.wall_ms, evaluator_ms },
+		tool_usage: pending.tool_usage.clone(),
+		evaluator_checks: checks,
+		workspace_manifest: Some(pending.workspace_manifest.clone()),
+		provenance: pending.provenance.clone(),
+	};
+
+	result.bind_evaluator_result_digest()?;
+
+	verify_sealed_workspace_unchanged(sealed_workspace.path(), &observed_manifest_sha256)?;
+
+	Ok((result, sealed_workspace))
 }
 
 fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluation, RunnerError> {
@@ -3685,7 +4198,7 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 			failure: Some(ResultFailure {
 				kind: FailureKind::BudgetExceeded,
 				message: message.to_owned(),
-				exit_code: request.output.exit_code,
+				exit_code: request.exit_code,
 				retryable: false,
 			}),
 		});
@@ -3702,7 +4215,7 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 			failure: Some(ResultFailure {
 				kind: FailureKind::MissingResponse,
 				message: "Codex CLI produced no final response".to_owned(),
-				exit_code: request.output.exit_code,
+				exit_code: request.exit_code,
 				retryable: true,
 			}),
 		});
@@ -3717,7 +4230,7 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 			failure: Some(ResultFailure {
 				kind: FailureKind::MissingEvaluator,
 				message: "task has no evaluator; success cannot be inferred".to_owned(),
-				exit_code: request.output.exit_code,
+				exit_code: request.exit_code,
 				retryable: false,
 			}),
 		});
@@ -3744,8 +4257,7 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 		request.evaluator_root,
 		request.evaluator_runtime,
 	)?;
-	let (status, outcome, score, checks, failure) =
-		evaluation_fields(result, request.output.exit_code);
+	let (status, outcome, score, checks, failure) = evaluation_fields(result, request.exit_code);
 
 	Ok(ResultEvaluation { status, outcome, score, checks, raw_stdout_sha256, failure })
 }
@@ -3876,7 +4388,7 @@ fn evaluation_fields(
 				kind: FailureKind::EvaluatorFailure,
 				message: format!("controlled evaluator {:?} failure: {error}", error.kind()),
 				exit_code,
-				retryable: true,
+				retryable: false,
 			}),
 		),
 	}
@@ -3941,7 +4453,7 @@ fn workspace_integrity_result(
 			exit_code: invocation.exit_code,
 			retryable: true,
 		}),
-		latency: Latency { wall_ms: invocation.wall_ms },
+		latency: Latency { wall_ms: invocation.wall_ms, evaluator_ms: 0 },
 		tool_usage: invocation.tool_usage.clone(),
 		evaluator_checks: Vec::new(),
 		workspace_manifest: None,
@@ -4012,7 +4524,7 @@ fn failed_result(
 					| AdapterFailureKind::WorkspaceIntegrity
 			),
 		}),
-		latency: Latency { wall_ms },
+		latency: Latency { wall_ms, evaluator_ms: 0 },
 		tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts),
 		evaluator_checks: Vec::new(),
 		workspace_manifest: Some(workspace_manifest),
@@ -4072,7 +4584,7 @@ fn workspace_unavailable_result(
 			exit_code: None,
 			retryable: false,
 		}),
-		latency: Latency { wall_ms: 0 },
+		latency: Latency { wall_ms: 0, evaluator_ms: 0 },
 		tool_usage: ToolUsage::default(),
 		evaluator_checks: Vec::new(),
 		workspace_manifest: None,
@@ -4114,7 +4626,7 @@ fn unavailable_result(
 			exit_code: None,
 			retryable: status != ResultStatus::Unsupported,
 		}),
-		latency: Latency { wall_ms: 0 },
+		latency: Latency { wall_ms: 0, evaluator_ms: 0 },
 		tool_usage: ToolUsage::default(),
 		evaluator_checks: Vec::new(),
 		workspace_manifest: None,
@@ -4183,7 +4695,7 @@ mod tests {
 		corpus_commitment::{self, RunClass},
 		model::{CapabilityManifest, MODEL_MATRIX},
 		protocol,
-		resume::{self, RunCheckpoint, RunCommitments},
+		resume::{self, InFlightCell, PendingEvaluation, RunCheckpoint, RunCommitments},
 		run_validation,
 		runner::{
 			self, EvaluationOutcome, FailureKind, LocalDirectoryWorkspaceProvider,
@@ -4211,6 +4723,10 @@ mod tests {
 
 	struct NeverExecutor;
 	struct UsageLimitExecutor(Arc<AtomicUsize>);
+	struct ConcurrentUsageLimitExecutor {
+		calls: Arc<AtomicUsize>,
+		barrier: Arc<std::sync::Barrier>,
+	}
 
 	struct MemorySink;
 	struct FailingSink;
@@ -4260,7 +4776,36 @@ mod tests {
 
 	impl Executor for UsageLimitExecutor {
 		fn execute(&self, _request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
-			self.0.fetch_add(1, Ordering::SeqCst);
+			let attempt = self.0.fetch_add(1, Ordering::SeqCst);
+
+			if attempt > 0 {
+				return Ok(ExecutionCapture {
+					exit_code: Some(0),
+					stdout: br#"{"type":"item.completed","item":{"id":"message-recovered","type":"agent_message","text":"OK"}}"#.to_vec(),
+					stderr: Vec::new(),
+					timed_out: false,
+					budget_exceeded: None,
+					stdout_truncated: false,
+					stderr_truncated: false,
+				});
+			}
+
+			Ok(ExecutionCapture {
+				exit_code: Some(1),
+				stdout: Vec::new(),
+				stderr: b"You have 0 weighted tokens left".to_vec(),
+				timed_out: false,
+				budget_exceeded: None,
+				stdout_truncated: false,
+				stderr_truncated: false,
+			})
+		}
+	}
+
+	impl Executor for ConcurrentUsageLimitExecutor {
+		fn execute(&self, _request: &CommandRequest) -> Result<ExecutionCapture, ExecutorError> {
+			self.calls.fetch_add(1, Ordering::SeqCst);
+			self.barrier.wait();
 
 			Ok(ExecutionCapture {
 				exit_code: Some(1),
@@ -4604,7 +5149,11 @@ mod tests {
 			"sha256:{}",
 			hex::encode(Sha256::digest(fs::read(&executable).expect("evaluator bytes")))
 		);
-		let configuration = BTreeMap::new();
+		let configuration = serde_json::from_value(serde_json::json!({
+			"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion"
+		}))
+		.expect("formal evaluator configuration");
 
 		ExternalEvaluatorBinding {
 			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
@@ -4619,7 +5168,6 @@ mod tests {
 			configuration_digest: protocol::canonical_hash(&configuration)
 				.expect("configuration digest"),
 			arguments: Vec::new(),
-			timeout_ms: 1_000,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
 			configuration,
@@ -5229,7 +5777,7 @@ mod tests {
 	}
 
 	#[test]
-	fn subscription_limit_is_unscored_and_aborts_new_paid_cells_across_resume() {
+	fn subscription_limit_retains_checkpoint_and_resumes_unfinished_cells() {
 		let root = env::temp_dir().join(format!("aiq-runner-usage-limit-{}", process::id()));
 		let checkpoint_path = root.join("checkpoint.json");
 		let workspace =
@@ -5260,17 +5808,20 @@ mod tests {
 		)
 		.expect_err("usage limit must abort the selected run");
 
-		assert!(first.to_string().contains("paid-run boundary failure"));
+		assert!(first.is_subscription_backpressure());
+		assert_eq!(first.exit_code(), runner::SUBSCRIPTION_BACKPRESSURE_EXIT_CODE);
 
 		let checkpoint =
 			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
 
-		assert_eq!(checkpoint.results.len(), 1);
+		assert!(checkpoint.results.is_empty());
 		assert!(checkpoint.in_flight.is_empty());
-		assert_eq!(checkpoint.results[0].task_score, None);
 		assert_eq!(
-			checkpoint.results[0].failure.as_ref().map(|failure| failure.kind),
-			Some(FailureKind::SubscriptionLimit)
+			checkpoint
+				.subscription_backpressure
+				.as_ref()
+				.map(|backpressure| backpressure.deferred_results.len()),
+			Some(1)
 		);
 		assert_eq!(calls.load(Ordering::SeqCst), 1);
 
@@ -5287,10 +5838,214 @@ mod tests {
 				jobs: 1,
 			},
 		)
-		.expect_err("provider account checkpoint must remain aborted");
+		.expect("recovered subscription capacity must resume the unfinished cells");
+		let SelectedRun::Calibration(resumed) = resumed else { panic!("calibration fixture") };
 
-		assert!(resumed.to_string().contains("paid-run boundary failure"));
-		assert_eq!(calls.load(Ordering::SeqCst), 1);
+		assert_eq!(resumed.results.len(), 3);
+		assert!(resumed.results.iter().all(|result| result.status == ResultStatus::Completed));
+		assert_eq!(calls.load(Ordering::SeqCst), 4);
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[test]
+	fn concurrent_subscription_limits_leave_every_rejected_cell_pending() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-concurrent-usage-limit-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let calls = Arc::new(AtomicUsize::new(0));
+		let adapter = CodexAdapter::new(
+			ConcurrentUsageLimitExecutor {
+				calls: Arc::clone(&calls),
+				barrier: Arc::new(std::sync::Barrier::new(3)),
+			},
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated("/controlled/codex-home"),
+		);
+		let (tasks, models, manifest, validation, _slot, mut commitments) = selected_fixture(3, 1);
+
+		set_capacity_jobs(&mut commitments, &tasks, &models, &validation, 3);
+
+		fs::create_dir_all(&root).expect("test root");
+
+		let error = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation.clone(),
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 3,
+			},
+		)
+		.expect_err("concurrent usage limits must defer the selected run");
+		let checkpoint =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+
+		assert!(error.is_subscription_backpressure());
+		assert_eq!(calls.load(Ordering::SeqCst), 3);
+		assert!(checkpoint.results.is_empty());
+		assert!(checkpoint.in_flight.is_empty());
+		assert_eq!(
+			checkpoint
+				.subscription_backpressure
+				.as_ref()
+				.map(|backpressure| backpressure.deferred_results.len()),
+			Some(3)
+		);
+
+		let recovered_calls = Arc::new(AtomicUsize::new(0));
+		let recovered_adapter = CodexAdapter::new(
+			IncorrectExecutor(Arc::clone(&recovered_calls)),
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated("/controlled/codex-home"),
+		);
+		let resumed = runner::execute_selected_run(
+			&recovered_adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 3,
+			},
+		)
+		.expect("recovered capacity must run every deferred cell");
+		let SelectedRun::Calibration(resumed) = resumed else { panic!("calibration fixture") };
+		let checkpoint =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+
+		assert_eq!(recovered_calls.load(Ordering::SeqCst), 3);
+		assert_eq!(resumed.results.len(), 3);
+		assert!(checkpoint.subscription_backpressure.is_none());
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[test]
+	fn legacy_subscription_limit_checkpoint_migrates_without_replacing_completed_work() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-legacy-usage-limit-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let calls = Arc::new(AtomicUsize::new(0));
+		let recovering_adapter = CodexAdapter::new(
+			UsageLimitExecutor(Arc::clone(&calls)),
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated("/controlled/codex-home"),
+		);
+		let successful_calls = Arc::new(AtomicUsize::new(0));
+		let completed_adapter = CodexAdapter::new(
+			IncorrectExecutor(Arc::clone(&successful_calls)),
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated("/controlled/codex-home"),
+		);
+		let (tasks, _models, manifest, validation, _slot, commitments) = selected_fixture(3, 1);
+		let mut completed = runner::execute_task(
+			&completed_adapter,
+			&workspace,
+			&manifest,
+			&tasks[0],
+			commitments.models[0],
+			&commitments.run_id,
+			"codex fixture",
+			&commitments.observed_at,
+			None,
+			None,
+		)
+		.expect("legacy completed result");
+		let mut limited = runner::execute_task(
+			&recovering_adapter,
+			&workspace,
+			&manifest,
+			&tasks[1],
+			commitments.models[0],
+			&commitments.run_id,
+			"codex fixture",
+			&commitments.observed_at,
+			None,
+			None,
+		)
+		.expect("legacy subscription-limit result");
+
+		limited.tool_usage.steps = 4;
+		limited.tool_usage.total_calls = 2;
+
+		limited.tool_usage.by_tool.insert("command_execution".to_owned(), 2);
+		completed.assign_result_id().expect("completed result identity");
+		limited.assign_result_id().expect("limited result identity");
+
+		let completed_result_id = completed.result_id.clone();
+		let limited_result_id = limited.result_id.clone();
+		let mut checkpoint = RunCheckpoint::new(commitments.clone(), 1);
+
+		assert_eq!(completed.status, ResultStatus::Completed);
+		assert!(runner::subscription_limit_result(&limited));
+
+		checkpoint.schema_version = "aiq.run-checkpoint.v8".to_owned();
+		checkpoint.results = vec![completed, limited];
+		checkpoint.evaluator_results =
+			checkpoint.results.iter().map(TaskResult::evaluator_result).collect();
+		checkpoint.terminal_attempt_lineage = runner::terminal_attempt_lineage(&checkpoint.results);
+
+		checkpoint.persist(&checkpoint_path).expect("legacy checkpoint persist");
+
+		let migrated_before_resume =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+		let deferred = migrated_before_resume
+			.subscription_backpressure
+			.as_ref()
+			.and_then(|backpressure| backpressure.deferred_results.first())
+			.expect("migrated deferred result");
+
+		assert_eq!(deferred.result_id, limited_result_id);
+		assert_eq!(deferred.tool_usage.steps, 4);
+		assert_eq!(deferred.tool_usage.total_calls, 2);
+
+		let resumed = runner::execute_selected_run(
+			&recovering_adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect("legacy subscription checkpoint must resume");
+		let SelectedRun::Calibration(resumed) = resumed else { panic!("calibration fixture") };
+		let migrated =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+
+		assert_eq!(successful_calls.load(Ordering::SeqCst), 1);
+		assert_eq!(calls.load(Ordering::SeqCst), 3);
+		assert_eq!(resumed.results.len(), 3);
+		assert!(resumed.results.iter().any(|result| result.result_id == completed_result_id));
+		assert!(resumed.results.iter().all(|result| result.result_id != limited_result_id));
+		assert_eq!(migrated.schema_version, resume::CHECKPOINT_SCHEMA_VERSION);
+		assert!(migrated.subscription_backpressure.is_none());
 
 		fs::remove_dir_all(root).expect("cleanup");
 	}
@@ -5633,6 +6388,106 @@ mod tests {
 		assert!(resume_error.to_string().contains("indeterminate paid cell"));
 		assert_eq!(stats.calls.lock().expect("calls").len(), 2);
 		assert_eq!(workspace.quarantines.load(Ordering::SeqCst), 1);
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[test]
+	fn interrupted_evaluator_resumes_from_sealed_evidence_without_model_reexecution() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-evaluator-resume-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace_root = root.join("workspaces");
+
+		fs::create_dir_all(&workspace_root).expect("workspace root");
+
+		let workspace =
+			TestWorkspace { root: workspace_root.clone(), quarantines: AtomicUsize::new(0) };
+		let calls = Arc::new(AtomicUsize::new(0));
+		let adapter = CodexAdapter::new(
+			IncorrectExecutor(Arc::clone(&calls)),
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated("/controlled/codex-home"),
+		);
+		let (tasks, _models, manifest, validation, _slot, mut commitments) = selected_fixture(1, 1);
+
+		commitments.execution_root = fs::canonicalize(&workspace_root)
+			.expect("canonical workspace root")
+			.display()
+			.to_string();
+
+		let marker = InFlightCell {
+			task_id: tasks[0].task_id.clone(),
+			task_version: tasks[0].task_version.clone(),
+			model: commitments.models[0],
+		};
+		let mut checkpoint = RunCheckpoint::new(commitments.clone(), 1);
+
+		checkpoint.in_flight.push(marker);
+		checkpoint.persist(&checkpoint_path).expect("initial in-flight checkpoint");
+
+		let interrupted = panic::catch_unwind(AssertUnwindSafe(|| {
+			let mut evaluator_ready = |pending: &PendingEvaluation| {
+				checkpoint.in_flight.clear();
+				checkpoint.pending_evaluations.push(pending.clone());
+				checkpoint.persist(&checkpoint_path).expect("pending evaluator checkpoint");
+
+				panic!("simulated external termination after evaluator checkpoint");
+			};
+			let _ = runner::execute_task_attempt(
+				&adapter,
+				&workspace,
+				&manifest,
+				&tasks[0],
+				commitments.models[0],
+				&commitments.run_id,
+				"codex fixture",
+				&commitments.observed_at,
+				None,
+				None,
+				Some(&mut evaluator_ready),
+			);
+		}));
+
+		assert!(interrupted.is_err());
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+		let interrupted_checkpoint =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+		let retained = interrupted_checkpoint.pending_evaluations[0].sealed_workspace.clone();
+
+		assert!(interrupted_checkpoint.in_flight.is_empty());
+		assert_eq!(interrupted_checkpoint.pending_evaluations.len(), 1);
+		assert!(retained.is_dir());
+
+		let resumed = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect("pending evaluator work must resume without a model call");
+		let SelectedRun::Calibration(run) = resumed else { panic!("calibration fixture") };
+		let completed =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+		assert_eq!(run.results.len(), 1);
+		assert_eq!(run.results[0].status, ResultStatus::Completed);
+		assert_eq!(run.results[0].response.as_deref(), Some("WRONG"));
+		assert!(completed.pending_evaluations.is_empty());
+		assert!(!retained.exists());
 
 		fs::remove_dir_all(root).expect("cleanup");
 	}
@@ -6664,6 +7519,8 @@ mod tests {
 			},
 			None,
 			None,
+			None,
+			&mut false,
 		)
 		.expect("result must build");
 
@@ -7273,6 +8130,8 @@ mod tests {
 			},
 			None,
 			None,
+			None,
+			&mut false,
 		)
 		.expect("result must build");
 
