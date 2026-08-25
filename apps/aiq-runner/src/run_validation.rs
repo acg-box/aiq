@@ -1059,6 +1059,7 @@ fn validate_result_budgets(
 
 	if result.tool_usage.by_tool.len() > MAX_TOOL_USAGE_KINDS
 		|| result.latency.wall_ms > MAX_JCS_SAFE_INTEGER
+		|| result.latency.evaluator_ms > MAX_JCS_SAFE_INTEGER
 		|| provider_counters.into_iter().flatten().any(|value| value > MAX_JCS_SAFE_INTEGER)
 		|| matches!((provider_tokens.input, provider_tokens.cached_input), (Some(input), Some(cached)) if cached > input)
 		|| matches!(
@@ -1489,10 +1490,18 @@ mod tests {
 		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
 
 		tasks[task_index].budgets.wall_seconds = None;
+		result.latency.evaluator_ms = super::MAX_JCS_SAFE_INTEGER;
 
 		super::validate_result_budgets(result, Some(&tasks))
-			.expect("elapsed time is descriptive when the task has no wall deadline");
+			.expect("model and evaluator elapsed time are descriptive without a model deadline");
 
+		result.latency.wall_ms = 1_000;
+		tasks[task_index].budgets.wall_seconds = Some(1);
+
+		super::validate_result_budgets(result, Some(&tasks))
+			.expect("evaluator elapsed time cannot enter the model wall-time gate");
+
+		tasks[task_index].budgets.wall_seconds = None;
 		tasks[task_index].budgets.max_steps = None;
 		tasks[task_index].budgets.max_tool_calls = None;
 		result.tool_usage.steps = 10_000;
@@ -1589,7 +1598,7 @@ mod tests {
 					evaluator_stdout_sha256: None,
 					artifacts: Vec::new(),
 					failure: None,
-					latency: Latency { wall_ms: 1 },
+					latency: Latency { wall_ms: 1, evaluator_ms: 0 },
 					tool_usage: ToolUsage::default(),
 					evaluator_checks: vec![EvaluatorCheck {
 						check_id: "exact_match".to_owned(),

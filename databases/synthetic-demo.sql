@@ -505,7 +505,10 @@ signed_results as (
         'exit_code', null,
         'retryable', (row.result).failure_retryable
       ) else 'null'::jsonb end,
-      'latency', jsonb_build_object('wall_ms', (row.result).latency_ms),
+      'latency', jsonb_build_object(
+        'wall_ms', (row.result).latency_ms,
+        'evaluator_ms', case when (row.result).outcome = 'timeout' then 0 else 1 end
+      ),
       'tool_usage', (row.result).tool_usage,
       'workspace_manifest', null,
       'provenance', jsonb_build_object(

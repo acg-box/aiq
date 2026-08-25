@@ -20,9 +20,10 @@ establish the fixed item bank and admission v3, and
 a separate fresh 17-by-72 Official package passes native verifier replay and
 all release gates.
 
-Formal calibration and Official tasks have no benchmark-enforced wall-time,
-step, or tool-call limit. The runner still measures elapsed time, agent steps,
-tool calls by type, tokens, and estimated cost. These values are auxiliary
+Formal calibration and Official model and evaluator work has no
+benchmark-enforced wall-time, step, tool-call, aggregate-evaluator, or
+per-check deadline. The runner separately measures model and evaluator elapsed
+time, agent steps, tool calls by type, tokens, and estimated cost. These values are auxiliary
 evidence only and cannot change task score, AIQ, quality, strict pass, interval,
 eligibility, or ranking. Functional preflight and hard safety boundaries remain
 separate. A safety, runtime, provider, or infrastructure termination produces a
@@ -38,8 +39,9 @@ under the active tuple.
   in ten domains. Task evaluation stays at `1.0.6`; aggregate scoring is
   `1.0.8`.
 - Every formal task encodes `wall_seconds: null`, `max_steps: null`, and
-  `max_tool_calls: null`. Prompt, evaluator, semantic scoring, and tool
-  permissions remain unchanged.
+  `max_tool_calls: null`. Controlled evaluator configuration uses
+  `aiq.evaluator-config.v2` with `completion_policy: natural_completion` and no
+  aggregate or per-check deadline.
 - The public `1.0.7` catalog is deterministic and identity-frozen. Fresh Core
   and Contrast seals, a policy-v2 fixed-bank admission from the unchanged
   complete calibration package, a separate complete Official run, publication,
@@ -47,8 +49,10 @@ under the active tuple.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
-  passed positive weight by total positive weight. The verifier replays the
-  exact committed check identities and weights without rounding.
+  passed positive weight by total positive weight. The runner executes the
+  evaluator once for each sealed response and workspace. The independent
+  verifier executes it once again and compares the parsed result and exact raw
+  output digest without rounding or automatic retry-until-match.
 - The source-head AIQ measurement contract is `2.0.0`: the Official ranking
   score is `100 × logistic(theta)` from the admitted fixed Rasch item bank;
   theta and its conditional Wald interval are reported separately from the raw
@@ -69,8 +73,10 @@ under the active tuple.
 - The model matrix contains 17 configurations: six Sol, six Terra, and five Luna.
 - The runner performs capability preflight, executes tasks, scores results, and
   creates signed `aiq.result-package.v4` envelopes.
-- Every result keeps runner-observed elapsed time and, when Codex reports it,
-  token usage and a versioned Standard API-equivalent cost estimate.
+- Every result keeps separate runner-observed model and evaluator elapsed time
+  as `latency.wall_ms` and `latency.evaluator_ms`
+  and, when Codex reports it, token usage and a versioned Standard
+  API-equivalent cost estimate.
 - AIQ, Rasch ability, quality, strict pass, ranking, and intervals use only
   evaluator-backed semantic task scores. Elapsed time, tokens, tool use, and
   estimated cost are independent efficiency evidence and never change a score.
@@ -278,13 +284,14 @@ or to production.
 
 1. The runner validates the controlled corpus, toolchain, and capability
    manifest.
-2. It executes the selected tasks and writes content-addressed artifacts.
+2. It executes the selected tasks, runs each formal evaluator once against the
+   sealed model evidence, and writes content-addressed artifacts.
 3. It scores the run, records efficiency evidence, and signs one v4 result
    package.
 4. `POST /api/submissions` stores the exact package bytes and queues the package
    as unverified.
-5. The verifier claims the package, reconstructs the workspaces, and replays the
-   deterministic evaluators.
+5. The verifier claims the package, reconstructs the workspaces, and executes
+   each deterministic evaluator once as the independent replay.
 6. `POST /api/verifications` stages the normalized batch and records the signed
    verifier attestation.
 7. A distinct publisher identity completes publication through the gateway.
@@ -324,12 +331,15 @@ zone, the macOS `launchd` template wakes at 11:05, 11:35, 23:05, and 23:35 local
 time. The four wakes cover EST and EDT with one bounded retry for each UTC slot.
 Official task dispatch must begin during the first two hours of a slot, and the
 v2 configuration requires all 32 supported workers for the fixed 1,224-cell
-matrix. A late wake does not start new model work. The single workflow
-prioritizes Official model work before the auxiliary Speed observation, so
+matrix. A late wake does not start a new matrix. Subscription quota, usage, or
+rate limits are persisted as non-terminal backpressure: completed cells stay in
+the same checkpoint, rejected cells remain pending, and later scheduled wakes
+resume the oldest blocked slot before they can start newer paid work. The
+single workflow prioritizes Official model work before the auxiliary Speed observation, so
 auxiliary work cannot consume the Official dispatch window. A completed run
 with a non-semantic infrastructure result is retained as unpublished evidence.
-It is not retried or presented as an AIQ score; the next 12-hour slot remains
-independent.
+It is not retried or presented as an AIQ score. Subscription backpressure is not
+a completed result and is therefore the sole exception to that terminal rule.
 The subscription runner uses a protected copy of `~/.codex/auth.json` in an
 isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
 as its writable runtime directory. It also uses a private two-file copy of the
@@ -366,10 +376,15 @@ aiq run --config /absolute/private/path/to/continuous-observation.json \
 Use `--slot` only for one known canonical UTC slot. Official task dispatch can
 start only during the first two hours of its current slot. The frozen runner
 can resume an unchanged checkpoint during the same slot only when it contains
-no indeterminate in-flight cell. After the dispatch grace or 12-hour slot
-window closes, a slot can continue only when the complete Official run output
-already exists and only scoring or publication remains. `aiq` recognizes that
-output only as an `aiq.run.v4` document with all 1,224 results; the runner's
+no indeterminate in-flight cell. A checkpoint with explicit subscription
+backpressure can also resume after the dispatch grace or 12-hour slot window;
+it reuses the exact admitted preflight and never replaces completed cells. Other
+checkpoints with sealed pending evaluator work can also resume that work after
+the window without another task-model invocation. An indeterminate model cell
+still fails closed after all sealed pending evaluator work is recovered. Other
+late slots can continue only when the complete Official run output already
+exists and only scoring or publication remains. `aiq` recognizes that output
+only as an `aiq.run.v4` document with all 1,224 results; the runner's
 create-once reservation is not a completed run. Otherwise, `aiq`
 records a terminal missed or unpublished state without new model work. A
 terminal slot remains a no-op. If another
@@ -408,8 +423,12 @@ a downstream step. Provider credentials and tokens do not reach workers. The
 orchestrator gives the signing key only to `package`, the submission token only
 to submission steps, and verifier credentials only to the verifier. Each slot
 uses fresh isolated `CODEX_HOME` directories. A retryable slot retains
-checkpoints and raw artifacts. Automatic resume is available only when the
-checkpoint has no in-flight marker. On resume, `aiq` revalidates the permission
+checkpoints and raw artifacts. Checkpoint v10 distinguishes indeterminate model
+work from sealed pending evaluator work. The latter resumes from the same model
+response and workspace without another model invocation. Provider-declared subscription limits leave
+the affected cells pending under `aiq.subscription-backpressure.v1`; the runner
+also migrates v9 checkpoints to the v10 evaluator-resume shape and legacy v8
+checkpoints that incorrectly committed those limits as terminal results. On resume, `aiq` revalidates the permission
 admission, complete Official run, submission receipts, and verifier receipt
 before it reuses them. Copied credentials are removed after each invocation. A
 terminal slot keeps the compact batch,

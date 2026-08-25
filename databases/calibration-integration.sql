@@ -219,7 +219,7 @@ begin
         'kind','capability_validation_failed','message','Synthetic calibration preflight failure',
         'exit_code',null,'retryable',false
       ),
-      'latency',jsonb_build_object('wall_ms',0),
+      'latency',jsonb_build_object('wall_ms',0,'evaluator_ms',0),
       'tool_usage',jsonb_build_object('steps',0,'total_calls',0,'by_tool','{}'::jsonb),
       'workspace_manifest',null,
       'provenance',jsonb_build_object(

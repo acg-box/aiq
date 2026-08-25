@@ -40,6 +40,7 @@ const OFFICIAL_RUN_SCHEMA: &str = "aiq.run.v4";
 const OFFICIAL_RESULT_COUNT: usize = 1_224;
 const OFFICIAL_DISPATCH_GRACE_MILLISECONDS: i64 = 2 * 60 * 60 * 1_000;
 const REQUIRED_OFFICIAL_JOBS: u8 = 32;
+const SUBSCRIPTION_BACKPRESSURE_EXIT_CODE: i32 = 75;
 const BASE_ENVIRONMENT: [&str; 15] = [
 	"HOME",
 	"LANG",
@@ -174,6 +175,14 @@ struct OfficialRunSummary {
 	failure_kinds: BTreeMap<String, usize>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PaidWorkRecoveryState {
+	completed_results: usize,
+	deferred_cells: usize,
+	legacy_terminal_results: bool,
+	pending_evaluations: usize,
+}
+
 /// Returns schedule and retained state without validating the release.
 pub(crate) fn status(configuration: &Configuration) -> Result<Value> {
 	let slots = schedule::current_surrounding_slots()?;
@@ -206,13 +215,18 @@ pub(crate) fn doctor(configuration: &Configuration) -> Result<DoctorReport> {
 /// Runs one selected due slot with exact create-once resume semantics.
 pub(crate) fn run(configuration: &Configuration, selected: Option<ScheduledSlot>) -> Result<()> {
 	let slots = schedule::current_surrounding_slots()?;
-	let slot = selected.unwrap_or_else(|| slots.latest.clone());
+
+	private_directory(&configuration.state_root)?;
+
+	let slot = match selected {
+		Some(slot) => slot,
+		None => paid_work_recovery_slot(configuration, &slots.latest)?
+			.unwrap_or_else(|| slots.latest.clone()),
+	};
 
 	if slot.timestamp_ms > slots.latest.timestamp_ms {
 		return Err(Error::new("selected observation slot is in the future"));
 	}
-
-	private_directory(&configuration.state_root)?;
 
 	let Some(_lock) = ProcessLock::try_acquire(&configuration.state_root)? else {
 		return Ok(());
@@ -237,6 +251,20 @@ pub(crate) fn run(configuration: &Configuration, selected: Option<ScheduledSlot>
 	};
 
 	if let Err(error) = &result {
+		if error.is_subscription_backpressure()
+			&& let Some(state) = paid_work_recovery_state(&paths.official.checkpoint)?
+		{
+			let detail = format!(
+				"subscription capacity unavailable; retained {} completed result(s); {} cell(s) deferred for scheduled resume",
+				state.completed_results, state.deferred_cells,
+			);
+
+			append_log(&paths.log, "slot_waiting", &detail)?;
+			write_status(&paths.status, &slot, "waiting_for_subscription", &detail)?;
+
+			return Ok(());
+		}
+
 		let detail = safe_detail(&error.to_string());
 
 		append_log(&paths.log, "slot_failed", &detail)?;
@@ -256,6 +284,115 @@ fn is_terminal_phase(phase: &str) -> bool {
 	)
 }
 
+fn paid_work_recovery_slot(
+	configuration: &Configuration,
+	latest: &ScheduledSlot,
+) -> Result<Option<ScheduledSlot>> {
+	let slots_root = configuration.state_root.join("slots");
+	let entries = match fs::read_dir(&slots_root) {
+		Ok(entries) => entries,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+		Err(error) => {
+			return Err(Error::new(format!("cannot inspect retained observation slots: {error}",)));
+		},
+	};
+	let mut candidate = None;
+
+	for entry in entries {
+		let entry = entry.context("cannot inspect retained observation slot")?;
+		let metadata =
+			entry.file_type().context("cannot inspect retained observation slot type")?;
+
+		if !metadata.is_dir() || metadata.is_symlink() {
+			continue;
+		}
+
+		let Some(name) = entry.file_name().to_str().map(str::to_owned) else { continue };
+		let Ok(slot) = schedule::scheduled_slot(&name) else { continue };
+
+		if slot.timestamp_ms > latest.timestamp_ms {
+			continue;
+		}
+
+		let paths = slot_paths(&configuration.state_root, &slot);
+		let Some(phase) = retained_phase(&paths.status)? else { continue };
+		let Some(state) = paid_work_recovery_state(&paths.official.checkpoint)? else {
+			continue;
+		};
+
+		if phase != "waiting_for_subscription"
+			&& !(phase == "retryable_failure"
+				&& (state.legacy_terminal_results || state.pending_evaluations > 0))
+		{
+			continue;
+		}
+		if candidate
+			.as_ref()
+			.is_none_or(|existing: &ScheduledSlot| slot.timestamp_ms < existing.timestamp_ms)
+		{
+			candidate = Some(slot);
+		}
+	}
+
+	Ok(candidate)
+}
+
+fn paid_work_recovery_state(path: &Path) -> Result<Option<PaidWorkRecoveryState>> {
+	if !existing_regular_file(path)? {
+		return Ok(None);
+	}
+
+	let checkpoint = read_json_value(path, "Official checkpoint")?;
+	let schema = checkpoint.get("schema_version").and_then(Value::as_str);
+	let Some(in_flight) = checkpoint.get("in_flight").and_then(Value::as_array) else {
+		return Ok(None);
+	};
+	let Some(results) = checkpoint.get("results").and_then(Value::as_array) else {
+		return Ok(None);
+	};
+	let pending_evaluations =
+		checkpoint.get("pending_evaluations").and_then(Value::as_array).map_or(0, Vec::len);
+
+	if (!in_flight.is_empty() && pending_evaluations == 0) || results.len() > OFFICIAL_RESULT_COUNT
+	{
+		return Ok(None);
+	}
+	if results.iter().any(|result| {
+		matches!(
+			result.get("failure").and_then(|failure| failure.get("kind")).and_then(Value::as_str),
+			Some("authentication" | "workspace_integrity")
+		)
+	}) {
+		return Ok(None);
+	}
+
+	let legacy_limit_results = results
+		.iter()
+		.filter(|result| {
+			result.get("failure").and_then(|failure| failure.get("kind")).and_then(Value::as_str)
+				== Some("subscription_limit")
+		})
+		.count();
+	let legacy_terminal_results =
+		schema == Some("aiq.run-checkpoint.v8") && legacy_limit_results > 0;
+	let current_backpressure =
+		matches!(schema, Some("aiq.run-checkpoint.v10" | "aiq.run-checkpoint.v9"))
+			&& checkpoint.get("subscription_backpressure").is_some_and(Value::is_object);
+
+	if !legacy_terminal_results && !current_backpressure && pending_evaluations == 0 {
+		return Ok(None);
+	}
+
+	let completed_results = results.len().saturating_sub(legacy_limit_results);
+
+	Ok(Some(PaidWorkRecoveryState {
+		completed_results,
+		deferred_cells: OFFICIAL_RESULT_COUNT.saturating_sub(completed_results),
+		legacy_terminal_results,
+		pending_evaluations,
+	}))
+}
+
 fn slot_can_continue(
 	slot: &ScheduledSlot,
 	latest: &ScheduledSlot,
@@ -263,7 +400,8 @@ fn slot_can_continue(
 ) -> Result<bool> {
 	Ok(slot.timestamp_ms >= latest.timestamp_ms
 		|| official_run_is_complete(&paths.official.run)?
-		|| existing_regular_file(&paths.speed.batch)?)
+		|| existing_regular_file(&paths.speed.batch)?
+		|| paid_work_recovery_state(&paths.official.checkpoint)?.is_some())
 }
 
 fn close_expired_slot(
@@ -334,7 +472,9 @@ fn official_dispatch(
 ) -> Result<OfficialDispatch> {
 	if official_run_is_complete(&paths.official.run)? {
 		Ok(OfficialDispatch::ResumeAfterModel)
-	} else if official_dispatch_window_is_open(slot, now_unix_ms)? {
+	} else if paid_work_recovery_state(&paths.official.checkpoint)?.is_some()
+		|| official_dispatch_window_is_open(slot, now_unix_ms)?
+	{
 		Ok(OfficialDispatch::StartModel)
 	} else {
 		Ok(OfficialDispatch::Close)
@@ -1066,6 +1206,14 @@ fn run_command(step: &CommandStep, log_path: &Path, secrets: &RuntimeSecrets) ->
 		};
 
 	if !output.status.success() {
+		if step.name == "official_run"
+			&& output.status.code() == Some(SUBSCRIPTION_BACKPRESSURE_EXIT_CODE)
+		{
+			return Err(Error::subscription_backpressure(
+				"Official subscription capacity is unavailable; checkpoint retained",
+			));
+		}
+
 		let detail = if step.capture.is_some() {
 			safe_detail(&String::from_utf8_lossy(&output.stderr))
 		} else {
@@ -1681,6 +1829,185 @@ mod tests {
 	}
 
 	#[test]
+	fn expired_subscription_backpressure_slot_is_resumable_and_preferred() {
+		let root =
+			env::temp_dir().join(format!("aiq-subscription-recovery-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let blocked = schedule::scheduled_slot("2026-08-10T03-00Z").expect("blocked slot");
+		let latest = schedule::scheduled_slot("2026-08-11T15-00Z").expect("latest slot");
+		let paths = workflow::slot_paths(&root, &blocked);
+		let configuration = Configuration {
+			schema_version: CONFIG_SCHEMA.to_owned(),
+			release_root: root.join("unused-release"),
+			release_manifest_sha256: format!("sha256:{}", "a".repeat(64)),
+			state_root: root.clone(),
+			codex_auth_source: root.join("unused-auth.json"),
+			endpoint: "https://aiq.wiki".to_owned(),
+			official_jobs: 32,
+			verifier_replay_jobs: 1,
+			speed_jobs: 1,
+			speed_trials: 1,
+			unattended_secrets: None,
+		};
+
+		workflow::prepare_slot_directories(&paths).expect("subscription slot directories");
+		fs::write(
+			&paths.official.checkpoint,
+			serde_json::to_vec_pretty(&serde_json::json!({
+				"schema_version": "aiq.run-checkpoint.v10",
+				"in_flight": [],
+				"pending_evaluations": [],
+				"subscription_backpressure": {
+					"schema_version": "aiq.subscription-backpressure.v1",
+					"deferred_results": [],
+				},
+				"results": [{"status": "completed"}, {"status": "failed", "failure": {"kind": "evaluator_failure"}}],
+			}))
+			.expect("checkpoint JSON"),
+		)
+		.expect("subscription checkpoint fixture");
+		workflow::write_status(
+			&paths.status,
+			&blocked,
+			"waiting_for_subscription",
+			"checkpoint retained",
+		)
+		.expect("subscription status");
+
+		let state = workflow::paid_work_recovery_state(&paths.official.checkpoint)
+			.expect("subscription state")
+			.expect("subscription recovery");
+
+		assert_eq!(state.completed_results, 2);
+		assert_eq!(state.deferred_cells, workflow::OFFICIAL_RESULT_COUNT - 2);
+		assert_eq!(state.pending_evaluations, 0);
+		assert!(workflow::slot_can_continue(&blocked, &latest, &paths).expect("resumable"));
+		assert_eq!(
+			workflow::official_dispatch(
+				&blocked,
+				&paths,
+				blocked.timestamp_ms + workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS,
+			)
+			.expect("late subscription recovery"),
+			workflow::OfficialDispatch::StartModel
+		);
+		assert_eq!(
+			workflow::paid_work_recovery_slot(&configuration, &latest)
+				.expect("selected recovery slot"),
+			Some(blocked)
+		);
+
+		fs::remove_dir_all(root).expect("remove subscription recovery fixture");
+	}
+
+	#[test]
+	fn interrupted_evaluator_checkpoint_remains_resumable_after_the_slot_window() {
+		let root = env::temp_dir().join(format!("aiq-evaluator-recovery-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let blocked = schedule::scheduled_slot("2026-08-10T03-00Z").expect("blocked slot");
+		let latest = schedule::scheduled_slot("2026-08-11T15-00Z").expect("latest slot");
+		let paths = workflow::slot_paths(&root, &blocked);
+
+		workflow::prepare_slot_directories(&paths).expect("evaluator recovery directories");
+		fs::write(
+			&paths.official.checkpoint,
+			serde_json::to_vec_pretty(&serde_json::json!({
+				"schema_version": "aiq.run-checkpoint.v10",
+				"in_flight": [],
+				"pending_evaluations": [{"schema_version": "aiq.pending-evaluation.v1"}],
+				"subscription_backpressure": null,
+				"results": [{"status": "completed"}],
+			}))
+			.expect("checkpoint JSON"),
+		)
+		.expect("evaluator recovery checkpoint");
+		workflow::write_status(
+			&paths.status,
+			&blocked,
+			"retryable_failure",
+			"evaluator process interrupted",
+		)
+		.expect("evaluator recovery status");
+
+		let state = workflow::paid_work_recovery_state(&paths.official.checkpoint)
+			.expect("evaluator state")
+			.expect("evaluator recovery");
+
+		assert_eq!(state.pending_evaluations, 1);
+		assert!(workflow::slot_can_continue(&blocked, &latest, &paths).expect("resumable"));
+		assert_eq!(
+			workflow::official_dispatch(
+				&blocked,
+				&paths,
+				blocked.timestamp_ms + workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS,
+			)
+			.expect("late evaluator recovery"),
+			workflow::OfficialDispatch::StartModel
+		);
+
+		fs::remove_dir_all(root).expect("remove evaluator recovery fixture");
+	}
+
+	#[test]
+	fn legacy_subscription_limit_checkpoint_is_recovered_from_retryable_state() {
+		let root = env::temp_dir()
+			.join(format!("aiq-legacy-subscription-recovery-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let blocked = schedule::scheduled_slot("2026-08-10T03-00Z").expect("blocked slot");
+		let latest = schedule::scheduled_slot("2026-08-10T15-00Z").expect("latest slot");
+		let paths = workflow::slot_paths(&root, &blocked);
+		let configuration = Configuration {
+			schema_version: CONFIG_SCHEMA.to_owned(),
+			release_root: root.join("unused-release"),
+			release_manifest_sha256: format!("sha256:{}", "a".repeat(64)),
+			state_root: root.clone(),
+			codex_auth_source: root.join("unused-auth.json"),
+			endpoint: "https://aiq.wiki".to_owned(),
+			official_jobs: 32,
+			verifier_replay_jobs: 1,
+			speed_jobs: 1,
+			speed_trials: 1,
+			unattended_secrets: None,
+		};
+
+		workflow::prepare_slot_directories(&paths).expect("legacy slot directories");
+		fs::write(
+			&paths.official.checkpoint,
+			serde_json::to_vec_pretty(&serde_json::json!({
+				"schema_version": "aiq.run-checkpoint.v8",
+				"in_flight": [],
+				"results": [
+					{"status": "completed"},
+					{"status": "failed", "failure": {"kind": "subscription_limit"}},
+				],
+			}))
+			.expect("legacy checkpoint JSON"),
+		)
+		.expect("legacy checkpoint fixture");
+		workflow::write_status(
+			&paths.status,
+			&blocked,
+			"retryable_failure",
+			"legacy paid-run boundary failure",
+		)
+		.expect("legacy retryable status");
+
+		let state = workflow::paid_work_recovery_state(&paths.official.checkpoint)
+			.expect("legacy state")
+			.expect("legacy subscription recovery");
+
+		assert!(state.legacy_terminal_results);
+		assert_eq!(state.completed_results, 1);
+		assert_eq!(
+			workflow::paid_work_recovery_slot(&configuration, &latest)
+				.expect("selected legacy recovery slot"),
+			Some(blocked)
+		);
+
+		fs::remove_dir_all(root).expect("remove legacy subscription fixture");
+	}
+
+	#[test]
 	fn official_dispatch_starts_only_during_the_early_slot_grace() {
 		let slot = schedule::scheduled_slot("2026-08-10T15-00Z").expect("dispatch slot");
 		let grace = workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS;
@@ -1795,6 +2122,7 @@ mod tests {
 		assert!(workflow::is_terminal_phase("complete_with_unpublished_speed"));
 		assert!(workflow::is_terminal_phase("missed_window"));
 		assert!(!workflow::is_terminal_phase("retryable_failure"));
+		assert!(!workflow::is_terminal_phase("waiting_for_subscription"));
 	}
 
 	#[test]
@@ -1888,6 +2216,33 @@ mod tests {
 		assert!(!paths.speed.batch.exists());
 
 		fs::remove_dir_all(root).expect("remove failed output fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn official_subscription_exit_becomes_typed_backpressure() {
+		let root = env::temp_dir().join(format!("aiq-subscription-exit-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("subscription slot");
+		let paths = workflow::slot_paths(&root, &slot);
+
+		workflow::prepare_slot_directories(&paths).expect("subscription fixture directories");
+
+		let step = CommandStep {
+			name: "official_run",
+			executable: PathBuf::from("/bin/sh"),
+			args: vec![OsString::from("-c"), OsString::from("exit 75")],
+			output: paths.official.run.clone(),
+			capture: None,
+			secrets: StepSecrets::None,
+		};
+		let error = workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
+			.expect_err("subscription backpressure must stop the create-once step");
+
+		assert!(error.is_subscription_backpressure());
+		assert!(!paths.official.run.exists());
+
+		fs::remove_dir_all(root).expect("remove subscription exit fixture");
 	}
 
 	#[cfg(unix)]

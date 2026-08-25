@@ -660,9 +660,14 @@
     "latency": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["wall_ms"],
+      "required": ["wall_ms", "evaluator_ms"],
       "properties": {
         "wall_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "evaluator_ms": {
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991

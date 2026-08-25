@@ -278,6 +278,46 @@ function reviseTaskSchema(priorSchema: unknown): unknown {
   budgets.wall_seconds = { type: 'null' };
   budgets.max_steps = { type: 'null' };
   budgets.max_tool_calls = { type: 'null' };
+  const definitions = jsonObject(schema.$defs, 'task definitions');
+  const external = jsonObject(definitions.externalEvaluator, 'external evaluator');
+  const externalProperties = jsonObject(external.properties, 'external evaluator properties');
+  const required = stringArray(external.required, 'external evaluator required fields').filter(
+    (field) => field !== 'timeout_ms',
+  );
+  if (!required.includes('configuration')) required.push('configuration');
+  external.required = required;
+  delete externalProperties.timeout_ms;
+  const formalDeadlineFields = [
+    'timeout_ms',
+    'timeout_seconds',
+    'deadline_ms',
+    'deadline_seconds',
+    'max_elapsed_ms',
+    'max_duration_ms',
+    'scenario_timeout_ms',
+  ];
+  const noFormalDeadlines = formalDeadlineFields.map((field) => ({
+    not: { required: [field] },
+  }));
+  externalProperties.configuration = {
+    type: 'object',
+    additionalProperties: true,
+    required: ['schema_version', 'completion_policy'],
+    allOf: noFormalDeadlines,
+    properties: {
+      schema_version: { const: 'aiq.evaluator-config.v2' },
+      completion_policy: { const: 'natural_completion' },
+      checks: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 16,
+        items: {
+          type: 'object',
+          allOf: noFormalDeadlines,
+        },
+      },
+    },
+  };
   return schema;
 }
 
@@ -327,7 +367,6 @@ export function buildContrastCatalog(prior: unknown): ContrastCatalog107 {
     }
     return {
       allowed_tools: stringArray(task.allowed_tools, 'prior contrast task allowed_tools'),
-      task_version: TASK_VERSION,
       budget: { wall_seconds: null, max_steps: null, max_tool_calls: null },
       contrast_boundary: stringValue(
         task.contrast_boundary,
@@ -339,6 +378,7 @@ export function buildContrastCatalog(prior: unknown): ContrastCatalog107 {
       domain: stringValue(task.domain, 'prior contrast task domain'),
       summary: stringValue(task.summary, 'prior contrast task summary'),
       task_id: stringValue(task.task_id, 'prior contrast task task_id'),
+      task_version: TASK_VERSION,
       visibility: 'hidden' as const,
     };
   });

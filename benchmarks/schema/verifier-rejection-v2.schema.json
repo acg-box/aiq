@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://aiq.wiki/schema/verifier-rejection-v2.schema.json",
   "title": "AIQ verifier rejection v2",
-  "description": "Service-authenticated, non-publishing verifier rejection evidence. The gateway additionally enforces a 4096-byte UTF-8 reason-detail bound.",
+  "description": "Service-authenticated, non-publishing verifier rejection evidence. The gateway additionally enforces a 4096-byte UTF-8 reason-detail bound. Evaluator mismatches retain the runner and verifier observation and raw-output digests in reason_detail without retrying either the evaluator or model.",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -2649,10 +2649,14 @@
     "latency": {
       "type": "object",
       "required": [
-        "wall_ms"
+        "wall_ms",
+        "evaluator_ms"
       ],
       "properties": {
         "wall_ms": {
+          "$ref": "#/$defs/safeUnsignedInteger"
+        },
+        "evaluator_ms": {
           "$ref": "#/$defs/safeUnsignedInteger"
         }
       }

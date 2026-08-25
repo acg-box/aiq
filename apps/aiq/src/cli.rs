@@ -76,7 +76,7 @@ enum Commands {
 		/// Absolute path to the private runtime configuration.
 		#[arg(long)]
 		config: PathBuf,
-		/// Exact UTC slot to recover; task dispatch is limited to its current 12-hour window.
+		/// Exact UTC slot to recover; only retained paid-work checkpoints can resume after their window.
 		#[arg(long)]
 		slot: Option<String>,
 	},
