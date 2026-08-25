@@ -4,13 +4,10 @@ pub(crate) mod evaluator;
 
 pub use evaluator::{
 	CheckedEvaluatorObservation, EVALUATOR_CONFIG_SCHEMA_VERSION, EVALUATOR_PROTOCOL_VERSION,
-	EVALUATOR_RESULT_SCHEMA_VERSION, EXTERNAL_EVALUATOR_REPLAY_PASSES, EvaluationError,
-	EvaluationErrorKind, EvaluationResult, EvaluatorCheck, EvaluatorCheckFailureClass,
-	EvaluatorContext, EvaluatorOutcome, EvaluatorRuntime, EvaluatorRuntimeKind,
-	ExternalEvaluatorBinding, MAX_EVALUATOR_TIMEOUT_MS, MAX_PARALLEL_EXTERNAL_EVALUATORS,
-	NODE_SCENARIO_CLEANUP_RESERVE_MS, NODE_SCENARIO_COPY_RESERVE_MS,
-	NODE_SCENARIO_PASS_OVERHEAD_MS, NODE_SCENARIO_SPAWN_RESERVE_MS, NormalizedToolEvidence,
-	minimum_node_scenario_evaluator_timeout_ms,
+	EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationError, EvaluationErrorKind, EvaluationResult,
+	EvaluatorCheck, EvaluatorCheckFailureClass, EvaluatorContext, EvaluatorOutcome,
+	EvaluatorRuntime, EvaluatorRuntimeKind, ExternalEvaluatorBinding,
+	MAX_PARALLEL_EXTERNAL_EVALUATORS, NormalizedToolEvidence,
 };
 
 #[cfg(unix)]
@@ -184,7 +181,7 @@ impl Evaluator {
 		binding.evaluate_at_root(&self.kind, context, root, runtime)
 	}
 
-	/// Evaluates through the checked two-pass external boundary and returns the
+	/// Executes the runner's single formal evaluator observation and returns the
 	/// independently observed raw stdout digest.
 	pub fn evaluate_checked_observation_at_root(
 		&self,
@@ -228,7 +225,7 @@ impl Evaluator {
 		self.evaluate_checked_at_root(response, context, root, runtime)
 	}
 
-	/// Evaluates through the controlled two-pass boundary and reports each actual pass edge.
+	/// Executes through the controlled boundary and reports the actual child edges.
 	pub fn evaluate_checked_with_execution_observed(
 		&self,
 		response: &str,
@@ -974,9 +971,9 @@ mod tests {
 	use crate::{
 		protocol,
 		task::{
-			DirectoryTaskSource, Domain, EVALUATOR_PROTOCOL_VERSION, Evaluator,
-			EvaluatorRuntimeKind, ExternalEvaluatorBinding, TASK_SCHEMA_VERSION, TaskBudgets,
-			TaskDefinition, TaskSource, Visibility,
+			DirectoryTaskSource, Domain, EVALUATOR_CONFIG_SCHEMA_VERSION,
+			EVALUATOR_PROTOCOL_VERSION, Evaluator, EvaluatorRuntimeKind, ExternalEvaluatorBinding,
+			TASK_SCHEMA_VERSION, TaskBudgets, TaskDefinition, TaskSource, Visibility,
 		},
 	};
 
@@ -1255,6 +1252,13 @@ mod tests {
 
 		task.visibility = Visibility::Hidden;
 		task.scorer_version = "01.0.0".to_owned();
+
+		let configuration = serde_json::from_value(serde_json::json!({
+			"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion"
+		}))
+		.expect("formal evaluator configuration");
+
 		task.evaluator = Some(Evaluator {
 			kind: "repository_test_suite".to_owned(),
 			expected: None,
@@ -1266,16 +1270,12 @@ mod tests {
 				runtime_executable_digest: format!("sha256:{}", "b".repeat(64)),
 				executable_ref: PathBuf::from("bin/evaluator"),
 				executable_digest: format!("sha256:{}", "a".repeat(64)),
-				configuration_digest: protocol::canonical_hash(&BTreeMap::<
-					String,
-					serde_json::Value,
-				>::new())
-				.expect("empty configuration must hash"),
+				configuration_digest: protocol::canonical_hash(&configuration)
+					.expect("formal configuration must hash"),
 				arguments: Vec::new(),
-				timeout_ms: 1_000,
 				max_input_bytes: 1_024,
 				max_output_bytes: 1_024,
-				configuration: BTreeMap::new(),
+				configuration,
 			}),
 		});
 

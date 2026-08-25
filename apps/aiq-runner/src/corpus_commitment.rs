@@ -1875,7 +1875,11 @@ mod tests {
 			runtime_digest: &str,
 		) {
 			for task in tasks {
-				let configuration = std::collections::BTreeMap::new();
+				let configuration = serde_json::from_value(serde_json::json!({
+					"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+					"completion_policy": "natural_completion"
+				}))
+				.expect("formal evaluator configuration");
 				let configuration_digest =
 					protocol::canonical_hash(&configuration).expect("configuration digest");
 
@@ -1893,7 +1897,6 @@ mod tests {
 						executable_digest: format!("sha256:{}", "e".repeat(64)),
 						configuration_digest,
 						arguments: Vec::new(),
-						timeout_ms: 1_000,
 						max_input_bytes: 1_024,
 						max_output_bytes: 1_024,
 						configuration,
@@ -2904,7 +2907,11 @@ mod tests {
 		let runtime_digest = format!("sha256:{}", "a".repeat(64));
 		let executable_digest = format!("sha256:{}", "b".repeat(64));
 		let catalog_digest = format!("sha256:{}", "c".repeat(64));
-		let configuration = std::collections::BTreeMap::new();
+		let configuration = serde_json::from_value(serde_json::json!({
+			"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion"
+		}))
+		.expect("formal evaluator configuration");
 		let configuration_digest =
 			protocol::canonical_hash(&configuration).expect("configuration digest");
 		let mut task = runner::synthetic_tasks().remove(0);
@@ -2924,7 +2931,6 @@ mod tests {
 				executable_digest: executable_digest.clone(),
 				configuration_digest: configuration_digest.clone(),
 				arguments: Vec::new(),
-				timeout_ms: 1_000,
 				max_input_bytes: 1_024,
 				max_output_bytes: 1_024,
 				configuration,

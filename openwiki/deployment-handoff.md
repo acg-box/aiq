@@ -582,11 +582,22 @@ The `--slot` form is only for one known canonical recovery slot. Official task
 dispatch can start only during the first two hours of that slot, and the v2
 configuration requires `official_jobs` to be `32`. The frozen runner resumes a
 same-slot checkpoint only when it contains no indeterminate in-flight cell.
-After the dispatch grace or 12-hour window closes, the slot can continue only
-when the complete Official run output already exists and only scoring or
-publication remains. Complete means `aiq.run.v4` with exactly 1,224 results,
-not the runner's create-once reservation; captured submission and verifier
-receipts must also validate before reuse. Otherwise `aiq` closes it without new model work. The nonblocking global lock coalesces scheduled overlap without starting
+Checkpoint v10 may also contain sealed pending evaluator work. The formal
+evaluator uses natural completion with no aggregate or per-check deadline; after
+an interruption, that evaluator-only work resumes from the retained response
+and workspace without another model invocation. Provider subscription quota,
+usage, or rate-limit failures use `aiq.subscription-backpressure.v1`: completed
+cells remain retained, deferred cells remain pending, and the workflow records
+`waiting_for_subscription` instead of treating them as terminal results. A
+later scheduled wake selects the oldest retained paid-work recovery, including
+legacy v8 subscription-limit checkpoints migrated to v10, before newer paid
+work. It does not replace completed cells. After the dispatch grace or 12-hour
+window closes, these two recovery paths remain allowed; other Official work can
+continue only when the complete Official run output already exists and only
+scoring or publication remains. Complete means `aiq.run.v4` with exactly 1,224
+results, not the runner's create-once reservation; captured submission and
+verifier receipts must also validate before reuse. Otherwise `aiq` closes it
+without new model work. The nonblocking global lock coalesces scheduled overlap without starting
 another model process. Do not add `--slot` to the recurring plist. `aiq doctor` acquires
 the same lock while validating the release and reconstructed source, so it
 reports contention rather than inspecting a moving run. The release reconstructs

@@ -53,10 +53,10 @@ use crate::{
 	capacity::CapacityCommitment,
 	corpus_commitment::{RunClass, RunProvenanceCommitment},
 	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
-	protocol,
+	protocol::{self, ResultProvenance},
 	runner::{
-		self, RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus, TaskResult,
-		TerminalAttemptLineage,
+		self, EvaluationOutcome, FailureKind, Latency, RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION,
+		ResultStatus, TaskResult, TerminalAttemptLineage, ToolUsage,
 	},
 	schedule::ScheduleSlot,
 	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, FrozenCalibrationBankV2},
@@ -64,11 +64,18 @@ use crate::{
 };
 
 /// Checkpoint schema version.
-pub const CHECKPOINT_SCHEMA_VERSION: &str = "aiq.run-checkpoint.v8";
+pub const CHECKPOINT_SCHEMA_VERSION: &str = "aiq.run-checkpoint.v10";
+/// Subscription-capacity backpressure schema version.
+pub const SUBSCRIPTION_BACKPRESSURE_SCHEMA_VERSION: &str = "aiq.subscription-backpressure.v1";
 /// Persisted preflight schema version.
 pub const PREFLIGHT_CACHE_SCHEMA_VERSION: &str = "aiq.preflight-cache.v2";
 /// Persisted completed preflight-attempt diagnostic schema version.
 pub const PREFLIGHT_ATTEMPT_SCHEMA_VERSION: &str = "aiq.preflight-attempt.v1";
+
+pub(crate) const PENDING_EVALUATION_SCHEMA_VERSION: &str = "aiq.pending-evaluation.v1";
+
+const PREVIOUS_CHECKPOINT_SCHEMA_VERSION: &str = "aiq.run-checkpoint.v9";
+const LEGACY_CHECKPOINT_SCHEMA_VERSION: &str = "aiq.run-checkpoint.v8";
 
 /// Immutable commitments that make a checkpoint safe to resume.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -132,6 +139,13 @@ pub struct RunCheckpoint {
 	pub started_unix_ms: u64,
 	/// Live cells durably marked before model execution and not yet committed.
 	pub in_flight: Vec<InFlightCell>,
+	/// Completed model responses and sealed workspaces whose single evaluator
+	/// execution has not yet committed a terminal result.
+	pub pending_evaluations: Vec<PendingEvaluation>,
+	/// Provider-declared subscription backpressure. These cells remain pending and
+	/// are never treated as terminal Official results.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub subscription_backpressure: Option<SubscriptionBackpressure>,
 	/// Completed terminal results in deterministic execution order.
 	pub results: Vec<TaskResult>,
 	/// Append-visible terminal observations bound to selected results.
@@ -151,6 +165,8 @@ impl RunCheckpoint {
 			commitments,
 			started_unix_ms,
 			in_flight: Vec::new(),
+			pending_evaluations: Vec::new(),
+			subscription_backpressure: None,
 			results: Vec::new(),
 			terminal_attempt_lineage: Vec::new(),
 			evaluator_results: Vec::new(),
@@ -166,47 +182,76 @@ impl RunCheckpoint {
 				return Err(ResumeError::new(format!("cannot read run checkpoint: {error}")));
 			},
 		};
-		let checkpoint: Self = serde_json::from_slice(&bytes)
-			.map_err(|error| ResumeError::new(format!("run checkpoint is corrupt: {error}")))?;
+		let (mut checkpoint, legacy) = Self::decode(&bytes)?;
 
 		if checkpoint.schema_version != CHECKPOINT_SCHEMA_VERSION {
 			return Err(ResumeError::new("run checkpoint schema is not supported"));
 		}
-		if &checkpoint.commitments != expected {
+		if legacy {
+			checkpoint.migrate_legacy_subscription_limits()?;
+		} else if checkpoint.results.iter().any(subscription_limit_result) {
+			return Err(ResumeError::new(
+				"run checkpoint commits subscription backpressure as a terminal result",
+			));
+		}
+
+		checkpoint.validate(expected)?;
+
+		Ok(Some(checkpoint))
+	}
+
+	fn decode(bytes: &[u8]) -> Result<(Self, bool), ResumeError> {
+		let mut value: serde_json::Value = serde_json::from_slice(bytes)
+			.map_err(|error| ResumeError::new(format!("run checkpoint is corrupt: {error}")))?;
+		let schema_version = value
+			.get("schema_version")
+			.and_then(serde_json::Value::as_str)
+			.ok_or_else(|| ResumeError::new("run checkpoint schema is missing"))?;
+		let legacy = schema_version == LEGACY_CHECKPOINT_SCHEMA_VERSION;
+		let previous = schema_version == PREVIOUS_CHECKPOINT_SCHEMA_VERSION;
+
+		if legacy || previous {
+			let object = value
+				.as_object_mut()
+				.ok_or_else(|| ResumeError::new("run checkpoint must be a JSON object"))?;
+
+			object.insert(
+				"schema_version".to_owned(),
+				serde_json::Value::String(CHECKPOINT_SCHEMA_VERSION.to_owned()),
+			);
+			object.insert("pending_evaluations".to_owned(), serde_json::Value::Array(Vec::new()));
+
+			if legacy {
+				object.insert("subscription_backpressure".to_owned(), serde_json::Value::Null);
+			}
+		}
+
+		serde_json::from_value(value)
+			.map(|checkpoint| (checkpoint, legacy))
+			.map_err(|error| ResumeError::new(format!("run checkpoint is corrupt: {error}")))
+	}
+
+	fn validate(&self, expected: &RunCommitments) -> Result<(), ResumeError> {
+		if &self.commitments != expected {
 			return Err(ResumeError::new(
 				"run checkpoint commitments do not match this invocation",
 			));
 		}
-		if checkpoint.results.len() != checkpoint.evaluator_results.len() {
+		if self.results.len() != self.evaluator_results.len() {
 			return Err(ResumeError::new(
 				"run checkpoint evaluator evidence is not aligned with its results",
 			));
 		}
 
-		runner::validate_terminal_attempt_lineage(
-			&checkpoint.results,
-			&checkpoint.terminal_attempt_lineage,
-		)
-		.map_err(|error| ResumeError::new(error.to_string()))?;
+		runner::validate_terminal_attempt_lineage(&self.results, &self.terminal_attempt_lineage)
+			.map_err(|error| ResumeError::new(error.to_string()))?;
 
+		let in_flight = self.validate_in_flight_cells(expected)?;
+		let pending = self.validate_pending_evaluations(expected, &in_flight)?;
+		let deferred = self.validate_subscription_backpressure(expected, &in_flight, &pending)?;
 		let mut pairs = BTreeSet::new();
-		let mut in_flight = BTreeSet::new();
 
-		for cell in &checkpoint.in_flight {
-			if !expected.models.contains(&cell.model)
-				|| !in_flight.insert((
-					cell.model,
-					cell.task_id.as_str(),
-					cell.task_version.as_str(),
-				)) {
-				return Err(ResumeError::new(
-					"run checkpoint contains an invalid or duplicate in-flight cell",
-				));
-			}
-		}
-		for (result, evaluator_result) in
-			checkpoint.results.iter().zip(&checkpoint.evaluator_results)
-		{
+		for (result, evaluator_result) in self.results.iter().zip(&self.evaluator_results) {
 			if result.run_id != expected.run_id
 				|| !expected.models.contains(&result.model)
 				|| !pairs.insert((result.model, result.task_id.clone()))
@@ -222,6 +267,22 @@ impl RunCheckpoint {
 			)) {
 				return Err(ResumeError::new(
 					"run checkpoint cell is both committed and in flight",
+				));
+			}
+			if deferred.contains(&(
+				result.model,
+				result.task_id.as_str(),
+				result.task_version.as_str(),
+			)) {
+				return Err(ResumeError::new("run checkpoint cell is both committed and deferred"));
+			}
+			if pending.contains(&(
+				result.model,
+				result.task_id.as_str(),
+				result.task_version.as_str(),
+			)) {
+				return Err(ResumeError::new(
+					"run checkpoint cell is both committed and pending evaluation",
 				));
 			}
 
@@ -240,7 +301,148 @@ impl RunCheckpoint {
 			}
 		}
 
-		Ok(Some(checkpoint))
+		Ok(())
+	}
+
+	fn validate_in_flight_cells<'a>(
+		&'a self,
+		expected: &RunCommitments,
+	) -> Result<BTreeSet<(ModelConfig, &'a str, &'a str)>, ResumeError> {
+		let mut in_flight = BTreeSet::new();
+
+		for cell in &self.in_flight {
+			if !expected.models.contains(&cell.model)
+				|| !in_flight.insert((
+					cell.model,
+					cell.task_id.as_str(),
+					cell.task_version.as_str(),
+				)) {
+				return Err(ResumeError::new(
+					"run checkpoint contains an invalid or duplicate in-flight cell",
+				));
+			}
+		}
+
+		Ok(in_flight)
+	}
+
+	fn validate_pending_evaluations<'a>(
+		&'a self,
+		expected: &RunCommitments,
+		in_flight: &BTreeSet<(ModelConfig, &str, &str)>,
+	) -> Result<BTreeSet<(ModelConfig, &'a str, &'a str)>, ResumeError> {
+		let mut pending = BTreeSet::new();
+
+		for evaluation in &self.pending_evaluations {
+			let key =
+				(evaluation.model, evaluation.task_id.as_str(), evaluation.task_version.as_str());
+
+			if evaluation.schema_version != PENDING_EVALUATION_SCHEMA_VERSION
+				|| evaluation.run_id != expected.run_id
+				|| !expected.models.contains(&evaluation.model)
+				|| evaluation.final_response.is_empty()
+				|| evaluation.latency.evaluator_ms != 0
+				|| !pending.insert(key)
+				|| in_flight.contains(&key)
+			{
+				return Err(ResumeError::new(
+					"run checkpoint contains invalid or duplicate pending evaluator work",
+				));
+			}
+		}
+
+		Ok(pending)
+	}
+
+	fn validate_subscription_backpressure<'a>(
+		&'a self,
+		expected: &RunCommitments,
+		in_flight: &BTreeSet<(ModelConfig, &str, &str)>,
+		pending: &BTreeSet<(ModelConfig, &str, &str)>,
+	) -> Result<BTreeSet<(ModelConfig, &'a str, &'a str)>, ResumeError> {
+		let mut deferred = BTreeSet::new();
+		let Some(backpressure) = &self.subscription_backpressure else {
+			return Ok(deferred);
+		};
+
+		if backpressure.schema_version != SUBSCRIPTION_BACKPRESSURE_SCHEMA_VERSION {
+			return Err(ResumeError::new(
+				"run checkpoint subscription backpressure schema is not supported",
+			));
+		}
+
+		for result in &backpressure.deferred_results {
+			let key = (result.model, result.task_id.as_str(), result.task_version.as_str());
+
+			if !subscription_limit_result(result)
+				|| result.run_id != expected.run_id
+				|| !expected.models.contains(&result.model)
+				|| !deferred.insert(key)
+				|| in_flight.contains(&key)
+				|| pending.contains(&key)
+			{
+				return Err(ResumeError::new(
+					"run checkpoint contains invalid subscription backpressure results",
+				));
+			}
+
+			let content_hash =
+				result.content_hash().map_err(|error| ResumeError::new(error.to_string()))?;
+
+			if result.result_id != content_hash.replacen("sha256:", "result_", 1) {
+				return Err(ResumeError::new(
+					"run checkpoint subscription backpressure result identity is invalid",
+				));
+			}
+		}
+
+		Ok(deferred)
+	}
+
+	fn migrate_legacy_subscription_limits(&mut self) -> Result<(), ResumeError> {
+		let mut retained_results = Vec::with_capacity(self.results.len());
+		let mut retained_evaluators = Vec::with_capacity(self.evaluator_results.len());
+		let mut deferred_results = Vec::new();
+
+		for (result, evaluator_result) in
+			self.results.drain(..).zip(self.evaluator_results.drain(..))
+		{
+			if subscription_limit_result(&result) {
+				if evaluator_result.is_some() {
+					return Err(ResumeError::new(
+						"legacy subscription-limit result unexpectedly contains evaluator evidence",
+					));
+				}
+
+				deferred_results.push(result);
+			} else {
+				retained_results.push(result);
+				retained_evaluators.push(evaluator_result);
+			}
+		}
+
+		self.results = retained_results;
+		self.evaluator_results = retained_evaluators;
+
+		if deferred_results.is_empty() {
+			return Ok(());
+		}
+
+		deferred_results.sort_by(|left, right| {
+			(&left.task_id, &left.task_version, left.model).cmp(&(
+				&right.task_id,
+				&right.task_version,
+				right.model,
+			))
+		});
+
+		self.terminal_attempt_lineage = runner::terminal_attempt_lineage(&self.results);
+		self.subscription_backpressure = Some(SubscriptionBackpressure {
+			schema_version: SUBSCRIPTION_BACKPRESSURE_SCHEMA_VERSION.to_owned(),
+			deferred_results,
+		});
+
+		Ok(())
 	}
 
 	/// Atomically replaces the durable checkpoint.
@@ -259,6 +461,54 @@ pub struct InFlightCell {
 	pub task_version: String,
 	/// Exact model configuration.
 	pub model: ModelConfig,
+}
+
+/// Durable sealed model evidence awaiting its single runner evaluator execution.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PendingEvaluation {
+	/// Pending-evaluation schema version.
+	pub schema_version: String,
+	/// Idempotent run identifier.
+	pub run_id: String,
+	/// Stable task identifier.
+	pub task_id: String,
+	/// Task version.
+	pub task_version: String,
+	/// Content address of the exact task definition.
+	pub task_hash: String,
+	/// Exact model configuration whose response is retained.
+	pub model: ModelConfig,
+	/// Complete model response supplied to the evaluator.
+	pub final_response: String,
+	/// Bounded signed-result response preview.
+	pub response: String,
+	/// SHA-256 digest of the complete model response.
+	pub response_sha256: String,
+	/// Result artifacts already retained before evaluator execution.
+	pub artifacts: Vec<ArtifactReference>,
+	/// Successful model process exit code.
+	pub exit_code: Option<i32>,
+	/// Model elapsed evidence with zero evaluator elapsed until completion.
+	pub latency: Latency,
+	/// Normalized model tool-use evidence.
+	pub tool_usage: ToolUsage,
+	/// Content-addressed sealed workspace manifest.
+	pub workspace_manifest: ArtifactReference,
+	/// Canonical sealed workspace retained until evaluator completion.
+	pub sealed_workspace: PathBuf,
+	/// Result provenance captured before evaluator execution.
+	pub provenance: ResultProvenance,
+}
+
+/// Durable provider-capacity state that keeps rejected cells pending.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubscriptionBackpressure {
+	/// Nested schema version.
+	pub schema_version: String,
+	/// Complete structured results that remain pending after subscription backpressure.
+	pub deferred_results: Vec<TaskResult>,
 }
 
 /// Authenticated subscription preflight that can be reused before expiry.
@@ -333,12 +583,31 @@ impl PreflightCache {
 		now_unix_ms: u64,
 		model_toolchain_digest: &str,
 	) -> Result<Self, ResumeError> {
+		Self::load_with_expiry(path, manifest, Some(now_unix_ms), model_toolchain_digest)
+	}
+
+	/// Loads an exact cache for checkpointed paid-work recovery.
+	/// The cache's original expiry does not invalidate an already admitted run.
+	pub fn load_for_paid_work_recovery(
+		path: &Path,
+		manifest: &CapabilityManifest,
+		model_toolchain_digest: &str,
+	) -> Result<Self, ResumeError> {
+		Self::load_with_expiry(path, manifest, None, model_toolchain_digest)
+	}
+
+	fn load_with_expiry(
+		path: &Path,
+		manifest: &CapabilityManifest,
+		now_unix_ms: Option<u64>,
+		model_toolchain_digest: &str,
+	) -> Result<Self, ResumeError> {
 		let cache: Self = read_json(path, "preflight cache")?;
 		let manifest_digest = protocol::canonical_hash(manifest)
 			.map_err(|error| ResumeError::new(error.to_string()))?;
 
 		if cache.schema_version != PREFLIGHT_CACHE_SCHEMA_VERSION
-			|| cache.expires_unix_ms <= now_unix_ms
+			|| now_unix_ms.is_some_and(|now| cache.expires_unix_ms <= now)
 			|| cache.manifest_digest != manifest_digest
 			|| cache.model_toolchain_digest != model_toolchain_digest
 			|| cache.codex_version != manifest.codex_version.trim()
@@ -520,6 +789,74 @@ pub enum PreflightAttemptStatus {
 	Unavailable,
 }
 
+/// Returns whether a checkpoint advertises retained paid work that can resume
+/// without a new model invocation. Full commitment validation still occurs
+/// before the retained work is used.
+pub fn checkpoint_declares_paid_work_recovery(path: &Path) -> Result<bool, ResumeError> {
+	let bytes = match fs::read(path) {
+		Ok(bytes) => bytes,
+		Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
+		Err(error) => {
+			return Err(ResumeError::new(format!("cannot read run checkpoint: {error}")));
+		},
+	};
+	let value: serde_json::Value = serde_json::from_slice(&bytes)
+		.map_err(|error| ResumeError::new(format!("run checkpoint is corrupt: {error}")))?;
+	let schema = value.get("schema_version").and_then(serde_json::Value::as_str);
+	let in_flight_empty =
+		value.get("in_flight").and_then(serde_json::Value::as_array).is_some_and(Vec::is_empty);
+	let results = value.get("results").and_then(serde_json::Value::as_array);
+	let pending_evaluations = value
+		.get("pending_evaluations")
+		.and_then(serde_json::Value::as_array)
+		.is_some_and(|pending| !pending.is_empty());
+
+	if results.is_none() {
+		return Ok(false);
+	}
+
+	let boundary_failure = results.is_some_and(|results| {
+		results.iter().any(|result| {
+			matches!(
+				result
+					.get("failure")
+					.and_then(|failure| failure.get("kind"))
+					.and_then(serde_json::Value::as_str),
+				Some("authentication" | "workspace_integrity")
+			)
+		})
+	});
+
+	if boundary_failure {
+		return Ok(false);
+	}
+	if schema == Some(CHECKPOINT_SCHEMA_VERSION) && pending_evaluations {
+		return Ok(true);
+	}
+	if !in_flight_empty {
+		return Ok(false);
+	}
+
+	Ok(match schema {
+		Some(CHECKPOINT_SCHEMA_VERSION) => {
+			value.get("subscription_backpressure").is_some_and(serde_json::Value::is_object)
+		},
+		Some(PREVIOUS_CHECKPOINT_SCHEMA_VERSION) => {
+			value.get("subscription_backpressure").is_some_and(serde_json::Value::is_object)
+		},
+		Some(LEGACY_CHECKPOINT_SCHEMA_VERSION) => results.is_some_and(|results| {
+			results.iter().any(|result| {
+				result
+					.get("failure")
+					.and_then(|failure| failure.get("kind"))
+					.and_then(serde_json::Value::as_str)
+					== Some("subscription_limit")
+			})
+		}),
+		_ => false,
+	})
+}
+
 /// Returns the deterministic diagnostic sidecar for one cache/output path.
 #[must_use]
 pub fn preflight_attempt_path(path: &Path) -> PathBuf {
@@ -693,6 +1030,20 @@ fn valid_digest(value: &str) -> bool {
 			&& digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 			&& !digest.bytes().all(|byte| byte == b'0')
 	})
+}
+
+fn subscription_limit_result(result: &TaskResult) -> bool {
+	result.status == ResultStatus::Failed
+		&& result.evaluation == EvaluationOutcome::NotEvaluated
+		&& result.failure.as_ref().is_some_and(|failure| {
+			failure.kind == FailureKind::SubscriptionLimit
+				&& failure.retryable
+				&& result.task_score.is_none()
+				&& result.response.is_none()
+				&& result.response_sha256.is_none()
+				&& result.evaluator_result_sha256.is_none()
+				&& result.evaluator_stdout_sha256.is_none()
+		})
 }
 
 fn temporary_state_path(parent: &Path, name: &OsStr, unique_suffix: u128) -> PathBuf {
@@ -1329,6 +1680,44 @@ mod tests {
 	}
 
 	#[test]
+	fn checkpoint_contract_reserves_durable_evaluator_only_resume_state() {
+		let checkpoint = RunCheckpoint::new(commitments(), 7);
+		let value = serde_json::to_value(checkpoint).expect("checkpoint JSON");
+
+		assert_eq!(value["schema_version"], "aiq.run-checkpoint.v10");
+		assert_eq!(value["pending_evaluations"], serde_json::json!([]));
+	}
+
+	#[test]
+	fn checkpoint_v9_migrates_to_empty_evaluator_resume_state() {
+		let root = temporary_root("checkpoint-v9");
+		let path = root.join("checkpoint.json");
+		let commitments = commitments();
+		let mut value = serde_json::to_value(RunCheckpoint::new(commitments.clone(), 7))
+			.expect("checkpoint JSON");
+		let object = value.as_object_mut().expect("checkpoint object");
+
+		object.insert(
+			"schema_version".to_owned(),
+			serde_json::Value::String("aiq.run-checkpoint.v9".to_owned()),
+		);
+		object.remove("pending_evaluations");
+
+		fs::create_dir_all(&root).expect("checkpoint root");
+		fs::write(&path, serde_json::to_vec_pretty(&value).expect("legacy JSON"))
+			.expect("legacy checkpoint");
+
+		let migrated = RunCheckpoint::load(&path, &commitments)
+			.expect("load v9 checkpoint")
+			.expect("migrated checkpoint");
+
+		assert_eq!(migrated.schema_version, super::CHECKPOINT_SCHEMA_VERSION);
+		assert!(migrated.pending_evaluations.is_empty());
+
+		fs::remove_dir_all(root).expect("checkpoint cleanup");
+	}
+
+	#[test]
 	fn checkpoint_restart_preserves_terminal_results_and_rejects_mismatch() {
 		let root = temporary_root("checkpoint");
 		let path = root.join("checkpoint.json");
@@ -1449,8 +1838,8 @@ mod tests {
 	}
 
 	#[test]
-	fn retryable_evaluator_failure_remains_terminal_checkpoint_evidence() {
-		let root = temporary_root("retryable-terminal");
+	fn evaluator_failure_remains_terminal_checkpoint_evidence() {
+		let root = temporary_root("evaluator-terminal");
 		let path = root.join("checkpoint.json");
 		let commitments = commitments();
 		let mut checkpoint = RunCheckpoint::new(commitments.clone(), 7);
@@ -1474,7 +1863,7 @@ mod tests {
 			kind: runner::FailureKind::EvaluatorFailure,
 			message: "controlled evaluator failed".to_owned(),
 			exit_code: Some(1),
-			retryable: true,
+			retryable: false,
 		});
 		result.result_id = format!(
 			"result_{}",
@@ -1494,7 +1883,7 @@ mod tests {
 
 		assert_eq!(loaded.results, vec![result]);
 		assert_eq!(loaded.evaluator_results, vec![None]);
-		assert!(loaded.results[0].failure.as_ref().is_some_and(|failure| failure.retryable));
+		assert!(loaded.results[0].failure.as_ref().is_some_and(|failure| !failure.retryable));
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
@@ -1558,6 +1947,7 @@ mod tests {
 
 		assert!(PreflightCache::load(&path, &manifest, 1_999, &digest).is_ok());
 		assert!(PreflightCache::load(&path, &manifest, 2_000, &digest).is_err());
+		assert!(PreflightCache::load_for_paid_work_recovery(&path, &manifest, &digest).is_ok());
 
 		let mut changed = manifest.clone();
 
@@ -1567,6 +1957,14 @@ mod tests {
 		assert!(
 			PreflightCache::load(&path, &manifest, 1_999, &format!("sha256:{}", "b".repeat(64)),)
 				.is_err()
+		);
+		assert!(
+			PreflightCache::load_for_paid_work_recovery(
+				&path,
+				&manifest,
+				&format!("sha256:{}", "b".repeat(64)),
+			)
+			.is_err()
 		);
 
 		fs::remove_dir_all(root).expect("fixture cleanup");

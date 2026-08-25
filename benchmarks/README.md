@@ -80,8 +80,12 @@ to the fraction when all hard gates pass. The verifier replays the exact checks
 without evaluator rounding. Public pass conditions summarize coverage; they are
 not mathematical weight partitions.
 
-Formal model tasks have no benchmark-enforced wall-time, step, or tool-call
-limit. Elapsed time, steps, tool calls by type, tokens, and estimated cost are
+Formal model and evaluator work has no benchmark-enforced wall-time, step,
+tool-call, aggregate-evaluator, or per-check limit. Evaluator configuration uses
+`aiq.evaluator-config.v2` and `completion_policy: natural_completion`. The runner
+records one parsed evaluator result, its exact raw-output digest, and evaluator
+elapsed time. The independent verifier executes one replay and requires an
+exact match before publication. Elapsed time, steps, tool calls by type, tokens, and estimated cost are
 independent efficiency evidence and never enter task score, Rasch
 ability, quality, strict pass, ranking, or intervals.
 

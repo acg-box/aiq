@@ -285,9 +285,15 @@ untrusted, non-Official, and ineligible for ranking.
 
 The complete Official matrix is one run with 1,224 task-model cells, not 1,224
 runs. The admitted plan fixes `--jobs`; scheduling must not start a second run
-while the first remains active. Formal task invocations have no benchmark wall,
-step, or tool-call termination. Usage remains measured. Deterministic evaluator
-subprocesses and hard safety boundaries remain bounded. A corpus, toolchain, or permission-evidence
+while the first remains active. Formal model and evaluator work has no benchmark-enforced wall-time, step,
+tool-call, aggregate-evaluator, or per-check deadline. The evaluator uses
+`aiq.evaluator-config.v2` with `completion_policy: natural_completion`. The
+runner evaluates each sealed response once and records parsed output, exact raw
+stdout digest, and separate `latency.evaluator_ms`; the verifier executes that
+committed evaluator once independently and compares both observations. A
+mismatch rejects verification and does not trigger a model or evaluator retry.
+Usage remains measured as auxiliary evidence. Functional preflight, deterministic
+integrity checks, and hard safety boundaries remain bounded. A corpus, toolchain, or permission-evidence
 digest change defines a different plan. It requires a new admission, preflight,
 checkpoint, run, score, package, verifier environment, replay stage, and
 attestation; evidence from the changed plan cannot authorize the new one.
@@ -296,11 +302,18 @@ After each paid invocation, the runner retains the available invocation and
 workspace evidence before cleanup. Before a terminal checkpoint commit, a
 retryable Codex non-zero exit or missing final response starts a new invocation
 from a fresh task workspace. Versioned markers in the content-addressed stdout
-bind every invocation, and wall time, steps, tool calls, and provider token
-counters accumulate as auxiliary evidence. Semantic outcomes are never retried.
-Authentication, subscription-limit, or workspace-integrity boundaries cancel
-remaining paid cells. Checkpoint resume does not retry committed or
-indeterminate cells.
+bind every invocation, and model and evaluator elapsed time, steps, tool calls,
+and provider token counters accumulate as auxiliary evidence. Semantic outcomes
+and evaluator failures are never retried. A checkpoint v10 moves completed model
+work into a sealed pending-evaluator record before evaluation; if the process is
+interrupted, the evaluator can resume from the same response and workspace
+without another model invocation. Checkpoint v9 migrates with no pending
+evaluator entries. Authentication and workspace-integrity boundaries cancel
+remaining paid cells. Provider subscription capacity is different: the runner
+records `aiq.subscription-backpressure.v1`, leaves rejected cells pending, and
+returns exit code `75`; the workflow records `waiting_for_subscription` and
+retains completed cells for a later scheduled recovery. Legacy v8 terminal
+subscription-limit results are recognized and migrated into this recovery path.
 
 `aiq.run-provenance.v3` contains 19 top-level fields. It binds the run class,
 corpus, catalog, task set, evaluator, runtime, preflight, harness, prompt, tool
@@ -320,8 +333,11 @@ not publish the run.
 The verifier claims a bounded lease and downloads only claim-bound artifacts.
 It resolves and digest/size-checks every signed capability-probe artifact so
 publication retention can prove ownership of that run-level evidence, then
-reconstructs submitted workspaces and replays committed evaluators with the
-committed runtime. Production requires the `evaluator_replayed` disposition.
+reconstructs submitted workspaces and executes each committed formal evaluator
+once with the committed runtime. It compares the parsed result and exact raw
+stdout digest with the runner's single observation; a mismatch blocks
+verification and publication. Production requires the `evaluator_replayed`
+disposition.
 The normalized stage and verifier attestation also carry a required
 `terminal_attempt_lineage_digest`; `apps/web/src/server/verification-contract.ts`
 requires that digest to be a valid digest and matches it across stage and

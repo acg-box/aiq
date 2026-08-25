@@ -1,6 +1,6 @@
 # AIQ verifier
 
-`aiq-verifier` is a bounded worker for queued v4 result packages. It claims one
+`aiq-verifier` is a supervised worker for queued v4 result packages. It claims one
 or more packages through the Web gateway, downloads exact private artifacts,
 reconstructs candidate workspaces, replays deterministic evaluators, and submits
 a signed verifier attestation.
@@ -67,6 +67,13 @@ Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
 `32` to match controlled host capacity. Replay output stays in signed result
 order, independent of this setting.
 
+For each completed cell, the verifier executes the committed formal evaluator
+exactly once. It compares the parsed result and exact raw-output digest with the
+runner observation. Formal evaluator work has no elapsed deadline and is never
+retried until it matches. A mismatch retains the runner and verifier observation
+digests in rejection evidence, blocks verification and publication, and does
+not invoke the model.
+
 Before the worker replays an Official claim, it independently verifies the
 private calibration admission against the current production reference, build
 receipt, source, corpus, evaluator, and runtime identities. It then requires the
@@ -110,7 +117,8 @@ published score.
 2. Resolve only artifacts bound to that claim.
 3. Verify exact package bytes, Ed25519 signatures, JCS hashes, and run bindings.
 4. Reconstruct each candidate workspace under the controlled replay root.
-5. Replay the committed evaluator with the committed runtime.
+5. Execute the committed evaluator once with the committed runtime and compare
+   it with the runner observation.
 6. Create `aiq.normalized-batch.v4` and
    `aiq.verifier-attestation.v4` evidence.
 7. Submit the evidence to `/api/verifications`.

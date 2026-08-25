@@ -360,16 +360,32 @@ speed batch exists before the dispatch grace closes. This is terminal evidence,
 not a reason to rerun Official model work. If a complete batch exists, its
 model-free submission may still finish. The frozen runner resumes an unchanged
 same-slot checkpoint only when it has no indeterminate in-flight cell and all
-reused captured receipts validate. After the dispatch grace, or for a past slot,
-Official work can continue only when its complete run output already exists and
-only scoring or publication remains.
+reused captured receipts validate. Checkpoint v10 also records sealed
+`pending_evaluations`: an interrupted evaluator resumes against the same
+response and workspace without another model invocation. The evaluator has no
+aggregate or per-check deadline; its failure is terminal evidence rather than a
+match-retry loop. After the dispatch grace, or for a past slot, this evaluator-only
+recovery remains allowed, as does recovery of retained paid work blocked by
+subscription capacity.
+
+Provider quota, usage, and rate limits are represented as non-terminal
+`aiq.subscription-backpressure.v1`. The runner exits with status `75`, retains
+completed cells, and leaves rejected cells deferred. The workflow records
+`waiting_for_subscription`, and the next scheduled wake scans retained slot
+state and chooses the oldest eligible paid-work recovery before the latest slot.
+It can recover current v10/v9 checkpoints and migrate legacy v8 terminal
+`subscription_limit` results into pending work; it does not replace completed
+results or silently start a newer paid matrix first. Authentication and
+workspace-integrity failures remain ineligible for this recovery path.
+
 Completeness requires an `aiq.run.v4` document with exactly 1,224 results; an
 interrupted runner's create-once reservation remains resumable only while new
-model dispatch is still allowed. Otherwise, `aiq` closes the slot as missed or unpublished without new model
-work. A terminal slot remains a no-op. If another observation
-holds the global lock, a scheduled `run` exits successfully without starting
-overlapping model work. `doctor` instead reports lock contention because it
-cannot validate safely during a run.
+model dispatch is still allowed, except for sealed evaluator-only or
+subscription-backpressure recovery. Otherwise, `aiq` closes the slot as missed
+or unpublished without new model work. A terminal slot remains a no-op. If
+another observation holds the global lock, a scheduled `run` exits successfully
+without starting overlapping model work. `doctor` instead reports lock
+contention because it cannot validate safely during a run.
 
 `aiq run` supports two credential inputs. An interactive operator can supply
 all four of `AIQ_RUNNER_SIGNING_KEY`, `AIQ_RUNNER_SUBMISSION_TOKEN`,
@@ -381,9 +397,10 @@ retrieves only the fixed `prod:/aiq` keys, and removes the private provider
 session. Provider authentication material does not reach a worker. Do not put
 secret values in the plist, configuration file, command arguments, or logs.
 AIQ gives each worker step only its required consumer secret. A retryable slot
-retains valid checkpoints and raw artifacts. Automatic resume is available only
-when the checkpoint has no in-flight marker. The
-orchestrator removes a step output when its command fails, and replaces an
+retains valid checkpoints and raw artifacts. Checkpoint v10 distinguishes
+indeterminate model work from sealed pending evaluator work, while
+subscription backpressure retains paid-work evidence for scheduled recovery.
+The orchestrator removes a step output when its command fails, and replaces an
 incomplete `official_admit` JSON receipt or malformed captured submission or
 verifier receipt on retry. It accepts an Official output as complete only when it
 is `aiq.run.v4` with exactly 1,224 results; other valid create-once outputs are
