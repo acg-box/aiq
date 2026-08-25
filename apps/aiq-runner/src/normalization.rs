@@ -2040,7 +2040,7 @@ mod tests {
 			evaluator_stdout_sha256: None,
 			artifacts: Vec::new(),
 			failure: None,
-			latency: crate::runner::Latency { wall_ms: 0 },
+			latency: crate::runner::Latency { wall_ms: 0, evaluator_ms: 0 },
 			tool_usage: crate::runner::ToolUsage::default(),
 			evaluator_checks: Vec::new(),
 			workspace_manifest: None,

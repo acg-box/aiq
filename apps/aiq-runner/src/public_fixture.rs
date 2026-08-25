@@ -440,7 +440,7 @@ fn generated_matrix_results(
 					evaluator_stdout_sha256: None,
 					artifacts: Vec::new(),
 					failure: None,
-					latency: Latency { wall_ms: 1 },
+					latency: Latency { wall_ms: 1, evaluator_ms: 0 },
 					tool_usage: ToolUsage::default(),
 					evaluator_checks: Vec::new(),
 					workspace_manifest: None,

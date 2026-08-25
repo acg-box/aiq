@@ -578,6 +578,7 @@ struct AuthorizedRun {
 	codex_home_commitment: String,
 	preflight: PreflightCache,
 	execution_window: ExecutionWindow,
+	paid_work_recovery: bool,
 	official_calibration_binding: Option<(String, FrozenCalibrationBankV2)>,
 }
 
@@ -614,6 +615,7 @@ struct ExecutionWindow {
 struct DispatchDeadline {
 	dispatched_unix_ms: u64,
 	next_slot_unix_ms: u64,
+	paid_work_recovery: bool,
 }
 
 #[derive(Debug)]
@@ -3446,6 +3448,7 @@ fn validate_live_protected_layout(
 fn freeze_run_preflight(
 	options: &RunOptions,
 	official_admission: Option<&(PermissionAdmissionReport, String)>,
+	paid_work_recovery: bool,
 ) -> Result<PreflightCache, Box<dyn std::error::Error>> {
 	let official_admission_digest = official_admission.map(|(_, digest)| digest.as_str());
 	let evaluator_runtime = resolve_run_evaluator_runtime(options)?;
@@ -3509,6 +3512,13 @@ fn freeze_run_preflight(
 		}
 	}
 
+	if paid_work_recovery && (options.refresh_preflight || !options.preflight_cache.exists()) {
+		return Err(
+			"paid-work recovery requires the retained exact preflight cache; no model was invoked"
+				.into(),
+		);
+	}
+
 	let force_refresh = options.refresh_preflight || !options.preflight_cache.exists();
 	let preflight_binding = force_refresh
 		.then(|| {
@@ -3540,6 +3550,7 @@ fn freeze_run_preflight(
 		&manifest,
 		options,
 		force_refresh,
+		paid_work_recovery,
 		model_toolchain.digest(),
 		official_admission_digest,
 	)?;
@@ -3668,7 +3679,8 @@ fn prepare_authorized_live_run(
 		future_files.prepare_entry(entry)?;
 	}
 
-	let preflight = freeze_run_preflight(&options, admission.as_ref())?;
+	let paid_work_recovery = resume::checkpoint_declares_paid_work_recovery(&options.checkpoint)?;
+	let preflight = freeze_run_preflight(&options, admission.as_ref(), paid_work_recovery)?;
 
 	for entry in future_entries.iter().filter(|entry| entry.category != "output") {
 		future_files.prepare_entry(entry)?;
@@ -3740,6 +3752,7 @@ fn prepare_authorized_live_run(
 		codex_home_commitment,
 		preflight,
 		execution_window,
+		paid_work_recovery,
 		official_calibration_binding: load_official_calibration_binding(admission.as_ref())?,
 		options,
 	})
@@ -4078,6 +4091,7 @@ fn execute_authorized_live_run(
 		codex_home_commitment: _,
 		preflight,
 		execution_window,
+		paid_work_recovery,
 		official_calibration_binding: _,
 	} = context;
 	let checkpoint_was_created = future_files.was_created(&options.checkpoint);
@@ -4085,6 +4099,7 @@ fn execute_authorized_live_run(
 	let (run, dispatch_deadline) = with_final_preflight_execution_boundary(
 		&preflight,
 		&execution_window,
+		paid_work_recovery,
 		|| {
 			if checkpoint_was_created {
 				RunCheckpoint::new(checkpoint_commitments, resume::unix_ms())
@@ -4210,30 +4225,35 @@ fn verify_codex_runtime_unchanged(
 fn with_final_preflight_execution_boundary<T>(
 	preflight: &PreflightCache,
 	window: &ExecutionWindow,
+	paid_work_recovery: bool,
 	persist_checkpoint: impl FnOnce() -> Result<(), Box<dyn std::error::Error>>,
 	clock: impl FnOnce() -> u64,
 	dispatch: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>,
 ) -> Result<(T, DispatchDeadline), Box<dyn std::error::Error>> {
 	persist_checkpoint()?;
 
-	let deadline = validate_dispatch_window(preflight, window, clock())?;
+	let deadline =
+		validate_dispatch_window(preflight.expires_unix_ms, window, clock(), paid_work_recovery)?;
 	let output = dispatch()?;
 
 	Ok((output, deadline))
 }
 
 fn validate_dispatch_window(
-	preflight: &PreflightCache,
+	preflight_expires_unix_ms: u64,
 	window: &ExecutionWindow,
 	now_unix_ms: u64,
+	paid_work_recovery: bool,
 ) -> Result<DispatchDeadline, Box<dyn std::error::Error>> {
-	if preflight.expires_unix_ms <= now_unix_ms {
+	if !paid_work_recovery && preflight_expires_unix_ms <= now_unix_ms {
 		return Err(
 			"cached preflight expired before run dispatch; no task model or evaluator was invoked"
 				.into(),
 		);
 	}
-	if now_unix_ms < window.scheduled_unix_ms || now_unix_ms >= window.next_slot_unix_ms {
+	if now_unix_ms < window.scheduled_unix_ms
+		|| (!paid_work_recovery && now_unix_ms >= window.next_slot_unix_ms)
+	{
 		return Err(
 			"run dispatch is outside the exact scheduled slot window; no task model or evaluator was invoked"
 				.into(),
@@ -4243,6 +4263,7 @@ fn validate_dispatch_window(
 	Ok(DispatchDeadline {
 		dispatched_unix_ms: now_unix_ms,
 		next_slot_unix_ms: window.next_slot_unix_ms,
+		paid_work_recovery,
 	})
 }
 
@@ -4263,7 +4284,7 @@ fn with_completion_execution_boundary<T>(
 			"execution completion clock precedes dispatch; final output was not written".into()
 		);
 	}
-	if finished_unix_ms >= deadline.next_slot_unix_ms {
+	if !deadline.paid_work_recovery && finished_unix_ms >= deadline.next_slot_unix_ms {
 		return Err(
 			"execution completed at or after the next scheduled slot; final output was not written"
 				.into(),
@@ -4706,6 +4727,7 @@ fn load_run_preflight<E, S>(
 	manifest: &CapabilityManifest,
 	options: &RunOptions,
 	force_refresh: bool,
+	paid_work_recovery: bool,
 	model_toolchain_digest: &str,
 	official_admission_digest: Option<&str>,
 ) -> Result<PreflightCache, Box<dyn std::error::Error>>
@@ -4716,12 +4738,20 @@ where
 	let now_unix_ms = resume::unix_ms();
 
 	if !force_refresh && options.preflight_cache.exists() {
-		let cache = PreflightCache::load(
-			&options.preflight_cache,
-			manifest,
-			now_unix_ms,
-			model_toolchain_digest,
-		)?;
+		let cache = if paid_work_recovery {
+			PreflightCache::load_for_paid_work_recovery(
+				&options.preflight_cache,
+				manifest,
+				model_toolchain_digest,
+			)?
+		} else {
+			PreflightCache::load(
+				&options.preflight_cache,
+				manifest,
+				now_unix_ms,
+				model_toolchain_digest,
+			)?
+		};
 
 		if cache.official_admission_digest.as_deref() != official_admission_digest {
 			return Err("cached preflight is not bound to this exact Official admission".into());
@@ -7472,5 +7502,33 @@ mod tests {
 		}
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn paid_work_recovery_allows_late_dispatch_and_completion_only_for_retained_work() {
+		let window = cli::ExecutionWindow { scheduled_unix_ms: 100, next_slot_unix_ms: 200 };
+
+		assert!(cli::validate_dispatch_window(150, &window, 250, false).is_err());
+
+		let recovery =
+			cli::validate_dispatch_window(150, &window, 250, true).expect("recovery dispatch");
+
+		assert!(recovery.paid_work_recovery);
+		assert!(
+			cli::with_completion_execution_boundary(&recovery, 110, 300, || {
+				Ok::<_, Box<dyn std::error::Error>>(())
+			})
+			.is_ok()
+		);
+
+		let normal =
+			cli::validate_dispatch_window(150, &window, 120, false).expect("normal dispatch");
+
+		assert!(
+			cli::with_completion_execution_boundary(&normal, 110, 220, || {
+				Ok::<_, Box<dyn std::error::Error>>(())
+			})
+			.is_err()
+		);
 	}
 }

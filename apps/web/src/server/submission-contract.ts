@@ -111,7 +111,7 @@ const calibrationRunPayloadKeys = [
 const scheduleSlotKeys = ['local_date', 'local_time', 'occurrence', 'timezone'] as const;
 const modelConfigKeys = ['family', 'reasoning_effort'] as const;
 const resultFailureKeys = ['exit_code', 'kind', 'message', 'retryable'] as const;
-const latencyKeys = ['wall_ms'] as const;
+const latencyKeys = ['evaluator_ms', 'wall_ms'] as const;
 const toolUsageKeys = ['by_tool', 'steps', 'total_calls'] as const;
 const resultProvenanceKeys = [
   'codex_version',
@@ -256,7 +256,7 @@ export interface SignedTaskResult {
     readonly exit_code: number | null;
     readonly retryable: boolean;
   }> | null;
-  readonly latency: Readonly<{ wall_ms: number }>;
+  readonly latency: Readonly<{ evaluator_ms: number; wall_ms: number }>;
   readonly tool_usage: Readonly<{
     readonly steps: number;
     readonly total_calls: number;
@@ -921,6 +921,7 @@ function validateTaskResult(
     !isRecord(value.latency) ||
     !hasExactKeys(value.latency, latencyKeys) ||
     !isSafeUnsignedInteger(value.latency.wall_ms) ||
+    !isSafeUnsignedInteger(value.latency.evaluator_ms) ||
     !isToolUsage(value.tool_usage) ||
     !isResultProvenance(
       value.provenance,

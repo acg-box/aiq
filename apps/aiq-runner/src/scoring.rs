@@ -2678,7 +2678,7 @@ mod tests {
 			evaluator_stdout_sha256: None,
 			artifacts: Vec::new(),
 			failure: None,
-			latency: Latency { wall_ms: 1 },
+			latency: Latency { wall_ms: 1, evaluator_ms: 0 },
 			tool_usage: ToolUsage::default(),
 			evaluator_checks: Vec::new(),
 			workspace_manifest: None,
@@ -3799,6 +3799,7 @@ mod tests {
 
 		for (index, result) in different_efficiency.iter_mut().enumerate() {
 			result.latency.wall_ms = 86_400_000 + index as u64;
+			result.latency.evaluator_ms = 172_800_000 + index as u64;
 			result.tool_usage.steps = 10_000 + index as u32;
 			result.tool_usage.total_calls = 9_999;
 			result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), 9_999)]);

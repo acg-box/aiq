@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Direct capacity estimate schema version.
-pub const CAPACITY_ADMISSION_SCHEMA_VERSION: &str = "aiq.capacity-admission.v2";
+pub const CAPACITY_ADMISSION_SCHEMA_VERSION: &str = "aiq.capacity-admission.v3";
 
 /// Deterministic capacity data for one selected run.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -44,17 +44,15 @@ pub struct CapacityAdmission {
 	pub maximum_cell_wall_budget_seconds: Option<u64>,
 	/// Conservative list-scheduling bound for Codex execution, or `None` when it is unbounded.
 	pub model_execution_bound_seconds: Option<u64>,
-	/// Sum of aggregate two-pass evaluator deadlines for every runnable cell.
-	pub declared_evaluator_budget_sum_ms: u64,
+	/// Number of runnable cells with controlled external evaluator work.
+	pub external_evaluator_cell_count: usize,
 	/// Shared-runtime evaluator permits available to this run.
 	pub effective_evaluator_jobs: usize,
-	/// Conservative bound for the bounded evaluator pool.
-	pub evaluator_bound_seconds: u64,
 	/// Explicit local orchestration and artifact finalization reserve.
 	pub orchestration_reserve_seconds: u64,
 	/// Exact interval from this slot to the next configured slot.
 	pub seconds_until_next_slot: u64,
-	/// End-to-end bound, or `None` because any selected model execution is unbounded.
+	/// End-to-end bound, or `None` when model or formal evaluator work is unbounded.
 	pub conservative_bound_seconds: Option<u64>,
 }
 impl CapacityAdmission {
@@ -117,9 +115,8 @@ impl Display for CapacityError {
 }
 
 struct EvaluatorCapacity {
-	declared_budget_sum_ms: u64,
+	cell_count: usize,
 	effective_jobs: usize,
-	bound_seconds: u64,
 }
 
 /// Builds direct capacity data from active support and `--jobs`.
@@ -170,29 +167,26 @@ pub fn assess_capacity(
 		effective_jobs,
 	)?;
 	let evaluator = assess_evaluator_capacity(tasks, active_models, effective_jobs)?;
-	let declared_execution_bound_seconds = model_execution_bound_seconds
-		.map(|bound| {
-			bound
-				.checked_add(evaluator.bound_seconds)
-				.ok_or_else(|| CapacityError::new("combined capacity bound overflows"))
-		})
-		.transpose()?;
 	let orchestration_reserve_seconds = if runnable_cell_count == 0 {
 		0
 	} else {
-		declared_execution_bound_seconds.map_or(900, |bound| 900_u64.max(bound.div_ceil(20)))
+		model_execution_bound_seconds.map_or(900, |bound| 900_u64.max(bound.div_ceil(20)))
 	};
-	let conservative_bound_seconds = declared_execution_bound_seconds
-		.map(|bound| {
-			bound
-				.checked_add(orchestration_reserve_seconds)
-				.ok_or_else(|| CapacityError::new("end-to-end capacity bound overflows"))
-		})
-		.transpose()?;
+	let conservative_bound_seconds = if evaluator.cell_count == 0 {
+		model_execution_bound_seconds
+			.map(|bound| {
+				bound
+					.checked_add(orchestration_reserve_seconds)
+					.ok_or_else(|| CapacityError::new("end-to-end capacity bound overflows"))
+			})
+			.transpose()?
+	} else {
+		None
+	};
 
 	if conservative_bound_seconds.is_some_and(|bound| bound >= seconds_until_next_slot) {
 		return Err(CapacityError::new(
-			"declared model, evaluator, and orchestration bound does not fit before the next slot",
+			"declared model and orchestration bound does not fit before the next slot",
 		));
 	}
 
@@ -208,9 +202,8 @@ pub fn assess_capacity(
 		declared_wall_budget_sum_seconds,
 		maximum_cell_wall_budget_seconds,
 		model_execution_bound_seconds,
-		declared_evaluator_budget_sum_ms: evaluator.declared_budget_sum_ms,
+		external_evaluator_cell_count: evaluator.cell_count,
 		effective_evaluator_jobs: evaluator.effective_jobs,
-		evaluator_bound_seconds: evaluator.bound_seconds,
 		orchestration_reserve_seconds,
 		seconds_until_next_slot,
 		conservative_bound_seconds,
@@ -269,28 +262,6 @@ fn assess_evaluator_capacity(
 	active_models: usize,
 	effective_jobs: usize,
 ) -> Result<EvaluatorCapacity, CapacityError> {
-	let one_model_budget_sum_ms = tasks.iter().try_fold(0_u64, |sum, task| {
-		let timeout_ms = task
-			.evaluator
-			.as_ref()
-			.and_then(|evaluator| evaluator.external.as_ref())
-			.map_or(0, |binding| binding.timeout_ms);
-
-		sum.checked_add(timeout_ms)
-			.ok_or_else(|| CapacityError::new("evaluator budget sum overflows"))
-	})?;
-	let maximum_timeout_ms = tasks
-		.iter()
-		.filter_map(|task| {
-			task.evaluator.as_ref()?.external.as_ref().map(|binding| binding.timeout_ms)
-		})
-		.max()
-		.unwrap_or(0);
-	let active_model_count = u64::try_from(active_models)
-		.map_err(|_| CapacityError::new("available model count overflows"))?;
-	let declared_budget_sum_ms = one_model_budget_sum_ms
-		.checked_mul(active_model_count)
-		.ok_or_else(|| CapacityError::new("evaluator budget sum overflows"))?;
 	let evaluator_cell_count = tasks
 		.iter()
 		.filter(|task| {
@@ -301,24 +272,8 @@ fn assess_evaluator_capacity(
 		.ok_or_else(|| CapacityError::new("evaluator cell count overflows"))?;
 	let effective_jobs =
 		effective_jobs.min(MAX_PARALLEL_EXTERNAL_EVALUATORS).min(evaluator_cell_count);
-	let bound_seconds = if effective_jobs == 0 {
-		0
-	} else {
-		let permits = u64::try_from(effective_jobs)
-			.map_err(|_| CapacityError::new("evaluator permit count overflows"))?;
-		let bound_ms = declared_budget_sum_ms
-			.checked_add(permits - 1)
-			.map(|sum| sum / permits)
-			.and_then(|bound| bound.checked_add(maximum_timeout_ms))
-			.ok_or_else(|| CapacityError::new("evaluator capacity bound overflows"))?;
 
-		bound_ms
-			.checked_add(999)
-			.map(|milliseconds| milliseconds / 1_000)
-			.ok_or_else(|| CapacityError::new("evaluator capacity conversion overflows"))?
-	};
-
-	Ok(EvaluatorCapacity { declared_budget_sum_ms, effective_jobs, bound_seconds })
+	Ok(EvaluatorCapacity { cell_count: evaluator_cell_count, effective_jobs })
 }
 
 fn valid_support_partition(
@@ -356,7 +311,7 @@ mod tests {
 
 	use crate::{
 		model::MODEL_MATRIX,
-		runner,
+		protocol, runner,
 		task::{EVALUATOR_PROTOCOL_VERSION, EvaluatorRuntimeKind, ExternalEvaluatorBinding},
 	};
 
@@ -436,7 +391,7 @@ mod tests {
 	}
 
 	#[test]
-	fn external_evaluator_deadlines_are_bound_and_must_fit_the_slot() {
+	fn external_evaluator_work_is_counted_but_never_used_as_a_schedule_bound() {
 		let mut tasks = runner::synthetic_demo_tasks();
 		let scorer_version = tasks[0].scorer_version.clone();
 		let evaluator = tasks[0].evaluator.as_mut().expect("synthetic evaluator");
@@ -450,12 +405,22 @@ mod tests {
 			runtime_executable_digest: format!("sha256:{}", "b".repeat(64)),
 			executable_ref: PathBuf::from("fixture/evaluator.mjs"),
 			executable_digest: format!("sha256:{}", "c".repeat(64)),
-			configuration_digest: format!("sha256:{}", "d".repeat(64)),
+			configuration_digest: protocol::canonical_hash(
+				&serde_json::from_value::<BTreeMap<String, serde_json::Value>>(serde_json::json!({
+					"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+					"completion_policy": "natural_completion"
+				}))
+				.expect("formal evaluator configuration"),
+			)
+			.expect("formal evaluator configuration hash"),
 			arguments: Vec::new(),
-			timeout_ms: 10_000,
 			max_input_bytes: 1_024,
 			max_output_bytes: 1_024,
-			configuration: BTreeMap::new(),
+			configuration: serde_json::from_value(serde_json::json!({
+				"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "natural_completion"
+			}))
+			.expect("formal evaluator configuration"),
 		});
 
 		let available = MODEL_MATRIX[..2].to_vec();
@@ -471,17 +436,9 @@ mod tests {
 		)
 		.expect("capacity estimate with evaluator work");
 
-		assert_eq!(estimate.declared_evaluator_budget_sum_ms, 20_000);
+		assert_eq!(estimate.external_evaluator_cell_count, 2);
 		assert_eq!(estimate.effective_evaluator_jobs, 2);
-		assert_eq!(estimate.evaluator_bound_seconds, 20);
-		assert_eq!(
-			estimate.conservative_bound_seconds,
-			Some(
-				estimate.model_execution_bound_seconds.expect("bounded model estimate")
-					+ estimate.evaluator_bound_seconds
-					+ estimate.orchestration_reserve_seconds
-			)
-		);
+		assert_eq!(estimate.conservative_bound_seconds, None);
 		assert!(
 			super::assess_capacity(
 				&tasks[..1],
@@ -490,9 +447,9 @@ mod tests {
 				&unsupported,
 				&digest(),
 				2,
-				estimate.conservative_bound_seconds.expect("bounded total estimate"),
+				1,
 			)
-			.is_err()
+			.is_ok()
 		);
 	}
 

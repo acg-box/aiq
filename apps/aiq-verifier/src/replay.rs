@@ -21,8 +21,8 @@ mod tests {
 
 	#[cfg(unix)]
 	use aiq_runner::task::{
-		EVALUATOR_PROTOCOL_VERSION, EvaluatorRuntime, EvaluatorRuntimeKind,
-		ExternalEvaluatorBinding,
+		EVALUATOR_CONFIG_SCHEMA_VERSION, EVALUATOR_PROTOCOL_VERSION, EvaluatorRuntime,
+		EvaluatorRuntimeKind, ExternalEvaluatorBinding,
 	};
 
 	use aiq_runner::{
@@ -176,7 +176,7 @@ mod tests {
 				evaluator_stdout_sha256: None,
 				artifacts: vec![snapshot, stdout_reference],
 				failure: None,
-				latency: Latency { wall_ms: 1 },
+				latency: Latency { wall_ms: 1, evaluator_ms: 0 },
 				tool_usage,
 				evaluator_checks: evaluation.checks.clone(),
 				workspace_manifest: Some(manifest),
@@ -529,7 +529,11 @@ mod tests {
 			.expect("evaluator executable permissions");
 
 		let executable_bytes = fs::read(&executable).expect("evaluator executable bytes");
-		let configuration = BTreeMap::new();
+		let configuration = serde_json::from_value(serde_json::json!({
+			"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion"
+		}))
+		.expect("formal evaluator configuration");
 		let binding = ExternalEvaluatorBinding {
 			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
 			scorer_version: fixture.tasks[0].scorer_version.clone(),
@@ -540,7 +544,6 @@ mod tests {
 			configuration_digest: protocol::canonical_hash(&configuration)
 				.expect("configuration hash"),
 			arguments: Vec::new(),
-			timeout_ms: 2_000,
 			max_input_bytes: 64 * 1_024,
 			max_output_bytes: 64 * 1_024,
 			configuration,
@@ -1315,25 +1318,68 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn nondeterministic_external_evaluator_is_rejected_and_cleaned() {
+	fn verifier_executes_the_independent_formal_replay_exactly_once() {
 		let mut fixture = Fixture::completed("OK");
-
-		install_shell_evaluator(
-			&mut fixture,
+		let stdout = current_evaluator_stdout(&fixture);
+		let script = format!(
 			r#"cat >/dev/null
-if [ -e replay-counter ]; then
-  printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect","score":0.0,"checks":[{"check_id":"repository_test","weight":1,"passed":false,"failure_class":"value","evidence_digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}'
-else
-  : > replay-counter
-  printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"correct","score":1.0,"checks":[{"check_id":"repository_test","weight":1,"passed":true,"failure_class":"none","evidence_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}'
-fi"#,
-		);
-		assert_replay_error(
-			fixture.verify().expect_err("nondeterministic evaluator"),
-			ReasonCode::EvaluatorReplayMismatch,
+count=0
+if [ -e verifier-replay-count ]; then count=$(cat verifier-replay-count); fi
+count=$((count + 1))
+printf '%s' "$count" > verifier-replay-count
+printf '%s' '{stdout}'"#
 		);
 
+		install_shell_evaluator(&mut fixture, &script);
+		bind_external_evaluator_stdout(&mut fixture, &stdout);
+
+		fixture.verify().expect("one independent verifier replay must match runner evidence");
+
+		assert_eq!(
+			fs::read_to_string(fixture.evaluator_root.join("verifier-replay-count"))
+				.expect("verifier replay count"),
+			"1"
+		);
 		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn verifier_mismatch_preserves_both_digests_without_automatic_retry() {
+		let mut fixture = Fixture::completed("OK");
+		let runner_stdout = current_evaluator_stdout(&fixture);
+		let verifier_stdout = concat!(
+			r#"{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect","score":0.0,"checks":[{"check_id":"exact_match","weight":1,"passed":false,"failure_class":"value","evidence_digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}"#,
+			"\n"
+		);
+		let script = format!(
+			r#"cat >/dev/null
+count=0
+if [ -e verifier-mismatch-count ]; then count=$(cat verifier-mismatch-count); fi
+count=$((count + 1))
+printf '%s' "$count" > verifier-mismatch-count
+printf '%s' '{verifier_stdout}'"#
+		);
+
+		install_shell_evaluator(&mut fixture, &script);
+		bind_external_evaluator_stdout(&mut fixture, &runner_stdout);
+
+		let error = fixture.verify().expect_err("independent mismatch must block verification");
+		let detail = error.to_string();
+		let runner_raw =
+			format!("sha256:{}", hex::encode(Sha256::digest(runner_stdout.as_bytes())));
+		let verifier_raw =
+			format!("sha256:{}", hex::encode(Sha256::digest(verifier_stdout.as_bytes())));
+
+		assert_replay_error(error, ReasonCode::EvaluatorReplayMismatch);
+
+		assert!(detail.contains(&runner_raw));
+		assert!(detail.contains(&verifier_raw));
+		assert_eq!(
+			fs::read_to_string(fixture.evaluator_root.join("verifier-mismatch-count"))
+				.expect("verifier mismatch count"),
+			"1"
+		);
 	}
 
 	#[cfg(unix)]
@@ -3064,6 +3110,23 @@ fn replay_evaluator(
 		evaluator_root,
 		evaluator_runtime,
 	)?;
+	let runner_observation_sha256 = protocol::canonical_hash(expected).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"runner evaluator observation cannot be hashed",
+		)
+	})?;
+	let verifier_observation_sha256 = protocol::canonical_hash(&replayed).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::EvaluatorReplayMismatch,
+			"verifier evaluator observation cannot be hashed",
+		)
+	})?;
+	let evidence_detail = format!(
+		"runner_observation_sha256={runner_observation_sha256}; verifier_observation_sha256={verifier_observation_sha256}; runner_raw_stdout_sha256={}; verifier_raw_stdout_sha256={}",
+		result.evaluator_stdout_sha256.as_deref().unwrap_or("null"),
+		replayed.raw_stdout_sha256.as_deref().unwrap_or("null"),
+	);
 	let external = task.evaluator.as_ref().is_some_and(|evaluator| evaluator.external.is_some());
 	let raw_stdout_is_consistent = if external {
 		result.evaluator_stdout_sha256.is_some()
@@ -3078,7 +3141,9 @@ fn replay_evaluator(
 	if !raw_stdout_is_consistent {
 		return Err(WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
-			"raw evaluator stdout evidence differs across replay and signed commitments",
+			format!(
+				"raw evaluator stdout evidence differs across runner and verifier observations; {evidence_detail}"
+			),
 		));
 	}
 
@@ -3103,13 +3168,17 @@ fn replay_evaluator(
 	if expected.outcome != expected_outcome || expected.score != expected_score {
 		return Err(WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
-			"signed evaluator result differs from the signed outcome or score",
+			format!(
+				"runner evaluator observation differs from the signed outcome or score; {evidence_detail}"
+			),
 		));
 	}
 	if replayed != *expected {
 		return Err(WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
-			"evaluator outcome, score, checks, or evidence digests differ from the signed result",
+			format!(
+				"runner and verifier evaluator outcome, score, checks, or evidence digests differ; {evidence_detail}"
+			),
 		));
 	}
 

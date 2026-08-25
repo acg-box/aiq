@@ -116,7 +116,7 @@ function syntheticResults(): Record<string, unknown>[] {
           exit_code: null,
           retryable: false,
         },
-        latency: { wall_ms: 0 },
+        latency: { wall_ms: 0, evaluator_ms: 0 },
         tool_usage: { steps: 0, total_calls: 0, by_tool: {} },
         workspace_manifest: null,
         provenance: {
@@ -304,7 +304,7 @@ function officialPackage(): Record<string, unknown> {
         )}`,
         artifacts: [artifact('workspace-snapshot.json', `snapshot-${taskIndex}-${modelIndex}`)],
         failure: null,
-        latency: { wall_ms: 1 },
+        latency: { wall_ms: 1, evaluator_ms: 1 },
         tool_usage: { steps: 0, total_calls: 0, by_tool: {} },
         workspace_manifest: artifact(
           'workspace-manifest.json',
@@ -984,7 +984,7 @@ void describe('shared result-package contract', () => {
         response_sha256: null,
         evaluator_result_sha256: null,
         evaluator_stdout_sha256: null,
-        latency: { wall_ms: 250 },
+        latency: { wall_ms: 250, evaluator_ms: 25 },
         tool_usage: { steps: 1, total_calls: 1, by_tool: { command_execution: 1 } },
         failure: {
           kind: 'workspace_integrity',
@@ -1746,8 +1746,8 @@ void describe('submission handler', () => {
         '"model":{"family":"sol","\\u0066amily":"sol","reasoning_effort":"low"}',
       ),
       source.replace(
-        '"latency":{"wall_ms":0}',
-        '"latency":{"wall_ms":0,"unknown":{"deep":1,"deep":2}}',
+        '"latency":{"evaluator_ms":0,"wall_ms":0}',
+        '"latency":{"evaluator_ms":0,"wall_ms":0,"unknown":{"deep":1,"deep":2}}',
       ),
     ];
     let storageCalls = 0;

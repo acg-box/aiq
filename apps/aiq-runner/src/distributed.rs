@@ -1465,7 +1465,6 @@ fn validate_wire_evaluator(task: &TaskDefinition) -> Result<(), DistributedError
 				validate_text(argument, 4_096, "evaluator argument")?;
 			}
 
-			validate_safe_integer(binding.timeout_ms, "evaluator timeout")?;
 			validate_safe_integer(
 				u64::try_from(binding.max_input_bytes)
 					.map_err(|_| DistributedError::new("evaluator input bound is too large"))?,
@@ -1477,9 +1476,7 @@ fn validate_wire_evaluator(task: &TaskDefinition) -> Result<(), DistributedError
 				"evaluator output bound",
 			)?;
 
-			if binding.timeout_ms == 0
-				|| binding.timeout_ms > 300_000
-				|| binding.max_input_bytes == 0
+			if binding.max_input_bytes == 0
 				|| binding.max_input_bytes > 1_024 * 1_024
 				|| binding.max_output_bytes == 0
 				|| binding.max_output_bytes > 1_024 * 1_024
@@ -1487,7 +1484,7 @@ fn validate_wire_evaluator(task: &TaskDefinition) -> Result<(), DistributedError
 					> 64 * 1_024
 			{
 				return Err(DistributedError::new(
-					"external evaluator resource bound is outside its limit",
+					"external evaluator I/O bound is outside its limit",
 				));
 			}
 		},

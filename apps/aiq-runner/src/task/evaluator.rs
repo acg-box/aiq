@@ -1,4 +1,4 @@
-//! Bounded external evaluator protocol for controlled hidden task payloads.
+//! Supervised external evaluator protocol for controlled hidden task payloads.
 
 #[cfg(all(test, unix))]
 mod tests {
@@ -27,16 +27,13 @@ mod tests {
 	use crate::{
 		model::MODEL_MATRIX,
 		task::evaluator::{
-			BoundedEvaluatorCommand, EVALUATOR_CONFIG_SCHEMA_VERSION, EVALUATOR_PROTOCOL_VERSION,
-			EVALUATOR_RESULT_SCHEMA_VERSION, EXTERNAL_EVALUATOR_REPLAY_PASSES, EvaluationErrorKind,
-			EvaluationResult, EvaluatorCheck, EvaluatorCheckFailureClass, EvaluatorContext,
-			EvaluatorExecutionObserver, EvaluatorOutcome, EvaluatorRuntime, EvaluatorRuntimeKind,
-			ExternalEvaluatorBinding, ExternalEvaluatorGate, MAX_EVALUATOR_CHECKS_PER_RESULT,
-			MAX_EVALUATOR_TIMEOUT_MS, NODE_SCENARIO_CLEANUP_RESERVE_MS,
-			NODE_SCENARIO_COPY_RESERVE_MS, NODE_SCENARIO_PASS_OVERHEAD_MS,
-			NODE_SCENARIO_SPAWN_RESERVE_MS, NormalizedToolEvidence, execute_bounded,
+			EVALUATOR_CONFIG_SCHEMA_VERSION, EVALUATOR_PROTOCOL_VERSION,
+			EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationErrorKind, EvaluationResult, EvaluatorCheck,
+			EvaluatorCheckFailureClass, EvaluatorContext, EvaluatorExecutionObserver,
+			EvaluatorOutcome, EvaluatorRuntime, EvaluatorRuntimeKind, ExternalEvaluatorBinding,
+			ExternalEvaluatorGate, MAX_EVALUATOR_CHECKS_PER_RESULT, NormalizedToolEvidence,
+			SupervisedEvaluatorCommand, execute_supervised,
 			force_evaluator_thread_spawn_failure_for_test,
-			minimum_node_scenario_evaluator_timeout_ms,
 		},
 	};
 
@@ -151,10 +148,19 @@ mod tests {
 		Path::new(env!("CARGO_MANIFEST_DIR")).to_owned()
 	}
 
+	fn formal_configuration() -> BTreeMap<String, Value> {
+		serde_json::from_value(serde_json::json!({
+			"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion"
+		}))
+		.expect("formal evaluator configuration")
+	}
+
 	fn echo_binding(output: &str) -> ExternalEvaluatorBinding {
 		let executable =
 			Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/echo-evaluator.mjs");
 		let runtime = node_runtime();
+		let configuration = formal_configuration();
 
 		ExternalEvaluatorBinding {
 			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
@@ -163,18 +169,17 @@ mod tests {
 			runtime_executable_digest: runtime.executable_digest().to_owned(),
 			executable_ref: Path::new("tests/fixtures/echo-evaluator.mjs").to_owned(),
 			executable_digest: executable_digest(&executable),
-			configuration_digest: protocol::canonical_hash(&BTreeMap::<String, Value>::new())
-				.expect("empty configuration must hash"),
+			configuration_digest: protocol::canonical_hash(&configuration)
+				.expect("formal configuration must hash"),
 			arguments: vec![
 				"-c".to_owned(),
 				"cat >/dev/null; printf '%s\\n' \"$1\"".to_owned(),
 				"aiq-evaluator-test".to_owned(),
 				output.to_owned(),
 			],
-			timeout_ms: 1_000,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
-			configuration: BTreeMap::new(),
+			configuration,
 		}
 	}
 
@@ -214,7 +219,6 @@ mod tests {
 		evaluator_root: &Path,
 		runtime: &EvaluatorRuntime,
 		delay_ms: u64,
-		timeout_ms: u64,
 	) -> ExternalEvaluatorBinding {
 		let executable = evaluator_root.join("gate-evaluator.mjs");
 
@@ -230,6 +234,8 @@ process.stdin.on('end', () => {{
 		)
 		.expect("gate evaluator fixture");
 
+		let configuration = formal_configuration();
+
 		ExternalEvaluatorBinding {
 			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
 			scorer_version: "1.0.0".to_owned(),
@@ -237,13 +243,12 @@ process.stdin.on('end', () => {{
 			runtime_executable_digest: runtime.executable_digest().to_owned(),
 			executable_ref: Path::new("gate-evaluator.mjs").to_owned(),
 			executable_digest: executable_digest(&executable),
-			configuration_digest: protocol::canonical_hash(&BTreeMap::<String, Value>::new())
-				.expect("empty configuration must hash"),
+			configuration_digest: protocol::canonical_hash(&configuration)
+				.expect("formal configuration must hash"),
 			arguments: vec![result_json(true)],
-			timeout_ms,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
-			configuration: BTreeMap::new(),
+			configuration,
 		}
 	}
 
@@ -379,7 +384,7 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn shared_runtime_gate_serializes_each_complete_two_pass_evaluation() {
+	fn shared_runtime_gate_serializes_each_complete_runner_evaluation() {
 		let unique =
 			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
 		let root = env::temp_dir().join(format!("aiq-evaluator-gate-{}-{unique}", process::id()));
@@ -394,7 +399,7 @@ process.stdin.on('end', () => {{
 		}
 
 		let runtime = resolve_node_runtime(&runtime_root).serialize_external_evaluators();
-		let binding = gate_test_binding(&evaluator_root, &runtime, 75, 1_000);
+		let binding = gate_test_binding(&evaluator_root, &runtime, 75);
 		let start = Arc::new(Barrier::new(workspaces.len() + 1));
 		let pass_starts = Arc::new(Mutex::new(Vec::new()));
 		let elapsed = Instant::now();
@@ -455,11 +460,11 @@ process.stdin.on('end', () => {{
 			result.expect("serialized evaluator must complete");
 		}
 
-		assert!(elapsed.elapsed() >= Duration::from_millis(250));
+		assert!(elapsed.elapsed() >= Duration::from_millis(125));
 
 		let pass_starts = pass_starts.lock().expect("pass order lock");
 
-		assert_eq!(pass_starts.len(), workspaces.len() * 2);
+		assert_eq!(pass_starts.len(), workspaces.len());
 
 		for worker in 0..workspaces.len() {
 			assert_eq!(
@@ -469,7 +474,7 @@ process.stdin.on('end', () => {{
 						|(observed_worker, pass)| (*observed_worker == worker).then_some(*pass)
 					)
 					.collect::<Vec<_>>(),
-				vec![1, 2]
+				vec![1]
 			);
 		}
 
@@ -491,7 +496,7 @@ process.stdin.on('end', () => {{
 		fs::create_dir_all(&workspace).expect("candidate workspace");
 
 		let runtime = resolve_node_runtime(&root.join("runtime"));
-		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 1_000);
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0);
 		let tool_evidence =
 			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
 		let context = EvaluatorContext {
@@ -537,7 +542,7 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn evaluator_gate_queue_wait_is_outside_the_aggregate_timeout() {
+	fn evaluator_gate_queue_wait_does_not_change_natural_completion() {
 		let unique =
 			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
 		let root = env::temp_dir().join(format!("aiq-evaluator-queue-{}-{unique}", process::id()));
@@ -551,7 +556,7 @@ process.stdin.on('end', () => {{
 
 		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
 
-		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 500);
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0);
 		let gate = runtime.enter_external_evaluator().expect("test must acquire evaluator gate");
 		let start = Arc::new(Barrier::new(2));
 		let (result, elapsed) = thread::scope(|scope| {
@@ -584,11 +589,82 @@ process.stdin.on('end', () => {{
 			handle.join().expect("queued evaluator must not panic")
 		});
 
-		result.expect("queue wait must not consume the evaluator timeout");
+		result.expect("queue wait must not change the evaluator result");
 
 		assert!(elapsed >= Duration::from_millis(600));
 
 		fs::remove_dir_all(root).expect("queue fixture cleanup");
+	}
+
+	#[test]
+	fn formal_evaluator_elapsed_time_does_not_terminate_evidence() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root =
+			env::temp_dir().join(format!("aiq-evaluator-no-deadline-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let runtime = resolve_node_runtime(&root.join("runtime"));
+		let binding = gate_test_binding(&evaluator_root, &runtime, 40);
+		let started = Instant::now();
+		let result = evaluate_fixture_with_runtime(
+			&binding,
+			"candidate response",
+			&evaluator_root,
+			&workspace,
+			&runtime,
+		)
+		.expect("formal evaluator work must complete without an elapsed-time deadline");
+
+		assert_eq!(result.outcome, EvaluatorOutcome::Correct);
+		assert!(started.elapsed() >= Duration::from_millis(40));
+
+		fs::remove_dir_all(root).expect("no-deadline fixture cleanup");
+	}
+
+	#[test]
+	fn node_scenario_exceeding_the_old_per_check_deadline_completes() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir()
+			.join(format!("aiq-node-scenario-no-deadline-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let runtime = resolve_node_runtime(&root.join("runtime"));
+		let binding = with_configuration(
+			gate_test_binding(&evaluator_root, &runtime, 1_050),
+			serde_json::json!({
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "natural_completion",
+				"checks": [{
+					"check_id": "repository_test",
+					"type": "node_scenario",
+					"weight": 1
+				}]
+			}),
+		);
+		let started = Instant::now();
+		let result = evaluate_fixture_with_runtime(
+			&binding,
+			"candidate response",
+			&evaluator_root,
+			&workspace,
+			&runtime,
+		)
+		.expect("formal Node.js scenario must run to natural completion");
+
+		assert_eq!(result.outcome, EvaluatorOutcome::Correct);
+		assert!(started.elapsed() >= Duration::from_millis(1_050));
+
+		fs::remove_dir_all(root).expect("node-scenario fixture cleanup");
 	}
 
 	#[test]
@@ -606,9 +682,9 @@ process.stdin.on('end', () => {{
 
 		runtime.external_evaluator_gate = Arc::new(ExternalEvaluatorGate::new(1));
 
-		// This test verifies permit release, not timeout behavior. Force the existing
-		// execution-error path so host scheduling cannot change the failure class.
-		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 5_000);
+		// Force the execution-error path so host scheduling cannot change the
+		// failure class being tested.
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0);
 
 		force_evaluator_thread_spawn_failure_for_test(0);
 
@@ -648,7 +724,7 @@ process.stdin.on('end', () => {{
 		fs::create_dir_all(&workspace).expect("candidate workspace");
 
 		let runtime = resolve_node_runtime(&root.join("runtime"));
-		let binding = gate_test_binding(&evaluator_root, &runtime, 0, 1_000);
+		let binding = gate_test_binding(&evaluator_root, &runtime, 0);
 		let gate = Arc::clone(&runtime.external_evaluator_gate);
 
 		assert!(
@@ -744,12 +820,7 @@ process.stdin.on('end', () => {{
 	#[test]
 	fn checked_observation_returns_the_independent_raw_stdout_digest() {
 		let stdout = result_json(true);
-		let mut binding = echo_binding(&stdout);
-
-		// This test verifies the independent digest, not the timeout path. Give the
-		// two deterministic Node.js replay passes enough headroom on loaded CI hosts.
-		binding.timeout_ms = 5_000;
-
+		let binding = echo_binding(&stdout);
 		let observation = evaluate_observation_fixture(
 			&binding,
 			"candidate output",
@@ -851,6 +922,8 @@ process.stdin.on('end', () => {{
 		})
 		.to_string();
 		let configuration = serde_json::json!({
+			"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion",
 			"checks": [
 				{"check_id": "golden_csv", "type": "csv", "weight": 1},
 				{"check_id": "malformed_rows", "type": "json", "weight": 1},
@@ -1299,128 +1372,99 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn known_node_scenario_configuration_requires_a_checked_two_pass_timeout_envelope() {
-		let timeouts_ms = [5_000; 6];
-		let required_ms = minimum_node_scenario_evaluator_timeout_ms(&timeouts_ms)
-			.expect("bounded scenario envelope");
-		let lifecycle_reserve_ms = NODE_SCENARIO_COPY_RESERVE_MS
-			+ NODE_SCENARIO_SPAWN_RESERVE_MS
-			+ NODE_SCENARIO_CLEANUP_RESERVE_MS;
-
-		assert_eq!(
-			required_ms,
-			EXTERNAL_EVALUATOR_REPLAY_PASSES
-				* (NODE_SCENARIO_PASS_OVERHEAD_MS + 6 * (5_000 + lifecycle_reserve_ms))
-		);
-		assert_eq!(required_ms, 176_000);
-		assert!(required_ms <= MAX_EVALUATOR_TIMEOUT_MS);
-
-		let checks = timeouts_ms
-			.into_iter()
-			.enumerate()
-			.map(|(index, timeout_ms)| {
-				serde_json::json!({
-					"check_id": format!("scenario_{index}"),
-					"type": "node_scenario",
-					"timeout_ms": timeout_ms,
-					"weight": 1
-				})
-			})
-			.collect::<Vec<_>>();
-		let mut binding = with_configuration(
+	fn formal_node_scenario_configuration_has_one_natural_completion_contract() {
+		let binding = with_configuration(
 			echo_binding("{}"),
 			serde_json::json!({
 				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
-				"checks": checks
+				"completion_policy": "natural_completion",
+				"checks": [{
+					"check_id": "scenario",
+					"type": "node_scenario",
+					"weight": 1
+				}]
 			}),
 		);
 
-		binding.timeout_ms = required_ms;
+		assert!(binding.validation_issues("1.0.0").is_empty());
+	}
 
-		assert!(binding.validation_issues("1.0.0").iter().all(|issue| {
-			!issue.contains("node_scenario") && !issue.contains("configured node_scenario envelope")
+	#[test]
+	fn formal_node_scenario_configuration_rejects_per_check_deadlines() {
+		let binding = with_configuration(
+			echo_binding("{}"),
+			serde_json::json!({
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "natural_completion",
+				"checks": [{
+					"check_id": "scenario",
+					"type": "node_scenario",
+					"timeout_ms": 1_000,
+					"weight": 1
+				}]
+			}),
+		);
+
+		assert!(binding.validation_issues("1.0.0").iter().any(|issue| {
+			issue == "configuration checks[0] node_scenario must not declare timeout_ms"
 		}));
 	}
 
 	#[test]
-	fn known_node_scenario_configuration_rejects_missing_or_nonpositive_inner_timeout() {
-		for check in [
-			serde_json::json!({"check_id": "missing", "type": "node_scenario", "weight": 1}),
-			serde_json::json!({
-				"check_id": "zero",
-				"type": "node_scenario",
-				"timeout_ms": 0,
-				"weight": 1
-			}),
-			serde_json::json!({
-				"check_id": "fractional",
-				"type": "node_scenario",
-				"timeout_ms": 1.5,
-				"weight": 1
-			}),
-		] {
-			let binding = with_configuration(
-				echo_binding("{}"),
-				serde_json::json!({
-					"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
-					"checks": [check]
-				}),
+	fn formal_configuration_rejects_every_deadline_alias_at_both_scopes() {
+		for field in super::FORMAL_DEADLINE_FIELDS {
+			let mut evaluator_configuration = serde_json::json!({
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "natural_completion"
+			});
+
+			evaluator_configuration[field] = serde_json::json!(1);
+
+			assert!(
+				with_configuration(echo_binding("{}"), evaluator_configuration)
+					.validation_issues("1.0.0")
+					.iter()
+					.any(|issue| issue.contains(field))
 			);
 
-			assert!(binding.validation_issues("1.0.0").iter().any(|issue| {
-				issue
-					== "configuration checks[0] node_scenario timeout_ms must be a positive integer"
-			}));
+			let mut check = serde_json::json!({
+				"check_id": "scenario",
+				"type": "node_scenario",
+				"weight": 1
+			});
+
+			check[field] = serde_json::json!(1);
+
+			let check_configuration = serde_json::json!({
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "natural_completion",
+				"checks": [check]
+			});
+
+			assert!(
+				with_configuration(echo_binding("{}"), check_configuration)
+					.validation_issues("1.0.0")
+					.iter()
+					.any(|issue| issue.contains(field))
+			);
 		}
 	}
 
 	#[test]
-	fn node_scenario_timeout_envelope_rejects_overflow_and_the_previous_bad_budget() {
-		assert_eq!(minimum_node_scenario_evaluator_timeout_ms(&[u64::MAX]), None);
-
-		let checks = (0..6)
-			.map(|index| {
-				serde_json::json!({
-					"check_id": format!("scenario_{index}"),
-					"type": "node_scenario",
-					"timeout_ms": 30_000,
-					"weight": 1
-				})
-			})
-			.collect::<Vec<_>>();
-		let mut previous = with_configuration(
-			echo_binding("{}"),
+	fn legacy_or_implicit_completion_configuration_is_rejected() {
+		for configuration in [
 			serde_json::json!({
-				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
-				"checks": checks
+				"schema_version": "aiq.evaluator-config.v1",
+				"completion_policy": "natural_completion"
 			}),
-		);
-
-		previous.timeout_ms = 60_000;
-
-		assert_eq!(minimum_node_scenario_evaluator_timeout_ms(&[30_000; 6]), Some(476_000));
-		assert!(previous.validation_issues("1.0.0").iter().any(|issue| {
-			issue
-				== &format!(
-					"node_scenario evaluator timeout envelope requires 476000 ms, above maximum {MAX_EVALUATOR_TIMEOUT_MS} ms"
-				)
-		}));
-	}
-
-	#[test]
-	fn unknown_evaluator_configuration_does_not_infer_node_scenario_semantics() {
-		let binding = with_configuration(
-			echo_binding("{}"),
 			serde_json::json!({
-				"schema_version": "vendor.evaluator-config.v1",
-				"checks": [{"check_id": "opaque", "type": "node_scenario", "weight": 1}]
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION
 			}),
-		);
+		] {
+			let binding = with_configuration(echo_binding("{}"), configuration);
 
-		assert!(binding.validation_issues("1.0.0").iter().all(|issue| {
-			!issue.contains("node_scenario timeout_ms")
-				&& !issue.contains("node_scenario evaluator timeout envelope")
-		}));
+			assert!(!binding.validation_issues("1.0.0").is_empty());
+		}
 	}
 
 	#[test]
@@ -1569,44 +1613,6 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn external_protocol_preserves_timeout_when_evaluator_does_not_read_stdin() {
-		let root = env::temp_dir().join(format!("aiq-evaluator-timeout-{}", process::id()));
-		let evaluator_root = root.join("evaluators");
-		let workspace = root.join("workspace");
-
-		fs::create_dir_all(&evaluator_root).expect("evaluator root");
-		fs::create_dir_all(&workspace).expect("workspace");
-
-		let executable = evaluator_root.join("timeout.mjs");
-
-		fs::write(&executable, "setTimeout(() => {}, 10_000);\n").expect("timeout script");
-
-		let runtime = node_runtime();
-		let binding = ExternalEvaluatorBinding {
-			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
-			scorer_version: "1.0.0".to_owned(),
-			runtime_kind: EvaluatorRuntimeKind::Node,
-			runtime_executable_digest: runtime.executable_digest().to_owned(),
-			executable_ref: Path::new("timeout.mjs").to_owned(),
-			executable_digest: executable_digest(&executable),
-			configuration_digest: protocol::canonical_hash(&BTreeMap::<String, Value>::new())
-				.expect("empty configuration must hash"),
-			arguments: Vec::new(),
-			timeout_ms: 10,
-			max_input_bytes: 512 * 1_024,
-			max_output_bytes: 8_192,
-			configuration: BTreeMap::new(),
-		};
-		let error =
-			evaluate_fixture(&binding, &"x".repeat(256 * 1_024), &evaluator_root, &workspace)
-				.expect_err("slow evaluator must time out");
-
-		assert_eq!(error.kind(), EvaluationErrorKind::Timeout);
-
-		fs::remove_dir_all(root).expect("timeout fixture cleanup");
-	}
-
-	#[test]
 	#[allow(clippy::zombie_processes)]
 	fn descendant_pipe_fixture() {
 		let Ok(directory) = env::current_dir() else {
@@ -1667,13 +1673,13 @@ process.stdin.on('end', () => {{
 
 			let mut observer = TestExecutionObserver::default();
 			let started = Instant::now();
-			let error = execute_bounded(
-				BoundedEvaluatorCommand {
+			let error = execute_supervised(
+				SupervisedEvaluatorCommand {
 					executable: executable.clone(),
 					controlled_cwd: &root,
 					arguments: &arguments,
 					input: Vec::new(),
-					timeout: Duration::from_secs(5),
+					diagnostic_timeout: Some(Duration::from_secs(5)),
 					output_limit: 4_096,
 				},
 				None,
@@ -1692,7 +1698,7 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn bounded_evaluator_timeout_kills_same_group_descendants_that_retain_output_pipes() {
+	fn diagnostic_process_timeout_kills_same_group_descendants_that_retain_output_pipes() {
 		let unique = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("fixture clock must follow Unix epoch")
@@ -1709,19 +1715,19 @@ process.stdin.on('end', () => {{
 			"--nocapture".to_owned(),
 		];
 		let started = Instant::now();
-		let capture = execute_bounded(
-			BoundedEvaluatorCommand {
+		let capture = execute_supervised(
+			SupervisedEvaluatorCommand {
 				executable,
 				controlled_cwd: &root,
 				arguments: &arguments,
 				input: Vec::new(),
-				timeout: Duration::from_millis(100),
+				diagnostic_timeout: Some(Duration::from_millis(100)),
 				output_limit: 8_192,
 			},
 			None,
 			None,
 		)
-		.expect("bounded evaluator must return after terminating the process group");
+		.expect("diagnostic supervisor must return after terminating the process group");
 
 		assert!(capture.timed_out);
 		assert!(started.elapsed() < Duration::from_secs(2));
@@ -1780,60 +1786,12 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn evaluator_replay_rejects_nondeterministic_output_and_uses_controlled_cwd() {
+	fn runner_executes_formal_evaluator_exactly_once_in_the_controlled_cwd() {
 		let unique = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.expect("fixture clock must follow Unix epoch")
 			.as_nanos();
-		let root = env::temp_dir().join(format!("aiq-evaluator-replay-{}-{unique}", process::id()));
-
-		fs::create_dir(&root).expect("fixture root must be created");
-
-		let executable = root.join("evaluator");
-
-		fs::write(
-			&executable,
-			concat!(
-				"import fs from 'node:fs';\n",
-				"process.stdin.resume();\n",
-				"process.stdin.on('end', () => {\n",
-				" const repeated = fs.existsSync('replay-count');\n",
-				" if (!repeated) fs.writeFileSync('replay-count', '');\n",
-				" process.stdout.write(JSON.stringify({schema_version:'aiq.evaluator-result.v3',",
-				"outcome:repeated?'correct':'incorrect',score:repeated?1:0,checks:[{check_id:'x',",
-				"weight:1,passed:repeated,failure_class:repeated?'none':'value',evidence_digest:",
-				"'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}]}));\n",
-				"});\n",
-			),
-		)
-		.expect("fixture evaluator must be written");
-		fs::set_permissions(&executable, Permissions::from_mode(0o700))
-			.expect("fixture evaluator must be executable");
-
-		let mut binding = echo_binding(&result_json(true));
-
-		binding.executable_ref = Path::new("evaluator").to_owned();
-		binding.executable_digest = executable_digest(&executable);
-
-		binding.arguments.clear();
-
-		let error = evaluate_fixture(&binding, "candidate output", &root, Path::new("/"))
-			.expect_err("different replay output must fail");
-
-		assert_eq!(error.kind(), EvaluationErrorKind::ReplayMismatch);
-		assert!(root.join("replay-count").is_file());
-
-		fs::remove_dir_all(&root).expect("fixture root must be removed");
-	}
-
-	#[test]
-	fn checked_observation_retries_a_transient_replay_mismatch() {
-		let unique = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("fixture clock must follow Unix epoch")
-			.as_nanos();
-		let root =
-			env::temp_dir().join(format!("aiq-evaluator-replay-retry-{}-{unique}", process::id()));
+		let root = env::temp_dir().join(format!("aiq-evaluator-once-{}-{unique}", process::id()));
 		let workspace = root.join("workspace");
 
 		fs::create_dir_all(&workspace).expect("fixture workspace must be created");
@@ -1846,13 +1804,12 @@ process.stdin.on('end', () => {{
 				"import fs from 'node:fs';\n",
 				"process.stdin.resume();\n",
 				"process.stdin.on('end', () => {\n",
-				" const path = 'replay-count';\n",
+				" const path = 'runner-evaluation-count';\n",
 				" const count = fs.existsSync(path) ? Number(fs.readFileSync(path, 'utf8')) : 0;\n",
 				" fs.writeFileSync(path, String(count + 1));\n",
-				" const passed = count > 0;\n",
 				" process.stdout.write(JSON.stringify({schema_version:'aiq.evaluator-result.v3',",
-				"outcome:passed?'correct':'incorrect',score:passed?1:0,checks:[{check_id:'x',",
-				"weight:1,passed,failure_class:passed?'none':'value',evidence_digest:",
+				"outcome:'correct',score:1,checks:[{check_id:'x',",
+				"weight:1,passed:true,failure_class:'none',evidence_digest:",
 				"'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'}]}));\n",
 				"});\n",
 			),
@@ -1868,16 +1825,15 @@ process.stdin.on('end', () => {{
 
 		binding.arguments.clear();
 
-		// This test exercises replay retry semantics, not the timeout boundary.
-		// Leave enough process-start headroom for contended CI hosts.
-		binding.timeout_ms = 5_000;
-
 		let observation =
 			evaluate_observation_fixture(&binding, "candidate output", &root, &workspace)
-				.expect("the second checked attempt must accept two identical outputs");
+				.expect("the single runner evaluator execution must complete");
 
 		assert_eq!(observation.result.outcome, EvaluatorOutcome::Correct);
-		assert_eq!(fs::read_to_string(root.join("replay-count")).expect("attempt count"), "4");
+		assert_eq!(
+			fs::read_to_string(root.join("runner-evaluation-count")).expect("attempt count"),
+			"1"
+		);
 
 		fs::remove_dir_all(&root).expect("fixture root must be removed");
 	}
@@ -1939,25 +1895,11 @@ type ReaderThread = JoinHandle<std::io::Result<(Vec<u8>, bool)>>;
 pub const EVALUATOR_PROTOCOL_VERSION: &str = "aiq.evaluator-input.v2";
 /// Result schema returned by controlled external evaluators.
 pub const EVALUATOR_RESULT_SCHEMA_VERSION: &str = "aiq.evaluator-result.v3";
-/// Configuration schema whose Node.js scenario deadlines have a checked outer envelope.
-pub const EVALUATOR_CONFIG_SCHEMA_VERSION: &str = "aiq.evaluator-config.v1";
+/// Configuration schema whose formal work runs to natural completion.
+pub const EVALUATOR_CONFIG_SCHEMA_VERSION: &str = "aiq.evaluator-config.v2";
 /// Maximum committed checks in one evaluator result.
 pub const MAX_EVALUATOR_CHECKS_PER_RESULT: usize = 16;
-/// Number of identical external evaluator passes in one checked evaluation.
-pub const EXTERNAL_EVALUATOR_REPLAY_PASSES: u64 = 2;
-/// Maximum checked attempts for a transient two-pass replay mismatch.
-pub const MAX_CHECKED_EVALUATOR_ATTEMPTS: usize = 3;
-/// Per-scenario reserve for copying the controlled scenario workspace.
-pub const NODE_SCENARIO_COPY_RESERVE_MS: u64 = 2_000;
-/// Per-scenario reserve for starting the committed Node.js scenario process.
-pub const NODE_SCENARIO_SPAWN_RESERVE_MS: u64 = 1_000;
-/// Per-scenario reserve for terminating, reaping, and cleaning up the scenario process.
-pub const NODE_SCENARIO_CLEANUP_RESERVE_MS: u64 = 5_000;
-/// Fixed evaluator work reserved once around all Node.js scenarios in each pass.
-pub const NODE_SCENARIO_PASS_OVERHEAD_MS: u64 = 10_000;
-/// Maximum aggregate external evaluator timeout accepted by the protocol.
-pub const MAX_EVALUATOR_TIMEOUT_MS: u64 = 300_000;
-/// Maximum checked two-pass evaluators that can execute through one runtime.
+/// Maximum checked evaluators that can execute through one runtime.
 ///
 /// The bound matches the complete 17-configuration AIQ model matrix.
 pub const MAX_PARALLEL_EXTERNAL_EVALUATORS: usize = 17;
@@ -1965,19 +1907,28 @@ pub const MAX_PARALLEL_EXTERNAL_EVALUATORS: usize = 17;
 const MAX_EVALUATOR_IO_BYTES: usize = 1_024 * 1_024;
 const MAX_EVALUATOR_CONFIG_BYTES: usize = 64 * 1_024;
 const MAX_EVALUATOR_ARGUMENTS: usize = 64;
+const FORMAL_DEADLINE_FIELDS: [&str; 7] = [
+	"timeout_ms",
+	"timeout_seconds",
+	"deadline_ms",
+	"deadline_seconds",
+	"max_elapsed_ms",
+	"max_duration_ms",
+	"scenario_timeout_ms",
+];
 
-/// Receives actual two-pass evaluator and direct-child lifecycle boundaries.
+/// Receives actual evaluator and direct-child lifecycle boundaries.
 trait EvaluatorExecutionObserver {
-	/// Called immediately before one evaluator pass starts.
+	/// Called immediately before one evaluator execution starts.
 	fn pass_started(&mut self, pass: usize);
-	/// Called after one evaluator pass reaches its terminal result.
+	/// Called after one evaluator execution reaches its terminal result.
 	fn pass_finished(&mut self, pass: usize);
 	/// Called only after the evaluator child has an operating-system process ID.
 	fn child_spawned(&mut self, pass: usize, pid: u32);
 	/// Called after the evaluator direct child has been reaped.
 	fn child_reaped(&mut self, pass: usize, pid: u32, exit_code: Option<i32>);
 	/// Called with the exact validated result and raw stdout digest returned by
-	/// one evaluator pass.
+	/// the evaluator execution.
 	fn result_observed(&mut self, pass: usize, result: &EvaluationResult, raw_stdout_sha256: &str);
 }
 
@@ -2008,16 +1959,12 @@ pub enum EvaluationErrorKind {
 	Configuration,
 	/// Serialized input exceeded its commitment.
 	InputTooLarge,
-	/// The evaluator exceeded its deadline.
-	Timeout,
 	/// Output exceeded its commitment.
 	OutputTooLarge,
 	/// The process could not run successfully.
 	Execution,
 	/// Output did not match the strict result contract.
 	InvalidOutput,
-	/// Repeated execution returned different bytes or semantics.
-	ReplayMismatch,
 }
 
 /// Stable failure class for one evaluator check.
@@ -2186,8 +2133,6 @@ pub struct ExternalEvaluatorBinding {
 	/// Direct arguments. No shell parses these values.
 	#[serde(default)]
 	pub arguments: Vec<String>,
-	/// Hard evaluator deadline.
-	pub timeout_ms: u64,
 	/// Maximum serialized evaluator input.
 	pub max_input_bytes: usize,
 	/// Maximum retained evaluator output for each stream.
@@ -2239,9 +2184,6 @@ impl ExternalEvaluatorBinding {
 		if self.arguments.len() > MAX_EVALUATOR_ARGUMENTS {
 			issues.push(format!("arguments must contain at most {MAX_EVALUATOR_ARGUMENTS} items"));
 		}
-		if self.timeout_ms == 0 || self.timeout_ms > MAX_EVALUATOR_TIMEOUT_MS {
-			issues.push(format!("timeout_ms must be from 1 through {MAX_EVALUATOR_TIMEOUT_MS}"));
-		}
 
 		for (field, value) in
 			[("max_input_bytes", self.max_input_bytes), ("max_output_bytes", self.max_output_bytes)]
@@ -2269,7 +2211,7 @@ impl ExternalEvaluatorBinding {
 			));
 		}
 
-		issues.extend(self.node_scenario_envelope_issues());
+		issues.extend(self.formal_completion_policy_issues());
 
 		match protocol::canonical_hash(&self.configuration) {
 			Ok(observed) if observed != self.configuration_digest => issues
@@ -2281,48 +2223,48 @@ impl ExternalEvaluatorBinding {
 		issues
 	}
 
-	fn node_scenario_envelope_issues(&self) -> Vec<String> {
+	fn formal_completion_policy_issues(&self) -> Vec<String> {
+		let mut issues = Vec::new();
+
 		if self.configuration.get("schema_version").and_then(Value::as_str)
 			!= Some(EVALUATOR_CONFIG_SCHEMA_VERSION)
 		{
-			return Vec::new();
+			issues.push(format!(
+				"configuration schema_version must be {EVALUATOR_CONFIG_SCHEMA_VERSION}"
+			));
+		}
+		if self.configuration.get("completion_policy").and_then(Value::as_str)
+			!= Some("natural_completion")
+		{
+			issues.push("configuration completion_policy must be natural_completion".to_owned());
+		}
+
+		for field in FORMAL_DEADLINE_FIELDS {
+			if self.configuration.contains_key(field) {
+				issues
+					.push(format!("configuration must not declare formal deadline field {field}"));
+			}
 		}
 
 		let Some(checks_value) = self.configuration.get("checks") else {
-			return Vec::new();
+			return issues;
 		};
 		let Some(checks) = checks_value.as_array() else {
-			return vec![format!("{EVALUATOR_CONFIG_SCHEMA_VERSION} checks must be an array")];
+			issues.push(format!("{EVALUATOR_CONFIG_SCHEMA_VERSION} checks must be an array"));
+
+			return issues;
 		};
-		let mut timeouts_ms = Vec::new();
-		let mut issues = Vec::new();
 
 		for (index, check) in checks.iter().enumerate() {
-			if check.get("type").and_then(Value::as_str) != Some("node_scenario") {
-				continue;
+			for field in FORMAL_DEADLINE_FIELDS {
+				if check.get(field).is_some() {
+					let check_type = check.get("type").and_then(Value::as_str).unwrap_or("check");
+
+					issues.push(format!(
+						"configuration checks[{index}] {check_type} must not declare {field}"
+					));
+				}
 			}
-
-			match check.get("timeout_ms").and_then(Value::as_u64).filter(|timeout| *timeout != 0) {
-				Some(timeout_ms) => timeouts_ms.push(timeout_ms),
-				None => issues.push(format!(
-					"configuration checks[{index}] node_scenario timeout_ms must be a positive integer"
-				)),
-			}
-		}
-
-		if !issues.is_empty() || timeouts_ms.is_empty() {
-			return issues;
-		}
-
-		match minimum_node_scenario_evaluator_timeout_ms(&timeouts_ms) {
-			None => issues.push("node_scenario evaluator timeout envelope overflows u64".to_owned()),
-			Some(required_ms) if required_ms > MAX_EVALUATOR_TIMEOUT_MS => issues.push(format!(
-				"node_scenario evaluator timeout envelope requires {required_ms} ms, above maximum {MAX_EVALUATOR_TIMEOUT_MS} ms"
-			)),
-			Some(required_ms) if self.timeout_ms < required_ms => issues.push(format!(
-				"timeout_ms must be at least {required_ms} for the configured node_scenario envelope"
-			)),
-			Some(_) => {},
 		}
 
 		issues
@@ -2418,9 +2360,10 @@ impl ExternalEvaluatorBinding {
 
 	/// Executes through an explicit evaluator registry root.
 	///
-	/// The evaluator runs twice with identical bytes. Both output bytes and parsed
-	/// results must match. Deployment isolation must separately deny uncontrolled
-	/// network and host resources because this portable process boundary cannot.
+	/// The runner executes the evaluator once. The independent verifier performs
+	/// the second execution before publication. Deployment isolation must
+	/// separately deny uncontrolled network and host resources because this
+	/// portable process boundary cannot.
 	pub fn evaluate_at_root(
 		&self,
 		evaluator_kind: &str,
@@ -2431,7 +2374,7 @@ impl ExternalEvaluatorBinding {
 		self.evaluate_at_root_observed(evaluator_kind, context, root, runtime, &mut |_, _| {})
 	}
 
-	/// Executes the checked two-pass boundary and returns its raw stdout commitment.
+	/// Executes once and returns the exact raw stdout commitment.
 	pub(crate) fn evaluate_observation_at_root(
 		&self,
 		evaluator_kind: &str,
@@ -2441,7 +2384,7 @@ impl ExternalEvaluatorBinding {
 	) -> Result<CheckedEvaluatorObservation, EvaluationError> {
 		#[derive(Default)]
 		struct RawStdoutObserver {
-			digests: Vec<String>,
+			digest: Option<String>,
 		}
 
 		impl EvaluatorExecutionObserver for RawStdoutObserver {
@@ -2459,44 +2402,26 @@ impl ExternalEvaluatorBinding {
 				_result: &EvaluationResult,
 				raw_stdout_sha256: &str,
 			) {
-				self.digests.push(raw_stdout_sha256.to_owned());
+				self.digest = Some(raw_stdout_sha256.to_owned());
 			}
 		}
 
-		for attempt in 0..MAX_CHECKED_EVALUATOR_ATTEMPTS {
-			let mut observer = RawStdoutObserver::default();
-			let checked = self
-				.evaluate_at_root_observed_inner(
-					evaluator_kind,
-					context,
-					root,
-					runtime,
-					&mut observer,
-				)
-				.and_then(|result| {
-					let [first, second] = observer.digests.as_slice() else {
-						return Err(EvaluationError::replay_mismatch());
-					};
+		let mut observer = RawStdoutObserver::default();
+		let result = self.evaluate_at_root_observed_inner(
+			evaluator_kind,
+			context,
+			root,
+			runtime,
+			&mut observer,
+		)?;
+		let raw_stdout_sha256 = observer.digest.ok_or_else(|| {
+			EvaluationError::execution("evaluator completed without an observed stdout digest")
+		})?;
 
-					if first != second {
-						return Err(EvaluationError::replay_mismatch());
-					}
-
-					Ok(CheckedEvaluatorObservation { result, raw_stdout_sha256: first.clone() })
-				});
-
-			match checked {
-				Err(error)
-					if error.kind() == EvaluationErrorKind::ReplayMismatch
-						&& attempt + 1 < MAX_CHECKED_EVALUATOR_ATTEMPTS => {},
-				result => return result,
-			}
-		}
-
-		unreachable!("checked evaluator attempts are nonzero")
+		Ok(CheckedEvaluatorObservation { result, raw_stdout_sha256 })
 	}
 
-	/// Executes twice and reports the exact start and terminal edge of each child pass.
+	/// Executes once and reports the exact start and terminal edge of the child.
 	pub fn evaluate_at_root_observed(
 		&self,
 		evaluator_kind: &str,
@@ -2542,7 +2467,7 @@ impl ExternalEvaluatorBinding {
 		);
 
 		// Public callbacks can execute arbitrary caller code. Replay the captured
-		// pass edges only after the shared evaluator gate has been released, so a
+		// execution edges only after the shared evaluator gate has been released, so a
 		// callback can safely invoke another evaluation with this runtime.
 		for (pass, started) in captured.edges {
 			observer(pass, started);
@@ -2559,27 +2484,23 @@ impl ExternalEvaluatorBinding {
 		runtime: &EvaluatorRuntime,
 		observer: &mut dyn EvaluatorExecutionObserver,
 	) -> Result<EvaluationResult, EvaluationError> {
-		// Every clone of one configured runtime shares this gate. Waiting for the
-		// gate is intentionally outside the aggregate evaluator timeout, and the
-		// guard remains held across both deterministic replay passes.
+		// Every clone of one configured runtime shares this gate for the complete
+		// single runner observation.
 		let _gate = runtime.enter_external_evaluator()?;
 		let pinned = self.pin_at_root(root, runtime)?;
 		let input = self.build_input(evaluator_kind, context, &pinned.controlled_cwd)?;
-		let aggregate_timeout = Duration::from_millis(self.timeout_ms);
-		let started = Instant::now();
 
 		observer.pass_started(1);
 
-		let first_result = self.evaluate_once(
+		let evaluated = self.evaluate_once(
 			runtime,
 			&pinned.executable,
 			&pinned.controlled_cwd,
 			&input,
-			aggregate_timeout,
 			Some((1, observer)),
 		);
 
-		if let Ok((stdout, result)) = &first_result {
+		if let Ok((stdout, result)) = &evaluated {
 			let raw_stdout_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(stdout)));
 
 			observer.result_observed(1, result, &raw_stdout_sha256);
@@ -2587,38 +2508,7 @@ impl ExternalEvaluatorBinding {
 
 		observer.pass_finished(1);
 
-		let (first_bytes, first) = first_result?;
-		let remaining = aggregate_timeout
-			.checked_sub(started.elapsed())
-			.filter(|remaining| !remaining.is_zero())
-			.ok_or_else(EvaluationError::timeout)?;
-
-		observer.pass_started(2);
-
-		let second_result = self.evaluate_once(
-			runtime,
-			&pinned.executable,
-			&pinned.controlled_cwd,
-			&input,
-			remaining,
-			Some((2, observer)),
-		);
-
-		if let Ok((stdout, result)) = &second_result {
-			let raw_stdout_sha256 = format!("sha256:{}", hex::encode(Sha256::digest(stdout)));
-
-			observer.result_observed(2, result, &raw_stdout_sha256);
-		}
-
-		observer.pass_finished(2);
-
-		let (second_bytes, second) = second_result?;
-
-		if first_bytes != second_bytes || first != second {
-			return Err(EvaluationError::replay_mismatch());
-		}
-
-		Ok(first)
+		evaluated.map(|(_, result)| result)
 	}
 
 	fn evaluate_once(
@@ -2627,7 +2517,6 @@ impl ExternalEvaluatorBinding {
 		script: &PinnedEvaluatorFile,
 		controlled_cwd: &Path,
 		input: &[u8],
-		timeout: Duration,
 		observer: Option<(usize, &mut dyn EvaluatorExecutionObserver)>,
 	) -> Result<(Vec<u8>, EvaluationResult), EvaluationError> {
 		let runtime_path = runtime.pinned.invocation_path("evaluator runtime")?;
@@ -2635,22 +2524,21 @@ impl ExternalEvaluatorBinding {
 		let arguments = iter::once(script_path.to_string_lossy().into_owned())
 			.chain(self.arguments.iter().cloned())
 			.collect::<Vec<_>>();
-		let capture = execute_bounded(
-			BoundedEvaluatorCommand {
+		let capture = execute_supervised(
+			SupervisedEvaluatorCommand {
 				executable: runtime_path,
 				controlled_cwd,
 				arguments: &arguments,
 				input: input.to_owned(),
-				timeout,
+				diagnostic_timeout: None,
 				output_limit: self.max_output_bytes,
 			},
 			Some(EvaluatorFileGuards { runtime: &runtime.pinned, script: Some(script) }),
 			observer,
 		)?;
 
-		if capture.timed_out {
-			return Err(EvaluationError::timeout());
-		}
+		debug_assert!(!capture.timed_out, "formal evaluator execution has no deadline");
+
 		if capture.stdout_truncated || capture.stderr_truncated {
 			return Err(EvaluationError::output_too_large());
 		}
@@ -2731,9 +2619,6 @@ impl ExternalEvaluatorBinding {
 		if self.arguments.len() > MAX_EVALUATOR_ARGUMENTS {
 			issues.push(format!("arguments must contain at most {MAX_EVALUATOR_ARGUMENTS} items"));
 		}
-		if self.timeout_ms == 0 || self.timeout_ms > MAX_EVALUATOR_TIMEOUT_MS {
-			issues.push(format!("timeout_ms must be from 1 through {MAX_EVALUATOR_TIMEOUT_MS}"));
-		}
 
 		for (field, value) in
 			[("max_input_bytes", self.max_input_bytes), ("max_output_bytes", self.max_output_bytes)]
@@ -2761,7 +2646,7 @@ impl ExternalEvaluatorBinding {
 			));
 		}
 
-		issues.extend(self.node_scenario_envelope_issues());
+		issues.extend(self.formal_completion_policy_issues());
 
 		match protocol::canonical_hash(&self.configuration) {
 			Ok(observed) if observed != self.configuration_digest => issues
@@ -2805,12 +2690,12 @@ impl ExternalEvaluatorBinding {
 	}
 }
 
-/// Validated two-pass evaluator result and its independently observed raw stdout digest.
+/// Validated runner evaluator result and its independently observed raw stdout digest.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CheckedEvaluatorObservation {
-	/// Parsed result after both checked evaluator passes matched.
+	/// Parsed result from the single runner evaluator execution.
 	pub result: EvaluationResult,
-	/// SHA-256 digest of the exact raw stdout bytes that matched on both passes.
+	/// SHA-256 digest of the exact raw stdout bytes.
 	pub raw_stdout_sha256: String,
 }
 
@@ -3087,13 +2972,6 @@ impl EvaluationError {
 		}
 	}
 
-	fn timeout() -> Self {
-		Self {
-			kind: EvaluationErrorKind::Timeout,
-			message: "evaluator exceeded its configured timeout".to_owned(),
-		}
-	}
-
 	fn output_too_large() -> Self {
 		Self {
 			kind: EvaluationErrorKind::OutputTooLarge,
@@ -3107,13 +2985,6 @@ impl EvaluationError {
 
 	fn invalid_output(message: impl Into<String>) -> Self {
 		Self { kind: EvaluationErrorKind::InvalidOutput, message: message.into() }
-	}
-
-	pub(crate) fn replay_mismatch() -> Self {
-		Self {
-			kind: EvaluationErrorKind::ReplayMismatch,
-			message: "evaluator replay returned different output for identical input".to_owned(),
-		}
 	}
 
 	/// Returns the stable failure class.
@@ -3174,7 +3045,7 @@ impl Drop for ExternalEvaluatorPermit<'_> {
 	}
 }
 
-/// One held runtime/script pair for a checked two-pass evaluation.
+/// One held runtime/script pair for a checked evaluator execution.
 struct PinnedExternalEvaluator {
 	controlled_cwd: PathBuf,
 	executable: PinnedEvaluatorFile,
@@ -3327,12 +3198,13 @@ struct EvaluatorInput<'a> {
 	configuration: &'a BTreeMap<String, Value>,
 }
 
-struct BoundedEvaluatorCommand<'a> {
+struct SupervisedEvaluatorCommand<'a> {
 	executable: PathBuf,
 	controlled_cwd: &'a Path,
 	arguments: &'a [String],
 	input: Vec<u8>,
-	timeout: Duration,
+	/// Diagnostic-only deadline. Formal evaluator calls always use `None`.
+	diagnostic_timeout: Option<Duration>,
 	output_limit: usize,
 }
 
@@ -3372,27 +3244,6 @@ impl EvaluatorFileGuards<'_> {
 
 		Ok(())
 	}
-}
-
-/// Returns the minimum checked outer timeout for all Node.js scenarios.
-///
-/// The conservative envelope is two replay passes. Each pass contains one fixed
-/// overhead reserve plus, for every scenario, its committed inner timeout and
-/// workspace-copy, process-spawn, and cleanup reserves. `None` means that the
-/// calculation overflowed `u64`.
-#[must_use]
-pub fn minimum_node_scenario_evaluator_timeout_ms(timeouts_ms: &[u64]) -> Option<u64> {
-	let lifecycle_reserve_ms = NODE_SCENARIO_COPY_RESERVE_MS
-		.checked_add(NODE_SCENARIO_SPAWN_RESERVE_MS)?
-		.checked_add(NODE_SCENARIO_CLEANUP_RESERVE_MS)?;
-	let pass_timeout_ms = timeouts_ms.iter().try_fold(
-		NODE_SCENARIO_PASS_OVERHEAD_MS,
-		|pass_timeout_ms, timeout_ms| {
-			pass_timeout_ms.checked_add(*timeout_ms)?.checked_add(lifecycle_reserve_ms)
-		},
-	)?;
-
-	pass_timeout_ms.checked_mul(EXTERNAL_EVALUATOR_REPLAY_PASSES)
 }
 
 /// Pins one executable, then runs a bounded empty-environment version probe.
@@ -3502,13 +3353,13 @@ fn probe_pinned_executable_version(
 	arguments: &[String],
 ) -> Result<String, EvaluationError> {
 	let invocation_path = executable.invocation_path("evaluator runtime")?;
-	let probe = execute_bounded(
-		BoundedEvaluatorCommand {
+	let probe = execute_supervised(
+		SupervisedEvaluatorCommand {
 			executable: invocation_path,
 			controlled_cwd: executable.path.parent().unwrap_or_else(|| Path::new(".")),
 			arguments,
 			input: Vec::new(),
-			timeout: Duration::from_secs(5),
+			diagnostic_timeout: Some(Duration::from_secs(5)),
 			output_limit: 4_096,
 		},
 		Some(EvaluatorFileGuards { runtime: executable, script: None }),
@@ -3535,12 +3386,12 @@ fn probe_pinned_executable_version(
 	Ok(version.to_owned())
 }
 
-fn execute_bounded(
-	command: BoundedEvaluatorCommand<'_>,
+fn execute_supervised(
+	command: SupervisedEvaluatorCommand<'_>,
 	file_guards: Option<EvaluatorFileGuards<'_>>,
 	observer: Option<(usize, &mut dyn EvaluatorExecutionObserver)>,
 ) -> Result<Capture, EvaluationError> {
-	let result = execute_bounded_inner(command, file_guards, observer);
+	let result = execute_supervised_inner(command, file_guards, observer);
 	let file_verification = file_guards.map_or(Ok(()), EvaluatorFileGuards::verify);
 	let mut failures = Vec::new();
 	let capture = match result {
@@ -3579,8 +3430,8 @@ fn combine_evaluation_errors(mut errors: Vec<EvaluationError>) -> EvaluationErro
 	EvaluationError { kind: primary.kind, message: messages.join("; ") }
 }
 
-fn execute_bounded_inner(
-	command: BoundedEvaluatorCommand<'_>,
+fn execute_supervised_inner(
+	command: SupervisedEvaluatorCommand<'_>,
 	file_guards: Option<EvaluatorFileGuards<'_>>,
 	mut observer: Option<(usize, &mut dyn EvaluatorExecutionObserver)>,
 ) -> Result<Capture, EvaluationError> {
@@ -3638,7 +3489,7 @@ fn execute_bounded_inner(
 		command.output_limit,
 	)?;
 	let (status, timed_out) =
-		wait_for_evaluator(&mut child, command.timeout, child_pid, &mut observer)?;
+		wait_for_evaluator(&mut child, command.diagnostic_timeout, child_pid, &mut observer)?;
 
 	if let Some((pass, observer)) = observer.as_mut() {
 		observer.child_reaped(*pass, child_pid, status.code());
@@ -3814,7 +3665,7 @@ fn observe_evaluator_cleanup_error(
 
 fn wait_for_evaluator(
 	child: &mut Child,
-	timeout: Duration,
+	diagnostic_timeout: Option<Duration>,
 	child_pid: u32,
 	observer: &mut Option<(usize, &mut dyn EvaluatorExecutionObserver)>,
 ) -> Result<(ExitStatus, bool), EvaluationError> {
@@ -3852,7 +3703,9 @@ fn wait_for_evaluator(
 					"evaluator process-group leader is no longer waitable; cached process group was not signaled",
 				));
 			},
-			ProcessGroupPoll::Running if started.elapsed() >= timeout => {
+			ProcessGroupPoll::Running
+				if diagnostic_timeout.is_some_and(|timeout| started.elapsed() >= timeout) =>
+			{
 				return match kill_and_reap_child(child) {
 					Ok(status) => Ok((status, true)),
 					Err(error) => {
