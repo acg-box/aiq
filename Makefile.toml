@@ -1,51 +1,32 @@
 # Monorepo workspace tasks.
 
 [config]
+default_to_workspace = false
 skip_core_tasks = true
 
 # Check
-# | task                   | type      | cwd |
-# | ---------------------- | --------- | --- |
-# | check                   | composite |     |
-# | check-database          | command   |     |
-# | check-root-typescript   | command   |     |
-# | check-rust              | command   |     |
-# | check-typescript        | command   |     |
-# | storage-lifecycle       | command   |     |
+# | task           | type      | cwd |
+# | -------------- | --------- | --- |
+# | check          | composite |     |
+# | check-database | command   |     |
+# | typecheck      | command   |     |
 
 [tasks.check]
 clear = true
-workspace = false
 dependencies = [
 	"check-database",
-	"check-rust",
-	"check-typescript",
+	"typecheck",
+	"lint",
+	"test",
 ]
 
 [tasks.check-database]
-workspace = false
 command = "node"
 args = ["scripts/check-database-schema.ts"]
 
-[tasks.check-root-typescript]
-workspace = false
-command = "npm"
-args = ["exec", "--", "tsc", "--project", "tsconfig.json"]
-
-[tasks.check-rust]
-workspace = false
-command = "cargo"
-args = ["check", "--locked", "--all-features", "--all-targets", "--workspace"]
-
-[tasks.check-typescript]
-workspace = false
+[tasks.typecheck]
 command = "npm"
 args = ["run", "check"]
-
-[tasks.storage-lifecycle]
-workspace = false
-command = "npm"
-args = ["run", "storage:lifecycle"]
 
 # Build
 # | task                        | type      | cwd |
@@ -56,68 +37,41 @@ args = ["run", "storage:lifecycle"]
 
 [tasks.build]
 clear = true
-workspace = false
 dependencies = ["build-rust", "build-web"]
 
 [tasks.build-rust]
-workspace = false
 command = "cargo"
 args = ["build", "--locked", "--all-features", "--all-targets", "--workspace"]
 
 [tasks.build-web]
-workspace = false
 command = "npm"
 args = ["run", "build"]
 
 # Format
-# | task                 | type      | cwd |
-# | -------------------- | --------- | --- |
-# | fmt                  | composite |     |
-# | fmt-check            | composite |     |
-# | fmt-rust             | command   |     |
-# | fmt-rust-check       | command   |     |
-# | fmt-toml             | command   |     |
-# | fmt-toml-check       | command   |     |
-# | fmt-typescript       | command   |     |
-# | fmt-typescript-check | command   |     |
+# | task           | type      | cwd |
+# | -------------- | --------- | --- |
+# | fmt            | composite |     |
+# | fmt-rust       | command   |     |
+# | fmt-toml       | command   |     |
+# | fmt-typescript | command   |     |
 
 [tasks.fmt]
-workspace = false
 dependencies = ["fmt-rust", "fmt-toml", "fmt-typescript"]
 
-[tasks.fmt-check]
-workspace = false
-dependencies = ["fmt-rust-check", "fmt-toml-check", "fmt-typescript-check"]
-
 [tasks.fmt-rust]
-workspace = false
-command = "cargo"
-args = ["fmt", "--all"]
-
-[tasks.fmt-rust-check]
-workspace = false
-command = "cargo"
-args = ["fmt", "--all", "--", "--check"]
+command = "rustup"
+args = ["run", "nightly", "cargo", "fmt", "--all"]
 
 [tasks.fmt-toml]
-workspace = false
-command = "taplo"
-args = ["fmt"]
-
-[tasks.fmt-toml-check]
-workspace = false
-command = "taplo"
-args = ["fmt", "--check"]
+command = "sh"
+args = [
+	"-c",
+	"git ls-files -z -- '*.toml' | xargs -0 taplo fmt",
+]
 
 [tasks.fmt-typescript]
-workspace = false
 command = "npm"
 args = ["run", "format:fix"]
-
-[tasks.fmt-typescript-check]
-workspace = false
-command = "npm"
-args = ["run", "format"]
 
 # Lint
 # | task                  | type      | cwd |
@@ -132,20 +86,18 @@ args = ["run", "format"]
 # | lint-vstyle           | command   |     |
 
 [tasks.lint]
-workspace = false
 dependencies = ["lint-rust", "lint-typescript", "lint-vstyle"]
 
 [tasks.lint-fix]
-workspace = false
 dependencies = ["lint-fix-rust", "lint-fix-typescript", "lint-fix-vstyle"]
 
 [tasks.lint-fix-rust]
-workspace = false
 command = "cargo"
 args = [
 	"clippy",
 	"--fix",
 	"--allow-dirty",
+	"--locked",
 	"--all-features",
 	"--all-targets",
 	"--workspace",
@@ -169,20 +121,18 @@ args = [
 ]
 
 [tasks.lint-fix-typescript]
-workspace = false
 command = "npm"
 args = ["run", "lint", "--", "--fix"]
 
 [tasks.lint-fix-vstyle]
-workspace = false
 command = "cargo"
-args = ["vstyle", "tune", "--language", "rust", "--workspace", "--all-features", "--strict"]
+args = ["--locked", "vstyle", "tune", "--language", "rust", "--workspace", "--all-features", "--strict"]
 
 [tasks.lint-rust]
-workspace = false
 command = "cargo"
 args = [
 	"clippy",
+	"--locked",
 	"--all-features",
 	"--all-targets",
 	"--workspace",
@@ -206,14 +156,12 @@ args = [
 ]
 
 [tasks.lint-typescript]
-workspace = false
 command = "npm"
 args = ["run", "lint"]
 
 [tasks.lint-vstyle]
-workspace = false
 command = "cargo"
-args = ["vstyle", "curate", "--language", "rust", "--workspace", "--all-features", "--strict"]
+args = ["--locked", "vstyle", "curate", "--language", "rust", "--workspace", "--all-features", "--strict"]
 
 # List
 # | task                  | type    | cwd |
@@ -221,30 +169,32 @@ args = ["vstyle", "curate", "--language", "rust", "--workspace", "--all-features
 # | list-template-markers | command |     |
 
 [tasks.list-template-markers]
-workspace = false
 command = "node"
 args = ["scripts/list-template-markers.ts"]
 
-# Initialize
-# | task                  | type    | cwd |
-# | --------------------- | ------- | --- |
-# | init-database  | command |     |
-# | reset-database | command |     |
+# Database and Storage
+# | task                | type    | cwd |
+# | ------------------- | ------- | --- |
+# | init-database       | command |     |
+# | reset-database      | command |     |
+# | check-aiq-2-cutover | command |     |
+# | storage-lifecycle   | command |     |
 
 [tasks.init-database]
-workspace = false
 command = "node"
 args = ["databases/init.ts"]
 
 [tasks.reset-database]
-workspace = false
 command = "node"
 args = ["databases/reset.ts", "${@}"]
 
 [tasks.check-aiq-2-cutover]
-workspace = false
 command = "node"
 args = ["scripts/check-aiq-2-cutover.ts"]
+
+[tasks.storage-lifecycle]
+command = "npm"
+args = ["run", "storage:lifecycle"]
 
 # Smoke
 # | task                      | type    | cwd |
@@ -256,7 +206,6 @@ args = ["scripts/check-aiq-2-cutover.ts"]
 # | smoke-controlled-subscription | command |     |
 
 [tasks.smoke-database]
-workspace = false
 script = '''
 if [ -z "${AIQ_DATABASE_URL:-}" ]; then
 	echo "AIQ_DATABASE_URL is required for smoke-database." >&2
@@ -266,7 +215,6 @@ exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/smoke.sq
 '''
 
 [tasks.smoke-calibration-database]
-workspace = false
 script = '''
 if [ -z "${AIQ_DATABASE_URL:-}" ]; then
 	echo "AIQ_DATABASE_URL is required for smoke-calibration-database." >&2
@@ -276,13 +224,11 @@ exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/calibrat
 '''
 
 [tasks.smoke-live-web]
-workspace = false
 command = "npm"
 args = ["run", "test:browser:live-stack", "--workspace", "@aiq/web"]
 
 [tasks.require-subscription-smoke-platform]
 private = true
-workspace = false
 script = '''
 case "$(uname -s)" in
   Darwin) ;;
@@ -301,7 +247,6 @@ exit 2
 '''
 
 [tasks.smoke-subscription]
-workspace = false
 dependencies = ["require-subscription-smoke-platform"]
 command = "cargo"
 args = [
@@ -318,7 +263,6 @@ args = [
 ]
 
 [tasks.smoke-controlled-subscription]
-workspace = false
 dependencies = ["require-subscription-smoke-platform"]
 command = "cargo"
 args = [
@@ -347,43 +291,35 @@ args = [
 
 [tasks.test]
 clear = true
-workspace = false
 dependencies = ["test-rust", "test-typescript"]
 
 [tasks.test-database-concurrency]
-workspace = false
 command = "node"
 args = ["--test", "databases/artifact-resolver-concurrency.test.ts"]
 
 [tasks.test-rust]
-workspace = false
 command = "cargo"
 args = ["nextest", "run", "--locked", "--workspace", "--all-targets", "--all-features"]
 
 [tasks.test-typescript]
-workspace = false
 command = "npm"
 args = ["run", "test"]
 
 [tasks.test-typescript-coverage]
-workspace = false
 command = "npm"
 args = ["run", "test:coverage", "--workspace", "@aiq/web"]
 
 [tasks.test-browser]
-workspace = false
 dependencies = ["build-web"]
 command = "npm"
 args = ["run", "test:browser:prebuilt", "--workspace", "@aiq/web"]
 
 [tasks.build-real-codex-host-probe]
 private = true
-workspace = false
 command = "cargo"
 args = ["build", "--locked", "-p", "aiq-runner"]
 
 [tasks.test-real-codex-host]
-workspace = false
 dependencies = ["build-real-codex-host-probe"]
 command = "cargo"
 args = [
@@ -404,21 +340,12 @@ args = [
 
 [tasks.verify]
 clear = true
-workspace = false
-# `lint-rust` checks every target and `test-rust` compiles and executes the
-# workspace. A separate debug `build-rust` here only recompiles the same graph.
-# Final native release binaries are built once by the controlled release flow.
-dependencies = [
-	"fmt-check",
-	"check-database",
-	"check-root-typescript",
-	"lint",
-	"test",
-	"test-browser",
-]
+# `check` owns the complete read-only source gate. `test-browser` owns the Web
+# build and browser integration boundary. Native release builds and production
+# checks remain separate operator-controlled contracts.
+dependencies = ["check", "test-browser"]
 
 [tasks.require-node-24-15]
-workspace = false
 command = "node"
 args = [
 	"-e",

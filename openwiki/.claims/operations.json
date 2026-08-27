@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:2c4e055cb5729a75f8b6fb28f96ba0e3cb217c0ea72f822abab17e11a16ca296",
+  "claims": [
+    {
+      "id": "claim_fd525cc64d504e27959c22b34cc9b158",
+      "statement": "The complete read-only source gate is cargo make check, which checks the database schema and runs the repository typecheck, lint, and test aggregates.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml#L14-L29",
+          "version": "repo-lines-v1:sha256:40e2f84c8e26b4f1d0425856044092a5d357cbec1c0bc0b8f2ec2e96cdd057c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNzBkOTYzZmQyYmQyYzNmMzExYTU0YTZmMDVkZTFlYmVlNmQwNmYxY2Y2MTY2NzA4Mzc1YzRjZGI1NjdmZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhY2RmNzU5ODkzYjlhMjY3ZTFiNjZiYzE1YTQ5NjNjOTBhZTk3ZGUxMjcyZWRjNTlkMDJjMTBjMmM5YTJjYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0OTg3MzQzMzYxNzhlYjk0MmE3ZGY0ODMwMDc0M2Y4OGI0MDgwYTYxNTRiMjU0ZTM5NjcxMzk3ZjhkODJiZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxNGYzOTEzYzJmZmRlMTE5OWEyMzFlOGVjYTdjZGNhOWE5ZmRlMWUwZDA2NTVkODdlODE2ZDUzYTcxMDZmZDIifQ"
+        },
+        {
+          "resource": "repo://Makefile.toml#L292-L306",
+          "version": "repo-lines-v1:sha256:1e8abef9447e934dc78ce84d5450dc4cf100e0f0508eab1093e01c4ffd56bb6c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2ZDEyOWJlM2JjYjg2ZDhlMWY1YTc4ZmQwOTFhYjFkNGZjYjA3ZDRlZmQ3ZmY0MjViOGM5ODg1Yzk5ODE3ZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxZjdkYWRiYjc0ODMxNTc1ZDExZTQ3MjI1YWJjNDJjZmU0ZGNlMDIxMzk3YzAxMjIwNTVmZmFhZTU4ODRkMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4NTNkMWFlZTRkMDc1MzFmMTQxMDY0Yzc3MmE1ODE1YWRmNzE0ZTVmOWU1ZjVmMTg5YTAxOTFlMDM0ODdkMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzYjQ0OTgwN2YzMDY2Nzk4NDE5MTIwOGU0M2NhNDM5NWY5ODE2M2ViNTAwYzQyMGQ4Mjg2ZTUyODFiNjExMzIifQ"
+        },
+        {
+          "resource": "repo://Makefile.toml#L88-L164",
+          "version": "repo-lines-v1:sha256:98897cc1cf0608f64a1bfa308af900a2a26e0709ff82fd03fbeb5885e49cec3a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmOWEwOWYwZjExNTJmOGI1MmM2N2VkZjdlOGE4ZmNkYjcwODk3MGZlYWQxYmFlMWMyYTViYWQ4MmZkYWQ1NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1MDNjYmNjMzE1MmI1YWNmYjI0MmRmZjFiZTgyYmU1NTExNGUwMGI3Y2FiYzMxOGRiNGNjYzhiMmM0YTM3N2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjZDQwMjhmNWQwZDFkY2M0YzRlMTIzMTc3OWQwMTdjMDg4Mzg5M2EyY2E1NGRjMWEyZjc3ZTk3MzJjM2NkYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0ZGQ2NzZiNmNjZmNjMDlmNmZhMjQwYjUwY2UxMDRlMjJiMmE0Mjg3Yzk3ZWQ1NGZmNzc0ZGMxOTUyNDg1NzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d4d9fc4666d34c859c454929aae7556e",
+      "statement": "The complete local browser gate is cargo make verify, which runs the source gate and then builds the Web application once before the prebuilt browser acceptance suite.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml#L312-L315",
+          "version": "repo-lines-v1:sha256:3e7ce00d0128ccafc0891935f8ac2dbd8c845981f6b1b698edb00d4f6113489e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjA4N2ZkYTlkOTc3OWZlZmNiMjhkYWRiMzE0Y2ExYjFjMjkxMzhkYjdjY2ZjNTkwNDQ3MWJiZDZlMTAxYTM4MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGY1OWJhMGJkOTM2OTJhMWNkY2ZjYTE5NmY1NTAyMDZlZDMwODAxMmY3NTc1ZWZiZThjMmQ4NGEwMGEyNzE1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWI2NzgwNzQ1ODdhOGUzN2IwZWUzNzc1ZTEwY2UyMjRjNDUyZGYwYjNjOTBhOThjNjcwODZmMjI3YWRkOGMxOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODYzMDY5YTk3MjE2YTYyZjkzOTdkYjMwZGRlNTJlNmZhZDgzZDYzMWI0Mzk4NGE4MmQyN2RiNWIyY2I2ZmY4NyJ9"
+        },
+        {
+          "resource": "repo://Makefile.toml#L341-L346",
+          "version": "repo-lines-v1:sha256:42065d227a2504835a7b510124fc6897e6f144fa04552434b740cbb1d8cb7b10:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmEyZjA3ZjEwNjNiOGNiNmUwNTlmNmY2ZWJiNzlkMWU1YjVhZDRhMTFkMzFkNzZkMmQ0YTMwY2M5YmU5YmE5ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGY3OTg0ZjE4YzY2MDJkZjExMTE3ZTgzZTQ3ZTJjZDI2YTllYTMzNTY0N2IwZWZiNWFjNGJmYWVjNzVlMjBjNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTFiYzk1YmJmMDFmMGY4NjA1OTFlNmJiMzYyYjUwZThlOTQ5OTIwMGY0NDQ5Mzc5ZGIzNTdjZjJjYmVjOWRlZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTFlNWEyNmNkZjdkZDQ0M2E3Nzc0YjQxYzUzMTEyYmVkZmIwZDFhOTEyNDU5YTM2NzkzZDBiZWNjMDA1N2FlNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a12607027b0413c8c27c5f1832f6165",
+      "statement": "Formatting is an independent mutating action; Rust formatting uses a separately managed nightly rustfmt toolchain while the stable repository toolchain declares only the clippy component.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml#L50-L74",
+          "version": "repo-lines-v1:sha256:b7d538139df7a03766865414930ad5d59e4509e87b52206899da0fb6785f61c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzZmM5Yzc4OTUxZDM1YTM1MjQxZWQwODdhYTlmYzAxOTA4MzEyMmQ5ZTZmMjhjYmQxMDk0ZTEwYmU1YzEyMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4YWY5YWRhNTI5YjMwZjUxZTczMTMxM2UwZjBiY2JkMjcwOWJiNzM4MTRhNzY5ZGQ0NmQ1YmQwMDVkNDZmYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ZmY2ZTM0NDRlMmMzMTZkZGY3NDkyZDg0OTRmZTIwMzBmMWNjMGUzYzQ5N2I5ZGM5ZjE3N2JiOTY4Zjk3Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiNTY5OWQ1YmEyNTIwNjZlYjUwN2MwMTRkZjIzYjJmZjQzMzdmYWNjYTYxMGIwZjQxZGUyNTY4NjdlZTUyMDUifQ"
+        },
+        {
+          "resource": "repo://rust-toolchain.toml#L1-L4",
+          "version": "repo-lines-v1:sha256:d6c06be84864a2e77f0d2c9b1392e206045bd17b9189817d26bb03c801620d33:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMyMDRhMDcyMDNmZmI4M2MzYTUwZTgwZjE2YmQ1NTY3YTU2YTIzOTA0NDcwY2U2ODAwMmZiNDQ0MGQzMjM2OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTAyNDFjMDQ3MGVhNzVkNjE1ZGNkYzU1OTQ1YzkzMDMwMjAzYjhkYTRlYWUxNDI1MDlmOTcwZDQxMDg2MDgzYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4a27474eb9034dc78581e3c985c14cf4",
+      "statement": "Native release builds, production browser checks, database runtime checks, deployment, and publication remain separate operational contracts from the local source and browser gates.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml#L336-L346",
+          "version": "repo-lines-v1:sha256:1d1002c048b44e09864aa02f2f30620d5afdcdaf4f93efa95ebec35f725bf7d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzODE0ZWIxYTIwMTA4MzljMTEyMjgzMTQ4N2VkMDc3NTc0M2NmZWI5OTY1NDgwYmZmMDFlNjU5YjE2MzQwNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmNzk4NGYxOGM2NjAyZGYxMTExN2U4M2U0N2UyY2QyNmE5ZWEzMzU2NDdiMGVmYjVhYzRiZmFlYzc1ZTIwYzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiMTA5ZDczODAwY2Q2MzZhN2VhYjcwODAxMzhlOTMxMzA5MWYyMjJiNzI1Y2JmODE5MDhiNzk5MWY1ZjdiODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxZTVhMjZjZGY3ZGQ0NDNhNzc3NGI0MWM1MzExMmJlZGZiMGQxYTkxMjQ1OWEzNjc5M2QwYmVjYzAwNTdhZTQifQ"
+        },
+        {
+          "resource": "repo://README.md#L204-L211",
+          "version": "repo-lines-v1:sha256:0e58b10dd2e9617cf13ecf293c3827bacd8d5ee7ef50d6c9d2b9303bd533f06a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY0YjZmYmQ3MzBhNTUxNWI2YWVjNmFmMjhiMGIyZmM1ZDRhNzgxMGMxNzE3NGVhMzM2N2UyNzUyNzlkN2U5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzE5NGVmMDRmZTYzNTBlMjNjOWJlZjlmMTFjOWZhYTQzZWYzODI2MjM2NTU1MTEyMzgxY2I1NDRkZjRlNTAyNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTAyNWJlZDdlM2MxMjliZjNjMjMxNzVmNThmODdjY2IyYTM2ZGE3MTQ0NGNhMmNjODFjNDk3ZTQ2YWYyODI3ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYxMjM3NTUwMzJlZTdhZGU2ZDdkZTExZTkyODMyNWY3MjNlNzcxYWVlY2MzOTc5NmVlYWFmNDg5NGU5OTUyYSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.4.3",
+    "at": "2026-08-27T19:12:59.713Z"
+  }
+}

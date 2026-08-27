@@ -1,8 +1,8 @@
 {
-  "updatedAt": "2026-08-25T18:13:22.312Z",
+  "updatedAt": "2026-08-27T19:13:58.639Z",
   "command": "update",
-  "gitHead": "4cc853ced6463a1842cebf6d5861c11710739674",
-  "model": "gpt-5.6-luna-nosystem",
+  "gitHead": "17059933045d5b01222652015dfff8fa2c7ecde2",
+  "model": "host-agent/codex",
   "status": "complete",
   "language": "en"
 }
