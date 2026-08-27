@@ -12,6 +12,7 @@ use std::{
 	io::{Read as _, Write as _},
 	path::{Path, PathBuf},
 	process::{Command, Output},
+	sync::atomic::{AtomicU64, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,8 @@ const SCHEDULE_PATH: &str = "official-r1/inputs/schedule.json";
 const ENVIRONMENT_GENERATOR_PATH: &str = "official-r1/records/generate-verifier-environment.mjs";
 const REQUIRED_RELEASE_DIRECTORIES: [&str; 6] =
 	["bin", "calibration-policy-v2", "codex-runtime", "core-a", "official-r1", "records"];
+
+static NEXT_SOURCE_BUNDLE: AtomicU64 = AtomicU64::new(0);
 
 /// Absolute inputs within one validated observation release.
 #[derive(Clone, Debug)]
@@ -658,7 +661,9 @@ fn create_source_bundle(repository: &Path, commit: &str, destination: &Path) -> 
 
 	private_directory(parent)?;
 
-	let bare = private_temporary_root().join(format!("bundle-build.{}", process::id()));
+	let sequence = NEXT_SOURCE_BUNDLE.fetch_add(1, Ordering::Relaxed);
+	let bare =
+		private_temporary_root().join(format!("bundle-build.{}.{}", process::id(), sequence));
 
 	if bare.exists() {
 		remove_scoped_tree(&bare, &private_temporary_root())?;
