@@ -5039,7 +5039,9 @@ fn parse_signing_key(name: &str, value: &str) -> Result<[u8; 32], WorkerError> {
 			"{name} must contain exactly 64 lowercase hexadecimal characters"
 		)));
 	}
+
 	let chunks = value.as_bytes().as_chunks::<2>().0;
+
 	if chunks.first().is_some_and(|first| chunks.iter().all(|chunk| chunk == first)) {
 		return Err(WorkerError::configuration(format!(
 			"{name} must not use repeated placeholder key material"
