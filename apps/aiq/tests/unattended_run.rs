@@ -30,6 +30,7 @@ const RUNNER_PATH: &str = "bin/aiq-runner";
 const VERIFIER_PATH: &str = "bin/aiq-verifier";
 const CODEX_PATH: &str = "codex-runtime/codex";
 const CODEX_HOST_PATH: &str = "codex-runtime/codex-code-mode-host";
+const LEGACY_UNPUBLISHED_DETAIL: &str = "speed not published; Official preserved but not published: 2/1224 non-semantic result(s) (evaluator_failure=2); no model rerun";
 const GIT_EXECUTABLE: &str = match option_env!("AIQ_BUILD_GIT") {
 	Some(path) => path,
 	None => "git",
@@ -169,6 +170,49 @@ impl Fixture {
 
 		serde_json::from_slice(&output.stdout).expect("status JSON")
 	}
+
+	fn seed_legacy_unpublished_status(&self) -> Vec<u8> {
+		let slot = schedule::scheduled_slot(&self.slot_id).expect("legacy status slot");
+		let slot_root = self.state.join("slots").join(&self.slot_id);
+		let run = slot_root.join("official/state/run.json");
+		let mut results = vec![serde_json::json!({"status":"completed","task_score":1.0}); 1_222];
+
+		results.extend([
+			serde_json::json!({
+				"status": "failed",
+				"task_score": null,
+				"failure": {"kind": "evaluator_failure"},
+			}),
+			serde_json::json!({
+				"status": "failed",
+				"task_score": null,
+				"failure": {"kind": "evaluator_failure"},
+			}),
+		]);
+
+		let run_bytes = serde_json::to_vec(&serde_json::json!({
+			"schema_version": "aiq.run.v4",
+			"results": results,
+		}))
+		.expect("legacy Official run");
+
+		fs::write(&run, &run_bytes).expect("legacy Official run fixture");
+		fs::write(
+			slot_root.join("status.json"),
+			serde_json::to_vec_pretty(&serde_json::json!({
+				"schema_version": "aiq.continuous-observation-status.v2",
+				"slot_id": slot.id,
+				"observed_at": slot.observed_at,
+				"phase": "complete_with_unpublished_official",
+				"detail": LEGACY_UNPUBLISHED_DETAIL,
+				"updated_at": "2026-08-27T20:00:00Z",
+			}))
+			.expect("legacy status JSON"),
+		)
+		.expect("legacy status fixture");
+
+		run_bytes
+	}
 }
 
 impl Drop for Fixture {
@@ -201,6 +245,88 @@ fn shipped_run_retrieves_exact_secrets_outside_a_repository() {
 
 	assert!(!child_log.contains("bootstrap-secret-sentinel"));
 	assert!(!child_log.contains("access-token-sentinel"));
+}
+
+#[test]
+fn terminal_legacy_v2_status_recovers_speed_without_rerunning_official_model_work() {
+	let fixture = Fixture::new();
+	let retained_run = fixture.seed_legacy_unpublished_status();
+	let output = fixture.command().output().expect("legacy recovery run");
+
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+	assert!(output.stdout.is_empty());
+	assert!(output.stderr.is_empty());
+
+	let slot_root = fixture.state.join("slots").join(&fixture.slot_id);
+	let speed_status: serde_json::Value = serde_json::from_slice(
+		&fs::read(slot_root.join("speed/status.json")).expect("migrated Speed status"),
+	)
+	.expect("Speed status JSON");
+	let official_status: serde_json::Value = serde_json::from_slice(
+		&fs::read(slot_root.join("official/status.json")).expect("migrated Official status"),
+	)
+	.expect("Official status JSON");
+
+	assert_eq!(speed_status.get("phase").and_then(serde_json::Value::as_str), Some("published"));
+	assert_eq!(
+		official_status.get("phase").and_then(serde_json::Value::as_str),
+		Some("unpublished")
+	);
+	assert_eq!(
+		official_status.get("detail").and_then(serde_json::Value::as_str),
+		Some(
+			"Official preserved but not published: 2/1224 non-semantic result(s) (evaluator_failure=2); no model rerun"
+		)
+	);
+	assert_eq!(
+		fs::read(slot_root.join("official/state/run.json")).expect("retained Official run"),
+		retained_run
+	);
+	assert_eq!(
+		fs::read_to_string(&fixture.child_log).expect("legacy recovery child log"),
+		"speed:none\nsubmit:runner-submission\n"
+	);
+
+	let final_status = fixture.status();
+
+	assert_eq!(
+		final_status
+			.pointer("/latest_slot_state/schema_version")
+			.and_then(serde_json::Value::as_str),
+		Some("aiq.continuous-observation-status.v3")
+	);
+	assert_eq!(
+		final_status.pointer("/latest_slot_state/phase").and_then(serde_json::Value::as_str),
+		Some("complete_with_unpublished_official")
+	);
+}
+
+#[test]
+fn current_v3_terminal_status_is_idempotent() {
+	let fixture = Fixture::new();
+	let first = fixture.command().output().expect("first terminal run");
+
+	assert!(first.status.success(), "{}", String::from_utf8_lossy(&first.stderr));
+	assert!(first.stdout.is_empty());
+	assert!(first.stderr.is_empty());
+
+	let slot_root = fixture.state.join("slots").join(&fixture.slot_id);
+	let status_path = slot_root.join("status.json");
+	let speed_status_path = slot_root.join("speed/status.json");
+	let official_status_path = slot_root.join("official/status.json");
+	let status = fs::read(&status_path).expect("terminal aggregate status");
+	let speed_status = fs::read(&speed_status_path).expect("terminal Speed status");
+	let official_status = fs::read(&official_status_path).expect("terminal Official status");
+	let child_log = fs::read(&fixture.child_log).expect("terminal child log");
+	let second = fixture.command().output().expect("terminal rerun");
+
+	assert!(second.status.success(), "{}", String::from_utf8_lossy(&second.stderr));
+	assert!(second.stdout.is_empty());
+	assert!(second.stderr.is_empty());
+	assert_eq!(fs::read(status_path).expect("unchanged aggregate status"), status);
+	assert_eq!(fs::read(speed_status_path).expect("unchanged Speed status"), speed_status);
+	assert_eq!(fs::read(official_status_path).expect("unchanged Official status"), official_status);
+	assert_eq!(fs::read(&fixture.child_log).expect("unchanged child log"), child_log);
 }
 
 #[test]

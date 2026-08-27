@@ -257,7 +257,7 @@ pub(crate) fn run(configuration: &Configuration, selected: Option<ScheduledSlot>
 
 	prepare_slot_directories(&paths)?;
 
-	if retained_phase(&paths, &slot)?.as_deref().is_some_and(is_terminal_phase) {
+	if retained_current_terminal(&paths, &slot)? {
 		cleanup_codex_home(&paths.speed.home)?;
 		cleanup_codex_home(&paths.official.home)?;
 
@@ -266,6 +266,13 @@ pub(crate) fn run(configuration: &Configuration, selected: Option<ScheduledSlot>
 
 	initialize_publication_statuses(&paths, &slot)?;
 	write_composed_status(&paths, &slot)?;
+
+	if retained_phase(&paths, &slot)?.as_deref().is_some_and(is_terminal_phase) {
+		cleanup_codex_home(&paths.speed.home)?;
+		cleanup_codex_home(&paths.official.home)?;
+
+		return Ok(());
+	}
 
 	run_locked(configuration, &slot, &paths)
 }
@@ -1181,6 +1188,19 @@ fn retained_phase(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<Option<Stri
 	let status: RetainedStatus = read_json(&paths.status, "slot status")?;
 
 	Ok(Some(status.phase))
+}
+
+fn retained_current_terminal(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<bool> {
+	if paths.speed.status.exists() || paths.official.status.exists() {
+		return Ok(retained_phase(paths, slot)?.as_deref().is_some_and(is_terminal_phase));
+	}
+	if !paths.status.exists() {
+		return Ok(false);
+	}
+
+	let status: RetainedStatus = read_json(&paths.status, "slot status")?;
+
+	Ok(status.schema_version == STATUS_SCHEMA && is_terminal_phase(&status.phase))
 }
 
 fn compose_status(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<RetainedStatus> {
