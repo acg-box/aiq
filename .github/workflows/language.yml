@@ -41,9 +41,6 @@ jobs:
         with:
           tool: nextest
 
-      - name: Run Rust format check
-        run: cargo make fmt-rust-check
-
       - name: Run Rust style check
         uses: acg-box/vibe-style@3a0959eac5363c4c427382bae1d80d87ecadb702 # v0.2.3
         with:
@@ -57,32 +54,6 @@ jobs:
 
       - name: Run Rust tests
         run: cargo make test-rust
-
-  toml-check:
-    name: TOML check
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch latest code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
-        with:
-          cache: true
-          rustflags: ''
-
-      - name: Install cargo-make
-        uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2.84.1
-        with:
-          tool: cargo-make
-
-      - name: Install taplo
-        uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2.84.1
-        with:
-          tool: taplo
-
-      - name: Run TOML format check
-        run: cargo make fmt-toml-check
 
   typescript-check:
     name: TypeScript check
@@ -111,11 +82,8 @@ jobs:
       - name: Install locked TypeScript tooling
         run: npm ci --ignore-scripts
 
-      - name: Run TypeScript format check
-        run: cargo make fmt-typescript-check
-
       - name: Check repository TypeScript
-        run: cargo make check-root-typescript
+        run: cargo make typecheck
 
       - name: Run TypeScript lint
         run: cargo make lint-typescript

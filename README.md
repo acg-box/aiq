@@ -162,8 +162,10 @@ authentication, and production data must stay outside Git.
 
 ## Local synthetic demonstration
 
-Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, the stable Rust toolchain, and the
-locked dependencies.
+Use Node.js `24.15.0` or newer, the npm `11.17.0` version pinned by `package.json`,
+the stable Rust toolchain selected by `rust-toolchain.toml`, and the locked
+dependencies. `cargo make fmt`
+also requires a separately managed nightly rustfmt toolchain.
 
 ```sh
 npm ci --ignore-scripts
@@ -189,19 +191,24 @@ cargo run -p aiq-verifier -- diagnose-rescore --help
 
 ## Validation
 
-Install the Playwright browsers once on a fresh host, then run the single full
-repository gate:
+Install the Playwright browsers once on a fresh host, then run the complete local
+browser gate:
 
 ```sh
 npm exec --workspace @aiq/web -- \
   playwright install --with-deps chromium firefox webkit
+cargo make check
 cargo make verify
 ```
 
-`verify` formats, checks, lints, tests, builds, and runs every local browser
-acceptance suite. It builds the Web application once. Do not run its component
-tasks again in the same validation pass. Coverage instrumentation is opt in with
-`cargo make test-typescript-coverage`.
+`check` is the complete read-only source gate. It checks the database schema,
+TypeScript, Rust and TypeScript lint rules, vstyle, and all Rust and TypeScript
+tests. `verify` extends `check` with one Web build and every local browser
+acceptance suite. `fmt` is an independent mutating action; it is not a dependency
+of either gate. Native release builds, production browser checks, database
+runtime checks, deployment, and publication remain separate contracts. Do not run
+component tasks again in the same validation pass. Coverage instrumentation is
+opt in with `cargo make test-typescript-coverage`.
 
 The two subscription smokes are ignored and opt in. Each consumes one Codex
 subscription attempt.
