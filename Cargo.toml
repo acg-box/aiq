@@ -11,6 +11,9 @@ license     = "GPL-3.0-only"
 repository  = "https://github.com/acg-box/aiq"
 version     = "0.1.0"
 
+[profile.release]
+lto = "thin"
+
 [workspace.dependencies]
 # crates.io
 clap                     = { version = "4.6", features = ["derive"] }
