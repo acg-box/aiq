@@ -325,10 +325,12 @@ do not invoke models. The same private admission receipt binds preflight through
 package.
 Provide the runner signing key only to `package`, the submission token only to
 `submit`, and verifier credentials only to the verifier command.
-The current production runner is native macOS. Linux and Docker remain future
-deployment targets. The installed `aiq` command runs the approved Official
-chain at `03:00` and `15:00` UTC. It selects one canonical 12-hour slot, holds a
-global nonblocking lock, and does not start overlapping work. A self-contained release
+The source runner targets native macOS. Linux and Docker remain future
+deployment targets. A frozen `aiq` release built from this source starts the
+observation scheduler at `03:00` and `15:00` UTC. It selects one canonical
+12-hour slot, holds a global nonblocking lock, and does not start a second
+scheduler. An installed frozen release keeps its existing behavior until an
+operator replaces it. A self-contained release
 stores the pinned runner and verifier binaries and an exact Git source bundle.
 `aiq` restores the clean detached source at a stable per-slot path below the
 private `state_root/scratch` directory. This path stays outside the macOS
@@ -342,8 +344,12 @@ matrix. A late wake does not start a new matrix. Subscription quota, usage, or
 rate limits are persisted as non-terminal backpressure: completed cells stay in
 the same checkpoint, rejected cells remain pending, and later scheduled wakes
 resume the oldest blocked slot before they can start newer paid work. The
-single workflow prioritizes Official model work before the auxiliary Speed observation, so
-auxiliary work cannot consume the Official dispatch window. A completed run
+scheduler starts Official and Speed as sibling publication paths for the same
+slot. Official keeps its two-hour model-dispatch grace. Speed has an independent
+12-hour slot window. After the scheduler grants dispatch, neither path waits for
+the other path. A slow or failed path cannot block the other path's dispatch or
+publication. Each path writes retained status below its own slot directory, and
+`aiq status` composes both outcomes. A completed run
 with a non-semantic infrastructure result is retained as unpublished evidence.
 It is not retried or presented as an AIQ score. Subscription backpressure is not
 a completed result and is therefore the sole exception to that terminal rule.
@@ -393,7 +399,9 @@ late slots can continue only when the complete Official run output already
 exists and only scoring or publication remains. `aiq` recognizes that output
 only as an `aiq.run.v4` document with all 1,224 results; the runner's
 create-once reservation is not a completed run. Otherwise, `aiq`
-records a terminal missed or unpublished state without new model work. A
+records a terminal missed or unpublished state without new model work. Speed
+model dispatch can start during its own 12-hour slot. An existing Speed batch
+can resume submission after that window without new model work. A
 terminal slot remains a no-op. If another
 observation owns the global lock, a scheduled `run` coalesces successfully
 without starting another model process; `doctor` reports the contention instead.
@@ -428,8 +436,8 @@ exact Keychain bootstrap, performs one Universal Auth login, and retrieves only
 the four fixed `prod:/aiq` keys. It removes the provider session before it starts
 a downstream step. Provider credentials and tokens do not reach workers. The
 orchestrator gives the signing key only to `package`, the submission token only
-to submission steps, and verifier credentials only to the verifier. Each slot
-uses fresh isolated `CODEX_HOME` directories. A retryable slot retains
+to submission steps, and verifier credentials only to the verifier. Each owner
+uses a fresh isolated `CODEX_HOME` directory for the slot. A retryable slot retains
 checkpoints and raw artifacts. Checkpoint v10 distinguishes indeterminate model
 work from sealed pending evaluator work. The latter resumes from the same model
 response and workspace without another model invocation. Provider-declared subscription limits leave
@@ -438,7 +446,7 @@ also migrates v9 checkpoints to the v10 evaluator-resume shape and legacy v8
 checkpoints that incorrectly committed those limits as terminal results. On resume, `aiq` revalidates the permission
 admission, complete Official run, submission receipts, and verifier receipt
 before it reuses them. Copied credentials are removed after each invocation. A
-terminal slot keeps the compact batch,
+terminal slot keeps both owner-status records, the compact batch,
 package, score, attestation, and receipts. It removes the detached source, raw
 local artifacts, replay scratch, checkpoints, and disposable workspaces.
 
