@@ -9,6 +9,8 @@ use std::{
 	path::{Path, PathBuf},
 	process::{self, Command},
 	sync::atomic::{AtomicU64, Ordering},
+	thread,
+	time::{Duration, Instant},
 };
 
 use clap as _;
@@ -35,6 +37,13 @@ const GIT_EXECUTABLE: &str = match option_env!("AIQ_BUILD_GIT") {
 
 static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
+#[derive(Clone, Copy)]
+enum FixtureMode {
+	Immediate,
+	BlockOfficial,
+	BlockSpeedThenFail,
+}
+
 struct Fixture {
 	root: PathBuf,
 	home: PathBuf,
@@ -43,9 +52,16 @@ struct Fixture {
 	provider_log: PathBuf,
 	child_log: PathBuf,
 	outside_repository: PathBuf,
+	slot_id: String,
+	gate_started: PathBuf,
+	gate_release: PathBuf,
 }
 impl Fixture {
 	fn new() -> Self {
+		Self::with_mode(FixtureMode::Immediate)
+	}
+
+	fn with_mode(mode: FixtureMode) -> Self {
 		let sequence = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
 		let requested = env::temp_dir()
 			.join(format!("aiq-unattended-run-contract-{}-{sequence}", process::id(),));
@@ -60,6 +76,8 @@ impl Fixture {
 		let outside_repository = root.join("outside-repository");
 		let provider_log = root.join("provider.log");
 		let child_log = root.join("children.log");
+		let gate_started = root.join("gate-started");
+		let gate_release = root.join("gate-release");
 
 		for path in [&home, &state, &bin, &outside_repository] {
 			private_directory(path);
@@ -73,7 +91,7 @@ impl Fixture {
 		write_runtime_security(&security, &home);
 		write_runtime_infisical(&infisical, &state, &provider_log);
 
-		let installed = install_fake_release(&root, &child_log);
+		let installed = install_fake_release(&root, &child_log, mode, &gate_started, &gate_release);
 		let auth = root.join("auth.json");
 
 		fs::write(&auth, b"{}\n").expect("Codex authentication fixture");
@@ -106,7 +124,18 @@ impl Fixture {
 			&security,
 		);
 
-		Self { root, home, state, configuration, provider_log, child_log, outside_repository }
+		Self {
+			root,
+			home,
+			state,
+			configuration,
+			provider_log,
+			child_log,
+			outside_repository,
+			slot_id: slot.id,
+			gate_started,
+			gate_release,
+		}
 	}
 
 	fn command(&self) -> Command {
@@ -115,6 +144,7 @@ impl Fixture {
 		command
 			.args(["run", "--config"])
 			.arg(&self.configuration)
+			.args(["--slot", &self.slot_id])
 			.current_dir(&self.outside_repository)
 			.env_clear()
 			.env("AMBIENT_SECRET", "must-not-reach-a-child")
@@ -125,6 +155,19 @@ impl Fixture {
 			.env("USER", "aiq-test");
 
 		command
+	}
+
+	fn status(&self) -> serde_json::Value {
+		let output = Command::new(env!("CARGO_BIN_EXE_aiq"))
+			.args(["status", "--config"])
+			.arg(&self.configuration)
+			.current_dir(&self.outside_repository)
+			.output()
+			.expect("unattended status");
+
+		assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+
+		serde_json::from_slice(&output.stdout).expect("status JSON")
 	}
 }
 
@@ -160,12 +203,130 @@ fn shipped_run_retrieves_exact_secrets_outside_a_repository() {
 	assert!(!child_log.contains("access-token-sentinel"));
 }
 
-fn install_fake_release(root: &Path, child_log: &Path) -> InstalledRelease {
+#[test]
+fn slow_official_path_does_not_starve_speed_publication() {
+	let fixture = Fixture::with_mode(FixtureMode::BlockOfficial);
+	let child = fixture.command().spawn().expect("blocked Official run");
+	let official_started = wait_for_path(&fixture.gate_started);
+	let speed_status = fixture.state.join("slots").join(&fixture.slot_id).join("speed/status.json");
+	let speed_published = official_started && wait_for_phase(&speed_status, "published");
+	let live_status = speed_published.then(|| fixture.status());
+
+	fs::write(&fixture.gate_release, b"release\n").expect("release Official gate");
+
+	let status = child.wait_with_output().expect("blocked Official child").status;
+
+	assert!(official_started, "Official fixture did not reach the blocking step");
+	assert!(speed_published, "Speed did not publish while Official remained blocked");
+	assert!(status.success());
+
+	let live_status = live_status.expect("live sibling status");
+
+	assert_eq!(
+		live_status.pointer("/latest_slot_state/speed/phase").and_then(serde_json::Value::as_str),
+		Some("published")
+	);
+	assert_eq!(
+		live_status
+			.pointer("/latest_slot_state/official/phase")
+			.and_then(serde_json::Value::as_str),
+		Some("official_score")
+	);
+}
+
+#[test]
+fn slow_failed_speed_path_does_not_block_official_publication() {
+	let fixture = Fixture::with_mode(FixtureMode::BlockSpeedThenFail);
+	let child = fixture.command().spawn().expect("blocked Speed run");
+	let speed_started = wait_for_path(&fixture.gate_started);
+	let official_status =
+		fixture.state.join("slots").join(&fixture.slot_id).join("official/status.json");
+	let official_published = speed_started && wait_for_phase(&official_status, "published");
+	let live_status = official_published.then(|| fixture.status());
+
+	fs::write(&fixture.gate_release, b"release\n").expect("release Speed gate");
+
+	let status = child.wait_with_output().expect("blocked Speed child").status;
+
+	assert!(speed_started, "Speed fixture did not reach the blocking step");
+	assert!(official_published, "Official did not publish while Speed remained blocked");
+	assert!(!status.success(), "retryable Speed failure must keep a failing process result");
+
+	let live_status = live_status.expect("live sibling status");
+
+	assert_eq!(
+		live_status
+			.pointer("/latest_slot_state/official/phase")
+			.and_then(serde_json::Value::as_str),
+		Some("published")
+	);
+
+	let final_status = fixture.status();
+
+	assert_eq!(
+		final_status.pointer("/latest_slot_state/phase").and_then(serde_json::Value::as_str),
+		Some("retryable_failure")
+	);
+	assert_eq!(
+		final_status.pointer("/latest_slot_state/speed/phase").and_then(serde_json::Value::as_str),
+		Some("retryable_failure")
+	);
+	assert_eq!(
+		final_status
+			.pointer("/latest_slot_state/official/phase")
+			.and_then(serde_json::Value::as_str),
+		Some("published")
+	);
+}
+
+fn wait_for_path(path: &Path) -> bool {
+	let deadline = Instant::now() + Duration::from_secs(20);
+
+	while Instant::now() < deadline {
+		if path.exists() {
+			return true;
+		}
+
+		thread::sleep(Duration::from_millis(10));
+	}
+
+	false
+}
+
+fn wait_for_phase(path: &Path, expected: &str) -> bool {
+	let deadline = Instant::now() + Duration::from_secs(20);
+
+	while Instant::now() < deadline {
+		if fs::read(path)
+			.ok()
+			.and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+			.and_then(|status| {
+				status.get("phase").and_then(serde_json::Value::as_str).map(str::to_owned)
+			})
+			.as_deref()
+			== Some(expected)
+		{
+			return true;
+		}
+
+		thread::sleep(Duration::from_millis(10));
+	}
+
+	false
+}
+
+fn install_fake_release(
+	root: &Path,
+	child_log: &Path,
+	mode: FixtureMode,
+	gate_started: &Path,
+	gate_release: &Path,
+) -> InstalledRelease {
 	let source_release = root.join("source-release");
 	let repository = root.join("repository");
 	let releases = root.join("releases");
 
-	prepare_release_tree(&source_release, child_log);
+	prepare_release_tree(&source_release, child_log, mode, gate_started, gate_release);
 	prepare_source_repository(&repository);
 	private_directory(&releases);
 	write_build_receipt(&source_release, &repository);
@@ -179,7 +340,13 @@ fn install_fake_release(root: &Path, child_log: &Path) -> InstalledRelease {
 	.expect("installed fixture release")
 }
 
-fn prepare_release_tree(release_root: &Path, child_log: &Path) {
+fn prepare_release_tree(
+	release_root: &Path,
+	child_log: &Path,
+	mode: FixtureMode,
+	gate_started: &Path,
+	gate_release: &Path,
+) {
 	for relative in [
 		"bin",
 		"calibration-policy-v2",
@@ -195,7 +362,7 @@ fn prepare_release_tree(release_root: &Path, child_log: &Path) {
 		fs::create_dir_all(release_root.join(relative)).expect("release directory");
 	}
 
-	write_fake_runner(&release_root.join(RUNNER_PATH), child_log);
+	write_fake_runner(&release_root.join(RUNNER_PATH), child_log, mode, gate_started, gate_release);
 	write_fake_verifier(&release_root.join(VERIFIER_PATH), child_log);
 	write_script(&release_root.join(CODEX_PATH), "exit 90\n");
 	write_script(&release_root.join(CODEX_HOST_PATH), "exit 91\n");
@@ -220,7 +387,30 @@ fn prepare_release_tree(release_root: &Path, child_log: &Path) {
 	.expect("release schedule");
 }
 
-fn write_fake_runner(path: &Path, log: &Path) {
+fn write_fake_runner(
+	path: &Path,
+	log: &Path,
+	mode: FixtureMode,
+	gate_started: &Path,
+	gate_release: &Path,
+) {
+	let official_gate = match mode {
+		FixtureMode::BlockOfficial => format!(
+			"printf '%s\\n' started >{started}\nwhile [ ! -f {release} ]; do sleep 0.01; done\n",
+			started = shell_quote(gate_started),
+			release = shell_quote(gate_release),
+		),
+		FixtureMode::Immediate | FixtureMode::BlockSpeedThenFail => String::new(),
+	};
+	let speed_gate = match mode {
+		FixtureMode::BlockSpeedThenFail => format!(
+			"printf '%s\\n' started >{started}\nwhile [ ! -f {release} ]; do sleep 0.01; done\nexit 96\n",
+			started = shell_quote(gate_started),
+			release = shell_quote(gate_release),
+		),
+		FixtureMode::Immediate | FixtureMode::BlockOfficial => String::new(),
+	};
+
 	write_script(
 		path,
 		&format!(
@@ -243,6 +433,7 @@ case "$1" in
   score)
     [ -z "${{AIQ_RUNNER_SIGNING_KEY+x}}" ]
     [ -z "${{AIQ_RUNNER_SUBMISSION_TOKEN+x}}" ]
+    {official_gate}
     printf '%s\n' score:none >>{log}
     printf '{{}}\n' >"$(output_arg "$@")"
     ;;
@@ -264,12 +455,15 @@ case "$1" in
     [ -z "${{AIQ_RUNNER_SIGNING_KEY+x}}" ]
     [ -z "${{AIQ_RUNNER_SUBMISSION_TOKEN+x}}" ]
     printf '%s\n' speed:none >>{log}
+    {speed_gate}
     printf '{{}}\n' >"$(output_arg "$@")"
     ;;
   *) exit 92 ;;
 esac
 "#,
 			log = shell_quote(log),
+			official_gate = official_gate,
+			speed_gate = speed_gate,
 		),
 	);
 }
