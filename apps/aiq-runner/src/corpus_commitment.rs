@@ -2986,7 +2986,7 @@ mod tests {
 	#[test]
 	fn source_manifest_path_grammar_matches_the_public_commitment_contract() {
 		assert!(super::valid_source_path("apps/aiq-runner/src/runner.rs"));
-		assert!(super::valid_source_path(".github/workflows/language.yml"));
+		assert!(super::valid_source_path(".github/dependabot.yml"));
 		assert!(super::valid_source_path("component.../file_name-01.rs"));
 
 		for path in [
