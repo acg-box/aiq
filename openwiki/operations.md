@@ -3,6 +3,17 @@ type: 'Operations'
 title: 'Operations and Validation'
 description: 'Local validation, runner, verifier, database, Web, and Storage procedures.'
 tags: ['operations', 'validation', 'runbook']
+verified:
+  - by: openwiki/0.4.3
+    at: 2026-08-27T19:12:59.713Z
+sources:
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
+  - id: openwiki-source-23775c3de52f3ab95a13cb8b
+    resource: repo://README.md
+  - id: openwiki-source-b7793decf9d7c9ba48e57e0f
+    resource: repo://rust-toolchain.toml
+generated: { by: "codex", at: "2026-08-27T19:12:59.713Z" }
 ---
 
 # Operations and Validation
@@ -43,22 +54,36 @@ state remain private operator assets.
 
 ## Toolchain
 
-Use Node.js `24.15.0` or newer, npm `11.17.0` or newer, the stable Rust toolchain, and the
-locked dependencies.
+Use Node.js `24.15.0` or newer, the npm `11.17.0` version pinned by `package.json`,
+the stable Rust toolchain selected by `rust-toolchain.toml`, and the locked
+dependencies. `cargo make fmt` also requires a separately managed nightly
+rustfmt toolchain.
 
 ```sh
 npm ci --ignore-scripts
 ```
 
-The single aggregate repository gate is:
+The complete read-only source gate is:
+
+```sh
+cargo make check
+```
+
+`check` validates the database schema, both TypeScript projects, Rust and
+TypeScript lint rules, vstyle, and all Rust and TypeScript tests. It is read-only
+apart from tool and build caches.
+
+The complete local browser gate is:
 
 ```sh
 cargo make verify
 ```
 
-It runs formatting, static contracts, lint, all unit and integration tests, the
-Rust build, one Web production build, and every local browser suite. Do not run
-the component tasks before or after it in the same pass. Use
+`verify` runs `check`, then builds the Web application once and runs every local
+browser acceptance suite. `fmt` is an independent mutating action and is not a
+dependency of either gate. Native release builds, production browser checks,
+database runtime checks, deployment, and publication remain separate contracts.
+Do not run component tasks before or after the same gate pass. Use
 `cargo make test-typescript-coverage` only when a coverage report is needed.
 
 ## Local synthetic demonstration
