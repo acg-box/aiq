@@ -1,25 +1,20 @@
 //! End-to-end observation workflow.
 
+mod official;
+mod speed;
+
 /// Protected runtime secret names.
 pub use crate::credentials::PROTECTED_SECRETS;
 
+use std::thread::ScopedJoinHandle;
 use std::fs::Permissions;
 use std::io::ErrorKind;
 #[cfg(unix)]
-use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::process;
 #[cfg(target_os = "macos")]
 use std::process::Command;
-use std::{
-	collections::BTreeMap,
-	env,
-	ffi::{OsStr, OsString},
-	fs::{self, File, OpenOptions},
-	io::Write as _,
-	path::{Path, PathBuf},
-	process::{Output, Stdio},
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::{collections::BTreeMap, env, ffi::{OsStr, OsString}, fs::{self, File, OpenOptions}, io::Write, path::{Path, PathBuf}, process::{Output, Stdio}, thread, time::{SystemTime, UNIX_EPOCH}};
 
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
@@ -35,7 +30,10 @@ use crate::{
 	supervisor,
 };
 
-const STATUS_SCHEMA: &str = "aiq.continuous-observation-status.v2";
+const STATUS_SCHEMA: &str = "aiq.continuous-observation-status.v3";
+#[cfg(test)]
+const LEGACY_STATUS_SCHEMA: &str = "aiq.continuous-observation-status.v2";
+const PUBLICATION_STATUS_SCHEMA: &str = "aiq.observation-publication-status.v1";
 const OFFICIAL_RUN_SCHEMA: &str = "aiq.run.v4";
 const OFFICIAL_RESULT_COUNT: usize = 1_224;
 const OFFICIAL_DISPATCH_GRACE_MILLISECONDS: i64 = 2 * 60 * 60 * 1_000;
@@ -84,10 +82,24 @@ enum CaptureKind {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum OfficialDispatch {
-	StartModel,
-	ResumeAfterModel,
-	Close,
+enum PublicationOwner {
+	Speed,
+	Official,
+}
+impl PublicationOwner {
+	const fn label(self) -> &'static str {
+		match self {
+			Self::Speed => "Speed",
+			Self::Official => "Official",
+		}
+	}
+
+	const fn value(self) -> &'static str {
+		match self {
+			Self::Speed => "speed",
+			Self::Official => "official",
+		}
+	}
 }
 
 #[derive(Debug, Serialize)]
@@ -121,6 +133,7 @@ struct SlotPaths {
 #[derive(Clone, Debug)]
 struct SpeedPaths {
 	root: PathBuf,
+	status: PathBuf,
 	home: PathBuf,
 	artifacts: PathBuf,
 	workspace: PathBuf,
@@ -132,6 +145,7 @@ struct SpeedPaths {
 #[derive(Clone, Debug)]
 struct OfficialPaths {
 	root: PathBuf,
+	status: PathBuf,
 	home: PathBuf,
 	artifacts: PathBuf,
 	execution: PathBuf,
@@ -150,6 +164,17 @@ struct OfficialPaths {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PublicationStatus {
+	schema_version: String,
+	owner: String,
+	slot_id: String,
+	phase: String,
+	detail: String,
+	updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct RetainedStatus {
 	schema_version: String,
 	slot_id: String,
@@ -157,6 +182,10 @@ struct RetainedStatus {
 	phase: String,
 	detail: String,
 	updated_at: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	speed: Option<PublicationStatus>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	official: Option<PublicationStatus>,
 }
 
 #[derive(Debug, Serialize)]
@@ -166,13 +195,6 @@ struct ScheduleStatus {
 	latest_slot: ScheduledSlot,
 	latest_slot_state: Option<Value>,
 	next_slot: ScheduledSlot,
-}
-
-#[derive(Debug)]
-struct OfficialRunSummary {
-	total_results: usize,
-	non_semantic_results: usize,
-	failure_kinds: BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -235,43 +257,17 @@ pub(crate) fn run(configuration: &Configuration, selected: Option<ScheduledSlot>
 
 	prepare_slot_directories(&paths)?;
 
-	if retained_phase(&paths.status)?.as_deref().is_some_and(is_terminal_phase) {
+	if retained_phase(&paths, &slot)?.as_deref().is_some_and(is_terminal_phase) {
 		cleanup_codex_home(&paths.speed.home)?;
 		cleanup_codex_home(&paths.official.home)?;
 
 		return Ok(());
 	}
 
-	write_status(&paths.status, &slot, "validating_release", "running")?;
+	initialize_publication_statuses(&paths, &slot)?;
+	write_composed_status(&paths, &slot)?;
 
-	let result = if !slot_can_continue(&slot, &slots.latest, &paths)? {
-		close_expired_slot(configuration, &slot, &paths)
-	} else {
-		run_locked(configuration, &slot, &paths)
-	};
-
-	if let Err(error) = &result {
-		if error.is_subscription_backpressure()
-			&& let Some(state) = paid_work_recovery_state(&paths.official.checkpoint)?
-		{
-			let detail = format!(
-				"subscription capacity unavailable; retained {} completed result(s); {} cell(s) deferred for scheduled resume",
-				state.completed_results, state.deferred_cells,
-			);
-
-			append_log(&paths.log, "slot_waiting", &detail)?;
-			write_status(&paths.status, &slot, "waiting_for_subscription", &detail)?;
-
-			return Ok(());
-		}
-
-		let detail = safe_detail(&error.to_string());
-
-		append_log(&paths.log, "slot_failed", &detail)?;
-		write_status(&paths.status, &slot, "retryable_failure", &detail)?;
-	}
-
-	result
+	run_locked(configuration, &slot, &paths)
 }
 
 fn is_terminal_phase(phase: &str) -> bool {
@@ -280,6 +276,7 @@ fn is_terminal_phase(phase: &str) -> bool {
 		"complete"
 			| "complete_with_unpublished_official"
 			| "complete_with_unpublished_speed"
+			| "complete_with_unpublished_speed_and_official"
 			| "missed_window"
 	)
 }
@@ -315,8 +312,8 @@ fn paid_work_recovery_slot(
 		}
 
 		let paths = slot_paths(&configuration.state_root, &slot);
-		let Some(phase) = retained_phase(&paths.status)? else { continue };
-		let Some(state) = paid_work_recovery_state(&paths.official.checkpoint)? else {
+		let Some(phase) = retained_phase(&paths, &slot)? else { continue };
+		let Some(state) = official::paid_work_recovery_state(&paths.official.checkpoint)? else {
 			continue;
 		};
 
@@ -337,172 +334,9 @@ fn paid_work_recovery_slot(
 	Ok(candidate)
 }
 
-fn paid_work_recovery_state(path: &Path) -> Result<Option<PaidWorkRecoveryState>> {
-	if !existing_regular_file(path)? {
-		return Ok(None);
-	}
-
-	let checkpoint = read_json_value(path, "Official checkpoint")?;
-	let schema = checkpoint.get("schema_version").and_then(Value::as_str);
-	let Some(in_flight) = checkpoint.get("in_flight").and_then(Value::as_array) else {
-		return Ok(None);
-	};
-	let Some(results) = checkpoint.get("results").and_then(Value::as_array) else {
-		return Ok(None);
-	};
-	let pending_evaluations =
-		checkpoint.get("pending_evaluations").and_then(Value::as_array).map_or(0, Vec::len);
-
-	if (!in_flight.is_empty() && pending_evaluations == 0) || results.len() > OFFICIAL_RESULT_COUNT
-	{
-		return Ok(None);
-	}
-	if results.iter().any(|result| {
-		matches!(
-			result.get("failure").and_then(|failure| failure.get("kind")).and_then(Value::as_str),
-			Some("authentication" | "workspace_integrity")
-		)
-	}) {
-		return Ok(None);
-	}
-
-	let legacy_limit_results = results
-		.iter()
-		.filter(|result| {
-			result.get("failure").and_then(|failure| failure.get("kind")).and_then(Value::as_str)
-				== Some("subscription_limit")
-		})
-		.count();
-	let legacy_terminal_results =
-		schema == Some("aiq.run-checkpoint.v8") && legacy_limit_results > 0;
-	let current_backpressure =
-		matches!(schema, Some("aiq.run-checkpoint.v10" | "aiq.run-checkpoint.v9"))
-			&& checkpoint.get("subscription_backpressure").is_some_and(Value::is_object);
-
-	if !legacy_terminal_results && !current_backpressure && pending_evaluations == 0 {
-		return Ok(None);
-	}
-
-	let completed_results = results.len().saturating_sub(legacy_limit_results);
-
-	Ok(Some(PaidWorkRecoveryState {
-		completed_results,
-		deferred_cells: OFFICIAL_RESULT_COUNT.saturating_sub(completed_results),
-		legacy_terminal_results,
-		pending_evaluations,
-	}))
-}
-
-fn slot_can_continue(
-	slot: &ScheduledSlot,
-	latest: &ScheduledSlot,
-	paths: &SlotPaths,
-) -> Result<bool> {
-	Ok(slot.timestamp_ms >= latest.timestamp_ms
-		|| official_run_is_complete(&paths.official.run)?
-		|| existing_regular_file(&paths.speed.batch)?
-		|| paid_work_recovery_state(&paths.official.checkpoint)?.is_some())
-}
-
-fn close_expired_slot(
-	configuration: &Configuration,
-	slot: &ScheduledSlot,
-	paths: &SlotPaths,
-) -> Result<()> {
-	let release =
-		Release::open(&configuration.release_root, &configuration.release_manifest_sha256)?;
-	let speed_published = speed_is_published(paths)?;
-
-	cleanup_terminal(&release, configuration, slot, paths)?;
-
-	let (phase, detail) = if speed_published {
-		(
-			"complete_with_unpublished_official",
-			"Speed evidence published; Official dispatch window closed before task execution",
-		)
-	} else {
-		("missed_window", "observation window closed before Official task dispatch")
-	};
-
-	append_log(&paths.log, "slot_terminal", detail)?;
-
-	write_status(&paths.status, slot, phase, detail)
-}
-
-fn close_late_official_dispatch(
-	release: &Release,
-	configuration: &Configuration,
-	slot: &ScheduledSlot,
-	paths: &SlotPaths,
-) -> Result<()> {
-	let speed_published = speed_is_published(paths)?;
-	let (phase, detail) = if speed_published {
-		(
-			"complete_with_unpublished_official",
-			"Speed evidence published; Official dispatch grace elapsed before a complete run",
-		)
-	} else {
-		("missed_window", "observation dispatch grace elapsed before model work")
-	};
-
-	cleanup_terminal(release, configuration, slot, paths)?;
-	append_log(&paths.log, "slot_terminal", detail)?;
-
-	write_status(&paths.status, slot, phase, detail)
-}
-
-fn speed_is_published(paths: &SlotPaths) -> Result<bool> {
-	Ok(existing_regular_file(&paths.speed.batch)?
-		&& captured_receipt_is_complete(&paths.speed.receipt, CaptureKind::Submission)?)
-}
-
-fn official_dispatch_window_is_open(slot: &ScheduledSlot, now_unix_ms: i64) -> Result<bool> {
-	let deadline = slot
-		.timestamp_ms
-		.checked_add(OFFICIAL_DISPATCH_GRACE_MILLISECONDS)
-		.ok_or_else(|| Error::new("Official dispatch deadline is outside the supported range"))?;
-
-	Ok(now_unix_ms >= slot.timestamp_ms && now_unix_ms < deadline)
-}
-
-fn official_dispatch(
-	slot: &ScheduledSlot,
-	paths: &SlotPaths,
-	now_unix_ms: i64,
-) -> Result<OfficialDispatch> {
-	if official_run_is_complete(&paths.official.run)? {
-		Ok(OfficialDispatch::ResumeAfterModel)
-	} else if paid_work_recovery_state(&paths.official.checkpoint)?.is_some()
-		|| official_dispatch_window_is_open(slot, now_unix_ms)?
-	{
-		Ok(OfficialDispatch::StartModel)
-	} else {
-		Ok(OfficialDispatch::Close)
-	}
-}
-
-fn speed_can_continue(slot: &ScheduledSlot, paths: &SlotPaths, now_unix_ms: i64) -> Result<bool> {
-	Ok(existing_regular_file(&paths.speed.batch)?
-		|| official_dispatch_window_is_open(slot, now_unix_ms)?)
-}
-
-fn require_official_dispatch_capacity(official_jobs: u8) -> Result<()> {
-	if official_jobs == REQUIRED_OFFICIAL_JOBS {
-		Ok(())
-	} else {
-		Err(Error::new(format!(
-			"official_jobs must be {REQUIRED_OFFICIAL_JOBS} before Official model work",
-		)))
-	}
-}
-
 fn status_at(configuration: &Configuration, slots: SurroundingSlots) -> Result<Value> {
 	let paths = slot_paths(&configuration.state_root, &slots.latest);
-	let latest_slot_state = if paths.status.exists() {
-		Some(read_json_value(&paths.status, "slot status")?)
-	} else {
-		None
-	};
+	let latest_slot_state = slot_status_value(&paths, &slots.latest)?;
 
 	serde_json::to_value(ScheduleStatus {
 		schema_version: STATUS_SCHEMA,
@@ -520,226 +354,150 @@ fn run_locked(
 	paths: &SlotPaths,
 ) -> Result<()> {
 	let release =
-		Release::open(&configuration.release_root, &configuration.release_manifest_sha256)?;
-
-	if speed_is_published(paths)?
-		&& captured_receipt_is_complete(&paths.official.verifier_records, CaptureKind::Verifier)?
-	{
-		cleanup_terminal(&release, configuration, slot, paths)?;
-		write_status(&paths.status, slot, "complete", "already complete")?;
-
-		return Ok(());
-	}
-
-	let dispatch = official_dispatch(slot, paths, current_unix_ms()?)?;
-
-	if dispatch == OfficialDispatch::Close {
-		if existing_regular_file(&paths.speed.batch)? && !speed_is_published(paths)? {
-			let secrets = RuntimeSecrets::resolve(configuration)?;
-
-			run_speed(configuration, release.paths(), paths, slot, &secrets)?;
-		}
-
-		return close_late_official_dispatch(&release, configuration, slot, paths);
-	}
-	if dispatch == OfficialDispatch::StartModel {
-		require_official_dispatch_capacity(configuration.official_jobs)?;
-	}
-
-	let secrets = RuntimeSecrets::resolve(configuration)?;
-	let source = release.prepare_source(&configuration.state_root, slot)?;
-	let dispatch = if dispatch == OfficialDispatch::StartModel {
-		official_dispatch(slot, paths, current_unix_ms()?)?
-	} else {
-		dispatch
+		match Release::open(&configuration.release_root, &configuration.release_manifest_sha256) {
+			Ok(release) => release,
+			Err(error) => return record_shared_failure(paths, slot, error),
+		};
+	let now_unix_ms = match current_unix_ms() {
+		Ok(now_unix_ms) => now_unix_ms,
+		Err(error) => return record_shared_failure(paths, slot, error),
 	};
+	let speed_dispatch = speed::dispatch(slot, paths, now_unix_ms);
+	let official_dispatch = official::dispatch(slot, paths, now_unix_ms);
+	let needs_secrets = speed_dispatch.as_ref().is_ok_and(|dispatch| dispatch.needs_secrets())
+		|| official_dispatch.as_ref().is_ok_and(|dispatch| dispatch.needs_secrets());
+	let secrets =
+		if needs_secrets { RuntimeSecrets::resolve(configuration).map(Some) } else { Ok(None) };
+	let (speed_result, official_result) = thread::scope(|scope| {
+		let speed_handle = scope.spawn(|| {
+			run_speed_path(configuration, release.paths(), paths, slot, &speed_dispatch, &secrets)
+		});
+		let official_handle = scope.spawn(|| {
+			run_official_path(configuration, &release, paths, slot, &official_dispatch, &secrets)
+		});
 
-	if dispatch == OfficialDispatch::Close {
-		return close_late_official_dispatch(&release, configuration, slot, paths);
-	}
-
-	let summary = match dispatch {
-		OfficialDispatch::StartModel => {
-			run_official(configuration, &release, paths, slot, &source, &secrets)?
-		},
-		OfficialDispatch::ResumeAfterModel => {
-			run_official_after_model(configuration, &release, paths, slot, &source, &secrets)?
-		},
-		OfficialDispatch::Close => {
-			unreachable!("closed dispatch handled before source preparation")
-		},
-	};
-
-	if speed_can_continue(slot, paths, current_unix_ms()?)? {
-		run_speed(configuration, release.paths(), paths, slot, &secrets)?;
-	}
-
-	let speed_published = speed_is_published(paths)?;
-
-	if summary.non_semantic_results > 0 {
-		cleanup_terminal(&release, configuration, slot, paths)?;
-		write_status(
-			&paths.status,
-			slot,
-			"complete_with_unpublished_official",
-			&unpublished_detail(&summary, speed_published),
-		)?;
-
-		return Ok(());
-	}
-
-	cleanup_terminal(&release, configuration, slot, paths)?;
-
-	if speed_published {
-		write_status(&paths.status, slot, "complete", "speed and Official evidence published")
-	} else {
-		write_status(
-			&paths.status,
-			slot,
-			"complete_with_unpublished_speed",
-			"Official evidence published; speed observation was not started after its dispatch grace",
+		(
+			join_publication(speed_handle, PublicationOwner::Speed),
+			join_publication(official_handle, PublicationOwner::Official),
 		)
+	});
+
+	if let Err(error) = &speed_result {
+		record_owner_failure(paths, slot, PublicationOwner::Speed, error)?;
 	}
+	if let Err(error) = &official_result {
+		record_owner_failure(paths, slot, PublicationOwner::Official, error)?;
+	}
+
+	write_composed_status(paths, slot)?;
+
+	let result = combine_publication_results(speed_result, official_result);
+
+	if let Err(error) = &result {
+		append_log(&paths.log, "slot_failed", &safe_detail(&error.to_string()))?;
+	}
+
+	result
 }
 
-fn run_speed(
+fn run_speed_path(
 	configuration: &Configuration,
 	release: &ReleasePaths,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	secrets: &RuntimeSecrets,
+	dispatch: &Result<speed::Dispatch>,
+	secrets: &Result<Option<RuntimeSecrets>>,
 ) -> Result<()> {
-	if existing_regular_file(&paths.speed.batch)? {
-		cleanup_codex_home(&paths.speed.home)?;
-	} else {
-		prepare_codex_home(&paths.speed.home, &configuration.codex_auth_source)?;
-	}
+	let dispatch = match dispatch.as_ref() {
+		Ok(dispatch) => dispatch,
+		Err(error) => {
+			let error = Error::new(error.to_string());
 
-	let result = speed_steps(configuration, release, paths, slot)
-		.iter()
-		.try_for_each(|step| run_create_once_step(step, paths, slot, secrets));
-	let home_cleanup = cleanup_codex_home(&paths.speed.home);
+			record_owner_failure(paths, slot, PublicationOwner::Speed, &error)?;
 
-	result.and(home_cleanup)?;
+			return Err(error);
+		},
+	};
+	let secrets = match publication_secrets(dispatch.needs_secrets(), secrets) {
+		Ok(secrets) => secrets,
+		Err(error) => {
+			record_owner_failure(paths, slot, PublicationOwner::Speed, &error)?;
 
-	cleanup_speed(paths)
+			return Err(error);
+		},
+	};
+
+	speed::run(configuration, release, paths, slot, *dispatch, secrets)
 }
 
-fn run_official_after_model(
+fn run_official_path(
 	configuration: &Configuration,
 	release: &Release,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
-	secrets: &RuntimeSecrets,
-) -> Result<OfficialRunSummary> {
-	cleanup_codex_home(&paths.official.home)?;
+	dispatch: &Result<official::Dispatch>,
+	secrets: &Result<Option<RuntimeSecrets>>,
+) -> Result<()> {
+	let dispatch = match dispatch.as_ref() {
+		Ok(dispatch) => dispatch,
+		Err(error) => {
+			let error = Error::new(error.to_string());
 
-	let summary = summarize_official_run(&paths.official.run)?;
+			record_owner_failure(paths, slot, PublicationOwner::Official, &error)?;
 
-	if summary.non_semantic_results > 0 {
-		return Ok(summary);
-	}
+			return Err(error);
+		},
+	};
+	let secrets = match publication_secrets(dispatch.needs_secrets(), secrets) {
+		Ok(secrets) => secrets,
+		Err(error) => {
+			record_owner_failure(paths, slot, PublicationOwner::Official, &error)?;
 
-	let steps = official_steps(configuration, release, paths, slot, source);
+			return Err(error);
+		},
+	};
 
-	for step in steps.iter().skip(3) {
-		run_create_once_step(step, paths, slot, secrets)?;
-	}
-
-	summarize_official_run(&paths.official.run)
+	official::run(configuration, release, paths, slot, *dispatch, secrets)
 }
 
-fn run_official(
-	configuration: &Configuration,
-	release: &Release,
-	paths: &SlotPaths,
-	slot: &ScheduledSlot,
-	source: &Path,
-	secrets: &RuntimeSecrets,
-) -> Result<OfficialRunSummary> {
-	prepare_codex_home(&paths.official.home, &configuration.codex_auth_source)?;
-
-	let steps = official_steps(configuration, release, paths, slot, source);
-	let result = (|| {
-		for step in &steps {
-			run_create_once_step(step, paths, slot, secrets)?;
-
-			if step.name == "official_run" {
-				let summary = summarize_official_run(&paths.official.run)?;
-
-				if summary.non_semantic_results > 0 {
-					return Ok(summary);
-				}
-			}
-		}
-
-		summarize_official_run(&paths.official.run)
-	})();
-	let home_cleanup = cleanup_codex_home(&paths.official.home);
-
-	match (result, home_cleanup) {
-		(Err(error), _) | (Ok(_), Err(error)) => Err(error),
-		(Ok(summary), Ok(())) => Ok(summary),
+fn publication_secrets(
+	required: bool,
+	secrets: &Result<Option<RuntimeSecrets>>,
+) -> Result<Option<&RuntimeSecrets>> {
+	match secrets {
+		Ok(secrets) => Ok(secrets.as_ref()),
+		Err(error) if required => Err(Error::new(error.to_string())),
+		Err(_) => Ok(None),
 	}
 }
 
-fn speed_steps(
-	configuration: &Configuration,
-	release: &ReleasePaths,
-	paths: &SlotPaths,
-	slot: &ScheduledSlot,
-) -> [CommandStep; 2] {
-	let observe = CommandStep {
-		name: "speed_observe",
-		executable: release.runner.clone(),
-		args: args([
-			"observe-speed",
-			"--corpus-commitment",
-			release.commitment.to_string_lossy().as_ref(),
-			"--evaluator-runtime",
-			release.runtime.to_string_lossy().as_ref(),
-			"--codex-toolchain-root",
-			release.toolchain.to_string_lossy().as_ref(),
-			"--codex-binary",
-			release.codex.to_string_lossy().as_ref(),
-			"--codex-home",
-			paths.speed.home.to_string_lossy().as_ref(),
-			"--artifact-root",
-			paths.speed.artifacts.to_string_lossy().as_ref(),
-			"--workspace-root",
-			paths.speed.workspace.to_string_lossy().as_ref(),
-			"--checkpoint-root",
-			paths.speed.checkpoints.to_string_lossy().as_ref(),
-			"--observed-at",
-			&slot.observed_at,
-			"--trials",
-			&configuration.speed_trials.to_string(),
-			"--jobs",
-			&configuration.speed_jobs.to_string(),
-			"--output",
-			paths.speed.batch.to_string_lossy().as_ref(),
-		]),
-		output: paths.speed.batch.clone(),
-		capture: None,
-		secrets: StepSecrets::None,
-	};
-	let submit = CommandStep {
-		name: "speed_submit",
-		executable: release.runner.clone(),
-		args: args([
-			"submit-speed",
-			"--observation",
-			paths.speed.batch.to_string_lossy().as_ref(),
-			"--endpoint",
-			&configuration.endpoint,
-		]),
-		output: paths.speed.receipt.clone(),
-		capture: Some(CaptureKind::Submission),
-		secrets: StepSecrets::RunnerSubmission,
-	};
+fn join_publication(
+	handle: ScopedJoinHandle<'_, Result<()>>,
+	owner: PublicationOwner,
+) -> Result<()> {
+	handle.join().map_err(|_| Error::new(format!("{} publication path panicked", owner.label())))?
+}
 
-	[observe, submit]
+fn combine_publication_results(speed: Result<()>, official: Result<()>) -> Result<()> {
+	match (speed, official) {
+		(Ok(()), Ok(())) => Ok(()),
+		(Err(error), Ok(())) => Err(Error::new(format!("Speed publication failed: {error}"))),
+		(Ok(()), Err(error)) => Err(Error::new(format!("Official publication failed: {error}"))),
+		(Err(speed), Err(official)) => Err(Error::new(format!(
+			"Speed publication failed: {speed}; Official publication failed: {official}",
+		))),
+	}
+}
+
+fn record_shared_failure(paths: &SlotPaths, slot: &ScheduledSlot, error: Error) -> Result<()> {
+	for owner in [PublicationOwner::Speed, PublicationOwner::Official] {
+		record_owner_failure(paths, slot, owner, &error)?;
+	}
+
+	write_composed_status(paths, slot)?;
+	append_log(&paths.log, "slot_failed", &safe_detail(&error.to_string()))?;
+
+	Err(error)
 }
 
 fn official_steps(
@@ -1061,6 +819,7 @@ fn run_create_once_step(
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
 	secrets: &RuntimeSecrets,
+	owner: PublicationOwner,
 ) -> Result<()> {
 	if existing_regular_file(&step.output)? {
 		if existing_step_output_is_complete(step)? {
@@ -1071,7 +830,7 @@ fn run_create_once_step(
 		append_log(&paths.log, "step_retrying", step.name)?;
 	}
 
-	write_status(&paths.status, slot, step.name, "running")?;
+	write_publication_status(paths, slot, owner, step.name, "running")?;
 
 	let stdout = match run_command(step, &paths.log, secrets) {
 		Ok(stdout) => stdout,
@@ -1110,7 +869,7 @@ fn existing_step_output_is_complete(step: &CommandStep) -> Result<bool> {
 	}
 
 	if step.name == "official_run" {
-		return official_run_is_complete(&step.output);
+		return official::run_is_complete(&step.output);
 	}
 	if step.name != "official_admit" {
 		return Ok(true);
@@ -1142,21 +901,6 @@ fn captured_receipt_is_complete(path: &Path, kind: CaptureKind) -> Result<bool> 
 	};
 
 	Ok(validate_receipt(&record, kind, "captured receipt").is_ok())
-}
-
-fn official_run_is_complete(path: &Path) -> Result<bool> {
-	if !existing_regular_file(path)? {
-		return Ok(false);
-	}
-
-	let bytes = fs::read(path).context(format!("cannot read Official run {}", path.display()))?;
-	let Ok(document) = serde_json::from_slice::<Value>(&bytes) else {
-		return Ok(false);
-	};
-
-	Ok(document.get("schema_version").and_then(Value::as_str) == Some(OFFICIAL_RUN_SCHEMA)
-		&& document.get("results").and_then(Value::as_array).map(Vec::len)
-			== Some(OFFICIAL_RESULT_COUNT))
 }
 
 fn remove_failed_step_output(path: &Path) -> Result<()> {
@@ -1285,6 +1029,7 @@ fn slot_paths(state_root: &Path, slot: &ScheduledSlot) -> SlotPaths {
 		log: root.join("operator.log"),
 		status: root.join("status.json"),
 		speed: SpeedPaths {
+			status: speed_root.join("status.json"),
 			home: speed_root.join("codex-home"),
 			artifacts: speed_root.join("artifacts"),
 			workspace: speed_root.join("workspace"),
@@ -1294,6 +1039,7 @@ fn slot_paths(state_root: &Path, slot: &ScheduledSlot) -> SlotPaths {
 			root: speed_root,
 		},
 		official: OfficialPaths {
+			status: official_root.join("status.json"),
 			home: official_root.join("codex-home"),
 			artifacts: official_root.join("artifacts"),
 			execution: official_root.join("execution"),
@@ -1375,113 +1121,240 @@ fn cleanup_codex_home(home: &Path) -> Result<()> {
 	remove_managed(home, home.parent().ok_or_else(|| Error::new("invalid Codex home"))?)
 }
 
-fn cleanup_speed(paths: &SlotPaths) -> Result<()> {
-	cleanup_codex_home(&paths.speed.home)?;
+#[cfg(test)]
+fn cleanup_terminal_state(paths: &SlotPaths) -> Result<()> {
+	speed::cleanup(paths)?;
 
-	for path in [&paths.speed.workspace, &paths.speed.artifacts, &paths.speed.checkpoints] {
-		remove_managed(path, &paths.speed.root)?;
+	official::cleanup_state(paths)
+}
+
+fn initialize_publication_statuses(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<()> {
+	for owner in [PublicationOwner::Speed, PublicationOwner::Official] {
+		if read_publication_status(paths, owner)?.is_some() {
+			continue;
+		}
+
+		let (phase, detail) = match owner {
+			PublicationOwner::Speed if speed::is_published(paths)? => {
+				("published", "Speed evidence published")
+			},
+			PublicationOwner::Speed if existing_regular_file(&paths.speed.batch)? => {
+				("pending", "Speed submission is ready to resume")
+			},
+			PublicationOwner::Speed => ("pending", "Speed publication is pending"),
+			PublicationOwner::Official if official::is_published(paths)? => {
+				("published", "Official evidence published")
+			},
+			PublicationOwner::Official if official::run_is_complete(&paths.official.run)? => {
+				("pending", "Official publication is ready to resume")
+			},
+			PublicationOwner::Official => ("pending", "Official publication is pending"),
+		};
+
+		write_publication_status(paths, slot, owner, phase, detail)?;
 	}
 
 	Ok(())
 }
 
-fn cleanup_terminal(
-	release: &Release,
-	configuration: &Configuration,
-	slot: &ScheduledSlot,
-	paths: &SlotPaths,
-) -> Result<()> {
-	cleanup_terminal_state(paths)?;
-
-	release.cleanup_source(&configuration.state_root, slot)
-}
-
-fn cleanup_terminal_state(paths: &SlotPaths) -> Result<()> {
-	cleanup_speed(paths)?;
-	cleanup_codex_home(&paths.official.home)?;
-
-	for path in [&paths.official.execution, &paths.official.artifacts] {
-		remove_managed(path, &paths.official.root)?;
+fn slot_status_value(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<Option<Value>> {
+	if paths.speed.status.exists() || paths.official.status.exists() {
+		return serde_json::to_value(compose_status(paths, slot)?)
+			.context("cannot serialize composed slot status")
+			.map(Some);
+	}
+	if paths.status.exists() {
+		return read_json_value(&paths.status, "slot status").map(Some);
 	}
 
-	remove_managed(&paths.official.verification.join("replay"), &paths.official.verification)?;
-
-	remove_managed(&paths.official.checkpoint, &paths.official.state)
+	Ok(None)
 }
 
-fn summarize_official_run(path: &Path) -> Result<OfficialRunSummary> {
-	let document = read_json_value(path, "Official run")?;
-	let results = document
-		.get("results")
-		.and_then(Value::as_array)
-		.filter(|results| !results.is_empty())
-		.ok_or_else(|| Error::new("Official run results are empty or invalid"))?;
-	let mut non_semantic_results = 0;
-	let mut failure_kinds = BTreeMap::new();
-
-	for result in results {
-		let semantic = result.get("status").and_then(Value::as_str) == Some("completed")
-			&& result
-				.get("task_score")
-				.and_then(Value::as_f64)
-				.is_some_and(|score| score.is_finite() && (0.0..=1.0).contains(&score));
-
-		if semantic {
-			continue;
-		}
-
-		non_semantic_results += 1;
-
-		let kind = result
-			.get("failure")
-			.and_then(|failure| failure.get("kind"))
-			.and_then(Value::as_str)
-			.or_else(|| result.get("status").and_then(Value::as_str))
-			.unwrap_or("unknown")
-			.to_owned();
-
-		*failure_kinds.entry(kind).or_insert(0) += 1;
+fn retained_phase(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<Option<String>> {
+	if paths.speed.status.exists() || paths.official.status.exists() {
+		return compose_status(paths, slot).map(|status| Some(status.phase));
 	}
-
-	Ok(OfficialRunSummary { total_results: results.len(), non_semantic_results, failure_kinds })
-}
-
-fn unpublished_detail(summary: &OfficialRunSummary, speed_published: bool) -> String {
-	let failures = summary
-		.failure_kinds
-		.iter()
-		.map(|(kind, count)| format!("{kind}={count}"))
-		.collect::<Vec<_>>()
-		.join(", ");
-	let suffix = if failures.is_empty() { String::new() } else { format!(" ({failures})") };
-	let speed = if speed_published { "speed published" } else { "speed not published" };
-
-	format!(
-		"{speed}; Official preserved but not published: {}/{} non-semantic result(s){suffix}; no model rerun",
-		summary.non_semantic_results, summary.total_results
-	)
-}
-
-fn retained_phase(path: &Path) -> Result<Option<String>> {
-	if !path.exists() {
+	if !paths.status.exists() {
 		return Ok(None);
 	}
 
-	let status: RetainedStatus = read_json(path, "slot status")?;
+	let status: RetainedStatus = read_json(&paths.status, "slot status")?;
 
 	Ok(Some(status.phase))
 }
 
+fn compose_status(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<RetainedStatus> {
+	let speed = read_publication_status(paths, PublicationOwner::Speed)?
+		.unwrap_or(publication_pending(slot, PublicationOwner::Speed)?);
+	let official = read_publication_status(paths, PublicationOwner::Official)?
+		.unwrap_or(publication_pending(slot, PublicationOwner::Official)?);
+
+	if speed.slot_id != slot.id || official.slot_id != slot.id {
+		return Err(Error::new("publication status does not match its observation slot"));
+	}
+
+	let phase = compose_phase(&speed, &official);
+	let detail = safe_detail(&format!(
+		"Speed {}: {}; Official {}: {}",
+		speed.phase, speed.detail, official.phase, official.detail,
+	));
+
+	Ok(RetainedStatus {
+		schema_version: STATUS_SCHEMA.to_owned(),
+		slot_id: slot.id.clone(),
+		observed_at: slot.observed_at.clone(),
+		phase: phase.to_owned(),
+		detail,
+		updated_at: now_string()?,
+		speed: Some(speed),
+		official: Some(official),
+	})
+}
+
+fn compose_phase(speed: &PublicationStatus, official: &PublicationStatus) -> &'static str {
+	if publication_is_running(speed) || publication_is_running(official) {
+		return "running";
+	}
+	if official.phase == "waiting_for_subscription" {
+		return "waiting_for_subscription";
+	}
+	if publication_is_retryable(speed) || publication_is_retryable(official) {
+		return "retryable_failure";
+	}
+	if speed.phase == "published" && official.phase == "published" {
+		return "complete";
+	}
+	if speed.phase == "published" {
+		return "complete_with_unpublished_official";
+	}
+	if official.phase == "published" {
+		return "complete_with_unpublished_speed";
+	}
+	if speed.phase == "missed_window" && official.phase == "missed_window" {
+		return "missed_window";
+	}
+
+	"complete_with_unpublished_speed_and_official"
+}
+
+fn publication_is_running(status: &PublicationStatus) -> bool {
+	!publication_is_terminal(status) && !publication_is_retryable(status)
+}
+
+fn publication_is_retryable(status: &PublicationStatus) -> bool {
+	matches!(status.phase.as_str(), "retryable_failure" | "waiting_for_subscription")
+}
+
+fn publication_is_terminal(status: &PublicationStatus) -> bool {
+	matches!(status.phase.as_str(), "published" | "unpublished" | "missed_window")
+}
+
+fn publication_pending(slot: &ScheduledSlot, owner: PublicationOwner) -> Result<PublicationStatus> {
+	Ok(PublicationStatus {
+		schema_version: PUBLICATION_STATUS_SCHEMA.to_owned(),
+		owner: owner.value().to_owned(),
+		slot_id: slot.id.clone(),
+		phase: "pending".to_owned(),
+		detail: format!("{} publication is pending", owner.label()),
+		updated_at: now_string()?,
+	})
+}
+
+fn read_publication_status(
+	paths: &SlotPaths,
+	owner: PublicationOwner,
+) -> Result<Option<PublicationStatus>> {
+	let path = publication_status_path(paths, owner);
+
+	if !existing_regular_file(path)? {
+		return Ok(None);
+	}
+
+	let status: PublicationStatus = read_json(path, "publication status")?;
+
+	if status.schema_version != PUBLICATION_STATUS_SCHEMA || status.owner != owner.value() {
+		return Err(Error::new(format!("invalid {} publication status identity", owner.label())));
+	}
+
+	Ok(Some(status))
+}
+
+fn publication_status_path(paths: &SlotPaths, owner: PublicationOwner) -> &Path {
+	match owner {
+		PublicationOwner::Speed => &paths.speed.status,
+		PublicationOwner::Official => &paths.official.status,
+	}
+}
+
+fn write_publication_status(
+	paths: &SlotPaths,
+	slot: &ScheduledSlot,
+	owner: PublicationOwner,
+	phase: &str,
+	detail: &str,
+) -> Result<()> {
+	let document = PublicationStatus {
+		schema_version: PUBLICATION_STATUS_SCHEMA.to_owned(),
+		owner: owner.value().to_owned(),
+		slot_id: slot.id.clone(),
+		phase: phase.to_owned(),
+		detail: safe_detail(detail),
+		updated_at: now_string()?,
+	};
+
+	write_json_atomically(publication_status_path(paths, owner), &document, "publication status")
+}
+
+fn record_owner_failure(
+	paths: &SlotPaths,
+	slot: &ScheduledSlot,
+	owner: PublicationOwner,
+	error: &Error,
+) -> Result<()> {
+	let detail = safe_detail(&error.to_string());
+
+	if let Some(status) = read_publication_status(paths, owner)?
+		&& (publication_is_terminal(&status)
+			|| (status.phase == "retryable_failure" && status.detail == detail))
+	{
+		return Ok(());
+	}
+
+	let event = match owner {
+		PublicationOwner::Speed => "speed_failed",
+		PublicationOwner::Official => "official_failed",
+	};
+
+	append_log(&paths.log, event, &detail)?;
+
+	write_publication_status(paths, slot, owner, "retryable_failure", &detail)
+}
+
+fn write_composed_status(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<()> {
+	write_json_atomically(&paths.status, &compose_status(paths, slot)?, "slot status")
+}
+
+#[cfg(test)]
 fn write_status(path: &Path, slot: &ScheduledSlot, phase: &str, detail: &str) -> Result<()> {
 	let document = RetainedStatus {
-		schema_version: STATUS_SCHEMA.to_owned(),
+		schema_version: LEGACY_STATUS_SCHEMA.to_owned(),
 		slot_id: slot.id.clone(),
 		observed_at: slot.observed_at.clone(),
 		phase: phase.to_owned(),
 		detail: safe_detail(detail),
 		updated_at: now_string()?,
+		speed: None,
+		official: None,
 	};
-	let bytes = serde_json::to_vec_pretty(&document).context("cannot serialize slot status")?;
+
+	write_json_atomically(path, &document, "slot status")
+}
+
+fn write_json_atomically<T>(path: &Path, document: &T, label: &str) -> Result<()>
+where
+	T: Serialize,
+{
+	let bytes = serde_json::to_vec_pretty(document).context(format!("cannot serialize {label}"))?;
 	let temporary = path.with_extension(format!("json.new.{}", process::id()));
 
 	if temporary.exists() {
@@ -1490,7 +1363,7 @@ fn write_status(path: &Path, slot: &ScheduledSlot, phase: &str, detail: &str) ->
 
 	write_create_once(&temporary, &bytes)?;
 
-	fs::rename(&temporary, path).context("cannot atomically replace slot status")
+	fs::rename(&temporary, path).context(format!("cannot atomically replace {label}"))
 }
 
 fn append_log(path: &Path, event: &str, detail: &str) -> Result<()> {
@@ -1653,13 +1526,7 @@ mod tests {
 		path::{Path, PathBuf},
 	};
 
-	use crate::{
-		config::{CONFIG_SCHEMA, Configuration},
-		credentials::RuntimeSecrets,
-		lock::ProcessLock,
-		schedule::{self},
-		workflow::{self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets},
-	};
+	use crate::{config::{CONFIG_SCHEMA, Configuration}, credentials::RuntimeSecrets, lock::ProcessLock, schedule::{self}, workflow::{self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets, official, speed}};
 
 	fn parent_environment() -> Vec<(OsString, OsString)> {
 		let mut values = vec![
@@ -1717,13 +1584,64 @@ mod tests {
 		)
 		.expect("summary fixture");
 
-		let summary = workflow::summarize_official_run(&path).expect("summary");
+		let summary = official::summarize_run(&path).expect("summary");
 
 		assert_eq!(summary.total_results, 2);
 		assert_eq!(summary.non_semantic_results, 1);
 		assert_eq!(summary.failure_kinds.get("evaluator_failure"), Some(&1));
 
 		fs::remove_dir_all(root).expect("remove summary fixture");
+	}
+
+	#[test]
+	fn publication_status_composes_independent_owner_outcomes() {
+		let root = env::temp_dir().join(format!("aiq-status-composition-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("status slot");
+		let paths = workflow::slot_paths(&root, &slot);
+
+		workflow::prepare_slot_directories(&paths).expect("status directories");
+		workflow::write_publication_status(
+			&paths,
+			&slot,
+			workflow::PublicationOwner::Speed,
+			"published",
+			"Speed evidence published",
+		)
+		.expect("Speed status");
+		workflow::write_publication_status(
+			&paths,
+			&slot,
+			workflow::PublicationOwner::Official,
+			"retryable_failure",
+			"Official infrastructure failed",
+		)
+		.expect("Official retry status");
+
+		let retryable = workflow::compose_status(&paths, &slot).expect("retryable composition");
+
+		assert_eq!(retryable.phase, "retryable_failure");
+		assert_eq!(retryable.speed.as_ref().map(|status| status.phase.as_str()), Some("published"));
+		assert_eq!(
+			retryable.official.as_ref().map(|status| status.phase.as_str()),
+			Some("retryable_failure")
+		);
+
+		workflow::write_publication_status(
+			&paths,
+			&slot,
+			workflow::PublicationOwner::Official,
+			"unpublished",
+			"Official evidence retained",
+		)
+		.expect("Official terminal status");
+
+		assert_eq!(
+			workflow::compose_status(&paths, &slot).expect("terminal composition").phase,
+			"complete_with_unpublished_official"
+		);
+
+		fs::remove_dir_all(root).expect("remove status fixture");
 	}
 
 	#[test]
@@ -1796,21 +1714,35 @@ mod tests {
 	}
 
 	#[test]
-	fn expired_slot_continues_only_after_a_complete_model_output() {
+	fn expired_slot_resumes_each_owner_only_from_its_retained_output() {
 		let root = env::temp_dir().join(format!("aiq-expired-slot-test-{}", process::id()));
 		let _ = fs::remove_dir_all(&root);
 		let expired = schedule::scheduled_slot("2026-08-10T03-00Z").expect("expired slot");
-		let latest = schedule::scheduled_slot("2026-08-10T15-00Z").expect("latest slot");
 		let paths = workflow::slot_paths(&root, &expired);
+		let after_window = expired.timestamp_ms + workflow::speed::DISPATCH_WINDOW_MILLISECONDS;
 
-		assert!(!workflow::slot_can_continue(&expired, &latest, &paths).expect("closed window"));
-		assert!(workflow::slot_can_continue(&latest, &latest, &paths).expect("current window"));
+		assert_eq!(
+			speed::dispatch(&expired, &paths, after_window).expect("closed Speed"),
+			workflow::speed::Dispatch::Close
+		);
+		assert_eq!(
+			official::dispatch(&expired, &paths, after_window).expect("closed Official"),
+			workflow::official::Dispatch::Close
+		);
 
 		workflow::prepare_slot_directories(&paths).expect("expired fixture directories");
 		fs::write(&paths.speed.batch, "completed Speed dispatch\n")
 			.expect("completed Speed run fixture");
 
-		assert!(workflow::slot_can_continue(&expired, &latest, &paths).expect("Speed resume"));
+		assert_eq!(
+			speed::dispatch(&expired, &paths, after_window).expect("Speed resume"),
+			workflow::speed::Dispatch::ResumeSubmission
+		);
+		assert_eq!(
+			official::dispatch(&expired, &paths, after_window)
+				.expect("Official remains closed"),
+			workflow::official::Dispatch::Close
+		);
 
 		fs::remove_file(&paths.speed.batch).expect("remove Speed fixture");
 		fs::write(
@@ -1823,7 +1755,15 @@ mod tests {
 		)
 		.expect("completed Official run fixture");
 
-		assert!(workflow::slot_can_continue(&expired, &latest, &paths).expect("resumable output"));
+		assert_eq!(
+			official::dispatch(&expired, &paths, after_window).expect("Official resume"),
+			workflow::official::Dispatch::ResumeAfterModel
+		);
+		assert_eq!(
+			speed::dispatch(&expired, &paths, after_window)
+				.expect("Speed remains closed"),
+			workflow::speed::Dispatch::Close
+		);
 
 		fs::remove_dir_all(root).expect("remove expired slot fixture");
 	}
@@ -1874,22 +1814,21 @@ mod tests {
 		)
 		.expect("subscription status");
 
-		let state = workflow::paid_work_recovery_state(&paths.official.checkpoint)
+		let state = official::paid_work_recovery_state(&paths.official.checkpoint)
 			.expect("subscription state")
 			.expect("subscription recovery");
 
 		assert_eq!(state.completed_results, 2);
 		assert_eq!(state.deferred_cells, workflow::OFFICIAL_RESULT_COUNT - 2);
 		assert_eq!(state.pending_evaluations, 0);
-		assert!(workflow::slot_can_continue(&blocked, &latest, &paths).expect("resumable"));
 		assert_eq!(
-			workflow::official_dispatch(
+			official::dispatch(
 				&blocked,
 				&paths,
 				blocked.timestamp_ms + workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS,
 			)
 			.expect("late subscription recovery"),
-			workflow::OfficialDispatch::StartModel
+			workflow::official::Dispatch::StartModel
 		);
 		assert_eq!(
 			workflow::paid_work_recovery_slot(&configuration, &latest)
@@ -1905,7 +1844,6 @@ mod tests {
 		let root = env::temp_dir().join(format!("aiq-evaluator-recovery-test-{}", process::id()));
 		let _ = fs::remove_dir_all(&root);
 		let blocked = schedule::scheduled_slot("2026-08-10T03-00Z").expect("blocked slot");
-		let latest = schedule::scheduled_slot("2026-08-11T15-00Z").expect("latest slot");
 		let paths = workflow::slot_paths(&root, &blocked);
 
 		workflow::prepare_slot_directories(&paths).expect("evaluator recovery directories");
@@ -1929,20 +1867,19 @@ mod tests {
 		)
 		.expect("evaluator recovery status");
 
-		let state = workflow::paid_work_recovery_state(&paths.official.checkpoint)
+		let state = official::paid_work_recovery_state(&paths.official.checkpoint)
 			.expect("evaluator state")
 			.expect("evaluator recovery");
 
 		assert_eq!(state.pending_evaluations, 1);
-		assert!(workflow::slot_can_continue(&blocked, &latest, &paths).expect("resumable"));
 		assert_eq!(
-			workflow::official_dispatch(
+			official::dispatch(
 				&blocked,
 				&paths,
 				blocked.timestamp_ms + workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS,
 			)
 			.expect("late evaluator recovery"),
-			workflow::OfficialDispatch::StartModel
+			workflow::official::Dispatch::StartModel
 		);
 
 		fs::remove_dir_all(root).expect("remove evaluator recovery fixture");
@@ -1992,7 +1929,7 @@ mod tests {
 		)
 		.expect("legacy retryable status");
 
-		let state = workflow::paid_work_recovery_state(&paths.official.checkpoint)
+		let state = official::paid_work_recovery_state(&paths.official.checkpoint)
 			.expect("legacy state")
 			.expect("legacy subscription recovery");
 
@@ -2013,25 +1950,25 @@ mod tests {
 		let grace = workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS;
 
 		assert!(
-			!workflow::official_dispatch_window_is_open(&slot, slot.timestamp_ms - 1)
+			!official::dispatch_window_is_open(&slot, slot.timestamp_ms - 1)
 				.expect("before slot")
 		);
 		assert!(
-			workflow::official_dispatch_window_is_open(&slot, slot.timestamp_ms)
+			official::dispatch_window_is_open(&slot, slot.timestamp_ms)
 				.expect("slot start")
 		);
 		assert!(
-			workflow::official_dispatch_window_is_open(&slot, slot.timestamp_ms + grace - 1,)
+			official::dispatch_window_is_open(&slot, slot.timestamp_ms + grace - 1,)
 				.expect("inside grace")
 		);
 		assert!(
-			!workflow::official_dispatch_window_is_open(&slot, slot.timestamp_ms + grace,)
+			!official::dispatch_window_is_open(&slot, slot.timestamp_ms + grace,)
 				.expect("closed grace")
 		);
 	}
 
 	#[test]
-	fn late_slot_closes_before_any_new_speed_or_official_model_work() {
+	fn speed_dispatch_remains_open_after_the_official_grace() {
 		let slot = schedule::scheduled_slot("2026-08-10T15-00Z").expect("dispatch slot");
 		let root = env::temp_dir().join(format!("aiq-late-slot-test-{}", process::id()));
 		let _ = fs::remove_dir_all(&root);
@@ -2041,23 +1978,29 @@ mod tests {
 		workflow::prepare_slot_directories(&paths).expect("late slot directories");
 
 		assert!(
-			!workflow::official_dispatch_window_is_open(&slot, now)
+			!official::dispatch_window_is_open(&slot, now)
 				.expect("closed dispatch window")
 		);
 		assert_eq!(
-			workflow::official_dispatch(&slot, &paths, now).expect("closed late dispatch"),
-			workflow::OfficialDispatch::Close
+			official::dispatch(&slot, &paths, now).expect("closed late dispatch"),
+			workflow::official::Dispatch::Close
 		);
-		assert!(!workflow::speed_can_continue(&slot, &paths, now).expect("closed speed dispatch"));
+		assert_eq!(
+			speed::dispatch(&slot, &paths, now).expect("independent Speed dispatch"),
+			workflow::speed::Dispatch::Start
+		);
 
 		fs::write(&paths.speed.batch, "completed speed model output\n")
 			.expect("speed model fixture");
 
 		assert_eq!(
-			workflow::official_dispatch(&slot, &paths, now).expect("speed-only late dispatch"),
-			workflow::OfficialDispatch::Close
+			official::dispatch(&slot, &paths, now).expect("speed-only late dispatch"),
+			workflow::official::Dispatch::Close
 		);
-		assert!(workflow::speed_can_continue(&slot, &paths, now).expect("model-free speed resume"));
+		assert_eq!(
+			speed::dispatch(&slot, &paths, now).expect("model-free Speed resume"),
+			workflow::speed::Dispatch::ResumeSubmission
+		);
 
 		fs::write(
 			&paths.official.run,
@@ -2070,8 +2013,8 @@ mod tests {
 		.expect("Official model fixture");
 
 		assert_eq!(
-			workflow::official_dispatch(&slot, &paths, now).expect("model-free late resume"),
-			workflow::OfficialDispatch::ResumeAfterModel
+			official::dispatch(&slot, &paths, now).expect("model-free late resume"),
+			workflow::official::Dispatch::ResumeAfterModel
 		);
 
 		fs::remove_dir_all(root).expect("remove late slot fixture");
@@ -2091,19 +2034,19 @@ mod tests {
 		)
 		.expect("Official reservation fixture");
 
-		assert!(!workflow::official_run_is_complete(&paths.official.run).expect("reservation"));
+		assert!(!official::run_is_complete(&paths.official.run).expect("reservation"));
 		assert_eq!(
-			workflow::official_dispatch(&slot, &paths, slot.timestamp_ms).expect("early resume"),
-			workflow::OfficialDispatch::StartModel
+			official::dispatch(&slot, &paths, slot.timestamp_ms).expect("early resume"),
+			workflow::official::Dispatch::StartModel
 		);
 		assert_eq!(
-			workflow::official_dispatch(
+			official::dispatch(
 				&slot,
 				&paths,
 				slot.timestamp_ms + workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS,
 			)
 			.expect("late reservation"),
-			workflow::OfficialDispatch::Close
+			workflow::official::Dispatch::Close
 		);
 
 		fs::remove_dir_all(root).expect("remove reservation fixture");
@@ -2111,8 +2054,8 @@ mod tests {
 
 	#[test]
 	fn official_dispatch_requires_full_supported_concurrency() {
-		assert!(workflow::require_official_dispatch_capacity(32).is_ok());
-		assert!(workflow::require_official_dispatch_capacity(31).is_err());
+		assert!(official::require_dispatch_capacity(32).is_ok());
+		assert!(official::require_dispatch_capacity(31).is_err());
 	}
 
 	#[test]
@@ -2120,6 +2063,7 @@ mod tests {
 		assert!(workflow::is_terminal_phase("complete"));
 		assert!(workflow::is_terminal_phase("complete_with_unpublished_official"));
 		assert!(workflow::is_terminal_phase("complete_with_unpublished_speed"));
+		assert!(workflow::is_terminal_phase("complete_with_unpublished_speed_and_official"));
 		assert!(workflow::is_terminal_phase("missed_window"));
 		assert!(!workflow::is_terminal_phase("retryable_failure"));
 		assert!(!workflow::is_terminal_phase("waiting_for_subscription"));
@@ -2144,8 +2088,14 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
-			.expect("completed step is skipped");
+		workflow::run_create_once_step(
+			&step,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Speed,
+		)
+		.expect("completed step is skipped");
 		fs::remove_dir_all(root).expect("remove retry fixture");
 	}
 
@@ -2172,8 +2122,14 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
-			.expect("truncated captured receipt is retried");
+		workflow::run_create_once_step(
+			&step,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Speed,
+		)
+		.expect("truncated captured receipt is retried");
 
 		assert!(
 			workflow::captured_receipt_is_complete(
@@ -2211,7 +2167,14 @@ mod tests {
 		};
 
 		assert!(
-			workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test()).is_err()
+			workflow::run_create_once_step(
+				&step,
+				&paths,
+				&slot,
+				&RuntimeSecrets::test(),
+				workflow::PublicationOwner::Speed,
+			)
+			.is_err()
 		);
 		assert!(!paths.speed.batch.exists());
 
@@ -2236,8 +2199,14 @@ mod tests {
 			capture: None,
 			secrets: StepSecrets::None,
 		};
-		let error = workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
-			.expect_err("subscription backpressure must stop the create-once step");
+		let error = workflow::run_create_once_step(
+			&step,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Official,
+		)
+		.expect_err("subscription backpressure must stop the create-once step");
 
 		assert!(error.is_subscription_backpressure());
 		assert!(!paths.official.run.exists());
@@ -2276,8 +2245,14 @@ mod tests {
 			secrets: StepSecrets::None,
 		};
 
-		workflow::run_create_once_step(&step, &paths, &slot, &RuntimeSecrets::test())
-			.expect("failed admission is retried");
+		workflow::run_create_once_step(
+			&step,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Official,
+		)
+		.expect("failed admission is retried");
 
 		let admission =
 			workflow::read_json_value(&paths.official.admission, "retried permission admission")
