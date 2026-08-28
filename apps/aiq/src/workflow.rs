@@ -6,7 +6,6 @@ mod speed;
 /// Protected runtime secret names.
 pub use crate::credentials::PROTECTED_SECRETS;
 
-use std::thread::ScopedJoinHandle;
 use std::fs::Permissions;
 use std::io::ErrorKind;
 #[cfg(unix)]
@@ -14,11 +13,25 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::process;
 #[cfg(target_os = "macos")]
 use std::process::Command;
-use std::{collections::BTreeMap, env, ffi::{OsStr, OsString}, fs::{self, File, OpenOptions}, io::Write, path::{Path, PathBuf}, process::{Output, Stdio}, thread, time::{SystemTime, UNIX_EPOCH}};
+use std::thread::ScopedJoinHandle;
+use std::{
+	collections::BTreeMap,
+	env,
+	ffi::{OsStr, OsString},
+	fs::{self, File, OpenOptions},
+	io::Write,
+	path::{Path, PathBuf},
+	process::{Output, Stdio},
+	thread,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 use jiff::Timestamp;
+#[cfg(unix)]
+use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::{
 	Error, Result, ResultContext,
@@ -121,6 +134,11 @@ struct CommandStep {
 	secrets: StepSecrets,
 }
 
+enum CommandOutcome {
+	Completed(Vec<u8>),
+	Failed { error: Error, stdout: Vec<u8> },
+}
+
 #[derive(Clone, Debug)]
 struct SlotPaths {
 	root: PathBuf,
@@ -161,6 +179,13 @@ struct OfficialPaths {
 	submission_receipt: PathBuf,
 	environment: PathBuf,
 	verifier_records: PathBuf,
+	verifier_attempts: PathBuf,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct VerifierPackageIdentity {
+	idempotency_key: String,
+	package_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -829,7 +854,7 @@ fn run_create_once_step(
 	owner: PublicationOwner,
 ) -> Result<()> {
 	if existing_regular_file(&step.output)? {
-		if existing_step_output_is_complete(step)? {
+		if existing_step_output_is_complete(step, paths)? {
 			return Ok(());
 		}
 
@@ -839,8 +864,8 @@ fn run_create_once_step(
 
 	write_publication_status(paths, slot, owner, step.name, "running")?;
 
-	let stdout = match run_command(step, &paths.log, secrets) {
-		Ok(stdout) => stdout,
+	let outcome = match run_command(step, &paths.log, secrets) {
+		Ok(outcome) => outcome,
 		Err(error) => {
 			remove_failed_step_output(&step.output).map_err(|cleanup| {
 				Error::new(format!("{error}; cannot remove failed {} output: {cleanup}", step.name))
@@ -849,12 +874,43 @@ fn run_create_once_step(
 			return Err(error);
 		},
 	};
+	let stdout = match outcome {
+		CommandOutcome::Completed(stdout) => stdout,
+		CommandOutcome::Failed { error, stdout } => {
+			let retention = if step.capture == Some(CaptureKind::Verifier) {
+				retain_verifier_attempt(&paths.official.verifier_attempts, &stdout, step.name)
+			} else {
+				Ok(())
+			};
+
+			remove_failed_step_output(&step.output).map_err(|cleanup| {
+				Error::new(format!("{error}; cannot remove failed {} output: {cleanup}", step.name))
+			})?;
+
+			retention.map_err(|retention| {
+				Error::new(format!("{error}; cannot retain verifier attempt: {retention}"))
+			})?;
+
+			return Err(error);
+		},
+	};
 
 	if let Some(kind) = step.capture {
-		let record: Value = serde_json::from_slice(&stdout)
-			.context(format!("{} did not produce a valid JSON receipt", step.name))?;
+		let record = parse_captured_record(&stdout, step.name)?;
 
-		validate_receipt(&record, kind, step.name)?;
+		match kind {
+			CaptureKind::Submission => validate_submission_receipt(&record, step.name)?,
+			CaptureKind::Verifier => {
+				let expected = verifier_package_identity(&paths.official.package)?;
+
+				if let Err(error) = validate_verifier_receipt(&record, &expected, step.name) {
+					retain_verifier_attempt(&paths.official.verifier_attempts, &stdout, step.name)?;
+
+					return Err(error);
+				}
+			},
+		}
+
 		write_create_once(
 			&step.output,
 			&serde_json::to_vec(&record).context("cannot serialize receipt")?,
@@ -870,9 +926,14 @@ fn run_create_once_step(
 	Ok(())
 }
 
-fn existing_step_output_is_complete(step: &CommandStep) -> Result<bool> {
+fn existing_step_output_is_complete(step: &CommandStep, paths: &SlotPaths) -> Result<bool> {
 	if let Some(kind) = step.capture {
-		return captured_receipt_is_complete(&step.output, kind);
+		return match kind {
+			CaptureKind::Submission => submission_receipt_is_complete(&step.output),
+			CaptureKind::Verifier => {
+				verifier_receipt_is_complete(&step.output, &paths.official.package)
+			},
+		};
 	}
 
 	if step.name == "official_run" {
@@ -896,7 +957,7 @@ fn existing_step_output_is_complete(step: &CommandStep) -> Result<bool> {
 		&& record.get("plan").is_some_and(Value::is_object))
 }
 
-fn captured_receipt_is_complete(path: &Path, kind: CaptureKind) -> Result<bool> {
+fn submission_receipt_is_complete(path: &Path) -> Result<bool> {
 	if !existing_regular_file(path)? {
 		return Ok(false);
 	}
@@ -907,7 +968,22 @@ fn captured_receipt_is_complete(path: &Path, kind: CaptureKind) -> Result<bool> 
 		return Ok(false);
 	};
 
-	Ok(validate_receipt(&record, kind, "captured receipt").is_ok())
+	Ok(validate_submission_receipt(&record, "captured receipt").is_ok())
+}
+
+fn verifier_receipt_is_complete(receipt: &Path, package: &Path) -> Result<bool> {
+	if !existing_regular_file(receipt)? {
+		return Ok(false);
+	}
+
+	let bytes =
+		fs::read(receipt).context(format!("cannot read verifier receipt {}", receipt.display()))?;
+	let Ok(record) = serde_json::from_slice::<Value>(&bytes) else {
+		return Ok(false);
+	};
+	let expected = verifier_package_identity(package)?;
+
+	Ok(validate_verifier_receipt(&record, &expected, "captured verifier receipt").is_ok())
 }
 
 fn remove_failed_step_output(path: &Path) -> Result<()> {
@@ -926,7 +1002,11 @@ fn remove_failed_step_output(path: &Path) -> Result<()> {
 	}
 }
 
-fn run_command(step: &CommandStep, log_path: &Path, secrets: &RuntimeSecrets) -> Result<Vec<u8>> {
+fn run_command(
+	step: &CommandStep,
+	log_path: &Path,
+	secrets: &RuntimeSecrets,
+) -> Result<CommandOutcome> {
 	append_log(log_path, "step_started", step.name)?;
 
 	let environment = child_environment(env::vars_os(), step.secrets, secrets)?;
@@ -960,9 +1040,12 @@ fn run_command(step: &CommandStep, log_path: &Path, secrets: &RuntimeSecrets) ->
 		if step.name == "official_run"
 			&& output.status.code() == Some(SUBSCRIPTION_BACKPRESSURE_EXIT_CODE)
 		{
-			return Err(Error::subscription_backpressure(
-				"Official subscription capacity is unavailable; checkpoint retained",
-			));
+			return Ok(CommandOutcome::Failed {
+				error: Error::subscription_backpressure(
+					"Official subscription capacity is unavailable; checkpoint retained",
+				),
+				stdout: output.stdout,
+			});
 		}
 
 		let detail = if step.capture.is_some() {
@@ -971,15 +1054,18 @@ fn run_command(step: &CommandStep, log_path: &Path, secrets: &RuntimeSecrets) ->
 			"see operator log".to_owned()
 		};
 
-		return Err(Error::new(format!(
-			"{} failed with status {}: {detail}",
-			step.name, output.status
-		)));
+		return Ok(CommandOutcome::Failed {
+			error: Error::new(format!(
+				"{} failed with status {}: {detail}",
+				step.name, output.status
+			)),
+			stdout: output.stdout,
+		});
 	}
 
 	append_log(log_path, "step_completed", step.name)?;
 
-	Ok(output.stdout)
+	Ok(CommandOutcome::Completed(output.stdout))
 }
 
 fn child_environment<I>(
@@ -1004,24 +1090,130 @@ where
 	Ok(selected)
 }
 
-fn validate_receipt(record: &Value, kind: CaptureKind, step_name: &str) -> Result<()> {
-	let valid = match kind {
-		CaptureKind::Submission => record
-			.get("package")
-			.and_then(|package| package.get("kind"))
-			.or_else(|| record.get("kind"))
-			.and_then(Value::as_str)
-			.is_some_and(|value| matches!(value, "accepted" | "duplicate")),
-		CaptureKind::Verifier => {
-			record.get("disposition").and_then(Value::as_str) == Some("verified")
-		},
-	};
+fn parse_captured_record(stdout: &[u8], step_name: &str) -> Result<Value> {
+	serde_json::from_slice(stdout)
+		.context(format!("{step_name} did not produce a valid JSON record"))
+}
+
+fn validate_submission_receipt(record: &Value, step_name: &str) -> Result<()> {
+	let valid = record
+		.get("package")
+		.and_then(|package| package.get("kind"))
+		.or_else(|| record.get("kind"))
+		.and_then(Value::as_str)
+		.is_some_and(|value| matches!(value, "accepted" | "duplicate"));
 
 	if valid {
 		Ok(())
 	} else {
 		Err(Error::new(format!("{step_name} receipt did not confirm success")))
 	}
+}
+
+fn validate_verifier_record(record: &Value, step_name: &str) -> Result<()> {
+	let valid = record.get("schema_version").and_then(Value::as_str)
+		== Some("aiq.verifier-record.v2")
+		&& record.get("inbox_id").and_then(Value::as_str).is_some_and(|value| !value.is_empty())
+		&& record.get("idempotency_key").and_then(Value::as_str).is_some_and(valid_run_id)
+		&& record.get("package_sha256").and_then(Value::as_str).is_some_and(valid_sha256)
+		&& record.get("disposition").and_then(Value::as_str).is_some_and(|value| {
+			matches!(value, "verified" | "rejected" | "lease_lost" | "retry" | "worker_error")
+		}) && record.get("attempt").and_then(Value::as_u64).is_some_and(|value| value > 0);
+
+	if valid {
+		Ok(())
+	} else {
+		Err(Error::new(format!("{step_name} produced an invalid verifier record")))
+	}
+}
+
+fn validate_verifier_receipt(
+	record: &Value,
+	expected: &VerifierPackageIdentity,
+	step_name: &str,
+) -> Result<()> {
+	validate_verifier_record(record, step_name)?;
+
+	match record.get("disposition").and_then(Value::as_str) {
+		Some("verified") => {},
+		Some("rejected") => {
+			return Err(Error::verifier_rejection(format!(
+				"{step_name} recorded a terminal verifier rejection"
+			)));
+		},
+		_ => {
+			return Err(Error::new(format!(
+				"{step_name} verifier record did not confirm publication"
+			)));
+		},
+	}
+
+	if record.get("package_sha256").and_then(Value::as_str)
+		!= Some(expected.package_sha256.as_str())
+		|| record.get("idempotency_key").and_then(Value::as_str)
+			!= Some(expected.idempotency_key.as_str())
+	{
+		return Err(Error::new(format!("{step_name} verified a different package identity")));
+	}
+
+	Ok(())
+}
+
+fn verifier_package_identity(path: &Path) -> Result<VerifierPackageIdentity> {
+	if !existing_regular_file(path)? {
+		return Err(Error::new(format!("Official package is absent: {}", path.display())));
+	}
+
+	let bytes =
+		fs::read(path).context(format!("cannot read Official package {}", path.display()))?;
+	let package: Value = serde_json::from_slice(&bytes)
+		.context(format!("invalid Official package {}", path.display()))?;
+	let idempotency_key = package
+		.get("idempotency_key")
+		.and_then(Value::as_str)
+		.filter(|value| valid_run_id(value))
+		.ok_or_else(|| Error::new("Official package has no valid idempotency identity"))?;
+	let run_id = package
+		.get("payload")
+		.and_then(|payload| payload.get("run_id"))
+		.and_then(Value::as_str)
+		.ok_or_else(|| Error::new("Official package has no payload run identity"))?;
+
+	if run_id != idempotency_key {
+		return Err(Error::new("Official package idempotency and payload run identities differ"));
+	}
+
+	Ok(VerifierPackageIdentity {
+		idempotency_key: idempotency_key.to_owned(),
+		package_sha256: hex::encode(Sha256::digest(bytes)),
+	})
+}
+
+fn retain_verifier_attempt(path: &Path, stdout: &[u8], step_name: &str) -> Result<()> {
+	let record = parse_captured_record(stdout, step_name)?;
+
+	validate_verifier_record(&record, step_name)?;
+
+	let bytes = serde_json::to_vec(&record).context("cannot serialize verifier attempt")?;
+	let mut attempts = open_append(path)?;
+
+	attempts
+		.write_all(&bytes)
+		.context(format!("cannot append verifier attempt {}", path.display()))?;
+	attempts
+		.write_all(b"\n")
+		.context(format!("cannot finish verifier attempt {}", path.display()))?;
+
+	attempts.sync_all().context(format!("cannot sync verifier attempts {}", path.display()))
+}
+
+fn valid_run_id(value: &str) -> bool {
+	value.len() == 68 && value.starts_with("run_") && valid_sha256(&value[4..])
+}
+
+fn valid_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn slot_paths(state_root: &Path, slot: &ScheduledSlot) -> SlotPaths {
@@ -1059,6 +1251,7 @@ fn slot_paths(state_root: &Path, slot: &ScheduledSlot) -> SlotPaths {
 			submission_receipt: state.join("submission.json"),
 			environment: records.join("verifier-environment.json"),
 			verifier_records: verification.join("records.jsonl"),
+			verifier_attempts: verification.join("attempts.jsonl"),
 			root: official_root,
 			state,
 			records,
@@ -1398,7 +1591,7 @@ fn open_append(path: &Path) -> Result<File> {
 
 	options.append(true).create(true);
 	#[cfg(unix)]
-	options.mode(0o600);
+	options.mode(0o600).custom_flags(O_NOFOLLOW);
 
 	options.open(path).context(format!("cannot open operator log {}", path.display()))
 }
@@ -1546,7 +1739,15 @@ mod tests {
 		path::{Path, PathBuf},
 	};
 
-	use crate::{config::{CONFIG_SCHEMA, Configuration}, credentials::RuntimeSecrets, lock::ProcessLock, schedule::{self}, workflow::{self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets, official, speed}};
+	use crate::{
+		config::{CONFIG_SCHEMA, Configuration},
+		credentials::RuntimeSecrets,
+		lock::ProcessLock,
+		schedule::{self},
+		workflow::{
+			self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets, official, speed,
+		},
+	};
 
 	fn parent_environment() -> Vec<(OsString, OsString)> {
 		let mut values = vec![
@@ -1558,6 +1759,68 @@ mod tests {
 			.extend(PROTECTED_SECRETS.map(|name| (OsString::from(name), OsString::from("secret"))));
 
 		values
+	}
+
+	fn write_test_official_package(
+		paths: &workflow::SlotPaths,
+		identity_byte: char,
+	) -> workflow::VerifierPackageIdentity {
+		let run_id = format!("run_{}", identity_byte.to_string().repeat(64));
+		let package = serde_json::to_vec(&serde_json::json!({
+			"idempotency_key": run_id.as_str(),
+			"payload": { "run_id": run_id.as_str() },
+		}))
+		.expect("test Official package JSON");
+
+		fs::write(&paths.official.package, package).expect("test Official package");
+
+		workflow::verifier_package_identity(&paths.official.package)
+			.expect("test Official package identity")
+	}
+
+	fn verifier_record(
+		identity: &workflow::VerifierPackageIdentity,
+		disposition: &str,
+		attempt: u64,
+	) -> String {
+		serde_json::to_string(&serde_json::json!({
+			"schema_version": "aiq.verifier-record.v2",
+			"inbox_id": "223e4567-e89b-42d3-a456-426614174000",
+			"idempotency_key": identity.idempotency_key.as_str(),
+			"package_sha256": identity.package_sha256.as_str(),
+			"disposition": disposition,
+			"attempt": attempt,
+		}))
+		.expect("test verifier record")
+	}
+
+	fn verifier_command_step(
+		paths: &workflow::SlotPaths,
+		record: String,
+		exit_code: u8,
+	) -> CommandStep {
+		CommandStep {
+			name: "official_verify_publish",
+			executable: PathBuf::from("/bin/sh"),
+			args: vec![
+				OsString::from("-c"),
+				OsString::from("printf '%s\\n' \"$1\"; exit \"$2\""),
+				OsString::from("aiq-test"),
+				OsString::from(record),
+				OsString::from(exit_code.to_string()),
+			],
+			output: paths.official.verifier_records.clone(),
+			capture: Some(workflow::CaptureKind::Verifier),
+			secrets: StepSecrets::None,
+		}
+	}
+
+	fn verifier_attempt_records(path: &Path) -> Vec<serde_json::Value> {
+		fs::read_to_string(path)
+			.expect("verifier attempts")
+			.lines()
+			.map(|line| serde_json::from_str(line).expect("verifier attempt JSON"))
+			.collect()
 	}
 
 	fn environment_names(secrets: StepSecrets) -> BTreeSet<String> {
@@ -1759,8 +2022,7 @@ mod tests {
 			workflow::speed::Dispatch::ResumeSubmission
 		);
 		assert_eq!(
-			official::dispatch(&expired, &paths, after_window)
-				.expect("Official remains closed"),
+			official::dispatch(&expired, &paths, after_window).expect("Official remains closed"),
 			workflow::official::Dispatch::Close
 		);
 
@@ -1780,8 +2042,7 @@ mod tests {
 			workflow::official::Dispatch::ResumeAfterModel
 		);
 		assert_eq!(
-			speed::dispatch(&expired, &paths, after_window)
-				.expect("Speed remains closed"),
+			speed::dispatch(&expired, &paths, after_window).expect("Speed remains closed"),
 			workflow::speed::Dispatch::Close
 		);
 
@@ -1970,13 +2231,9 @@ mod tests {
 		let grace = workflow::OFFICIAL_DISPATCH_GRACE_MILLISECONDS;
 
 		assert!(
-			!official::dispatch_window_is_open(&slot, slot.timestamp_ms - 1)
-				.expect("before slot")
+			!official::dispatch_window_is_open(&slot, slot.timestamp_ms - 1).expect("before slot")
 		);
-		assert!(
-			official::dispatch_window_is_open(&slot, slot.timestamp_ms)
-				.expect("slot start")
-		);
+		assert!(official::dispatch_window_is_open(&slot, slot.timestamp_ms).expect("slot start"));
 		assert!(
 			official::dispatch_window_is_open(&slot, slot.timestamp_ms + grace - 1,)
 				.expect("inside grace")
@@ -1997,10 +2254,7 @@ mod tests {
 
 		workflow::prepare_slot_directories(&paths).expect("late slot directories");
 
-		assert!(
-			!official::dispatch_window_is_open(&slot, now)
-				.expect("closed dispatch window")
-		);
+		assert!(!official::dispatch_window_is_open(&slot, now).expect("closed dispatch window"));
 		assert_eq!(
 			official::dispatch(&slot, &paths, now).expect("closed late dispatch"),
 			workflow::official::Dispatch::Close
@@ -2152,14 +2406,187 @@ mod tests {
 		.expect("truncated captured receipt is retried");
 
 		assert!(
-			workflow::captured_receipt_is_complete(
-				&paths.speed.receipt,
-				workflow::CaptureKind::Submission,
-			)
-			.expect("validated replacement receipt")
+			workflow::submission_receipt_is_complete(&paths.speed.receipt)
+				.expect("validated replacement receipt")
 		);
 
 		fs::remove_dir_all(root).expect("remove receipt retry fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn verifier_failure_attempt_is_retained_separately_from_later_success() {
+		let root = env::temp_dir().join(format!("aiq-verifier-attempt-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("verifier retry slot");
+		let paths = workflow::slot_paths(&root, &slot);
+
+		workflow::prepare_slot_directories(&paths).expect("verifier retry directories");
+
+		let identity = write_test_official_package(&paths, 'a');
+		let retry = verifier_command_step(&paths, verifier_record(&identity, "retry", 1), 1);
+		let error = workflow::run_create_once_step(
+			&retry,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Official,
+		)
+		.expect_err("retryable verifier attempt must remain unverified");
+
+		assert!(error.to_string().contains("failed with status"));
+		assert!(!paths.official.verifier_records.exists());
+		assert_eq!(verifier_attempt_records(&paths.official.verifier_attempts).len(), 1);
+
+		let retained_attempts = fs::read(&paths.official.verifier_attempts).expect("attempt bytes");
+
+		fs::write(&paths.official.verifier_records, b"{\"disposition\":")
+			.expect("incomplete verifier receipt fixture");
+
+		let verified = verifier_command_step(&paths, verifier_record(&identity, "verified", 2), 0);
+
+		workflow::run_create_once_step(
+			&verified,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Official,
+		)
+		.expect("later verifier success");
+
+		assert!(
+			workflow::verifier_receipt_is_complete(
+				&paths.official.verifier_records,
+				&paths.official.package,
+			)
+			.expect("verified receipt identity")
+		);
+		assert_eq!(
+			fs::read(&paths.official.verifier_attempts).expect("retained attempt bytes"),
+			retained_attempts
+		);
+
+		fs::remove_dir_all(root).expect("remove verifier retry fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn wrong_package_verifier_success_cannot_publish_the_slot() {
+		let root =
+			env::temp_dir().join(format!("aiq-wrong-verifier-package-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("identity slot");
+		let paths = workflow::slot_paths(&root, &slot);
+
+		workflow::prepare_slot_directories(&paths).expect("identity test directories");
+
+		let _expected = write_test_official_package(&paths, 'a');
+		let wrong = workflow::VerifierPackageIdentity {
+			idempotency_key: format!("run_{}", "b".repeat(64)),
+			package_sha256: "c".repeat(64),
+		};
+		let step = verifier_command_step(&paths, verifier_record(&wrong, "verified", 1), 0);
+		let error = workflow::run_create_once_step(
+			&step,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Official,
+		)
+		.expect_err("wrong package receipt must fail closed");
+
+		assert!(error.to_string().contains("different package identity"));
+		assert!(!paths.official.verifier_records.exists());
+		assert_eq!(verifier_attempt_records(&paths.official.verifier_attempts).len(), 1);
+
+		fs::remove_dir_all(root).expect("remove identity test fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn verifier_rejection_keeps_its_terminal_classification() {
+		let root = env::temp_dir().join(format!("aiq-verifier-rejection-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("rejection slot");
+		let paths = workflow::slot_paths(&root, &slot);
+
+		workflow::prepare_slot_directories(&paths).expect("rejection test directories");
+
+		let identity = write_test_official_package(&paths, 'a');
+		let step = verifier_command_step(&paths, verifier_record(&identity, "rejected", 1), 0);
+		let error = workflow::run_create_once_step(
+			&step,
+			&paths,
+			&slot,
+			&RuntimeSecrets::test(),
+			workflow::PublicationOwner::Official,
+		)
+		.expect_err("terminal verifier rejection");
+
+		assert!(error.is_verifier_rejection());
+		assert!(!paths.official.verifier_records.exists());
+		assert_eq!(verifier_attempt_records(&paths.official.verifier_attempts).len(), 1);
+
+		fs::remove_dir_all(root).expect("remove rejection test fixture");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn verifier_retry_runs_only_post_model_steps() {
+		let root = env::temp_dir().join(format!("aiq-verifier-no-model-test-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("post-model slot");
+		let paths = workflow::slot_paths(&root, &slot);
+		let model_invocation = root.join("model-invoked");
+
+		workflow::prepare_slot_directories(&paths).expect("post-model directories");
+
+		let identity = write_test_official_package(&paths, 'a');
+		let mut steps = Vec::new();
+
+		for (index, name) in
+			["official_admit", "official_preflight", "official_run"].into_iter().enumerate()
+		{
+			steps.push(CommandStep {
+				name,
+				executable: PathBuf::from("/bin/sh"),
+				args: vec![
+					OsString::from("-c"),
+					OsString::from("touch \"$1\""),
+					OsString::from("aiq-test"),
+					model_invocation.clone().into_os_string(),
+				],
+				output: root.join(format!("model-step-{index}")),
+				capture: None,
+				secrets: StepSecrets::None,
+			});
+		}
+		for index in 0..4 {
+			let output = root.join(format!("completed-post-model-step-{index}"));
+
+			fs::write(&output, b"complete\n").expect("completed post-model fixture");
+
+			steps.push(CommandStep {
+				name: "completed_post_model_step",
+				executable: PathBuf::from("/usr/bin/false"),
+				args: Vec::new(),
+				output,
+				capture: None,
+				secrets: StepSecrets::None,
+			});
+		}
+
+		steps.push(verifier_command_step(&paths, verifier_record(&identity, "retry", 1), 1));
+
+		assert!(
+			official::run_steps_after_model(&steps, &paths, &slot, &RuntimeSecrets::test(),)
+				.is_err()
+		);
+		assert!(!model_invocation.exists());
+		assert!(paths.official.package.exists());
+		assert_eq!(verifier_attempt_records(&paths.official.verifier_attempts).len(), 1);
+
+		fs::remove_dir_all(root).expect("remove post-model fixture");
 	}
 
 	#[cfg(unix)]
@@ -2301,6 +2728,7 @@ mod tests {
 			&paths.official.run,
 			&paths.official.package,
 			&paths.official.verifier_records,
+			&paths.official.verifier_attempts,
 			&paths.official.checkpoint,
 		] {
 			fs::write(path, "evidence\n").expect("cleanup fixture file");
@@ -2314,6 +2742,7 @@ mod tests {
 			&paths.official.run,
 			&paths.official.package,
 			&paths.official.verifier_records,
+			&paths.official.verifier_attempts,
 		] {
 			assert!(retained.exists());
 		}

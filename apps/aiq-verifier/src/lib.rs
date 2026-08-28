@@ -81,6 +81,8 @@ const RECORD_SCHEMA: &str = "aiq.verifier-record.v2";
 const MAX_OPERATOR_ERROR_DETAIL_BYTES: usize = 256;
 const REDACTED_ERROR_CODE: &str = "details_redacted";
 const REDACTED_ERROR_DETAIL: &str = "Additional error detail was redacted.";
+const UNCONFIRMED_EVALUATOR_REPLAY_MISMATCH: &str =
+	"evaluator replay output differed on its first claim attempt";
 const ADDITIONAL_MODES_HELP: &str = "Additional modes:
   aiq-verifier validate-environment --environment <ENVIRONMENT>
       Validate production environment metadata without secrets or service access.
@@ -385,6 +387,7 @@ impl error::Error for WorkerError {}
 pub struct VerificationRecord {
 	schema_version: &'static str,
 	inbox_id: String,
+	idempotency_key: String,
 	package_sha256: String,
 	disposition: &'static str,
 	reason_code: Option<ReasonCode>,
@@ -1294,7 +1297,14 @@ where
 	}
 
 	fn process_claim(&self, claim: &Claim) -> VerificationRecord {
-		let result = self.verify_claim(claim);
+		self.record_claim_result(claim, self.verify_claim(claim))
+	}
+
+	fn record_claim_result(
+		&self,
+		claim: &Claim,
+		result: Result<PackageDisposition, WorkerError>,
+	) -> VerificationRecord {
 		let (disposition, reason_code, replay_scope, diagnostic, calibration) = match result {
 			Ok(PackageDisposition::Verified(scope, calibration)) => {
 				("verified", None, scope, None, calibration)
@@ -1340,6 +1350,7 @@ where
 		VerificationRecord {
 			schema_version: RECORD_SCHEMA,
 			inbox_id: claim.inbox_id.clone(),
+			idempotency_key: claim.idempotency_key.clone(),
 			package_sha256: claim.package_sha256.clone(),
 			disposition,
 			reason_code,
@@ -1390,7 +1401,11 @@ where
 
 		let prepared = match self.prepare_verification(claim, &package_bytes, lease) {
 			Ok(prepared) => prepared,
-			Err(error) => return self.reject_and_complete(claim, lease, error),
+			Err(error) => {
+				let error = apply_replay_confirmation_policy(error, claim.attempt);
+
+				return self.reject_and_complete(claim, lease, error);
+			},
 		};
 		let body = match serialize_prepared_verification(claim, &prepared) {
 			Ok(body) => body,
@@ -2189,6 +2204,15 @@ pub fn run_cli() -> Result<(), WorkerError> {
 
 fn retryable_verification_status(status: u16) -> bool {
 	matches!(status, 408 | 409 | 429 | 500..=599)
+}
+
+fn apply_replay_confirmation_policy(error: WorkerError, claim_attempt: u64) -> WorkerError {
+	if claim_attempt == 1 && error.kind == ErrorKind::Terminal(ReasonCode::EvaluatorReplayMismatch)
+	{
+		WorkerError::transient(UNCONFIRMED_EVALUATOR_REPLAY_MISMATCH)
+	} else {
+		error
+	}
 }
 
 fn prepare_package_verification(
@@ -4587,6 +4611,10 @@ fn operator_diagnostic_for_message(class: OperatorErrorClass, message: &str) -> 
 		"controlled task source is required" => Some(("controlled_task_source_missing", message)),
 		"external tasks require --evaluator-runtime" => {
 			Some(("evaluator_runtime_missing", message))
+		},
+		"controlled evaluator replay failed" => Some(("evaluator_replay_failed", message)),
+		UNCONFIRMED_EVALUATOR_REPLAY_MISMATCH => {
+			Some(("evaluator_replay_mismatch_unconfirmed", message))
 		},
 		"production replay lacks an evaluator runtime" => {
 			Some(("production_evaluator_runtime_missing", message))
@@ -8066,6 +8094,7 @@ mod tests {
 		let record = |disposition| VerificationRecord {
 			schema_version: RECORD_SCHEMA,
 			inbox_id: "223e4567-e89b-42d3-a456-426614174000".to_owned(),
+			idempotency_key: format!("run_{}", "d".repeat(64)),
 			package_sha256: "a".repeat(64),
 			disposition,
 			reason_code: None,
@@ -8559,6 +8588,49 @@ mod tests {
 
 		assert_eq!(bodies.len(), 3);
 		assert!(bodies.windows(2).all(|pair| pair[0] == pair[1]));
+	}
+
+	#[test]
+	fn evaluator_replay_failures_acknowledge_retry_without_rejection() {
+		for error in [
+			WorkerError::transient("controlled evaluator replay failed"),
+			crate::apply_replay_confirmation_policy(
+				WorkerError::terminal(
+					ReasonCode::EvaluatorReplayMismatch,
+					"first replay output differed",
+				),
+				1,
+			),
+		] {
+			let worker =
+				test_worker(RenewalTransport { status: 200, requests: Mutex::new(Vec::new()) });
+			let claim = test_claim(format!("run_{}", "b".repeat(64)));
+			let record = worker.record_claim_result(&claim, Err(error));
+
+			assert_eq!(record.disposition, "retry");
+			assert_eq!(record.reason_code, None);
+			assert_eq!(record.error_class, Some(OperatorErrorClass::Transient));
+			assert_eq!(record.idempotency_key, claim.idempotency_key);
+
+			let requests = worker.transport.requests.lock().expect("requests");
+
+			assert_eq!(requests.len(), 1);
+			assert_eq!(requests[0]["action"], "ack");
+			assert_eq!(requests[0]["disposition"], "retry");
+		}
+	}
+
+	#[test]
+	fn repeated_evaluator_output_difference_remains_terminal() {
+		let error = crate::apply_replay_confirmation_policy(
+			WorkerError::terminal(
+				ReasonCode::EvaluatorReplayMismatch,
+				"repeated replay output differed",
+			),
+			2,
+		);
+
+		assert_eq!(error.kind, ErrorKind::Terminal(ReasonCode::EvaluatorReplayMismatch));
 	}
 
 	#[test]
@@ -9066,6 +9138,7 @@ mod tests {
 		let mut record = VerificationRecord {
 			schema_version: RECORD_SCHEMA,
 			inbox_id: "223e4567-e89b-42d3-a456-426614174000".to_owned(),
+			idempotency_key: format!("run_{}", "d".repeat(64)),
 			package_sha256: "a".repeat(64),
 			disposition: "verified",
 			reason_code: None,
@@ -9084,6 +9157,7 @@ mod tests {
 		let compatible = serde_json::to_value(&record).expect("serialize compatible record");
 
 		assert_eq!(compatible["schema_version"], RECORD_SCHEMA);
+		assert_eq!(compatible["idempotency_key"], record.idempotency_key);
 		assert_eq!(
 			compatible["official_calibration_policy"]["version"],
 			scoring::OFFICIAL_CALIBRATION_POLICY_VERSION
