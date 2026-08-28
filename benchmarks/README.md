@@ -147,6 +147,57 @@ node --test --experimental-strip-types \
   scripts/candidates/aiq-core-1.0.7/generate-benchmark-catalog.test.ts
 ```
 
+## AIQ Core 1.1.0 candidate source
+
+`candidates/aiq-core-1.1.0/` is a side-by-side source foundation. It does not
+replace the active 1.0.7 public authority. Its `aiq.catalog.v2` document binds
+72 explicit retained or revised design decisions and 60 bounded within-domain
+clusters. The task scorer and weighted binary formula remain at `1.0.6`.
+
+The draft records the known retained harness counts of 57 `empty` classes and
+four `timeout` classes. It does not guess the private task mapping. Each task
+therefore has pending optional-fixture applicability, and the catalog blocks
+sealing. Final authoring must record `required` or `not_applicable` for both
+classes on all 72 entries. The catalog becomes the sole expected-class
+authority. The authoring input and harness record both expected and observed
+class maps and an exact-equality result.
+
+The candidate contracts are:
+
+- `schema/leakage-review-v2.schema.json` for independently supplied review
+  records;
+- `schema/corpus-authoring-input-v2.schema.json` and
+  `schema/corpus-authoring-harness-v4.schema.json` for exact catalog fixture
+  authority;
+- `schema/corpus-commitment-v3.schema.json` for an isolated 1.1.0 candidate
+  seal;
+- `schema/benchmark-qualification-manifest-v1.schema.json` for the exact
+  candidate, fixed policy, and three predeclared children;
+- `schema/benchmark-qualification-matrix-v1.schema.json` for each separate
+  complete 17-by-72 child; and
+- `schema/benchmark-qualification-v1.schema.json` for the deterministic
+  qualification or rejection result.
+
+The v2 leakage review binds reviewer identity, reviewer task or thread,
+review time, source commit, source tree, source manifest, task and catalog digests,
+verdict, method, scope, and notes. The sealer copies and hashes the supplied
+record. It does not infer completion from task-authored notes. Process
+separation is evidence, not cryptographic proof of human independence.
+
+Qualification uses three complete matrices only. It reports all three pairwise
+rank correlations, exact-cell agreement, mean absolute cell delta, a separate
+run-to-run prediction interval for every configuration, and uncertainty-aware
+comparison groups. One complete 1,224-cell matrix remains the publication unit.
+The protocol never pools or splices children. A rejected candidate must receive
+a new identity before a task, evaluator, or policy revision is run again.
+
+Regenerate and test the draft source without private inputs:
+
+```sh
+node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts
+node --test scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.test.ts
+```
+
 ## Private corpus boundary
 
 The final `aiq.corpus-commitment.v2` document will bind the `1.0.7` private

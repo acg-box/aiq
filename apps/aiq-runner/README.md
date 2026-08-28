@@ -34,18 +34,36 @@ The first command requires the 72 controlled tasks and their commitment. The
 second also requires the exact expected contrast-corpus commitment digest. Both
 commands validate fixtures, evaluators, the committed runtime, and toolchain.
 
-`seal-corpus` is the only repository-owned authoring boundary for a new complete
-controlled corpus seal. It does not modify or rebind a predecessor commitment.
-It derives every task, baseline, fixture, acceptance, leakage-review, evaluator,
-runtime, toolchain, harness, and source identity from actual retained inputs. It
-writes one new private directory only after the Core or Contrast production
-validator and every baseline check pass. The output includes the normalized
-inputs, canonical preimages, commitment, harness, and private receipt needed for
-independent regeneration. The sealed evaluator runtime is the one Node executable
-under `toolchain`; the output does not contain a duplicate runtime copy. The
-command does not invoke Codex or generate task content. After successful atomic
-installation, stdout contains only the canonical commitment digest required by
-the Contrast validator.
+`seal-corpus` is the repository-owned create-new authoring boundary. The Core
+path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
+`--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
+task, and a `qualification_ready` catalog with no pending fixture
+applicability. The observed acceptance class set for each task must equal its
+catalog declaration exactly. The current checked-in 1.1.0 catalog is a draft,
+so Core sealing stops before it reads private task inputs. The Contrast path
+retains bounded 1.0.7 compatibility and copies supplied v1 review records; no
+path synthesizes review completion from task notes.
+
+The command does not modify or rebind a predecessor commitment. It writes one
+new private directory only after its selected validator and every baseline
+check pass. The output includes normalized inputs, canonical preimages,
+commitment, harness, copied leakage reviews, and the private receipt needed for
+independent regeneration. The sealed evaluator runtime is the one Node
+executable under `toolchain`; the output does not contain a duplicate runtime
+copy. The command does not invoke Codex or generate task content. Recorded
+review-process separation is evidence, not cryptographic proof of human
+independence.
+
+Create a deterministic qualification or rejection artifact from three
+predeclared complete matrices without invoking a model:
+
+```sh
+cargo run -p aiq-runner -- qualify-candidate --help
+```
+
+Qualification keeps every 1,224-cell child separate. It never pools, splices,
+publishes, or relabels a child run. A rejected candidate requires a new
+candidate identity before any revised task or evaluator is run.
 
 Create deterministic synthetic output without invoking Codex:
 

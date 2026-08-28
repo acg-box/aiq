@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "algorithm_ids": {
+      "items": false,
+      "maxItems": 5,
+      "minItems": 5,
+      "prefixItems": [
+        {
+          "const": "rfc8785-jcs-sha256"
+        },
+        {
+          "const": "aiq.workspace-manifest.v1"
+        },
+        {
+          "const": "aiq.controlled-tree.v1"
+        },
+        {
+          "const": "sha256-raw-file-v1"
+        },
+        {
+          "const": "aiq.runner-source-manifest.v1"
+        }
+      ],
+      "type": "array"
+    },
+    "catalog_generator": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "aiq-core-catalog-generator"
+        },
+        "source_path": {
+          "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"
+        },
+        "source_sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "toolchain_source": {
+          "const": "repository_source"
+        },
+        "version": {
+          "const": "1.1.0"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "toolchain_source",
+        "source_path",
+        "source_sha256"
+      ],
+      "type": "object"
+    },
+    "corpus_kind": {
+      "const": "core"
+    },
+    "evaluator_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "input_contract_schema_sha256": {
+      "additionalProperties": {
+        "$ref": "#/$defs/digest"
+      },
+      "type": "object"
+    },
+    "node_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "ordered_task_commitment_aggregate_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "rg_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "schema_version": {
+      "const": "aiq.core-authoring-harness.v4"
+    },
+    "sealer_source_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "source_commit": {
+      "pattern": "^[0-9a-f]{40}(?![\\s\\S])",
+      "type": "string"
+    },
+    "source_manifest_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "source_tree": {
+      "pattern": "^[0-9a-f]{40}(?![\\s\\S])",
+      "type": "string"
+    },
+    "task_catalog_corpus_evaluator_schema_sha256": {
+      "additionalProperties": {
+        "$ref": "#/$defs/digest"
+      },
+      "type": "object"
+    },
+    "task_count": {
+      "const": 72
+    },
+    "catalog_identity_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "fixture_applicability_authority": {
+      "const": "catalog_exact_per_task"
+    },
+    "expected_acceptance_classes_by_task": {
+      "$ref": "#/$defs/classMap"
+    },
+    "observed_acceptance_classes_by_task": {
+      "$ref": "#/$defs/classMap"
+    },
+    "acceptance_classes_exact_match": {
+      "const": true
+    },
+    "leakage_review_schema_version": {
+      "const": "aiq.leakage-review.v2"
+    },
+    "leakage_reviews_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "required": [
+    "schema_version",
+    "corpus_kind",
+    "task_count",
+    "catalog_identity_sha256",
+    "fixture_applicability_authority",
+    "expected_acceptance_classes_by_task",
+    "observed_acceptance_classes_by_task",
+    "acceptance_classes_exact_match",
+    "leakage_review_schema_version",
+    "leakage_reviews_tree_sha256",
+    "source_commit",
+    "source_tree",
+    "source_manifest_sha256",
+    "sealer_source_sha256",
+    "input_contract_schema_sha256",
+    "task_catalog_corpus_evaluator_schema_sha256",
+    "evaluator_sha256",
+    "node_sha256",
+    "rg_sha256",
+    "catalog_generator",
+    "algorithm_ids",
+    "ordered_task_commitment_aggregate_sha256"
+  ],
+  "type": "object",
+  "$defs": {
+    "classMap": {
+      "additionalProperties": {
+        "$ref": "#/$defs/coreClassList"
+      },
+      "maxProperties": 72,
+      "minProperties": 72,
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?![\\s\\S])"
+      },
+      "type": "object"
+    },
+    "classList": {
+      "items": {
+        "$ref": "#/$defs/className"
+      },
+      "maxItems": 6,
+      "minItems": 4,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "className": {
+      "enum": [
+        "adversarial_format",
+        "alternate_correct",
+        "challenge",
+        "empty",
+        "format",
+        "gold",
+        "near_miss",
+        "partial",
+        "reference",
+        "tamper",
+        "timeout"
+      ],
+      "type": "string"
+    },
+    "contrastClassList": {
+      "const": [
+        "challenge",
+        "empty",
+        "format",
+        "near_miss",
+        "reference",
+        "tamper"
+      ]
+    },
+    "coreClassList": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/classList"
+        },
+        {
+          "items": {
+            "enum": [
+              "adversarial_format",
+              "alternate_correct",
+              "empty",
+              "gold",
+              "partial",
+              "timeout"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "const": "adversarial_format"
+          }
+        },
+        {
+          "contains": {
+            "const": "alternate_correct"
+          }
+        },
+        {
+          "contains": {
+            "const": "gold"
+          }
+        },
+        {
+          "contains": {
+            "const": "partial"
+          }
+        }
+      ]
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+      "type": "string"
+    }
+  }
+}

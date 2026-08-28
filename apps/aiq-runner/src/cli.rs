@@ -39,6 +39,12 @@ use crate::official_admission::{
 	OfficialOutputPlan, OfficialPlanBinding, PermissionAdmissionReport,
 };
 use crate::pinned_path::{PinnedDirectoryIdentity, PinnedPathIdentity};
+use crate::{
+	benchmark_qualification::{
+		self, BenchmarkQualificationManifest, BenchmarkQualificationStatus, QualificationMatrix,
+	},
+	candidate_catalog,
+};
 use aiq_runner::{
 	adapter::{
 		self, ArtifactSink, CapabilityValidationReport, CapabilityValidationStatus,
@@ -1238,6 +1244,9 @@ enum Command {
 		/// Directory containing one policy-valid acceptance directory per task identifier.
 		acceptance_root: PathBuf,
 		#[arg(long)]
+		/// Directory containing exactly one supplied leakage-review record per task.
+		leakage_reviews_root: PathBuf,
+		#[arg(long)]
 		/// Controlled root containing the one evaluator referenced by every task.
 		evaluator_root: PathBuf,
 		#[arg(long)]
@@ -1259,6 +1268,24 @@ enum Command {
 		#[arg(long)]
 		runtime_authority: PathBuf,
 		/// New private directory installed atomically after complete round-trip validation.
+		#[arg(long)]
+		output: PathBuf,
+	},
+	/// Qualify one exact candidate from three predeclared complete calibration matrices.
+	///
+	/// This command is model-free. It never pools, publishes, or relabels a child matrix.
+	QualifyCandidate {
+		/// Exact predeclared candidate, policy, and three-child manifest.
+		#[arg(long)]
+		manifest: PathBuf,
+		/// Exact qualification-ready AIQ Core 1.1.0 public catalog.
+		#[arg(long)]
+		catalog: PathBuf,
+		/// Complete independently verified child matrix. Repeat exactly three times in
+		/// predeclared order.
+		#[arg(long = "matrix", required = true)]
+		matrices: Vec<PathBuf>,
+		/// Create-new deterministic qualification or rejection artifact.
 		#[arg(long)]
 		output: PathBuf,
 	},
@@ -1843,6 +1870,7 @@ fn run_general_cli_command(command: Command) -> Result<(), Box<dyn std::error::E
 		| Command::ValidateContrastCorpus { .. }
 		| Command::Validate { .. }) => dispatch_corpus_validation(command)?,
 		command @ Command::SealCorpus { .. } => dispatch_corpus_seal(command)?,
+		command @ Command::QualifyCandidate { .. } => dispatch_candidate_qualification(command)?,
 		Command::Preflight {
 			capabilities,
 			corpus_commitment,
@@ -2051,6 +2079,7 @@ fn dispatch_corpus_seal(command: Command) -> Result<(), Box<dyn std::error::Erro
 		tasks_root,
 		baselines_root,
 		acceptance_root,
+		leakage_reviews_root,
 		evaluator_root,
 		evaluator_runtime,
 		codex_toolchain_root,
@@ -2069,6 +2098,7 @@ fn dispatch_corpus_seal(command: Command) -> Result<(), Box<dyn std::error::Erro
 		tasks_root,
 		baselines_root,
 		acceptance_root,
+		leakage_reviews_root,
 		evaluator_root,
 		evaluator_runtime,
 		codex_toolchain_root,
@@ -2082,6 +2112,49 @@ fn dispatch_corpus_seal(command: Command) -> Result<(), Box<dyn std::error::Erro
 	println!("{canonical_sha256}");
 
 	Ok(())
+}
+
+fn run_qualify_candidate(
+	manifest_path: &Path,
+	catalog_path: &Path,
+	matrix_paths: &[PathBuf],
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	validate_new_output_set(&[("qualification output", output)])?;
+
+	if matrix_paths.len() != 3 {
+		return Err("qualify-candidate requires exactly three --matrix inputs".into());
+	}
+
+	let manifest = read_json::<BenchmarkQualificationManifest>(manifest_path)?;
+	let catalog_value = read_json::<serde_json::Value>(catalog_path)?;
+	let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)?;
+	let matrices = matrix_paths
+		.iter()
+		.map(|path| read_json::<QualificationMatrix>(path))
+		.collect::<Result<Vec<_>, _>>()?;
+	let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)?;
+	let rejected = artifact.claims.status == BenchmarkQualificationStatus::Rejected;
+
+	write_json(output, &artifact)?;
+
+	if rejected {
+		return Err(format!(
+			"candidate qualification was rejected; deterministic evidence was written to {}",
+			output.display()
+		)
+		.into());
+	}
+
+	Ok(())
+}
+
+fn dispatch_candidate_qualification(command: Command) -> Result<(), Box<dyn std::error::Error>> {
+	let Command::QualifyCandidate { manifest, catalog, matrices, output } = command else {
+		unreachable!("dispatch requires qualify-candidate")
+	};
+
+	run_qualify_candidate(&manifest, &catalog, &matrices, &output)
 }
 
 fn dispatch_corpus_validation(command: Command) -> Result<(), Box<dyn std::error::Error>> {
@@ -6520,6 +6593,8 @@ mod tests {
 			"/controlled/baselines",
 			"--acceptance-root",
 			"/controlled/acceptance",
+			"--leakage-reviews-root",
+			"/controlled/leakage-reviews",
 			"--evaluator-root",
 			"/controlled/evaluator",
 			"--evaluator-runtime",
@@ -6541,6 +6616,46 @@ mod tests {
 		assert!(matches!(seal, Ok(super::Cli { command: super::Command::SealCorpus { .. } })));
 		assert!(super::Cli::try_parse_from(["aiq-runner", "candidate", "plan"]).is_err());
 		assert!(super::Cli::try_parse_from(["aiq-runner", "replay-candidate"]).is_err());
+	}
+
+	#[test]
+	fn qualification_cli_uses_three_explicit_matrix_inputs() {
+		let parsed = super::Cli::try_parse_from([
+			"aiq-runner",
+			"qualify-candidate",
+			"--manifest",
+			"manifest.json",
+			"--catalog",
+			"catalog.json",
+			"--matrix",
+			"matrix-1.json",
+			"--matrix",
+			"matrix-2.json",
+			"--matrix",
+			"matrix-3.json",
+			"--output",
+			"qualification.json",
+		]);
+
+		assert!(matches!(
+			parsed,
+			Ok(super::Cli { command: super::Command::QualifyCandidate { matrices, .. } })
+				if matrices.len() == 3
+		));
+
+		let root = fixture_root("qualification-count");
+
+		assert!(
+			super::run_qualify_candidate(
+				Path::new("manifest.json"),
+				Path::new("catalog.json"),
+				&[PathBuf::from("one.json")],
+				&root.join("qualification.json"),
+			)
+			.is_err()
+		);
+
+		let _ = fs::remove_dir_all(root);
 	}
 
 	fn unexpected_managed_requirements_profile() -> ManagedPermissionProfileEvidence {
