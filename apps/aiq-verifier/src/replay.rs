@@ -615,6 +615,11 @@ mod tests {
 		assert_eq!(error.kind, crate::ErrorKind::Terminal(expected));
 	}
 
+	fn assert_retryable_replay_error(error: WorkerError) {
+		assert_eq!(error.kind, crate::ErrorKind::Transient);
+		assert_eq!(error.to_string(), "controlled evaluator replay failed");
+	}
+
 	#[test]
 	fn valid_completed_replay_uses_inline_response_and_cleans_workspace() {
 		let fixture = Fixture::completed("OK");
@@ -1392,7 +1397,7 @@ printf '%s' '{verifier_stdout}'"#
 		install_shell_evaluator(&mut missing, &script);
 		assert_replay_error(
 			missing.verify().expect_err("missing raw stdout digest"),
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 		);
 
 		let mut exact = Fixture::completed("OK");
@@ -1438,19 +1443,16 @@ printf '%s' '{verifier_stdout}'"#
 
 	#[cfg(unix)]
 	#[test]
-	fn external_evaluator_execution_failure_is_rejected() {
+	fn external_evaluator_execution_failure_is_retryable() {
 		let mut fixture = Fixture::completed("OK");
 
 		install_shell_evaluator(&mut fixture, "cat >/dev/null; exit 7");
-		assert_replay_error(
-			fixture.verify().expect_err("evaluator execution failure"),
-			ReasonCode::EvaluatorReplayMismatch,
-		);
+		assert_retryable_replay_error(fixture.verify().expect_err("evaluator execution failure"));
 	}
 
 	#[cfg(unix)]
 	#[test]
-	fn external_evaluator_ambiguous_failure_class_is_rejected_by_shared_validation() {
+	fn external_evaluator_invalid_output_requires_mismatch_confirmation() {
 		let mut fixture = Fixture::completed("OK");
 
 		install_shell_evaluator(
@@ -1585,7 +1587,7 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 
 		assert_replay_error(
 			fixture.verify().expect_err("evaluator failure"),
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 		);
 	}
 
@@ -1820,8 +1822,8 @@ use aiq_runner::{
 	},
 	submission::MAX_ARTIFACT_BYTES,
 	task::{
-		EvaluationResult, EvaluatorContext, EvaluatorOutcome, EvaluatorRuntime,
-		NormalizedToolEvidence, TaskDefinition,
+		EvaluationErrorKind, EvaluationResult, EvaluatorContext, EvaluatorOutcome,
+		EvaluatorRuntime, NormalizedToolEvidence, TaskDefinition,
 	},
 };
 
@@ -2710,7 +2712,7 @@ where
 			})
 		},
 		ResultStatus::Unevaluated => Err(WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			"attempted result has no committed evaluator result",
 		)),
 		ResultStatus::Unsupported => Err(WorkerError::terminal(
@@ -3031,13 +3033,13 @@ fn complete_response(
 ) -> Result<String, WorkerError> {
 	let response = result.response.as_deref().ok_or_else(|| {
 		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			"completed result lacks a response",
 		)
 	})?;
 	let expected_hash = result.response_sha256.as_deref().ok_or_else(|| {
 		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			"completed result lacks a response commitment",
 		)
 	})?;
@@ -3112,33 +3114,32 @@ fn replay_evaluator(
 	)?;
 	let runner_observation_sha256 = protocol::canonical_hash(expected).map_err(|_| {
 		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			"runner evaluator observation cannot be hashed",
 		)
 	})?;
-	let verifier_observation_sha256 = protocol::canonical_hash(&replayed).map_err(|_| {
-		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
-			"verifier evaluator observation cannot be hashed",
-		)
-	})?;
+	let verifier_observation_sha256 = protocol::canonical_hash(&replayed)
+		.map_err(|_| WorkerError::transient("controlled evaluator replay failed"))?;
 	let evidence_detail = format!(
 		"runner_observation_sha256={runner_observation_sha256}; verifier_observation_sha256={verifier_observation_sha256}; runner_raw_stdout_sha256={}; verifier_raw_stdout_sha256={}",
 		result.evaluator_stdout_sha256.as_deref().unwrap_or("null"),
 		replayed.raw_stdout_sha256.as_deref().unwrap_or("null"),
 	);
 	let external = task.evaluator.as_ref().is_some_and(|evaluator| evaluator.external.is_some());
-	let raw_stdout_is_consistent = if external {
+	let runner_raw_stdout_is_consistent = if external {
 		result.evaluator_stdout_sha256.is_some()
-			&& result.evaluator_stdout_sha256 == replayed.raw_stdout_sha256
 			&& result.evaluator_stdout_sha256 == expected.raw_stdout_sha256
 	} else {
-		result.evaluator_stdout_sha256.is_none()
-			&& replayed.raw_stdout_sha256.is_none()
-			&& expected.raw_stdout_sha256.is_none()
+		result.evaluator_stdout_sha256.is_none() && expected.raw_stdout_sha256.is_none()
 	};
 
-	if !raw_stdout_is_consistent {
+	if !runner_raw_stdout_is_consistent {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"signed evaluator stdout evidence is incomplete or internally inconsistent",
+		));
+	}
+	if result.evaluator_stdout_sha256 != replayed.raw_stdout_sha256 {
 		return Err(WorkerError::terminal(
 			ReasonCode::EvaluatorReplayMismatch,
 			format!(
@@ -3153,21 +3154,21 @@ fn replay_evaluator(
 		EvaluationOutcome::Incorrect => EvaluatorOutcome::Incorrect,
 		EvaluationOutcome::NotEvaluated => {
 			return Err(WorkerError::terminal(
-				ReasonCode::EvaluatorReplayMismatch,
+				ReasonCode::InvalidReplayEvidence,
 				"completed result has no signed evaluator outcome",
 			));
 		},
 	};
 	let expected_score = result.task_score.ok_or_else(|| {
 		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			"completed result has no signed evaluator score",
 		)
 	})?;
 
 	if expected.outcome != expected_outcome || expected.score != expected_score {
 		return Err(WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			format!(
 				"runner evaluator observation differs from the signed outcome or score; {evidence_detail}"
 			),
@@ -3198,7 +3199,7 @@ fn evaluate_candidate(
 ) -> Result<EvaluationResult, WorkerError> {
 	let evaluator = task.evaluator.as_ref().ok_or_else(|| {
 		WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidRunProvenance,
 			"completed result has no committed evaluator",
 		)
 	})?;
@@ -3225,12 +3226,9 @@ fn evaluate_candidate(
 	};
 	let (mut replayed, replayed_raw_stdout_sha256) = if evaluator.kind == "exact_match" {
 		(
-			evaluator.evaluate_checked(response, Some(&context)).map_err(|_| {
-				WorkerError::terminal(
-					ReasonCode::EvaluatorReplayMismatch,
-					"controlled evaluator replay failed or was nondeterministic",
-				)
-			})?,
+			evaluator
+				.evaluate_checked(response, Some(&context))
+				.map_err(|error| controlled_evaluator_replay_error(error.kind()))?,
 			None,
 		)
 	} else {
@@ -3241,12 +3239,7 @@ fn evaluate_candidate(
 				evaluator_root,
 				evaluator_runtime,
 			)
-			.map_err(|_| {
-				WorkerError::terminal(
-					ReasonCode::EvaluatorReplayMismatch,
-					"controlled evaluator replay failed or was nondeterministic",
-				)
-			})?;
+			.map_err(|error| controlled_evaluator_replay_error(error.kind()))?;
 
 		(observation.result, Some(observation.raw_stdout_sha256))
 	};
@@ -3254,7 +3247,7 @@ fn evaluate_candidate(
 
 	if external == (evaluator.kind == "exact_match") {
 		return Err(WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidRunProvenance,
 			"evaluator kind and controlled executable binding are inconsistent",
 		));
 	}
@@ -3262,6 +3255,28 @@ fn evaluate_candidate(
 	replayed.raw_stdout_sha256 = replayed_raw_stdout_sha256;
 
 	Ok(replayed)
+}
+
+fn controlled_evaluator_replay_error(kind: EvaluationErrorKind) -> WorkerError {
+	match kind {
+		EvaluationErrorKind::Execution => {
+			WorkerError::transient("controlled evaluator replay failed")
+		},
+		EvaluationErrorKind::InvalidOutput | EvaluationErrorKind::OutputTooLarge => {
+			WorkerError::terminal(
+				ReasonCode::EvaluatorReplayMismatch,
+				"controlled evaluator replay output was invalid",
+			)
+		},
+		EvaluationErrorKind::Configuration => WorkerError::terminal(
+			ReasonCode::InvalidRunProvenance,
+			"controlled evaluator binding is invalid",
+		),
+		EvaluationErrorKind::InputTooLarge => WorkerError::terminal(
+			ReasonCode::InvalidReplayEvidence,
+			"signed evaluator input exceeds its committed limit",
+		),
+	}
 }
 
 fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {
@@ -3274,7 +3289,7 @@ fn verify_failed_result_policy(result: &TaskResult) -> Result<(), WorkerError> {
 
 	if failure.kind == FailureKind::EvaluatorFailure {
 		return Err(WorkerError::terminal(
-			ReasonCode::EvaluatorReplayMismatch,
+			ReasonCode::InvalidReplayEvidence,
 			"signed result records an evaluator failure instead of a committed outcome",
 		));
 	}
