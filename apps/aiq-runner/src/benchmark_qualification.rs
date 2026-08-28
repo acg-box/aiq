@@ -551,8 +551,8 @@ fn validate_manifest(
 
 	validate_candidate_identity(&manifest.candidate)?;
 
-	if catalog.status != CandidateCatalogStatus::QualificationReady
-		|| catalog.require_qualification_ready().is_err()
+	if catalog.status != CandidateCatalogStatus::FrozenCandidate
+		|| catalog.require_frozen_candidate().is_err()
 		|| manifest.candidate.candidate_id != catalog.candidate_id
 		|| manifest.candidate.catalog_digest != catalog.catalog_digest
 	{
@@ -1338,7 +1338,7 @@ mod tests {
 			"task_set_id":"aiq-core",
 			"task_set_version":"1.1.0",
 			"scoring_version":"1.0.6",
-			"status":"qualification_ready",
+			"status":"frozen_candidate",
 			"candidate_identity":{
 				"candidate_id":"aiq-core/1.1.0-candidate.1",
 				"task_metadata_digest":task_metadata_digest
