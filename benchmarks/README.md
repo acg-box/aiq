@@ -150,21 +150,42 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.4`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.5`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-Candidates.1, .2, and .3 are immutable rejected and permanently non-sealable.
-The candidate.3 isolated review has aggregate digest
-`sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2`
+The candidate.5 public identities are:
+
+- canonical catalog:
+  `sha256:f19dd1c9a84c8274db8a240994b208bba8f6fd0f3fb6919237bcc4314d53c2cf`;
+- ordered task metadata:
+  `sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4`;
+- public release:
+  `sha256:a7df194c94f13fcf586e157d40537fd6bc74ffc8cacc64ab20d181f6d8ce2016`.
+
+Candidates.1 through .4 are immutable rejected and permanently non-sealable.
+The candidate.4 isolated review has aggregate digest
+`sha256:83d561c43323c1b6e4f9236571e8cf8b940980c950f0047543a3ef52a1bca777`
 and raw receipt digest
-`sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974`.
-It approved 65 task semantics and rejected the seven tool-use tasks. Candidate.4
-retains the 65 approved semantics and revises only those seven evidence
-bindings. It retains all 14 valid candidate.2 closure entries and adds exactly
-21 candidate.3 closure entries for `BEHAVIORAL_COVERAGE_GAP`,
-`PUBLIC_PRIVATE_CONSTRUCT_MISMATCH`, and `TOOL_EVIDENCE_UNBOUND`.
+`sha256:a8bbeea77d72cd782ec48aed6a759ecad61740c17d72c1af81f6bf612ef9bca2`.
+It approved 65 task semantics and rejected the seven tool-use tasks under
+`BEHAVIORAL_COVERAGE_GAP`, `CROSS_TASK_CONSTRUCT_DUPLICATION`, and
+`PUBLIC_PRIVATE_CONSTRUCT_MISMATCH`. Candidate.5 retains the 65 approved
+semantics and rebuilds only those seven tasks.
+
+Each revised task discloses a distinct `input.json` scenario contract, one
+deterministic domain operation, and one task-specific semantic result contract.
+The seven operation signatures have different consumed fields, produced fields,
+state models, transitions, invariants, and error paths. Each task also declares
+a metamorphic basis for all task-specific scenario fields. The authoring proof
+must run all 42 cross-task supplied-tool substitutions. A failure caused only
+by a changed receipt is not behavior evidence.
+
+Candidate.5 preserves all 35 candidate.4 closure entries. It revalidates the 14
+entries that candidate.4 review reopened with task-specific behavior evidence.
+It adds seven new `CROSS_TASK_CONSTRUCT_DUPLICATION` entries. Thus, the exact
+cumulative closure count is 42; no reopened entry is counted twice.
 
 Each tool-use contract keeps the complete eight-field `receipt.json` contract.
 The supplied local tool writes that receipt. Receipt `command_sha256` identifies
@@ -210,9 +231,9 @@ The candidate contracts are:
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.3 review records do not satisfy
-candidate.4. The sealer requires one fresh matching record for each exact
-candidate.4 task and catalog entry. It does not infer review completion from
+verdict, method, scope, and notes. Candidate.4 review records do not satisfy
+candidate.5. The sealer requires one fresh matching record for each exact
+candidate.5 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification uses three complete matrices only. It reports all three pairwise
@@ -222,7 +243,7 @@ comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the candidate.4 public source without private inputs:
+Regenerate and test the candidate.5 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts

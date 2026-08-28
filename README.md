@@ -152,22 +152,37 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.4`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.5`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. The catalog records 65 candidate.3 review-approved semantic
-retentions and seven revised tool-evidence bindings. It has 72 distinct within-domain
+`aiq.catalog.v2`. The catalog records 65 candidate.4 review-approved semantic
+retentions and seven rebuilt tool-use constructs. It has 72 distinct within-domain
 clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
+Its canonical catalog digest is
+`sha256:f19dd1c9a84c8274db8a240994b208bba8f6fd0f3fb6919237bcc4314d53c2cf`.
+Its ordered task-metadata digest is
+`sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4`.
+Its public release digest is
+`sha256:a7df194c94f13fcf586e157d40537fd6bc74ffc8cacc64ab20d181f6d8ce2016`.
 
-Candidates.1, .2, and .3 are immutable rejected, permanently non-sealable
-predecessor evidence. Candidate.4 retains the 14 valid candidate.2 closure
-entries and adds 21 candidate.3 closure entries. For each tool-use task, the
-hard gate requires exactly one total tool call, exactly one
-`command_execution` call, and one completed command-line digest for
+Candidates.1 through .4 are immutable rejected, permanently non-sealable
+predecessor evidence. Candidate.4 review has aggregate digest
+`sha256:83d561c43323c1b6e4f9236571e8cf8b940980c950f0047543a3ef52a1bca777`.
+It approved 65 tasks and rejected `tool-use-01` through `tool-use-07` because
+their supplied tools ignored task-specific scenario values and shared one
+normalized behavior shape. Candidate.5 gives each rejected task its own
+disclosed scenario fields, deterministic domain operation, semantic result
+fields, evaluator behavior signature, per-field metamorphic basis, and full
+cross-task substitution falsifier. It preserves 35 candidate.4 closure entries,
+revalidates the 14 entries that candidate.4 review reopened, and adds seven
+`CROSS_TASK_CONSTRUCT_DUPLICATION` entries. The cumulative closure count is 42.
+
+For each tool-use task, the hard gate requires exactly one total tool call and
+one `command_execution` call. It also requires one completed command-line digest for
 `node bin/task-tool.mjs`:
 `sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319`.
 The separate receipt `command_sha256` continues to identify the supplied tool
@@ -176,7 +191,7 @@ command identities; exact total and per-tool counts still expose undeclared or
 extra calls. One matrix can contain at most 119 declared digest entries. The
 runner removes command text from provider stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.4 remains inactive and not production-publishable. Fresh
+redaction. Candidate.5 remains inactive and not production-publishable. Fresh
 independent review, double sealing, three qualification matrices,
 qualification, adoption, and cutover are pending.
 
