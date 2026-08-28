@@ -35,10 +35,14 @@ use ureq::{
 
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
+	benchmark_qualification::{
+		self, BenchmarkQualificationArtifact, BenchmarkQualificationManifest, QualificationMatrix,
+	},
 	calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
 		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
+	candidate_catalog,
 	corpus_commitment::{
 		self, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain,
 	},
@@ -95,6 +99,8 @@ const ADDITIONAL_MODES_HELP: &str = "Additional modes:
   aiq-verifier diagnose-rescore --help
       Verify one source package, then replay it with a candidate evaluator set.
       This mode writes one permanently non-Official create-new diagnostic report.
+  aiq-verifier verify-qualification --help
+      Recompute one three-matrix candidate qualification without models or publication.
 
 Run `aiq-verifier <mode> --help` for the exact mode arguments.";
 
@@ -766,6 +772,28 @@ struct ValidateEnvironmentCli {
 	/// Verifier-owned production environment metadata.
 	#[arg(long)]
 	environment: PathBuf,
+}
+
+/// Offline deterministic candidate-qualification verification settings.
+#[derive(Debug, Parser)]
+#[command(
+	name = "aiq-verifier verify-qualification",
+	version,
+	about = "Recompute one exact three-matrix candidate qualification without publication"
+)]
+struct VerifyQualificationCli {
+	/// Qualification or rejection artifact to verify.
+	#[arg(long)]
+	artifact: PathBuf,
+	/// Exact predeclared candidate, policy, and child manifest.
+	#[arg(long)]
+	manifest: PathBuf,
+	/// Exact qualification-ready AIQ Core 1.1.0 public catalog.
+	#[arg(long)]
+	catalog: PathBuf,
+	/// Complete child matrix. Repeat exactly three times in predeclared order.
+	#[arg(long = "matrix", required = true)]
+	matrices: Vec<PathBuf>,
 }
 
 struct OperatorDiagnostic {
@@ -2282,6 +2310,16 @@ pub fn run_cli() -> Result<(), WorkerError> {
 
 			return run_validate_environment(ValidateEnvironmentCli::parse_from(
 				validate_arguments,
+			));
+		}
+		if command == "verify-qualification" {
+			let mut qualification_arguments =
+				vec![OsString::from("aiq-verifier verify-qualification")];
+
+			qualification_arguments.extend(arguments.iter().skip(2).cloned());
+
+			return run_verify_qualification(VerifyQualificationCli::parse_from(
+				qualification_arguments,
 			));
 		}
 	}
@@ -4738,6 +4776,39 @@ fn run_validate_environment(cli: ValidateEnvironmentCli) -> Result<(), WorkerErr
 	Ok(())
 }
 
+fn run_verify_qualification(cli: VerifyQualificationCli) -> Result<(), WorkerError> {
+	if cli.matrices.len() != 3 {
+		return Err(WorkerError::configuration(
+			"verify-qualification requires exactly three --matrix inputs",
+		));
+	}
+
+	let artifact: BenchmarkQualificationArtifact =
+		read_regular_json(&cli.artifact, "qualification artifact")?;
+	let manifest: BenchmarkQualificationManifest =
+		read_regular_json(&cli.manifest, "qualification manifest")?;
+	let catalog_value: Value = read_regular_json(&cli.catalog, "candidate catalog")?;
+	let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	let matrices = cli
+		.matrices
+		.iter()
+		.map(|path| read_regular_json::<QualificationMatrix>(path, "qualification child matrix"))
+		.collect::<Result<Vec<_>, _>>()?;
+
+	benchmark_qualification::verify_qualification_artifact(
+		&artifact, &manifest, &catalog, &matrices,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	println!(
+		"qualification artifact is structurally and semantically self-consistent: {}",
+		artifact.claims_digest
+	);
+
+	Ok(())
+}
+
 fn operator_diagnostic_for_message(class: OperatorErrorClass, message: &str) -> OperatorDiagnostic {
 	let known = match message {
 		"HTTP request timed out" => Some(("http_request_timed_out", message)),
@@ -5353,7 +5424,8 @@ mod tests {
 		PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL,
 		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, RenewCalibrationAdmissionCli,
 		Secret, Transport, UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse,
-		VerificationRecord, VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
+		VerificationRecord, VerifierEnvironment, VerifyLocalCli, VerifyQualificationCli, Worker,
+		WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
@@ -6794,6 +6866,39 @@ mod tests {
 		assert!(help.contains("does not require replay artifacts"));
 		assert!(help.contains("aiq-verifier diagnose-rescore --help"));
 		assert!(help.contains("permanently non-Official create-new diagnostic report"));
+		assert!(help.contains("aiq-verifier verify-qualification --help"));
+		assert!(help.contains("without models or publication"));
+	}
+
+	#[test]
+	fn qualification_verifier_requires_three_explicit_matrices() {
+		let parsed = VerifyQualificationCli::try_parse_from([
+			"aiq-verifier verify-qualification",
+			"--artifact",
+			"qualification.json",
+			"--manifest",
+			"manifest.json",
+			"--catalog",
+			"catalog.json",
+			"--matrix",
+			"matrix-1.json",
+			"--matrix",
+			"matrix-2.json",
+			"--matrix",
+			"matrix-3.json",
+		])
+		.expect("qualification CLI");
+
+		assert_eq!(parsed.matrices.len(), 3);
+		assert!(
+			crate::run_verify_qualification(VerifyQualificationCli {
+				artifact: PathBuf::from("qualification.json"),
+				manifest: PathBuf::from("manifest.json"),
+				catalog: PathBuf::from("catalog.json"),
+				matrices: vec![PathBuf::from("matrix-1.json")],
+			})
+			.is_err()
+		);
 	}
 
 	#[test]

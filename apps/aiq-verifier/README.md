@@ -91,7 +91,25 @@ cargo run -p aiq-verifier -- --help
 cargo run -p aiq-verifier -- validate-environment --help
 cargo run -p aiq-verifier -- verify-local --help
 cargo run -p aiq-verifier -- renew-calibration-admission --help
+cargo run -p aiq-verifier -- verify-qualification --help
 ```
+
+`verify-qualification` is an offline, model-free AIQ Core 1.1.0 candidate
+check. It uses the qualification implementation from the `aiq-runner` library,
+which is the same owner used by the runner command. It recomputes the exact
+artifact from the predeclared manifest, qualification-ready catalog, and three
+child matrices. It rejects unsupported versions, changed policy, catalog or
+candidate identity drift, missing or duplicate cells, runtime-invalid or
+synthetic cells, reused or swapped child identities, rejected children,
+threshold failures, and any artifact mismatch. It does not create a new
+qualification artifact, invoke a model, publish evidence, or change an already
+rejected child.
+
+The artifact reports a separate future-single-run prediction interval for each
+configuration and prediction-interval overlap groups. These are run-to-run
+repeatability diagnostics. They are distinct from the fixed-item-bank
+conditional interval used by Official scoring. Exact-cell agreement and mean
+absolute cell delta remain non-gating diagnostics.
 
 The production worker emits one compact `aiq.verifier-record.v2` JSON object to
 standard output after each claimed package. The record includes the exact claim

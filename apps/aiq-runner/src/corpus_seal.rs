@@ -15,6 +15,7 @@ use std::{
 };
 
 use clap::ValueEnum;
+use jiff::Timestamp;
 #[cfg(unix)]
 use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,10 @@ use serde_json::{self, Value};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
+	candidate_catalog::{
+		self, CANDIDATE_CATALOG_GENERATOR_PATH, CANDIDATE_CATALOG_PATH,
+		CANDIDATE_CATALOG_SCHEMA_VERSION, CANDIDATE_TASK_SET_VERSION, CandidateCatalogAuthority,
+	},
 	cli,
 	corpus_commitment::{self, ExecutionToolPolicy, ToolchainCommand},
 	protocol, runner,
@@ -35,16 +40,14 @@ const MAX_SOURCE_FILE_BYTES: u64 = 16 * 1_024 * 1_024;
 const MAX_FILE_BYTES: u64 = 256 * 1_024 * 1_024;
 const MAX_TREE_FILES: usize = 4_096;
 const MAX_TREE_BYTES: u64 = 512 * 1_024 * 1_024;
-const CORE_REQUIRED_CLASSES: [&str; 4] =
-	["adversarial_format", "alternate_correct", "gold", "partial"];
-const CORE_OPTIONAL_CLASSES: [&str; 2] = ["empty", "timeout"];
 const CONTRAST_REQUIRED_CLASSES: [&str; 6] =
 	["challenge", "empty", "format", "near_miss", "reference", "tamper"];
 const NO_OPTIONAL_CLASSES: [&str; 0] = [];
-const CORE_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.7/catalog.json";
 const CONTRAST_CATALOG: &str = "benchmarks/candidates/aiq-core-1.0.7/contrast-catalog.json";
 const SOURCE_INVENTORY: &str = "benchmarks/corpus-source-inventory-v1.json";
-const CATALOG_GENERATOR: &str = "scripts/candidates/aiq-core-1.0.7/generate-benchmark-catalog.ts";
+const LEGACY_CATALOG_GENERATOR: &str =
+	"scripts/candidates/aiq-core-1.0.7/generate-benchmark-catalog.ts";
+
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Complete explicit inputs for one create-new seal.
@@ -59,6 +62,8 @@ pub struct SealOptions {
 	pub baselines_root: PathBuf,
 	/// Exact per-task acceptance directory.
 	pub acceptance_root: PathBuf,
+	/// Exact directory containing one independently supplied leakage review per task.
+	pub leakage_reviews_root: PathBuf,
 	/// Exact evaluator registry root.
 	pub evaluator_root: PathBuf,
 	/// Exact Node.js evaluator executable.
@@ -75,51 +80,6 @@ pub struct SealOptions {
 	pub runtime_authority: PathBuf,
 	/// Create-new atomic sealed output directory.
 	pub output: PathBuf,
-}
-
-/// Corpus authority selected before any private input is read.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize, ValueEnum)]
-#[serde(rename_all = "snake_case")]
-pub enum CorpusKind {
-	/// The exact 72-task AIQ Core catalog.
-	Core,
-	/// The exact six-task calibration-only Contrast catalog.
-	Contrast,
-}
-impl CorpusKind {
-	fn catalog_path(self) -> &'static str {
-		match self {
-			Self::Core => CORE_CATALOG,
-			Self::Contrast => CONTRAST_CATALOG,
-		}
-	}
-
-	fn task_count(self) -> usize {
-		match self {
-			Self::Core => 72,
-			Self::Contrast => 6,
-		}
-	}
-
-	fn acceptance_policy(self) -> AcceptancePolicy {
-		match self {
-			Self::Core => AcceptancePolicy {
-				required: &CORE_REQUIRED_CLASSES,
-				optional: &CORE_OPTIONAL_CLASSES,
-			},
-			Self::Contrast => AcceptancePolicy {
-				required: &CONTRAST_REQUIRED_CLASSES,
-				optional: &NO_OPTIONAL_CLASSES,
-			},
-		}
-	}
-
-	fn harness_schema(self) -> &'static str {
-		match self {
-			Self::Core => "aiq.core-authoring-harness.v3",
-			Self::Contrast => "aiq.contrast-authoring-harness.v3",
-		}
-	}
 }
 
 #[derive(Clone, Copy)]
@@ -212,14 +172,42 @@ struct SourceManifest {
 	entries: Vec<ManifestEntry>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-struct LeakageReview<'a> {
-	schema_version: &'static str,
-	task_id: &'a str,
-	task_version: &'a str,
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LeakageReviewV1 {
+	schema_version: String,
+	task_id: String,
+	task_version: String,
 	reviewed: bool,
-	status: &'static str,
-	leakage_notes: &'a [String],
+	status: String,
+	leakage_notes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LeakageReviewV2 {
+	schema_version: String,
+	review_id: String,
+	task_id: String,
+	task_version: String,
+	reviewer_identity: String,
+	reviewer_task_identity: String,
+	reviewed_at: String,
+	source: LeakageReviewSource,
+	task_definition_sha256: String,
+	catalog_entry_sha256: String,
+	verdict: String,
+	method: String,
+	scope: String,
+	notes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct LeakageReviewSource {
+	source_commit: String,
+	source_tree: String,
+	source_manifest_sha256: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -240,7 +228,8 @@ struct TaskCommitment {
 
 struct WrittenTaskAssets {
 	commitments: Vec<TaskCommitment>,
-	acceptance_classes_by_task: BTreeMap<String, Vec<String>>,
+	expected_acceptance_classes_by_task: BTreeMap<String, Vec<String>>,
+	observed_acceptance_classes_by_task: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -328,6 +317,7 @@ struct PreparedSeal {
 	tasks_root: PathBuf,
 	baselines_root: PathBuf,
 	acceptance_root: PathBuf,
+	leakage_reviews_root: PathBuf,
 	evaluator_root: PathBuf,
 	toolchain_root: PathBuf,
 	runtime: EvaluatorRuntime,
@@ -339,6 +329,7 @@ struct PreparedSeal {
 	catalog_identity_scope: String,
 	catalog_bytes: Vec<u8>,
 	catalog_by_id: BTreeMap<String, String>,
+	candidate_catalog: Option<CandidateCatalogAuthority>,
 	policy: ExecutionToolPolicy,
 	node_sha256: String,
 	rg_sha256: String,
@@ -353,6 +344,88 @@ struct DerivedExecution {
 	tool_policy_sha256: String,
 	network_policy_sha256: String,
 	runner_prompt_sha256: String,
+}
+
+struct AuthoringTreeDigests {
+	tasks: String,
+	baselines: String,
+	acceptance: String,
+	leakage_reviews: String,
+	evaluator: String,
+	toolchain: String,
+	runtime_authority: String,
+}
+
+struct LeakageReviewV2Bindings<'a> {
+	task_id: &'a str,
+	source_commit: &'a str,
+	source_tree: &'a str,
+	source_manifest_sha256: &'a str,
+	task_definition_sha256: &'a str,
+	catalog_entry_sha256: &'a str,
+}
+
+/// Corpus authority selected before any private input is read.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum CorpusKind {
+	/// The exact 72-task AIQ Core catalog.
+	Core,
+	/// The exact six-task calibration-only Contrast catalog.
+	Contrast,
+}
+impl CorpusKind {
+	fn catalog_path(self) -> &'static str {
+		match self {
+			Self::Core => CANDIDATE_CATALOG_PATH,
+			Self::Contrast => CONTRAST_CATALOG,
+		}
+	}
+
+	fn task_count(self) -> usize {
+		match self {
+			Self::Core => 72,
+			Self::Contrast => 6,
+		}
+	}
+
+	fn legacy_acceptance_policy(self) -> Option<AcceptancePolicy> {
+		match self {
+			Self::Core => None,
+			Self::Contrast => Some(AcceptancePolicy {
+				required: &CONTRAST_REQUIRED_CLASSES,
+				optional: &NO_OPTIONAL_CLASSES,
+			}),
+		}
+	}
+
+	fn harness_schema(self) -> &'static str {
+		match self {
+			Self::Core => "aiq.core-authoring-harness.v4",
+			Self::Contrast => "aiq.contrast-authoring-harness.v3",
+		}
+	}
+
+	fn task_version(self) -> &'static str {
+		match self {
+			Self::Core => CANDIDATE_TASK_SET_VERSION,
+			Self::Contrast => "1.0.7",
+		}
+	}
+
+	fn catalog_generator(self) -> (&'static str, &'static str) {
+		match self {
+			Self::Core => (CANDIDATE_CATALOG_GENERATOR_PATH, CANDIDATE_TASK_SET_VERSION),
+			Self::Contrast => (LEGACY_CATALOG_GENERATOR, "1.0.7"),
+		}
+	}
+
+	fn commitment_schema(self) -> &'static str {
+		match self {
+			Self::Core => "aiq.corpus-commitment.v3",
+			Self::Contrast => "aiq.corpus-commitment.v2",
+		}
+	}
 }
 
 /// Seals a complete unchanged asset set and returns its canonical commitment digest.
@@ -416,7 +489,8 @@ fn build_seal(options: &SealOptions, output: &Path) -> Result<String, Box<dyn Er
 		output,
 		&prepared,
 		&task_assets.commitments,
-		&task_assets.acceptance_classes_by_task,
+		&task_assets.expected_acceptance_classes_by_task,
+		&task_assets.observed_acceptance_classes_by_task,
 	)?;
 
 	write_commitment_and_receipt(
@@ -435,9 +509,27 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 
 	validate_git_source_identity(&source_root, &options.source_commit, &options.source_tree)?;
 
+	let catalog_bytes = read_regular_bounded(
+		&source_root.join(options.corpus_kind.catalog_path()),
+		MAX_FILE_BYTES,
+	)?;
+	let catalog_value: Value = serde_json::from_slice(&catalog_bytes)?;
+	let catalog: Catalog = serde_json::from_value(catalog_value.clone())?;
+	let candidate_catalog = match options.corpus_kind {
+		CorpusKind::Core => {
+			let authority = candidate_catalog::validate_candidate_catalog(&catalog_value)?;
+
+			authority.require_qualification_ready()?;
+
+			Some(authority)
+		},
+		CorpusKind::Contrast => None,
+	};
 	let tasks_root = canonical_directory(&options.tasks_root, "task root")?;
 	let baselines_root = canonical_directory(&options.baselines_root, "baseline root")?;
 	let acceptance_root = canonical_directory(&options.acceptance_root, "acceptance root")?;
+	let leakage_reviews_root =
+		canonical_directory(&options.leakage_reviews_root, "leakage-review root")?;
 	let evaluator_root = canonical_directory(&options.evaluator_root, "evaluator root")?;
 	let toolchain_root = canonical_directory(&options.codex_toolchain_root, "toolchain root")?;
 	let runtime = EvaluatorRuntime::resolve(&options.evaluator_runtime)?;
@@ -458,13 +550,8 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 		return Err("controlled task count does not match corpus kind".into());
 	}
 
-	let catalog_bytes = read_regular_bounded(
-		&source_root.join(options.corpus_kind.catalog_path()),
-		MAX_FILE_BYTES,
-	)?;
-	let catalog: Catalog = serde_json::from_slice(&catalog_bytes)?;
 	let (catalog_identity_sha256, catalog_identity_scope) =
-		validate_catalog(options.corpus_kind, &catalog, &mut tasks)?;
+		validate_catalog(options.corpus_kind, &catalog, candidate_catalog.as_ref(), &mut tasks)?;
 	let catalog_by_id = catalog
 		.tasks
 		.iter()
@@ -479,13 +566,14 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 		prepare_toolchain(&authority, &toolchain_root, &runtime)?;
 	let source_manifest = build_source_manifest(&source_root)?;
 	let source_manifest_sha256 = protocol::canonical_hash(&source_manifest)?;
+	let (generator_path, generator_version) = options.corpus_kind.catalog_generator();
 	let generator_authority = GeneratorAuthority {
 		name: "aiq-core-catalog-generator",
-		version: "1.0.7",
+		version: generator_version,
 		toolchain_source: "repository_source",
-		source_path: CATALOG_GENERATOR,
+		source_path: generator_path,
 		source_sha256: raw_file_sha256_bounded(
-			&source_root.join(CATALOG_GENERATOR),
+			&source_root.join(generator_path),
 			MAX_SOURCE_FILE_BYTES,
 		)?,
 	};
@@ -496,6 +584,7 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 		tasks_root,
 		baselines_root,
 		acceptance_root,
+		leakage_reviews_root,
 		evaluator_root,
 		toolchain_root,
 		runtime,
@@ -507,6 +596,7 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 		catalog_identity_scope,
 		catalog_bytes,
 		catalog_by_id,
+		candidate_catalog,
 		policy,
 		node_sha256,
 		rg_sha256,
@@ -680,38 +770,31 @@ fn write_task_assets(
 		fs::create_dir(path)?;
 	}
 
+	validate_review_file_set(&prepared.leakage_reviews_root, &prepared.tasks)?;
+
 	let mut task_commitments = Vec::with_capacity(prepared.tasks.len());
-	let mut acceptance_classes_by_task = BTreeMap::new();
+	let mut expected_acceptance_classes_by_task = BTreeMap::new();
+	let mut observed_acceptance_classes_by_task = BTreeMap::new();
 
 	for task in &prepared.tasks {
-		validate_fixture_refs(task)?;
+		validate_fixture_refs(task, options.corpus_kind)?;
 
 		let baseline = prepared.baselines_root.join(&task.task_id);
 		let acceptance = prepared.acceptance_root.join(&task.task_id);
-		let acceptance_classes =
-			validate_acceptance_classes(&acceptance, options.corpus_kind.acceptance_policy())?;
+		let expected_classes = expected_acceptance_classes(options.corpus_kind, prepared, task)?;
+		let observed_classes = observe_acceptance_classes(&acceptance)?;
 
-		acceptance_classes_by_task.insert(task.task_id.clone(), acceptance_classes);
+		validate_exact_acceptance_classes(&task.task_id, &expected_classes, &observed_classes)?;
+
+		expected_acceptance_classes_by_task
+			.insert(task.task_id.clone(), expected_classes.iter().cloned().collect());
+		observed_acceptance_classes_by_task
+			.insert(task.task_id.clone(), observed_classes.iter().cloned().collect());
 
 		let baseline_manifest = runner::build_workspace_manifest(&baseline)?;
 		let baseline_sha256 = protocol::canonical_hash(&baseline_manifest)?;
 		let fixture_sha256 = protocol::canonical_hash(&controlled_tree(&baseline)?)?;
 		let acceptance_sha256 = protocol::canonical_hash(&controlled_tree(&acceptance)?)?;
-		let leakage = LeakageReview {
-			schema_version: "aiq.leakage-review.v1",
-			task_id: &task.task_id,
-			task_version: &task.task_version,
-			reviewed: true,
-			status: "reviewed",
-			leakage_notes: &task.leakage_notes,
-		};
-		let leakage_sha256 = protocol::canonical_hash(&leakage)?;
-
-		write_canonical_json(&output_tasks.join(format!("{}.json", task.task_id)), task)?;
-		copy_tree(&baseline, &output_baselines.join(&task.task_id))?;
-		copy_tree(&acceptance, &output_acceptance.join(&task.task_id))?;
-		write_canonical_json(&output_leakage.join(format!("{}.json", task.task_id)), &leakage)?;
-
 		let binding = task
 			.evaluator
 			.as_ref()
@@ -724,10 +807,25 @@ fn write_task_assets(
 			return Err("task catalog entry digest is not derived from the selected catalog".into());
 		}
 
+		let task_definition_sha256 = task.content_hash()?;
+		let leakage = validate_supplied_leakage_review(
+			options,
+			prepared,
+			task,
+			&task_definition_sha256,
+			&catalog_entry_sha256,
+		)?;
+		let leakage_sha256 = protocol::canonical_hash(&leakage)?;
+
+		write_canonical_json(&output_tasks.join(format!("{}.json", task.task_id)), task)?;
+		copy_tree(&baseline, &output_baselines.join(&task.task_id))?;
+		copy_tree(&acceptance, &output_acceptance.join(&task.task_id))?;
+		write_canonical_json(&output_leakage.join(format!("{}.json", task.task_id)), &leakage)?;
+
 		task_commitments.push(TaskCommitment {
 			task_id: task.task_id.clone(),
 			task_version: task.task_version.clone(),
-			task_definition_sha256: task.content_hash()?,
+			task_definition_sha256,
 			baseline_workspace_tree_sha256: baseline_sha256,
 			fixture_bundle_sha256: fixture_sha256,
 			catalog_entry_sha256,
@@ -740,7 +838,192 @@ fn write_task_assets(
 		});
 	}
 
-	Ok(WrittenTaskAssets { commitments: task_commitments, acceptance_classes_by_task })
+	Ok(WrittenTaskAssets {
+		commitments: task_commitments,
+		expected_acceptance_classes_by_task,
+		observed_acceptance_classes_by_task,
+	})
+}
+
+fn expected_acceptance_classes(
+	kind: CorpusKind,
+	prepared: &PreparedSeal,
+	task: &TaskDefinition,
+) -> Result<BTreeSet<String>, Box<dyn Error>> {
+	match kind {
+		CorpusKind::Core => prepared
+			.candidate_catalog
+			.as_ref()
+			.and_then(|catalog| catalog.task(&task.task_id))
+			.ok_or("candidate task is absent from typed catalog authority")?
+			.expected_acceptance_classes()
+			.map_err(Into::into),
+		CorpusKind::Contrast => {
+			let policy = kind.legacy_acceptance_policy().expect("contrast policy");
+
+			Ok(policy
+				.required
+				.iter()
+				.chain(policy.optional)
+				.map(|class| (*class).to_owned())
+				.collect())
+		},
+	}
+}
+
+fn validate_exact_acceptance_classes(
+	task_id: &str,
+	expected: &BTreeSet<String>,
+	observed: &BTreeSet<String>,
+) -> Result<(), Box<dyn Error>> {
+	if observed != expected {
+		return Err(format!(
+			"task {task_id} observed acceptance classes do not exactly equal catalog authority"
+		)
+		.into());
+	}
+
+	Ok(())
+}
+
+fn validate_review_file_set(root: &Path, tasks: &[TaskDefinition]) -> Result<(), Box<dyn Error>> {
+	let expected = tasks.iter().map(|task| task.task_id.clone()).collect::<BTreeSet<_>>();
+	let mut observed = BTreeSet::new();
+
+	for entry in fs::read_dir(root)? {
+		let entry = entry?;
+		let metadata = fs::symlink_metadata(entry.path())?;
+		let name =
+			entry.file_name().to_str().ok_or("leakage-review filename is not UTF-8")?.to_owned();
+
+		if metadata.file_type().is_symlink()
+			|| !metadata.is_file()
+			|| !name.ends_with(".json")
+			|| !observed.insert(name.trim_end_matches(".json").to_owned())
+		{
+			return Err("leakage-review root contains an unsafe or duplicate record".into());
+		}
+	}
+
+	if observed != expected {
+		return Err("leakage-review root must contain exactly one record per task".into());
+	}
+
+	Ok(())
+}
+
+fn validate_supplied_leakage_review(
+	options: &SealOptions,
+	prepared: &PreparedSeal,
+	task: &TaskDefinition,
+	task_definition_sha256: &str,
+	catalog_entry_sha256: &str,
+) -> Result<Value, Box<dyn Error>> {
+	let path = prepared.leakage_reviews_root.join(format!("{}.json", task.task_id));
+	let value: Value = read_canonical_input(&path, 1_024 * 1_024)?;
+
+	match options.corpus_kind {
+		CorpusKind::Core => validate_leakage_review_v2(
+			value,
+			options,
+			prepared,
+			task,
+			task_definition_sha256,
+			catalog_entry_sha256,
+		),
+		CorpusKind::Contrast => validate_leakage_review_v1(value, task),
+	}
+}
+
+fn validate_leakage_review_v1(
+	value: Value,
+	task: &TaskDefinition,
+) -> Result<Value, Box<dyn Error>> {
+	let review: LeakageReviewV1 = serde_json::from_value(value)?;
+
+	if review.schema_version != "aiq.leakage-review.v1"
+		|| review.task_id != task.task_id
+		|| review.task_version != "1.0.7"
+		|| !review.reviewed
+		|| review.status != "reviewed"
+		|| review.leakage_notes != task.leakage_notes
+		|| review.leakage_notes.is_empty()
+	{
+		return Err("legacy 1.0.7 leakage review does not match the frozen task".into());
+	}
+
+	Ok(serde_json::to_value(review)?)
+}
+
+fn validate_leakage_review_v2(
+	value: Value,
+	options: &SealOptions,
+	prepared: &PreparedSeal,
+	task: &TaskDefinition,
+	task_definition_sha256: &str,
+	catalog_entry_sha256: &str,
+) -> Result<Value, Box<dyn Error>> {
+	validate_leakage_review_v2_against(
+		value,
+		&LeakageReviewV2Bindings {
+			task_id: &task.task_id,
+			source_commit: &options.source_commit,
+			source_tree: &options.source_tree,
+			source_manifest_sha256: &prepared.source_manifest_sha256,
+			task_definition_sha256,
+			catalog_entry_sha256,
+		},
+	)
+}
+
+fn validate_leakage_review_v2_against(
+	value: Value,
+	bindings: &LeakageReviewV2Bindings<'_>,
+) -> Result<Value, Box<dyn Error>> {
+	let review: LeakageReviewV2 = serde_json::from_value(value)?;
+	let notes = review.notes.iter().map(String::as_str).collect::<BTreeSet<_>>();
+
+	if review.schema_version != "aiq.leakage-review.v2"
+		|| !valid_review_identity(&review.review_id)
+		|| review.task_id != bindings.task_id
+		|| review.task_version != CANDIDATE_TASK_SET_VERSION
+		|| !valid_review_identity(&review.reviewer_identity)
+		|| !valid_review_identity(&review.reviewer_task_identity)
+		|| review.reviewer_identity == review.reviewer_task_identity
+		|| review.reviewed_at.parse::<Timestamp>().is_err()
+		|| review.source.source_commit != bindings.source_commit
+		|| review.source.source_tree != bindings.source_tree
+		|| review.source.source_manifest_sha256 != bindings.source_manifest_sha256
+		|| review.task_definition_sha256 != bindings.task_definition_sha256
+		|| review.catalog_entry_sha256 != bindings.catalog_entry_sha256
+		|| review.verdict != "approved"
+		|| !valid_review_text(&review.method)
+		|| !valid_review_text(&review.scope)
+		|| review.notes.is_empty()
+		|| notes.len() != review.notes.len()
+		|| review.notes.iter().any(|note| !valid_review_text(note))
+	{
+		return Err(format!(
+			"supplied leakage review v2 does not exactly bind task {}",
+			bindings.task_id
+		)
+		.into());
+	}
+
+	Ok(serde_json::to_value(review)?)
+}
+
+fn valid_review_identity(value: &str) -> bool {
+	(1..=256).contains(&value.len())
+		&& value.bytes().all(|byte| {
+			byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b'/' | b':')
+		})
+}
+
+fn valid_review_text(value: &str) -> bool {
+	let trimmed = value.trim();
+
+	!trimmed.is_empty() && trimmed == value && value.len() <= 4_096
 }
 
 fn write_shared_assets(output: &Path, prepared: &PreparedSeal) -> Result<(), Box<dyn Error>> {
@@ -818,56 +1101,98 @@ fn derive_execution(prepared: &PreparedSeal) -> Result<DerivedExecution, Box<dyn
 	})
 }
 
+fn derive_authoring_tree_digests(
+	prepared: &PreparedSeal,
+) -> Result<AuthoringTreeDigests, Box<dyn Error>> {
+	Ok(AuthoringTreeDigests {
+		tasks: protocol::canonical_hash(&controlled_tree(&prepared.tasks_root)?)?,
+		baselines: protocol::canonical_hash(&controlled_tree(&prepared.baselines_root)?)?,
+		acceptance: protocol::canonical_hash(&controlled_tree(&prepared.acceptance_root)?)?,
+		leakage_reviews: protocol::canonical_hash(&controlled_tree(
+			&prepared.leakage_reviews_root,
+		)?)?,
+		evaluator: protocol::canonical_hash(&controlled_tree(&prepared.evaluator_root)?)?,
+		toolchain: protocol::canonical_hash(&controlled_tree(&prepared.toolchain_root)?)?,
+		runtime_authority: protocol::canonical_hash(&prepared.authority)?,
+	})
+}
+
+fn build_authoring_input_manifest(
+	options: &SealOptions,
+	prepared: &PreparedSeal,
+	expected: &BTreeMap<String, Vec<String>>,
+	observed: &BTreeMap<String, Vec<String>>,
+	digests: &AuthoringTreeDigests,
+) -> Result<Value, Box<dyn Error>> {
+	match options.corpus_kind {
+		CorpusKind::Core => Ok(serde_json::json!({
+			"schema_version":"aiq.corpus-authoring-input.v2",
+			"corpus_kind":"core",
+			"release_id":options.release_id,
+			"source_commit":options.source_commit,
+			"source_tree":options.source_tree,
+			"task_count":prepared.tasks.len(),
+			"catalog_identity_sha256":prepared.catalog_identity_sha256,
+			"fixture_applicability_authority":"catalog_exact_per_task",
+			"expected_acceptance_classes_by_task":expected,
+			"observed_acceptance_classes_by_task":observed,
+			"acceptance_classes_exact_match":true,
+			"leakage_review_schema_version":"aiq.leakage-review.v2",
+			"tasks_tree_sha256":digests.tasks,
+			"baselines_tree_sha256":digests.baselines,
+			"acceptance_tree_sha256":digests.acceptance,
+			"leakage_reviews_tree_sha256":digests.leakage_reviews,
+			"evaluator_tree_sha256":digests.evaluator,
+			"toolchain_tree_sha256":digests.toolchain,
+			"source_manifest_sha256":prepared.source_manifest_sha256,
+			"runtime_authority_sha256":digests.runtime_authority,
+		})),
+		CorpusKind::Contrast => {
+			let policy = options.corpus_kind.legacy_acceptance_policy().expect("contrast policy");
+
+			Ok(serde_json::to_value(AuthoringInputManifest {
+				schema_version: "aiq.corpus-authoring-input.v1",
+				corpus_kind: options.corpus_kind,
+				release_id: &options.release_id,
+				source_commit: &options.source_commit,
+				source_tree: &options.source_tree,
+				task_count: prepared.tasks.len(),
+				acceptance_required_classes: policy.required,
+				acceptance_optional_classes: policy.optional,
+				acceptance_classes_by_task: observed,
+				tasks_tree_sha256: digests.tasks.clone(),
+				baselines_tree_sha256: digests.baselines.clone(),
+				acceptance_tree_sha256: digests.acceptance.clone(),
+				evaluator_tree_sha256: digests.evaluator.clone(),
+				toolchain_tree_sha256: digests.toolchain.clone(),
+				source_manifest_sha256: prepared.source_manifest_sha256.clone(),
+				runtime_authority_sha256: digests.runtime_authority.clone(),
+			})?)
+		},
+	}
+}
+
 fn write_authoring_documents(
 	options: &SealOptions,
 	output: &Path,
 	prepared: &PreparedSeal,
 	task_commitments: &[TaskCommitment],
-	acceptance_classes_by_task: &BTreeMap<String, Vec<String>>,
+	expected_acceptance_classes_by_task: &BTreeMap<String, Vec<String>>,
+	observed_acceptance_classes_by_task: &BTreeMap<String, Vec<String>>,
 ) -> Result<(String, String), Box<dyn Error>> {
-	let acceptance_policy = options.corpus_kind.acceptance_policy();
-	let input_manifest = AuthoringInputManifest {
-		schema_version: "aiq.corpus-authoring-input.v1",
-		corpus_kind: options.corpus_kind,
-		release_id: &options.release_id,
-		source_commit: &options.source_commit,
-		source_tree: &options.source_tree,
-		task_count: prepared.tasks.len(),
-		acceptance_required_classes: acceptance_policy.required,
-		acceptance_optional_classes: acceptance_policy.optional,
-		acceptance_classes_by_task,
-		tasks_tree_sha256: protocol::canonical_hash(&controlled_tree(&prepared.tasks_root)?)?,
-		baselines_tree_sha256: protocol::canonical_hash(&controlled_tree(
-			&prepared.baselines_root,
-		)?)?,
-		acceptance_tree_sha256: protocol::canonical_hash(&controlled_tree(
-			&prepared.acceptance_root,
-		)?)?,
-		evaluator_tree_sha256: protocol::canonical_hash(&controlled_tree(
-			&prepared.evaluator_root,
-		)?)?,
-		toolchain_tree_sha256: protocol::canonical_hash(&controlled_tree(
-			&prepared.toolchain_root,
-		)?)?,
-		source_manifest_sha256: prepared.source_manifest_sha256.clone(),
-		runtime_authority_sha256: protocol::canonical_hash(&prepared.authority)?,
-	};
+	let tree_digests = derive_authoring_tree_digests(prepared)?;
+	let input_manifest = build_authoring_input_manifest(
+		options,
+		prepared,
+		expected_acceptance_classes_by_task,
+		observed_acceptance_classes_by_task,
+		&tree_digests,
+	)?;
 	let input_manifest_sha256 = protocol::canonical_hash(&input_manifest)?;
 
 	write_canonical_json(&output.join("authoring-input.json"), &input_manifest)?;
 
-	let schema_paths = [
-		"benchmarks/schema/corpus-authoring-harness-v3.schema.json",
-		"benchmarks/schema/corpus-authoring-input-v1.schema.json",
-		"benchmarks/schema/corpus-runtime-authority-v1.schema.json",
-		"benchmarks/schema/corpus-seal-receipt-v1.schema.json",
-	];
-	let domain_schema_paths = [
-		"benchmarks/candidates/aiq-core-1.0.7/task.schema.json",
-		options.corpus_kind.catalog_path(),
-		"benchmarks/schema/corpus-commitment-v2.schema.json",
-		"benchmarks/schema/leakage-review-v1.schema.json",
-	];
+	let (schema_paths, domain_schema_paths) = authoring_schema_paths(options.corpus_kind);
 	let schema_digests = digest_source_paths(&prepared.source_root, &schema_paths)?;
 	let domain_schema_digests = digest_source_paths(&prepared.source_root, &domain_schema_paths)?;
 	let aggregate_sha256 = protocol::canonical_hash(&task_commitments)?;
@@ -879,37 +1204,101 @@ fn write_authoring_documents(
 		.ok_or("source inventory omits sealer source")?
 		.sha256
 		.clone();
-	let harness = HarnessManifest {
-		schema_version: options.corpus_kind.harness_schema(),
-		corpus_kind: options.corpus_kind,
-		task_count: prepared.tasks.len(),
-		acceptance_required_classes: acceptance_policy.required,
-		acceptance_optional_classes: acceptance_policy.optional,
-		acceptance_classes_by_task,
-		source_commit: &options.source_commit,
-		source_tree: &options.source_tree,
-		source_manifest_sha256: &prepared.source_manifest_sha256,
-		sealer_source_sha256,
-		input_contract_schema_sha256: schema_digests,
-		task_catalog_corpus_evaluator_schema_sha256: domain_schema_digests,
-		evaluator_sha256: &prepared.evaluator_sha256,
-		node_sha256: &prepared.node_sha256,
-		rg_sha256: &prepared.rg_sha256,
-		catalog_generator: &prepared.generator_authority,
-		algorithm_ids: [
-			"rfc8785-jcs-sha256",
-			"aiq.workspace-manifest.v1",
-			"aiq.controlled-tree.v1",
-			"sha256-raw-file-v1",
-			"aiq.runner-source-manifest.v1",
-		],
-		ordered_task_commitment_aggregate_sha256: aggregate_sha256,
+	let algorithm_ids = [
+		"rfc8785-jcs-sha256",
+		"aiq.workspace-manifest.v1",
+		"aiq.controlled-tree.v1",
+		"sha256-raw-file-v1",
+		"aiq.runner-source-manifest.v1",
+	];
+	let harness = match options.corpus_kind {
+		CorpusKind::Core => serde_json::json!({
+			"schema_version":options.corpus_kind.harness_schema(),
+			"corpus_kind":"core",
+			"task_count":prepared.tasks.len(),
+			"catalog_identity_sha256":prepared.catalog_identity_sha256,
+			"fixture_applicability_authority":"catalog_exact_per_task",
+			"expected_acceptance_classes_by_task":expected_acceptance_classes_by_task,
+			"observed_acceptance_classes_by_task":observed_acceptance_classes_by_task,
+			"acceptance_classes_exact_match":true,
+			"leakage_review_schema_version":"aiq.leakage-review.v2",
+			"leakage_reviews_tree_sha256":tree_digests.leakage_reviews,
+			"source_commit":options.source_commit,
+			"source_tree":options.source_tree,
+			"source_manifest_sha256":prepared.source_manifest_sha256,
+			"sealer_source_sha256":sealer_source_sha256,
+			"input_contract_schema_sha256":schema_digests,
+			"task_catalog_corpus_evaluator_schema_sha256":domain_schema_digests,
+			"evaluator_sha256":prepared.evaluator_sha256,
+			"node_sha256":prepared.node_sha256,
+			"rg_sha256":prepared.rg_sha256,
+			"catalog_generator":prepared.generator_authority,
+			"algorithm_ids":algorithm_ids,
+			"ordered_task_commitment_aggregate_sha256":aggregate_sha256,
+		}),
+		CorpusKind::Contrast => {
+			let policy = options.corpus_kind.legacy_acceptance_policy().expect("contrast policy");
+
+			serde_json::to_value(HarnessManifest {
+				schema_version: options.corpus_kind.harness_schema(),
+				corpus_kind: options.corpus_kind,
+				task_count: prepared.tasks.len(),
+				acceptance_required_classes: policy.required,
+				acceptance_optional_classes: policy.optional,
+				acceptance_classes_by_task: observed_acceptance_classes_by_task,
+				source_commit: &options.source_commit,
+				source_tree: &options.source_tree,
+				source_manifest_sha256: &prepared.source_manifest_sha256,
+				sealer_source_sha256,
+				input_contract_schema_sha256: schema_digests,
+				task_catalog_corpus_evaluator_schema_sha256: domain_schema_digests,
+				evaluator_sha256: &prepared.evaluator_sha256,
+				node_sha256: &prepared.node_sha256,
+				rg_sha256: &prepared.rg_sha256,
+				catalog_generator: &prepared.generator_authority,
+				algorithm_ids,
+				ordered_task_commitment_aggregate_sha256: aggregate_sha256,
+			})?
+		},
 	};
 	let harness_sha256 = protocol::canonical_hash(&harness)?;
 
 	write_canonical_json(&output.join("harness.json"), &harness)?;
 
 	Ok((input_manifest_sha256, harness_sha256))
+}
+
+fn authoring_schema_paths(kind: CorpusKind) -> (Vec<&'static str>, Vec<&'static str>) {
+	match kind {
+		CorpusKind::Core => (
+			vec![
+				"benchmarks/schema/corpus-authoring-harness-v4.schema.json",
+				"benchmarks/schema/corpus-authoring-input-v2.schema.json",
+				"benchmarks/schema/corpus-runtime-authority-v1.schema.json",
+				"benchmarks/schema/corpus-seal-receipt-v1.schema.json",
+			],
+			vec![
+				candidate_catalog::CANDIDATE_TASK_SCHEMA_PATH,
+				candidate_catalog::CANDIDATE_CATALOG_PATH,
+				"benchmarks/schema/corpus-commitment-v3.schema.json",
+				"benchmarks/schema/leakage-review-v2.schema.json",
+			],
+		),
+		CorpusKind::Contrast => (
+			vec![
+				"benchmarks/schema/corpus-authoring-harness-v3.schema.json",
+				"benchmarks/schema/corpus-authoring-input-v1.schema.json",
+				"benchmarks/schema/corpus-runtime-authority-v1.schema.json",
+				"benchmarks/schema/corpus-seal-receipt-v1.schema.json",
+			],
+			vec![
+				"benchmarks/candidates/aiq-core-1.0.7/task.schema.json",
+				CONTRAST_CATALOG,
+				"benchmarks/schema/corpus-commitment-v2.schema.json",
+				"benchmarks/schema/leakage-review-v1.schema.json",
+			],
+		),
+	}
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -923,7 +1312,7 @@ fn write_commitment_and_receipt(
 	harness_sha256: &str,
 ) -> Result<String, Box<dyn Error>> {
 	let commitment = serde_json::json!({
-		"schema_version":"aiq.corpus-commitment.v2","release_id":options.release_id,
+		"schema_version":options.corpus_kind.commitment_schema(),"release_id":options.release_id,
 		"controlled":true,"synthetic":false,
 		"catalog":{"schema_version":prepared.catalog.schema_version,"task_set_id":prepared.catalog.task_set_id,"task_set_version":prepared.catalog.task_set_version,"identity_sha256":prepared.catalog_identity_sha256,"identity_scope":prepared.catalog_identity_scope},
 		"execution":{"harness_sha256":harness_sha256,"runner_prompt_source_sha256":execution.runner_prompt_sha256,"declared_tool_policy_sha256":execution.tool_policy_sha256,"declared_network_policy_sha256":execution.network_policy_sha256,"environment_sha256":execution.environment_sha256,"runtime_provenance":execution.runtime_provenance},
@@ -988,7 +1377,7 @@ fn validate_sealed_output(
 	}
 
 	let corpus = match kind {
-		CorpusKind::Core => corpus_commitment::validate_core_corpus_commitment(
+		CorpusKind::Core => corpus_commitment::validate_candidate_core_corpus_commitment_v1_1_0(
 			&output.join("commitment.json"),
 			&report.tasks,
 			&output.join("source-snapshot"),
@@ -1057,6 +1446,9 @@ fn validate_sealed_asset_digests(
 			&output.join("leakage-reviews").join(format!("{}.json", task.task_id)),
 			MAX_FILE_BYTES,
 		)?;
+
+		validate_copied_review_version(&task.task_id, &task.task_version, &leakage)?;
+
 		let leakage = protocol::canonical_hash(&leakage)?;
 
 		if fixture != task.fixture_bundle_sha256
@@ -1065,6 +1457,41 @@ fn validate_sealed_asset_digests(
 		{
 			return Err("sealed fixture, acceptance, or leakage-review digest mismatch".into());
 		}
+	}
+
+	Ok(())
+}
+
+fn validate_copied_review_version(
+	task_id: &str,
+	task_version: &str,
+	value: &Value,
+) -> Result<(), Box<dyn Error>> {
+	match task_version {
+		"1.0.7" => {
+			let review: LeakageReviewV1 = serde_json::from_value(value.clone())?;
+
+			if review.schema_version != "aiq.leakage-review.v1"
+				|| review.task_id != task_id
+				|| review.task_version != task_version
+				|| !review.reviewed
+				|| review.status != "reviewed"
+			{
+				return Err("frozen 1.0.7 leakage review is invalid".into());
+			}
+		},
+		"1.1.0" => {
+			let review: LeakageReviewV2 = serde_json::from_value(value.clone())?;
+
+			if review.schema_version != "aiq.leakage-review.v2"
+				|| review.task_id != task_id
+				|| review.task_version != task_version
+				|| review.verdict != "approved"
+			{
+				return Err("AIQ Core 1.1.0 leakage review is invalid".into());
+			}
+		},
+		_ => return Err("unsupported leakage-review task version".into()),
 	}
 
 	Ok(())
@@ -1234,6 +1661,7 @@ fn copy_executable_mode(source: &Path, destination: &Path) -> Result<(), Box<dyn
 fn copy_executable_mode(_source: &Path, _destination: &Path) -> Result<(), Box<dyn Error>> {
 	Ok(())
 }
+
 fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
 	if let Some(parent) = path.parent() {
 		fs::create_dir_all(parent)?;
@@ -1246,9 +1674,11 @@ fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
 
 	Ok(())
 }
+
 fn write_canonical_json(path: &Path, value: &impl Serialize) -> Result<(), Box<dyn Error>> {
 	write_bytes(path, &canonical_bytes(value)?)
 }
+
 fn canonical_bytes(value: &impl Serialize) -> Result<Vec<u8>, Box<dyn Error>> {
 	let value = serde_json::to_value(value)?;
 
@@ -1261,6 +1691,7 @@ where
 {
 	Ok(serde_json::from_slice(&read_regular_bounded(path, maximum)?)?)
 }
+
 fn read_regular_bounded(path: &Path, maximum: u64) -> Result<Vec<u8>, Box<dyn Error>> {
 	let before = fs::symlink_metadata(path)?;
 
@@ -1307,12 +1738,15 @@ fn read_regular_bounded(path: &Path, maximum: u64) -> Result<Vec<u8>, Box<dyn Er
 
 	Ok(bytes)
 }
+
 fn raw_file_sha256(path: &Path) -> Result<String, Box<dyn Error>> {
 	raw_file_sha256_bounded(path, MAX_FILE_BYTES)
 }
+
 fn raw_file_sha256_bounded(path: &Path, maximum: u64) -> Result<String, Box<dyn Error>> {
 	Ok(raw_sha256(&read_regular_bounded(path, maximum)?))
 }
+
 fn raw_sha256(bytes: &[u8]) -> String {
 	format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
@@ -1326,6 +1760,7 @@ fn canonical_directory(path: &Path, label: &str) -> Result<PathBuf, Box<dyn Erro
 
 	Ok(fs::canonicalize(path)?)
 }
+
 fn validate_relative_path(path: &str) -> Result<(), Box<dyn Error>> {
 	if path.is_empty()
 		|| path.len() > 240
@@ -1342,6 +1777,7 @@ fn validate_relative_path(path: &str) -> Result<(), Box<dyn Error>> {
 
 	Ok(())
 }
+
 fn validate_token(value: &str, label: &str) -> Result<(), Box<dyn Error>> {
 	if value.is_empty()
 		|| value.len() > 128
@@ -1354,6 +1790,7 @@ fn validate_token(value: &str, label: &str) -> Result<(), Box<dyn Error>> {
 
 	Ok(())
 }
+
 fn validate_git_identity(value: &str, label: &str) -> Result<(), Box<dyn Error>> {
 	if value.len() != 40
 		|| !value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
@@ -1417,6 +1854,7 @@ fn validate_git_source_identity(
 
 	Ok(())
 }
+
 fn host_platform() -> Result<(&'static str, &'static str, &'static str), Box<dyn Error>> {
 	let platform = match OS {
 		"macos" => "darwin",
@@ -1455,22 +1893,37 @@ fn validate_runtime_authority(value: &RuntimeAuthority) -> Result<(), Box<dyn Er
 
 	Ok(())
 }
+
 fn validate_catalog(
 	kind: CorpusKind,
 	catalog: &Catalog,
+	candidate: Option<&CandidateCatalogAuthority>,
 	tasks: &mut [TaskDefinition],
 ) -> Result<(String, String), Box<dyn Error>> {
-	let (schema, id) = match kind {
-		CorpusKind::Core => ("aiq.catalog.v1", "aiq-core"),
-		CorpusKind::Contrast => ("aiq.contrast-corpus.v1", "aiq-core-contrast"),
+	let (schema, id, version) = match kind {
+		CorpusKind::Core => {
+			(CANDIDATE_CATALOG_SCHEMA_VERSION, "aiq-core", CANDIDATE_TASK_SET_VERSION)
+		},
+		CorpusKind::Contrast => ("aiq.contrast-corpus.v1", "aiq-core-contrast", "1.0.7"),
 	};
 
 	if catalog.schema_version != schema
 		|| catalog.task_set_id != id
-		|| catalog.task_set_version != "1.0.7"
+		|| catalog.task_set_version != version
 		|| catalog.tasks.len() != kind.task_count()
 	{
 		return Err("catalog does not match corpus kind".into());
+	}
+	if matches!(kind, CorpusKind::Core)
+		&& candidate.is_none_or(|authority| {
+			authority.task_metadata_digest
+				!= catalog
+					.task_metadata_identity
+					.as_ref()
+					.map(|identity| identity.digest.as_str())
+					.unwrap_or_default()
+		}) {
+		return Err("candidate catalog typed authority does not match its metadata digest".into());
 	}
 
 	let task_ids = tasks.iter().map(|v| v.task_id.as_str()).collect::<Vec<_>>();
@@ -1554,10 +2007,12 @@ fn validate_catalog_identity(
 
 	Ok((digest, scope))
 }
-fn validate_fixture_refs(task: &TaskDefinition) -> Result<(), Box<dyn Error>> {
+
+fn validate_fixture_refs(task: &TaskDefinition, kind: CorpusKind) -> Result<(), Box<dyn Error>> {
+	let version = kind.task_version();
 	let expected = BTreeSet::from([
-		format!("aiq-controlled-fixture://aiq-core/1.0.7/{}", task.task_id),
-		format!("aiq-controlled-acceptance://aiq-core/1.0.7/{}", task.task_id),
+		format!("aiq-controlled-fixture://aiq-core/{version}/{}", task.task_id),
+		format!("aiq-controlled-acceptance://aiq-core/{version}/{}", task.task_id),
 	]);
 
 	if task.fixture_refs.iter().cloned().collect::<BTreeSet<_>>() != expected
@@ -1570,10 +2025,8 @@ fn validate_fixture_refs(task: &TaskDefinition) -> Result<(), Box<dyn Error>> {
 
 	Ok(())
 }
-fn validate_acceptance_classes(
-	root: &Path,
-	policy: AcceptancePolicy,
-) -> Result<Vec<String>, Box<dyn Error>> {
+
+fn observe_acceptance_classes(root: &Path) -> Result<BTreeSet<String>, Box<dyn Error>> {
 	let root = canonical_directory(root, "acceptance task root")?;
 	let mut observed = BTreeSet::new();
 
@@ -1597,20 +2050,9 @@ fn validate_acceptance_classes(
 		}
 	}
 
-	let required = policy.required.iter().map(|value| (*value).to_owned()).collect::<BTreeSet<_>>();
-	let allowed = policy
-		.required
-		.iter()
-		.chain(policy.optional)
-		.map(|value| (*value).to_owned())
-		.collect::<BTreeSet<_>>();
-
-	if !required.is_subset(&observed) || !observed.is_subset(&allowed) {
-		return Err("acceptance suite does not satisfy the corpus-kind class policy".into());
-	}
-
-	Ok(observed.into_iter().collect())
+	Ok(observed)
 }
+
 fn digest_source_paths(
 	root: &Path,
 	paths: &[&str],
@@ -1632,10 +2074,10 @@ mod tests {
 	};
 
 	use crate::{
+		candidate_catalog,
 		corpus_seal::{
-			self, AcceptancePolicy, CONTRAST_REQUIRED_CLASSES, CORE_OPTIONAL_CLASSES,
-			CORE_REQUIRED_CLASSES, CorpusKind, LeakageReview, NO_OPTIONAL_CLASSES, SealOptions,
-			TEMP_SEQUENCE,
+			self, CorpusKind, LeakageReviewSource, LeakageReviewV2, LeakageReviewV2Bindings,
+			SealOptions, TEMP_SEQUENCE,
 		},
 		protocol, runner,
 		task::EvaluatorRuntimeKind,
@@ -1659,11 +2101,11 @@ mod tests {
 	}
 
 	#[test]
-	fn current_core_and_contrast_catalog_identities_validate() {
+	fn candidate_core_and_legacy_contrast_catalog_identities_validate() {
 		let root = repository_root();
 
 		for (kind, path) in [
-			(CorpusKind::Core, corpus_seal::CORE_CATALOG),
+			(CorpusKind::Core, candidate_catalog::CANDIDATE_CATALOG_PATH),
 			(CorpusKind::Contrast, corpus_seal::CONTRAST_CATALOG),
 		] {
 			let bytes = fs::read(root.join(path)).expect("catalog");
@@ -1679,7 +2121,8 @@ mod tests {
 
 	#[test]
 	fn current_core_catalog_reorders_an_exact_differently_ordered_id_set() {
-		let bytes = fs::read(repository_root().join(corpus_seal::CORE_CATALOG)).expect("catalog");
+		let bytes = fs::read(repository_root().join(candidate_catalog::CANDIDATE_CATALOG_PATH))
+			.expect("catalog");
 		let catalog: corpus_seal::Catalog = serde_json::from_slice(&bytes).expect("parse catalog");
 		let expected = catalog
 			.tasks
@@ -1721,7 +2164,8 @@ mod tests {
 			"config/schedule.example.json",
 			"config/verifier-environment.example.json",
 			"databases/schema.sql",
-			corpus_seal::CATALOG_GENERATOR,
+			candidate_catalog::CANDIDATE_CATALOG_GENERATOR_PATH,
+			corpus_seal::LEGACY_CATALOG_GENERATOR,
 			corpus_seal::SOURCE_INVENTORY,
 		] {
 			assert!(paths.contains(required), "source inventory omits {required}");
@@ -1753,69 +2197,94 @@ mod tests {
 	}
 
 	#[test]
-	fn acceptance_classes_are_kind_specific_and_core_allows_only_reviewed_optional_classes() {
+	fn acceptance_class_observation_is_exact_and_rejects_unsafe_entries() {
 		let root = temporary_root("classes");
 
-		for class in CORE_REQUIRED_CLASSES {
+		for class in ["gold", "empty"] {
 			fs::write(root.join(format!("{class}.json")), b"{}").expect("class");
 		}
 
-		let core_policy =
-			AcceptancePolicy { required: &CORE_REQUIRED_CLASSES, optional: &CORE_OPTIONAL_CLASSES };
-
 		assert_eq!(
-			corpus_seal::validate_acceptance_classes(&root, core_policy).expect("core classes"),
-			CORE_REQUIRED_CLASSES.map(str::to_owned)
+			corpus_seal::observe_acceptance_classes(&root).expect("observed classes"),
+			BTreeSet::from(["empty".to_owned(), "gold".to_owned()])
 		);
-
-		fs::write(root.join("empty.json"), b"{}").expect("optional class");
-
-		assert!(corpus_seal::validate_acceptance_classes(&root, core_policy).is_ok());
 
 		fs::write(root.join("unknown.json"), b"{}").expect("unknown class");
 
-		assert!(corpus_seal::validate_acceptance_classes(&root, core_policy).is_err());
+		assert_eq!(
+			corpus_seal::observe_acceptance_classes(&root).expect("unknown is observed"),
+			BTreeSet::from(["empty".to_owned(), "gold".to_owned(), "unknown".to_owned(),])
+		);
 
-		fs::remove_file(root.join("unknown.json")).expect("remove unknown class");
-		fs::remove_file(root.join("gold.json")).expect("remove required class");
+		#[cfg(unix)]
+		{
+			std::os::unix::fs::symlink(root.join("gold.json"), root.join("link.json"))
+				.expect("link");
 
-		assert!(corpus_seal::validate_acceptance_classes(&root, core_policy).is_err());
-
-		fs::remove_dir_all(root).expect("cleanup");
-
-		let contrast_root = temporary_root("contrast-classes");
-
-		for class in CONTRAST_REQUIRED_CLASSES {
-			fs::write(contrast_root.join(format!("{class}.json")), b"{}").expect("class");
+			assert!(corpus_seal::observe_acceptance_classes(&root).is_err());
 		}
 
-		let contrast_policy = AcceptancePolicy {
-			required: &CONTRAST_REQUIRED_CLASSES,
-			optional: &NO_OPTIONAL_CLASSES,
-		};
+		fs::remove_dir_all(root).expect("cleanup");
+	}
 
-		assert!(corpus_seal::validate_acceptance_classes(&contrast_root, contrast_policy).is_ok());
+	#[test]
+	fn catalog_fixture_authority_rejects_missing_and_extra_observed_classes() {
+		let expected = BTreeSet::from([
+			"adversarial_format".to_owned(),
+			"alternate_correct".to_owned(),
+			"gold".to_owned(),
+			"partial".to_owned(),
+		]);
 
-		fs::write(contrast_root.join("partial.json"), b"{}").expect("extra class");
+		assert!(
+			corpus_seal::validate_exact_acceptance_classes("coding-01", &expected, &expected)
+				.is_ok()
+		);
 
-		assert!(corpus_seal::validate_acceptance_classes(&contrast_root, contrast_policy).is_err());
+		let mut missing = expected.clone();
 
-		fs::remove_dir_all(contrast_root).expect("cleanup");
+		missing.remove("partial");
+
+		assert!(
+			corpus_seal::validate_exact_acceptance_classes("coding-01", &expected, &missing)
+				.is_err()
+		);
+
+		let mut extra = expected.clone();
+
+		extra.insert("timeout".to_owned());
+
+		assert!(
+			corpus_seal::validate_exact_acceptance_classes("coding-01", &expected, &extra).is_err()
+		);
 	}
 
 	#[test]
 	fn canonical_preimages_are_deterministic_and_tamper_evident() {
-		let first_notes = ["reviewed".to_owned()];
-		let second_notes = ["changed".to_owned()];
-		let first = LeakageReview {
-			schema_version: "aiq.leakage-review.v1",
-			task_id: "coding-01",
-			task_version: "1.0.7",
-			reviewed: true,
-			status: "reviewed",
-			leakage_notes: &first_notes,
+		let first = LeakageReviewV2 {
+			schema_version: "aiq.leakage-review.v2".to_owned(),
+			review_id: "review-coding-01".to_owned(),
+			task_id: "coding-01".to_owned(),
+			task_version: "1.1.0".to_owned(),
+			reviewer_identity: "reviewer-1".to_owned(),
+			reviewer_task_identity: "thread-1".to_owned(),
+			reviewed_at: "2026-08-28T12:00:00Z".to_owned(),
+			source: LeakageReviewSource {
+				source_commit: "a".repeat(40),
+				source_tree: "b".repeat(40),
+				source_manifest_sha256: format!("sha256:{}", "c".repeat(64)),
+			},
+			task_definition_sha256: format!("sha256:{}", "d".repeat(64)),
+			catalog_entry_sha256: format!("sha256:{}", "e".repeat(64)),
+			verdict: "approved".to_owned(),
+			method: "Independent comparison with the controlled task source.".to_owned(),
+			scope: "Prompt, fixtures, evaluator behavior, and public metadata.".to_owned(),
+			notes: vec!["No disallowed disclosure was identified.".to_owned()],
 		};
-		let second = LeakageReview { leakage_notes: &second_notes, ..first };
+		let second = LeakageReviewV2 {
+			notes: vec!["The review notes changed.".to_owned()],
+			..first.clone()
+		};
 
 		assert_eq!(
 			corpus_seal::canonical_bytes(&first).expect("first"),
@@ -1825,6 +2294,101 @@ mod tests {
 			protocol::canonical_hash(&first).expect("first hash"),
 			protocol::canonical_hash(&second).expect("second hash")
 		);
+	}
+
+	fn leakage_review_v2_value() -> serde_json::Value {
+		serde_json::json!({
+			"schema_version":"aiq.leakage-review.v2",
+			"review_id":"review-coding-01",
+			"task_id":"coding-01",
+			"task_version":"1.1.0",
+			"reviewer_identity":"reviewer-1",
+			"reviewer_task_identity":"thread-1",
+			"reviewed_at":"2026-08-28T12:00:00Z",
+			"source":{
+				"source_commit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"source_tree":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"source_manifest_sha256":format!("sha256:{}", "c".repeat(64)),
+			},
+			"task_definition_sha256":format!("sha256:{}", "d".repeat(64)),
+			"catalog_entry_sha256":format!("sha256:{}", "e".repeat(64)),
+			"verdict":"approved",
+			"method":"Independent comparison with the controlled task source.",
+			"scope":"Prompt, fixtures, evaluator behavior, and public metadata.",
+			"notes":["No disallowed disclosure was identified."],
+		})
+	}
+
+	#[test]
+	fn leakage_review_v2_rejects_missing_extra_stale_and_mismatched_records() {
+		let source_manifest = format!("sha256:{}", "c".repeat(64));
+		let task_definition = format!("sha256:{}", "d".repeat(64));
+		let catalog_entry = format!("sha256:{}", "e".repeat(64));
+		let bindings = LeakageReviewV2Bindings {
+			task_id: "coding-01",
+			source_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			source_tree: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			source_manifest_sha256: &source_manifest,
+			task_definition_sha256: &task_definition,
+			catalog_entry_sha256: &catalog_entry,
+		};
+
+		assert!(
+			corpus_seal::validate_leakage_review_v2_against(leakage_review_v2_value(), &bindings,)
+				.is_ok()
+		);
+
+		for mutation in 0..10 {
+			let mut changed = leakage_review_v2_value();
+
+			match mutation {
+				0 => {
+					changed.as_object_mut().expect("review").remove("reviewer_identity");
+				},
+				1 => changed["extra"] = serde_json::json!(true),
+				2 => changed["source"]["source_commit"] = serde_json::json!("f".repeat(40)),
+				3 => {
+					changed["task_definition_sha256"] =
+						serde_json::json!(format!("sha256:{}", "f".repeat(64)))
+				},
+				4 => {
+					changed["catalog_entry_sha256"] =
+						serde_json::json!(format!("sha256:{}", "f".repeat(64)))
+				},
+				5 => changed["verdict"] = serde_json::json!("rejected"),
+				6 => changed["task_version"] = serde_json::json!("1.0.7"),
+				7 => changed["schema_version"] = serde_json::json!("aiq.leakage-review.v3"),
+				8 => changed["reviewer_task_identity"] = changed["reviewer_identity"].clone(),
+				_ => changed["notes"] = serde_json::json!([]),
+			}
+
+			assert!(
+				corpus_seal::validate_leakage_review_v2_against(changed, &bindings).is_err(),
+				"mutation {mutation} must fail"
+			);
+		}
+	}
+
+	#[test]
+	fn leakage_review_directory_requires_exactly_one_file_per_task() {
+		let root = temporary_root("review-file-set");
+		let tasks = runner::synthetic_demo_tasks().into_iter().take(2).collect::<Vec<_>>();
+
+		for task in &tasks {
+			fs::write(root.join(format!("{}.json", task.task_id)), b"{}").expect("review");
+		}
+
+		assert!(corpus_seal::validate_review_file_set(&root, &tasks).is_ok());
+
+		fs::remove_file(root.join(format!("{}.json", tasks[0].task_id))).expect("remove");
+
+		assert!(corpus_seal::validate_review_file_set(&root, &tasks).is_err());
+
+		fs::write(root.join("extra.json"), b"{}").expect("extra");
+
+		assert!(corpus_seal::validate_review_file_set(&root, &tasks).is_err());
+
+		fs::remove_dir_all(root).expect("cleanup");
 	}
 
 	#[test]
@@ -1918,7 +2482,11 @@ mod tests {
 		fs::create_dir_all(leakage.parent().expect("leakage parent")).expect("leakage directory");
 		fs::write(baseline.join("fixture"), b"fixture").expect("fixture");
 		fs::write(acceptance.join("gold"), b"accepted").expect("acceptance");
-		fs::write(&leakage, br#"{"reviewed":true}"#).expect("leakage");
+		fs::write(
+			&leakage,
+			br#"{"schema_version":"aiq.leakage-review.v1","task_id":"task-1","task_version":"1.0.7","reviewed":true,"status":"reviewed","leakage_notes":["reviewed"]}"#,
+		)
+		.expect("leakage");
 
 		let commitment = corpus_seal::TaskCommitment {
 			task_id: "task-1".to_owned(),
@@ -2089,6 +2657,7 @@ mod tests {
 			tasks_root: root.join("missing"),
 			baselines_root: root.join("missing"),
 			acceptance_root: root.join("missing"),
+			leakage_reviews_root: root.join("missing"),
 			evaluator_root: root.join("missing"),
 			evaluator_runtime: root.join("missing"),
 			codex_toolchain_root: root.join("missing"),

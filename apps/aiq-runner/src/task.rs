@@ -798,10 +798,12 @@ pub(crate) fn is_fixture_reference(value: &str) -> bool {
 	}
 
 	for scheme in ["aiq-controlled-fixture://", "aiq-controlled-acceptance://"] {
-		if let Some(reference) = value.strip_prefix(scheme)
-			&& let Some(task_id) = reference.strip_prefix("aiq-core/1.0.7/")
-		{
-			return is_task_id(task_id);
+		if let Some(reference) = value.strip_prefix(scheme) {
+			for version in ["1.0.7", "1.1.0"] {
+				if let Some(task_id) = reference.strip_prefix(&format!("aiq-core/{version}/")) {
+					return is_task_id(task_id);
+				}
+			}
 		}
 	}
 
@@ -1300,6 +1302,8 @@ mod tests {
 			"repo://benchmarks/examples/tasks/public-example-coding.json",
 			"aiq-controlled-fixture://aiq-core/1.0.7/coding-01",
 			"aiq-controlled-acceptance://aiq-core/1.0.7/coding-01",
+			"aiq-controlled-fixture://aiq-core/1.1.0/coding-01",
+			"aiq-controlled-acceptance://aiq-core/1.1.0/coding-01",
 		] {
 			assert!(super::is_fixture_reference(reference), "{reference:?} must be accepted");
 		}
