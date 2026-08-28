@@ -49,10 +49,12 @@ under the active tuple.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
-  passed positive weight by total positive weight. The runner executes the
-  evaluator once for each sealed response and workspace. The independent
-  verifier executes it once again and compares the parsed result and exact raw
-  output digest without rounding or automatic retry-until-match.
+  passed positive weight by total positive weight. The runner commits only one
+  semantic evaluator result for each sealed response and workspace. A retryable
+  evaluator process failure keeps that evidence pending and reruns only the
+  evaluator on resume. The independent verifier executes the evaluator once and
+  compares the parsed result and exact raw output digest. It never rounds a
+  result or retries a semantic mismatch to obtain a match.
 - The source-head AIQ measurement contract is `2.0.0`: the Official ranking
   score is `100 × logistic(theta)` from the admitted fixed Rasch item bank;
   theta and its conditional Wald interval are reported separately from the raw
@@ -291,8 +293,10 @@ or to production.
 
 1. The runner validates the controlled corpus, toolchain, and capability
    manifest.
-2. It executes the selected tasks, runs each formal evaluator once against the
-   sealed model evidence, and writes content-addressed artifacts.
+2. It executes the selected tasks and runs each formal evaluator against the
+   sealed model evidence. A retryable evaluator process failure keeps the model
+   evidence pending for evaluator-only recovery. The runner writes
+   content-addressed artifacts.
 3. It scores the run, records efficiency evidence, and signs one v4 result
    package.
 4. `POST /api/submissions` stores the exact package bytes and queues the package
@@ -393,7 +397,8 @@ no indeterminate in-flight cell. A checkpoint with explicit subscription
 backpressure can also resume after the dispatch grace or 12-hour slot window;
 it reuses the exact admitted preflight and never replaces completed cells. Other
 checkpoints with sealed pending evaluator work can also resume that work after
-the window without another task-model invocation. An indeterminate model cell
+the window without another task-model invocation. This rule includes a retryable
+evaluator process failure. An indeterminate model cell
 still fails closed after all sealed pending evaluator work is recovered. Other
 late slots can continue only when the complete Official run output already
 exists and only scoring or publication remains. `aiq` recognizes that output
@@ -437,10 +442,12 @@ the four fixed `prod:/aiq` keys. It removes the provider session before it start
 a downstream step. Provider credentials and tokens do not reach workers. The
 orchestrator gives the signing key only to `package`, the submission token only
 to submission steps, and verifier credentials only to the verifier. Each owner
-uses a fresh isolated `CODEX_HOME` directory for the slot. A retryable slot retains
-checkpoints and raw artifacts. Checkpoint v10 distinguishes indeterminate model
-work from sealed pending evaluator work. The latter resumes from the same model
-response and workspace without another model invocation. Provider-declared subscription limits leave
+uses a fresh isolated `CODEX_HOME` directory for the slot. A retryable slot
+retains checkpoints and raw artifacts. Checkpoint v10 distinguishes
+indeterminate model work from sealed pending evaluator work. The latter resumes
+from the same model response and workspace without another model invocation. A
+retryable evaluator process failure stays in this pending state and cannot
+create a terminal run. Provider-declared subscription limits leave
 the affected cells pending under `aiq.subscription-backpressure.v1`; the runner
 also migrates v9 checkpoints to the v10 evaluator-resume shape and legacy v8
 checkpoints that incorrectly committed those limits as terminal results. On resume, `aiq` revalidates the permission

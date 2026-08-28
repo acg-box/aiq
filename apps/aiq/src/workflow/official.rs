@@ -329,7 +329,7 @@ fn run_inner(
 		Dispatch::Close => return Ok(Completion::MissedWindow),
 	};
 
-	if summary.non_semantic_results > 0 {
+	if !publication_ready(&summary) {
 		Ok(Completion::Unpublished(summary))
 	} else if is_published(paths)? {
 		Ok(Completion::Published)
@@ -418,4 +418,65 @@ fn unpublished_detail(summary: &RunSummary) -> String {
 		"Official preserved but not published: {}/{} non-semantic result(s){suffix}; no model rerun",
 		summary.non_semantic_results, summary.total_results
 	)
+}
+
+fn publication_ready(summary: &RunSummary) -> bool {
+	summary.total_results == OFFICIAL_RESULT_COUNT && summary.non_semantic_results == 0
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{collections::BTreeMap, env, fs, process};
+
+	use serde_json::Value;
+
+	use crate::{
+		Error, schedule,
+		workflow::{self, OFFICIAL_RESULT_COUNT, official},
+	};
+
+	#[test]
+	fn publication_requires_a_complete_semantic_official_matrix() {
+		assert!(official::publication_ready(&official::RunSummary {
+			total_results: OFFICIAL_RESULT_COUNT,
+			non_semantic_results: 0,
+			failure_kinds: BTreeMap::new(),
+		}));
+		assert!(!official::publication_ready(&official::RunSummary {
+			total_results: OFFICIAL_RESULT_COUNT - 1,
+			non_semantic_results: 0,
+			failure_kinds: BTreeMap::new(),
+		}));
+		assert!(!official::publication_ready(&official::RunSummary {
+			total_results: OFFICIAL_RESULT_COUNT,
+			non_semantic_results: 1,
+			failure_kinds: BTreeMap::from([("evaluator_failure".to_owned(), 1)]),
+		}));
+	}
+
+	#[test]
+	fn retryable_official_failure_retains_evaluator_recovery_state() {
+		let root =
+			env::temp_dir().join(format!("aiq-official-retryable-retention-{}", process::id()));
+		let _ = fs::remove_dir_all(&root);
+		let slot = schedule::scheduled_slot("2026-08-10T15-00Z").expect("slot");
+		let paths = workflow::slot_paths(&root, &slot);
+
+		workflow::prepare_slot_directories(&paths).expect("recovery directories");
+		fs::write(&paths.official.checkpoint, "pending evaluator\n").expect("checkpoint");
+		fs::write(paths.official.artifacts.join("retained"), "artifact\n").expect("artifact");
+		fs::write(paths.official.execution.join("retained"), "workspace\n").expect("workspace");
+		official::record_failure(&paths, &slot, &Error::new("retryable evaluator failure"))
+			.expect("retryable status");
+
+		let status = workflow::read_json_value(&paths.official.status, "Official status")
+			.expect("Official status");
+
+		assert_eq!(status.get("phase").and_then(Value::as_str), Some("retryable_failure"));
+		assert!(paths.official.checkpoint.is_file());
+		assert!(paths.official.artifacts.join("retained").is_file());
+		assert!(paths.official.execution.join("retained").is_file());
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
 }
