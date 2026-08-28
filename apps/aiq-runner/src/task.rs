@@ -962,7 +962,7 @@ mod tests {
 		collections::BTreeMap,
 		fs,
 		path::PathBuf,
-		process,
+		process, slice,
 		time::{SystemTime, UNIX_EPOCH},
 	};
 
@@ -1023,6 +1023,102 @@ mod tests {
 
 		assert_eq!(decoded, task);
 		assert!(decoded.validation_issues().is_empty());
+	}
+
+	#[test]
+	fn frozen_v1_evaluator_task_round_trips_with_identical_canonical_hashes() {
+		let configuration = serde_json::json!({
+			"schema_version": "aiq.evaluator-config.v1",
+			"checks": [{
+				"check_id": "scenario",
+				"type": "node_scenario",
+				"timeout_ms": 1_000,
+				"weight": 1
+			}]
+		});
+		let configuration_digest =
+			protocol::canonical_hash(&configuration).expect("legacy configuration hash");
+		let mut original = serde_json::to_value(fixture()).expect("fixture must serialize");
+
+		original["task_version"] = serde_json::json!("1.0.7");
+		original["budgets"] = serde_json::json!({
+			"wall_seconds": null,
+			"max_steps": null,
+			"max_tool_calls": null
+		});
+		original["catalog_entry_digest"] = serde_json::json!(format!("sha256:{}", "c".repeat(64)));
+		original["scorer_version"] = serde_json::json!("1.0.6");
+		original["visibility"] = serde_json::json!("hidden");
+		original["evaluator"] = serde_json::json!({
+			"kind": "repository_test_suite",
+			"external": {
+				"protocol_version": EVALUATOR_PROTOCOL_VERSION,
+				"scorer_version": "1.0.6",
+				"runtime_kind": "node",
+				"runtime_executable_digest": format!("sha256:{}", "b".repeat(64)),
+				"executable_ref": "bin/evaluator",
+				"executable_digest": format!("sha256:{}", "a".repeat(64)),
+				"configuration_digest": configuration_digest,
+				"arguments": [],
+				"timeout_ms": 300_000,
+				"max_input_bytes": 1_024,
+				"max_output_bytes": 1_024,
+				"configuration": configuration
+			}
+		});
+
+		let original_canonical_bytes =
+			protocol::canonical_json(&original).expect("legacy task canonical bytes");
+		let original_content_hash =
+			protocol::canonical_hash(&original).expect("legacy task canonical hash");
+		let parsed = super::parse_task(
+			"synthetic-legacy-v1.json",
+			Ok(serde_json::to_vec(&original).expect("legacy task bytes")),
+		)
+		.expect("frozen v1 evaluator task must parse");
+
+		assert!(parsed.validation_issues().is_empty());
+		assert_eq!(parsed.content_hash().expect("parsed task hash"), original_content_hash);
+
+		let serialized = serde_json::to_value(&parsed).expect("parsed task must serialize");
+
+		assert_eq!(
+			serialized
+				.pointer("/evaluator/external/timeout_ms")
+				.and_then(serde_json::Value::as_u64),
+			Some(300_000)
+		);
+		assert_eq!(
+			serialized
+				.pointer("/evaluator/external/configuration/checks/0/timeout_ms")
+				.and_then(serde_json::Value::as_u64),
+			Some(1_000)
+		);
+		assert_eq!(
+			protocol::canonical_json(&serialized).expect("serialized task canonical bytes"),
+			original_canonical_bytes
+		);
+		assert_eq!(
+			protocol::canonical_hash(&serialized).expect("serialized task canonical hash"),
+			original_content_hash
+		);
+
+		let expected_task_set_hash =
+			protocol::canonical_hash(&vec![original_content_hash]).expect("single-task set hash");
+
+		assert_eq!(
+			super::task_set_hash(slice::from_ref(&parsed)).expect("parsed task-set hash"),
+			expected_task_set_hash
+		);
+
+		let reparsed: TaskDefinition =
+			serde_json::from_value(serialized).expect("serialized legacy task must parse");
+
+		assert_eq!(reparsed, parsed);
+		assert_eq!(
+			super::task_set_hash(&[reparsed]).expect("reparsed task-set hash"),
+			expected_task_set_hash
+		);
 	}
 
 	#[test]
@@ -1273,6 +1369,7 @@ mod tests {
 				configuration_digest: protocol::canonical_hash(&configuration)
 					.expect("formal configuration must hash"),
 				arguments: Vec::new(),
+				timeout_ms: None,
 				max_input_bytes: 1_024,
 				max_output_bytes: 1_024,
 				configuration,

@@ -544,6 +544,7 @@ mod tests {
 			configuration_digest: protocol::canonical_hash(&configuration)
 				.expect("configuration hash"),
 			arguments: Vec::new(),
+			timeout_ms: None,
 			max_input_bytes: 64 * 1_024,
 			max_output_bytes: 64 * 1_024,
 			configuration,

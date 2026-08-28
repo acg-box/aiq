@@ -414,6 +414,7 @@ mod tests {
 			)
 			.expect("formal evaluator configuration hash"),
 			arguments: Vec::new(),
+			timeout_ms: None,
 			max_input_bytes: 1_024,
 			max_output_bytes: 1_024,
 			configuration: serde_json::from_value(serde_json::json!({

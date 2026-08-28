@@ -177,6 +177,7 @@ mod tests {
 				"aiq-evaluator-test".to_owned(),
 				output.to_owned(),
 			],
+			timeout_ms: None,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
 			configuration,
@@ -246,6 +247,7 @@ process.stdin.on('end', () => {{
 			configuration_digest: protocol::canonical_hash(&configuration)
 				.expect("formal configuration must hash"),
 			arguments: vec![result_json(true)],
+			timeout_ms: None,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
 			configuration,
@@ -624,6 +626,52 @@ process.stdin.on('end', () => {{
 		assert!(started.elapsed() >= Duration::from_millis(40));
 
 		fs::remove_dir_all(root).expect("no-deadline fixture cleanup");
+	}
+
+	#[test]
+	fn legacy_v1_deadlines_do_not_terminate_formal_evaluator_execution() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir()
+			.join(format!("aiq-evaluator-legacy-no-deadline-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluators");
+		let workspace = root.join("candidate");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let runtime = resolve_node_runtime(&root.join("runtime"));
+		let mut binding = with_configuration(
+			gate_test_binding(&evaluator_root, &runtime, 40),
+			serde_json::json!({
+				"schema_version": "aiq.evaluator-config.v1",
+				"checks": [{
+					"check_id": "repository_test",
+					"type": "json",
+					"timeout_ms": 1,
+					"weight": 1
+				}]
+			}),
+		);
+
+		binding.timeout_ms = Some(1);
+
+		assert!(binding.validation_issues("1.0.0").is_empty());
+
+		let started = Instant::now();
+		let result = evaluate_fixture_with_runtime(
+			&binding,
+			"candidate response",
+			&evaluator_root,
+			&workspace,
+			&runtime,
+		)
+		.expect("legacy evaluator work must run to natural completion");
+
+		assert_eq!(result.outcome, EvaluatorOutcome::Correct);
+		assert!(started.elapsed() >= Duration::from_millis(40));
+
+		fs::remove_dir_all(root).expect("legacy no-deadline fixture cleanup");
 	}
 
 	#[test]
@@ -1451,20 +1499,115 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn legacy_or_implicit_completion_configuration_is_rejected() {
+	fn v2_configuration_requires_explicit_natural_completion() {
 		for configuration in [
 			serde_json::json!({
-				"schema_version": "aiq.evaluator-config.v1",
-				"completion_policy": "natural_completion"
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION
 			}),
 			serde_json::json!({
-				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION
+				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "bounded"
 			}),
 		] {
 			let binding = with_configuration(echo_binding("{}"), configuration);
 
-			assert!(!binding.validation_issues("1.0.0").is_empty());
+			assert!(binding.validation_issues("1.0.0").iter().any(|issue| {
+				issue == "configuration completion_policy must be natural_completion"
+			}));
 		}
+	}
+
+	#[test]
+	fn v2_configuration_rejects_legacy_binding_timeout() {
+		let mut binding = echo_binding("{}");
+
+		assert!(
+			serde_json::to_value(&binding)
+				.expect("v2 binding must serialize")
+				.get("timeout_ms")
+				.is_none()
+		);
+
+		binding.timeout_ms = Some(1);
+
+		assert!(binding.validation_issues("1.0.0").iter().any(|issue| {
+			issue == "aiq.evaluator-config.v2 bindings must not declare timeout_ms"
+		}));
+	}
+
+	#[test]
+	fn legacy_v1_contract_rejects_malformed_deadlines_and_unknown_binding_fields() {
+		let configuration = serde_json::json!({
+			"schema_version": "aiq.evaluator-config.v1",
+			"checks": [{
+				"check_id": "scenario",
+				"type": "node_scenario",
+				"timeout_ms": 1,
+				"weight": 1
+			}]
+		});
+		let mut binding = with_configuration(echo_binding("{}"), configuration);
+
+		binding.timeout_ms = Some(1);
+
+		assert!(binding.validation_issues("1.0.0").is_empty());
+
+		for timeout_ms in [None, Some(0), Some(super::MAX_LEGACY_EVALUATOR_TIMEOUT_MS + 1)] {
+			let mut malformed = binding.clone();
+
+			malformed.timeout_ms = timeout_ms;
+
+			assert!(
+				malformed
+					.validation_issues("1.0.0")
+					.iter()
+					.any(|issue| { issue.contains("binding timeout_ms must be from 1 through") })
+			);
+		}
+		for timeout_ms in [
+			serde_json::json!(0),
+			serde_json::json!(-1),
+			serde_json::json!("1"),
+			serde_json::json!(super::MAX_LEGACY_EVALUATOR_TIMEOUT_MS + 1),
+		] {
+			let mut configuration = serde_json::to_value(&binding.configuration)
+				.expect("legacy configuration must serialize");
+
+			configuration["checks"][0]["timeout_ms"] = timeout_ms;
+
+			assert!(
+				with_configuration(binding.clone(), configuration)
+					.validation_issues("1.0.0")
+					.iter()
+					.any(|issue| issue.contains("timeout_ms must be a positive integer"))
+			);
+		}
+
+		let mut unsupported_alias = serde_json::to_value(&binding.configuration)
+			.expect("legacy configuration must serialize");
+
+		unsupported_alias["checks"][0]["deadline_ms"] = serde_json::json!(1);
+
+		assert!(
+			with_configuration(binding.clone(), unsupported_alias)
+				.validation_issues("1.0.0")
+				.iter()
+				.any(|issue| issue.contains("unsupported deadline field deadline_ms"))
+		);
+
+		let mut malformed_binding =
+			serde_json::to_value(&binding).expect("legacy binding must serialize");
+
+		malformed_binding["timeout_ms"] = serde_json::json!("1");
+
+		assert!(serde_json::from_value::<ExternalEvaluatorBinding>(malformed_binding).is_err());
+
+		let mut unknown_binding =
+			serde_json::to_value(&binding).expect("legacy binding must serialize");
+
+		unknown_binding["unexpected_deadline"] = serde_json::json!(1);
+
+		assert!(serde_json::from_value::<ExternalEvaluatorBinding>(unknown_binding).is_err());
 	}
 
 	#[test]
@@ -1904,9 +2047,12 @@ pub const MAX_EVALUATOR_CHECKS_PER_RESULT: usize = 16;
 /// The bound matches the complete 17-configuration AIQ model matrix.
 pub const MAX_PARALLEL_EXTERNAL_EVALUATORS: usize = 17;
 
+// Frozen evaluator configuration schema retained for signed AIQ Core 1.0.7 corpora.
+const LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION: &str = "aiq.evaluator-config.v1";
 const MAX_EVALUATOR_IO_BYTES: usize = 1_024 * 1_024;
 const MAX_EVALUATOR_CONFIG_BYTES: usize = 64 * 1_024;
 const MAX_EVALUATOR_ARGUMENTS: usize = 64;
+const MAX_LEGACY_EVALUATOR_TIMEOUT_MS: u64 = 300_000;
 const FORMAL_DEADLINE_FIELDS: [&str; 7] = [
 	"timeout_ms",
 	"timeout_seconds",
@@ -2133,6 +2279,11 @@ pub struct ExternalEvaluatorBinding {
 	/// Direct arguments. No shell parses these values.
 	#[serde(default)]
 	pub arguments: Vec<String>,
+	/// Frozen v1 deadline retained only for canonical task identity.
+	///
+	/// Formal evaluator execution ignores this value and runs to natural completion.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub timeout_ms: Option<u64>,
 	/// Maximum serialized evaluator input.
 	pub max_input_bytes: usize,
 	/// Maximum retained evaluator output for each stream.
@@ -2224,19 +2375,29 @@ impl ExternalEvaluatorBinding {
 	}
 
 	fn formal_completion_policy_issues(&self) -> Vec<String> {
+		match self.configuration.get("schema_version").and_then(Value::as_str) {
+			Some(EVALUATOR_CONFIG_SCHEMA_VERSION) => self.v2_completion_policy_issues(),
+			Some(LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION) => {
+				self.legacy_v1_completion_policy_issues()
+			},
+			_ => vec![format!(
+				"configuration schema_version must be {EVALUATOR_CONFIG_SCHEMA_VERSION} or the frozen {LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION} compatibility contract"
+			)],
+		}
+	}
+
+	fn v2_completion_policy_issues(&self) -> Vec<String> {
 		let mut issues = Vec::new();
 
-		if self.configuration.get("schema_version").and_then(Value::as_str)
-			!= Some(EVALUATOR_CONFIG_SCHEMA_VERSION)
-		{
-			issues.push(format!(
-				"configuration schema_version must be {EVALUATOR_CONFIG_SCHEMA_VERSION}"
-			));
-		}
 		if self.configuration.get("completion_policy").and_then(Value::as_str)
 			!= Some("natural_completion")
 		{
 			issues.push("configuration completion_policy must be natural_completion".to_owned());
+		}
+		if self.timeout_ms.is_some() {
+			issues.push(format!(
+				"{EVALUATOR_CONFIG_SCHEMA_VERSION} bindings must not declare timeout_ms"
+			));
 		}
 
 		for field in FORMAL_DEADLINE_FIELDS {
@@ -2262,6 +2423,83 @@ impl ExternalEvaluatorBinding {
 
 					issues.push(format!(
 						"configuration checks[{index}] {check_type} must not declare {field}"
+					));
+				}
+			}
+		}
+
+		issues
+	}
+
+	fn legacy_v1_completion_policy_issues(&self) -> Vec<String> {
+		let mut issues = Vec::new();
+
+		if !self
+			.timeout_ms
+			.is_some_and(|timeout_ms| (1..=MAX_LEGACY_EVALUATOR_TIMEOUT_MS).contains(&timeout_ms))
+		{
+			issues.push(format!(
+				"frozen {LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION} binding timeout_ms must be from 1 through {MAX_LEGACY_EVALUATOR_TIMEOUT_MS}"
+			));
+		}
+		if self
+			.configuration
+			.get("completion_policy")
+			.is_some_and(|policy| policy.as_str() != Some("natural_completion"))
+		{
+			issues.push(
+				"legacy configuration completion_policy, when present, must be natural_completion"
+					.to_owned(),
+			);
+		}
+
+		for field in FORMAL_DEADLINE_FIELDS {
+			if self.configuration.contains_key(field) {
+				issues.push(format!(
+					"frozen {LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION} configuration must not declare top-level deadline field {field}"
+				));
+			}
+		}
+
+		let Some(checks_value) = self.configuration.get("checks") else {
+			return issues;
+		};
+		let Some(checks) = checks_value.as_array() else {
+			issues
+				.push(format!("{LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION} checks must be an array"));
+
+			return issues;
+		};
+
+		for (index, check) in checks.iter().enumerate() {
+			let Some(check) = check.as_object() else {
+				issues.push(format!(
+					"{LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION} checks[{index}] must be an object"
+				));
+
+				continue;
+			};
+			let check_type = check.get("type").and_then(Value::as_str).unwrap_or("check");
+
+			if let Some(timeout) = check.get("timeout_ms")
+				&& !timeout.as_u64().is_some_and(|timeout_ms| {
+					(1..=MAX_LEGACY_EVALUATOR_TIMEOUT_MS).contains(&timeout_ms)
+				}) {
+				issues.push(format!(
+					"configuration checks[{index}] {check_type} timeout_ms must be a positive integer no greater than {MAX_LEGACY_EVALUATOR_TIMEOUT_MS}"
+				));
+			}
+
+			if check_type == "node_scenario" && !check.contains_key("timeout_ms") {
+				issues.push(format!(
+					"configuration checks[{index}] node_scenario timeout_ms must be present"
+				));
+			}
+
+			for field in FORMAL_DEADLINE_FIELDS {
+				if field != "timeout_ms" && check.contains_key(field) {
+					issues.push(format!(
+						"frozen {LEGACY_EVALUATOR_CONFIG_SCHEMA_VERSION} configuration checks[{index}] {check_type} must not declare unsupported deadline field {field}"
 					));
 				}
 			}
