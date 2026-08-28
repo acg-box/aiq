@@ -151,21 +151,25 @@ or legacy data.
 
 ## AIQ Core 1.1.0 source foundation
 
-The repository also contains a side-by-side AIQ Core `1.1.0` source
-foundation. It does not change the sole active production tuple above. It is
-not an authored corpus, a sealed candidate, a qualification result, a release,
+The repository also contains the side-by-side frozen source for
+`aiq-core/1.1.0-candidate.3`. It does not change the sole active production
+tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. The catalog records one explicit retained or revised decision
-for each of the 72 predecessor task entries. Its current draft has 60
-within-domain clusters, with at most two tasks per cluster. The retained private
-1.0.7 harness observed `empty` for 57 tasks and `timeout` for four tasks, but the
-public source does not contain the private task-to-class mapping. The draft
-therefore records those two classes as `pending_private_reconciliation` for
-every task and blocks sealing. A future candidate identity must replace each
-pending value with `required` or `not_applicable`. The sealer then requires the
-observed controlled class set to equal the catalog declaration exactly.
+`aiq.catalog.v2`. The catalog records 65 candidate.2 review-approved semantic
+retentions and seven revised tool-use tasks. It has 72 distinct within-domain
+clusters. Every task requires `gold`, `alternate_correct`, `partial`,
+`adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
+completion. The catalog is the sole expected-class authority.
+
+Candidate.2 is immutable rejected, permanently non-sealable predecessor
+evidence. Candidate.3 closes exactly 14 predecessor issues. For each tool-use
+task, the public metadata discloses the complete eight-field `receipt.json`
+contract and the runner/tool producer boundary. Candidate.3 remains inactive
+and not production-publishable. Independent review, sealing, calibration,
+qualification, release, activation, deployment, and production acceptance are
+pending.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
 `aiq.leakage-review.v2` record for every task. Each record binds the reviewer,
