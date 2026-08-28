@@ -150,21 +150,50 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.4`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.6`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-Candidates.1, .2, and .3 are immutable rejected and permanently non-sealable.
-The candidate.3 isolated review has aggregate digest
-`sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2`
-and raw receipt digest
-`sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974`.
-It approved 65 task semantics and rejected the seven tool-use tasks. Candidate.4
-retains the 65 approved semantics and revises only those seven evidence
-bindings. It retains all 14 valid candidate.2 closure entries and adds exactly
-21 candidate.3 closure entries for `BEHAVIORAL_COVERAGE_GAP`,
-`PUBLIC_PRIVATE_CONSTRUCT_MISMATCH`, and `TOOL_EVIDENCE_UNBOUND`.
+The candidate.6 public identities are:
+
+- canonical catalog:
+  `sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170`;
+- ordered task metadata:
+  `sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95`;
+- public release:
+  `sha256:367dd82c1bfe282f5b2c408d0058a14ac76429c2f8f276ffb30c97b8f18ee839`.
+
+Candidates.1 through .5 are immutable rejected and permanently non-sealable.
+Candidate.5 retains its model-free authoring evidence and all task semantics,
+but its source integration is rejected. Its catalog declared task-metadata
+identity
+`sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4`,
+while the Rust candidate commitment consumer and public v3 schema required the
+stale identity
+`sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6`.
+The sealer writes the catalog identity and immediately validates through that
+consumer, so candidate.5 cannot complete a positive seal round trip.
+
+Candidate.6 preserves all 72 candidate.5 task-facing semantics. Its public
+semantic projection commitment is
+`sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54`.
+The Rust validator derives candidate identity from the validated embedded
+catalog. The public commitment schema binds the same identity. Source tests
+exercise the positive catalog-to-commitment round trip and reject both stale
+identities.
+
+Each revised task discloses a distinct `input.json` scenario contract, one
+deterministic domain operation, and one task-specific semantic result contract.
+The seven operation signatures have different consumed fields, produced fields,
+state models, transitions, invariants, and error paths. Each task also declares
+a metamorphic basis for all task-specific scenario fields. The authoring proof
+must run all 42 cross-task supplied-tool substitutions. A failure caused only
+by a changed receipt is not behavior evidence.
+
+Candidate.6 preserves the exact 42 candidate.5 task-issue closures. The
+`CANDIDATE_CATALOG_COMMITMENT_IDENTITY_DRIFT` repair is one separate
+source-integrity closure and does not count toward those 42 entries.
 
 Each tool-use contract keeps the complete eight-field `receipt.json` contract.
 The supplied local tool writes that receipt. Receipt `command_sha256` identifies
@@ -188,7 +217,7 @@ behavior.
 Each task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
 candidate uses natural completion. The catalog is the sole expected-class
-authority. It is frozen for a fresh independent review, but it is inactive and
+authority. Candidate.6 is frozen for a fresh independent review, but it is inactive and
 not production-publishable. Fresh review, double sealing, three complete
 qualification matrices, qualification, adoption, and cutover are pending.
 
@@ -210,9 +239,9 @@ The candidate contracts are:
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.3 review records do not satisfy
-candidate.4. The sealer requires one fresh matching record for each exact
-candidate.4 task and catalog entry. It does not infer review completion from
+verdict, method, scope, and notes. Candidate.5 evidence does not satisfy
+candidate.6. The sealer requires one fresh matching record for each exact
+candidate.6 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification uses three complete matrices only. It reports all three pairwise
@@ -222,7 +251,7 @@ comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the candidate.4 public source without private inputs:
+Regenerate and test the candidate.6 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts
