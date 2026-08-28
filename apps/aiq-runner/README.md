@@ -147,9 +147,11 @@ evidence in `aiq.run-provenance.v3`, including separate digests for the Codex
 executable and code-mode host.
 
 Each adapter-invoked result records separate runner-observed model and evaluator
-elapsed time as `latency.wall_ms` and `latency.evaluator_ms`. The runner executes the formal evaluator once against the sealed
-response and workspace, records the parsed result and exact raw-output digest,
-and leaves the second execution to the independent verifier. When Codex
+elapsed time as `latency.wall_ms` and `latency.evaluator_ms`. The runner commits
+only one semantic evaluator result for the sealed response and workspace. A
+retryable evaluator process failure keeps the evidence pending and reruns only
+the evaluator on resume. The runner records the parsed result and exact
+raw-output digest, and leaves the independent replay to the verifier. When Codex
 reports token counters, the verifier parses the retained evidence again and
 records the provider-reported input, cache, output, and reasoning counters. The
 versioned cost field is a Standard short-context API-equivalent estimate. It is
@@ -174,9 +176,10 @@ and evaluator artifacts under the controlled artifact root. It writes a durable
 checkpoint so an interrupted run can continue without replacing completed
 evidence. Checkpoint v10 moves completed model evidence from an in-flight marker
 to a sealed pending-evaluator record before evaluator execution starts. If the
-runner is terminated, it can restart that one incomplete evaluator execution
-from the same response and workspace without another model invocation. An Official run holds its create-new output with an exact run-bound
-reservation. The same run can reopen that unchanged reservation after an
+runner is terminated or the evaluator process fails, it can restart that
+incomplete evaluator phase from the same response and workspace without another
+model invocation. An Official run holds its create-new output with an exact
+run-bound reservation. The same run can reopen that unchanged reservation after an
 interruption. Another run, modified reservation, symbolic link, or hard-link
 alias fails closed. Every parent of a future protected file must be owned by
 the current user and must not be writable by group or other. The runner holds
@@ -193,8 +196,10 @@ The content-addressed stdout keeps a versioned record of every invocation. Wall
 time, steps, tool calls, and provider token counters accumulate across the
 invocations. They remain auxiliary measurements. A semantic outcome, including
 an incorrect answer, is final and is never retried. Checkpoint resume does not
-retry a committed or indeterminate model cell. An evaluator execution failure
-is terminal evidence and is not retried until a result happens to match. A provider-declared subscription
+retry a committed or indeterminate model cell. A retryable evaluator process
+failure stays pending and does not produce terminal evidence. Resume reruns only
+the evaluator against the unchanged response and workspace. A semantic result
+is final; the runner never retries it to obtain a match. A provider-declared subscription
 limit is not a terminal task result: the checkpoint preserves completed cells,
 marks the rejected cell as pending capacity backpressure, and resumes it after
 capacity returns. Legacy v8 terminal subscription-limit entries migrate into
