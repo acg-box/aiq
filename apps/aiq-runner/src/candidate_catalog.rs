@@ -229,11 +229,19 @@ pub fn validate_candidate_catalog(
 	}
 
 	let mut task_ids = BTreeSet::new();
+	let supersedes_task_version =
+		if input.candidate_identity.candidate_id == "aiq-core/1.1.0-candidate.3" {
+			"1.1.0"
+		} else {
+			"1.0.7"
+		};
 	let tasks = input
 		.tasks
 		.into_iter()
 		.zip(task_values)
-		.map(|(task, raw)| validate_candidate_task(task, raw, input.status, &mut task_ids))
+		.map(|(task, raw)| {
+			validate_candidate_task(task, raw, input.status, supersedes_task_version, &mut task_ids)
+		})
 		.collect::<Result<Vec<_>, _>>()?;
 	let catalog_digest = protocol::canonical_hash(value).map_err(|error| {
 		CandidateCatalogError::new(format!("cannot hash candidate catalog: {error}"))
@@ -266,13 +274,14 @@ fn validate_candidate_task(
 	task: CandidateTaskInput,
 	raw: &Value,
 	status: CandidateCatalogStatus,
+	supersedes_task_version: &str,
 	task_ids: &mut BTreeSet<String>,
 ) -> Result<CandidateTaskAuthority, CandidateCatalogError> {
 	if !valid_task_id(&task.task_id)
 		|| !task_ids.insert(task.task_id.clone())
 		|| task.task_version != CANDIDATE_TASK_SET_VERSION
 		|| !valid_cluster_id(&task.cluster_id)
-		|| task.design_revision.supersedes_task_version != "1.0.7"
+		|| task.design_revision.supersedes_task_version != supersedes_task_version
 		|| task.design_revision.decision_record
 			!= "benchmarks/candidates/aiq-core-1.1.0/design-decisions.json"
 		|| task.evaluator.scorer_version != "1.0.6"
@@ -419,7 +428,7 @@ mod tests {
 					"domain": "coding",
 					"cluster_id": format!("coding-cluster-{index:02}"),
 					"design_revision": {
-						"supersedes_task_version": "1.0.7",
+						"supersedes_task_version": "1.1.0",
 						"decision": "retained",
 						"decision_record": "benchmarks/candidates/aiq-core-1.1.0/design-decisions.json"
 					},
@@ -446,7 +455,7 @@ mod tests {
 			"scoring_version": "1.0.6",
 			"status": status,
 			"candidate_identity": {
-				"candidate_id": "aiq-core/1.1.0-candidate.2",
+				"candidate_id": "aiq-core/1.1.0-candidate.3",
 				"task_metadata_digest": task_metadata_digest
 			},
 			"tasks": tasks
@@ -474,7 +483,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.2");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.3");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 	}
@@ -488,7 +497,7 @@ mod tests {
 		for task in value["tasks"].as_array_mut().expect("tasks") {
 			let task_id = task["task_id"].as_str().expect("task id").to_owned();
 
-			task["evaluator"]["acceptance_fixture_commitments"]["empty"] = serde_json::json!({"applicability":"required","handle":format!("aiq-acceptance://{task_id}/v5/empty")});
+			task["evaluator"]["acceptance_fixture_commitments"]["empty"] = serde_json::json!({"applicability":"required","handle":format!("aiq-acceptance://{task_id}/v6/empty")});
 			task["evaluator"]["acceptance_fixture_commitments"]["timeout"] =
 				serde_json::json!({"applicability":"not_applicable","handle":null});
 		}
