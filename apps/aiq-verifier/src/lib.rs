@@ -184,13 +184,20 @@ pub struct Cli {
 		conflicts_with = "synthetic_demo_tasks"
 	)]
 	calibration_admission: Option<PathBuf>,
-	/// Exact detached source tree bound by the calibration admission authority.
+	/// Retained corpus source snapshot bound by the corpus source manifest.
 	#[arg(
 		long,
 		required_unless_present = "synthetic_demo_tasks",
 		conflicts_with = "synthetic_demo_tasks"
 	)]
-	source_root: Option<PathBuf>,
+	corpus_source_root: Option<PathBuf>,
+	/// Clean detached current release source bound by the environment and final-build receipt.
+	#[arg(
+		long,
+		required_unless_present = "synthetic_demo_tasks",
+		conflicts_with = "synthetic_demo_tasks"
+	)]
+	target_source_root: Option<PathBuf>,
 	/// Exact frozen runner binary approved for Official execution.
 	#[arg(
 		long,
@@ -482,7 +489,8 @@ struct VerifyLocalCli {
 			"admission_corpus_commitment",
 			"admission_evaluator_runtime",
 			"admission_codex_toolchain_root",
-			"admission_source_root",
+			"admission_corpus_source_root",
+			"admission_target_source_root",
 			"admission_runner_binary",
 			"admission_codex_binary",
 			"production_reference",
@@ -506,7 +514,8 @@ struct VerifyLocalCli {
 			"admission_corpus_commitment",
 			"admission_evaluator_runtime",
 			"admission_codex_toolchain_root",
-			"admission_source_root",
+			"admission_corpus_source_root",
+			"admission_target_source_root",
 			"admission_runner_binary",
 			"admission_codex_binary",
 			"production_reference",
@@ -534,9 +543,12 @@ struct VerifyLocalCli {
 	/// Current controlled model toolchain used only for admission bindings.
 	#[arg(long, requires = "admission_mode")]
 	admission_codex_toolchain_root: Option<PathBuf>,
-	/// Current detached source tree validated by the admission corpus commitment.
+	/// Retained corpus source snapshot validated by the admission corpus commitment.
 	#[arg(long, requires = "admission_mode")]
-	admission_source_root: Option<PathBuf>,
+	admission_corpus_source_root: Option<PathBuf>,
+	/// Clean detached current release source validated against the admission environment.
+	#[arg(long, requires = "admission_mode")]
+	admission_target_source_root: Option<PathBuf>,
 	/// Current frozen runner binary approved for Official execution.
 	#[arg(long, requires = "admission_mode")]
 	admission_runner_binary: Option<PathBuf>,
@@ -586,9 +598,12 @@ struct RenewCalibrationAdmissionCli {
 	/// Absolute controlled target Node.js and ripgrep toolchain root.
 	#[arg(long)]
 	codex_toolchain_root: PathBuf,
+	/// Retained corpus source snapshot bound by the immutable source manifest.
+	#[arg(long)]
+	corpus_source_root: PathBuf,
 	/// Clean detached target repository source tree.
 	#[arg(long)]
-	source_root: PathBuf,
+	target_source_root: PathBuf,
 	/// Final target runner executable.
 	#[arg(long)]
 	runner_binary: PathBuf,
@@ -2101,7 +2116,8 @@ struct OperationalAdmissionPaths<'a> {
 	corpus_commitment: &'a Path,
 	evaluator_runtime: &'a Path,
 	codex_toolchain_root: &'a Path,
-	source_root: &'a Path,
+	corpus_source_root: &'a Path,
+	target_source_root: &'a Path,
 	runner_binary: &'a Path,
 	codex_binary: &'a Path,
 	production_reference: &'a Path,
@@ -2121,7 +2137,7 @@ struct OperationalAdmissionAssets {
 	evaluator_runtime: EvaluatorRuntime,
 	corpus: ValidatedCorpusCommitment,
 	model_toolchain: ValidatedModelToolchain,
-	source_tree: String,
+	target_source_tree: String,
 	task_set_digest: String,
 	evaluator_digest: String,
 }
@@ -3744,7 +3760,7 @@ fn operational_admission_context(
 		evaluator_runtime,
 		corpus,
 		model_toolchain,
-		source_tree,
+		target_source_tree,
 		task_set_digest,
 		evaluator_digest,
 	} = operational_admission_assets(paths)?;
@@ -3804,7 +3820,7 @@ fn operational_admission_context(
 		corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
 		source_manifest_digest: corpus.source_manifest_digest().to_owned(),
 		runner_commit: environment.runner_commit.clone(),
-		runner_source_tree: source_tree,
+		runner_source_tree: target_source_tree,
 		task_set_digest,
 		evaluator_digest,
 		model_toolchain_digest: model_toolchain.digest().to_owned(),
@@ -3828,7 +3844,8 @@ fn has_operational_admission_inputs(cli: &VerifyLocalCli) -> bool {
 		cli.admission_corpus_commitment.as_ref(),
 		cli.admission_evaluator_runtime.as_ref(),
 		cli.admission_codex_toolchain_root.as_ref(),
-		cli.admission_source_root.as_ref(),
+		cli.admission_corpus_source_root.as_ref(),
+		cli.admission_target_source_root.as_ref(),
 		cli.admission_runner_binary.as_ref(),
 		cli.admission_codex_binary.as_ref(),
 		cli.production_reference.as_ref(),
@@ -3867,7 +3884,14 @@ fn local_operational_admission_paths(
 			&cli.admission_codex_toolchain_root,
 			"admission model toolchain root",
 		)?,
-		source_root: required_path(&cli.admission_source_root, "admission source root")?,
+		corpus_source_root: required_path(
+			&cli.admission_corpus_source_root,
+			"admission corpus source root",
+		)?,
+		target_source_root: required_path(
+			&cli.admission_target_source_root,
+			"admission target source root",
+		)?,
 		runner_binary: required_path(&cli.admission_runner_binary, "admission runner binary")?,
 		codex_binary: required_path(&cli.admission_codex_binary, "admission Codex binary")?,
 		production_reference: required_path(&cli.production_reference, "production reference")?,
@@ -3893,7 +3917,8 @@ fn worker_operational_admission_paths(
 		corpus_commitment: required_path(&cli.corpus_commitment, "corpus commitment")?,
 		evaluator_runtime: required_path(&cli.evaluator_runtime, "evaluator runtime")?,
 		codex_toolchain_root: required_path(&cli.codex_toolchain_root, "model toolchain root")?,
-		source_root: required_path(&cli.source_root, "source root")?,
+		corpus_source_root: required_path(&cli.corpus_source_root, "corpus source root")?,
+		target_source_root: required_path(&cli.target_source_root, "target source root")?,
 		runner_binary: required_path(&cli.runner_binary, "runner binary")?,
 		codex_binary: required_path(&cli.codex_binary, "Codex binary")?,
 		production_reference: required_path(&cli.production_reference, "production reference")?,
@@ -3919,7 +3944,8 @@ fn renewal_operational_admission_paths(
 		corpus_commitment: &cli.corpus_commitment,
 		evaluator_runtime: &cli.evaluator_runtime,
 		codex_toolchain_root: &cli.codex_toolchain_root,
-		source_root: &cli.source_root,
+		corpus_source_root: &cli.corpus_source_root,
+		target_source_root: &cli.target_source_root,
 		runner_binary: &cli.runner_binary,
 		codex_binary: &cli.codex_binary,
 		production_reference: &cli.production_reference,
@@ -4105,14 +4131,13 @@ fn operational_admission_assets(
 
 	validate_evaluator_bindings(&tasks, &evaluator_root, &evaluator_runtime)?;
 
-	let source_root = controlled_root(paths.source_root, "admission source root")?;
-	let source_tree = validate_detached_source_identity(&source_root, &environment.runner_commit)?;
-	let corpus = corpus_commitment::validate_core_corpus_commitment(
+	let (corpus, target_source_tree) = validate_operational_source_authorities(
 		paths.corpus_commitment,
+		paths.corpus_source_root,
+		paths.target_source_root,
 		&tasks,
-		&source_root,
-	)
-	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+		&environment.runner_commit,
+	)?;
 
 	corpus
 		.validate_evaluator_runtime(&evaluator_runtime)
@@ -4132,10 +4157,32 @@ fn operational_admission_assets(
 		evaluator_runtime,
 		corpus,
 		model_toolchain,
-		source_tree,
+		target_source_tree,
 		task_set_digest,
 		evaluator_digest,
 	})
+}
+
+fn validate_operational_source_authorities(
+	corpus_commitment_path: &Path,
+	corpus_source_root_path: &Path,
+	target_source_root_path: &Path,
+	tasks: &[TaskDefinition],
+	runner_commit: &str,
+) -> Result<(ValidatedCorpusCommitment, String), WorkerError> {
+	let corpus_source_root =
+		controlled_root(corpus_source_root_path, "admission corpus source root")?;
+	let target_source_root =
+		controlled_root(target_source_root_path, "admission target source root")?;
+	let target_source_tree = validate_detached_source_identity(&target_source_root, runner_commit)?;
+	let corpus = corpus_commitment::validate_core_corpus_commitment(
+		corpus_commitment_path,
+		tasks,
+		&corpus_source_root,
+	)
+	.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+	Ok((corpus, target_source_tree))
 }
 
 fn run_renew_calibration_admission(cli: RenewCalibrationAdmissionCli) -> Result<(), WorkerError> {
@@ -5392,6 +5439,29 @@ mod tests {
 		capability_artifact_path: PathBuf,
 	}
 
+	#[cfg(unix)]
+	struct OperationalSourceFixture {
+		root: PathBuf,
+		corpus_source_root: PathBuf,
+		corpus_source_file: PathBuf,
+		target_source_root: PathBuf,
+		target_source_file: PathBuf,
+		corpus_commitment: PathBuf,
+		tasks: Vec<task::TaskDefinition>,
+		target_commit: String,
+		target_tree: String,
+	}
+
+	#[cfg(unix)]
+	struct PreparedOperationalSources {
+		corpus_source_root: PathBuf,
+		corpus_source_file: PathBuf,
+		target_source_root: PathBuf,
+		target_source_file: PathBuf,
+		target_commit: String,
+		target_tree: String,
+	}
+
 	impl ArtifactSink for TestArtifactSink {
 		fn put(&self, kind: &str, bytes: &[u8]) -> Result<ArtifactReference, ExecutorError> {
 			let digest = hex::encode(Sha256::digest(bytes));
@@ -6176,6 +6246,49 @@ mod tests {
 		}
 	}
 
+	#[cfg(unix)]
+	impl OperationalSourceFixture {
+		fn new() -> Self {
+			let root = temporary_test_root("operational-sources");
+			let PreparedOperationalSources {
+				corpus_source_root,
+				corpus_source_file,
+				target_source_root,
+				target_source_file,
+				target_commit,
+				target_tree,
+			} = prepare_operational_sources(&root);
+			let (tasks, catalog) = operational_source_tasks();
+			let commitment = operational_corpus_commitment(&corpus_source_file, &tasks, &catalog);
+			let corpus_commitment = root.join("core-a/commitment.json");
+
+			fs::write(
+				&corpus_commitment,
+				serde_json::to_vec(&commitment).expect("corpus commitment JSON"),
+			)
+			.expect("corpus commitment");
+
+			Self {
+				root,
+				corpus_source_root,
+				corpus_source_file,
+				target_source_root,
+				target_source_file,
+				corpus_commitment,
+				tasks,
+				target_commit,
+				target_tree,
+			}
+		}
+	}
+
+	#[cfg(unix)]
+	impl Drop for OperationalSourceFixture {
+		fn drop(&mut self) {
+			let _ = fs::remove_dir_all(&self.root);
+		}
+	}
+
 	fn fixture_frozen_bank(tasks: &[task::TaskDefinition]) -> scoring::FrozenCalibrationBankV2 {
 		scoring::FrozenCalibrationBankV2 {
 			schema_version: scoring::CALIBRATION_BANK_SCHEMA_VERSION.to_owned(),
@@ -6600,8 +6713,10 @@ mod tests {
 			"/toolchain",
 			"--calibration-admission",
 			"calibration-admission.json",
-			"--source-root",
-			"source",
+			"--corpus-source-root",
+			"corpus-source-snapshot",
+			"--target-source-root",
+			"target-source",
 			"--runner-binary",
 			"bin/aiq-runner",
 			"--codex-binary",
@@ -6699,7 +6814,9 @@ mod tests {
 			"/toolchain/node",
 			"--codex-toolchain-root",
 			"/toolchain",
-			"--source-root",
+			"--corpus-source-root",
+			"/retained/core-a/source-snapshot",
+			"--target-source-root",
 			"/target/source",
 			"--runner-binary",
 			"/target/aiq-runner",
@@ -6722,6 +6839,33 @@ mod tests {
 			RenewCalibrationAdmissionCli::try_parse_from(&arguments[..arguments.len() - 2])
 				.is_err()
 		);
+
+		for required in ["--corpus-source-root", "--target-source-root"] {
+			let mut incomplete = arguments.to_vec();
+			let index = incomplete
+				.iter()
+				.position(|argument| *argument == required)
+				.expect("required source argument");
+
+			incomplete.drain(index..=index + 1);
+
+			assert!(RenewCalibrationAdmissionCli::try_parse_from(incomplete).is_err());
+		}
+
+		let mut legacy_alias = arguments.to_vec();
+
+		for removed in ["--corpus-source-root", "--target-source-root"] {
+			let index = legacy_alias
+				.iter()
+				.position(|argument| *argument == removed)
+				.expect("source argument to replace");
+
+			legacy_alias.drain(index..=index + 1);
+		}
+
+		legacy_alias.extend(["--source-root", "/target/source"]);
+
+		assert!(RenewCalibrationAdmissionCli::try_parse_from(legacy_alias).is_err());
 
 		for forbidden in ["--package", "--artifact-root", "--replay-root", "--observed-unix-ms"] {
 			let mut attempted = arguments.to_vec();
@@ -6788,8 +6932,10 @@ mod tests {
 			"/current/toolchain/node",
 			"--admission-codex-toolchain-root",
 			"/current/toolchain",
-			"--admission-source-root",
-			"/frozen/source",
+			"--admission-corpus-source-root",
+			"/retained/core-a/source-snapshot",
+			"--admission-target-source-root",
+			"/target/source",
 			"--admission-runner-binary",
 			"/frozen/aiq-runner",
 			"--admission-codex-binary",
@@ -6855,8 +7001,10 @@ mod tests {
 			"/current/toolchain/node",
 			"--admission-codex-toolchain-root",
 			"/current/toolchain",
-			"--admission-source-root",
-			"/frozen/source",
+			"--admission-corpus-source-root",
+			"/retained/core-a/source-snapshot",
+			"--admission-target-source-root",
+			"/target/source",
 			"--admission-runner-binary",
 			"/frozen/aiq-runner",
 			"--admission-codex-binary",
@@ -6964,6 +7112,330 @@ mod tests {
 		] {
 			assert!(!super::is_canonical_millisecond_utc(invalid), "accepted {invalid}");
 		}
+	}
+
+	#[cfg(unix)]
+	fn prepare_operational_sources(root: &Path) -> PreparedOperationalSources {
+		let corpus_source_root = root.join("core-a/source-snapshot");
+		let corpus_source_file = corpus_source_root.join("apps/aiq-runner/src/runner.rs");
+		let target_source_root = root.join("target-source");
+		let target_source_file = target_source_root.join("apps/aiq-runner/src/runner.rs");
+
+		fs::create_dir_all(corpus_source_file.parent().expect("corpus source parent"))
+			.expect("corpus source root");
+		fs::create_dir_all(target_source_file.parent().expect("target source parent"))
+			.expect("target source root");
+		fs::write(&corpus_source_file, b"retained corpus runner source\n")
+			.expect("corpus source bytes");
+		fs::write(&target_source_file, b"upgraded target runner source\n")
+			.expect("target source bytes");
+
+		let git = |arguments: &[&str]| {
+			let status = process::Command::new("git")
+				.arg("-C")
+				.arg(&target_source_root)
+				.args(arguments)
+				.env("GIT_AUTHOR_NAME", "AIQ Test")
+				.env("GIT_AUTHOR_EMAIL", "aiq@example.invalid")
+				.env("GIT_COMMITTER_NAME", "AIQ Test")
+				.env("GIT_COMMITTER_EMAIL", "aiq@example.invalid")
+				.status()
+				.expect("operational source Git command");
+
+			assert!(status.success(), "Git command failed: {arguments:?}");
+		};
+
+		git(&["init", "-q"]);
+		git(&["add", "apps/aiq-runner/src/runner.rs"]);
+		git(&["-c", "core.hooksPath=/dev/null", "commit", "-qm", "fixture"]);
+
+		let target_commit =
+			super::git_output(&target_source_root, &["rev-parse", "HEAD"], "target source commit")
+				.expect("target source commit");
+		let target_tree = super::git_output(
+			&target_source_root,
+			&["rev-parse", "HEAD^{tree}"],
+			"target source tree",
+		)
+		.expect("target source tree");
+
+		git(&["checkout", "-q", "--detach", "HEAD"]);
+
+		PreparedOperationalSources {
+			corpus_source_root,
+			corpus_source_file,
+			target_source_root,
+			target_source_file,
+			target_commit,
+			target_tree,
+		}
+	}
+
+	#[cfg(unix)]
+	fn operational_source_tasks() -> (Vec<task::TaskDefinition>, serde_json::Value) {
+		let catalog: serde_json::Value = serde_json::from_str(include_str!(
+			"../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"
+		))
+		.expect("fixture Core catalog");
+		let catalog_tasks = catalog["tasks"].as_array().expect("fixture catalog tasks");
+		let evaluator_runtime_digest = format!("sha256:{}", "3".repeat(64));
+		let evaluator_executable_digest = format!("sha256:{}", "4".repeat(64));
+		let configuration: std::collections::BTreeMap<String, serde_json::Value> =
+			serde_json::from_value(serde_json::json!({
+				"schema_version": task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+				"completion_policy": "natural_completion"
+			}))
+			.expect("fixture evaluator configuration");
+		let configuration_digest =
+			protocol::canonical_hash(&configuration).expect("fixture configuration digest");
+		let mut tasks = runner::synthetic_demo_tasks();
+
+		for task in &mut tasks {
+			let catalog_task = catalog_tasks
+				.iter()
+				.find(|entry| entry["task_id"].as_str() == Some(&task.task_id))
+				.expect("fixture catalog task");
+
+			task.budgets = serde_json::from_value(catalog_task["budget"].clone())
+				.expect("fixture task budget");
+			task.visibility = task::Visibility::Hidden;
+			task.evaluator = Some(task::Evaluator {
+				kind: "controlled_fixture".to_owned(),
+				expected: None,
+				case_sensitive: false,
+				external: Some(task::ExternalEvaluatorBinding {
+					protocol_version: task::EVALUATOR_PROTOCOL_VERSION.to_owned(),
+					scorer_version: task.scorer_version.clone(),
+					runtime_kind: task::EvaluatorRuntimeKind::Node,
+					runtime_executable_digest: evaluator_runtime_digest.clone(),
+					executable_ref: PathBuf::from("fixture/evaluator"),
+					executable_digest: evaluator_executable_digest.clone(),
+					configuration_digest: configuration_digest.clone(),
+					arguments: Vec::new(),
+					timeout_ms: None,
+					max_input_bytes: 1_024,
+					max_output_bytes: 1_024,
+					configuration: configuration.clone(),
+				}),
+			});
+		}
+
+		(tasks, catalog)
+	}
+
+	#[cfg(unix)]
+	fn operational_model_toolchain() -> serde_json::Value {
+		let (platform, architecture, platform_minimal_path) =
+			match (std::env::consts::OS, std::env::consts::ARCH) {
+				("macos", "aarch64") => ("darwin", "arm64", "darwin_v1"),
+				("macos", "x86_64") => ("darwin", "x64", "darwin_v1"),
+				("linux", "aarch64") => ("linux", "arm64", "linux_v1"),
+				("linux", "x86_64") => ("linux", "x64", "linux_v1"),
+				(other_os, other_arch) => {
+					panic!("unsupported operational source fixture host {other_os}/{other_arch}")
+				},
+			};
+
+		serde_json::json!({
+			"schema_version": "aiq.execution-tool-policy.v1",
+			"platform": platform,
+			"architecture": architecture,
+			"platform_minimal_path": platform_minimal_path,
+			"inherit_path": false,
+			"use_shell_profile": false,
+			"commands": [{
+				"name": "node",
+				"executable_ref": "node",
+				"executable_sha256": format!("sha256:{}", "3".repeat(64)),
+				"version": "v24.18.0",
+			}, {
+				"name": "rg",
+				"executable_ref": "rg",
+				"executable_sha256": format!("sha256:{}", "5".repeat(64)),
+				"version": "ripgrep 15.1.0",
+			}],
+		})
+	}
+
+	#[cfg(unix)]
+	fn operational_committed_tasks(tasks: &[task::TaskDefinition]) -> Vec<serde_json::Value> {
+		tasks
+			.iter()
+			.map(|task| {
+				let external = task
+					.evaluator
+					.as_ref()
+					.and_then(|evaluator| evaluator.external.as_ref())
+					.expect("fixture external evaluator");
+
+				serde_json::json!({
+					"task_id": task.task_id,
+					"task_version": task.task_version,
+					"task_definition_sha256": task.content_hash().expect("task digest"),
+					"baseline_workspace_tree_sha256": format!("sha256:{}", "6".repeat(64)),
+					"fixture_bundle_sha256": format!("sha256:{}", "7".repeat(64)),
+					"catalog_entry_sha256": task.catalog_entry_digest.as_ref().expect("catalog digest"),
+					"evaluator_runtime_kind": "node",
+					"evaluator_runtime_executable_sha256": external.runtime_executable_digest,
+					"evaluator_executable_sha256": external.executable_digest,
+					"evaluator_configuration_sha256": external.configuration_digest,
+					"acceptance_suite_sha256": format!("sha256:{}", "8".repeat(64)),
+					"leakage_review_sha256": format!("sha256:{}", "9".repeat(64)),
+				})
+			})
+			.collect()
+	}
+
+	#[cfg(unix)]
+	fn operational_corpus_commitment(
+		corpus_source_file: &Path,
+		tasks: &[task::TaskDefinition],
+		catalog: &serde_json::Value,
+	) -> serde_json::Value {
+		let catalog_tasks = catalog["tasks"].as_array().expect("fixture catalog tasks");
+		let corpus_source_digest = format!(
+			"sha256:{}",
+			hex::encode(Sha256::digest(fs::read(corpus_source_file).expect("corpus source bytes")))
+		);
+		let source_manifest = serde_json::json!({
+			"schema_version": "aiq.runner-source-manifest.v1",
+			"package": "aiq-runner",
+			"scope": "cargo_build_and_test_inputs",
+			"path_base": "repository_root",
+			"entries": [{
+				"path": "apps/aiq-runner/src/runner.rs",
+				"sha256": corpus_source_digest,
+			}],
+		});
+		let source_manifest_digest =
+			protocol::canonical_hash(&source_manifest).expect("source manifest digest");
+		let model_toolchain = operational_model_toolchain();
+		let runtime_provenance = serde_json::json!({
+			"operating_system": {"platform": model_toolchain["platform"]},
+			"locale_and_timezone": {"environment": {"OPENSSL_CONF": "/dev/null"}},
+			"node_runtime": {
+				"executable_sha256": format!("sha256:{}", "3".repeat(64)),
+				"version": "v24.18.0",
+			},
+			"model_toolchain": model_toolchain,
+			"runner": {
+				"identity_kind": "source_only",
+				"source_manifest": source_manifest,
+				"source_manifest_sha256": source_manifest_digest,
+				"built_binary_sha256": null,
+			},
+		});
+		let tool_policy_tasks = catalog_tasks
+			.iter()
+			.map(|task| {
+				serde_json::json!({
+					"task_id": task["task_id"],
+					"allowed_tools": task["allowed_tools"],
+				})
+			})
+			.collect::<Vec<_>>();
+		let tool_policy = serde_json::json!({
+			"protocol": "aiq.tool-policy.v1",
+			"evidence_class": "declared_policy_commitment",
+			"catalog": tool_policy_tasks,
+			"model_toolchain": runtime_provenance["model_toolchain"],
+		});
+		let network_policy = serde_json::json!({
+			"protocol": "aiq.network-policy.v1",
+			"evidence_class": "declared_policy_commitment",
+			"codex_web_search": "disabled_for_controlled_corpus",
+			"codex_mcp": "disabled",
+			"evaluator_node_scenario": "network_denied_by_node_permission_model",
+		});
+
+		serde_json::json!({
+			"schema_version": "aiq.corpus-commitment.v2",
+			"release_id": "corpus_operational_source_fixture",
+			"controlled": true,
+			"synthetic": false,
+			"catalog": {
+				"schema_version": "aiq.catalog.v1",
+				"task_set_id": AIQ_TASK_SET_ID,
+				"task_set_version": AIQ_TASK_SET_VERSION,
+				"identity_sha256": scoring::AIQ_CORE_TASK_IDENTITY_SHA256,
+				"identity_scope": "ordered_full_task_metadata",
+			},
+			"execution": {
+				"harness_sha256": format!("sha256:{}", "a".repeat(64)),
+				"runner_prompt_source_sha256": corpus_source_digest,
+				"declared_tool_policy_sha256": protocol::canonical_hash(&tool_policy)
+					.expect("tool policy digest"),
+				"declared_network_policy_sha256": protocol::canonical_hash(&network_policy)
+					.expect("network policy digest"),
+				"environment_sha256": protocol::canonical_hash(&runtime_provenance)
+					.expect("runtime provenance digest"),
+				"runtime_provenance": runtime_provenance,
+			},
+			"tasks": operational_committed_tasks(tasks),
+		})
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn renewal_operational_admission_accepts_distinct_sources_and_rejects_changes_to_either() {
+		let fixture = OperationalSourceFixture::new();
+		let (_, target_tree) = super::validate_operational_source_authorities(
+			&fixture.corpus_commitment,
+			&fixture.corpus_source_root,
+			&fixture.target_source_root,
+			&fixture.tasks,
+			&fixture.target_commit,
+		)
+		.expect("distinct corpus and target sources");
+
+		assert_eq!(target_tree, fixture.target_tree);
+		assert_ne!(
+			fs::read(&fixture.corpus_source_file).expect("corpus source bytes"),
+			fs::read(&fixture.target_source_file).expect("target source bytes")
+		);
+		assert!(
+			super::validate_operational_source_authorities(
+				&fixture.corpus_commitment,
+				&fixture.target_source_root,
+				&fixture.target_source_root,
+				&fixture.tasks,
+				&fixture.target_commit,
+			)
+			.is_err(),
+			"the target source must not stand in for the corpus snapshot"
+		);
+
+		fs::write(&fixture.corpus_source_file, b"changed corpus source\n")
+			.expect("change corpus source");
+
+		assert!(
+			super::validate_operational_source_authorities(
+				&fixture.corpus_commitment,
+				&fixture.corpus_source_root,
+				&fixture.target_source_root,
+				&fixture.tasks,
+				&fixture.target_commit,
+			)
+			.is_err(),
+			"changed corpus source must fail"
+		);
+
+		fs::write(&fixture.corpus_source_file, b"retained corpus runner source\n")
+			.expect("restore corpus source");
+		fs::write(&fixture.target_source_file, b"dirty target source\n")
+			.expect("change target source");
+
+		assert!(
+			super::validate_operational_source_authorities(
+				&fixture.corpus_commitment,
+				&fixture.corpus_source_root,
+				&fixture.target_source_root,
+				&fixture.tasks,
+				&fixture.target_commit,
+			)
+			.is_err(),
+			"changed target source must fail"
+		);
 	}
 
 	#[test]

@@ -347,7 +347,7 @@ fn run_inner(
 	}
 
 	let secrets = secrets.ok_or_else(|| Error::new("Official runtime secrets are unavailable"))?;
-	let source = release.prepare_source(&configuration.state_root, slot)?;
+	let target_source = release.prepare_source(&configuration.state_root, slot)?;
 	let dispatch = if selected_dispatch == Dispatch::StartModel {
 		dispatch(slot, paths, workflow::current_unix_ms()?)?
 	} else {
@@ -359,9 +359,11 @@ fn run_inner(
 	}
 
 	let summary = match dispatch {
-		Dispatch::StartModel => run_model(configuration, release, paths, slot, &source, secrets)?,
+		Dispatch::StartModel => {
+			run_model(configuration, release, paths, slot, &target_source, secrets)?
+		},
 		Dispatch::ResumeAfterModel => {
-			run_after_model(configuration, release, paths, slot, &source, secrets)?
+			run_after_model(configuration, release, paths, slot, &target_source, secrets)?
 		},
 		Dispatch::Complete => return Ok(Completion::Published),
 		Dispatch::Close => return Ok(Completion::MissedWindow),
@@ -395,7 +397,7 @@ fn run_after_model(
 	release: &Release,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
+	target_source: &Path,
 	secrets: &RuntimeSecrets,
 ) -> Result<RunSummary> {
 	workflow::cleanup_codex_home(&paths.official.home)?;
@@ -406,7 +408,7 @@ fn run_after_model(
 		return Ok(summary);
 	}
 
-	let steps = workflow::official_steps(configuration, release, paths, slot, source);
+	let steps = workflow::official_steps(configuration, release, paths, slot, target_source);
 
 	run_steps_after_model(&steps, paths, slot, secrets)?;
 
@@ -418,12 +420,12 @@ fn run_model(
 	release: &Release,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
+	target_source: &Path,
 	secrets: &RuntimeSecrets,
 ) -> Result<RunSummary> {
 	workflow::prepare_codex_home(&paths.official.home, &configuration.codex_auth_source)?;
 
-	let steps = workflow::official_steps(configuration, release, paths, slot, source);
+	let steps = workflow::official_steps(configuration, release, paths, slot, target_source);
 	let result = (|| {
 		for step in &steps {
 			workflow::run_create_once_step(step, paths, slot, secrets, PublicationOwner::Official)?;

@@ -480,6 +480,7 @@ fn prepare_release_tree(
 		"core-a/tasks",
 		"core-a/baselines",
 		"core-a/evaluator",
+		"core-a/source-snapshot",
 		"core-a/toolchain",
 		"official-r1/inputs",
 		"official-r1/records",
