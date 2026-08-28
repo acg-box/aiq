@@ -446,7 +446,7 @@ mod tests {
 			"scoring_version": "1.0.6",
 			"status": status,
 			"candidate_identity": {
-				"candidate_id": "aiq-core/1.1.0-candidate.1",
+				"candidate_id": "aiq-core/1.1.0-candidate.2",
 				"task_metadata_digest": task_metadata_digest
 			},
 			"tasks": tasks
@@ -474,6 +474,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.2");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 	}
