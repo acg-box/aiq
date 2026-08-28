@@ -25,12 +25,15 @@ The command does not start a local server and does not use secrets. The browser 
 requests. The test fails unless the public site contains exactly 17 Official configurations, 17
 configuration runs, and 1,224 task results. It also checks the public method, trend, radar,
 duration, token, API-equivalent cost, signed matrix-batch, shared run-provenance evidence, and the
-exact expected publication identity, matrix-batch ID, runner commit, cost-status distribution,
-and priced nanodollar subtotal. This is a launch
-acceptance gate for one matrix. The gate also checks production readiness,
+exact expected current-publication identity, matrix-batch ID, runner commit, cost-status
+distribution, and priced nanodollar subtotal. The run archive can retain earlier Official
+publications; the gate filters it by the 17 current run identities and fails unless every current
+run is present without duplicate or overlapping pages. Aggregate configuration cost can be exact,
+a bounded range, or unavailable as supported by its task evidence. This is a launch acceptance gate
+for the current matrix. The gate also checks production readiness,
 unauthenticated write rejection, mobile layout, and selected Axe accessibility rules. It fails if
-later runs exist until the release contract is deliberately revised. Prompt-set and task-set
-digests are separate launch commitments.
+the current matrix identity or any of its 1,224 task results differs. Prompt-set and task-set digests
+are separate launch commitments.
 
 Use the local published-data mock to validate the acceptance contract without a production read:
 

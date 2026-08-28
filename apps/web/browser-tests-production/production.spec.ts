@@ -6,6 +6,7 @@ import {
   validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
 import { validateProductionExpectedIdentity } from '../playwright-production-identity.ts';
+import { partitionProductionHistory } from './production-acceptance-helpers.ts';
 import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production reads stay serial to bound load on the public origin. */
@@ -204,7 +205,7 @@ async function expectTransparentEfficiency(rows: Locator, expectVariants = false
   return { batchId: [...batchIds][0] ?? '', runIds };
 }
 
-test('production publishes exactly one complete 17-by-72 Official matrix', async ({
+test('production publishes the exact current complete 17-by-72 Official matrix', async ({
   baseURL,
   page,
 }, testInfo) => {
@@ -270,6 +271,7 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   await expect(signedBatchRecords).toHaveCount(1);
   const signedBatchId = await signedBatchRecords.getAttribute('title');
   expect(signedBatchId).toMatch(matrixBatchPattern);
+  expect(signedBatchId).toBe(expectedIdentity.matrixBatchId);
   const overviewEfficiency = await expectTransparentEfficiency(
     efficiency.locator('tbody tr'),
     testInfo.config.metadata.productionEvidenceVariants === true,
@@ -283,8 +285,8 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   const historyPages: Array<{ path: string; hrefs: string[] }> = [];
   const visitedHistoryPaths = new Set<string>();
   let historyPath: string | null = '/runs';
-  let reachedOldestBoundary = false;
-  for (let pageNumber = 0; historyPath !== null && pageNumber < 3; pageNumber += 1) {
+  let historyPartition = partitionProductionHistory(runHrefs, historyHrefs);
+  while (historyPath !== null && historyPartition.missingCurrentRunHrefs.length > 0) {
     expect(visitedHistoryPaths.has(historyPath), 'run-history cursor cycle').toBe(false);
     visitedHistoryPaths.add(historyPath);
     await expectPublishedPage(page, expectedOrigin, historyPath, 'Run archive');
@@ -296,25 +298,25 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
       .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
     expect(new Set(hrefs).size, 'duplicate run within one history page').toBe(hrefs.length);
     for (const href of hrefs) {
+      expect(href).toMatch(/^\/runs\/[A-Za-z0-9._:-]+$/);
       expect(historyHrefs, `overlapping run-history page: ${href}`).not.toContain(href);
       historyHrefs.push(href);
     }
     historyPages.push({ path: historyPath, hrefs });
+    historyPartition = partitionProductionHistory(runHrefs, historyHrefs);
 
     const older = page.getByRole('link', { name: 'Older runs' });
     if ((await older.count()) === 0) {
-      reachedOldestBoundary = true;
       historyPath = null;
     } else {
       historyPath = await older.getAttribute('href');
     }
   }
-  expect(reachedOldestBoundary, 'run history must have a terminal Older boundary').toBe(true);
-  expect(historyPages.map(({ hrefs }) => hrefs.length)).toEqual([10, 7]);
-  expect(historyHrefs).toHaveLength(17);
-  const expectedHistoryHrefs = Array.from(runHrefs);
-  expectedHistoryHrefs.sort();
-  expect(historyHrefs).toEqual(expectedHistoryHrefs);
+  expect(
+    historyPartition.missingCurrentRunHrefs,
+    'current publication missing from run history',
+  ).toEqual([]);
+  expect(new Set(historyPartition.currentRunHrefs)).toEqual(runHrefs);
 
   for (let index = historyPages.length - 1; index > 0; index -= 1) {
     const newer = page.getByRole('link', { name: 'Newer runs' });
@@ -436,13 +438,15 @@ test('production publishes exactly one complete 17-by-72 Official matrix', async
   expect(provenance.catalog).toEqual(new Set([expectedIdentity.catalogDigest]));
   expect(provenance.taskSet).toEqual(new Set([expectedIdentity.taskSetDigest]));
   expect(provenance.promptSet).toEqual(new Set([expectedIdentity.promptSetDigest]));
-  expect(signedBatchId).toBe(expectedIdentity.matrixBatchId);
 });
 
 test('production method, trends, and radar preserve transparent evidence semantics', async ({
   baseURL,
   page,
 }, testInfo) => {
+  const expectedIdentity = validateProductionExpectedIdentity(
+    testInfo.config.metadata.productionExpectedIdentity,
+  );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
   await expectPublishedPage(page, expectedOrigin, '/method', 'How AIQ is scored');
@@ -458,11 +462,26 @@ test('production method, trends, and radar preserve transparent evidence semanti
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
 
-  await expectPublishedPage(page, expectedOrigin, '/trends?range=all', 'Latest AIQ snapshot');
-  await expect(
-    page.getByRole('img', { name: /AIQ \(0–100\) first-observation snapshot/ }),
-  ).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Visible trend series' })).toHaveCount(0);
+  const isLocalContractMock = testInfo.config.metadata.productionEvidenceVariants === true;
+  await expectPublishedPage(
+    page,
+    expectedOrigin,
+    '/trends?range=all',
+    isLocalContractMock ? 'Latest AIQ snapshot' : 'AIQ over time',
+  );
+  const visibleSeries = page.getByRole('list', { name: 'Visible trend series' });
+  if (isLocalContractMock) {
+    await expect(
+      page.getByRole('img', { name: /AIQ \(0–100\) first-observation snapshot/ }),
+    ).toBeVisible();
+    await expect(visibleSeries).toHaveCount(0);
+  } else {
+    await expect(page.getByRole('img', { name: /AIQ \(0–100\) history\. Lines/ })).toBeVisible();
+    await expect(visibleSeries.getByRole('listitem')).toHaveCount(17);
+    await expect(page.locator('.trend-legend-note')).toContainText(
+      `17 published series · scoring ${expectedIdentity.scoringVersion} · connected observations; no interpolation`,
+    );
+  }
   await page.getByText('Evidence notes and visible values', { exact: true }).click();
   await expect(page.getByRole('note')).toContainText(
     'Showing 17 configurations in canonical matrix order',
@@ -471,7 +490,18 @@ test('production method, trends, and radar preserve transparent evidence semanti
     'Family and reasoning are explicit filters, not point-estimate cutoffs.',
   );
   const trendValues = page.getByRole('region', { name: 'Visible trend values' });
-  await expect(trendValues.locator('tbody tr')).toHaveCount(17);
+  const trendRows = trendValues.locator('tbody tr');
+  if (isLocalContractMock) {
+    await expect(trendRows).toHaveCount(17);
+  } else {
+    expect(await trendRows.count()).toBeGreaterThan(17);
+    const seriesCounts = new Map<string, number>();
+    for (const seriesId of await trendRows.getByRole('rowheader').allInnerTexts()) {
+      seriesCounts.set(seriesId, (seriesCounts.get(seriesId) ?? 0) + 1);
+    }
+    expect(seriesCounts.size).toBe(17);
+    expect([...seriesCounts.values()].every((count) => count >= 2)).toBe(true);
+  }
   for (const heading of [
     'Coverage',
     'Runtime',
@@ -481,7 +511,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
   ]) {
     await expect(trendValues.getByRole('columnheader', { name: heading })).toBeVisible();
   }
-  for (const row of await trendValues.locator('tbody tr').all()) {
+  for (const row of await trendRows.all()) {
     const cells = row.getByRole('cell');
     await expect(cells.nth(5)).not.toHaveText('Unavailable');
     await expect(cells.nth(6)).not.toHaveText('Unavailable');
