@@ -537,17 +537,17 @@ fn official_steps(
 	release: &Release,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
+	target_source: &Path,
 ) -> [CommandStep; 8] {
 	[
-		official_admission_step(configuration, release.paths(), paths, slot, source),
+		official_admission_step(configuration, release.paths(), paths, slot),
 		official_preflight_step(release.paths(), paths),
-		official_run_step(configuration, release.paths(), paths, slot, source),
+		official_run_step(configuration, release.paths(), paths, slot),
 		official_score_step(release.paths(), paths),
 		official_package_step(configuration, release.paths(), paths),
 		official_submit_step(configuration, release.paths(), paths),
 		official_environment_step(release.paths(), paths),
-		official_verifier_step(configuration, release, paths, source),
+		official_verifier_step(configuration, release, paths, target_source),
 	]
 }
 
@@ -556,7 +556,6 @@ fn official_common_plan(
 	release: &ReleasePaths,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
 ) -> Vec<OsString> {
 	args([
 		"--hidden-tasks",
@@ -564,7 +563,7 @@ fn official_common_plan(
 		"--corpus-commitment",
 		release.commitment.to_string_lossy().as_ref(),
 		"--source-root",
-		source.to_string_lossy().as_ref(),
+		release.corpus_source_snapshot.to_string_lossy().as_ref(),
 		"--capabilities",
 		release.capabilities.to_string_lossy().as_ref(),
 		"--workspace-root",
@@ -605,11 +604,10 @@ fn official_admission_step(
 	release: &ReleasePaths,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
 ) -> CommandStep {
 	let mut command_args = vec![OsString::from("admit-permissions")];
 
-	command_args.extend(official_common_plan(configuration, release, paths, slot, source));
+	command_args.extend(official_common_plan(configuration, release, paths, slot));
 	command_args.extend(args([
 		"--calibration-admission",
 		release.calibration_admission.to_string_lossy().as_ref(),
@@ -670,11 +668,10 @@ fn official_run_step(
 	release: &ReleasePaths,
 	paths: &SlotPaths,
 	slot: &ScheduledSlot,
-	source: &Path,
 ) -> CommandStep {
 	let mut command_args = vec![OsString::from("run")];
 
-	command_args.extend(official_common_plan(configuration, release, paths, slot, source));
+	command_args.extend(official_common_plan(configuration, release, paths, slot));
 	command_args.extend(args([
 		"--official-admission",
 		paths.official.admission.to_string_lossy().as_ref(),
@@ -789,61 +786,81 @@ fn official_verifier_step(
 	configuration: &Configuration,
 	release: &Release,
 	paths: &SlotPaths,
-	source: &Path,
+	target_source: &Path,
 ) -> CommandStep {
 	let runtime = release.paths();
 
 	CommandStep {
 		name: "official_verify_publish",
 		executable: runtime.verifier.clone(),
-		args: args([
-			"--endpoint",
-			&configuration.endpoint,
-			"--tasks",
-			runtime.tasks.to_string_lossy().as_ref(),
-			"--environment",
-			paths.official.environment.to_string_lossy().as_ref(),
-			"--evaluator-root",
-			runtime.evaluator.to_string_lossy().as_ref(),
-			"--corpus-commitment",
-			runtime.commitment.to_string_lossy().as_ref(),
-			"--codex-toolchain-root",
-			runtime.toolchain.to_string_lossy().as_ref(),
-			"--evaluator-runtime",
-			runtime.runtime.to_string_lossy().as_ref(),
-			"--calibration-admission",
-			runtime.calibration_admission.to_string_lossy().as_ref(),
-			"--source-root",
-			source.to_string_lossy().as_ref(),
-			"--runner-binary",
-			runtime.runner.to_string_lossy().as_ref(),
-			"--codex-binary",
-			runtime.codex.to_string_lossy().as_ref(),
-			"--production-reference",
-			runtime.production_reference.to_string_lossy().as_ref(),
-			"--expected-production-reference-sha256",
+		args: official_verifier_arguments(
+			configuration,
+			runtime,
 			release.production_reference_sha256(),
-			"--build-receipt",
-			runtime.build_receipt.to_string_lossy().as_ref(),
-			"--expected-build-receipt-sha256",
 			release.build_receipt_sha256(),
-			"--replay-root",
-			paths.official.verification.join("replay").to_string_lossy().as_ref(),
-			"--replay-jobs",
-			&configuration.verifier_replay_jobs.to_string(),
-			"--max-claims",
-			"1",
-			"--max-idle-polls",
-			"1",
-			"--max-retries",
-			"10",
-			"--backoff-ms",
-			"1000",
-		]),
+			paths,
+			target_source,
+		),
 		output: paths.official.verifier_records.clone(),
 		capture: Some(CaptureKind::Verifier),
 		secrets: StepSecrets::Verifier,
 	}
+}
+
+fn official_verifier_arguments(
+	configuration: &Configuration,
+	runtime: &ReleasePaths,
+	production_reference_sha256: &str,
+	build_receipt_sha256: &str,
+	paths: &SlotPaths,
+	target_source: &Path,
+) -> Vec<OsString> {
+	args([
+		"--endpoint",
+		&configuration.endpoint,
+		"--tasks",
+		runtime.tasks.to_string_lossy().as_ref(),
+		"--environment",
+		paths.official.environment.to_string_lossy().as_ref(),
+		"--evaluator-root",
+		runtime.evaluator.to_string_lossy().as_ref(),
+		"--corpus-commitment",
+		runtime.commitment.to_string_lossy().as_ref(),
+		"--codex-toolchain-root",
+		runtime.toolchain.to_string_lossy().as_ref(),
+		"--evaluator-runtime",
+		runtime.runtime.to_string_lossy().as_ref(),
+		"--calibration-admission",
+		runtime.calibration_admission.to_string_lossy().as_ref(),
+		"--corpus-source-root",
+		runtime.corpus_source_snapshot.to_string_lossy().as_ref(),
+		"--target-source-root",
+		target_source.to_string_lossy().as_ref(),
+		"--runner-binary",
+		runtime.runner.to_string_lossy().as_ref(),
+		"--codex-binary",
+		runtime.codex.to_string_lossy().as_ref(),
+		"--production-reference",
+		runtime.production_reference.to_string_lossy().as_ref(),
+		"--expected-production-reference-sha256",
+		production_reference_sha256,
+		"--build-receipt",
+		runtime.build_receipt.to_string_lossy().as_ref(),
+		"--expected-build-receipt-sha256",
+		build_receipt_sha256,
+		"--replay-root",
+		paths.official.verification.join("replay").to_string_lossy().as_ref(),
+		"--replay-jobs",
+		&configuration.verifier_replay_jobs.to_string(),
+		"--max-claims",
+		"1",
+		"--max-idle-polls",
+		"1",
+		"--max-retries",
+		"10",
+		"--backoff-ms",
+		"1000",
+	])
 }
 
 fn run_create_once_step(
@@ -1734,7 +1751,7 @@ mod tests {
 	use std::{
 		collections::BTreeSet,
 		env,
-		ffi::OsString,
+		ffi::{OsStr, OsString},
 		fs,
 		path::{Path, PathBuf},
 	};
@@ -1743,6 +1760,7 @@ mod tests {
 		config::{CONFIG_SCHEMA, Configuration},
 		credentials::RuntimeSecrets,
 		lock::ProcessLock,
+		release::ReleasePaths,
 		schedule::{self},
 		workflow::{
 			self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets, official, speed,
@@ -1829,6 +1847,82 @@ mod tests {
 			.keys()
 			.map(|name| name.to_string_lossy().into_owned())
 			.collect()
+	}
+
+	fn command_argument<'a>(arguments: &'a [OsString], name: &str) -> &'a OsStr {
+		let index = arguments
+			.iter()
+			.position(|argument| argument == name)
+			.unwrap_or_else(|| panic!("missing command argument {name}"));
+
+		arguments.get(index + 1).expect("command argument value")
+	}
+
+	#[test]
+	fn production_command_plans_pass_distinct_corpus_and_target_sources() {
+		let root = PathBuf::from("/controlled/release");
+		let core = root.join("core-a");
+		let release = ReleasePaths {
+			runner: root.join("bin/aiq-runner"),
+			verifier: root.join("bin/aiq-verifier"),
+			codex: root.join("codex-runtime/codex"),
+			tasks: core.join("tasks"),
+			workspaces: core.join("baselines"),
+			evaluator: core.join("evaluator"),
+			runtime: core.join("toolchain/node"),
+			toolchain: core.join("toolchain"),
+			commitment: core.join("commitment.json"),
+			corpus_source_snapshot: core.join("source-snapshot"),
+			seal_receipt: core.join("receipt.json"),
+			calibration_admission: root.join("calibration-policy-v2/admission-v3.json"),
+			capabilities: root.join("official-r1/inputs/capabilities.json"),
+			schedule: root.join("official-r1/inputs/schedule.json"),
+			environment_generator: root
+				.join("official-r1/records/generate-verifier-environment.mjs"),
+			production_reference: root.join("records/production-reference.json"),
+			build_receipt: root.join("records/final-build-receipt.v2.json"),
+		};
+		let configuration = Configuration {
+			schema_version: CONFIG_SCHEMA.to_owned(),
+			release_root: root,
+			release_manifest_sha256: format!("sha256:{}", "a".repeat(64)),
+			state_root: PathBuf::from("/controlled/state"),
+			codex_auth_source: PathBuf::from("/controlled/auth.json"),
+			endpoint: "https://aiq.wiki".to_owned(),
+			official_jobs: 32,
+			verifier_replay_jobs: 4,
+			speed_jobs: 1,
+			speed_trials: 1,
+			unattended_secrets: None,
+		};
+		let slot = schedule::scheduled_slot("2026-08-10T03-00Z").expect("command-plan slot");
+		let paths = workflow::slot_paths(&configuration.state_root, &slot);
+		let target_source = PathBuf::from("/controlled/state/scratch/current-target/source");
+		let runner_arguments =
+			workflow::official_common_plan(&configuration, &release, &paths, &slot);
+		let verifier_arguments = workflow::official_verifier_arguments(
+			&configuration,
+			&release,
+			&format!("sha256:{}", "b".repeat(64)),
+			&format!("sha256:{}", "c".repeat(64)),
+			&paths,
+			&target_source,
+		);
+
+		assert_eq!(
+			command_argument(&runner_arguments, "--source-root"),
+			release.corpus_source_snapshot.as_os_str()
+		);
+		assert_eq!(
+			command_argument(&verifier_arguments, "--corpus-source-root"),
+			release.corpus_source_snapshot.as_os_str()
+		);
+		assert_eq!(
+			command_argument(&verifier_arguments, "--target-source-root"),
+			target_source.as_os_str()
+		);
+		assert_ne!(release.corpus_source_snapshot, target_source);
+		assert!(!verifier_arguments.iter().any(|argument| argument == "--source-root"));
 	}
 
 	#[test]

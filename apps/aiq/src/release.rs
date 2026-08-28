@@ -36,6 +36,7 @@ const VERIFIER_PATH: &str = "bin/aiq-verifier";
 const CODEX_PATH: &str = "codex-runtime/codex";
 const CODEX_HOST_PATH: &str = "codex-runtime/codex-code-mode-host";
 const COMMITMENT_PATH: &str = "core-a/commitment.json";
+const CORPUS_SOURCE_SNAPSHOT_PATH: &str = "core-a/source-snapshot";
 const SEAL_RECEIPT_PATH: &str = "core-a/receipt.json";
 const CALIBRATION_ADMISSION_PATH: &str = "calibration-policy-v2/admission-v3.json";
 const CAPABILITIES_PATH: &str = "official-r1/inputs/capabilities.json";
@@ -67,6 +68,8 @@ pub struct ReleasePaths {
 	pub toolchain: PathBuf,
 	/// Core corpus commitment.
 	pub commitment: PathBuf,
+	/// Immutable source snapshot bound by the Core corpus source manifest.
+	pub corpus_source_snapshot: PathBuf,
 	/// Core corpus seal receipt.
 	pub seal_receipt: PathBuf,
 	/// Frozen calibration admission.
@@ -566,6 +569,7 @@ fn verify_manifest_files(
 		(&paths.workspaces, "baseline workspaces"),
 		(&paths.evaluator, "evaluator registry"),
 		(&paths.toolchain, "toolchain"),
+		(&paths.corpus_source_snapshot, "corpus source snapshot"),
 	] {
 		canonical_directory(path, label)?;
 	}
@@ -741,6 +745,7 @@ fn release_paths(root: &Path) -> ReleasePaths {
 		runtime: core.join("toolchain/node"),
 		toolchain: core.join("toolchain"),
 		commitment: root.join(COMMITMENT_PATH),
+		corpus_source_snapshot: root.join(CORPUS_SOURCE_SNAPSHOT_PATH),
 		seal_receipt: root.join(SEAL_RECEIPT_PATH),
 		calibration_admission: root.join(CALIBRATION_ADMISSION_PATH),
 		capabilities: root.join(CAPABILITIES_PATH),
@@ -946,16 +951,19 @@ mod tests {
 		fs,
 		path::{Path, PathBuf},
 		process::{self, Command},
+		sync::atomic::{AtomicU64, Ordering},
 	};
 
 	use crate::release::{
 		self, BUILD_RECEIPT_PATH, BuildReceipt, CALIBRATION_ADMISSION_PATH, CAPABILITIES_PATH,
-		CODEX_HOST_PATH, CODEX_PATH, COMMITMENT_PATH, ENVIRONMENT_GENERATOR_PATH, MANIFEST_PATH,
-		PRODUCTION_REFERENCE_PATH, RELEASE_MANIFEST_SCHEMA, REQUIRED_RELEASE_DIRECTORIES,
-		RUNNER_PATH, Release, ReleaseManifest, SCHEDULE_PATH, SEAL_RECEIPT_PATH,
-		SOURCE_BUNDLE_PATH, VERIFIER_PATH,
+		CODEX_HOST_PATH, CODEX_PATH, COMMITMENT_PATH, CORPUS_SOURCE_SNAPSHOT_PATH,
+		ENVIRONMENT_GENERATOR_PATH, MANIFEST_PATH, PRODUCTION_REFERENCE_PATH,
+		RELEASE_MANIFEST_SCHEMA, REQUIRED_RELEASE_DIRECTORIES, RUNNER_PATH, Release,
+		ReleaseManifest, SCHEDULE_PATH, SEAL_RECEIPT_PATH, SOURCE_BUNDLE_PATH, VERIFIER_PATH,
 	};
 	use crate::schedule;
+
+	static NEXT_RELEASE_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
 	struct ReleaseFixture {
 		root: PathBuf,
@@ -1073,8 +1081,40 @@ mod tests {
 		drop(fixture);
 	}
 
+	#[test]
+	fn release_open_rejects_a_missing_corpus_source_snapshot() {
+		let fixture = release_fixture();
+
+		fs::remove_dir_all(fixture.release.join(CORPUS_SOURCE_SNAPSHOT_PATH))
+			.expect("remove corpus source snapshot");
+
+		let error = Release::open(&fixture.release, &fixture.manifest_digest)
+			.expect_err("missing corpus source snapshot must fail release opening");
+
+		assert!(error.to_string().contains("corpus source snapshot"));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn release_open_rejects_a_symlinked_corpus_source_snapshot() {
+		let fixture = release_fixture();
+		let snapshot = fixture.release.join(CORPUS_SOURCE_SNAPSHOT_PATH);
+
+		fs::remove_dir_all(&snapshot).expect("remove corpus source snapshot");
+		os::unix::fs::symlink(fixture.release.join("core-a/tasks"), &snapshot)
+			.expect("symlink corpus source snapshot");
+
+		let error = Release::open(&fixture.release, &fixture.manifest_digest)
+			.expect_err("symlinked corpus source snapshot must fail release opening");
+
+		assert!(
+			error.to_string().contains("corpus source snapshot must be a non-symlink directory")
+		);
+	}
+
 	fn release_fixture() -> ReleaseFixture {
-		let root = env::temp_dir().join(format!("aiq-release-test-{}", process::id()));
+		let sequence = NEXT_RELEASE_FIXTURE.fetch_add(1, Ordering::Relaxed);
+		let root = env::temp_dir().join(format!("aiq-release-test-{}-{sequence}", process::id()));
 		let _ = fs::remove_dir_all(&root);
 		let release = root.join("release");
 		let repository = root.join("repository");
@@ -1163,8 +1203,13 @@ mod tests {
 		for path in REQUIRED_RELEASE_DIRECTORIES.map(|relative| release.join(relative)) {
 			fs::create_dir_all(path).expect("release directory fixture");
 		}
-		for relative in ["core-a/tasks", "core-a/baselines", "core-a/evaluator", "core-a/toolchain"]
-		{
+		for relative in [
+			"core-a/tasks",
+			"core-a/baselines",
+			"core-a/evaluator",
+			"core-a/toolchain",
+			CORPUS_SOURCE_SNAPSHOT_PATH,
+		] {
 			fs::create_dir_all(release.join(relative)).expect("release input directory fixture");
 		}
 		for relative in [

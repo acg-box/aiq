@@ -13,7 +13,10 @@ Production use requires:
 - the 72 private controlled tasks;
 - verifier-owned environment metadata;
 - the committed evaluator registry and Node.js runtime;
-- the current corpus commitment and controlled toolchain root;
+- the current corpus commitment, its retained `core-a/source-snapshot`, and the controlled
+  toolchain root;
+- the clean detached current release source bound by the verifier environment and final-build
+  receipt;
 - a fresh replay root;
 - `AIQ_VERIFIER_INGRESS_TOKEN`;
 - `AIQ_VERIFIER_SIGNING_KEY`.
@@ -45,11 +48,14 @@ digests, frozen bank, diagnostic, and internal links against the controlled
 tasks. It independently validates the production reference before it trusts
 the retained runner and verifier keys.
 
-The target production reference, approved identities, corpus and source
+The target production reference, approved identities, corpus and corpus source
 manifest, tasks and evaluators, model toolchain, evaluator runtime, Codex, and
 Codex code-mode host must have the same identities as the retained admission.
-Only the final-build receipt, repository commit and tree, runner executable,
-and verifier executable can change. The command signs a new admission binding.
+The corpus source manifest is validated against the retained corpus source
+snapshot. The target repository commit and tree are validated independently
+against the clean detached target source and the final-build receipt. Only the
+final-build receipt, repository commit and tree, runner executable, and verifier
+executable can change. The command signs a new admission binding.
 It preserves the original run and package identities, stage, attestation,
 replay provenance, bank, diagnostic, and observation time. The output path must
 not exist.
@@ -67,7 +73,8 @@ that the protected production reference approves, then run:
   --corpus-commitment /controlled/corpus-commitment.json \
   --evaluator-runtime /controlled/toolchain/node \
   --codex-toolchain-root /controlled/toolchain \
-  --source-root /controlled/target/source-detached \
+  --corpus-source-root /controlled/core-a/source-snapshot \
+  --target-source-root /controlled/target/source-detached \
   --runner-binary /controlled/target/bin/aiq-runner \
   --codex-binary /controlled/codex-runtime/codex \
   --production-reference /controlled/production-reference.json \
