@@ -37,12 +37,13 @@ commands validate fixtures, evaluators, the committed runtime, and toolchain.
 `seal-corpus` is the repository-owned create-new authoring boundary. The Core
 path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
-task, and a `qualification_ready` catalog with no pending fixture
-applicability. The observed acceptance class set for each task must equal its
-catalog declaration exactly. The current checked-in 1.1.0 catalog is a draft,
-so Core sealing stops before it reads private task inputs. The Contrast path
-retains bounded 1.0.7 compatibility and copies supplied v1 review records; no
-path synthesizes review completion from task notes.
+task, and a `frozen_candidate` catalog with no pending fixture applicability.
+The observed acceptance class set for each task must equal its catalog
+declaration exactly. The checked-in candidate.2 source is frozen for a fresh
+independent review. Candidate.1 review records do not satisfy candidate.2, and
+an empty candidate.2 review directory blocks sealing without creating output.
+The Contrast path retains bounded 1.0.7 compatibility and copies supplied v1
+review records; no path synthesizes review completion from task notes.
 
 The command does not modify or rebind a predecessor commitment. It writes one
 new private directory only after its selected validator and every baseline
