@@ -82,7 +82,7 @@
       ],
       "properties": {
         "release_identity": {
-          "const": "aiq-core/1.1.0-candidate.3"
+          "const": "aiq-core/1.1.0-candidate.4"
         },
         "scoring_version": {
           "const": "1.0.6"
@@ -191,7 +191,7 @@
       ],
       "properties": {
         "candidate_id": {
-          "const": "aiq-core/1.1.0-candidate.3"
+          "const": "aiq-core/1.1.0-candidate.4"
         },
         "task_metadata_digest": {
           "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
@@ -206,6 +206,8 @@
         "identity_state",
         "predecessor_task_set_version",
         "predecessor_candidate",
+        "immutable_rejected_predecessors",
+        "retained_candidate_2_issue_closures",
         "decision_record",
         "semantic_decision_counts",
         "issue_closure_counts",
@@ -233,17 +235,37 @@
         },
         "predecessor_candidate": {
           "const": {
-            "candidate_id": "aiq-core/1.1.0-candidate.2",
+            "candidate_id": "aiq-core/1.1.0-candidate.3",
             "disposition": "rejected_nonsealable_predecessor_evidence",
-            "merge_commit": "1d6898012bcb4c9fbf4db2389872ae416a14c633",
-            "change_commit": "a156fbcf419a66c196327271509a5d47f1680fef",
-            "source_tree": "cdfa3ecc92e1095f631a54af23daff74203ab944",
-            "aggregate_review_sha256": "sha256:70dd654906bb669a5bca46c2cf7dcda59adf15ad05e5223eed5f1b0a0564a74f",
-            "review_receipt_raw_sha256": "sha256:8de2ed2dd3ff32eca9fae0faf0c7b38a3675f89e91b2024aaf008eb06f77e74a",
-            "catalog_sha256": "sha256:ba8fb315938c1c4c81592956b1157af145b577673929be2987d6e8fe212186f4",
+            "merge_commit": "613a0eb896a83fb46fa94bcca61d41228126c632",
+            "change_commit": "4f5c09be7aeb7e1e9e74e3417f943649af2265e2",
+            "source_tree": "f16cb16b499fbf942ad0b62344d6146a366fa4bf",
+            "aggregate_review_sha256": "sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2",
+            "review_receipt_raw_sha256": "sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974",
+            "skeptical_counterexample_sha256": "sha256:7d6cc76b149529e2aab7f1c751d84815aa3b044ef4c5ddbab760c7d5c236f903",
+            "catalog_sha256": "sha256:706718b614c503ac6efafe564834f41a46df78809e12198f3eb2002202c08dbf",
             "accepted_tasks": 65,
             "rejected_tasks": 7,
-            "semantic_retention_rule": "only_review_approved_tasks_may_retain_candidate_2_semantics"
+            "semantic_retention_rule": "only_review_approved_tasks_may_retain_candidate_3_semantics"
+          }
+        },
+        "immutable_rejected_predecessors": {
+          "const": [
+            "aiq-core/1.1.0-candidate.1",
+            "aiq-core/1.1.0-candidate.2",
+            "aiq-core/1.1.0-candidate.3"
+          ]
+        },
+        "retained_candidate_2_issue_closures": {
+          "const": {
+            "candidate_id": "aiq-core/1.1.0-candidate.2",
+            "successor_candidate_id": "aiq-core/1.1.0-candidate.3",
+            "disposition": "valid_immutable_predecessor_closures",
+            "closure_entries": 14,
+            "issue_code_counts": {
+              "HIDDEN_OUTPUT_SCHEMA": 7,
+              "PUBLIC_PRIVATE_CONSTRUCT_MISMATCH": 7
+            }
           }
         },
         "decision_record": {
@@ -258,13 +280,13 @@
         "issue_closure_counts": {
           "const": {
             "ACCEPTANCE_SEMANTICS_INVALID": 0,
-            "BEHAVIORAL_COVERAGE_GAP": 0,
+            "BEHAVIORAL_COVERAGE_GAP": 7,
             "CROSS_TASK_CONSTRUCT_DUPLICATION": 0,
-            "HIDDEN_OUTPUT_SCHEMA": 7,
+            "HIDDEN_OUTPUT_SCHEMA": 0,
             "KEYWORD_ONLY_EVALUATOR": 0,
             "PUBLIC_PRIVATE_CONSTRUCT_MISMATCH": 7,
             "PUBLIC_SEMANTIC_CONTAMINATION": 0,
-            "TOOL_EVIDENCE_UNBOUND": 0
+            "TOOL_EVIDENCE_UNBOUND": 7
           }
         },
         "private_fixture_mapping_reconciled": {
@@ -410,8 +432,8 @@
             "kind",
             "objective",
             "task_specific_delta",
-            "candidate_2_review",
-            "candidate_3_contract",
+            "candidate_3_review",
+            "candidate_4_contract",
             "controlled_corpus_requirements"
           ],
           "properties": {
@@ -419,7 +441,7 @@
               "const": "1.1.0"
             },
             "supersedes_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.2"
+              "const": "aiq-core/1.1.0-candidate.3"
             },
             "decision": {
               "enum": [
@@ -441,7 +463,7 @@
               "type": "string",
               "minLength": 160
             },
-            "candidate_2_review": {
+            "candidate_3_review": {
               "type": "object",
               "additionalProperties": false,
               "required": [
@@ -488,7 +510,7 @@
                 }
               }
             },
-            "candidate_3_contract": {
+            "candidate_4_contract": {
               "type": "object",
               "additionalProperties": false,
               "required": [
@@ -594,6 +616,8 @@
                         "location",
                         "transport",
                         "producer",
+                        "required_command",
+                        "required_command_sha256",
                         "required_fields",
                         "optional_fields",
                         "field_types",
@@ -607,11 +631,12 @@
                         "additional_fields",
                         "key_order",
                         "predecessor_undisclosed_fields",
-                        "required_invocations"
+                        "required_invocations",
+                        "tool_evidence_requirements"
                       ],
                       "properties": {
                         "schema_version": {
-                          "const": "aiq.tool-receipt-contract.v1"
+                          "const": "aiq.tool-receipt-contract.v2"
                         },
                         "location": {
                           "const": "receipt.json"
@@ -621,6 +646,12 @@
                         },
                         "producer": {
                           "const": "supplied_local_tool"
+                        },
+                        "required_command": {
+                          "const": "node bin/task-tool.mjs"
+                        },
+                        "required_command_sha256": {
+                          "const": "sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319"
                         },
                         "required_fields": {
                           "const": [
@@ -814,7 +845,8 @@
                               "const": [
                                 "steps",
                                 "total_calls",
-                                "by_tool.command_execution"
+                                "by_tool.command_execution",
+                                "completed_command_sha256"
                               ]
                             },
                             "receipt_fields_automatic": {
@@ -836,6 +868,17 @@
                           "type": "string",
                           "minLength": 60
                         },
+                        "tool_evidence_requirements": {
+                          "const": {
+                            "exact_total_calls": 1,
+                            "exact_calls_by_tool": {
+                              "command_execution": 1
+                            },
+                            "required_completed_command_sha256": {
+                              "sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319": 1
+                            }
+                          }
+                        },
                         "additional_fields": {
                           "const": "forbidden"
                         },
@@ -843,18 +886,10 @@
                           "const": "not_significant"
                         },
                         "predecessor_undisclosed_fields": {
-                          "const": [
-                            "tool_contract_id",
-                            "command_sha256",
-                            "input_sha256",
-                            "output_sha256"
-                          ]
+                          "const": []
                         },
                         "required_invocations": {
-                          "enum": [
-                            1,
-                            2
-                          ]
+                          "const": 1
                         }
                       }
                     }
@@ -1171,7 +1206,7 @@
           ],
           "properties": {
             "origin": {
-              "const": "candidate_2_review_remediation_authoring"
+              "const": "candidate_3_review_remediation_authoring"
             },
             "owner": {
               "const": "AIQ benchmark maintainers"
@@ -1183,7 +1218,7 @@
               "const": "1.1.0"
             },
             "predecessor_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.2"
+              "const": "aiq-core/1.1.0-candidate.3"
             },
             "source": {
               "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"

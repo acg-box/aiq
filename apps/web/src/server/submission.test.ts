@@ -9,6 +9,7 @@ import {
   createEnqueueRpcArguments,
   mapEnqueueResult,
   MAX_JSON_DEPTH,
+  MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN,
   MAX_MODELS,
   MAX_RAW_SUBMISSION_BYTES,
   MAX_RESULTS,
@@ -429,8 +430,16 @@ function maximumSelectedCalibrationPackage(): Record<string, unknown> {
       return result;
     }),
   );
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     result.run_id = runId;
+    if (index < MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN) {
+      result.tool_usage = {
+        steps: 0xffff_ffff,
+        total_calls: 0xffff_ffff,
+        by_tool: { command_execution: 0xffff_ffff },
+        completed_command_sha256: { [`sha256:${'f'.repeat(64)}`]: 0xffff_ffff },
+      };
+    }
     rehashResult(result);
   }
   return resignPackage({
@@ -808,7 +817,7 @@ void describe('shared result-package contract', () => {
   });
 
   void it('keeps the maximum 72-by-17 calibration package below the fixed ingress ceiling', () => {
-    const rustMeasuredMaximumCalibrationPackageBytes = 3_925_055;
+    const rustMeasuredMaximumCalibrationPackageBytes = 3_832_840;
     const calibration = maximumSelectedCalibrationPackage();
     const canonicalBytes = Buffer.byteLength(canonicalJson(calibration), 'utf8');
     assert.equal(validateSubmission(calibration).ok, true);
@@ -1485,6 +1494,79 @@ void describe('shared result-package contract', () => {
     }
   });
 
+  void it('accepts bounded completed-command digests and rejects malformed multiplicity', () => {
+    const commandDigest = `sha256:${sha256Hex('node bin/task-tool.mjs')}`;
+    const valid = cloneFixture();
+    const validResult = firstResult(valid);
+    validResult.tool_usage = {
+      steps: 1,
+      total_calls: 1,
+      by_tool: { command_execution: 1 },
+      completed_command_sha256: { [commandDigest]: 1 },
+    };
+    rehashResult(validResult);
+
+    assert.equal(validateSubmission(resignPackage(valid, true)).ok, true);
+    const atRunLimit = cloneFixture();
+    const atRunLimitResults = (atRunLimit.payload as Record<string, unknown>).results as Record<
+      string,
+      unknown
+    >[];
+
+    for (const result of atRunLimitResults.slice(0, MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN)) {
+      result.tool_usage = {
+        steps: 1,
+        total_calls: 1,
+        by_tool: { command_execution: 1 },
+        completed_command_sha256: { [commandDigest]: 1 },
+      };
+      rehashResult(result);
+    }
+    assert.equal(validateSubmission(resignPackage(atRunLimit, true)).ok, true);
+
+    const overRunLimit = structuredClone(atRunLimit);
+    const overRunLimitResult = (
+      (overRunLimit.payload as Record<string, unknown>).results as Record<string, unknown>[]
+    )[MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN];
+    assert.ok(overRunLimitResult);
+    overRunLimitResult.tool_usage = {
+      steps: 1,
+      total_calls: 1,
+      by_tool: { command_execution: 1 },
+      completed_command_sha256: { [commandDigest]: 1 },
+    };
+    rehashResult(overRunLimitResult);
+    assert.equal(validateSubmission(resignPackage(overRunLimit, true)).ok, false);
+
+    const wrongDigest = structuredClone(valid);
+    const explicitEmpty = structuredClone(valid);
+    const zeroCount = structuredClone(valid);
+    const excessMultiplicity = structuredClone(valid);
+    const rawCommand = structuredClone(valid);
+    const wrongDigestUsage = firstResult(wrongDigest).tool_usage as Record<string, unknown>;
+    const explicitEmptyUsage = firstResult(explicitEmpty).tool_usage as Record<string, unknown>;
+    const zeroCountUsage = firstResult(zeroCount).tool_usage as Record<string, unknown>;
+    const excessUsage = firstResult(excessMultiplicity).tool_usage as Record<string, unknown>;
+    const rawCommandUsage = firstResult(rawCommand).tool_usage as Record<string, unknown>;
+
+    wrongDigestUsage.completed_command_sha256 = { [`sha256:${'A'.repeat(64)}`]: 1 };
+    explicitEmptyUsage.completed_command_sha256 = {};
+    zeroCountUsage.completed_command_sha256 = { [commandDigest]: 0 };
+    excessUsage.completed_command_sha256 = { [commandDigest]: 2 };
+    rawCommandUsage.command = 'forbidden';
+
+    for (const candidate of [
+      wrongDigest,
+      explicitEmpty,
+      zeroCount,
+      excessMultiplicity,
+      rawCommand,
+    ]) {
+      rehashResult(firstResult(candidate));
+      assert.equal(validateSubmission(resignPackage(candidate, true)).ok, false);
+    }
+  });
+
   void it('rejects values outside the JCS number and Unicode domain', () => {
     const unsafeInteger = cloneFixture();
     (unsafeInteger.payload as Record<string, unknown>).started_unix_ms =
@@ -1519,6 +1601,10 @@ void describe('shared result-package contract', () => {
       /exactly equal the RFC 8785 canonical UTF-8 encoding/,
     );
     assert.equal(schema['x-aiq-limits'].maximum_depth, MAX_JSON_DEPTH);
+    assert.equal(
+      schema['x-aiq-limits'].completed_command_digest_entries_per_run,
+      MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN,
+    );
     assert.equal(validateSubmission(fixture).ok, true);
   });
 
