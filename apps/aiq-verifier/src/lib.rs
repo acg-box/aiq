@@ -89,6 +89,9 @@ const ADDITIONAL_MODES_HELP: &str = "Additional modes:
   aiq-verifier verify-local --help
       Replay one production package offline and write create-new stage and attestation files.
       This mode does not publish or assign cloud trust.
+  aiq-verifier renew-calibration-admission --help
+      Rebind one valid signed calibration bundle to a fully validated target release.
+      This mode does not require replay artifacts or execute a model or task evaluator.
   aiq-verifier diagnose-rescore --help
       Verify one source package, then replay it with a candidate evaluator set.
       This mode writes one permanently non-Official create-new diagnostic report.
@@ -554,6 +557,64 @@ struct VerifyLocalCli {
 	expected_build_receipt_sha256: Option<String>,
 }
 
+/// Model-free admission renewal settings for one qualified target release.
+#[derive(Debug, Parser)]
+#[command(
+	name = "aiq-verifier renew-calibration-admission",
+	version,
+	about = "Rebind one valid signed calibration bundle to a fully validated target release"
+)]
+struct RenewCalibrationAdmissionCli {
+	/// Previously valid complete signed calibration admission bundle.
+	#[arg(long)]
+	source_bundle: PathBuf,
+	/// Controlled directory containing the exact target 72-task set.
+	#[arg(long)]
+	tasks: PathBuf,
+	/// Target verifier environment with the target source and binary identities.
+	#[arg(long)]
+	environment: PathBuf,
+	/// Controlled target registry root for committed external evaluators.
+	#[arg(long)]
+	evaluator_root: PathBuf,
+	/// Target corpus commitment that binds source, evaluator, runtime, and toolchain identities.
+	#[arg(long)]
+	corpus_commitment: PathBuf,
+	/// Absolute controlled target Node.js runtime for committed external evaluators.
+	#[arg(long)]
+	evaluator_runtime: PathBuf,
+	/// Absolute controlled target Node.js and ripgrep toolchain root.
+	#[arg(long)]
+	codex_toolchain_root: PathBuf,
+	/// Clean detached target repository source tree.
+	#[arg(long)]
+	source_root: PathBuf,
+	/// Final target runner executable.
+	#[arg(long)]
+	runner_binary: PathBuf,
+	/// Main executable in the exact target two-file Codex runtime.
+	#[arg(long)]
+	codex_binary: PathBuf,
+	/// Protected production reference independently approving runner and verifier identities.
+	#[arg(long)]
+	production_reference: PathBuf,
+	/// Independently supplied exact SHA-256 of the protected production reference.
+	#[arg(long)]
+	expected_production_reference_sha256: String,
+	/// Private final-build receipt for the target source and binaries.
+	#[arg(long)]
+	build_receipt: PathBuf,
+	/// Independently supplied exact SHA-256 of the target final-build receipt.
+	#[arg(long)]
+	expected_build_receipt_sha256: String,
+	/// Create-new output path for the renewed complete signed bundle.
+	#[arg(long)]
+	output: PathBuf,
+	/// Environment variable containing the approved verifier's 32-byte Ed25519 secret.
+	#[arg(long, default_value = "AIQ_VERIFIER_SIGNING_KEY")]
+	signing_key_env: String,
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OperationalProductionReference {
@@ -584,7 +645,7 @@ struct OperationalReferenceNode {
 	public_visible: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FinalBuildReceipt {
 	schema_version: String,
@@ -2181,6 +2242,16 @@ pub fn run_cli() -> Result<(), WorkerError> {
 
 			return run_verify_local(VerifyLocalCli::parse_from(local_arguments));
 		}
+		if command == "renew-calibration-admission" {
+			let mut renewal_arguments =
+				vec![OsString::from("aiq-verifier renew-calibration-admission")];
+
+			renewal_arguments.extend(arguments.iter().skip(2).cloned());
+
+			return run_renew_calibration_admission(RenewCalibrationAdmissionCli::parse_from(
+				renewal_arguments,
+			));
+		}
 		if command == "diagnose-rescore" {
 			let mut diagnostic_arguments = vec![OsString::from("aiq-verifier diagnose-rescore")];
 
@@ -3080,16 +3151,20 @@ where
 	Ok(())
 }
 
-fn write_create_new_json<T>(target: &OutputTarget, value: &T) -> Result<(), WorkerError>
+fn write_create_new_json<T>(
+	target: &OutputTarget,
+	value: &T,
+	label: &str,
+) -> Result<(), WorkerError>
 where
 	T: Serialize,
 {
-	let bytes = serialize_json_output(value, "diagnostic")?;
-	let temporary = create_temporary_output(target, "diagnostic", &bytes)?;
+	let bytes = serialize_json_output(value, label)?;
+	let temporary = create_temporary_output(target, label, &bytes)?;
 
 	fs::hard_link(&temporary.path, &target.path).map_err(|error| {
 		WorkerError::configuration(format!(
-			"cannot install diagnostic output without overwrite: {error}"
+			"cannot install {label} output without overwrite: {error}"
 		))
 	})
 }
@@ -3299,6 +3374,25 @@ fn validated_build_receipt(
 	}
 
 	Ok((receipt, digest))
+}
+
+fn validate_final_build_receipt_bindings(
+	receipt: &FinalBuildReceipt,
+	bindings: &CalibrationAdmissionBindings,
+) -> Result<(), WorkerError> {
+	if receipt.source_commit != bindings.runner_commit
+		|| receipt.source_tree != bindings.runner_source_tree
+		|| receipt.runner_executable_sha256 != bindings.runner_executable_digest
+		|| receipt.verifier_executable_sha256 != bindings.verifier_executable_digest
+		|| receipt.codex_executable_sha256 != bindings.codex_executable_digest
+		|| receipt.codex_code_mode_host_sha256 != bindings.codex_code_mode_host_digest
+	{
+		return Err(WorkerError::configuration(
+			"operational admission inputs do not match frozen signed provenance",
+		));
+	}
+
+	Ok(())
 }
 
 fn is_canonical_millisecond_utc(value: &str) -> bool {
@@ -3696,39 +3790,34 @@ fn operational_admission_context(
 		|| codex_executable_digest != expected.codex_executable_digest
 		|| codex_code_mode_host_digest != expected.codex_code_mode_host_digest
 		|| signing_identity.node() != &approved_verifier
-		|| build_receipt.source_commit != environment.runner_commit
-		|| build_receipt.source_tree != source_tree
-		|| build_receipt.runner_executable_sha256 != runner_executable_digest
-		|| build_receipt.verifier_executable_sha256 != verifier_executable_digest
-		|| build_receipt.codex_executable_sha256 != codex_executable_digest
-		|| build_receipt.codex_code_mode_host_sha256 != codex_code_mode_host_digest
 	{
 		return Err(WorkerError::configuration(
 			"operational admission inputs do not match frozen signed provenance",
 		));
 	}
 
-	Ok(OperationalAdmissionContext {
-		bindings: CalibrationAdmissionBindings {
-			production_reference_sha256,
-			build_receipt_sha256,
-			approved_runner,
-			approved_verifier,
-			corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
-			source_manifest_digest: corpus.source_manifest_digest().to_owned(),
-			runner_commit: environment.runner_commit.clone(),
-			runner_source_tree: source_tree,
-			task_set_digest,
-			evaluator_digest,
-			model_toolchain_digest: model_toolchain.digest().to_owned(),
-			evaluator_runtime_digest: evaluator_runtime.executable_digest().to_owned(),
-			runner_executable_digest,
-			codex_executable_digest,
-			codex_code_mode_host_digest,
-			verifier_executable_digest,
-		},
-		tasks,
-	})
+	let bindings = CalibrationAdmissionBindings {
+		production_reference_sha256,
+		build_receipt_sha256,
+		approved_runner,
+		approved_verifier,
+		corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
+		source_manifest_digest: corpus.source_manifest_digest().to_owned(),
+		runner_commit: environment.runner_commit.clone(),
+		runner_source_tree: source_tree,
+		task_set_digest,
+		evaluator_digest,
+		model_toolchain_digest: model_toolchain.digest().to_owned(),
+		evaluator_runtime_digest: evaluator_runtime.executable_digest().to_owned(),
+		runner_executable_digest,
+		codex_executable_digest,
+		codex_code_mode_host_digest,
+		verifier_executable_digest,
+	};
+
+	validate_final_build_receipt_bindings(&build_receipt, &bindings)?;
+
+	Ok(OperationalAdmissionContext { bindings, tasks })
 }
 
 fn has_operational_admission_inputs(cli: &VerifyLocalCli) -> bool {
@@ -3818,6 +3907,26 @@ fn worker_operational_admission_paths(
 			"expected final-build receipt digest",
 		)?,
 	})
+}
+
+fn renewal_operational_admission_paths(
+	cli: &RenewCalibrationAdmissionCli,
+) -> OperationalAdmissionPaths<'_> {
+	OperationalAdmissionPaths {
+		tasks: &cli.tasks,
+		environment: &cli.environment,
+		evaluator_root: &cli.evaluator_root,
+		corpus_commitment: &cli.corpus_commitment,
+		evaluator_runtime: &cli.evaluator_runtime,
+		codex_toolchain_root: &cli.codex_toolchain_root,
+		source_root: &cli.source_root,
+		runner_binary: &cli.runner_binary,
+		codex_binary: &cli.codex_binary,
+		production_reference: &cli.production_reference,
+		expected_production_reference_sha256: &cli.expected_production_reference_sha256,
+		build_receipt: &cli.build_receipt,
+		expected_build_receipt_sha256: &cli.expected_build_receipt_sha256,
+	}
 }
 
 fn load_verified_official_admission(
@@ -4027,6 +4136,29 @@ fn operational_admission_assets(
 		task_set_digest,
 		evaluator_digest,
 	})
+}
+
+fn run_renew_calibration_admission(cli: RenewCalibrationAdmissionCli) -> Result<(), WorkerError> {
+	let output = OutputTarget::new(&cli.output, "renewed calibration admission output")?;
+	let signing_identity =
+		VerifierSigningIdentity::from_secret(signing_key_from_environment(&cli.signing_key_env)?);
+	let target = operational_admission_context(
+		renewal_operational_admission_paths(&cli),
+		&signing_identity,
+	)?;
+	let source: CalibrationAdmissionBundleV3 =
+		read_regular_json(&cli.source_bundle, "source calibration admission bundle")?;
+	let renewed = calibration_verification::renew_calibration_admission(
+		&signing_identity,
+		&source,
+		target.bindings,
+		&target.tasks,
+	)
+	.map_err(|error| {
+		WorkerError::configuration(format!("calibration admission renewal failed: {error}"))
+	})?;
+
+	write_create_new_json(&output, &renewed, "renewed calibration admission")
 }
 
 fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
@@ -4462,7 +4594,7 @@ fn run_diagnose_rescore(cli: DiagnoseRescoreCli) -> Result<(), WorkerError> {
 		official_calibration,
 	};
 
-	write_create_new_json(&output_target, &report)
+	write_create_new_json(&output_target, &report, "diagnostic")
 }
 
 fn materialize_diagnostic_results(
@@ -5154,7 +5286,7 @@ mod tests {
 		path::{Path, PathBuf},
 		process,
 		sync::{
-			Arc, Barrier, Mutex,
+			Arc, Barrier, Mutex, OnceLock,
 			atomic::{AtomicBool, AtomicUsize, Ordering},
 		},
 		thread,
@@ -5172,9 +5304,9 @@ mod tests {
 		MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic,
 		OperatorErrorClass, PackageDisposition, PreparationRequest, PreparedEvidence,
 		PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL,
-		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, Secret, Transport,
-		UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse, VerificationRecord,
-		VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
+		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, RenewCalibrationAdmissionCli,
+		Secret, Transport, UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse,
+		VerificationRecord, VerifierEnvironment, VerifyLocalCli, Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
@@ -5983,17 +6115,17 @@ mod tests {
 					build_receipt_sha256: digest('5'),
 					approved_runner: SigningIdentity::from_secret([7; 32]).node().clone(),
 					approved_verifier: VerifierSigningIdentity::from_secret([8; 32]).node().clone(),
-					corpus_commitment_sha256: digest('c'),
-					source_manifest_digest: digest('d'),
+					corpus_commitment_sha256: digest('1'),
+					source_manifest_digest: digest('7'),
 					runner_commit: self.environment.runner_commit.clone(),
 					runner_source_tree: "e".repeat(40),
 					task_set_digest,
 					evaluator_digest,
 					model_toolchain_digest: digest('2'),
 					evaluator_runtime_digest: digest('3'),
-					runner_executable_digest: digest('6'),
-					codex_executable_digest: digest('7'),
-					codex_code_mode_host_digest: digest('8'),
+					runner_executable_digest: digest('8'),
+					codex_executable_digest: digest('9'),
+					codex_code_mode_host_digest: digest('b'),
 					verifier_executable_digest: digest('4'),
 				},
 				tasks: self.tasks.clone(),
@@ -6130,6 +6262,57 @@ mod tests {
 			codex_code_mode_host_digest: stage.provenance.codex_code_mode_host_digest.clone(),
 			verifier_executable_digest: digest('4'),
 		}
+	}
+
+	fn retained_calibration_evidence() -> (CalibrationAdmissionBundleV3, Vec<task::TaskDefinition>)
+	{
+		static EVIDENCE: OnceLock<(CalibrationAdmissionBundleV3, Vec<task::TaskDefinition>)> =
+			OnceLock::new();
+
+		EVIDENCE
+			.get_or_init(|| {
+				let mut fixture = LocalReplayFixture::new();
+
+				fixture.convert_to_calibration();
+
+				let stage = fixture.root.join("retained-stage.json");
+				let attestation = fixture.root.join("retained-attestation.json");
+				let admission = fixture.root.join("retained-admission.json");
+				let context = fixture.admission_context();
+
+				fixture
+					.prepare_admission(&stage, &attestation, &admission, &context)
+					.expect("retained signed admission bundle");
+
+				let bundle = serde_json::from_slice::<CalibrationAdmissionBundleV3>(
+					&fs::read(admission).expect("retained admission bytes"),
+				)
+				.expect("retained admission JSON");
+
+				(bundle, fixture.tasks.clone())
+			})
+			.clone()
+	}
+
+	fn target_renewal_bindings(
+		source: &CalibrationAdmissionBundleV3,
+	) -> CalibrationAdmissionBindings {
+		let digest = |byte: char| format!("sha256:{}", byte.to_string().repeat(64));
+		let mut target = source.admission.claims.issuance_bindings.clone();
+
+		target.build_receipt_sha256 = digest('a');
+		target.runner_commit = "a".repeat(40);
+		target.runner_source_tree = "b".repeat(40);
+		target.runner_executable_digest = digest('c');
+		target.verifier_executable_digest = digest('d');
+
+		target
+	}
+
+	fn different_digest(current: &str) -> String {
+		let candidate = format!("sha256:{}", "f".repeat(64));
+
+		if candidate == current { format!("sha256:{}", "e".repeat(64)) } else { candidate }
 	}
 
 	fn assert_calibration_attestation_mutations_rejected(
@@ -6491,8 +6674,62 @@ mod tests {
 		assert!(help.contains("aiq-verifier verify-local --help"));
 		assert!(help.contains("write create-new stage and attestation files"));
 		assert!(help.contains("does not publish or assign cloud trust"));
+		assert!(help.contains("aiq-verifier renew-calibration-admission --help"));
+		assert!(help.contains("fully validated target release"));
+		assert!(help.contains("does not require replay artifacts"));
 		assert!(help.contains("aiq-verifier diagnose-rescore --help"));
 		assert!(help.contains("permanently non-Official create-new diagnostic report"));
+	}
+
+	#[test]
+	fn renewal_cli_requires_complete_target_authority_and_has_no_replay_inputs() {
+		let arguments = [
+			"aiq-verifier renew-calibration-admission",
+			"--source-bundle",
+			"source-bundle.json",
+			"--tasks",
+			"tasks",
+			"--environment",
+			"environment.json",
+			"--evaluator-root",
+			"evaluators",
+			"--corpus-commitment",
+			"corpus.json",
+			"--evaluator-runtime",
+			"/toolchain/node",
+			"--codex-toolchain-root",
+			"/toolchain",
+			"--source-root",
+			"/target/source",
+			"--runner-binary",
+			"/target/aiq-runner",
+			"--codex-binary",
+			"/target/codex",
+			"--production-reference",
+			"/controlled/production-reference.json",
+			"--expected-production-reference-sha256",
+			"sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			"--build-receipt",
+			"/controlled/final-build-receipt.json",
+			"--expected-build-receipt-sha256",
+			"sha256:2222222222222222222222222222222222222222222222222222222222222222",
+			"--output",
+			"renewed-bundle.json",
+		];
+
+		assert!(RenewCalibrationAdmissionCli::try_parse_from(arguments).is_ok());
+		assert!(
+			RenewCalibrationAdmissionCli::try_parse_from(&arguments[..arguments.len() - 2])
+				.is_err()
+		);
+
+		for forbidden in ["--package", "--artifact-root", "--replay-root", "--observed-unix-ms"] {
+			let mut attempted = arguments.to_vec();
+
+			attempted.extend([forbidden, "forbidden"]);
+
+			assert!(RenewCalibrationAdmissionCli::try_parse_from(attempted).is_err());
+		}
 	}
 
 	#[test]
@@ -6933,12 +7170,16 @@ mod tests {
 		let target =
 			super::OutputTarget::new(&output, "diagnostic output").expect("new diagnostic output");
 
-		super::write_create_new_json(&target, &serde_json::json!({ "sequence": 1 }))
+		super::write_create_new_json(&target, &serde_json::json!({ "sequence": 1 }), "diagnostic")
 			.expect("first diagnostic report");
 
 		let first = fs::read(&output).expect("first diagnostic bytes");
-		let error = super::write_create_new_json(&target, &serde_json::json!({ "sequence": 2 }))
-			.expect_err("existing diagnostic output must not be overwritten");
+		let error = super::write_create_new_json(
+			&target,
+			&serde_json::json!({ "sequence": 2 }),
+			"diagnostic",
+		)
+		.expect_err("existing diagnostic output must not be overwritten");
 
 		assert_eq!(
 			serde_json::from_slice::<serde_json::Value>(&first).expect("diagnostic JSON"),
@@ -7250,6 +7491,266 @@ mod tests {
 			)
 			.is_err()
 		);
+	}
+
+	#[test]
+	fn renewal_rebinds_only_release_fields_without_package_artifacts_or_replay() {
+		let (source, tasks) = retained_calibration_evidence();
+		let target = target_renewal_bindings(&source);
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+		let renewed = calibration_verification::renew_calibration_admission(
+			&verifier,
+			&source,
+			target.clone(),
+			&tasks,
+		)
+		.expect("model-free admission renewal");
+
+		renewed
+			.verify_for_official(&target, &tasks)
+			.expect("renewed bundle verifies for Official consumption");
+
+		let mut expected_claims = source.admission.claims.clone();
+
+		expected_claims.issuance_bindings = target;
+
+		assert_eq!(renewed.stage, source.stage);
+		assert_eq!(renewed.attestation, source.attestation);
+		assert_eq!(renewed.admission.claims, expected_claims);
+		assert_eq!(
+			renewed.admission.claims.observed_unix_ms,
+			source.admission.claims.observed_unix_ms
+		);
+		assert_eq!(
+			renewed.admission.claims.replay_provenance,
+			source.admission.claims.replay_provenance
+		);
+		assert_ne!(renewed.admission.admission_digest, source.admission.admission_digest);
+		assert_ne!(renewed.admission.signature, source.admission.signature);
+
+		let root = temporary_test_root("renewal-create-new");
+		let output = root.join("renewed-admission.json");
+		let output_target =
+			super::OutputTarget::new(&output, "renewed admission output").expect("new output");
+
+		super::write_create_new_json(&output_target, &renewed, "renewed calibration admission")
+			.expect("atomic renewed admission output");
+
+		let first = fs::read(&output).expect("first renewed admission bytes");
+		let error =
+			super::write_create_new_json(&output_target, &source, "renewed calibration admission")
+				.expect_err("renewal output must be create-once");
+
+		assert_eq!(fs::read(&output).expect("preserved renewal output"), first);
+		assert_eq!(
+			serde_json::from_slice::<CalibrationAdmissionBundleV3>(&first)
+				.expect("renewed output JSON"),
+			renewed
+		);
+		assert_eq!(error.kind, ErrorKind::Configuration);
+		assert_eq!(fs::read_dir(&root).expect("renewal output root").count(), 1);
+
+		fs::remove_dir_all(root).expect("remove renewal output root");
+	}
+
+	#[test]
+	fn renewal_rejects_tampered_source_stage_attestation_admission_bank_and_diagnostic() {
+		let (source, tasks) = retained_calibration_evidence();
+		let target = target_renewal_bindings(&source);
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+		let mut tampered = Vec::new();
+		let mut changed = source.clone();
+
+		changed.stage.stage_digest = different_digest(&changed.stage.stage_digest);
+
+		tampered.push(changed);
+
+		let mut changed = source.clone();
+		let replacement = if changed.attestation.signature.starts_with('f') { "e" } else { "f" };
+
+		changed.attestation.signature.replace_range(0..1, replacement);
+		tampered.push(changed);
+
+		let mut changed = source.clone();
+		let replacement = if changed.admission.signature.starts_with('f') { "e" } else { "f" };
+
+		changed.admission.signature.replace_range(0..1, replacement);
+		tampered.push(changed);
+
+		let mut changed = source.clone();
+
+		changed.admission.admission_digest = different_digest(&changed.admission.admission_digest);
+
+		tampered.push(changed);
+
+		let mut changed = source.clone();
+
+		changed.admission.claims.calibration_bank.items[0].difficulty += 0.01;
+
+		tampered.push(changed);
+
+		let mut changed = source.clone();
+
+		changed.admission.claims.diagnostic.violations.push("tampered".to_owned());
+		tampered.push(changed);
+
+		for changed in tampered {
+			assert!(
+				calibration_verification::renew_calibration_admission(
+					&verifier,
+					&changed,
+					target.clone(),
+					&tasks,
+				)
+				.is_err()
+			);
+		}
+	}
+
+	#[test]
+	fn renewal_rejects_unapproved_keys_and_changed_immutable_authority() {
+		let (source, tasks) = retained_calibration_evidence();
+		let target = target_renewal_bindings(&source);
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+		let attacker = VerifierSigningIdentity::from_secret([10; 32]);
+
+		assert!(
+			calibration_verification::renew_calibration_admission(
+				&attacker,
+				&source,
+				target.clone(),
+				&tasks,
+			)
+			.is_err()
+		);
+
+		for mutation in 0..11 {
+			let mut changed = target.clone();
+
+			match mutation {
+				0 => {
+					changed.production_reference_sha256 =
+						different_digest(&changed.production_reference_sha256)
+				},
+				1 => {
+					changed.approved_runner = SigningIdentity::from_secret([11; 32]).node().clone()
+				},
+				2 => changed.approved_verifier = attacker.node().clone(),
+				3 => {
+					changed.corpus_commitment_sha256 =
+						different_digest(&changed.corpus_commitment_sha256)
+				},
+				4 => {
+					changed.source_manifest_digest =
+						different_digest(&changed.source_manifest_digest)
+				},
+				5 => changed.task_set_digest = different_digest(&changed.task_set_digest),
+				6 => changed.evaluator_digest = different_digest(&changed.evaluator_digest),
+				7 => {
+					changed.model_toolchain_digest =
+						different_digest(&changed.model_toolchain_digest)
+				},
+				8 => {
+					changed.evaluator_runtime_digest =
+						different_digest(&changed.evaluator_runtime_digest)
+				},
+				9 => {
+					changed.codex_executable_digest =
+						different_digest(&changed.codex_executable_digest)
+				},
+				_ => {
+					changed.codex_code_mode_host_digest =
+						different_digest(&changed.codex_code_mode_host_digest)
+				},
+			}
+
+			assert!(
+				calibration_verification::renew_calibration_admission(
+					&verifier, &source, changed, &tasks,
+				)
+				.is_err(),
+				"immutable authority mutation {mutation} must fail"
+			);
+		}
+
+		let mut changed_tasks = tasks.clone();
+
+		changed_tasks.pop();
+
+		assert!(
+			calibration_verification::renew_calibration_admission(
+				&verifier,
+				&source,
+				target,
+				&changed_tasks,
+			)
+			.is_err()
+		);
+	}
+
+	#[test]
+	fn renewal_rejects_invalid_target_build_source_and_binary_bindings() {
+		let (source, tasks) = retained_calibration_evidence();
+		let target = target_renewal_bindings(&source);
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+		let receipt = super::FinalBuildReceipt {
+			schema_version: "aiq.final-build-receipt.v2".to_owned(),
+			source_commit: target.runner_commit.clone(),
+			source_tree: target.runner_source_tree.clone(),
+			runner_executable_sha256: target.runner_executable_digest.clone(),
+			verifier_executable_sha256: target.verifier_executable_digest.clone(),
+			codex_executable_sha256: target.codex_executable_digest.clone(),
+			codex_code_mode_host_sha256: target.codex_code_mode_host_digest.clone(),
+		};
+
+		super::validate_final_build_receipt_bindings(&receipt, &target)
+			.expect("exact target build receipt bindings");
+
+		for mutation in 0..6 {
+			let mut changed = receipt.clone();
+
+			match mutation {
+				0 => changed.source_commit = "c".repeat(40),
+				1 => changed.source_tree = "d".repeat(40),
+				2 => {
+					changed.runner_executable_sha256 =
+						different_digest(&changed.runner_executable_sha256)
+				},
+				3 => {
+					changed.verifier_executable_sha256 =
+						different_digest(&changed.verifier_executable_sha256)
+				},
+				4 => {
+					changed.codex_executable_sha256 =
+						different_digest(&changed.codex_executable_sha256)
+				},
+				_ => {
+					changed.codex_code_mode_host_sha256 =
+						different_digest(&changed.codex_code_mode_host_sha256)
+				},
+			}
+
+			assert!(super::validate_final_build_receipt_bindings(&changed, &target).is_err());
+		}
+		for mutation in 0..5 {
+			let mut changed = target.clone();
+
+			match mutation {
+				0 => changed.build_receipt_sha256 = "sha256:invalid".to_owned(),
+				1 => changed.runner_commit = "A".repeat(40),
+				2 => changed.runner_source_tree = "short".to_owned(),
+				3 => changed.runner_executable_digest = "sha256:invalid".to_owned(),
+				_ => changed.verifier_executable_digest = "sha256:invalid".to_owned(),
+			}
+
+			assert!(
+				calibration_verification::renew_calibration_admission(
+					&verifier, &source, changed, &tasks,
+				)
+				.is_err(),
+				"invalid target binding {mutation} must fail"
+			);
+		}
 	}
 
 	#[test]
