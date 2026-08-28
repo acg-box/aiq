@@ -149,18 +149,25 @@ node --test --experimental-strip-types \
 
 ## AIQ Core 1.1.0 candidate source
 
-`candidates/aiq-core-1.1.0/` is a side-by-side source foundation. It does not
-replace the active 1.0.7 public authority. Its `aiq.catalog.v2` document binds
-72 explicit retained or revised design decisions and 60 bounded within-domain
-clusters. The task scorer and weighted binary formula remain at `1.0.6`.
+`candidates/aiq-core-1.1.0/` contains the public source for
+`aiq-core/1.1.0-candidate.2`. It does not replace the active 1.0.7 public
+authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
+within-domain clusters, and the unchanged task scorer and weighted binary
+formula at `1.0.6`.
 
-The draft records the known retained harness counts of 57 `empty` classes and
-four `timeout` classes. It does not guess the private task mapping. Each task
-therefore has pending optional-fixture applicability, and the catalog blocks
-sealing. Final authoring must record `required` or `not_applicable` for both
-classes on all 72 entries. The catalog becomes the sole expected-class
-authority. The authoring input and harness record both expected and observed
-class maps and an exact-equality result.
+Candidate.1 is rejected, permanently non-sealable predecessor evidence. Its
+isolated review aggregate is
+`sha256:4420248576150192a516be9ffe9c43a25112a58baf7c4a5519b0db6bca1dac45`.
+The review approved 20 task semantics and rejected 52. Candidate.2 retains only
+the 20 approved semantics. It revises the other 52 tasks and records one
+public-safe closure mechanism and falsifier for each applicable review issue.
+
+Each task requires `gold`, `alternate_correct`, `partial`,
+`adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
+candidate uses natural completion. The catalog is the sole expected-class
+authority. It is frozen for a fresh independent review, but it is inactive and
+not production-publishable. Review, sealing, calibration, qualification,
+release, activation, deployment, and production acceptance are pending.
 
 The candidate contracts are:
 
@@ -178,11 +185,12 @@ The candidate contracts are:
 - `schema/benchmark-qualification-v1.schema.json` for the deterministic
   qualification or rejection result.
 
-The v2 leakage review binds reviewer identity, reviewer task or thread,
-review time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. The sealer copies and hashes the supplied
-record. It does not infer completion from task-authored notes. Process
-separation is evidence, not cryptographic proof of human independence.
+The v2 leakage review binds reviewer identity, reviewer task or thread, review
+time, source commit, source tree, source manifest, task and catalog digests,
+verdict, method, scope, and notes. Candidate.1 review records do not satisfy
+candidate.2. The sealer requires one fresh matching record for each exact
+candidate.2 task and catalog entry. It does not infer review completion from
+task-authored notes.
 
 Qualification uses three complete matrices only. It reports all three pairwise
 rank correlations, exact-cell agreement, mean absolute cell delta, a separate
@@ -191,7 +199,7 @@ comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the draft source without private inputs:
+Regenerate and test the candidate.2 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts
