@@ -18,7 +18,7 @@
     "distribution",
     "tasks",
     "candidate_identity",
-    "source_foundation"
+    "candidate_state"
   ],
   "properties": {
     "schema_version": {
@@ -38,11 +38,7 @@
       "minLength": 1
     },
     "status": {
-      "enum": [
-        "draft_source_foundation",
-        "qualification_ready",
-        "failed"
-      ]
+      "const": "frozen_candidate"
     },
     "generated_from": {
       "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"
@@ -203,22 +199,29 @@
         }
       }
     },
-    "source_foundation": {
+    "candidate_state": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "identity_state",
         "predecessor_task_set_version",
         "decision_record",
         "legacy_observed_fixture_counts",
+        "historical_evidence",
         "private_fixture_mapping_reconciled",
         "private_tasks_authored",
-        "leakage_reviews_complete",
-        "sealing_allowed",
-        "qualification_allowed",
-        "release_allowed",
-        "blockers"
+        "independent_review_status",
+        "seal_status",
+        "qualification_status",
+        "release_status",
+        "active",
+        "production_publishable",
+        "next_required_actions"
       ],
       "properties": {
+        "identity_state": {
+          "const": "frozen_for_independent_review"
+        },
         "predecessor_task_set_version": {
           "const": "1.0.7"
         },
@@ -231,30 +234,64 @@
             "timeout": 4
           }
         },
+        "historical_evidence": {
+          "const": {
+            "role": "diagnostic_design_evidence_only",
+            "qualification_evidence": false,
+            "calibration_informative_tasks": 32,
+            "calibration_clusters": 37,
+            "calibration_universal_full_credit_tasks": 5,
+            "calibration_universal_semantic_zero_tasks": 2,
+            "retained_run_records": 7,
+            "semantic_complete_matrices": 2,
+            "coverage_aware_diagnostic_runs": 5,
+            "numeric_semantic_cells": [
+              1224,
+              1223,
+              1222,
+              1224,
+              1221,
+              1223,
+              1222
+            ],
+            "configuration_rank_spearman": {
+              "minimum": -0.1691,
+              "median": 0.2598,
+              "maximum": 0.7721
+            }
+          }
+        },
         "private_fixture_mapping_reconciled": {
-          "type": "boolean"
+          "const": true
         },
         "private_tasks_authored": {
-          "type": "boolean"
+          "const": true
         },
-        "leakage_reviews_complete": {
-          "type": "boolean"
+        "independent_review_status": {
+          "const": "pending"
         },
-        "sealing_allowed": {
-          "type": "boolean"
+        "seal_status": {
+          "const": "pending"
         },
-        "qualification_allowed": {
-          "type": "boolean"
+        "qualification_status": {
+          "const": "pending"
         },
-        "release_allowed": {
-          "type": "boolean"
+        "release_status": {
+          "const": "pending"
         },
-        "blockers": {
+        "active": {
+          "const": false
+        },
+        "production_publishable": {
+          "const": false
+        },
+        "next_required_actions": {
           "type": "array",
-          "minItems": 0,
+          "minItems": 4,
           "uniqueItems": true,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 40
           }
         }
       }
@@ -367,7 +404,7 @@
               "const": "benchmarks/candidates/aiq-core-1.1.0/design-decisions.json"
             },
             "kind": {
-              "const": "qualification_source_foundation"
+              "const": "frozen_candidate_authoring"
             },
             "objective": {
               "type": "string",
@@ -403,7 +440,7 @@
             },
             "fixture_profile": {
               "type": "string",
-              "pattern": "^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v1(?![\\s\\S])"
+              "pattern": "^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v(?:1|2)(?![\\s\\S])"
             },
             "content_handle": {
               "type": "string",
@@ -648,7 +685,7 @@
           ],
           "properties": {
             "origin": {
-              "const": "explicit_candidate_design_decision"
+              "const": "evidence_selected_candidate_authoring"
             },
             "owner": {
               "const": "AIQ benchmark maintainers"
@@ -738,8 +775,7 @@
         "applicability": {
           "enum": [
             "required",
-            "not_applicable",
-            "pending_private_reconciliation"
+            "not_applicable"
           ]
         },
         "handle": {

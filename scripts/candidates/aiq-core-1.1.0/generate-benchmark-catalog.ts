@@ -14,7 +14,17 @@ const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.1' as const;
 
 type JsonObject = Record<string, unknown>;
 type Decision = 'retained' | 'revised';
-type FixtureApplicability = 'required' | 'not_applicable' | 'pending_private_reconciliation';
+type FixtureApplicability = 'required' | 'not_applicable';
+
+interface PublicTaskRevision {
+  readonly title: string;
+  readonly summary: string;
+  readonly input_contract_kind: string;
+  readonly evaluator_kind: string;
+  readonly pass_conditions: readonly string[];
+  readonly allowed_tools: readonly string[];
+  readonly tags: readonly string[];
+}
 
 interface TaskDecision {
   readonly task_id: string;
@@ -25,6 +35,7 @@ interface TaskDecision {
     readonly timeout: FixtureApplicability;
   };
   readonly rationale: string;
+  readonly public_task_revision: PublicTaskRevision | null;
 }
 
 export interface CandidateDecisionManifest {
@@ -38,7 +49,24 @@ export interface CandidateDecisionManifest {
     readonly empty: 57;
     readonly timeout: 4;
   };
-  readonly private_reconciliation_required: true;
+  readonly private_reconciliation_required: false;
+  readonly historical_evidence: {
+    readonly role: 'diagnostic_design_evidence_only';
+    readonly qualification_evidence: false;
+    readonly calibration_informative_tasks: 32;
+    readonly calibration_clusters: 37;
+    readonly calibration_universal_full_credit_tasks: 5;
+    readonly calibration_universal_semantic_zero_tasks: 2;
+    readonly retained_run_records: 7;
+    readonly semantic_complete_matrices: 2;
+    readonly coverage_aware_diagnostic_runs: 5;
+    readonly numeric_semantic_cells: readonly [1224, 1223, 1222, 1224, 1221, 1223, 1222];
+    readonly configuration_rank_spearman: {
+      readonly minimum: -0.1691;
+      readonly median: 0.2598;
+      readonly maximum: 0.7721;
+    };
+  };
   readonly decisions: readonly TaskDecision[];
 }
 
@@ -86,18 +114,57 @@ function exactKeys(value: JsonObject, expected: readonly string[], label: string
 }
 
 function fixtureApplicability(value: unknown, label: string): FixtureApplicability {
-  if (!['required', 'not_applicable', 'pending_private_reconciliation'].includes(String(value))) {
+  if (!['required', 'not_applicable'].includes(String(value))) {
     throw new TypeError(`${label} is invalid.`);
   }
-  if (value === 'required' || value === 'not_applicable') return value;
-  return 'pending_private_reconciliation';
+  return value === 'required' ? 'required' : 'not_applicable';
+}
+
+function stringArray(value: unknown, label: string): readonly string[] {
+  return unknownArray(value, label).map((item, index) =>
+    stringValue(item, `${label} ${String(index)}`),
+  );
+}
+
+function publicTaskRevision(value: unknown, label: string): PublicTaskRevision | null {
+  if (value === null) return null;
+  const revision = jsonObject(value, label);
+  exactKeys(
+    revision,
+    [
+      'allowed_tools',
+      'evaluator_kind',
+      'input_contract_kind',
+      'pass_conditions',
+      'summary',
+      'tags',
+      'title',
+    ],
+    label,
+  );
+  return {
+    title: stringValue(revision.title, `${label} title`),
+    summary: stringValue(revision.summary, `${label} summary`),
+    input_contract_kind: stringValue(revision.input_contract_kind, `${label} input contract kind`),
+    evaluator_kind: stringValue(revision.evaluator_kind, `${label} evaluator kind`),
+    pass_conditions: stringArray(revision.pass_conditions, `${label} pass conditions`),
+    allowed_tools: stringArray(revision.allowed_tools, `${label} allowed tools`),
+    tags: stringArray(revision.tags, `${label} tags`),
+  };
 }
 
 function taskDecision(value: unknown, index: number): TaskDecision {
   const decision = jsonObject(value, `decision ${String(index)}`);
   exactKeys(
     decision,
-    ['acceptance_fixture_applicability', 'cluster_id', 'decision', 'rationale', 'task_id'],
+    [
+      'acceptance_fixture_applicability',
+      'cluster_id',
+      'decision',
+      'public_task_revision',
+      'rationale',
+      'task_id',
+    ],
     `decision ${String(index)}`,
   );
   const fixture = jsonObject(
@@ -119,6 +186,70 @@ function taskDecision(value: unknown, index: number): TaskDecision {
       timeout: fixtureApplicability(fixture.timeout, `decision ${String(index)} timeout`),
     },
     rationale: stringValue(decision.rationale, `decision ${String(index)} rationale`),
+    public_task_revision: publicTaskRevision(
+      decision.public_task_revision,
+      `decision ${String(index)} public task revision`,
+    ),
+  };
+}
+
+function historicalEvidence(value: unknown): CandidateDecisionManifest['historical_evidence'] {
+  const evidence = jsonObject(value, 'historical evidence');
+  exactKeys(
+    evidence,
+    [
+      'calibration_clusters',
+      'calibration_informative_tasks',
+      'calibration_universal_full_credit_tasks',
+      'calibration_universal_semantic_zero_tasks',
+      'configuration_rank_spearman',
+      'coverage_aware_diagnostic_runs',
+      'numeric_semantic_cells',
+      'qualification_evidence',
+      'retained_run_records',
+      'role',
+      'semantic_complete_matrices',
+    ],
+    'historical evidence',
+  );
+  const spearman = jsonObject(
+    evidence.configuration_rank_spearman,
+    'historical configuration-rank Spearman',
+  );
+  exactKeys(spearman, ['maximum', 'median', 'minimum'], 'historical configuration-rank Spearman');
+  const numericCells = unknownArray(
+    evidence.numeric_semantic_cells,
+    'historical numeric semantic cells',
+  );
+  if (
+    evidence.role !== 'diagnostic_design_evidence_only' ||
+    evidence.qualification_evidence !== false ||
+    evidence.calibration_informative_tasks !== 32 ||
+    evidence.calibration_clusters !== 37 ||
+    evidence.calibration_universal_full_credit_tasks !== 5 ||
+    evidence.calibration_universal_semantic_zero_tasks !== 2 ||
+    evidence.retained_run_records !== 7 ||
+    evidence.semantic_complete_matrices !== 2 ||
+    evidence.coverage_aware_diagnostic_runs !== 5 ||
+    JSON.stringify(numericCells) !== JSON.stringify([1224, 1223, 1222, 1224, 1221, 1223, 1222]) ||
+    spearman.minimum !== -0.1691 ||
+    spearman.median !== 0.2598 ||
+    spearman.maximum !== 0.7721
+  ) {
+    throw new TypeError('Historical evidence identity is invalid.');
+  }
+  return {
+    role: 'diagnostic_design_evidence_only',
+    qualification_evidence: false,
+    calibration_informative_tasks: 32,
+    calibration_clusters: 37,
+    calibration_universal_full_credit_tasks: 5,
+    calibration_universal_semantic_zero_tasks: 2,
+    retained_run_records: 7,
+    semantic_complete_matrices: 2,
+    coverage_aware_diagnostic_runs: 5,
+    numeric_semantic_cells: [1224, 1223, 1222, 1224, 1221, 1223, 1222],
+    configuration_rank_spearman: { minimum: -0.1691, median: 0.2598, maximum: 0.7721 },
   };
 }
 
@@ -131,6 +262,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'candidate_id',
       'candidate_task_set_version',
       'decisions',
+      'historical_evidence',
       'legacy_observed_fixture_counts',
       'predecessor_task_set_version',
       'private_reconciliation_required',
@@ -153,7 +285,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     manifest.authority !== 'explicit_per_task_maintainer_decision' ||
     legacyCounts.empty !== 57 ||
     legacyCounts.timeout !== 4 ||
-    manifest.private_reconciliation_required !== true
+    manifest.private_reconciliation_required !== false
   ) {
     throw new TypeError('Candidate decision manifest identity is invalid.');
   }
@@ -167,7 +299,8 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     recorded_date: '2026-08-28',
     authority: 'explicit_per_task_maintainer_decision',
     legacy_observed_fixture_counts: { empty: 57, timeout: 4 },
-    private_reconciliation_required: true,
+    private_reconciliation_required: false,
+    historical_evidence: historicalEvidence(manifest.historical_evidence),
     decisions,
   };
 }
@@ -232,26 +365,46 @@ export function assertDecisionManifest(
     manifest.authority !== 'explicit_per_task_maintainer_decision' ||
     manifest.legacy_observed_fixture_counts.empty !== 57 ||
     manifest.legacy_observed_fixture_counts.timeout !== 4 ||
-    !manifest.private_reconciliation_required ||
+    manifest.private_reconciliation_required ||
+    manifest.historical_evidence.role !== 'diagnostic_design_evidence_only' ||
+    manifest.historical_evidence.qualification_evidence ||
+    manifest.historical_evidence.semantic_complete_matrices !== 2 ||
+    manifest.historical_evidence.coverage_aware_diagnostic_runs !== 5 ||
     manifest.decisions.length !== 72
   ) {
     throw new Error('AIQ Core 1.1.0 decision-manifest authority is invalid.');
   }
   const decisionIds = manifest.decisions.map((decision) => decision.task_id);
+  const retained = manifest.decisions.filter((decision) => decision.decision === 'retained');
+  const revised = manifest.decisions.filter((decision) => decision.decision === 'revised');
   if (
     new Set(decisionIds).size !== 72 ||
+    new Set(manifest.decisions.map((decision) => decision.cluster_id)).size !== 72 ||
     priorTaskIds.length !== 72 ||
+    retained.length !== 16 ||
+    revised.length !== 56 ||
     decisionIds.some((taskId, index) => taskId !== priorTaskIds[index]) ||
     manifest.decisions.some(
       (decision) =>
         !['retained', 'revised'].includes(decision.decision) ||
         decision.cluster_id.length === 0 ||
         decision.rationale.length < 160 ||
+        (decision.decision === 'retained') !== (decision.public_task_revision === null) ||
+        decision.acceptance_fixture_applicability.empty !== 'required' ||
+        decision.acceptance_fixture_applicability.timeout !== 'not_applicable' ||
         !OPTIONAL_FIXTURE_CLASSES.every((fixtureClass) =>
-          ['required', 'not_applicable', 'pending_private_reconciliation'].includes(
+          ['required', 'not_applicable'].includes(
             decision.acceptance_fixture_applicability[fixtureClass],
           ),
-        ),
+        ) ||
+        (decision.public_task_revision !== null &&
+          (decision.public_task_revision.title.length < 8 ||
+            decision.public_task_revision.summary.length < 80 ||
+            decision.public_task_revision.input_contract_kind.length < 8 ||
+            decision.public_task_revision.evaluator_kind.length < 8 ||
+            decision.public_task_revision.pass_conditions.length < 3 ||
+            decision.public_task_revision.allowed_tools.length === 0 ||
+            decision.public_task_revision.tags.length < 2)),
     )
   ) {
     throw new Error('Every predecessor task needs one ordered explicit retained/revised decision.');
@@ -259,15 +412,14 @@ export function assertDecisionManifest(
 }
 
 function fixtureDeclaration(
-  priorCommitments: JsonObject,
+  taskId: string,
   fixtureClass: string,
   applicability: FixtureApplicability,
 ): JsonObject {
   if (applicability !== 'required') return { applicability, handle: null };
-  const prior = jsonObject(priorCommitments[fixtureClass], `${fixtureClass} predecessor fixture`);
   return {
     applicability,
-    handle: stringValue(prior.handle, `${fixtureClass} predecessor fixture handle`),
+    handle: `aiq-acceptance://${taskId}/v5/${fixtureClass.replaceAll('_', '-')}`,
   };
 }
 
@@ -278,22 +430,19 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
   }
   const inputContract = jsonObject(prior.input_contract, `${decision.task_id} input contract`);
   const evaluator = jsonObject(prior.evaluator, `${decision.task_id} evaluator`);
-  const priorCommitments = jsonObject(
-    evaluator.acceptance_fixture_commitments,
-    `${decision.task_id} fixture commitments`,
-  );
+  const revision = decision.public_task_revision;
   const applicability = decision.acceptance_fixture_applicability;
   const acceptanceFixtureCommitments: JsonObject = {};
   for (const fixtureClass of REQUIRED_FIXTURE_CLASSES) {
     acceptanceFixtureCommitments[fixtureClass] = fixtureDeclaration(
-      priorCommitments,
+      decision.task_id,
       fixtureClass,
       'required',
     );
   }
   for (const fixtureClass of OPTIONAL_FIXTURE_CLASSES) {
     acceptanceFixtureCommitments[fixtureClass] = fixtureDeclaration(
-      priorCommitments,
+      decision.task_id,
       fixtureClass,
       applicability[fixtureClass],
     );
@@ -302,27 +451,39 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
   return {
     ...prior,
     task_version: TASK_SET_VERSION,
+    title: revision?.title ?? prior.title,
+    summary: revision?.summary ?? prior.summary,
     design_revision: {
       supersedes_task_version: '1.0.7',
       decision: decision.decision,
       decision_record: DECISION_PATH,
-      kind: 'qualification_source_foundation',
+      kind: 'frozen_candidate_authoring',
       objective:
-        'Create an explicit AIQ Core 1.1.0 candidate identity whose authoring and three-run qualification contracts fail closed without private evidence.',
+        'Freeze an evidence-selected AIQ Core 1.1.0 candidate for independent review and later sealing without changing the active production benchmark.',
       task_specific_delta: decision.rationale,
       controlled_corpus_requirements: CONTROLLED_CORPUS_REQUIREMENTS,
     },
     input_contract: {
       ...inputContract,
+      kind: revision?.input_contract_kind ?? inputContract.kind,
+      fixture_profile:
+        revision === null ? inputContract.fixture_profile : `aiq-fixture://${decision.task_id}/v2`,
       content_handle: stringValue(
         inputContract.content_handle,
         `${decision.task_id} content handle`,
       ).replace('aiq-core/1.0.7', 'aiq-core/1.1.0'),
     },
     cluster_id: decision.cluster_id,
-    evaluator: { ...evaluator, acceptance_fixture_commitments: acceptanceFixtureCommitments },
+    allowed_tools: revision?.allowed_tools ?? prior.allowed_tools,
+    evaluator: {
+      ...evaluator,
+      kind: revision?.evaluator_kind ?? evaluator.kind,
+      pass_conditions: revision?.pass_conditions ?? evaluator.pass_conditions,
+      acceptance_fixture_commitments: acceptanceFixtureCommitments,
+    },
+    tags: revision?.tags ?? prior.tags,
     provenance: {
-      origin: 'explicit_candidate_design_decision',
+      origin: 'evidence_selected_candidate_authoring',
       owner: 'AIQ benchmark maintainers',
       recorded_date: '2026-08-28',
       predecessor_task_version: '1.0.7',
@@ -333,7 +494,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
       status: 'independent_private_review_v2_required',
       owner: 'AIQ benchmark maintainers',
       review_requirement: 'exactly_one_matching_aiq_leakage_review_v2_per_task',
-      notes: `${decision.task_id} cannot be sealed until a supplied independent review binds this exact task definition and catalog entry. Recorded process separation is evidence, not cryptographic proof of human independence.`,
+      notes: `${decision.task_id} is frozen for review but cannot be sealed until a supplied independent review binds this exact task definition and catalog entry. Recorded process separation is evidence, not cryptographic proof of human independence.`,
     },
   };
 }
@@ -366,8 +527,8 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     ...prior,
     schema_version: 'aiq.catalog.v2',
     task_set_version: TASK_SET_VERSION,
-    title: 'AIQ Core 1.1.0 candidate source foundation',
-    status: 'draft_source_foundation',
+    title: 'AIQ Core 1.1.0 frozen candidate for independent review',
+    status: 'frozen_candidate',
     generated_from: GENERATOR_PATH,
     candidate_identity: {
       candidate_id: CANDIDATE_ID,
@@ -385,22 +546,27 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       public_repository:
         'Metadata, schemas, explicit design decisions, public examples, and synthetic contract fixtures only.',
       controlled_source:
-        'The catalog is the sole expected acceptance-fixture applicability authority. Observed controlled classes must equal each task declaration exactly. Private tasks, fixtures, evaluator content, leakage reviews, and signing material stay outside Git.',
+        'The catalog is the sole expected acceptance-fixture applicability authority. Observed controlled classes must equal each task declaration exactly. Private tasks, fixtures, evaluator content, review requests, leakage reviews, and signing material stay outside Git.',
     },
-    source_foundation: {
+    candidate_state: {
+      identity_state: 'frozen_for_independent_review',
       predecessor_task_set_version: '1.0.7',
       decision_record: DECISION_PATH,
       legacy_observed_fixture_counts: manifest.legacy_observed_fixture_counts,
-      private_fixture_mapping_reconciled: false,
-      private_tasks_authored: false,
-      leakage_reviews_complete: false,
-      sealing_allowed: false,
-      qualification_allowed: false,
-      release_allowed: false,
-      blockers: [
-        'Reconcile the retained private harness into explicit required or not_applicable empty and timeout declarations for all 72 tasks.',
-        'Author or retain each private 1.1.0 task and supply one exact matching aiq.leakage-review.v2 record per task.',
-        'Seal the final candidate and pass three-matrix benchmark qualification under a new exact candidate identity.',
+      historical_evidence: manifest.historical_evidence,
+      private_fixture_mapping_reconciled: true,
+      private_tasks_authored: true,
+      independent_review_status: 'pending',
+      seal_status: 'pending',
+      qualification_status: 'pending',
+      release_status: 'pending',
+      active: false,
+      production_publishable: false,
+      next_required_actions: [
+        'Complete one independent aiq.leakage-review.v2 record for every exact task and catalog-entry digest.',
+        'Seal the reviewed private corpus without changing this frozen candidate identity.',
+        'Run three fresh, predeclared, complete non-synthetic 17-by-72 matrices and pass aiq.benchmark-qualification-policy.v1.',
+        'Complete separate release adoption and production acceptance before any activation or publication.',
       ],
     },
     tasks,
@@ -420,15 +586,13 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       : unknownArray(schema.required, 'catalog required fields').map((field, index) =>
           stringValue(field, `catalog required field ${String(index)}`),
         );
-  for (const field of ['candidate_identity', 'source_foundation']) {
+  for (const field of ['candidate_identity', 'candidate_state']) {
     if (!required.includes(field)) required.push(field);
   }
   schema.required = required;
   properties.schema_version = { const: 'aiq.catalog.v2' };
   properties.task_set_version = { const: TASK_SET_VERSION };
-  properties.status = {
-    enum: ['draft_source_foundation', 'qualification_ready', 'failed'],
-  };
+  properties.status = { const: 'frozen_candidate' };
   properties.generated_from = { const: GENERATOR_PATH };
   properties.candidate_identity = {
     type: 'object',
@@ -439,34 +603,47 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       task_metadata_digest: { pattern: '^sha256:[0-9a-f]{64}(?![\\s\\S])', type: 'string' },
     },
   };
-  properties.source_foundation = {
+  properties.candidate_state = {
     type: 'object',
     additionalProperties: false,
     required: [
+      'identity_state',
       'predecessor_task_set_version',
       'decision_record',
       'legacy_observed_fixture_counts',
+      'historical_evidence',
       'private_fixture_mapping_reconciled',
       'private_tasks_authored',
-      'leakage_reviews_complete',
-      'sealing_allowed',
-      'qualification_allowed',
-      'release_allowed',
-      'blockers',
+      'independent_review_status',
+      'seal_status',
+      'qualification_status',
+      'release_status',
+      'active',
+      'production_publishable',
+      'next_required_actions',
     ],
     properties: {
+      identity_state: { const: 'frozen_for_independent_review' },
       predecessor_task_set_version: { const: '1.0.7' },
       decision_record: { const: DECISION_PATH },
       legacy_observed_fixture_counts: {
         const: { empty: 57, timeout: 4 },
       },
-      private_fixture_mapping_reconciled: { type: 'boolean' },
-      private_tasks_authored: { type: 'boolean' },
-      leakage_reviews_complete: { type: 'boolean' },
-      sealing_allowed: { type: 'boolean' },
-      qualification_allowed: { type: 'boolean' },
-      release_allowed: { type: 'boolean' },
-      blockers: { type: 'array', minItems: 0, uniqueItems: true, items: { type: 'string' } },
+      historical_evidence: { const: decisionManifest.historical_evidence },
+      private_fixture_mapping_reconciled: { const: true },
+      private_tasks_authored: { const: true },
+      independent_review_status: { const: 'pending' },
+      seal_status: { const: 'pending' },
+      qualification_status: { const: 'pending' },
+      release_status: { const: 'pending' },
+      active: { const: false },
+      production_publishable: { const: false },
+      next_required_actions: {
+        type: 'array',
+        minItems: 4,
+        uniqueItems: true,
+        items: { type: 'string', minLength: 40 },
+      },
     },
   };
 
@@ -482,7 +659,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
     required: ['applicability', 'handle'],
     properties: {
       applicability: {
-        enum: ['required', 'not_applicable', 'pending_private_reconciliation'],
+        enum: ['required', 'not_applicable'],
       },
       handle: {
         type: ['string', 'null'],
@@ -511,7 +688,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       supersedes_task_version: { const: '1.0.7' },
       decision: { enum: ['retained', 'revised'] },
       decision_record: { const: DECISION_PATH },
-      kind: { const: 'qualification_source_foundation' },
+      kind: { const: 'frozen_candidate_authoring' },
       objective: { type: 'string', minLength: 80 },
       task_specific_delta: { type: 'string', minLength: 160 },
       controlled_corpus_requirements: {
@@ -534,13 +711,22 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'decision_record',
     ],
     properties: {
-      origin: { const: 'explicit_candidate_design_decision' },
+      origin: { const: 'evidence_selected_candidate_authoring' },
       owner: { const: 'AIQ benchmark maintainers' },
       recorded_date: { const: '2026-08-28' },
       predecessor_task_version: { const: '1.0.7' },
       source: { const: GENERATOR_PATH },
       decision_record: { const: DECISION_PATH },
     },
+  };
+  const inputContract = jsonObject(taskProperties.input_contract, 'task input contract');
+  const inputContractProperties = jsonObject(
+    inputContract.properties,
+    'task input contract properties',
+  );
+  inputContractProperties.fixture_profile = {
+    type: 'string',
+    pattern: '^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v(?:1|2)(?![\\s\\S])',
   };
   const release = jsonObject(properties.catalog_release_identity, 'release identity');
   const releaseProperties = jsonObject(release.properties, 'release properties');
