@@ -76,6 +76,12 @@ pub const MAX_EVALUATOR_RESULTS_BUNDLE_BYTES: usize = 4 * 1_024 * 1_024 - 240 * 
 /// submission limit even when every byte needs six-byte JSON escaping and each
 /// result contains the normal external artifact references.
 pub const MAX_RESULT_PREVIEW_BYTES: usize = 64;
+/// Maximum task-declared completed-command digest entries in one 72-by-17 run.
+///
+/// AIQ Core has seven tool-use tasks and 17 configurations. Undeclared command
+/// identities remain represented by the exact command and total call counters,
+/// while this bounded map retains only task-required digest multiplicities.
+pub const MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN: usize = 7 * 17;
 /// Maximum canonical replay snapshot retained for one candidate workspace.
 pub const MAX_WORKSPACE_SNAPSHOT_BYTES: usize = 4 * 1_024 * 1_024;
 /// Maximum file or directory entries inspected in one candidate workspace.
@@ -342,6 +348,14 @@ pub struct ToolUsage {
 	pub total_calls: u32,
 	/// Calls grouped by stable Codex item type.
 	pub by_tool: BTreeMap<String, u32>,
+	/// Completed command lines grouped by lowercase SHA-256 digest. Command text
+	/// is never serialized or retained.
+	#[serde(
+		default,
+		skip_serializing_if = "BTreeMap::is_empty",
+		deserialize_with = "deserialize_nonempty_completed_command_sha256"
+	)]
+	pub completed_command_sha256: BTreeMap<String, u32>,
 	/// Provider-reported token metadata from `turn.completed`, when present.
 	#[serde(skip)]
 	pub provider_tokens: ProviderTokenUsage,
@@ -1326,6 +1340,8 @@ where
 				result.tool_usage = parse_codex_tool_usage(&prior_stdout)
 					.map_err(|error| RunnerError::new(error.to_string()))?;
 
+				project_completed_command_digests(task, &mut result.tool_usage);
+
 				result.artifacts.retain(|artifact| artifact.kind != "stdout.jsonl");
 				result.artifacts.push(
 					self.adapter
@@ -1779,20 +1795,32 @@ struct InvocationEvidence {
 	stdout_full: String,
 }
 impl InvocationEvidence {
-	fn capture(invocation: &Result<CodexOutput, AdapterFailure>, wall_ms: u64) -> Self {
+	fn capture(
+		invocation: &Result<CodexOutput, AdapterFailure>,
+		wall_ms: u64,
+		task: &TaskDefinition,
+	) -> Self {
 		match invocation {
 			Ok(output) => Self {
 				wall_ms,
 				exit_code: output.exit_code,
 				artifacts: output.artifacts.clone(),
-				tool_usage: retained_stdout_tool_usage(&output.stdout_full, &output.artifacts),
+				tool_usage: retained_stdout_tool_usage(
+					&output.stdout_full,
+					&output.artifacts,
+					task,
+				),
 				stdout_full: output.stdout_full.clone(),
 			},
 			Err(failure) => Self {
 				wall_ms,
 				exit_code: failure.exit_code,
 				artifacts: failure.artifacts.clone(),
-				tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts),
+				tool_usage: retained_stdout_tool_usage(
+					&failure.stdout_full,
+					&failure.artifacts,
+					task,
+				),
 				stdout_full: failure.stdout_full.clone(),
 			},
 		}
@@ -2355,6 +2383,68 @@ pub fn parse_codex_tool_usage(stdout: &str) -> Result<ToolUsage, CodexItemPolicy
 	Ok(usage)
 }
 
+/// Retains completed-command counts only for digests declared by the task's
+/// external tool-evidence checks.
+///
+/// Total and per-tool call counts remain unfiltered, so an undeclared or extra
+/// command still fails an exact evaluator gate without expanding the signed
+/// package by an unbounded set of model-chosen identities.
+pub fn project_completed_command_digests(task: &TaskDefinition, usage: &mut ToolUsage) {
+	let Some(configuration) = task
+		.evaluator
+		.as_ref()
+		.and_then(|evaluator| evaluator.external.as_ref())
+		.map(|external| &external.configuration)
+	else {
+		usage.completed_command_sha256.clear();
+
+		return;
+	};
+	let Some(checks) = configuration.get("checks").and_then(Value::as_array) else {
+		usage.completed_command_sha256.clear();
+
+		return;
+	};
+	let mut required = BTreeSet::new();
+
+	for check in checks {
+		let Some(check) = check.as_object() else {
+			usage.completed_command_sha256.clear();
+
+			return;
+		};
+
+		if check.get("type").and_then(Value::as_str) != Some("tool_evidence") {
+			continue;
+		}
+
+		let Some(digests) = check.get("required_completed_command_sha256") else { continue };
+		let Some(digests) = digests.as_object() else {
+			usage.completed_command_sha256.clear();
+
+			return;
+		};
+
+		for (digest, count) in digests {
+			if !digest.strip_prefix("sha256:").is_some_and(|value| {
+				value.len() == 64
+					&& value
+						.bytes()
+						.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+			}) || !count.as_u64().is_some_and(|count| (1..=u64::from(u32::MAX)).contains(&count))
+			{
+				usage.completed_command_sha256.clear();
+
+				return;
+			}
+
+			required.insert(digest.clone());
+		}
+	}
+
+	usage.completed_command_sha256.retain(|digest, _| required.contains(digest));
+}
+
 /// Executes a deterministic selected matrix through the normal local runner.
 pub(crate) fn execute_selected_run<E, S, P>(
 	adapter: &CodexAdapter<E, S>,
@@ -2429,33 +2519,6 @@ pub(crate) fn build_evaluator_results_bundle(
 	Ok((bundle, bytes))
 }
 
-pub(crate) fn extract_final_response(stdout: &str) -> Option<String> {
-	let mut response = None;
-
-	for line in stdout.lines() {
-		let Ok(value) = serde_json::from_str::<Value>(line) else {
-			continue;
-		};
-		let item = value.get("item").unwrap_or(&value);
-		let item_type = item.get("type").and_then(Value::as_str);
-
-		if matches!(item_type, Some("agent_message" | "message"))
-			&& let Some(text) = item.get("text").and_then(Value::as_str)
-		{
-			response = Some(text.to_owned());
-		}
-	}
-
-	if response.is_none()
-		&& !stdout.trim().is_empty()
-		&& serde_json::from_str::<Value>(stdout).is_err()
-	{
-		response = Some(stdout.trim().to_owned());
-	}
-
-	response
-}
-
 pub(crate) fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceManifest, RunnerError> {
 	let canonical_root = fs::canonicalize(workspace)
 		.map_err(|error| RunnerError::new(format!("candidate workspace unavailable: {error}")))?;
@@ -2475,6 +2538,23 @@ pub(crate) fn build_workspace_manifest(workspace: &Path) -> Result<WorkspaceMani
 	entries.sort_by(|left, right| left.path.cmp(&right.path));
 
 	Ok(WorkspaceManifest { schema_version: "aiq.workspace-manifest.v1", entries })
+}
+
+fn deserialize_nonempty_completed_command_sha256<'de, D>(
+	deserializer: D,
+) -> Result<BTreeMap<String, u32>, D::Error>
+where
+	D: Deserializer<'de>,
+{
+	let values = BTreeMap::<String, u32>::deserialize(deserializer)?;
+
+	if values.is_empty() {
+		return Err(serde::de::Error::custom(
+			"completed_command_sha256 must be omitted instead of empty",
+		));
+	}
+
+	Ok(values)
 }
 
 fn retryable_invocation_result(result: &TaskResult) -> bool {
@@ -2532,6 +2612,11 @@ fn merge_codex_item_accounting(
 
 	for (tool, calls) in &accounting.by_tool {
 		let total = usage.by_tool.entry(tool.clone()).or_default();
+
+		*total = total.saturating_add(*calls);
+	}
+	for (digest, calls) in &accounting.completed_command_sha256 {
+		let total = usage.completed_command_sha256.entry(digest.clone()).or_default();
 
 		*total = total.saturating_add(*calls);
 	}
@@ -2605,14 +2690,22 @@ fn bounded_capacity_metrics(
 	Ok((sum, worker_loads.into_iter().max().unwrap_or(0)))
 }
 
-fn retained_stdout_tool_usage(stdout: &str, artifacts: &[ArtifactReference]) -> ToolUsage {
-	if artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl") {
-		// A policy-invalid failed attempt retains raw stdout for verifier rejection;
+fn retained_stdout_tool_usage(
+	stdout: &str,
+	artifacts: &[ArtifactReference],
+	task: &TaskDefinition,
+) -> ToolUsage {
+	let mut usage = if artifacts.iter().any(|artifact| artifact.kind == "stdout.jsonl") {
+		// A policy-invalid failed attempt retains command-redacted stdout for verifier rejection;
 		// its counters cannot be used as trusted evidence in the local result.
 		parse_codex_tool_usage(stdout).unwrap_or_default()
 	} else {
 		ToolUsage::default()
-	}
+	};
+
+	project_completed_command_digests(task, &mut usage);
+
+	usage
 }
 
 fn task_major_execution_order(
@@ -3845,7 +3938,7 @@ where
 	let invocation_request = task_invocation_request(task, model, &context);
 	let invocation = adapter.invoke(&invocation_request);
 	let wall_ms = elapsed_ms(started);
-	let invocation_evidence = InvocationEvidence::capture(&invocation, wall_ms);
+	let invocation_evidence = InvocationEvidence::capture(&invocation, wall_ms, task);
 	let sealed_workspace = match SealedWorkspace::create(&context.workspace_dir) {
 		Ok(workspace) => workspace,
 		Err(_) => {
@@ -4036,9 +4129,12 @@ where
 	E: Executor,
 	S: ArtifactSink,
 {
-	let tool_usage = parse_codex_tool_usage(&output.stdout_full)
+	let mut tool_usage = parse_codex_tool_usage(&output.stdout_full)
 		.map_err(|error| RunnerError::new(error.to_string()))?;
-	let complete_response = extract_final_response(&output.stdout_full);
+
+	project_completed_command_digests(task, &mut tool_usage);
+
+	let complete_response = output.final_response.clone();
 	let mut artifacts = output.artifacts.clone();
 
 	artifacts.push(workspace_snapshot.clone());
@@ -4184,6 +4280,7 @@ fn resume_pending_evaluation(
 		steps: pending.tool_usage.steps,
 		total_calls: pending.tool_usage.total_calls,
 		by_tool: pending.tool_usage.by_tool.clone(),
+		completed_command_sha256: pending.tool_usage.completed_command_sha256.clone(),
 	};
 	let context = EvaluatorContext {
 		task_id: &pending.task_id,
@@ -4290,6 +4387,7 @@ fn evaluate_result(request: ResultEvaluationRequest<'_>) -> Result<ResultEvaluat
 		steps: request.tool_usage.steps,
 		total_calls: request.tool_usage.total_calls,
 		by_tool: request.tool_usage.by_tool.clone(),
+		completed_command_sha256: request.tool_usage.completed_command_sha256.clone(),
 	};
 	let context = EvaluatorContext {
 		task_id: &request.task.task_id,
@@ -4580,7 +4678,7 @@ fn failed_result(
 			),
 		}),
 		latency: Latency { wall_ms, evaluator_ms: 0 },
-		tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts),
+		tool_usage: retained_stdout_tool_usage(&failure.stdout_full, &failure.artifacts, task),
 		evaluator_checks: Vec::new(),
 		workspace_manifest: Some(workspace_manifest),
 		provenance: provenance(manifest, codex_version, observed_at, false),
@@ -5032,7 +5130,7 @@ mod tests {
 			Ok(ExecutionCapture {
 				exit_code: Some(0),
 				stdout: concat!(
-					r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"pwd"}}"#,
+					r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"node bin/task-tool.mjs"}}"#,
 					"\n",
 					r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
 					"\n",
@@ -7167,8 +7265,12 @@ mod tests {
 		);
 
 		let binding = sealed_bytes_evaluator(&evaluator_root, &source);
-		let tool_evidence =
-			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let tool_evidence = NormalizedToolEvidence {
+			steps: 1,
+			total_calls: 0,
+			by_tool: BTreeMap::new(),
+			completed_command_sha256: BTreeMap::new(),
+		};
 		let context = EvaluatorContext {
 			task_id: "coding-01",
 			task_version: "1.0.0",
@@ -7546,7 +7648,7 @@ mod tests {
 	#[test]
 	fn completed_codex_items_preserve_raw_tool_names_and_count_file_changes() {
 		let stdout = [
-			r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"pwd"}}"#,
+			r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"node bin/task-tool.mjs"}}"#,
 			r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
 			r#"{"type":"item.completed","item":{"id":"patch-1","type":"file_change","changes":[{"path":"src/lib.rs","kind":"update"}],"status":"completed"}}"#,
 			r#"{"type":"item.completed","item":{"id":"mcp-1","type":"mcp_tool_call","server":"docs","tool":"search","status":"completed"}}"#,
@@ -7575,11 +7677,134 @@ mod tests {
 	}
 
 	#[test]
+	fn legacy_tool_usage_and_pending_evaluation_omit_completed_command_digests() {
+		let legacy_usage = serde_json::json!({
+			"steps": 1,
+			"total_calls": 1,
+			"by_tool": {"command_execution": 1}
+		});
+		let usage: runner::ToolUsage =
+			serde_json::from_value(legacy_usage).expect("legacy tool usage");
+
+		assert!(usage.completed_command_sha256.is_empty());
+		assert!(
+			serde_json::to_value(&usage)
+				.expect("tool usage serialization")
+				.get("completed_command_sha256")
+				.is_none()
+		);
+		assert!(
+			serde_json::from_value::<runner::ToolUsage>(serde_json::json!({
+				"steps": 1,
+				"total_calls": 1,
+				"by_tool": {"command_execution": 1},
+				"completed_command_sha256": {}
+			}))
+			.is_err()
+		);
+
+		let digest = "sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319";
+		let pending = PendingEvaluation {
+			schema_version: resume::PENDING_EVALUATION_SCHEMA_VERSION.to_owned(),
+			run_id: format!("run_{}", "a".repeat(64)),
+			task_id: "tool-use-01".to_owned(),
+			task_version: "1.0.7".to_owned(),
+			task_hash: format!("sha256:{}", "b".repeat(64)),
+			model: MODEL_MATRIX[0],
+			final_response: "OK".to_owned(),
+			response: "OK".to_owned(),
+			response_sha256: format!("sha256:{}", "c".repeat(64)),
+			artifacts: Vec::new(),
+			exit_code: Some(0),
+			latency: runner::Latency { wall_ms: 1, evaluator_ms: 0 },
+			tool_usage: runner::ToolUsage {
+				completed_command_sha256: BTreeMap::from([(digest.to_owned(), 1)]),
+				..runner::ToolUsage::default()
+			},
+			workspace_manifest: ArtifactReference {
+				kind: "workspace-manifest.json".to_owned(),
+				content_hash: format!("sha256:{}", "d".repeat(64)),
+				uri: format!("aiq-artifact://sha256/{}/workspace-manifest.json", "d".repeat(64)),
+				bytes: 1,
+			},
+			sealed_workspace: PathBuf::from("sealed-workspace"),
+			provenance: protocol::ResultProvenance {
+				node_id: format!("node_{}", "e".repeat(64)),
+				runner_version: "0.1.0".to_owned(),
+				codex_version: "codex fixture".to_owned(),
+				observed_at: "synthetic".to_owned(),
+				synthetic: true,
+				local_trust: protocol::TrustTier::Untrusted,
+			},
+		};
+		let mut legacy_pending = serde_json::to_value(pending).expect("pending serialization");
+
+		legacy_pending["tool_usage"]
+			.as_object_mut()
+			.expect("pending tool usage")
+			.remove("completed_command_sha256");
+
+		let recovered: PendingEvaluation =
+			serde_json::from_value(legacy_pending).expect("legacy pending evaluation");
+
+		assert!(recovered.tool_usage.completed_command_sha256.is_empty());
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn completed_command_digest_projection_retains_only_task_declared_identities() {
+		let required = "sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319";
+		let undeclared = format!("sha256:{}", "f".repeat(64));
+		let configuration = serde_json::from_value(serde_json::json!({
+			"checks": [{
+				"type": "tool_evidence",
+				"required_completed_command_sha256": {
+					"sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319": 1
+				}
+			}]
+		}))
+		.expect("projection configuration");
+		let mut task = runner::synthetic_tasks().remove(0);
+		let scorer_version = task.scorer_version.clone();
+		let evaluator = task.evaluator.as_mut().expect("synthetic evaluator");
+
+		evaluator.external = Some(ExternalEvaluatorBinding {
+			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
+			scorer_version,
+			runtime_kind: EvaluatorRuntimeKind::Node,
+			runtime_executable_digest: format!("sha256:{}", "a".repeat(64)),
+			executable_ref: PathBuf::from("unused-evaluator"),
+			executable_digest: format!("sha256:{}", "b".repeat(64)),
+			configuration_digest: protocol::canonical_hash(&configuration)
+				.expect("projection configuration digest"),
+			arguments: Vec::new(),
+			timeout_ms: None,
+			max_input_bytes: 8_192,
+			max_output_bytes: 8_192,
+			configuration,
+		});
+
+		let mut usage = runner::ToolUsage {
+			steps: 3,
+			total_calls: 3,
+			by_tool: BTreeMap::from([("command_execution".to_owned(), 3)]),
+			completed_command_sha256: BTreeMap::from([(required.to_owned(), 2), (undeclared, 1)]),
+			provider_tokens: runner::ProviderTokenUsage::default(),
+		};
+
+		runner::project_completed_command_digests(&task, &mut usage);
+
+		assert_eq!(usage.completed_command_sha256, BTreeMap::from([(required.to_owned(), 2)]));
+		assert_eq!(usage.total_calls, 3);
+		assert_eq!(usage.by_tool.get("command_execution"), Some(&3));
+	}
+
+	#[test]
 	fn retry_markers_separate_item_lifecycles_while_preserving_cumulative_counts() {
 		let stdout = [
-			r#"{"type":"item.started","item":{"id":"cmd-shared","type":"command_execution","command":"pwd"}}"#,
+			r#"{"type":"item.started","item":{"id":"cmd-shared","type":"command_execution","command":"node bin/task-tool.mjs"}}"#,
 			r#"{"type":"aiq.invocation-attempt.v1","attempt":1,"disposition":"retry","failure_kind":"non_zero_exit","exit_code":17,"wall_ms":2}"#,
-			r#"{"type":"item.started","item":{"id":"cmd-shared","type":"command_execution","command":"pwd"}}"#,
+			r#"{"type":"item.started","item":{"id":"cmd-shared","type":"command_execution","command":"node bin/task-tool.mjs"}}"#,
 			r#"{"type":"item.completed","item":{"id":"cmd-shared","type":"command_execution","status":"completed"}}"#,
 			r#"{"type":"aiq.invocation-attempt.v1","attempt":2,"disposition":"selected","failure_kind":null,"exit_code":null,"wall_ms":3}"#,
 		]
@@ -7683,7 +7908,7 @@ mod tests {
 			}
 		};
 
-		for result in &mut run.results {
+		for (index, result) in run.results.iter_mut().enumerate() {
 			result.response = Some(response.clone());
 			result.response_sha256 = Some(response_sha256.clone());
 			result.artifacts = vec![
@@ -7702,6 +7927,13 @@ mod tests {
 					("mcp_tool_call".to_owned(), u32::MAX),
 					("web_search".to_owned(), u32::MAX),
 				]),
+				completed_command_sha256: if index
+					< runner::MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN
+				{
+					BTreeMap::from([(format!("sha256:{}", "f".repeat(64)), u32::MAX)])
+				} else {
+					BTreeMap::new()
+				},
 				provider_tokens: runner::ProviderTokenUsage::default(),
 			};
 			result.provenance.node_id = node_id.clone();
@@ -7721,6 +7953,14 @@ mod tests {
 		let bytes = serde_json::to_vec(&envelope).expect("fixture package serialization");
 
 		assert_eq!(run.results.len(), 1_224);
+		assert_eq!(
+			run.results
+				.iter()
+				.map(|result| result.tool_usage.completed_command_sha256.len())
+				.sum::<usize>(),
+			runner::MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN
+		);
+		assert_eq!(bytes.len(), 3_832_840);
 		assert!(
 			bytes.len() <= MAX_SUBMISSION_BYTES,
 			"worst-case signed package is {} bytes, limit is {MAX_SUBMISSION_BYTES}",
@@ -7768,6 +8008,7 @@ mod tests {
 				stderr: String::new(),
 				exit_code: Some(0),
 				artifacts: Vec::new(),
+				final_response: Some("OK".to_owned()),
 				stdout_full,
 			},
 			Path::new("/controlled/candidate"),
@@ -8342,7 +8583,10 @@ mod tests {
 
 	#[test]
 	fn evaluator_receives_complete_response_before_preview_and_artifact_storage() {
-		let complete = format!("{}DECISIVE", "x".repeat(MAX_RESULT_PREVIEW_BYTES + 64));
+		let complete = format!(
+			"{}DECISIVE node bin/task-tool.mjs unrelated text",
+			"x".repeat(MAX_RESULT_PREVIEW_BYTES + 64)
+		);
 		let stdout_full = serde_json::json!({
 			"type": "item.completed",
 			"item": {"type": "agent_message", "text": complete.clone()}
@@ -8379,6 +8623,7 @@ mod tests {
 				stderr: String::new(),
 				exit_code: Some(0),
 				artifacts: Vec::new(),
+				final_response: Some(complete.clone()),
 				stdout_full,
 			},
 			Path::new("/controlled/candidate"),

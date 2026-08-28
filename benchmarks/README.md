@@ -150,33 +150,47 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.3`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.4`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-Candidate.1 and candidate.2 are immutable rejected predecessor evidence.
-Candidate.2 is permanently non-sealable. Its isolated review aggregate is
-`sha256:70dd654906bb669a5bca46c2cf7dcda59adf15ad05e5223eed5f1b0a0564a74f`.
-The review approved 65 task semantics and rejected the seven tool-use tasks.
-Candidate.3 retains the 65 approved semantics and revises only those seven
-tasks. The public source records 14 closure entries: one hidden-schema entry and
-one public/private alignment entry for each revised task.
+Candidates.1, .2, and .3 are immutable rejected and permanently non-sealable.
+The candidate.3 isolated review has aggregate digest
+`sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2`
+and raw receipt digest
+`sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974`.
+It approved 65 task semantics and rejected the seven tool-use tasks. Candidate.4
+retains the 65 approved semantics and revises only those seven evidence
+bindings. It retains all 14 valid candidate.2 closure entries and adds exactly
+21 candidate.3 closure entries for `BEHAVIORAL_COVERAGE_GAP`,
+`PUBLIC_PRIVATE_CONSTRUCT_MISMATCH`, and `TOOL_EVIDENCE_UNBOUND`.
 
-Each tool-use contract now identifies all eight required `receipt.json` fields,
-their JSON types, required status, meaning, producer, workspace transport, and
-verification rule. It explicitly identifies the four fields that candidate.2
-did not disclose: `tool_contract_id`, `command_sha256`, `input_sha256`, and
-`output_sha256`. The supplied local tool writes the receipt. The runner supplies
-observed command counts separately in `evaluator_input.tool_evidence`; it does
-not create receipt fields.
+Each tool-use contract keeps the complete eight-field `receipt.json` contract.
+The supplied local tool writes that receipt. Receipt `command_sha256` identifies
+the unchanged supplied tool file bytes. It does not identify the command line.
+The runner supplies separate digest-only evidence in
+`evaluator_input.tool_evidence.completed_command_sha256`. The hard gate requires
+exactly one total tool call, exactly one `command_execution` call, and exactly
+one completed digest for the public invocation `node bin/task-tool.mjs`. That
+command-line digest is
+`sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319`.
+A substituted command, an extra tool call, a missing or wrong digest, or an
+uncompleted command lifecycle fails the hard gate. The runner removes command
+text from retained provider stdout and stderr evidence. It preserves the exact
+semantic final response in the existing result contract before log redaction.
+The signed digest map keeps only task-declared required identities; total and
+per-tool counts remain unfiltered, so other or extra commands still fail. A
+complete matrix can contain at most 119 declared digest entries, which preserves
+the fixed signed-package ingress bound without limiting incorrect model tool
+behavior.
 
 Each task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
 candidate uses natural completion. The catalog is the sole expected-class
 authority. It is frozen for a fresh independent review, but it is inactive and
-not production-publishable. Review, sealing, calibration, qualification,
-release, activation, deployment, and production acceptance are pending.
+not production-publishable. Fresh review, double sealing, three complete
+qualification matrices, qualification, adoption, and cutover are pending.
 
 The candidate contracts are:
 
@@ -196,9 +210,9 @@ The candidate contracts are:
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.2 review records do not satisfy
-candidate.3. The sealer requires one fresh matching record for each exact
-candidate.3 task and catalog entry. It does not infer review completion from
+verdict, method, scope, and notes. Candidate.3 review records do not satisfy
+candidate.4. The sealer requires one fresh matching record for each exact
+candidate.4 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification uses three complete matrices only. It reports all three pairwise
@@ -208,7 +222,7 @@ comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the candidate.3 public source without private inputs:
+Regenerate and test the candidate.4 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts

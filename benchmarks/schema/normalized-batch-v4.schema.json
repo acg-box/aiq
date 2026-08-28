@@ -2680,6 +2680,20 @@
           "additionalProperties": {
             "$ref": "#/$defs/u32"
           }
+        },
+        "completed_command_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 119,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          }
         }
       }
     },
@@ -2720,6 +2734,7 @@
   },
   "x-aiq-limits": {
     "canonical_stage_bytes": 4194304,
+    "completed_command_digest_entries_per_batch": 119,
     "model_runs": 17,
     "results_per_model_run": 72,
     "execution_concurrency": 32,

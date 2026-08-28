@@ -21,7 +21,8 @@ use crate::{
 	protocol, resume,
 	runner::{
 		CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord, EVALUATOR_RESULTS_SCHEMA_VERSION,
-		EvaluationOutcome, EvaluatorResultsBundle, FailureKind, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES,
+		EvaluationOutcome, EvaluatorResultsBundle, FailureKind,
+		MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES,
 		MAX_RESULT_PREVIEW_BYTES, RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus,
 		RunRecord, TaskResult,
 	},
@@ -39,6 +40,7 @@ const MAX_PREFLIGHT_REASON_BYTES: usize = 128;
 const MAX_FAILURE_MESSAGE_BYTES: usize = 128;
 const MAX_TOOL_USAGE_KINDS: usize = 4;
 const MAX_TOOL_KIND_BYTES: usize = 32;
+const MAX_COMPLETED_COMMAND_DIGESTS: usize = MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN;
 const MAX_TASK_ID_BYTES: usize = 64;
 const MAX_TASK_VERSION_BYTES: usize = 32;
 const MAX_RUNNER_VERSION_BYTES: usize = 32;
@@ -144,6 +146,8 @@ pub fn validate_run_record(
 			"run must contain exactly one result per task and matrix configuration",
 		));
 	}
+
+	validate_completed_command_digest_entry_count(&run.results)?;
 
 	let task_hash = if let Some(tasks) = tasks {
 		validate_tasks(tasks, &task_metadata)?
@@ -472,6 +476,8 @@ fn validate_calibration_results<'a>(
 	model_set: &BTreeSet<ModelConfig>,
 	task_set: &BTreeSet<&'a String>,
 ) -> Result<(), RunValidationError> {
+	validate_completed_command_digest_entry_count(&run.results)?;
+
 	let mut pairs = BTreeSet::new();
 
 	for (index, result) in run.results.iter().enumerate() {
@@ -881,16 +887,26 @@ fn validate_result(
 	validate_result_status(result, run.capability_validation.as_ref())?;
 	validate_result_preflight(run, result)?;
 
-	let external_evaluator = tasks.is_some_and(|tasks| {
-		tasks.iter().any(|task| {
-			task.task_id == result.task_id
-				&& task.task_version == result.task_version
-				&& task
-					.evaluator
-					.as_ref()
-					.and_then(|evaluator| evaluator.external.as_ref())
-					.is_some()
-		})
+	let selected_task = tasks.and_then(|tasks| {
+		tasks
+			.iter()
+			.find(|task| task.task_id == result.task_id && task.task_version == result.task_version)
+	});
+
+	if let Some(task) = selected_task {
+		let mut projected = result.tool_usage.clone();
+
+		runner::project_completed_command_digests(task, &mut projected);
+
+		if projected.completed_command_sha256 != result.tool_usage.completed_command_sha256 {
+			return Err(RunValidationError::new(
+				"completed-command digest evidence is not declared by the task",
+			));
+		}
+	}
+
+	let external_evaluator = selected_task.is_some_and(|task| {
+		task.evaluator.as_ref().and_then(|evaluator| evaluator.external.as_ref()).is_some()
 	});
 
 	validate_evaluator_and_workspace_evidence(
@@ -1058,6 +1074,7 @@ fn validate_result_budgets(
 	];
 
 	if result.tool_usage.by_tool.len() > MAX_TOOL_USAGE_KINDS
+		|| result.tool_usage.completed_command_sha256.len() > MAX_COMPLETED_COMMAND_DIGESTS
 		|| result.latency.wall_ms > MAX_JCS_SAFE_INTEGER
 		|| result.latency.evaluator_ms > MAX_JCS_SAFE_INTEGER
 		|| provider_counters.into_iter().flatten().any(|value| value > MAX_JCS_SAFE_INTEGER)
@@ -1073,6 +1090,18 @@ fn validate_result_budgets(
 			.any(|kind| !bounded_identifier(kind, MAX_TOOL_KIND_BYTES))
 		|| result.tool_usage.by_tool.values().fold(0_u32, |sum, count| sum.saturating_add(*count))
 			!= result.tool_usage.total_calls
+		|| result
+			.tool_usage
+			.completed_command_sha256
+			.iter()
+			.any(|(digest, count)| !is_lower_sha256(digest) || *count == 0)
+		|| result
+			.tool_usage
+			.completed_command_sha256
+			.values()
+			.map(|count| u64::from(*count))
+			.sum::<u64>()
+			> u64::from(result.tool_usage.by_tool.get("command_execution").copied().unwrap_or(0))
 		|| !bounded_unescaped_ascii(&result.provenance.runner_version, MAX_RUNNER_VERSION_BYTES)
 		|| !adapter::safe_codex_version(&result.provenance.codex_version)
 		|| if result.provenance.synthetic {
@@ -1111,6 +1140,22 @@ fn validate_result_budgets(
 				"Codex adapter elapsed time or live tool counters exceed the task budgets",
 			));
 		}
+	}
+
+	Ok(())
+}
+
+fn validate_completed_command_digest_entry_count(
+	results: &[TaskResult],
+) -> Result<(), RunValidationError> {
+	let entries = results.iter().try_fold(0_usize, |total, result| {
+		total.checked_add(result.tool_usage.completed_command_sha256.len())
+	});
+
+	if entries.is_none_or(|entries| entries > MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN) {
+		return Err(RunValidationError::new(
+			"run has too many task-declared completed-command digest entries",
+		));
 	}
 
 	Ok(())
@@ -1407,6 +1452,13 @@ fn is_sha256(value: &str) -> bool {
 	})
 }
 
+fn is_lower_sha256(value: &str) -> bool {
+	value.strip_prefix("sha256:").is_some_and(|digest| {
+		digest.len() == 64
+			&& digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+	})
+}
+
 fn is_node_id(value: &str) -> bool {
 	value.strip_prefix("node_").is_some_and(|digest| {
 		digest.len() == 64
@@ -1520,6 +1572,46 @@ mod tests {
 		tasks[task_index].budgets.max_tool_calls = Some(9_998);
 
 		assert!(super::validate_result_budgets(result, Some(&tasks)).is_err());
+	}
+
+	#[test]
+	fn completed_command_digest_counts_are_bounded_and_cannot_exceed_command_calls() {
+		let slot = ScheduleConfig::default()
+			.slot("2026-08-02", ScheduleOccurrence::Day)
+			.expect("fixture slot");
+		let mut run =
+			runner::synthetic_demo(slot, &runner::TestArtifactSink).expect("synthetic fixture");
+		let result = &mut run.results[0];
+		let digest = "sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319";
+
+		result.tool_usage.total_calls = 1;
+		result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), 1)]);
+		result.tool_usage.completed_command_sha256 = BTreeMap::from([(digest.to_owned(), 1)]);
+
+		super::validate_result_budgets(result, None).expect("bounded completed command digest");
+
+		result.tool_usage.completed_command_sha256.insert(digest.to_owned(), 2);
+
+		assert!(super::validate_result_budgets(result, None).is_err());
+
+		result.tool_usage.completed_command_sha256.insert(digest.to_owned(), 0);
+
+		assert!(super::validate_result_budgets(result, None).is_err());
+
+		result.tool_usage.completed_command_sha256 = BTreeMap::from([(
+			"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_owned(),
+			1,
+		)]);
+
+		assert!(super::validate_result_budgets(result, None).is_err());
+
+		result.tool_usage.total_calls = u32::MAX;
+		result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), u32::MAX)]);
+		result.tool_usage.completed_command_sha256 = (1..=super::MAX_COMPLETED_COMMAND_DIGESTS + 1)
+			.map(|index| (format!("sha256:{index:064x}"), 1))
+			.collect();
+
+		assert!(super::validate_result_budgets(result, None).is_err());
 	}
 
 	#[test]
@@ -1778,6 +1870,40 @@ mod tests {
 		run.results[0].task_score = Some(0.0);
 
 		assert!(run_validation::validate_run_record(&run, Some(&tasks)).is_err());
+	}
+
+	#[test]
+	fn completed_command_digest_run_cap_preserves_the_signed_package_bound() {
+		fn add_digest(run: &mut RunRecord, index: usize, digest: &str) {
+			let result = &mut run.results[index];
+
+			result.tool_usage.total_calls = 1;
+			result.tool_usage.by_tool = BTreeMap::from([("command_execution".to_owned(), 1)]);
+			result.tool_usage.completed_command_sha256 = BTreeMap::from([(digest.to_owned(), 1)]);
+			result.result_id = format!(
+				"result_{}",
+				result.content_hash().expect("result hash").trim_start_matches("sha256:")
+			);
+
+			let lineage = &mut run.terminal_attempt_lineage[index];
+
+			lineage.terminal_result_ids = vec![result.result_id.clone()];
+			lineage.selected_result_id = result.result_id.clone();
+		}
+
+		let (_tasks, mut run) = large_synthetic_fixture();
+		let digest = format!("sha256:{}", "f".repeat(64));
+
+		for index in 0..runner::MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN {
+			add_digest(&mut run, index, &digest);
+		}
+
+		super::validate_completed_command_digest_entry_count(&run.results)
+			.expect("run-wide completed command digest cap");
+
+		add_digest(&mut run, runner::MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN, &digest);
+
+		assert!(super::validate_completed_command_digest_entry_count(&run.results).is_err());
 	}
 
 	#[test]

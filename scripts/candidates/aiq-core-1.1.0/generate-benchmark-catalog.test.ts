@@ -36,20 +36,18 @@ const receiptFields = [
   'invocation_count',
   'receipt_sha256',
 ] as const;
-const predecessorUndisclosedReceiptFields = [
-  'tool_contract_id',
-  'command_sha256',
-  'input_sha256',
-  'output_sha256',
-] as const;
+const predecessorUndisclosedReceiptFields = [] as const;
+const requiredCommand = 'node bin/task-tool.mjs';
+const requiredCommandSha256 =
+  'sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319';
 const requiredInvocations = {
   'tool-use-01': 1,
   'tool-use-02': 1,
-  'tool-use-03': 2,
+  'tool-use-03': 1,
   'tool-use-04': 1,
-  'tool-use-05': 2,
-  'tool-use-06': 2,
-  'tool-use-07': 2,
+  'tool-use-05': 1,
+  'tool-use-06': 1,
+  'tool-use-07': 1,
 } as const;
 const reviewIssueCodes = [
   'ACCEPTANCE_SEMANTICS_INVALID',
@@ -63,21 +61,23 @@ const reviewIssueCodes = [
 ] as const;
 const issueCounts = {
   ACCEPTANCE_SEMANTICS_INVALID: 0,
-  BEHAVIORAL_COVERAGE_GAP: 0,
+  BEHAVIORAL_COVERAGE_GAP: 7,
   CROSS_TASK_CONSTRUCT_DUPLICATION: 0,
-  HIDDEN_OUTPUT_SCHEMA: 7,
+  HIDDEN_OUTPUT_SCHEMA: 0,
   KEYWORD_ONLY_EVALUATOR: 0,
   PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
   PUBLIC_SEMANTIC_CONTAMINATION: 0,
-  TOOL_EVIDENCE_UNBOUND: 0,
+  TOOL_EVIDENCE_UNBOUND: 7,
 } as const;
 const mechanisms = {
-  HIDDEN_OUTPUT_SCHEMA: 'complete_receipt_contract_disclosure',
+  BEHAVIORAL_COVERAGE_GAP: 'executable_transition_and_invariant_coverage',
   PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 'public_private_receipt_contract_alignment',
+  TOOL_EVIDENCE_UNBOUND: 'runner_event_and_content_receipt_binding',
 } as const;
 const falsifiers = {
-  HIDDEN_OUTPUT_SCHEMA: 'inject_receipt_field_schema_or_transport_mismatch',
+  BEHAVIORAL_COVERAGE_GAP: 'remove_one_claimed_transition_or_error_path',
   PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 'change_private_receipt_contract_only',
+  TOOL_EVIDENCE_UNBOUND: 'remove_runner_evidence_or_break_receipt_digest_binding',
 } as const;
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -150,13 +150,13 @@ function expectInvalidReceiptMutation(
   const clonedDecisions = objectArray(root.decisions, 'cloned decisions');
   const firstTool = clonedDecisions.find((decision) => decision.task_id === 'tool-use-01');
   if (firstTool === undefined) throw new TypeError('tool-use-01 decision is missing.');
-  const contract = jsonObject(firstTool.candidate_3_contract, 'candidate.3 contract');
+  const contract = jsonObject(firstTool.candidate_4_contract, 'candidate.4 contract');
   const receipt = jsonObject(contract.receipt_contract, 'receipt contract');
   mutate(receipt);
   throws(() => parseDecisionManifest(clone), /receipt contract|fields are invalid/u);
 }
 
-await test('the generated candidate.3 public source is deterministic', async () => {
+await test('the generated candidate.4 public source is deterministic', async () => {
   const catalog = buildCatalog();
 
   deepStrictEqual(
@@ -169,27 +169,44 @@ await test('the generated candidate.3 public source is deterministic', async () 
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.3',
+    'aiq-core/1.1.0-candidate.4',
   );
 });
 
-await test('candidate.2 is exact rejected non-sealable predecessor evidence', async () => {
+await test('candidate.3 is exact rejected non-sealable predecessor evidence', async () => {
   const manifest = await decisions();
 
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.2',
+    candidate_id: 'aiq-core/1.1.0-candidate.3',
     disposition: 'rejected_nonsealable_predecessor_evidence',
-    merge_commit: '1d6898012bcb4c9fbf4db2389872ae416a14c633',
-    change_commit: 'a156fbcf419a66c196327271509a5d47f1680fef',
-    source_tree: 'cdfa3ecc92e1095f631a54af23daff74203ab944',
+    merge_commit: '613a0eb896a83fb46fa94bcca61d41228126c632',
+    change_commit: '4f5c09be7aeb7e1e9e74e3417f943649af2265e2',
+    source_tree: 'f16cb16b499fbf942ad0b62344d6146a366fa4bf',
     aggregate_review_sha256:
-      'sha256:70dd654906bb669a5bca46c2cf7dcda59adf15ad05e5223eed5f1b0a0564a74f',
+      'sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2',
     review_receipt_raw_sha256:
-      'sha256:8de2ed2dd3ff32eca9fae0faf0c7b38a3675f89e91b2024aaf008eb06f77e74a',
-    catalog_sha256: 'sha256:ba8fb315938c1c4c81592956b1157af145b577673929be2987d6e8fe212186f4',
+      'sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974',
+    skeptical_counterexample_sha256:
+      'sha256:7d6cc76b149529e2aab7f1c751d84815aa3b044ef4c5ddbab760c7d5c236f903',
+    catalog_sha256: 'sha256:706718b614c503ac6efafe564834f41a46df78809e12198f3eb2002202c08dbf',
     accepted_tasks: 65,
     rejected_tasks: 7,
-    semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_2_semantics',
+    semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_3_semantics',
+  });
+  deepStrictEqual(manifest.immutable_rejected_predecessors, [
+    'aiq-core/1.1.0-candidate.1',
+    'aiq-core/1.1.0-candidate.2',
+    'aiq-core/1.1.0-candidate.3',
+  ]);
+  deepStrictEqual(manifest.retained_candidate_2_issue_closures, {
+    candidate_id: 'aiq-core/1.1.0-candidate.2',
+    successor_candidate_id: 'aiq-core/1.1.0-candidate.3',
+    disposition: 'valid_immutable_predecessor_closures',
+    closure_entries: 14,
+    issue_code_counts: {
+      HIDDEN_OUTPUT_SCHEMA: 7,
+      PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
+    },
   });
 });
 
@@ -205,11 +222,11 @@ await test('the predecessor review selects exactly 65 retained and seven revised
   for (const decision of manifest.decisions) {
     strictEqual(
       decision.decision === 'retained',
-      decision.candidate_2_review.verdict === 'approved',
+      decision.candidate_3_review.verdict === 'approved',
     );
     strictEqual(
       decision.decision === 'retained',
-      decision.candidate_2_review.issue_codes.length === 0,
+      decision.candidate_3_review.issue_codes.length === 0,
     );
   }
 });
@@ -242,27 +259,42 @@ await test('retained and revised decisions preserve the exact ten-domain distrib
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.3 binding and one unique within-domain cluster', async () => {
+await test('every task has one candidate.4 binding and one unique within-domain cluster', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
 
   assertDecisionManifest(manifest, taskIds());
   strictEqual(new Set(manifest.decisions.map((decision) => decision.cluster_id)).size, 72);
   strictEqual(
-    new Set(manifest.decisions.map((decision) => decision.candidate_3_contract.construct_id)).size,
+    new Set(manifest.decisions.map((decision) => decision.candidate_4_contract.construct_id)).size,
     72,
   );
   for (const [index, task] of tasks.entries()) {
     const decision = requiredAt(manifest.decisions, index, 'task decision');
     const design = jsonObject(task.design_revision, 'design revision');
-    const contract = decision.candidate_3_contract.response_contract;
+    const contract = decision.candidate_4_contract.response_contract;
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.2');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.3');
     strictEqual(design.supersedes_task_version, '1.1.0');
-    deepStrictEqual(design.candidate_2_review, decision.candidate_2_review);
-    deepStrictEqual(design.candidate_3_contract, decision.candidate_3_contract);
+    deepStrictEqual(design.candidate_3_review, decision.candidate_3_review);
+    deepStrictEqual(design.candidate_4_contract, decision.candidate_4_contract);
+    strictEqual(decision.candidate_4_contract.construct_id.includes('candidate2'), false);
+    if (decision.decision === 'retained') {
+      strictEqual(
+        decision.candidate_4_contract.mechanism_classes.includes(
+          'candidate_3_approved_semantic_retention',
+        ),
+        true,
+      );
+      strictEqual(
+        decision.candidate_4_contract.mechanism_classes.includes(
+          'candidate_4_catalog_source_rebinding',
+        ),
+        true,
+      );
+    }
     strictEqual(contract.locations.length > 0, true);
     for (const field of [...contract.required_fields, ...contract.optional_fields]) {
       strictEqual(typeof contract.field_semantics[field], 'string');
@@ -271,10 +303,17 @@ await test('every task has one candidate.3 binding and one unique within-domain 
   }
 });
 
-await test('all fourteen predecessor issue closures have exact mechanisms and falsifiers', async () => {
+await test('the fourteen candidate.2 closures remain and all twenty-one candidate.3 closures are exact', async () => {
   const manifest = await decisions();
 
   deepStrictEqual(manifest.issue_code_counts, issueCounts);
+  strictEqual(
+    manifest.decisions.reduce(
+      (count, decision) => count + decision.candidate_3_review.issue_codes.length,
+      0,
+    ),
+    21,
+  );
   strictEqual(
     manifest.decisions.reduce(
       (count, decision) => count + decision.candidate_2_review.issue_codes.length,
@@ -282,21 +321,33 @@ await test('all fourteen predecessor issue closures have exact mechanisms and fa
     ),
     14,
   );
+  strictEqual(
+    manifest.decisions.filter((decision) =>
+      decision.candidate_2_review.issue_codes.includes('HIDDEN_OUTPUT_SCHEMA'),
+    ).length,
+    7,
+  );
+  strictEqual(
+    manifest.decisions.filter((decision) =>
+      decision.candidate_2_review.issue_codes.includes('PUBLIC_PRIVATE_CONSTRUCT_MISMATCH'),
+    ).length,
+    7,
+  );
   for (const issueCode of reviewIssueCodes) {
     const affected = manifest.decisions.filter((decision) =>
-      decision.candidate_2_review.issue_codes.includes(issueCode),
+      decision.candidate_3_review.issue_codes.includes(issueCode),
     );
     strictEqual(affected.length, issueCounts[issueCode]);
     if (issueCounts[issueCode] === 0) continue;
-    if (issueCode !== 'HIDDEN_OUTPUT_SCHEMA' && issueCode !== 'PUBLIC_PRIVATE_CONSTRUCT_MISMATCH') {
-      throw new TypeError(`unsupported candidate.3 issue code ${issueCode}`);
+    const mechanism = Object.entries(mechanisms).find(([code]) => code === issueCode)?.[1];
+    const falsifier = Object.entries(falsifiers).find(([code]) => code === issueCode)?.[1];
+
+    if (mechanism === undefined || falsifier === undefined) {
+      throw new TypeError(`unsupported candidate.4 issue code ${issueCode}`);
     }
     for (const decision of affected) {
-      strictEqual(
-        decision.candidate_3_contract.mechanism_classes.includes(mechanisms[issueCode]),
-        true,
-      );
-      strictEqual(decision.candidate_3_contract.falsifiers.includes(falsifiers[issueCode]), true);
+      strictEqual(decision.candidate_4_contract.mechanism_classes.includes(mechanism), true);
+      strictEqual(decision.candidate_4_contract.falsifiers.includes(falsifier), true);
     }
   }
 });
@@ -311,18 +362,21 @@ await test('all seven public tool contracts disclose the complete receipt schema
     const decision = manifest.decisions.find((candidate) => candidate.task_id === taskId);
     if (decision === undefined) throw new TypeError(`${taskId} decision is missing.`);
     const receipt = jsonObject(
-      decision.candidate_3_contract.receipt_contract,
+      decision.candidate_4_contract.receipt_contract,
       `${taskId} receipt contract`,
     );
     deepStrictEqual(receipt.required_fields, receiptFields);
     deepStrictEqual(receipt.optional_fields, []);
     deepStrictEqual(receipt.predecessor_undisclosed_fields, predecessorUndisclosedReceiptFields);
+    strictEqual(receipt.schema_version, 'aiq.tool-receipt-contract.v2');
     strictEqual(receipt.location, 'receipt.json');
     strictEqual(receipt.transport, 'workspace_file');
     strictEqual(receipt.producer, 'supplied_local_tool');
     strictEqual(receipt.additional_fields, 'forbidden');
     strictEqual(receipt.key_order, 'not_significant');
     strictEqual(receipt.required_invocations, requiredInvocations[taskId]);
+    strictEqual(receipt.required_command, requiredCommand);
+    strictEqual(receipt.required_command_sha256, requiredCommandSha256);
     const types = jsonObject(receipt.field_types, 'receipt field types');
     const semantics = jsonObject(receipt.field_semantics, 'receipt field semantics');
     const producers = jsonObject(receipt.field_producers, 'receipt field producers');
@@ -334,20 +388,30 @@ await test('all seven public tool contracts disclose the complete receipt schema
       strictEqual(producers[field], 'supplied_local_tool');
       strictEqual(typeof verification[field], 'string');
     }
+    strictEqual(String(semantics.tool_contract_id).includes('candidate.4'), true);
     const runner = jsonObject(receipt.runner_binding, 'runner binding');
-    deepStrictEqual(runner.automatic_fields, ['steps', 'total_calls', 'by_tool.command_execution']);
+    deepStrictEqual(runner.automatic_fields, [
+      'steps',
+      'total_calls',
+      'by_tool.command_execution',
+      'completed_command_sha256',
+    ]);
     deepStrictEqual(runner.receipt_fields_automatic, []);
     strictEqual(runner.transport, 'evaluator_input.tool_evidence');
     strictEqual(runner.producer, 'runner');
+    deepStrictEqual(receipt.tool_evidence_requirements, {
+      exact_total_calls: 1,
+      exact_calls_by_tool: { command_execution: 1 },
+      required_completed_command_sha256: { [requiredCommandSha256]: 1 },
+    });
     strictEqual(
-      /sha256:[0-9a-f]{64}/u.test(JSON.stringify(receipt)),
-      false,
-      `${taskId} discloses a private expected digest`,
+      jsonObject(receipt.canonicalization, 'receipt canonicalization').command_sha256,
+      'raw_file_bytes',
     );
     const catalogTask = jsonObject(catalogTasks.get(taskId), `${taskId} catalog task`);
     deepStrictEqual(
-      jsonObject(catalogTask.design_revision, 'design revision').candidate_3_contract,
-      decision.candidate_3_contract,
+      jsonObject(catalogTask.design_revision, 'design revision').candidate_4_contract,
+      decision.candidate_4_contract,
     );
   }
 });
@@ -379,6 +443,28 @@ await test('receipt schema negatives fail for every field, type, producer, trans
   expectInvalidReceiptMutation(manifest, (receipt) => {
     const canonicalization = jsonObject(receipt.canonicalization, 'canonicalization');
     canonicalization.output_sha256 = 'raw_file_bytes';
+  });
+  expectInvalidReceiptMutation(manifest, (receipt) => {
+    receipt.required_command = 'substituted';
+  });
+  expectInvalidReceiptMutation(manifest, (receipt) => {
+    receipt.required_command_sha256 = `sha256:${'0'.repeat(64)}`;
+  });
+  expectInvalidReceiptMutation(manifest, (receipt) => {
+    const requirements = jsonObject(
+      receipt.tool_evidence_requirements,
+      'tool evidence requirements',
+    );
+    requirements.exact_total_calls = 2;
+  });
+  expectInvalidReceiptMutation(manifest, (receipt) => {
+    const requirements = jsonObject(
+      receipt.tool_evidence_requirements,
+      'tool evidence requirements',
+    );
+    jsonObject(requirements.required_completed_command_sha256, 'required digest')[
+      requiredCommandSha256
+    ] = 2;
   });
   expectInvalidReceiptMutation(manifest, (receipt) => {
     receipt.unannounced_secret_field = 'forbidden';
@@ -483,7 +569,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   throws(() => buildCatalogFrom(reordered), /ordered explicit retained\/revised decision/u);
 });
 
-await test('candidate schemas bind candidate.3 identity and complete receipt contracts', async () => {
+await test('candidate schemas bind candidate.4 identity and complete receipt contracts', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -505,8 +591,8 @@ await test('candidate schemas bind candidate.3 identity and complete receipt con
   deepStrictEqual(catalogProperties.status, { const: 'frozen_candidate' });
   deepStrictEqual(taskProperties.task_version, { const: '1.1.0' });
   deepStrictEqual(taskProperties.scorer_version, { const: '1.0.6' });
-  strictEqual(serialized.includes('candidate_2_review'), true);
-  strictEqual(serialized.includes('candidate_3_contract'), true);
+  strictEqual(serialized.includes('candidate_3_review'), true);
+  strictEqual(serialized.includes('candidate_4_contract'), true);
   strictEqual(serialized.includes('receipt_contract'), true);
   strictEqual(serialized.includes('predecessor_undisclosed_fields'), true);
 });

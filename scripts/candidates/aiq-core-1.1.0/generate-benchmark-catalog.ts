@@ -10,12 +10,17 @@ const TASK_SET_VERSION = '1.1.0' as const;
 const TASK_SCORER_VERSION = '1.0.6' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts';
 const DECISION_PATH = 'benchmarks/candidates/aiq-core-1.1.0/design-decisions.json';
-const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.3' as const;
-const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.2' as const;
+const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.4' as const;
+const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.3' as const;
 const PREDECESSOR_REVIEW_SHA256 =
-  'sha256:70dd654906bb669a5bca46c2cf7dcda59adf15ad05e5223eed5f1b0a0564a74f' as const;
+  'sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2' as const;
 const PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256 =
-  'sha256:8de2ed2dd3ff32eca9fae0faf0c7b38a3675f89e91b2024aaf008eb06f77e74a' as const;
+  'sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974' as const;
+const PREDECESSOR_COUNTEREXAMPLE_SHA256 =
+  'sha256:7d6cc76b149529e2aab7f1c751d84815aa3b044ef4c5ddbab760c7d5c236f903' as const;
+const REQUIRED_COMMAND = 'node bin/task-tool.mjs' as const;
+const REQUIRED_COMMAND_SHA256 =
+  'sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319' as const;
 const RECEIPT_FIELDS = Object.freeze([
   'schema_version',
   'task_id',
@@ -26,12 +31,7 @@ const RECEIPT_FIELDS = Object.freeze([
   'invocation_count',
   'receipt_sha256',
 ] as const);
-const PREDECESSOR_UNDISCLOSED_RECEIPT_FIELDS = Object.freeze([
-  'tool_contract_id',
-  'command_sha256',
-  'input_sha256',
-  'output_sha256',
-] as const);
+const PREDECESSOR_UNDISCLOSED_RECEIPT_FIELDS = Object.freeze([] as const);
 const REVISED_TASK_IDS = Object.freeze([
   'tool-use-01',
   'tool-use-02',
@@ -44,11 +44,11 @@ const REVISED_TASK_IDS = Object.freeze([
 const REQUIRED_TOOL_INVOCATIONS = Object.freeze({
   'tool-use-01': 1,
   'tool-use-02': 1,
-  'tool-use-03': 2,
+  'tool-use-03': 1,
   'tool-use-04': 1,
-  'tool-use-05': 2,
-  'tool-use-06': 2,
-  'tool-use-07': 2,
+  'tool-use-05': 1,
+  'tool-use-06': 1,
+  'tool-use-07': 1,
 } satisfies Readonly<Record<(typeof REVISED_TASK_IDS)[number], number>>);
 
 function isRevisedTaskId(value: string): value is (typeof REVISED_TASK_IDS)[number] {
@@ -99,6 +99,22 @@ interface TaskDecision {
     readonly falsifiers: readonly string[];
     readonly coverage_claims: readonly string[];
   };
+  readonly candidate_3_review: {
+    readonly verdict: 'approved' | 'rejected';
+    readonly record_sha256: string;
+    readonly task_definition_sha256: string;
+    readonly catalog_entry_sha256: string;
+    readonly issue_codes: readonly IssueCode[];
+  };
+  readonly candidate_4_contract: {
+    readonly construct_id: string;
+    readonly response_contract: ResponseContract;
+    readonly receipt_contract: Readonly<JsonObject> | null;
+    readonly fixture_applicability: TaskDecision['acceptance_fixture_applicability'];
+    readonly mechanism_classes: readonly string[];
+    readonly falsifiers: readonly string[];
+    readonly coverage_claims: readonly string[];
+  };
 }
 
 const ISSUE_CODES = Object.freeze([
@@ -114,13 +130,13 @@ const ISSUE_CODES = Object.freeze([
 type IssueCode = (typeof ISSUE_CODES)[number];
 const EXPECTED_ISSUE_COUNTS = Object.freeze({
   ACCEPTANCE_SEMANTICS_INVALID: 0,
-  BEHAVIORAL_COVERAGE_GAP: 0,
+  BEHAVIORAL_COVERAGE_GAP: 7,
   CROSS_TASK_CONSTRUCT_DUPLICATION: 0,
-  HIDDEN_OUTPUT_SCHEMA: 7,
+  HIDDEN_OUTPUT_SCHEMA: 0,
   KEYWORD_ONLY_EVALUATOR: 0,
   PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
   PUBLIC_SEMANTIC_CONTAMINATION: 0,
-  TOOL_EVIDENCE_UNBOUND: 0,
+  TOOL_EVIDENCE_UNBOUND: 7,
 } satisfies Readonly<Record<IssueCode, number>>);
 const ISSUE_MECHANISMS = Object.freeze({
   ACCEPTANCE_SEMANTICS_INVALID: 'class_specific_semantic_replay',
@@ -154,7 +170,7 @@ interface ResponseContract {
 }
 
 function receiptContractMatchesTask(decision: TaskDecision): boolean {
-  const receiptContract = decision.candidate_3_contract.receipt_contract;
+  const receiptContract = decision.candidate_4_contract.receipt_contract;
   if (!isRevisedTaskId(decision.task_id)) return receiptContract === null;
   return (
     receiptContract !== null &&
@@ -163,23 +179,39 @@ function receiptContractMatchesTask(decision: TaskDecision): boolean {
 }
 
 export interface CandidateDecisionManifest {
-  readonly schema_version: 'aiq.candidate-design-decisions.v3';
+  readonly schema_version: 'aiq.candidate-design-decisions.v4';
   readonly candidate_id: typeof CANDIDATE_ID;
   readonly candidate_task_set_version: '1.1.0';
   readonly recorded_date: '2026-08-28';
-  readonly authority: 'candidate_2_isolated_review_remediation';
+  readonly authority: 'candidate_3_isolated_review_remediation';
   readonly predecessor_candidate: {
     readonly candidate_id: typeof PREDECESSOR_CANDIDATE_ID;
     readonly disposition: 'rejected_nonsealable_predecessor_evidence';
-    readonly merge_commit: '1d6898012bcb4c9fbf4db2389872ae416a14c633';
-    readonly change_commit: 'a156fbcf419a66c196327271509a5d47f1680fef';
-    readonly source_tree: 'cdfa3ecc92e1095f631a54af23daff74203ab944';
+    readonly merge_commit: '613a0eb896a83fb46fa94bcca61d41228126c632';
+    readonly change_commit: '4f5c09be7aeb7e1e9e74e3417f943649af2265e2';
+    readonly source_tree: 'f16cb16b499fbf942ad0b62344d6146a366fa4bf';
     readonly aggregate_review_sha256: typeof PREDECESSOR_REVIEW_SHA256;
     readonly review_receipt_raw_sha256: typeof PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256;
+    readonly skeptical_counterexample_sha256: typeof PREDECESSOR_COUNTEREXAMPLE_SHA256;
     readonly catalog_sha256: string;
     readonly accepted_tasks: 65;
     readonly rejected_tasks: 7;
-    readonly semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_2_semantics';
+    readonly semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_3_semantics';
+  };
+  readonly immutable_rejected_predecessors: readonly [
+    'aiq-core/1.1.0-candidate.1',
+    'aiq-core/1.1.0-candidate.2',
+    'aiq-core/1.1.0-candidate.3',
+  ];
+  readonly retained_candidate_2_issue_closures: {
+    readonly candidate_id: 'aiq-core/1.1.0-candidate.2';
+    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.3';
+    readonly disposition: 'valid_immutable_predecessor_closures';
+    readonly closure_entries: 14;
+    readonly issue_code_counts: {
+      readonly HIDDEN_OUTPUT_SCHEMA: 7;
+      readonly PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7;
+    };
   };
   readonly issue_code_counts: Readonly<Record<IssueCode, number>>;
   readonly lifecycle: {
@@ -324,6 +356,10 @@ function responseContract(value: unknown, label: string): ResponseContract {
   };
 }
 
+function historicalToolReceiptContract(value: unknown, label: string): Readonly<JsonObject> | null {
+  return value === null ? null : jsonObject(value, label);
+}
+
 function toolReceiptContract(value: unknown, label: string): Readonly<JsonObject> | null {
   if (value === null) return null;
   const contract = jsonObject(value, label);
@@ -342,11 +378,14 @@ function toolReceiptContract(value: unknown, label: string): Readonly<JsonObject
       'optional_fields',
       'predecessor_undisclosed_fields',
       'producer',
+      'required_command',
+      'required_command_sha256',
       'required_fields',
       'required_invocations',
       'result_binding',
       'runner_binding',
       'schema_version',
+      'tool_evidence_requirements',
       'transport',
     ],
     label,
@@ -391,15 +430,40 @@ function toolReceiptContract(value: unknown, label: string): Readonly<JsonObject
     ['automatic_fields', 'producer', 'receipt_fields_automatic', 'relationship', 'transport'],
     `${label} runner binding`,
   );
+  const toolEvidenceRequirements = jsonObject(
+    contract.tool_evidence_requirements,
+    `${label} tool evidence requirements`,
+  );
+  exactKeys(
+    toolEvidenceRequirements,
+    ['exact_calls_by_tool', 'exact_total_calls', 'required_completed_command_sha256'],
+    `${label} tool evidence requirements`,
+  );
+  const exactCallsByTool = jsonObject(
+    toolEvidenceRequirements.exact_calls_by_tool,
+    `${label} exact calls by tool`,
+  );
+  const requiredCompletedCommandSha256 = jsonObject(
+    toolEvidenceRequirements.required_completed_command_sha256,
+    `${label} required completed command digests`,
+  );
+  exactKeys(exactCallsByTool, ['command_execution'], `${label} exact calls by tool`);
+  exactKeys(
+    requiredCompletedCommandSha256,
+    [REQUIRED_COMMAND_SHA256],
+    `${label} required completed command digests`,
+  );
   if (
-    contract.schema_version !== 'aiq.tool-receipt-contract.v1' ||
+    contract.schema_version !== 'aiq.tool-receipt-contract.v2' ||
     contract.location !== 'receipt.json' ||
     contract.transport !== 'workspace_file' ||
     contract.producer !== 'supplied_local_tool' ||
     contract.additional_fields !== 'forbidden' ||
     contract.key_order !== 'not_significant' ||
     !Number.isSafeInteger(contract.required_invocations) ||
-    Number(contract.required_invocations) < 1 ||
+    Number(contract.required_invocations) !== 1 ||
+    contract.required_command !== REQUIRED_COMMAND ||
+    contract.required_command_sha256 !== REQUIRED_COMMAND_SHA256 ||
     JSON.stringify(requiredFields) !== JSON.stringify(RECEIPT_FIELDS) ||
     optionalFields.length !== 0 ||
     JSON.stringify(predecessorFields) !== JSON.stringify(PREDECESSOR_UNDISCLOSED_RECEIPT_FIELDS) ||
@@ -425,10 +489,19 @@ function toolReceiptContract(value: unknown, label: string): Readonly<JsonObject
     resultBinding.receipt_digest_field !== 'receipt_sha256' ||
     runnerBinding.producer !== 'runner' ||
     runnerBinding.transport !== 'evaluator_input.tool_evidence' ||
-    !Array.isArray(runnerBinding.automatic_fields) ||
+    JSON.stringify(runnerBinding.automatic_fields) !==
+      JSON.stringify([
+        'steps',
+        'total_calls',
+        'by_tool.command_execution',
+        'completed_command_sha256',
+      ]) ||
     !Array.isArray(runnerBinding.receipt_fields_automatic) ||
     runnerBinding.receipt_fields_automatic.length !== 0 ||
     typeof runnerBinding.relationship !== 'string' ||
+    toolEvidenceRequirements.exact_total_calls !== 1 ||
+    exactCallsByTool.command_execution !== 1 ||
+    requiredCompletedCommandSha256[REQUIRED_COMMAND_SHA256] !== 1 ||
     typeof contract.model_obligation !== 'string'
   ) {
     throw new TypeError(`${label} is invalid.`);
@@ -485,6 +558,8 @@ function taskDecision(value: unknown, index: number): TaskDecision {
       'acceptance_fixture_applicability',
       'candidate_2_review',
       'candidate_3_contract',
+      'candidate_3_review',
+      'candidate_4_contract',
       'cluster_id',
       'decision',
       'public_task_revision',
@@ -516,6 +591,32 @@ function taskDecision(value: unknown, index: number): TaskDecision {
       'response_contract',
     ],
     `${label} candidate.3 contract`,
+  );
+  const candidateThreeReview = jsonObject(
+    decision.candidate_3_review,
+    `${label} candidate.3 review`,
+  );
+  exactKeys(
+    candidateThreeReview,
+    ['catalog_entry_sha256', 'issue_codes', 'record_sha256', 'task_definition_sha256', 'verdict'],
+    `${label} candidate.3 review`,
+  );
+  const candidateFourContract = jsonObject(
+    decision.candidate_4_contract,
+    `${label} candidate.4 contract`,
+  );
+  exactKeys(
+    candidateFourContract,
+    [
+      'construct_id',
+      'coverage_claims',
+      'falsifiers',
+      'fixture_applicability',
+      'mechanism_classes',
+      'receipt_contract',
+      'response_contract',
+    ],
+    `${label} candidate.4 contract`,
   );
   const selectedDecision = stringValue(decision.decision, `decision ${String(index)} kind`);
   if (selectedDecision !== 'retained' && selectedDecision !== 'revised') {
@@ -570,7 +671,7 @@ function taskDecision(value: unknown, index: number): TaskDecision {
         candidateThreeContract.response_contract,
         `${label} candidate.3 response contract`,
       ),
-      receipt_contract: toolReceiptContract(
+      receipt_contract: historicalToolReceiptContract(
         candidateThreeContract.receipt_contract,
         `${label} candidate.3 receipt contract`,
       ),
@@ -588,6 +689,59 @@ function taskDecision(value: unknown, index: number): TaskDecision {
         `${label} candidate.3 coverage claims`,
       ),
     },
+    candidate_3_review: {
+      verdict:
+        candidateThreeReview.verdict === 'approved'
+          ? 'approved'
+          : candidateThreeReview.verdict === 'rejected'
+            ? 'rejected'
+            : (() => {
+                throw new TypeError(`${label} candidate.3 review verdict is invalid.`);
+              })(),
+      record_sha256: digestValueInput(
+        candidateThreeReview.record_sha256,
+        `${label} candidate.3 review record digest`,
+      ),
+      task_definition_sha256: digestValueInput(
+        candidateThreeReview.task_definition_sha256,
+        `${label} candidate.3 task digest`,
+      ),
+      catalog_entry_sha256: digestValueInput(
+        candidateThreeReview.catalog_entry_sha256,
+        `${label} candidate.3 catalog-entry digest`,
+      ),
+      issue_codes: issueCodeArray(
+        candidateThreeReview.issue_codes,
+        `${label} candidate.3 issue codes`,
+      ),
+    },
+    candidate_4_contract: {
+      construct_id: stringValue(
+        candidateFourContract.construct_id,
+        `${label} candidate.4 construct id`,
+      ),
+      response_contract: responseContract(
+        candidateFourContract.response_contract,
+        `${label} candidate.4 response contract`,
+      ),
+      receipt_contract: toolReceiptContract(
+        candidateFourContract.receipt_contract,
+        `${label} candidate.4 receipt contract`,
+      ),
+      fixture_applicability: fixtureApplicabilityMap(
+        candidateFourContract.fixture_applicability,
+        `${label} candidate.4 fixture applicability`,
+      ),
+      mechanism_classes: stringArray(
+        candidateFourContract.mechanism_classes,
+        `${label} candidate.4 mechanism classes`,
+      ),
+      falsifiers: stringArray(candidateFourContract.falsifiers, `${label} candidate.4 falsifiers`),
+      coverage_claims: stringArray(
+        candidateFourContract.coverage_claims,
+        `${label} candidate.4 coverage claims`,
+      ),
+    },
   };
 }
 
@@ -600,10 +754,12 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'candidate_id',
       'candidate_task_set_version',
       'decisions',
+      'immutable_rejected_predecessors',
       'issue_code_counts',
       'lifecycle',
       'predecessor_candidate',
       'recorded_date',
+      'retained_candidate_2_issue_closures',
       'schema_version',
     ],
     'candidate decision manifest',
@@ -621,10 +777,39 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'merge_commit',
       'rejected_tasks',
       'review_receipt_raw_sha256',
+      'skeptical_counterexample_sha256',
       'semantic_retention_rule',
       'source_tree',
     ],
     'predecessor candidate',
+  );
+  const immutableRejectedPredecessors = stringArray(
+    manifest.immutable_rejected_predecessors,
+    'immutable rejected predecessors',
+  );
+  const retainedCandidateTwoClosures = jsonObject(
+    manifest.retained_candidate_2_issue_closures,
+    'retained candidate.2 issue closures',
+  );
+  exactKeys(
+    retainedCandidateTwoClosures,
+    [
+      'candidate_id',
+      'closure_entries',
+      'disposition',
+      'issue_code_counts',
+      'successor_candidate_id',
+    ],
+    'retained candidate.2 issue closures',
+  );
+  const retainedCandidateTwoIssueCounts = jsonObject(
+    retainedCandidateTwoClosures.issue_code_counts,
+    'retained candidate.2 issue-code counts',
+  );
+  exactKeys(
+    retainedCandidateTwoIssueCounts,
+    ['HIDDEN_OUTPUT_SCHEMA', 'PUBLIC_PRIVATE_CONSTRUCT_MISMATCH'],
+    'retained candidate.2 issue-code counts',
   );
   const counts = jsonObject(manifest.issue_code_counts, 'issue-code counts');
   exactKeys(counts, ISSUE_CODES, 'issue-code counts');
@@ -657,22 +842,35 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     'candidate lifecycle',
   );
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v3' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v4' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
     manifest.recorded_date !== '2026-08-28' ||
-    manifest.authority !== 'candidate_2_isolated_review_remediation' ||
+    manifest.authority !== 'candidate_3_isolated_review_remediation' ||
     predecessor.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
     predecessor.disposition !== 'rejected_nonsealable_predecessor_evidence' ||
-    predecessor.merge_commit !== '1d6898012bcb4c9fbf4db2389872ae416a14c633' ||
-    predecessor.change_commit !== 'a156fbcf419a66c196327271509a5d47f1680fef' ||
-    predecessor.source_tree !== 'cdfa3ecc92e1095f631a54af23daff74203ab944' ||
+    predecessor.merge_commit !== '613a0eb896a83fb46fa94bcca61d41228126c632' ||
+    predecessor.change_commit !== '4f5c09be7aeb7e1e9e74e3417f943649af2265e2' ||
+    predecessor.source_tree !== 'f16cb16b499fbf942ad0b62344d6146a366fa4bf' ||
     predecessor.aggregate_review_sha256 !== PREDECESSOR_REVIEW_SHA256 ||
     predecessor.review_receipt_raw_sha256 !== PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256 ||
+    predecessor.skeptical_counterexample_sha256 !== PREDECESSOR_COUNTEREXAMPLE_SHA256 ||
     predecessor.accepted_tasks !== 65 ||
     predecessor.rejected_tasks !== 7 ||
     predecessor.semantic_retention_rule !==
-      'only_review_approved_tasks_may_retain_candidate_2_semantics' ||
+      'only_review_approved_tasks_may_retain_candidate_3_semantics' ||
+    JSON.stringify(immutableRejectedPredecessors) !==
+      JSON.stringify([
+        'aiq-core/1.1.0-candidate.1',
+        'aiq-core/1.1.0-candidate.2',
+        'aiq-core/1.1.0-candidate.3',
+      ]) ||
+    retainedCandidateTwoClosures.candidate_id !== 'aiq-core/1.1.0-candidate.2' ||
+    retainedCandidateTwoClosures.successor_candidate_id !== 'aiq-core/1.1.0-candidate.3' ||
+    retainedCandidateTwoClosures.disposition !== 'valid_immutable_predecessor_closures' ||
+    retainedCandidateTwoClosures.closure_entries !== 14 ||
+    retainedCandidateTwoIssueCounts.HIDDEN_OUTPUT_SCHEMA !== 7 ||
+    retainedCandidateTwoIssueCounts.PUBLIC_PRIVATE_CONSTRUCT_MISMATCH !== 7 ||
     lifecycle.identity_state !== 'frozen_for_independent_review' ||
     lifecycle.active !== false ||
     lifecycle.production_publishable !== false ||
@@ -692,23 +890,39 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
   const decisions = unknownArray(manifest.decisions, 'candidate decisions').map(taskDecision);
 
   return {
-    schema_version: 'aiq.candidate-design-decisions.v3',
+    schema_version: 'aiq.candidate-design-decisions.v4',
     candidate_id: CANDIDATE_ID,
     candidate_task_set_version: TASK_SET_VERSION,
     recorded_date: '2026-08-28',
-    authority: 'candidate_2_isolated_review_remediation',
+    authority: 'candidate_3_isolated_review_remediation',
     predecessor_candidate: {
       candidate_id: PREDECESSOR_CANDIDATE_ID,
       disposition: 'rejected_nonsealable_predecessor_evidence',
-      merge_commit: '1d6898012bcb4c9fbf4db2389872ae416a14c633',
-      change_commit: 'a156fbcf419a66c196327271509a5d47f1680fef',
-      source_tree: 'cdfa3ecc92e1095f631a54af23daff74203ab944',
+      merge_commit: '613a0eb896a83fb46fa94bcca61d41228126c632',
+      change_commit: '4f5c09be7aeb7e1e9e74e3417f943649af2265e2',
+      source_tree: 'f16cb16b499fbf942ad0b62344d6146a366fa4bf',
       aggregate_review_sha256: PREDECESSOR_REVIEW_SHA256,
       review_receipt_raw_sha256: PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256,
+      skeptical_counterexample_sha256: PREDECESSOR_COUNTEREXAMPLE_SHA256,
       catalog_sha256: digestValueInput(predecessor.catalog_sha256, 'predecessor catalog digest'),
       accepted_tasks: 65,
       rejected_tasks: 7,
-      semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_2_semantics',
+      semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_3_semantics',
+    },
+    immutable_rejected_predecessors: [
+      'aiq-core/1.1.0-candidate.1',
+      'aiq-core/1.1.0-candidate.2',
+      'aiq-core/1.1.0-candidate.3',
+    ],
+    retained_candidate_2_issue_closures: {
+      candidate_id: 'aiq-core/1.1.0-candidate.2',
+      successor_candidate_id: 'aiq-core/1.1.0-candidate.3',
+      disposition: 'valid_immutable_predecessor_closures',
+      closure_entries: 14,
+      issue_code_counts: {
+        HIDDEN_OUTPUT_SCHEMA: 7,
+        PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
+      },
     },
     issue_code_counts: issueCodeCounts,
     lifecycle: {
@@ -780,16 +994,19 @@ export function assertDecisionManifest(
   priorTaskIds: readonly string[],
 ): void {
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v3' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v4' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
     manifest.recorded_date !== '2026-08-28' ||
-    manifest.authority !== 'candidate_2_isolated_review_remediation' ||
+    manifest.authority !== 'candidate_3_isolated_review_remediation' ||
     manifest.predecessor_candidate.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
     manifest.predecessor_candidate.disposition !== 'rejected_nonsealable_predecessor_evidence' ||
     manifest.predecessor_candidate.aggregate_review_sha256 !== PREDECESSOR_REVIEW_SHA256 ||
     manifest.predecessor_candidate.review_receipt_raw_sha256 !==
       PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256 ||
+    manifest.predecessor_candidate.skeptical_counterexample_sha256 !==
+      PREDECESSOR_COUNTEREXAMPLE_SHA256 ||
+    manifest.retained_candidate_2_issue_closures.closure_entries !== 14 ||
     manifest.predecessor_candidate.accepted_tasks !== 65 ||
     manifest.predecessor_candidate.rejected_tasks !== 7 ||
     ISSUE_CODES.some(
@@ -805,7 +1022,7 @@ export function assertDecisionManifest(
   if (
     new Set(decisionIds).size !== 72 ||
     new Set(manifest.decisions.map((decision) => decision.cluster_id)).size !== 72 ||
-    new Set(manifest.decisions.map((decision) => decision.candidate_3_contract.construct_id))
+    new Set(manifest.decisions.map((decision) => decision.candidate_4_contract.construct_id))
       .size !== 72 ||
     priorTaskIds.length !== 72 ||
     retained.length !== 65 ||
@@ -816,43 +1033,58 @@ export function assertDecisionManifest(
     ISSUE_CODES.some(
       (issueCode) =>
         manifest.decisions.filter((decision) =>
-          decision.candidate_2_review.issue_codes.includes(issueCode),
+          decision.candidate_3_review.issue_codes.includes(issueCode),
         ).length !== EXPECTED_ISSUE_COUNTS[issueCode],
     ) ||
+    manifest.decisions.filter((decision) =>
+      decision.candidate_2_review.issue_codes.includes('HIDDEN_OUTPUT_SCHEMA'),
+    ).length !== 7 ||
+    manifest.decisions.filter((decision) =>
+      decision.candidate_2_review.issue_codes.includes('PUBLIC_PRIVATE_CONSTRUCT_MISMATCH'),
+    ).length !== 7 ||
     manifest.decisions.some(
       (decision) =>
         !['retained', 'revised'].includes(decision.decision) ||
         decision.cluster_id.length === 0 ||
         decision.rationale.length < 160 ||
         (decision.decision === 'retained') !==
-          (decision.candidate_2_review.verdict === 'approved') ||
+          (decision.candidate_3_review.verdict === 'approved') ||
         (decision.decision === 'retained') !==
-          (decision.candidate_2_review.issue_codes.length === 0) ||
+          (decision.candidate_3_review.issue_codes.length === 0) ||
+        (decision.decision === 'retained') !==
+          (decision.candidate_2_review.verdict === 'approved') ||
         decision.candidate_3_contract.construct_id.length < 12 ||
-        decision.candidate_3_contract.response_contract.locations.length === 0 ||
-        decision.candidate_3_contract.response_contract.required_fields.length === 0 ||
-        decision.candidate_3_contract.response_contract.locations.some(
-          (location) => location.startsWith('/') || location.split('/').includes('..'),
-        ) ||
-        [
-          ...decision.candidate_3_contract.response_contract.required_fields,
-          ...decision.candidate_3_contract.response_contract.optional_fields,
-        ].some(
-          (field) =>
-            decision.candidate_3_contract.response_contract.field_semantics[field] === undefined ||
-            decision.candidate_3_contract.response_contract.field_types[field] === undefined,
-        ) ||
-        decision.candidate_3_contract.mechanism_classes.length === 0 ||
-        decision.candidate_3_contract.falsifiers.length === 0 ||
-        decision.candidate_3_contract.coverage_claims.length === 0 ||
         decision.candidate_2_review.issue_codes.some(
           (issueCode) =>
             !decision.candidate_3_contract.mechanism_classes.includes(
               ISSUE_MECHANISMS[issueCode],
             ) || !decision.candidate_3_contract.falsifiers.includes(ISSUE_FALSIFIERS[issueCode]),
         ) ||
+        decision.candidate_4_contract.construct_id.length < 12 ||
+        decision.candidate_4_contract.response_contract.locations.length === 0 ||
+        decision.candidate_4_contract.response_contract.required_fields.length === 0 ||
+        decision.candidate_4_contract.response_contract.locations.some(
+          (location) => location.startsWith('/') || location.split('/').includes('..'),
+        ) ||
+        [
+          ...decision.candidate_4_contract.response_contract.required_fields,
+          ...decision.candidate_4_contract.response_contract.optional_fields,
+        ].some(
+          (field) =>
+            decision.candidate_4_contract.response_contract.field_semantics[field] === undefined ||
+            decision.candidate_4_contract.response_contract.field_types[field] === undefined,
+        ) ||
+        decision.candidate_4_contract.mechanism_classes.length === 0 ||
+        decision.candidate_4_contract.falsifiers.length === 0 ||
+        decision.candidate_4_contract.coverage_claims.length === 0 ||
+        decision.candidate_3_review.issue_codes.some(
+          (issueCode) =>
+            !decision.candidate_4_contract.mechanism_classes.includes(
+              ISSUE_MECHANISMS[issueCode],
+            ) || !decision.candidate_4_contract.falsifiers.includes(ISSUE_FALSIFIERS[issueCode]),
+        ) ||
         JSON.stringify(decision.acceptance_fixture_applicability) !==
-          JSON.stringify(decision.candidate_3_contract.fixture_applicability) ||
+          JSON.stringify(decision.candidate_4_contract.fixture_applicability) ||
         !receiptContractMatchesTask(decision) ||
         REQUIRED_FIXTURE_CLASSES.some(
           (fixtureClass) => decision.acceptance_fixture_applicability[fixtureClass] !== 'required',
@@ -927,10 +1159,10 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
       decision_record: DECISION_PATH,
       kind: 'frozen_candidate_authoring',
       objective:
-        'Freeze AIQ Core 1.1.0 candidate.3 after the exact seven candidate.2 tool-use review failures are repaired without changing the active production benchmark.',
+        'Freeze AIQ Core 1.1.0 candidate.4 after the exact seven candidate.3 tool-use review failures are repaired without changing the active production benchmark.',
       task_specific_delta: decision.rationale,
-      candidate_2_review: decision.candidate_2_review,
-      candidate_3_contract: decision.candidate_3_contract,
+      candidate_3_review: decision.candidate_3_review,
+      candidate_4_contract: decision.candidate_4_contract,
       controlled_corpus_requirements: CONTROLLED_CORPUS_REQUIREMENTS,
     },
     input_contract: {
@@ -952,7 +1184,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
     },
     tags: revision?.tags ?? prior.tags,
     provenance: {
-      origin: 'candidate_2_review_remediation_authoring',
+      origin: 'candidate_3_review_remediation_authoring',
       owner: 'AIQ benchmark maintainers',
       recorded_date: '2026-08-28',
       predecessor_task_version: '1.1.0',
@@ -964,7 +1196,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
       status: 'independent_private_review_v2_required',
       owner: 'AIQ benchmark maintainers',
       review_requirement: 'exactly_one_matching_aiq_leakage_review_v2_per_task',
-      notes: `${decision.task_id} is candidate.3 source frozen for a fresh independent review. Candidate.2 records are rejected predecessor evidence and do not satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
+      notes: `${decision.task_id} is candidate.4 source frozen for a fresh independent review. Candidate.3 records are rejected predecessor evidence and do not satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
     },
   };
 }
@@ -997,7 +1229,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     ...prior,
     schema_version: 'aiq.catalog.v2',
     task_set_version: TASK_SET_VERSION,
-    title: 'AIQ Core 1.1.0 candidate.3 frozen for independent review',
+    title: 'AIQ Core 1.1.0 candidate.4 frozen for independent review',
     status: 'frozen_candidate',
     generated_from: GENERATOR_PATH,
     candidate_identity: {
@@ -1018,12 +1250,14 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       controlled_source:
         'The catalog is the sole expected acceptance-fixture applicability authority. Observed controlled classes must equal each task declaration exactly. Private tasks, fixtures, evaluator content, review requests, leakage reviews, and signing material stay outside Git.',
       predecessor_relation:
-        'Candidate.2 is rejected, permanently non-sealable predecessor evidence. Its 65 review-approved task semantics are retained under candidate.3 source bindings; the seven rejected tool-use tasks receive complete receipt-contract remediation and require fresh review.',
+        'Candidates.1, .2, and .3 are immutable rejected, permanently non-sealable predecessor evidence. Candidate.4 retains the 65 candidate.3 review-approved task semantics, revises only the seven rejected tool-evidence bindings, and requires a fresh isolated review.',
     },
     candidate_state: {
       identity_state: 'frozen_for_independent_review',
       predecessor_task_set_version: '1.1.0',
       predecessor_candidate: manifest.predecessor_candidate,
+      immutable_rejected_predecessors: manifest.immutable_rejected_predecessors,
+      retained_candidate_2_issue_closures: manifest.retained_candidate_2_issue_closures,
       decision_record: DECISION_PATH,
       semantic_decision_counts: { retained: 65, revised: 7 },
       issue_closure_counts: manifest.issue_code_counts,
@@ -1042,9 +1276,9 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       production_publishable: false,
       next_required_actions: [
         'Complete one independent aiq.leakage-review.v2 record for every exact task and catalog-entry digest.',
-        'Seal the reviewed private corpus without changing this frozen candidate identity.',
+        'Seal the reviewed private corpus twice without changing this frozen candidate identity.',
         'Run three fresh, predeclared, complete non-synthetic 17-by-72 matrices and pass aiq.benchmark-qualification-policy.v1.',
-        'Complete separate release adoption and production acceptance before any activation or publication.',
+        'Complete qualification, release adoption, and production acceptance before cutover, activation, or publication.',
       ],
     },
     tasks,
@@ -1088,6 +1322,8 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'identity_state',
       'predecessor_task_set_version',
       'predecessor_candidate',
+      'immutable_rejected_predecessors',
+      'retained_candidate_2_issue_closures',
       'decision_record',
       'semantic_decision_counts',
       'issue_closure_counts',
@@ -1110,6 +1346,12 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       identity_state: { const: 'frozen_for_independent_review' },
       predecessor_task_set_version: { const: '1.1.0' },
       predecessor_candidate: { const: decisionManifest.predecessor_candidate },
+      immutable_rejected_predecessors: {
+        const: decisionManifest.immutable_rejected_predecessors,
+      },
+      retained_candidate_2_issue_closures: {
+        const: decisionManifest.retained_candidate_2_issue_closures,
+      },
       decision_record: { const: DECISION_PATH },
       semantic_decision_counts: { const: { retained: 65, revised: 7 } },
       issue_closure_counts: { const: decisionManifest.issue_code_counts },
@@ -1171,8 +1413,8 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'kind',
       'objective',
       'task_specific_delta',
-      'candidate_2_review',
-      'candidate_3_contract',
+      'candidate_3_review',
+      'candidate_4_contract',
       'controlled_corpus_requirements',
     ],
     properties: {
@@ -1183,7 +1425,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       kind: { const: 'frozen_candidate_authoring' },
       objective: { type: 'string', minLength: 80 },
       task_specific_delta: { type: 'string', minLength: 160 },
-      candidate_2_review: {
+      candidate_3_review: {
         type: 'object',
         additionalProperties: false,
         required: [
@@ -1211,7 +1453,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
           },
         },
       },
-      candidate_3_contract: {
+      candidate_4_contract: {
         type: 'object',
         additionalProperties: false,
         required: [
@@ -1291,6 +1533,8 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
                   'location',
                   'transport',
                   'producer',
+                  'required_command',
+                  'required_command_sha256',
                   'required_fields',
                   'optional_fields',
                   'field_types',
@@ -1305,12 +1549,15 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
                   'key_order',
                   'predecessor_undisclosed_fields',
                   'required_invocations',
+                  'tool_evidence_requirements',
                 ],
                 properties: {
-                  schema_version: { const: 'aiq.tool-receipt-contract.v1' },
+                  schema_version: { const: 'aiq.tool-receipt-contract.v2' },
                   location: { const: 'receipt.json' },
                   transport: { const: 'workspace_file' },
                   producer: { const: 'supplied_local_tool' },
+                  required_command: { const: REQUIRED_COMMAND },
+                  required_command_sha256: { const: REQUIRED_COMMAND_SHA256 },
                   required_fields: { const: RECEIPT_FIELDS },
                   optional_fields: { const: [] },
                   field_types: {
@@ -1380,7 +1627,12 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
                       producer: { const: 'runner' },
                       transport: { const: 'evaluator_input.tool_evidence' },
                       automatic_fields: {
-                        const: ['steps', 'total_calls', 'by_tool.command_execution'],
+                        const: [
+                          'steps',
+                          'total_calls',
+                          'by_tool.command_execution',
+                          'completed_command_sha256',
+                        ],
                       },
                       receipt_fields_automatic: { const: [] },
                       relationship: { type: 'string', minLength: 40 },
@@ -1393,12 +1645,21 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
                     },
                   },
                   model_obligation: { type: 'string', minLength: 60 },
+                  tool_evidence_requirements: {
+                    const: {
+                      exact_total_calls: 1,
+                      exact_calls_by_tool: { command_execution: 1 },
+                      required_completed_command_sha256: {
+                        [REQUIRED_COMMAND_SHA256]: 1,
+                      },
+                    },
+                  },
                   additional_fields: { const: 'forbidden' },
                   key_order: { const: 'not_significant' },
                   predecessor_undisclosed_fields: {
                     const: PREDECESSOR_UNDISCLOSED_RECEIPT_FIELDS,
                   },
-                  required_invocations: { enum: [1, 2] },
+                  required_invocations: { const: 1 },
                 },
               },
             ],
@@ -1454,7 +1715,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'decision_record',
     ],
     properties: {
-      origin: { const: 'candidate_2_review_remediation_authoring' },
+      origin: { const: 'candidate_3_review_remediation_authoring' },
       owner: { const: 'AIQ benchmark maintainers' },
       recorded_date: { const: '2026-08-28' },
       predecessor_task_version: { const: '1.1.0' },
