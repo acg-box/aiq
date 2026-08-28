@@ -5223,6 +5223,7 @@ mod tests {
 			configuration_digest: protocol::canonical_hash(&configuration)
 				.expect("configuration digest"),
 			arguments: Vec::new(),
+			timeout_ms: None,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
 			configuration,
@@ -5286,6 +5287,7 @@ mod tests {
 			configuration_digest: protocol::canonical_hash(&configuration)
 				.expect("configuration digest"),
 			arguments: Vec::new(),
+			timeout_ms: None,
 			max_input_bytes: 8_192,
 			max_output_bytes: 8_192,
 			configuration,
