@@ -20,7 +20,10 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	candidate_catalog::{CANDIDATE_CATALOG_SCHEMA_VERSION, CANDIDATE_TASK_SET_VERSION},
+	candidate_catalog::{
+		self, CANDIDATE_CATALOG_SCHEMA_VERSION, CANDIDATE_TASK_SET_VERSION,
+		CandidateCatalogAuthority,
+	},
 	protocol,
 	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	task::{
@@ -40,12 +43,13 @@ const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json");
 const CANDIDATE_CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json");
-const CANDIDATE_CORE_TASK_METADATA_IDENTITY_SHA256: &str =
-	"sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6";
+#[cfg(test)]
+const CANDIDATE_CORE_COMMITMENT_SCHEMA_JSON: &str =
+	include_str!("../../../benchmarks/schema/corpus-commitment-v3.schema.json");
 #[cfg(test)]
 const CONTRAST_PUBLIC_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/contrast-catalog.json");
-const CORE_CATALOG: CatalogContract = CatalogContract {
+const CORE_CATALOG: CatalogContract<'static> = CatalogContract {
 	commitment_schema_version: "aiq.corpus-commitment.v2",
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
@@ -53,15 +57,6 @@ const CORE_CATALOG: CatalogContract = CatalogContract {
 	identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256,
 	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::Embedded(CORE_CATALOG_JSON),
-};
-const CANDIDATE_CORE_CATALOG: CatalogContract = CatalogContract {
-	commitment_schema_version: "aiq.corpus-commitment.v3",
-	catalog_schema_version: CANDIDATE_CATALOG_SCHEMA_VERSION,
-	task_set_id: AIQ_TASK_SET_ID,
-	task_set_version: CANDIDATE_TASK_SET_VERSION,
-	identity_sha256: CANDIDATE_CORE_TASK_METADATA_IDENTITY_SHA256,
-	identity_scope: "ordered_full_task_metadata",
-	tasks: CatalogTaskAuthority::Embedded(CANDIDATE_CORE_CATALOG_JSON),
 };
 const CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-coupled-challenge-01",
@@ -71,7 +66,7 @@ const CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-recovery-challenge-01",
 	"contrast-recovery-reference-01",
 ];
-const CONTRAST_CATALOG: CatalogContract = CatalogContract {
+const CONTRAST_CATALOG: CatalogContract<'static> = CatalogContract {
 	commitment_schema_version: "aiq.corpus-commitment.v2",
 	catalog_schema_version: "aiq.contrast-corpus.v1",
 	task_set_id: "aiq-core-contrast",
@@ -354,12 +349,12 @@ impl ValidatedModelToolchain {
 }
 
 #[derive(Clone, Copy)]
-struct CatalogContract {
+struct CatalogContract<'a> {
 	commitment_schema_version: &'static str,
 	catalog_schema_version: &'static str,
 	task_set_id: &'static str,
 	task_set_version: &'static str,
-	identity_sha256: &'static str,
+	identity_sha256: &'a str,
 	identity_scope: &'static str,
 	tasks: CatalogTaskAuthority,
 }
@@ -725,7 +720,14 @@ pub fn validate_candidate_core_corpus_commitment_v1_1_0(
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
-	validate_corpus_commitment_inner(path, tasks, source_root, CANDIDATE_CORE_CATALOG)
+	let authority = validated_candidate_core_catalog()?;
+
+	validate_corpus_commitment_inner(
+		path,
+		tasks,
+		source_root,
+		candidate_core_catalog_contract(&authority),
+	)
 }
 
 /// Loads the six controlled AIQ Core 1.0.7 contrast variants.
@@ -868,6 +870,33 @@ pub fn codex_code_mode_host_path(selector: &str) -> Result<PathBuf, CorpusCommit
 	hash_executable(&host, "Codex code-mode host executable")?;
 
 	Ok(host)
+}
+
+fn validated_candidate_core_catalog() -> Result<CandidateCatalogAuthority, CorpusCommitmentError> {
+	let value: Value = serde_json::from_str(CANDIDATE_CORE_CATALOG_JSON).map_err(|error| {
+		CorpusCommitmentError::new(format!("embedded candidate catalog is invalid: {error}"))
+	})?;
+	let authority = candidate_catalog::validate_candidate_catalog(&value).map_err(|error| {
+		CorpusCommitmentError::new(format!("embedded candidate catalog is invalid: {error}"))
+	})?;
+
+	authority.require_frozen_candidate().map_err(|error| {
+		CorpusCommitmentError::new(format!("embedded candidate catalog is not sealable: {error}"))
+	})?;
+
+	Ok(authority)
+}
+
+fn candidate_core_catalog_contract(authority: &CandidateCatalogAuthority) -> CatalogContract<'_> {
+	CatalogContract {
+		commitment_schema_version: "aiq.corpus-commitment.v3",
+		catalog_schema_version: CANDIDATE_CATALOG_SCHEMA_VERSION,
+		task_set_id: AIQ_TASK_SET_ID,
+		task_set_version: CANDIDATE_TASK_SET_VERSION,
+		identity_sha256: &authority.task_metadata_digest,
+		identity_scope: "ordered_full_task_metadata",
+		tasks: CatalogTaskAuthority::Embedded(CANDIDATE_CORE_CATALOG_JSON),
+	}
 }
 
 fn resolve_codex_executable(selector: &str) -> Result<PathBuf, CorpusCommitmentError> {
@@ -1066,7 +1095,7 @@ fn validate_corpus_commitment_inner(
 	path: &Path,
 	tasks: &[TaskDefinition],
 	source_root: &Path,
-	catalog_contract: CatalogContract,
+	catalog_contract: CatalogContract<'_>,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
@@ -1232,7 +1261,7 @@ fn platform_minimal_path_entries() -> &'static [&'static str] {
 }
 
 fn catalog_tool_policy_tasks(
-	catalog_contract: CatalogContract,
+	catalog_contract: CatalogContract<'_>,
 	selected_tasks: Option<&[TaskDefinition]>,
 ) -> Result<Vec<Value>, CorpusCommitmentError> {
 	match catalog_contract.tasks {
@@ -1324,7 +1353,7 @@ fn validate_deterministic_execution_digests(
 	execution: &CorpusExecution,
 	source_manifest: &Value,
 	model_toolchain_policy: &ExecutionToolPolicy,
-	catalog_contract: CatalogContract,
+	catalog_contract: CatalogContract<'_>,
 	selected_tasks: Option<&[TaskDefinition]>,
 ) -> Result<(), CorpusCommitmentError> {
 	validate_controlled_openssl_environment(&execution.runtime_provenance, model_toolchain_policy)?;
@@ -1374,7 +1403,7 @@ fn validate_deterministic_execution_digests(
 
 fn validate_header(
 	commitment: &CorpusCommitment,
-	catalog_contract: CatalogContract,
+	catalog_contract: CatalogContract<'_>,
 ) -> Result<(), CorpusCommitmentError> {
 	let catalog = &commitment.catalog;
 
@@ -1408,7 +1437,9 @@ fn validate_header(
 	Ok(())
 }
 
-fn catalog_contract(catalog: &CorpusCatalog) -> Result<CatalogContract, CorpusCommitmentError> {
+fn catalog_contract(
+	catalog: &CorpusCatalog,
+) -> Result<CatalogContract<'static>, CorpusCommitmentError> {
 	[CORE_CATALOG]
 		.into_iter()
 		.find(|contract| {
@@ -1594,7 +1625,7 @@ fn valid_source_path(value: &str) -> bool {
 
 fn validate_catalog_tasks(
 	tasks: &[CorpusTask],
-	catalog_contract: CatalogContract,
+	catalog_contract: CatalogContract<'_>,
 ) -> Result<(), CorpusCommitmentError> {
 	match catalog_contract.tasks {
 		CatalogTaskAuthority::Embedded(catalog_json) => {
@@ -1713,7 +1744,7 @@ fn validate_selected_tasks(
 
 fn validate_selected_catalog_budgets(
 	selected: &[TaskDefinition],
-	catalog_contract: CatalogContract,
+	catalog_contract: CatalogContract<'_>,
 ) -> Result<(), CorpusCommitmentError> {
 	let CatalogTaskAuthority::Embedded(catalog_json) = catalog_contract.tasks else {
 		return Ok(());
@@ -1802,7 +1833,7 @@ mod tests {
 		os::unix::{ffi::OsStringExt as _, fs::PermissionsExt as _, net::UnixListener},
 	};
 
-	use serde_json;
+	use serde_json::{self, Value};
 	use sha2::{Digest as _, Sha256};
 
 	use crate::{
@@ -1950,7 +1981,7 @@ mod tests {
 		}
 
 		fn commitment(
-			catalog: super::CatalogContract,
+			catalog: super::CatalogContract<'static>,
 			tasks: &[crate::task::TaskDefinition],
 			source_root: &std::path::Path,
 			runtime: &crate::task::EvaluatorRuntime,
@@ -2687,25 +2718,41 @@ mod tests {
 	}
 
 	#[test]
-	fn current_corpus_header_is_strict() {
+	fn current_and_candidate_corpus_headers_are_strict_across_catalog_and_schema() {
 		assert!(corpus_commitment::validate_header(&commitment(), super::CORE_CATALOG).is_ok());
+
+		let candidate_authority = super::validated_candidate_core_catalog()
+			.expect("validated embedded candidate catalog");
+		let candidate_contract = super::candidate_core_catalog_contract(&candidate_authority);
+		let commitment_schema: Value =
+			serde_json::from_str(super::CANDIDATE_CORE_COMMITMENT_SCHEMA_JSON)
+				.expect("candidate commitment schema");
+		let schema_identity = commitment_schema
+			.pointer("/properties/catalog/properties/identity_sha256/const")
+			.and_then(Value::as_str)
+			.expect("candidate commitment schema identity");
+
+		assert_eq!(schema_identity, candidate_authority.task_metadata_digest);
 
 		let mut candidate = commitment();
 
-		candidate.schema_version =
-			super::CANDIDATE_CORE_CATALOG.commitment_schema_version.to_owned();
-		candidate.catalog.schema_version =
-			super::CANDIDATE_CORE_CATALOG.catalog_schema_version.to_owned();
-		candidate.catalog.task_set_version =
-			super::CANDIDATE_CORE_CATALOG.task_set_version.to_owned();
-		candidate.catalog.identity_sha256 =
-			super::CANDIDATE_CORE_CATALOG.identity_sha256.to_owned();
+		candidate.schema_version = candidate_contract.commitment_schema_version.to_owned();
+		candidate.catalog.schema_version = candidate_contract.catalog_schema_version.to_owned();
+		candidate.catalog.task_set_version = candidate_contract.task_set_version.to_owned();
+		candidate.catalog.identity_sha256 = candidate_authority.task_metadata_digest.clone();
 
-		assert!(
-			corpus_commitment::validate_header(&candidate, super::CANDIDATE_CORE_CATALOG).is_ok()
-		);
+		assert!(corpus_commitment::validate_header(&candidate, candidate_contract).is_ok());
 		assert!(corpus_commitment::validate_header(&candidate, super::CORE_CATALOG).is_err());
 		assert!(super::catalog_contract(&candidate.catalog).is_err());
+
+		for stale_identity in [
+			"sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4",
+			"sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6",
+		] {
+			candidate.catalog.identity_sha256 = stale_identity.to_owned();
+
+			assert!(corpus_commitment::validate_header(&candidate, candidate_contract).is_err());
+		}
 
 		let mut predecessor = commitment();
 

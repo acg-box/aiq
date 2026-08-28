@@ -10,14 +10,26 @@ const TASK_SET_VERSION = '1.1.0' as const;
 const TASK_SCORER_VERSION = '1.0.6' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts';
 const DECISION_PATH = 'benchmarks/candidates/aiq-core-1.1.0/design-decisions.json';
-const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.4' as const;
-const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.3' as const;
-const PREDECESSOR_REVIEW_SHA256 =
-  'sha256:1fcb289cd97d17ce8bed1cb9ec14c2fa3167c56159c180d293b62593dec02bd2' as const;
-const PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256 =
-  'sha256:000c7d54e67eef9145d3032edb71d80f90a496ba93f98f0d549e451b52a34974' as const;
-const PREDECESSOR_COUNTEREXAMPLE_SHA256 =
-  'sha256:7d6cc76b149529e2aab7f1c751d84815aa3b044ef4c5ddbab760c7d5c236f903' as const;
+const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.6' as const;
+const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.5' as const;
+const PREDECESSOR_SOURCE_COMMIT = '61b78b185ce522bf1966986142d4cd688b90e72e' as const;
+const PREDECESSOR_SOURCE_TREE = '2b430dd9a9e69b119fa5b362606b83d68d7d3879' as const;
+const PREDECESSOR_AUTHOR_TASK_IDENTITY = '01a04a0b-e93f-7711-aef8-bad18cc8a260' as const;
+const PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256 =
+  'sha256:3cf82eb6304d3714bc29cc47d3b6c9f6780fc9cc9bb5e13a0544855a235100a6' as const;
+const PREDECESSOR_FULL_INVENTORY_SHA256 =
+  'sha256:a4db85fa9443a55fee191ceed888d0d661abdcd6842ec7c6d6b909ee874244f4' as const;
+const PREDECESSOR_TASK_METADATA_SHA256 =
+  'sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4' as const;
+const PREDECESSOR_CATALOG_CANONICAL_SHA256 =
+  'sha256:f19dd1c9a84c8274db8a240994b208bba8f6fd0f3fb6919237bcc4314d53c2cf' as const;
+const PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 =
+  'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54' as const;
+const PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256 =
+  'sha256:c37b87e8458209826164c48e74d0292c426be9b0c60dc18e664253a22bc7a95c' as const;
+const PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY = '01a04a69-b89a-7773-bd35-3c5070055aef' as const;
+const REJECTED_STALE_CONSUMER_IDENTITY_SHA256 =
+  'sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6' as const;
 const REQUIRED_COMMAND = 'node bin/task-tool.mjs' as const;
 const REQUIRED_COMMAND_SHA256 =
   'sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319' as const;
@@ -69,9 +81,36 @@ interface PublicTaskRevision {
   readonly tags: readonly string[];
 }
 
+interface CandidateReview {
+  readonly verdict: 'approved' | 'rejected';
+  readonly record_sha256: string;
+  readonly task_definition_sha256: string;
+  readonly catalog_entry_sha256: string;
+  readonly issue_codes: readonly IssueCode[];
+}
+
+interface CandidateContract {
+  readonly construct_id: string;
+  readonly response_contract: ResponseContract;
+  readonly receipt_contract: Readonly<JsonObject> | null;
+  readonly fixture_applicability: TaskDecision['acceptance_fixture_applicability'];
+  readonly mechanism_classes: readonly string[];
+  readonly falsifiers: readonly string[];
+  readonly coverage_claims: readonly string[];
+}
+
+interface CandidateFiveContract extends CandidateContract {
+  readonly scenario_contract: Readonly<JsonObject> | null;
+  readonly operation_contract: Readonly<JsonObject> | null;
+  readonly semantic_result_contract: Readonly<JsonObject> | null;
+}
+
 interface TaskDecision {
   readonly task_id: string;
-  readonly decision: Decision;
+  readonly decision: 'retained';
+  readonly predecessor_decision: Decision;
+  readonly candidate_5_catalog_entry_sha256: string;
+  readonly candidate_5_task_facing_semantics_sha256: string;
   readonly cluster_id: string;
   readonly acceptance_fixture_applicability: {
     readonly gold: FixtureApplicability;
@@ -83,38 +122,12 @@ interface TaskDecision {
   };
   readonly rationale: string;
   readonly public_task_revision: PublicTaskRevision | null;
-  readonly candidate_2_review: {
-    readonly verdict: 'approved' | 'rejected';
-    readonly record_sha256: string;
-    readonly task_definition_sha256: string;
-    readonly catalog_entry_sha256: string;
-    readonly issue_codes: readonly IssueCode[];
-  };
-  readonly candidate_3_contract: {
-    readonly construct_id: string;
-    readonly response_contract: ResponseContract;
-    readonly receipt_contract: Readonly<JsonObject> | null;
-    readonly fixture_applicability: TaskDecision['acceptance_fixture_applicability'];
-    readonly mechanism_classes: readonly string[];
-    readonly falsifiers: readonly string[];
-    readonly coverage_claims: readonly string[];
-  };
-  readonly candidate_3_review: {
-    readonly verdict: 'approved' | 'rejected';
-    readonly record_sha256: string;
-    readonly task_definition_sha256: string;
-    readonly catalog_entry_sha256: string;
-    readonly issue_codes: readonly IssueCode[];
-  };
-  readonly candidate_4_contract: {
-    readonly construct_id: string;
-    readonly response_contract: ResponseContract;
-    readonly receipt_contract: Readonly<JsonObject> | null;
-    readonly fixture_applicability: TaskDecision['acceptance_fixture_applicability'];
-    readonly mechanism_classes: readonly string[];
-    readonly falsifiers: readonly string[];
-    readonly coverage_claims: readonly string[];
-  };
+  readonly candidate_2_review: CandidateReview;
+  readonly candidate_3_contract: CandidateContract;
+  readonly candidate_3_review: CandidateReview;
+  readonly candidate_4_contract: CandidateContract;
+  readonly candidate_4_review: CandidateReview;
+  readonly candidate_5_contract: CandidateFiveContract;
 }
 
 const ISSUE_CODES = Object.freeze([
@@ -128,13 +141,23 @@ const ISSUE_CODES = Object.freeze([
   'TOOL_EVIDENCE_UNBOUND',
 ] as const);
 type IssueCode = (typeof ISSUE_CODES)[number];
-const EXPECTED_ISSUE_COUNTS = Object.freeze({
+const EXPECTED_PREDECESSOR_REVIEW_ISSUE_COUNTS = Object.freeze({
   ACCEPTANCE_SEMANTICS_INVALID: 0,
   BEHAVIORAL_COVERAGE_GAP: 7,
-  CROSS_TASK_CONSTRUCT_DUPLICATION: 0,
+  CROSS_TASK_CONSTRUCT_DUPLICATION: 7,
   HIDDEN_OUTPUT_SCHEMA: 0,
   KEYWORD_ONLY_EVALUATOR: 0,
   PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
+  PUBLIC_SEMANTIC_CONTAMINATION: 0,
+  TOOL_EVIDENCE_UNBOUND: 0,
+} satisfies Readonly<Record<IssueCode, number>>);
+const EXPECTED_CLOSURE_ISSUE_COUNTS = Object.freeze({
+  ACCEPTANCE_SEMANTICS_INVALID: 0,
+  BEHAVIORAL_COVERAGE_GAP: 7,
+  CROSS_TASK_CONSTRUCT_DUPLICATION: 7,
+  HIDDEN_OUTPUT_SCHEMA: 7,
+  KEYWORD_ONLY_EVALUATOR: 0,
+  PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 14,
   PUBLIC_SEMANTIC_CONTAMINATION: 0,
   TOOL_EVIDENCE_UNBOUND: 7,
 } satisfies Readonly<Record<IssueCode, number>>);
@@ -148,6 +171,30 @@ const ISSUE_MECHANISMS = Object.freeze({
   PUBLIC_SEMANTIC_CONTAMINATION: 'first_principles_private_regeneration',
   TOOL_EVIDENCE_UNBOUND: 'runner_event_and_content_receipt_binding',
 } satisfies Readonly<Record<IssueCode, string>>);
+const CANDIDATE_5_ISSUE_MECHANISMS = Object.freeze({
+  BEHAVIORAL_COVERAGE_GAP: 'metamorphic_behavior_coverage',
+  CROSS_TASK_CONSTRUCT_DUPLICATION: 'distinct_cross_task_behavior_signatures',
+  PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 'public_private_scenario_operation_alignment',
+} satisfies Readonly<
+  Record<
+    | 'BEHAVIORAL_COVERAGE_GAP'
+    | 'CROSS_TASK_CONSTRUCT_DUPLICATION'
+    | 'PUBLIC_PRIVATE_CONSTRUCT_MISMATCH',
+    string
+  >
+>);
+const CANDIDATE_5_ISSUE_FALSIFIERS = Object.freeze({
+  BEHAVIORAL_COVERAGE_GAP: 'perturb_each_task_specific_scenario_field',
+  CROSS_TASK_CONSTRUCT_DUPLICATION: 'substitute_each_cross_task_supplied_tool',
+  PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 'substitute_same_shape_wrong_input',
+} satisfies Readonly<
+  Record<
+    | 'BEHAVIORAL_COVERAGE_GAP'
+    | 'CROSS_TASK_CONSTRUCT_DUPLICATION'
+    | 'PUBLIC_PRIVATE_CONSTRUCT_MISMATCH',
+    string
+  >
+>);
 const ISSUE_FALSIFIERS = Object.freeze({
   ACCEPTANCE_SEMANTICS_INVALID: 'swap_or_collapse_acceptance_class_outcomes',
   BEHAVIORAL_COVERAGE_GAP: 'remove_one_claimed_transition_or_error_path',
@@ -170,7 +217,7 @@ interface ResponseContract {
 }
 
 function receiptContractMatchesTask(decision: TaskDecision): boolean {
-  const receiptContract = decision.candidate_4_contract.receipt_contract;
+  const receiptContract = decision.candidate_5_contract.receipt_contract;
   if (!isRevisedTaskId(decision.task_id)) return receiptContract === null;
   return (
     receiptContract !== null &&
@@ -179,41 +226,55 @@ function receiptContractMatchesTask(decision: TaskDecision): boolean {
 }
 
 export interface CandidateDecisionManifest {
-  readonly schema_version: 'aiq.candidate-design-decisions.v4';
+  readonly schema_version: 'aiq.candidate-design-decisions.v6';
   readonly candidate_id: typeof CANDIDATE_ID;
   readonly candidate_task_set_version: '1.1.0';
   readonly recorded_date: '2026-08-28';
-  readonly authority: 'candidate_3_isolated_review_remediation';
+  readonly authority: 'candidate_5_source_integrity_remediation';
   readonly predecessor_candidate: {
     readonly candidate_id: typeof PREDECESSOR_CANDIDATE_ID;
-    readonly disposition: 'rejected_nonsealable_predecessor_evidence';
-    readonly merge_commit: '613a0eb896a83fb46fa94bcca61d41228126c632';
-    readonly change_commit: '4f5c09be7aeb7e1e9e74e3417f943649af2265e2';
-    readonly source_tree: 'f16cb16b499fbf942ad0b62344d6146a366fa4bf';
-    readonly aggregate_review_sha256: typeof PREDECESSOR_REVIEW_SHA256;
-    readonly review_receipt_raw_sha256: typeof PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256;
-    readonly skeptical_counterexample_sha256: typeof PREDECESSOR_COUNTEREXAMPLE_SHA256;
-    readonly catalog_sha256: string;
-    readonly accepted_tasks: 65;
-    readonly rejected_tasks: 7;
-    readonly semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_3_semantics';
+    readonly disposition: 'rejected_nonsealable_source_identity_drift';
+    readonly change_commit: typeof PREDECESSOR_SOURCE_COMMIT;
+    readonly source_tree: typeof PREDECESSOR_SOURCE_TREE;
+    readonly pull_request: 138;
+    readonly author_task_identity: typeof PREDECESSOR_AUTHOR_TASK_IDENTITY;
+    readonly authoring_receipt_raw_sha256: typeof PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256;
+    readonly full_inventory_sha256: typeof PREDECESSOR_FULL_INVENTORY_SHA256;
+    readonly catalog_canonical_sha256: typeof PREDECESSOR_CATALOG_CANONICAL_SHA256;
+    readonly catalog_entry_bindings_sha256: typeof PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256;
+    readonly task_metadata_sha256: typeof PREDECESSOR_TASK_METADATA_SHA256;
+    readonly task_facing_semantics_sha256: typeof PREDECESSOR_TASK_FACING_SEMANTICS_SHA256;
+    readonly source_review_task_identity: typeof PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY;
+    readonly task_semantics: 'accepted_unchanged_72';
+    readonly task_issue_closure_entries: 42;
+    readonly semantic_retention_rule: 'all_candidate_5_task_facing_semantics_must_remain_identical';
   };
   readonly immutable_rejected_predecessors: readonly [
     'aiq-core/1.1.0-candidate.1',
     'aiq-core/1.1.0-candidate.2',
     'aiq-core/1.1.0-candidate.3',
+    'aiq-core/1.1.0-candidate.4',
+    'aiq-core/1.1.0-candidate.5',
   ];
-  readonly retained_candidate_2_issue_closures: {
-    readonly candidate_id: 'aiq-core/1.1.0-candidate.2';
-    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.3';
-    readonly disposition: 'valid_immutable_predecessor_closures';
-    readonly closure_entries: 14;
-    readonly issue_code_counts: {
-      readonly HIDDEN_OUTPUT_SCHEMA: 7;
-      readonly PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7;
-    };
+  readonly retained_candidate_5_task_issue_closures: {
+    readonly predecessor_candidate_id: 'aiq-core/1.1.0-candidate.5';
+    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.6';
+    readonly disposition: 'preserved_unchanged_and_revalidated';
+    readonly closure_entries: 42;
+    readonly issue_code_counts: Readonly<Record<IssueCode, number>>;
   };
-  readonly issue_code_counts: Readonly<Record<IssueCode, number>>;
+  readonly source_integrity_closure: {
+    readonly issue_code: 'CANDIDATE_CATALOG_COMMITMENT_IDENTITY_DRIFT';
+    readonly scope: 'repository_source_integration';
+    readonly status: 'closed_in_candidate_6';
+    readonly counts_toward_task_issue_closures: false;
+    readonly source_review_task_identity: typeof PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY;
+    readonly candidate_5_catalog_identity_sha256: typeof PREDECESSOR_TASK_METADATA_SHA256;
+    readonly rejected_stale_consumer_identity_sha256: typeof REJECTED_STALE_CONSUMER_IDENTITY_SHA256;
+    readonly runtime_authority: 'validated_embedded_candidate_catalog';
+    readonly regression: 'catalog_commitment_schema_round_trip_with_stale_identity_mutations';
+  };
+  readonly task_issue_code_counts: Readonly<Record<IssueCode, number>>;
   readonly lifecycle: {
     readonly identity_state: 'frozen_for_independent_review';
     readonly active: false;
@@ -523,6 +584,189 @@ function issueCodeArray(value: unknown, label: string): readonly IssueCode[] {
   return output;
 }
 
+function candidateReview(value: unknown, label: string): CandidateReview {
+  const review = jsonObject(value, label);
+  exactKeys(
+    review,
+    ['catalog_entry_sha256', 'issue_codes', 'record_sha256', 'task_definition_sha256', 'verdict'],
+    label,
+  );
+  if (review.verdict !== 'approved' && review.verdict !== 'rejected') {
+    throw new TypeError(`${label} verdict is invalid.`);
+  }
+  return {
+    verdict: review.verdict,
+    record_sha256: digestValueInput(review.record_sha256, `${label} record digest`),
+    task_definition_sha256: digestValueInput(review.task_definition_sha256, `${label} task digest`),
+    catalog_entry_sha256: digestValueInput(
+      review.catalog_entry_sha256,
+      `${label} catalog-entry digest`,
+    ),
+    issue_codes: issueCodeArray(review.issue_codes, `${label} issue codes`),
+  };
+}
+
+function exactFieldContract(
+  requiredValue: unknown,
+  optionalValue: unknown,
+  typesValue: unknown,
+  semanticsValue: unknown,
+  label: string,
+): {
+  readonly requiredFields: readonly string[];
+  readonly optionalFields: readonly string[];
+  readonly fieldTypes: Readonly<JsonObject>;
+  readonly fieldSemantics: Readonly<JsonObject>;
+} {
+  const requiredFields = stringArray(requiredValue, `${label} required fields`);
+  const optionalFields = stringArray(optionalValue, `${label} optional fields`);
+  const fieldTypes = jsonObject(typesValue, `${label} field types`);
+  const fieldSemantics = jsonObject(semanticsValue, `${label} field semantics`);
+  const fields = [...requiredFields, ...optionalFields];
+  if (
+    requiredFields.length === 0 ||
+    new Set(fields).size !== fields.length ||
+    Object.keys(fieldTypes).length !== fields.length ||
+    Object.keys(fieldSemantics).length !== fields.length ||
+    fields.some(
+      (field) =>
+        typeof fieldTypes[field] !== 'string' ||
+        typeof fieldSemantics[field] !== 'string' ||
+        fieldSemantics[field].length < 20,
+    )
+  ) {
+    throw new TypeError(`${label} fields are invalid.`);
+  }
+  exactKeys(fieldTypes, fields, `${label} field types`);
+  exactKeys(fieldSemantics, fields, `${label} field semantics`);
+  return { requiredFields, optionalFields, fieldTypes, fieldSemantics };
+}
+
+function scenarioContract(value: unknown, label: string): Readonly<JsonObject> | null {
+  if (value === null) return null;
+  const contract = jsonObject(value, label);
+  exactKeys(
+    contract,
+    [
+      'additional_fields',
+      'field_semantics',
+      'field_types',
+      'identity_fields',
+      'location',
+      'optional_fields',
+      'producer',
+      'required_fields',
+      'schema_version',
+      'task_specific_fields',
+      'transport',
+    ],
+    label,
+  );
+  const identityFields = stringArray(contract.identity_fields, `${label} identity fields`);
+  const taskSpecificFields = stringArray(
+    contract.task_specific_fields,
+    `${label} task-specific fields`,
+  );
+  const fields = exactFieldContract(
+    contract.required_fields,
+    contract.optional_fields,
+    contract.field_types,
+    contract.field_semantics,
+    label,
+  );
+  if (
+    contract.schema_version !== 'aiq.tool-scenario-contract.v1' ||
+    contract.location !== 'input.json' ||
+    contract.transport !== 'workspace_file' ||
+    contract.producer !== 'benchmark_author' ||
+    contract.additional_fields !== 'forbidden' ||
+    JSON.stringify(identityFields) !==
+      JSON.stringify(['schema_version', 'task_id', 'construct_id', 'operation_id']) ||
+    taskSpecificFields.length < 4 ||
+    new Set(taskSpecificFields).size !== taskSpecificFields.length ||
+    taskSpecificFields.some((field) => identityFields.includes(field)) ||
+    JSON.stringify(fields.requiredFields) !==
+      JSON.stringify([...identityFields, ...taskSpecificFields]) ||
+    fields.optionalFields.length !== 0
+  ) {
+    throw new TypeError(`${label} is invalid.`);
+  }
+  return contract;
+}
+
+function operationContract(value: unknown, label: string): Readonly<JsonObject> | null {
+  if (value === null) return null;
+  const contract = jsonObject(value, label);
+  exactKeys(
+    contract,
+    ['behavior_signature', 'consumes', 'description', 'deterministic', 'operation_id', 'produces'],
+    label,
+  );
+  const signature = jsonObject(contract.behavior_signature, `${label} behavior signature`);
+  exactKeys(
+    signature,
+    ['error_paths', 'invariants', 'metamorphic_basis', 'state_model', 'transitions'],
+    `${label} behavior signature`,
+  );
+  const consumes = stringArray(contract.consumes, `${label} consumes`);
+  const produces = stringArray(contract.produces, `${label} produces`);
+  const transitions = stringArray(signature.transitions, `${label} transitions`);
+  const invariants = stringArray(signature.invariants, `${label} invariants`);
+  const errorPaths = stringArray(signature.error_paths, `${label} error paths`);
+  const metamorphicBasis = stringArray(signature.metamorphic_basis, `${label} metamorphic basis`);
+  if (
+    typeof contract.operation_id !== 'string' ||
+    contract.operation_id.length < 12 ||
+    contract.deterministic !== true ||
+    typeof contract.description !== 'string' ||
+    contract.description.length < 80 ||
+    consumes.length < 4 ||
+    produces.length < 5 ||
+    transitions.length < 3 ||
+    invariants.length < 2 ||
+    errorPaths.length < 3 ||
+    JSON.stringify(metamorphicBasis) !== JSON.stringify(consumes)
+  ) {
+    throw new TypeError(`${label} is invalid.`);
+  }
+  return contract;
+}
+
+function semanticResultContract(value: unknown, label: string): Readonly<JsonObject> | null {
+  if (value === null) return null;
+  const contract = jsonObject(value, label);
+  exactKeys(
+    contract,
+    [
+      'additional_fields',
+      'field_semantics',
+      'field_types',
+      'location',
+      'optional_fields',
+      'required_fields',
+      'transport',
+    ],
+    label,
+  );
+  const fields = exactFieldContract(
+    contract.required_fields,
+    contract.optional_fields,
+    contract.field_types,
+    contract.field_semantics,
+    label,
+  );
+  if (
+    contract.location !== 'result.json#/result' ||
+    contract.transport !== 'workspace_json_pointer' ||
+    contract.additional_fields !== 'forbidden' ||
+    fields.requiredFields.length < 5 ||
+    fields.optionalFields.length !== 0
+  ) {
+    throw new TypeError(`${label} is invalid.`);
+  }
+  return contract;
+}
+
 function publicTaskRevision(value: unknown, label: string): PublicTaskRevision | null {
   if (value === null) return null;
   const revision = jsonObject(value, label);
@@ -556,12 +800,17 @@ function taskDecision(value: unknown, index: number): TaskDecision {
     decision,
     [
       'acceptance_fixture_applicability',
+      'candidate_5_catalog_entry_sha256',
+      'candidate_5_task_facing_semantics_sha256',
       'candidate_2_review',
       'candidate_3_contract',
       'candidate_3_review',
       'candidate_4_contract',
+      'candidate_4_review',
+      'candidate_5_contract',
       'cluster_id',
       'decision',
+      'predecessor_decision',
       'public_task_revision',
       'rationale',
       'task_id',
@@ -605,6 +854,26 @@ function taskDecision(value: unknown, index: number): TaskDecision {
     decision.candidate_4_contract,
     `${label} candidate.4 contract`,
   );
+  const candidateFiveContract = jsonObject(
+    decision.candidate_5_contract,
+    `${label} candidate.5 contract`,
+  );
+  exactKeys(
+    candidateFiveContract,
+    [
+      'construct_id',
+      'coverage_claims',
+      'falsifiers',
+      'fixture_applicability',
+      'mechanism_classes',
+      'operation_contract',
+      'receipt_contract',
+      'response_contract',
+      'scenario_contract',
+      'semantic_result_contract',
+    ],
+    `${label} candidate.5 contract`,
+  );
   exactKeys(
     candidateFourContract,
     [
@@ -619,13 +888,29 @@ function taskDecision(value: unknown, index: number): TaskDecision {
     `${label} candidate.4 contract`,
   );
   const selectedDecision = stringValue(decision.decision, `decision ${String(index)} kind`);
-  if (selectedDecision !== 'retained' && selectedDecision !== 'revised') {
+  if (selectedDecision !== 'retained') {
     throw new TypeError(`decision ${String(index)} kind is invalid.`);
+  }
+  const predecessorDecision = stringValue(
+    decision.predecessor_decision,
+    `decision ${String(index)} predecessor kind`,
+  );
+  if (predecessorDecision !== 'retained' && predecessorDecision !== 'revised') {
+    throw new TypeError(`decision ${String(index)} predecessor kind is invalid.`);
   }
 
   return {
     task_id: stringValue(decision.task_id, `decision ${String(index)} task_id`),
-    decision: selectedDecision,
+    decision: 'retained',
+    predecessor_decision: predecessorDecision,
+    candidate_5_catalog_entry_sha256: digestValueInput(
+      decision.candidate_5_catalog_entry_sha256,
+      `${label} candidate.5 catalog entry digest`,
+    ),
+    candidate_5_task_facing_semantics_sha256: digestValueInput(
+      decision.candidate_5_task_facing_semantics_sha256,
+      `${label} candidate.5 task-facing semantics digest`,
+    ),
     cluster_id: stringValue(decision.cluster_id, `decision ${String(index)} cluster_id`),
     acceptance_fixture_applicability: fixtureApplicabilityMap(
       decision.acceptance_fixture_applicability,
@@ -636,32 +921,7 @@ function taskDecision(value: unknown, index: number): TaskDecision {
       decision.public_task_revision,
       `decision ${String(index)} public task revision`,
     ),
-    candidate_2_review: {
-      verdict:
-        candidateTwoReview.verdict === 'approved'
-          ? 'approved'
-          : candidateTwoReview.verdict === 'rejected'
-            ? 'rejected'
-            : (() => {
-                throw new TypeError(`${label} candidate.2 review verdict is invalid.`);
-              })(),
-      record_sha256: digestValueInput(
-        candidateTwoReview.record_sha256,
-        `${label} candidate.2 review record digest`,
-      ),
-      task_definition_sha256: digestValueInput(
-        candidateTwoReview.task_definition_sha256,
-        `${label} candidate.2 task digest`,
-      ),
-      catalog_entry_sha256: digestValueInput(
-        candidateTwoReview.catalog_entry_sha256,
-        `${label} candidate.2 catalog-entry digest`,
-      ),
-      issue_codes: issueCodeArray(
-        candidateTwoReview.issue_codes,
-        `${label} candidate.2 issue codes`,
-      ),
-    },
+    candidate_2_review: candidateReview(candidateTwoReview, `${label} candidate.2 review`),
     candidate_3_contract: {
       construct_id: stringValue(
         candidateThreeContract.construct_id,
@@ -689,32 +949,7 @@ function taskDecision(value: unknown, index: number): TaskDecision {
         `${label} candidate.3 coverage claims`,
       ),
     },
-    candidate_3_review: {
-      verdict:
-        candidateThreeReview.verdict === 'approved'
-          ? 'approved'
-          : candidateThreeReview.verdict === 'rejected'
-            ? 'rejected'
-            : (() => {
-                throw new TypeError(`${label} candidate.3 review verdict is invalid.`);
-              })(),
-      record_sha256: digestValueInput(
-        candidateThreeReview.record_sha256,
-        `${label} candidate.3 review record digest`,
-      ),
-      task_definition_sha256: digestValueInput(
-        candidateThreeReview.task_definition_sha256,
-        `${label} candidate.3 task digest`,
-      ),
-      catalog_entry_sha256: digestValueInput(
-        candidateThreeReview.catalog_entry_sha256,
-        `${label} candidate.3 catalog-entry digest`,
-      ),
-      issue_codes: issueCodeArray(
-        candidateThreeReview.issue_codes,
-        `${label} candidate.3 issue codes`,
-      ),
-    },
+    candidate_3_review: candidateReview(candidateThreeReview, `${label} candidate.3 review`),
     candidate_4_contract: {
       construct_id: stringValue(
         candidateFourContract.construct_id,
@@ -742,6 +977,46 @@ function taskDecision(value: unknown, index: number): TaskDecision {
         `${label} candidate.4 coverage claims`,
       ),
     },
+    candidate_4_review: candidateReview(decision.candidate_4_review, `${label} candidate.4 review`),
+    candidate_5_contract: {
+      construct_id: stringValue(
+        candidateFiveContract.construct_id,
+        `${label} candidate.5 construct id`,
+      ),
+      response_contract: responseContract(
+        candidateFiveContract.response_contract,
+        `${label} candidate.5 response contract`,
+      ),
+      receipt_contract: toolReceiptContract(
+        candidateFiveContract.receipt_contract,
+        `${label} candidate.5 receipt contract`,
+      ),
+      scenario_contract: scenarioContract(
+        candidateFiveContract.scenario_contract,
+        `${label} candidate.5 scenario contract`,
+      ),
+      operation_contract: operationContract(
+        candidateFiveContract.operation_contract,
+        `${label} candidate.5 operation contract`,
+      ),
+      semantic_result_contract: semanticResultContract(
+        candidateFiveContract.semantic_result_contract,
+        `${label} candidate.5 semantic result contract`,
+      ),
+      fixture_applicability: fixtureApplicabilityMap(
+        candidateFiveContract.fixture_applicability,
+        `${label} candidate.5 fixture applicability`,
+      ),
+      mechanism_classes: stringArray(
+        candidateFiveContract.mechanism_classes,
+        `${label} candidate.5 mechanism classes`,
+      ),
+      falsifiers: stringArray(candidateFiveContract.falsifiers, `${label} candidate.5 falsifiers`),
+      coverage_claims: stringArray(
+        candidateFiveContract.coverage_claims,
+        `${label} candidate.5 coverage claims`,
+      ),
+    },
   };
 }
 
@@ -755,12 +1030,13 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'candidate_task_set_version',
       'decisions',
       'immutable_rejected_predecessors',
-      'issue_code_counts',
       'lifecycle',
       'predecessor_candidate',
       'recorded_date',
-      'retained_candidate_2_issue_closures',
+      'retained_candidate_5_task_issue_closures',
       'schema_version',
+      'source_integrity_closure',
+      'task_issue_code_counts',
     ],
     'candidate decision manifest',
   );
@@ -768,18 +1044,22 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
   exactKeys(
     predecessor,
     [
-      'accepted_tasks',
-      'aggregate_review_sha256',
+      'author_task_identity',
+      'authoring_receipt_raw_sha256',
       'candidate_id',
-      'catalog_sha256',
+      'catalog_canonical_sha256',
+      'catalog_entry_bindings_sha256',
       'change_commit',
       'disposition',
-      'merge_commit',
-      'rejected_tasks',
-      'review_receipt_raw_sha256',
-      'skeptical_counterexample_sha256',
+      'full_inventory_sha256',
+      'pull_request',
       'semantic_retention_rule',
+      'source_review_task_identity',
       'source_tree',
+      'task_facing_semantics_sha256',
+      'task_issue_closure_entries',
+      'task_metadata_sha256',
+      'task_semantics',
     ],
     'predecessor candidate',
   );
@@ -787,41 +1067,56 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     manifest.immutable_rejected_predecessors,
     'immutable rejected predecessors',
   );
-  const retainedCandidateTwoClosures = jsonObject(
-    manifest.retained_candidate_2_issue_closures,
-    'retained candidate.2 issue closures',
+  const retainedTaskClosures = jsonObject(
+    manifest.retained_candidate_5_task_issue_closures,
+    'retained candidate.5 task issue closures',
   );
   exactKeys(
-    retainedCandidateTwoClosures,
+    retainedTaskClosures,
     [
-      'candidate_id',
       'closure_entries',
       'disposition',
       'issue_code_counts',
+      'predecessor_candidate_id',
       'successor_candidate_id',
     ],
-    'retained candidate.2 issue closures',
+    'retained candidate.5 task issue closures',
   );
-  const retainedCandidateTwoIssueCounts = jsonObject(
-    retainedCandidateTwoClosures.issue_code_counts,
-    'retained candidate.2 issue-code counts',
+  const retainedTaskIssueCounts = jsonObject(
+    retainedTaskClosures.issue_code_counts,
+    'retained candidate.5 task issue-code counts',
+  );
+  exactKeys(retainedTaskIssueCounts, ISSUE_CODES, 'retained task issue-code counts');
+  const sourceIntegrityClosure = jsonObject(
+    manifest.source_integrity_closure,
+    'source integrity closure',
   );
   exactKeys(
-    retainedCandidateTwoIssueCounts,
-    ['HIDDEN_OUTPUT_SCHEMA', 'PUBLIC_PRIVATE_CONSTRUCT_MISMATCH'],
-    'retained candidate.2 issue-code counts',
+    sourceIntegrityClosure,
+    [
+      'candidate_5_catalog_identity_sha256',
+      'counts_toward_task_issue_closures',
+      'issue_code',
+      'regression',
+      'rejected_stale_consumer_identity_sha256',
+      'runtime_authority',
+      'scope',
+      'source_review_task_identity',
+      'status',
+    ],
+    'source integrity closure',
   );
-  const counts = jsonObject(manifest.issue_code_counts, 'issue-code counts');
+  const counts = jsonObject(manifest.task_issue_code_counts, 'task issue closure counts');
   exactKeys(counts, ISSUE_CODES, 'issue-code counts');
-  const issueCodeCounts: Record<IssueCode, number> = {
-    ...EXPECTED_ISSUE_COUNTS,
+  const taskIssueCodeCounts: Record<IssueCode, number> = {
+    ...EXPECTED_CLOSURE_ISSUE_COUNTS,
   };
   for (const code of ISSUE_CODES) {
     const count = counts[code];
     if (!Number.isInteger(count) || Number(count) < 0) {
       throw new TypeError(`issue-code count ${code} is invalid.`);
     }
-    issueCodeCounts[code] = Number(count);
+    taskIssueCodeCounts[code] = Number(count);
   }
   const lifecycle = jsonObject(manifest.lifecycle, 'candidate lifecycle');
   exactKeys(
@@ -842,35 +1137,57 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     'candidate lifecycle',
   );
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v4' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v6' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
     manifest.recorded_date !== '2026-08-28' ||
-    manifest.authority !== 'candidate_3_isolated_review_remediation' ||
+    manifest.authority !== 'candidate_5_source_integrity_remediation' ||
     predecessor.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    predecessor.disposition !== 'rejected_nonsealable_predecessor_evidence' ||
-    predecessor.merge_commit !== '613a0eb896a83fb46fa94bcca61d41228126c632' ||
-    predecessor.change_commit !== '4f5c09be7aeb7e1e9e74e3417f943649af2265e2' ||
-    predecessor.source_tree !== 'f16cb16b499fbf942ad0b62344d6146a366fa4bf' ||
-    predecessor.aggregate_review_sha256 !== PREDECESSOR_REVIEW_SHA256 ||
-    predecessor.review_receipt_raw_sha256 !== PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256 ||
-    predecessor.skeptical_counterexample_sha256 !== PREDECESSOR_COUNTEREXAMPLE_SHA256 ||
-    predecessor.accepted_tasks !== 65 ||
-    predecessor.rejected_tasks !== 7 ||
+    predecessor.disposition !== 'rejected_nonsealable_source_identity_drift' ||
+    predecessor.change_commit !== PREDECESSOR_SOURCE_COMMIT ||
+    predecessor.source_tree !== PREDECESSOR_SOURCE_TREE ||
+    predecessor.pull_request !== 138 ||
+    predecessor.author_task_identity !== PREDECESSOR_AUTHOR_TASK_IDENTITY ||
+    predecessor.authoring_receipt_raw_sha256 !== PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256 ||
+    predecessor.full_inventory_sha256 !== PREDECESSOR_FULL_INVENTORY_SHA256 ||
+    predecessor.catalog_canonical_sha256 !== PREDECESSOR_CATALOG_CANONICAL_SHA256 ||
+    predecessor.catalog_entry_bindings_sha256 !== PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256 ||
+    predecessor.task_metadata_sha256 !== PREDECESSOR_TASK_METADATA_SHA256 ||
+    predecessor.task_facing_semantics_sha256 !== PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 ||
+    predecessor.source_review_task_identity !== PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY ||
+    predecessor.task_semantics !== 'accepted_unchanged_72' ||
+    predecessor.task_issue_closure_entries !== 42 ||
     predecessor.semantic_retention_rule !==
-      'only_review_approved_tasks_may_retain_candidate_3_semantics' ||
+      'all_candidate_5_task_facing_semantics_must_remain_identical' ||
     JSON.stringify(immutableRejectedPredecessors) !==
       JSON.stringify([
         'aiq-core/1.1.0-candidate.1',
         'aiq-core/1.1.0-candidate.2',
         'aiq-core/1.1.0-candidate.3',
+        'aiq-core/1.1.0-candidate.4',
+        'aiq-core/1.1.0-candidate.5',
       ]) ||
-    retainedCandidateTwoClosures.candidate_id !== 'aiq-core/1.1.0-candidate.2' ||
-    retainedCandidateTwoClosures.successor_candidate_id !== 'aiq-core/1.1.0-candidate.3' ||
-    retainedCandidateTwoClosures.disposition !== 'valid_immutable_predecessor_closures' ||
-    retainedCandidateTwoClosures.closure_entries !== 14 ||
-    retainedCandidateTwoIssueCounts.HIDDEN_OUTPUT_SCHEMA !== 7 ||
-    retainedCandidateTwoIssueCounts.PUBLIC_PRIVATE_CONSTRUCT_MISMATCH !== 7 ||
+    retainedTaskClosures.predecessor_candidate_id !== PREDECESSOR_CANDIDATE_ID ||
+    retainedTaskClosures.successor_candidate_id !== CANDIDATE_ID ||
+    retainedTaskClosures.disposition !== 'preserved_unchanged_and_revalidated' ||
+    retainedTaskClosures.closure_entries !== 42 ||
+    ISSUE_CODES.some(
+      (code) => retainedTaskIssueCounts[code] !== EXPECTED_CLOSURE_ISSUE_COUNTS[code],
+    ) ||
+    sourceIntegrityClosure.issue_code !== 'CANDIDATE_CATALOG_COMMITMENT_IDENTITY_DRIFT' ||
+    sourceIntegrityClosure.scope !== 'repository_source_integration' ||
+    sourceIntegrityClosure.status !== 'closed_in_candidate_6' ||
+    sourceIntegrityClosure.counts_toward_task_issue_closures !== false ||
+    sourceIntegrityClosure.source_review_task_identity !==
+      PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY ||
+    sourceIntegrityClosure.candidate_5_catalog_identity_sha256 !==
+      PREDECESSOR_TASK_METADATA_SHA256 ||
+    sourceIntegrityClosure.rejected_stale_consumer_identity_sha256 !==
+      REJECTED_STALE_CONSUMER_IDENTITY_SHA256 ||
+    sourceIntegrityClosure.runtime_authority !== 'validated_embedded_candidate_catalog' ||
+    sourceIntegrityClosure.regression !==
+      'catalog_commitment_schema_round_trip_with_stale_identity_mutations' ||
+    ISSUE_CODES.some((code) => taskIssueCodeCounts[code] !== EXPECTED_CLOSURE_ISSUE_COUNTS[code]) ||
     lifecycle.identity_state !== 'frozen_for_independent_review' ||
     lifecycle.active !== false ||
     lifecycle.production_publishable !== false ||
@@ -890,41 +1207,55 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
   const decisions = unknownArray(manifest.decisions, 'candidate decisions').map(taskDecision);
 
   return {
-    schema_version: 'aiq.candidate-design-decisions.v4',
+    schema_version: 'aiq.candidate-design-decisions.v6',
     candidate_id: CANDIDATE_ID,
     candidate_task_set_version: TASK_SET_VERSION,
     recorded_date: '2026-08-28',
-    authority: 'candidate_3_isolated_review_remediation',
+    authority: 'candidate_5_source_integrity_remediation',
     predecessor_candidate: {
       candidate_id: PREDECESSOR_CANDIDATE_ID,
-      disposition: 'rejected_nonsealable_predecessor_evidence',
-      merge_commit: '613a0eb896a83fb46fa94bcca61d41228126c632',
-      change_commit: '4f5c09be7aeb7e1e9e74e3417f943649af2265e2',
-      source_tree: 'f16cb16b499fbf942ad0b62344d6146a366fa4bf',
-      aggregate_review_sha256: PREDECESSOR_REVIEW_SHA256,
-      review_receipt_raw_sha256: PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256,
-      skeptical_counterexample_sha256: PREDECESSOR_COUNTEREXAMPLE_SHA256,
-      catalog_sha256: digestValueInput(predecessor.catalog_sha256, 'predecessor catalog digest'),
-      accepted_tasks: 65,
-      rejected_tasks: 7,
-      semantic_retention_rule: 'only_review_approved_tasks_may_retain_candidate_3_semantics',
+      disposition: 'rejected_nonsealable_source_identity_drift',
+      change_commit: PREDECESSOR_SOURCE_COMMIT,
+      source_tree: PREDECESSOR_SOURCE_TREE,
+      pull_request: 138,
+      author_task_identity: PREDECESSOR_AUTHOR_TASK_IDENTITY,
+      authoring_receipt_raw_sha256: PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256,
+      full_inventory_sha256: PREDECESSOR_FULL_INVENTORY_SHA256,
+      catalog_canonical_sha256: PREDECESSOR_CATALOG_CANONICAL_SHA256,
+      catalog_entry_bindings_sha256: PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256,
+      task_metadata_sha256: PREDECESSOR_TASK_METADATA_SHA256,
+      task_facing_semantics_sha256: PREDECESSOR_TASK_FACING_SEMANTICS_SHA256,
+      source_review_task_identity: PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY,
+      task_semantics: 'accepted_unchanged_72',
+      task_issue_closure_entries: 42,
+      semantic_retention_rule: 'all_candidate_5_task_facing_semantics_must_remain_identical',
     },
     immutable_rejected_predecessors: [
       'aiq-core/1.1.0-candidate.1',
       'aiq-core/1.1.0-candidate.2',
       'aiq-core/1.1.0-candidate.3',
+      'aiq-core/1.1.0-candidate.4',
+      'aiq-core/1.1.0-candidate.5',
     ],
-    retained_candidate_2_issue_closures: {
-      candidate_id: 'aiq-core/1.1.0-candidate.2',
-      successor_candidate_id: 'aiq-core/1.1.0-candidate.3',
-      disposition: 'valid_immutable_predecessor_closures',
-      closure_entries: 14,
-      issue_code_counts: {
-        HIDDEN_OUTPUT_SCHEMA: 7,
-        PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
-      },
+    retained_candidate_5_task_issue_closures: {
+      predecessor_candidate_id: PREDECESSOR_CANDIDATE_ID,
+      successor_candidate_id: CANDIDATE_ID,
+      disposition: 'preserved_unchanged_and_revalidated',
+      closure_entries: 42,
+      issue_code_counts: taskIssueCodeCounts,
     },
-    issue_code_counts: issueCodeCounts,
+    source_integrity_closure: {
+      issue_code: 'CANDIDATE_CATALOG_COMMITMENT_IDENTITY_DRIFT',
+      scope: 'repository_source_integration',
+      status: 'closed_in_candidate_6',
+      counts_toward_task_issue_closures: false,
+      source_review_task_identity: PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY,
+      candidate_5_catalog_identity_sha256: PREDECESSOR_TASK_METADATA_SHA256,
+      rejected_stale_consumer_identity_sha256: REJECTED_STALE_CONSUMER_IDENTITY_SHA256,
+      runtime_authority: 'validated_embedded_candidate_catalog',
+      regression: 'catalog_commitment_schema_round_trip_with_stale_identity_mutations',
+    },
+    task_issue_code_counts: taskIssueCodeCounts,
     lifecycle: {
       identity_state: 'frozen_for_independent_review',
       active: false,
@@ -972,6 +1303,22 @@ function digestValue(value: unknown): string {
   return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
 }
 
+function taskFacingSemantics(value: unknown): JsonObject {
+  const task = jsonObject(value, 'task-facing semantics');
+  return {
+    task_id: task.task_id,
+    task_version: task.task_version,
+    title: task.title,
+    summary: task.summary,
+    input_contract: task.input_contract,
+    cluster_id: task.cluster_id,
+    allowed_tools: task.allowed_tools,
+    budget: task.budget,
+    evaluator: task.evaluator,
+    tags: task.tags,
+  };
+}
+
 function reviseSchemaStrings(value: unknown): unknown {
   if (typeof value === 'string') {
     return value
@@ -993,48 +1340,82 @@ export function assertDecisionManifest(
   manifest: CandidateDecisionManifest,
   priorTaskIds: readonly string[],
 ): void {
+  const candidateThreeIssueCounts = {
+    ACCEPTANCE_SEMANTICS_INVALID: 0,
+    BEHAVIORAL_COVERAGE_GAP: 7,
+    CROSS_TASK_CONSTRUCT_DUPLICATION: 0,
+    HIDDEN_OUTPUT_SCHEMA: 0,
+    KEYWORD_ONLY_EVALUATOR: 0,
+    PUBLIC_PRIVATE_CONSTRUCT_MISMATCH: 7,
+    PUBLIC_SEMANTIC_CONTAMINATION: 0,
+    TOOL_EVIDENCE_UNBOUND: 7,
+  } satisfies Readonly<Record<IssueCode, number>>;
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v4' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v6' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
     manifest.recorded_date !== '2026-08-28' ||
-    manifest.authority !== 'candidate_3_isolated_review_remediation' ||
+    manifest.authority !== 'candidate_5_source_integrity_remediation' ||
     manifest.predecessor_candidate.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    manifest.predecessor_candidate.disposition !== 'rejected_nonsealable_predecessor_evidence' ||
-    manifest.predecessor_candidate.aggregate_review_sha256 !== PREDECESSOR_REVIEW_SHA256 ||
-    manifest.predecessor_candidate.review_receipt_raw_sha256 !==
-      PREDECESSOR_REVIEW_RECEIPT_RAW_SHA256 ||
-    manifest.predecessor_candidate.skeptical_counterexample_sha256 !==
-      PREDECESSOR_COUNTEREXAMPLE_SHA256 ||
-    manifest.retained_candidate_2_issue_closures.closure_entries !== 14 ||
-    manifest.predecessor_candidate.accepted_tasks !== 65 ||
-    manifest.predecessor_candidate.rejected_tasks !== 7 ||
+    manifest.predecessor_candidate.disposition !== 'rejected_nonsealable_source_identity_drift' ||
+    manifest.predecessor_candidate.change_commit !== PREDECESSOR_SOURCE_COMMIT ||
+    manifest.predecessor_candidate.source_tree !== PREDECESSOR_SOURCE_TREE ||
+    manifest.predecessor_candidate.author_task_identity !== PREDECESSOR_AUTHOR_TASK_IDENTITY ||
+    manifest.predecessor_candidate.authoring_receipt_raw_sha256 !==
+      PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256 ||
+    manifest.predecessor_candidate.full_inventory_sha256 !== PREDECESSOR_FULL_INVENTORY_SHA256 ||
+    manifest.predecessor_candidate.task_metadata_sha256 !== PREDECESSOR_TASK_METADATA_SHA256 ||
+    manifest.predecessor_candidate.catalog_entry_bindings_sha256 !==
+      PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256 ||
+    manifest.predecessor_candidate.task_facing_semantics_sha256 !==
+      PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 ||
+    manifest.retained_candidate_5_task_issue_closures.closure_entries !== 42 ||
+    manifest.source_integrity_closure.counts_toward_task_issue_closures ||
     ISSUE_CODES.some(
-      (issueCode) => manifest.issue_code_counts[issueCode] !== EXPECTED_ISSUE_COUNTS[issueCode],
+      (issueCode) =>
+        manifest.task_issue_code_counts[issueCode] !== EXPECTED_CLOSURE_ISSUE_COUNTS[issueCode] ||
+        manifest.retained_candidate_5_task_issue_closures.issue_code_counts[issueCode] !==
+          EXPECTED_CLOSURE_ISSUE_COUNTS[issueCode],
     ) ||
     manifest.decisions.length !== 72
   ) {
     throw new Error('AIQ Core 1.1.0 decision-manifest authority is invalid.');
   }
   const decisionIds = manifest.decisions.map((decision) => decision.task_id);
-  const retained = manifest.decisions.filter((decision) => decision.decision === 'retained');
-  const revised = manifest.decisions.filter((decision) => decision.decision === 'revised');
+  const predecessorRetained = manifest.decisions.filter(
+    (decision) => decision.predecessor_decision === 'retained',
+  );
+  const predecessorRevised = manifest.decisions.filter(
+    (decision) => decision.predecessor_decision === 'revised',
+  );
+  const revisedScenarioContracts = predecessorRevised.map(
+    (decision) => decision.candidate_5_contract,
+  );
   if (
     new Set(decisionIds).size !== 72 ||
     new Set(manifest.decisions.map((decision) => decision.cluster_id)).size !== 72 ||
-    new Set(manifest.decisions.map((decision) => decision.candidate_4_contract.construct_id))
+    new Set(manifest.decisions.map((decision) => decision.candidate_5_contract.construct_id))
+      .size !== 72 ||
+    new Set(manifest.decisions.map((decision) => decision.candidate_5_catalog_entry_sha256))
       .size !== 72 ||
     priorTaskIds.length !== 72 ||
-    retained.length !== 65 ||
-    revised.length !== 7 ||
-    JSON.stringify(revised.map((decision) => decision.task_id).toSorted()) !==
+    predecessorRetained.length !== 65 ||
+    predecessorRevised.length !== 7 ||
+    manifest.decisions.some((decision) => decision.decision !== 'retained') ||
+    JSON.stringify(predecessorRevised.map((decision) => decision.task_id).toSorted()) !==
       JSON.stringify([...REVISED_TASK_IDS].toSorted()) ||
     decisionIds.some((taskId, index) => taskId !== priorTaskIds[index]) ||
     ISSUE_CODES.some(
       (issueCode) =>
         manifest.decisions.filter((decision) =>
+          decision.candidate_4_review.issue_codes.includes(issueCode),
+        ).length !== EXPECTED_PREDECESSOR_REVIEW_ISSUE_COUNTS[issueCode],
+    ) ||
+    ISSUE_CODES.some(
+      (issueCode) =>
+        manifest.decisions.filter((decision) =>
           decision.candidate_3_review.issue_codes.includes(issueCode),
-        ).length !== EXPECTED_ISSUE_COUNTS[issueCode],
+        ).length !== candidateThreeIssueCounts[issueCode],
     ) ||
     manifest.decisions.filter((decision) =>
       decision.candidate_2_review.issue_codes.includes('HIDDEN_OUTPUT_SCHEMA'),
@@ -1045,14 +1426,13 @@ export function assertDecisionManifest(
     manifest.decisions.some(
       (decision) =>
         !['retained', 'revised'].includes(decision.decision) ||
+        !['retained', 'revised'].includes(decision.predecessor_decision) ||
         decision.cluster_id.length === 0 ||
         decision.rationale.length < 160 ||
-        (decision.decision === 'retained') !==
-          (decision.candidate_3_review.verdict === 'approved') ||
-        (decision.decision === 'retained') !==
-          (decision.candidate_3_review.issue_codes.length === 0) ||
-        (decision.decision === 'retained') !==
-          (decision.candidate_2_review.verdict === 'approved') ||
+        (decision.predecessor_decision === 'retained') !==
+          (decision.candidate_4_review.verdict === 'approved') ||
+        (decision.predecessor_decision === 'retained') !==
+          (decision.candidate_4_review.issue_codes.length === 0) ||
         decision.candidate_3_contract.construct_id.length < 12 ||
         decision.candidate_2_review.issue_codes.some(
           (issueCode) =>
@@ -1060,31 +1440,49 @@ export function assertDecisionManifest(
               ISSUE_MECHANISMS[issueCode],
             ) || !decision.candidate_3_contract.falsifiers.includes(ISSUE_FALSIFIERS[issueCode]),
         ) ||
-        decision.candidate_4_contract.construct_id.length < 12 ||
-        decision.candidate_4_contract.response_contract.locations.length === 0 ||
-        decision.candidate_4_contract.response_contract.required_fields.length === 0 ||
-        decision.candidate_4_contract.response_contract.locations.some(
-          (location) => location.startsWith('/') || location.split('/').includes('..'),
-        ) ||
-        [
-          ...decision.candidate_4_contract.response_contract.required_fields,
-          ...decision.candidate_4_contract.response_contract.optional_fields,
-        ].some(
-          (field) =>
-            decision.candidate_4_contract.response_contract.field_semantics[field] === undefined ||
-            decision.candidate_4_contract.response_contract.field_types[field] === undefined,
-        ) ||
-        decision.candidate_4_contract.mechanism_classes.length === 0 ||
-        decision.candidate_4_contract.falsifiers.length === 0 ||
-        decision.candidate_4_contract.coverage_claims.length === 0 ||
         decision.candidate_3_review.issue_codes.some(
           (issueCode) =>
             !decision.candidate_4_contract.mechanism_classes.includes(
               ISSUE_MECHANISMS[issueCode],
             ) || !decision.candidate_4_contract.falsifiers.includes(ISSUE_FALSIFIERS[issueCode]),
         ) ||
+        decision.candidate_5_contract.construct_id.length < 12 ||
+        decision.candidate_5_contract.construct_id.length > 128 ||
+        decision.candidate_5_contract.response_contract.locations.length === 0 ||
+        decision.candidate_5_contract.response_contract.required_fields.length === 0 ||
+        decision.candidate_5_contract.response_contract.locations.some(
+          (location) => location.startsWith('/') || location.split('/').includes('..'),
+        ) ||
+        [
+          ...decision.candidate_5_contract.response_contract.required_fields,
+          ...decision.candidate_5_contract.response_contract.optional_fields,
+        ].some(
+          (field) =>
+            decision.candidate_5_contract.response_contract.field_semantics[field] === undefined ||
+            decision.candidate_5_contract.response_contract.field_types[field] === undefined,
+        ) ||
+        decision.candidate_5_contract.mechanism_classes.length === 0 ||
+        decision.candidate_5_contract.falsifiers.length === 0 ||
+        decision.candidate_5_contract.coverage_claims.length === 0 ||
+        decision.candidate_4_review.issue_codes.some((issueCode) => {
+          if (
+            issueCode !== 'BEHAVIORAL_COVERAGE_GAP' &&
+            issueCode !== 'CROSS_TASK_CONSTRUCT_DUPLICATION' &&
+            issueCode !== 'PUBLIC_PRIVATE_CONSTRUCT_MISMATCH'
+          ) {
+            return true;
+          }
+          return (
+            !decision.candidate_5_contract.mechanism_classes.includes(
+              CANDIDATE_5_ISSUE_MECHANISMS[issueCode],
+            ) ||
+            !decision.candidate_5_contract.falsifiers.includes(
+              CANDIDATE_5_ISSUE_FALSIFIERS[issueCode],
+            )
+          );
+        }) ||
         JSON.stringify(decision.acceptance_fixture_applicability) !==
-          JSON.stringify(decision.candidate_4_contract.fixture_applicability) ||
+          JSON.stringify(decision.candidate_5_contract.fixture_applicability) ||
         !receiptContractMatchesTask(decision) ||
         REQUIRED_FIXTURE_CLASSES.some(
           (fixtureClass) => decision.acceptance_fixture_applicability[fixtureClass] !== 'required',
@@ -1096,6 +1494,7 @@ export function assertDecisionManifest(
             decision.acceptance_fixture_applicability[fixtureClass],
           ),
         ) ||
+        (decision.predecessor_decision === 'revised' && decision.public_task_revision === null) ||
         (decision.public_task_revision !== null &&
           (decision.public_task_revision.title.length < 8 ||
             decision.public_task_revision.summary.length < 80 ||
@@ -1104,7 +1503,62 @@ export function assertDecisionManifest(
             decision.public_task_revision.pass_conditions.length < 3 ||
             decision.public_task_revision.allowed_tools.length === 0 ||
             decision.public_task_revision.tags.length < 2)),
-    )
+    ) ||
+    revisedScenarioContracts.some((contract) => {
+      if (
+        contract.scenario_contract === null ||
+        contract.operation_contract === null ||
+        contract.semantic_result_contract === null
+      ) {
+        return true;
+      }
+      const taskSpecificFields = contract.scenario_contract.task_specific_fields;
+      const consumes = contract.operation_contract.consumes;
+      const produces = contract.operation_contract.produces;
+      const semanticFields = contract.semantic_result_contract.required_fields;
+      return (
+        JSON.stringify(taskSpecificFields) !== JSON.stringify(consumes) ||
+        JSON.stringify(produces) !== JSON.stringify(semanticFields)
+      );
+    }) ||
+    predecessorRetained.some(
+      (decision) =>
+        decision.candidate_5_contract.scenario_contract !== null ||
+        decision.candidate_5_contract.operation_contract !== null ||
+        decision.candidate_5_contract.semantic_result_contract !== null ||
+        canonicalJson(decision.candidate_5_contract.response_contract) !==
+          canonicalJson(decision.candidate_4_contract.response_contract) ||
+        canonicalJson(decision.candidate_5_contract.receipt_contract) !==
+          canonicalJson(decision.candidate_4_contract.receipt_contract) ||
+        canonicalJson(decision.candidate_5_contract.fixture_applicability) !==
+          canonicalJson(decision.candidate_4_contract.fixture_applicability),
+    ) ||
+    new Set(
+      revisedScenarioContracts.map((contract) =>
+        canonicalJson(contract.operation_contract?.behavior_signature),
+      ),
+    ).size !== 7 ||
+    new Set(
+      revisedScenarioContracts.map((contract) =>
+        canonicalJson(contract.scenario_contract?.task_specific_fields),
+      ),
+    ).size !== 7 ||
+    new Set(
+      revisedScenarioContracts.map((contract) =>
+        canonicalJson(contract.semantic_result_contract?.required_fields),
+      ),
+    ).size !== 7 ||
+    new Set(
+      revisedScenarioContracts.map((contract) => String(contract.operation_contract?.operation_id)),
+    ).size !== 7 ||
+    new Set(
+      predecessorRevised.map((decision) =>
+        String(decision.public_task_revision?.input_contract_kind),
+      ),
+    ).size !== 7 ||
+    new Set(
+      predecessorRevised.map((decision) => String(decision.public_task_revision?.evaluator_kind)),
+    ).size !== 7
   ) {
     throw new Error('Every predecessor task needs one ordered explicit retained/revised decision.');
   }
@@ -1118,7 +1572,7 @@ function fixtureDeclaration(
   if (applicability !== 'required') return { applicability, handle: null };
   return {
     applicability,
-    handle: `aiq-acceptance://${taskId}/v6/${fixtureClass.replaceAll('_', '-')}`,
+    handle: `aiq-acceptance://${taskId}/v7/${fixtureClass.replaceAll('_', '-')}`,
   };
 }
 
@@ -1155,20 +1609,21 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
     design_revision: {
       supersedes_task_version: '1.1.0',
       supersedes_candidate_id: PREDECESSOR_CANDIDATE_ID,
-      decision: decision.decision,
+      decision: 'retained',
+      predecessor_decision: decision.predecessor_decision,
       decision_record: DECISION_PATH,
       kind: 'frozen_candidate_authoring',
       objective:
-        'Freeze AIQ Core 1.1.0 candidate.4 after the exact seven candidate.3 tool-use review failures are repaired without changing the active production benchmark.',
+        'Freeze AIQ Core 1.1.0 candidate.6 after repairing candidate.5 source identity drift without changing any task-facing semantics or the active production benchmark.',
       task_specific_delta: decision.rationale,
-      candidate_3_review: decision.candidate_3_review,
-      candidate_4_contract: decision.candidate_4_contract,
+      candidate_4_review: decision.candidate_4_review,
+      candidate_5_contract: decision.candidate_5_contract,
       controlled_corpus_requirements: CONTROLLED_CORPUS_REQUIREMENTS,
     },
     input_contract: {
       ...inputContract,
       kind: revision?.input_contract_kind ?? inputContract.kind,
-      fixture_profile: `aiq-fixture://${decision.task_id}/v4`,
+      fixture_profile: `aiq-fixture://${decision.task_id}/v5`,
       content_handle: stringValue(
         inputContract.content_handle,
         `${decision.task_id} content handle`,
@@ -1184,7 +1639,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
     },
     tags: revision?.tags ?? prior.tags,
     provenance: {
-      origin: 'candidate_3_review_remediation_authoring',
+      origin: 'candidate_5_source_integrity_remediation_authoring',
       owner: 'AIQ benchmark maintainers',
       recorded_date: '2026-08-28',
       predecessor_task_version: '1.1.0',
@@ -1196,7 +1651,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
       status: 'independent_private_review_v2_required',
       owner: 'AIQ benchmark maintainers',
       review_requirement: 'exactly_one_matching_aiq_leakage_review_v2_per_task',
-      notes: `${decision.task_id} is candidate.4 source frozen for a fresh independent review. Candidate.3 records are rejected predecessor evidence and do not satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
+      notes: `${decision.task_id} is candidate.6 source frozen for a fresh independent review. Candidate.5 is rejected non-sealable source evidence and does not satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
     },
   };
 }
@@ -1213,6 +1668,27 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     if (decision === undefined) throw new Error(`Decision ${String(index)} is missing.`);
     return reviseTask(task, decision);
   });
+  const taskFacingProjections = tasks.map(taskFacingSemantics);
+  for (const [index, projection] of taskFacingProjections.entries()) {
+    const decision = manifest.decisions[index];
+    if (
+      decision === undefined ||
+      digestValue(projection) !== decision.candidate_5_task_facing_semantics_sha256
+    ) {
+      throw new Error('Candidate.6 task-facing semantics drift from candidate.5.');
+    }
+  }
+  if (
+    digestValue(taskFacingProjections) !== PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 ||
+    digestValue(
+      manifest.decisions.map((decision) => ({
+        task_id: decision.task_id,
+        catalog_entry_sha256: decision.candidate_5_catalog_entry_sha256,
+      })),
+    ) !== PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256
+  ) {
+    throw new Error('Candidate.5 predecessor semantic or catalog-entry authority drifted.');
+  }
   const taskMetadataIdentity = {
     algorithm: 'sha256',
     canonicalization: 'aiq.sorted-key-json.v1',
@@ -1229,7 +1705,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     ...prior,
     schema_version: 'aiq.catalog.v2',
     task_set_version: TASK_SET_VERSION,
-    title: 'AIQ Core 1.1.0 candidate.4 frozen for independent review',
+    title: 'AIQ Core 1.1.0 candidate.6 frozen for independent review',
     status: 'frozen_candidate',
     generated_from: GENERATOR_PATH,
     candidate_identity: {
@@ -1250,20 +1726,22 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       controlled_source:
         'The catalog is the sole expected acceptance-fixture applicability authority. Observed controlled classes must equal each task declaration exactly. Private tasks, fixtures, evaluator content, review requests, leakage reviews, and signing material stay outside Git.',
       predecessor_relation:
-        'Candidates.1, .2, and .3 are immutable rejected, permanently non-sealable predecessor evidence. Candidate.4 retains the 65 candidate.3 review-approved task semantics, revises only the seven rejected tool-evidence bindings, and requires a fresh isolated review.',
+        'Candidates.1 through .5 are immutable rejected, permanently non-sealable predecessor evidence. Candidate.6 preserves all 72 candidate.5 task-facing semantics and repairs only the catalog-to-commitment source identity boundary before a fresh isolated review.',
     },
     candidate_state: {
       identity_state: 'frozen_for_independent_review',
       predecessor_task_set_version: '1.1.0',
       predecessor_candidate: manifest.predecessor_candidate,
       immutable_rejected_predecessors: manifest.immutable_rejected_predecessors,
-      retained_candidate_2_issue_closures: manifest.retained_candidate_2_issue_closures,
+      retained_candidate_5_task_issue_closures: manifest.retained_candidate_5_task_issue_closures,
+      source_integrity_closure: manifest.source_integrity_closure,
       decision_record: DECISION_PATH,
-      semantic_decision_counts: { retained: 65, revised: 7 },
-      issue_closure_counts: manifest.issue_code_counts,
+      semantic_decision_counts: { retained: 72, revised: 0 },
+      predecessor_design_decision_counts: { retained: 65, revised: 7 },
+      task_issue_closure_counts: manifest.task_issue_code_counts,
       private_fixture_mapping_reconciled: true,
       private_tasks_authored: true,
-      predecessor_review_status: 'complete_rejected_nonsealable',
+      predecessor_review_status: 'source_review_rejected_nonsealable',
       independent_review_status: 'pending',
       seal_status: 'pending',
       calibration_status: 'pending',
@@ -1323,10 +1801,12 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'predecessor_task_set_version',
       'predecessor_candidate',
       'immutable_rejected_predecessors',
-      'retained_candidate_2_issue_closures',
+      'retained_candidate_5_task_issue_closures',
+      'source_integrity_closure',
       'decision_record',
       'semantic_decision_counts',
-      'issue_closure_counts',
+      'predecessor_design_decision_counts',
+      'task_issue_closure_counts',
       'private_fixture_mapping_reconciled',
       'private_tasks_authored',
       'predecessor_review_status',
@@ -1349,15 +1829,21 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       immutable_rejected_predecessors: {
         const: decisionManifest.immutable_rejected_predecessors,
       },
-      retained_candidate_2_issue_closures: {
-        const: decisionManifest.retained_candidate_2_issue_closures,
+      retained_candidate_5_task_issue_closures: {
+        const: decisionManifest.retained_candidate_5_task_issue_closures,
+      },
+      source_integrity_closure: {
+        const: decisionManifest.source_integrity_closure,
       },
       decision_record: { const: DECISION_PATH },
-      semantic_decision_counts: { const: { retained: 65, revised: 7 } },
-      issue_closure_counts: { const: decisionManifest.issue_code_counts },
+      semantic_decision_counts: { const: { retained: 72, revised: 0 } },
+      predecessor_design_decision_counts: {
+        const: { retained: 65, revised: 7 },
+      },
+      task_issue_closure_counts: { const: decisionManifest.task_issue_code_counts },
       private_fixture_mapping_reconciled: { const: true },
       private_tasks_authored: { const: true },
-      predecessor_review_status: { const: 'complete_rejected_nonsealable' },
+      predecessor_review_status: { const: 'source_review_rejected_nonsealable' },
       independent_review_status: { const: 'pending' },
       seal_status: { const: 'pending' },
       calibration_status: { const: 'pending' },
@@ -1394,7 +1880,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       handle: {
         type: ['string', 'null'],
         pattern:
-          '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5|6)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
+          '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5|6|7)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
       },
     },
     allOf: [handleCondition],
@@ -1402,6 +1888,26 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
   const task = jsonObject(definitions.task, 'catalog task');
   const taskProperties = jsonObject(task.properties, 'catalog task properties');
   taskProperties.task_version = { const: TASK_SET_VERSION };
+  const candidateContractCondition = (
+    decision: Decision,
+    contractType: 'null' | 'object',
+  ): JsonObject => {
+    const condition: JsonObject = {
+      if: { properties: { predecessor_decision: { const: decision } } },
+    };
+    Reflect.set(condition, 'then', {
+      properties: {
+        candidate_5_contract: {
+          properties: {
+            scenario_contract: { type: contractType },
+            operation_contract: { type: contractType },
+            semantic_result_contract: { type: contractType },
+          },
+        },
+      },
+    });
+    return condition;
+  };
   taskProperties.design_revision = {
     type: 'object',
     additionalProperties: false,
@@ -1409,23 +1915,25 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'supersedes_task_version',
       'supersedes_candidate_id',
       'decision',
+      'predecessor_decision',
       'decision_record',
       'kind',
       'objective',
       'task_specific_delta',
-      'candidate_3_review',
-      'candidate_4_contract',
+      'candidate_4_review',
+      'candidate_5_contract',
       'controlled_corpus_requirements',
     ],
     properties: {
       supersedes_task_version: { const: '1.1.0' },
       supersedes_candidate_id: { const: PREDECESSOR_CANDIDATE_ID },
-      decision: { enum: ['retained', 'revised'] },
+      decision: { const: 'retained' },
+      predecessor_decision: { enum: ['retained', 'revised'] },
       decision_record: { const: DECISION_PATH },
       kind: { const: 'frozen_candidate_authoring' },
       objective: { type: 'string', minLength: 80 },
       task_specific_delta: { type: 'string', minLength: 160 },
-      candidate_3_review: {
+      candidate_4_review: {
         type: 'object',
         additionalProperties: false,
         required: [
@@ -1453,13 +1961,16 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
           },
         },
       },
-      candidate_4_contract: {
+      candidate_5_contract: {
         type: 'object',
         additionalProperties: false,
         required: [
           'construct_id',
           'response_contract',
           'receipt_contract',
+          'scenario_contract',
+          'operation_contract',
+          'semantic_result_contract',
           'fixture_applicability',
           'mechanism_classes',
           'falsifiers',
@@ -1664,6 +2175,177 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
               },
             ],
           },
+          scenario_contract: {
+            anyOf: [
+              { type: 'null' },
+              {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'schema_version',
+                  'location',
+                  'transport',
+                  'producer',
+                  'identity_fields',
+                  'task_specific_fields',
+                  'required_fields',
+                  'optional_fields',
+                  'field_types',
+                  'field_semantics',
+                  'additional_fields',
+                ],
+                properties: {
+                  schema_version: { const: 'aiq.tool-scenario-contract.v1' },
+                  location: { const: 'input.json' },
+                  transport: { const: 'workspace_file' },
+                  producer: { const: 'benchmark_author' },
+                  identity_fields: {
+                    const: ['schema_version', 'task_id', 'construct_id', 'operation_id'],
+                  },
+                  task_specific_fields: {
+                    type: 'array',
+                    minItems: 4,
+                    uniqueItems: true,
+                    items: { type: 'string', minLength: 2 },
+                  },
+                  required_fields: {
+                    type: 'array',
+                    minItems: 8,
+                    uniqueItems: true,
+                    items: { type: 'string', minLength: 2 },
+                  },
+                  optional_fields: { const: [] },
+                  field_types: {
+                    type: 'object',
+                    minProperties: 8,
+                    additionalProperties: {
+                      enum: ['array', 'boolean', 'number', 'object', 'string'],
+                    },
+                  },
+                  field_semantics: {
+                    type: 'object',
+                    minProperties: 8,
+                    additionalProperties: { type: 'string', minLength: 20 },
+                  },
+                  additional_fields: { const: 'forbidden' },
+                },
+              },
+            ],
+          },
+          operation_contract: {
+            anyOf: [
+              { type: 'null' },
+              {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'operation_id',
+                  'deterministic',
+                  'description',
+                  'consumes',
+                  'produces',
+                  'behavior_signature',
+                ],
+                properties: {
+                  operation_id: { type: 'string', minLength: 12 },
+                  deterministic: { const: true },
+                  description: { type: 'string', minLength: 80 },
+                  consumes: {
+                    type: 'array',
+                    minItems: 4,
+                    uniqueItems: true,
+                    items: { type: 'string', minLength: 2 },
+                  },
+                  produces: {
+                    type: 'array',
+                    minItems: 5,
+                    uniqueItems: true,
+                    items: { type: 'string', minLength: 2 },
+                  },
+                  behavior_signature: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: [
+                      'state_model',
+                      'transitions',
+                      'invariants',
+                      'error_paths',
+                      'metamorphic_basis',
+                    ],
+                    properties: {
+                      state_model: { type: 'string', minLength: 20 },
+                      transitions: {
+                        type: 'array',
+                        minItems: 3,
+                        uniqueItems: true,
+                        items: { type: 'string', minLength: 8 },
+                      },
+                      invariants: {
+                        type: 'array',
+                        minItems: 2,
+                        uniqueItems: true,
+                        items: { type: 'string', minLength: 8 },
+                      },
+                      error_paths: {
+                        type: 'array',
+                        minItems: 3,
+                        uniqueItems: true,
+                        items: { type: 'string', minLength: 8 },
+                      },
+                      metamorphic_basis: {
+                        type: 'array',
+                        minItems: 4,
+                        uniqueItems: true,
+                        items: { type: 'string', minLength: 2 },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          semantic_result_contract: {
+            anyOf: [
+              { type: 'null' },
+              {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'location',
+                  'transport',
+                  'required_fields',
+                  'optional_fields',
+                  'field_types',
+                  'field_semantics',
+                  'additional_fields',
+                ],
+                properties: {
+                  location: { const: 'result.json#/result' },
+                  transport: { const: 'workspace_json_pointer' },
+                  required_fields: {
+                    type: 'array',
+                    minItems: 5,
+                    uniqueItems: true,
+                    items: { type: 'string', minLength: 2 },
+                  },
+                  optional_fields: { const: [] },
+                  field_types: {
+                    type: 'object',
+                    minProperties: 5,
+                    additionalProperties: {
+                      enum: ['array', 'boolean', 'number', 'object', 'string'],
+                    },
+                  },
+                  field_semantics: {
+                    type: 'object',
+                    minProperties: 5,
+                    additionalProperties: { type: 'string', minLength: 20 },
+                  },
+                  additional_fields: { const: 'forbidden' },
+                },
+              },
+            ],
+          },
           fixture_applicability: {
             const: {
               gold: 'required',
@@ -1701,6 +2383,10 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
         items: { type: 'string', minLength: 40 },
       },
     },
+    allOf: [
+      candidateContractCondition('retained', 'null'),
+      candidateContractCondition('revised', 'object'),
+    ],
   };
   taskProperties.provenance = {
     type: 'object',
@@ -1715,7 +2401,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'decision_record',
     ],
     properties: {
-      origin: { const: 'candidate_3_review_remediation_authoring' },
+      origin: { const: 'candidate_5_source_integrity_remediation_authoring' },
       owner: { const: 'AIQ benchmark maintainers' },
       recorded_date: { const: '2026-08-28' },
       predecessor_task_version: { const: '1.1.0' },
@@ -1731,7 +2417,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
   );
   inputContractProperties.fixture_profile = {
     type: 'string',
-    pattern: '^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v4(?![\\s\\S])',
+    pattern: '^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v5(?![\\s\\S])',
   };
   const release = jsonObject(properties.catalog_release_identity, 'release identity');
   const releaseProperties = jsonObject(release.properties, 'release properties');
