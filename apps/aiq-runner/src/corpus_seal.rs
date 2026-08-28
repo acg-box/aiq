@@ -519,7 +519,7 @@ fn prepare_seal(options: &SealOptions) -> Result<PreparedSeal, Box<dyn Error>> {
 		CorpusKind::Core => {
 			let authority = candidate_catalog::validate_candidate_catalog(&catalog_value)?;
 
-			authority.require_qualification_ready()?;
+			authority.require_frozen_candidate()?;
 
 			Some(authority)
 		},

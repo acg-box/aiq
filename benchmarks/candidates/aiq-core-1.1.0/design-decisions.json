@@ -9,727 +9,1894 @@
     "empty": 57,
     "timeout": 4
   },
-  "private_reconciliation_required": true,
+  "private_reconciliation_required": false,
+  "historical_evidence": {
+    "role": "diagnostic_design_evidence_only",
+    "qualification_evidence": false,
+    "calibration_informative_tasks": 32,
+    "calibration_clusters": 37,
+    "calibration_universal_full_credit_tasks": 5,
+    "calibration_universal_semantic_zero_tasks": 2,
+    "retained_run_records": 7,
+    "semantic_complete_matrices": 2,
+    "coverage_aware_diagnostic_runs": 5,
+    "numeric_semantic_cells": [
+      1224,
+      1223,
+      1222,
+      1224,
+      1221,
+      1223,
+      1222
+    ],
+    "configuration_rank_spearman": {
+      "minimum": -0.1691,
+      "median": 0.2598,
+      "maximum": 0.7721
+    }
+  },
   "decisions": [
     {
       "task_id": "coding-01",
-      "decision": "retained",
-      "cluster_id": "coding_validation_mutation-cluster-01",
+      "decision": "revised",
+      "cluster_id": "coding_duration_expression_parser-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. coding-01 is materially reauthored as “Implement a strict duration expression parser” in the distinct coding_duration_expression_parser-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Implement a strict duration expression parser",
+        "summary": "Implement a small parser that normalizes compound duration expressions while rejecting duplicate units, ambiguous signs, overflow, and trailing data without changing the supplied contract fixtures.",
+        "input_contract_kind": "bounded_duration_parser_repository_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Valid compound durations produce the required integer millisecond value.",
+          "Duplicate units, invalid order, overflow, and trailing data are rejected by class.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "parser",
+          "validation"
+        ]
+      }
     },
     {
       "task_id": "coding-02",
-      "decision": "retained",
-      "cluster_id": "coding_api_state-cluster-02",
+      "decision": "revised",
+      "cluster_id": "coding_stable_mutable_priority_queue-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. coding-02 is materially reauthored as “Implement a stable mutable priority queue” in the distinct coding_stable_mutable_priority_queue-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Implement a stable mutable priority queue",
+        "summary": "Implement enqueue, reprioritize, cancel, and pop operations with stable tie ordering, idempotent cancellation, and deterministic behavior when an item is updated while already queued.",
+        "input_contract_kind": "stable_priority_queue_repository_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Priority updates preserve stable order among equal-priority items.",
+          "Cancellation and repeated updates leave no stale heap entries or duplicate delivery.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "collections",
+          "ordering"
+        ]
+      }
     },
     {
       "task_id": "coding-03",
-      "decision": "retained",
-      "cluster_id": "coding_candidate_ac-cluster-01",
+      "decision": "revised",
+      "cluster_id": "coding_circuit_breaker_transitions-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. coding-03 is materially reauthored as “Implement deterministic circuit-breaker transitions” in the distinct coding_circuit_breaker_transitions-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Implement deterministic circuit-breaker transitions",
+        "summary": "Implement a pure circuit-breaker transition function for closed, open, and half-open states with exact failure thresholds, one probe lease, monotonic epochs, and stale-result rejection.",
+        "input_contract_kind": "circuit_breaker_state_machine_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "All state transitions follow the declared threshold and epoch rules.",
+          "A stale or duplicate probe result cannot close or reopen the current epoch.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "state_machine",
+          "recovery"
+        ]
+      }
     },
     {
       "task_id": "coding-04",
-      "decision": "retained",
-      "cluster_id": "coding_validation_mutation-cluster-01",
+      "decision": "revised",
+      "cluster_id": "coding_byte_budget_lru_cache-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. coding-04 is materially reauthored as “Implement a byte-budget LRU cache” in the distinct coding_byte_budget_lru_cache-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Implement a byte-budget LRU cache",
+        "summary": "Implement a byte-budget cache with replacement accounting, deterministic least-recent eviction, oversized-item rejection, and read promotion without evicting more entries than necessary.",
+        "input_contract_kind": "byte_budget_cache_repository_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Replacement and eviction use exact byte accounting and stable recency.",
+          "Oversized and missing-key operations preserve the existing cache state.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "cache",
+          "resource_bounds"
+        ]
+      }
     },
     {
       "task_id": "coding-05",
-      "decision": "retained",
-      "cluster_id": "coding_data_transform-cluster-03",
+      "decision": "revised",
+      "cluster_id": "coding_incremental_line_decoder-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. coding-05 is materially reauthored as “Implement an incremental line decoder” in the distinct coding_incremental_line_decoder-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Implement an incremental line decoder",
+        "summary": "Implement a chunked UTF-8 line decoder that normalizes CRLF, preserves intentional empty records, reports byte offsets for malformed input, and flushes a final unterminated line exactly once.",
+        "input_contract_kind": "incremental_line_decoder_repository_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Chunk boundaries do not change decoded records or source byte offsets.",
+          "Malformed UTF-8 and final flush behavior follow the explicit recoverability contract.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "streaming",
+          "unicode"
+        ]
+      }
     },
     {
       "task_id": "coding-06",
       "decision": "retained",
       "cluster_id": "coding_api_state-cluster-02",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "coding-06 is retained as the sole anchor from predecessor cluster coding_api_state-cluster-02. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.124; mean pair delta 0.033. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "coding-07",
-      "decision": "retained",
-      "cluster_id": "coding_data_transform-cluster-03",
+      "decision": "revised",
+      "cluster_id": "coding_dependency_batch_scheduler-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. coding-07 is materially reauthored as “Implement dependency execution batches” in the distinct coding_dependency_batch_scheduler-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Implement dependency execution batches",
+        "summary": "Implement deterministic topological execution batches with stable source ordering, missing-dependency diagnostics, and one concrete cycle witness without mutating the supplied graph.",
+        "input_contract_kind": "dependency_batch_scheduler_repository_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Acyclic graphs produce maximal stable batches that respect every dependency.",
+          "Missing dependencies and cycles produce deterministic, attributable diagnostics.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "graph",
+          "scheduling"
+        ]
+      }
     },
     {
       "task_id": "coding-08",
       "decision": "retained",
-      "cluster_id": "coding_candidate_ah-cluster-01",
+      "cluster_id": "stateful_progress-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "coding-08 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "coding-08 is retained as the sole anchor from predecessor cluster stateful_progress-cluster-01. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 1.000; exact repeat agreement 0.804. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "debugging-01",
-      "decision": "retained",
-      "cluster_id": "debugging-cluster-01",
+      "decision": "revised",
+      "cluster_id": "debugging_fragmented_frame_decoder-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. debugging-01 is materially reauthored as “Repair a fragmented frame decoder” in the distinct debugging_fragmented_frame_decoder-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair a fragmented frame decoder",
+        "summary": "Repair a length-prefixed frame decoder that currently corrupts split headers, accepts oversized frames, and loses buffered bytes after a recoverable malformed frame.",
+        "input_contract_kind": "fragmented_frame_decoder_debug_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Split headers and payloads decode identically to contiguous input.",
+          "Oversized and malformed frames follow the declared recoverable or terminal path.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "debugging",
+          "protocol"
+        ]
+      }
     },
     {
       "task_id": "debugging-02",
       "decision": "retained",
       "cluster_id": "debugging-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "debugging-02 is retained as the sole anchor from predecessor cluster debugging-cluster-01. 117 numeric diagnostic cells after excluding two evaluator failures; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.232. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "debugging-03",
-      "decision": "retained",
-      "cluster_id": "debugging-cluster-02",
+      "decision": "revised",
+      "cluster_id": "debugging_aborted_refresh_generation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. debugging-03 is materially reauthored as “Repair aborted refresh generation handling” in the distinct debugging_aborted_refresh_generation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair aborted refresh generation handling",
+        "summary": "Repair a cache refresh path where an aborted generation can overwrite a newer committed value, while preserving independent-key concurrency and read-through hits.",
+        "input_contract_kind": "cache_generation_debug_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Only the current generation can publish a refresh result.",
+          "Abort, invalidation, cache-hit, and independent-key behavior remain deterministic.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "debugging",
+          "concurrency"
+        ]
+      }
     },
     {
       "task_id": "debugging-04",
       "decision": "retained",
       "cluster_id": "debugging-cluster-02",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "debugging-04 is retained as the sole anchor from predecessor cluster debugging-cluster-02. 115 numeric diagnostic cells after excluding four evaluator failures; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.324. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "debugging-05",
-      "decision": "retained",
-      "cluster_id": "debugging-cluster-03",
+      "decision": "revised",
+      "cluster_id": "debugging_lease_renewal_race-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. debugging-05 is materially reauthored as “Repair a lease-renewal race” in the distinct debugging_lease_renewal_race-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair a lease-renewal race",
+        "summary": "Repair a worker lease state machine that can acknowledge work after losing ownership or schedule two renewals for one epoch under a deterministic interleaving.",
+        "input_contract_kind": "lease_renewal_debug_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Acknowledgement is accepted only for the current owner and lease epoch.",
+          "Renewal, expiry, retry, and duplicate events preserve exactly-once state transitions.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "debugging",
+          "leases"
+        ]
+      }
     },
     {
       "task_id": "debugging-06",
-      "decision": "retained",
-      "cluster_id": "debugging-cluster-03",
+      "decision": "revised",
+      "cluster_id": "debugging_dst_recurrence_cutoff-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. debugging-06 is materially reauthored as “Repair a DST recurrence cutoff” in the distinct debugging_dst_recurrence_cutoff-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair a DST recurrence cutoff",
+        "summary": "Repair a local-time recurrence calculation across spring-forward and fall-back transitions while preserving the configured IANA zone, exclusive cutoff, and stable occurrence identity.",
+        "input_contract_kind": "dst_recurrence_debug_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Gap and fold times resolve under the supplied disambiguation policy.",
+          "The exclusive cutoff and occurrence identities are stable across UTC conversion.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "debugging",
+          "time"
+        ]
+      }
     },
     {
       "task_id": "debugging-07",
-      "decision": "retained",
-      "cluster_id": "debugging-cluster-04",
+      "decision": "revised",
+      "cluster_id": "debugging_cancellation_permit_transfer-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. debugging-07 is materially reauthored as “Repair cancellation-safe permit transfer” in the distinct debugging_cancellation_permit_transfer-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair cancellation-safe permit transfer",
+        "summary": "Repair a bounded semaphore queue where cancellation between selection and delivery leaks capacity, while retaining FIFO eligibility and idempotent release.",
+        "input_contract_kind": "permit_transfer_debug_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Cancellation at every declared transfer edge preserves total permit accounting.",
+          "FIFO eligibility, release idempotency, and subsequent waiter progress remain correct.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "debugging",
+          "concurrency"
+        ]
+      }
     },
     {
       "task_id": "debugging-08",
-      "decision": "retained",
-      "cluster_id": "debugging-cluster-04",
+      "decision": "revised",
+      "cluster_id": "debugging_archive_path_identity-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "debugging-08 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. debugging-08 is materially reauthored as “Repair archive path identity checks” in the distinct debugging_archive_path_identity-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair archive path identity checks",
+        "summary": "Repair archive-entry normalization so Windows separators and Unicode-normalized aliases cannot bypass traversal, duplicate-path, or symlink-target protections.",
+        "input_contract_kind": "archive_identity_debug_patch",
+        "evaluator_kind": "repository_test_suite",
+        "pass_conditions": [
+          "Safe cross-platform paths normalize to one deterministic relative identity.",
+          "Traversal, alias collisions, absolute paths, and unsafe link targets remain rejected.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "debugging",
+          "security"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-01",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_aq-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_cli_policy_ownership-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. repository-understanding-01 is materially reauthored as “Locate a CLI policy owner” in the distinct repository_cli_policy_ownership-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Locate a CLI policy owner",
+        "summary": "Trace one CLI policy from parser declaration through configuration merge, runtime enforcement, focused tests, and operator documentation, then record the exact owning files and evidence roles.",
+        "input_contract_kind": "bounded_repository_ownership_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "The response names every required owner surface and its distinct role.",
+          "Generated or example files are not mislabeled as the mutation authority.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "ownership",
+          "navigation"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-02",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_ar-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_request_authorization_trace-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. repository-understanding-02 is materially reauthored as “Trace request authorization and persistence” in the distinct repository_request_authorization_trace-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Trace request authorization and persistence",
+        "summary": "Trace a request through routing, authentication, authorization, validation, transaction persistence, and error translation using only the bounded repository snapshot.",
+        "input_contract_kind": "bounded_request_flow_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "The ordered happy path and all named rejection branches are attributed to source owners.",
+          "The response separates authentication, authorization, validation, and persistence failures.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "call_graph",
+          "authorization"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-03",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_as-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_generated_client_pipeline-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. repository-understanding-03 is materially reauthored as “Explain a generated client pipeline” in the distinct repository_generated_client_pipeline-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Explain a generated client pipeline",
+        "summary": "Identify the schema source, generator configuration, generated client outputs, supported regeneration command, validation owner, and files that must never be edited directly.",
+        "input_contract_kind": "bounded_generated_pipeline_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "The source, generator, generated outputs, command, and validation owner are attributed correctly.",
+          "Generated outputs are not presented as hand-edited authority.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "generated_code",
+          "provenance"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-04",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_at-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_event_schema_rename_impact-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. repository-understanding-04 is materially reauthored as “Assess an event schema rename” in the distinct repository_event_schema_rename_impact-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Assess an event schema rename",
+        "summary": "Determine the exact producer, consumer, generated type, migration, compatibility, test, and documentation changes required for a named event-field rename.",
+        "input_contract_kind": "bounded_schema_impact_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "All runtime and generated ownership surfaces are included once.",
+          "The compatibility and migration order leaves no mixed-version ambiguity.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "impact_analysis",
+          "events"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-05",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_au-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_artifact_promotion_graph-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. repository-understanding-05 is materially reauthored as “Reconstruct an artifact promotion graph” in the distinct repository_artifact_promotion_graph-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Reconstruct an artifact promotion graph",
+        "summary": "Reconstruct which build, attest, stage, promote, and publish jobs can run after each supplied failure edge, including the identity of every retained artifact.",
+        "input_contract_kind": "bounded_delivery_graph_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "Every reachable and blocked job follows the captured dependency and condition graph.",
+          "Artifact creation, retention, promotion, and publication are reported separately.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "delivery",
+          "artifacts"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-06",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_av-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_configuration_precedence_contract-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. repository-understanding-06 is materially reauthored as “Recover a configuration precedence contract” in the distinct repository_configuration_precedence_contract-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Recover a configuration precedence contract",
+        "summary": "Recover defaults, file, environment, and CLI precedence plus normalization, disable sentinels, provenance, startup enforcement, and the tests that own each branch.",
+        "input_contract_kind": "bounded_configuration_contract_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "Every source has the correct precedence, normalization, and provenance behavior.",
+          "Disable, invalid, default, and startup-enforcement branches are all represented.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "configuration",
+          "precedence"
+        ]
+      }
     },
     {
       "task_id": "repository-understanding-07",
-      "decision": "retained",
-      "cluster_id": "repository_understanding_candidate_aw-cluster-01",
+      "decision": "revised",
+      "cluster_id": "repository_package_split_boundary-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. repository-understanding-07 is materially reauthored as “Map a package split boundary” in the distinct repository_package_split_boundary-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Map a package split boundary",
+        "summary": "Map the callers, exports, build metadata, tests, local commands, and release inputs needed to split one package without adding a compatibility facade that owns no behavior.",
+        "input_contract_kind": "bounded_module_boundary_analysis",
+        "evaluator_kind": "structured_repository_analysis",
+        "pass_conditions": [
+          "The proposed boundary follows current ownership and caller evidence.",
+          "The atomic migration includes every required source, build, test, and release edit.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "modules",
+          "migration"
+        ]
+      }
     },
     {
       "task_id": "data-processing-01",
       "decision": "retained",
       "cluster_id": "data_processing-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "data-processing-01 is retained as the sole anchor from predecessor cluster data_processing-cluster-01. 119 numeric diagnostic cells; informative in one semantic-complete matrix and three coverage-aware runs; exact repeat agreement 0.952; mean pair delta 0.019. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "data-processing-02",
-      "decision": "retained",
-      "cluster_id": "data_processing-cluster-01",
+      "decision": "revised",
+      "cluster_id": "data_weighted_many_to_many_join-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal full-credit ceiling, so it supplied no configuration discrimination. data-processing-02 is materially reauthored as “Reconcile a weighted many-to-many join” in the distinct data_weighted_many_to_many_join-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Reconcile a weighted many-to-many join",
+        "summary": "Join allocation and event rows under an explicit many-to-many policy, normalize weights, preserve unmatched keys, and emit deterministic duplicate and conservation diagnostics.",
+        "input_contract_kind": "controlled_weighted_join_transformation",
+        "evaluator_kind": "structured_data_evaluator",
+        "pass_conditions": [
+          "Allocated values conserve each source total within the declared tolerance.",
+          "Duplicate, zero-weight, and unmatched groups receive deterministic diagnostics.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "join",
+          "reconciliation"
+        ]
+      }
     },
     {
       "task_id": "data-processing-03",
       "decision": "retained",
       "cluster_id": "data_processing-cluster-02",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "data-processing-03 is retained as the sole anchor from predecessor cluster data_processing-cluster-02. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.357. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "data-processing-04",
-      "decision": "retained",
-      "cluster_id": "data_processing-cluster-02",
+      "decision": "revised",
+      "cluster_id": "data_inventory_movement_reconciliation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. data-processing-04 is materially reauthored as “Reconcile inventory movements” in the distinct data_inventory_movement_reconciliation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Reconcile inventory movements",
+        "summary": "Reconcile receipts, shipments, transfers, reversals, and duplicate references into per-location balances and a deterministic exception report without treating missing rows as zero.",
+        "input_contract_kind": "controlled_inventory_reconciliation",
+        "evaluator_kind": "structured_data_evaluator",
+        "pass_conditions": [
+          "Balances reflect reversal and transfer direction exactly once.",
+          "Negative stock, duplicates, and missing references are classified without hiding valid rows.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "inventory",
+          "reconciliation"
+        ]
+      }
     },
     {
       "task_id": "data-processing-05",
-      "decision": "retained",
-      "cluster_id": "data_processing-cluster-03",
+      "decision": "revised",
+      "cluster_id": "data_late_duplicate_funnel-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. data-processing-05 is materially reauthored as “Aggregate a funnel with late duplicates” in the distinct data_late_duplicate_funnel-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Aggregate a funnel with late duplicates",
+        "summary": "Build ordered funnel counts from nested events while deduplicating late arrivals, preserving unknown valid attributes, and separating malformed records from out-of-order valid activity.",
+        "input_contract_kind": "controlled_event_funnel_transformation",
+        "evaluator_kind": "structured_data_evaluator",
+        "pass_conditions": [
+          "Stage counts use the declared identity, ordering, and deduplication rules.",
+          "Malformed, late, unknown, and out-of-order records remain separately auditable.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "events",
+          "aggregation"
+        ]
+      }
     },
     {
       "task_id": "data-processing-06",
       "decision": "retained",
       "cluster_id": "data_processing-cluster-03",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "data-processing-06 is retained as the sole anchor from predecessor cluster data_processing-cluster-03. 119 numeric diagnostic cells; informative in both semantic-complete matrices and six coverage-aware runs; exact repeat agreement 0.801; mean pair delta 0.032. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "data-processing-07",
       "decision": "retained",
       "cluster_id": "data_processing-cluster-04",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "data-processing-07 is retained as the sole anchor from predecessor cluster data_processing-cluster-04. 119 numeric diagnostic cells; informative in both semantic-complete matrices and three coverage-aware runs; exact repeat agreement 0.927; mean pair delta 0.030. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "data-processing-08",
-      "decision": "retained",
-      "cluster_id": "data_processing-cluster-04",
+      "decision": "revised",
+      "cluster_id": "data_bitemporal_price_intervals-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "data-processing-08 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. data-processing-08 is materially reauthored as “Build bitemporal price intervals” in the distinct data_bitemporal_price_intervals-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Build bitemporal price intervals",
+        "summary": "Construct non-overlapping valid-time and system-time price intervals from out-of-order updates, late corrections, and exact duplicate events.",
+        "input_contract_kind": "controlled_bitemporal_interval_transformation",
+        "evaluator_kind": "structured_data_evaluator",
+        "pass_conditions": [
+          "The final intervals are non-overlapping and preserve both time axes.",
+          "Late corrections and duplicates follow deterministic supersession and audit rules.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "temporal",
+          "warehouse"
+        ]
+      }
     },
     {
       "task_id": "retrieval-verification-01",
-      "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bf-cluster-01",
+      "decision": "revised",
+      "cluster_id": "retrieval_scoped_limit_calculation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. retrieval-verification-01 is materially reauthored as “Verify a scoped request limit” in the distinct retrieval_scoped_limit_calculation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Verify a scoped request limit",
+        "summary": "Apply captured first-party limits, exclusions, and amendment dates to a concrete request plan, showing the exact arithmetic and rejecting an out-of-scope draft source.",
+        "input_contract_kind": "captured_limit_verification",
+        "evaluator_kind": "bounded_evidence_evaluator",
+        "pass_conditions": [
+          "The calculation uses only applicable dated first-party limits and exact units.",
+          "Rejected draft evidence and scope exclusions remain explicit.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "verification",
+          "limits"
+        ]
+      }
     },
     {
       "task_id": "retrieval-verification-02",
-      "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bg-cluster-01",
+      "decision": "revised",
+      "cluster_id": "retrieval_capability_default_timeline-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. retrieval-verification-02 is materially reauthored as “Reconcile a capability-default timeline” in the distinct retrieval_capability_default_timeline-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Reconcile a capability-default timeline",
+        "summary": "Reconstruct preview availability, general availability, default activation, and one later exception from bounded first-party release artifacts.",
+        "input_contract_kind": "captured_release_timeline_verification",
+        "evaluator_kind": "bounded_evidence_evaluator",
+        "pass_conditions": [
+          "Each timeline edge binds the correct date, scope, and source status.",
+          "Availability, default behavior, and exceptions are not conflated.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "verification",
+          "timeline"
+        ]
+      }
     },
     {
       "task_id": "retrieval-verification-03",
-      "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bh-cluster-01",
+      "decision": "revised",
+      "cluster_id": "retrieval_normative_exception_chain-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. retrieval-verification-03 is materially reauthored as “Interpret a normative exception chain” in the distinct retrieval_normative_exception_chain-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Interpret a normative exception chain",
+        "summary": "Determine whether a concrete implementation satisfies a captured MUST, its explicit exception, and an informative note while preserving the authority level of each source clause.",
+        "input_contract_kind": "captured_normative_chain_verification",
+        "evaluator_kind": "bounded_evidence_evaluator",
+        "pass_conditions": [
+          "The conclusion follows the exact normative and exception conditions.",
+          "Normative, exception, informative, and missing evidence are labeled separately.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "standards",
+          "compliance"
+        ]
+      }
     },
     {
       "task_id": "retrieval-verification-04",
       "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bi-cluster-01",
+      "cluster_id": "factual_source_family-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "retrieval-verification-04 is retained as the sole anchor from predecessor cluster factual_source_family-cluster-01. 119 numeric diagnostic cells; informative in both semantic-complete matrices and six coverage-aware runs; configuration-mean range 0.195; mean pair delta 0.051. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "retrieval-verification-05",
       "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bj-cluster-01",
+      "cluster_id": "retrieval_policy_timeline-cluster-02",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "retrieval-verification-05 is retained as the sole anchor from predecessor cluster retrieval_policy_timeline-cluster-02. 119 numeric diagnostic cells; informative in both semantic-complete matrices and five coverage-aware runs; exact repeat agreement 0.910; mean pair delta 0.016. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "retrieval-verification-06",
       "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bk-cluster-01",
+      "cluster_id": "retrieval_statistics-cluster-03",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "retrieval-verification-06 is retained as the sole anchor from predecessor cluster retrieval_statistics-cluster-03. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.701. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "retrieval-verification-07",
-      "decision": "retained",
-      "cluster_id": "retrieval_verification_candidate_bl-cluster-01",
+      "decision": "revised",
+      "cluster_id": "retrieval_multiclaim_security_brief-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. retrieval-verification-07 is materially reauthored as “Audit a multi-claim security brief” in the distinct retrieval_multiclaim_security_brief-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Audit a multi-claim security brief",
+        "summary": "Classify a bounded technical brief claim by claim against captured advisories, migration guidance, and version metadata, including unsupported and partially supported claims.",
+        "input_contract_kind": "captured_security_claim_audit",
+        "evaluator_kind": "bounded_evidence_evaluator",
+        "pass_conditions": [
+          "Every material claim receives a supported, partial, contradicted, or unknown verdict.",
+          "Version scope, source authority, and unresolved evidence remain attached to each verdict.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "audit",
+          "security"
+        ]
+      }
     },
     {
       "task_id": "documentation-communication-01",
-      "decision": "retained",
-      "cluster_id": "documentation_communication-cluster-01",
+      "decision": "revised",
+      "cluster_id": "documentation_uncertainty_incident_update-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. documentation-communication-01 is materially reauthored as “Write an uncertainty-aware incident update” in the distinct documentation_uncertainty_incident_update-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Write an uncertainty-aware incident update",
+        "summary": "Write a concise operator update from frozen facts that separates confirmed impact, current mitigation, explicit unknowns, owner, and the next timestamped update.",
+        "input_contract_kind": "controlled_incident_update_document",
+        "evaluator_kind": "semantic_document_evaluator",
+        "pass_conditions": [
+          "The notice includes confirmed impact, mitigation, unknowns, owner, and next update.",
+          "It makes no causal, recovery, or customer-scope claim beyond the supplied facts.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "incident",
+          "communication"
+        ]
+      }
     },
     {
       "task_id": "documentation-communication-02",
       "decision": "retained",
       "cluster_id": "documentation_communication-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "documentation-communication-02 is retained as the sole anchor from predecessor cluster documentation_communication-cluster-01. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; mean pair delta 0.060; calibration information 0.220. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "documentation-communication-03",
-      "decision": "retained",
-      "cluster_id": "documentation_communication_candidate_bo-cluster-01",
+      "decision": "revised",
+      "cluster_id": "documentation_cutover_handoff-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. documentation-communication-03 is materially reauthored as “Produce a cutover handoff” in the distinct documentation_cutover_handoff-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Produce a cutover handoff",
+        "summary": "Produce a migration handoff that separates completed source work from pending environment inputs, names verification and rollback commands, and states the exact next owner.",
+        "input_contract_kind": "controlled_cutover_handoff_document",
+        "evaluator_kind": "semantic_document_evaluator",
+        "pass_conditions": [
+          "Completed, pending, verification, rollback, and ownership facts are unambiguous.",
+          "The handoff does not imply that environment acceptance or cutover already occurred.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "handoff",
+          "cutover"
+        ]
+      }
     },
     {
       "task_id": "documentation-communication-04",
-      "decision": "retained",
-      "cluster_id": "documentation_communication_candidate_bp-cluster-01",
+      "decision": "revised",
+      "cluster_id": "documentation_interval_two_audience_explanation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal semantic-zero floor, so it did not measure the intended construct reliably. documentation-communication-04 is materially reauthored as “Explain an interval to two audiences” in the distinct documentation_interval_two_audience_explanation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Explain an interval to two audiences",
+        "summary": "Create a short executive explanation and a technical appendix for a supplied interval method without calling it a universal confidence interval or hiding its conditional assumptions.",
+        "input_contract_kind": "controlled_two_audience_method_document",
+        "evaluator_kind": "semantic_document_evaluator",
+        "pass_conditions": [
+          "The executive section is concise and decision-oriented.",
+          "The technical section states method, assumptions, exclusions, and interpretation accurately.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "methodology",
+          "audience"
+        ]
+      }
     },
     {
       "task_id": "documentation-communication-05",
-      "decision": "retained",
-      "cluster_id": "documentation_communication_candidate_bq-cluster-01",
+      "decision": "revised",
+      "cluster_id": "documentation_scoped_release_note-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. documentation-communication-05 is materially reauthored as “Repair a scoped release note” in the distinct documentation_scoped_release_note-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Repair a scoped release note",
+        "summary": "Replace an overstated release note with precise shipped behavior, a compatibility condition, rollback guidance, and a clear statement of what remains pending.",
+        "input_contract_kind": "controlled_release_note_document",
+        "evaluator_kind": "semantic_document_evaluator",
+        "pass_conditions": [
+          "The release note states shipped scope and compatibility conditions exactly.",
+          "Pending work and rollback guidance are present without production overclaim.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "release_notes",
+          "accuracy"
+        ]
+      }
     },
     {
       "task_id": "documentation-communication-06",
-      "decision": "retained",
-      "cluster_id": "documentation_communication_candidate_br-cluster-01",
+      "decision": "revised",
+      "cluster_id": "documentation_replacement_trigger_decision-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. documentation-communication-06 is materially reauthored as “Draft a decision with replacement triggers” in the distinct documentation_replacement_trigger_decision-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Draft a decision with replacement triggers",
+        "summary": "Turn supplied constraints and evidence into a decision record with rejected alternatives, consequences, verification, and explicit conditions that require replacement or review.",
+        "input_contract_kind": "controlled_decision_record_document",
+        "evaluator_kind": "semantic_document_evaluator",
+        "pass_conditions": [
+          "The decision traces constraints to the selected option and rejected alternatives.",
+          "Consequences, verification, and replacement triggers are concrete and testable.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "decision_record",
+          "architecture"
+        ]
+      }
     },
     {
       "task_id": "documentation-communication-07",
-      "decision": "retained",
-      "cluster_id": "documentation_communication_candidate_bs-cluster-01",
+      "decision": "revised",
+      "cluster_id": "documentation_runbook_authority_consolidation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. documentation-communication-07 is materially reauthored as “Consolidate runbook authority” in the distinct documentation_runbook_authority_consolidation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Consolidate runbook authority",
+        "summary": "Create one canonical operational runbook from two drifting sources, preserving valid divergence as scoped notes and replacing duplicate procedures with owner links.",
+        "input_contract_kind": "controlled_runbook_consolidation_document",
+        "evaluator_kind": "semantic_document_evaluator",
+        "pass_conditions": [
+          "One procedure owns each operational action and verification step.",
+          "Conflicts, scoped exceptions, and superseded instructions are explicitly resolved.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "runbook",
+          "drift"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-01",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_bt-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_failover_rehearsal_schedule-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. planning-execution-01 is materially reauthored as “Schedule a failover rehearsal” in the distinct planning_failover_rehearsal_schedule-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Schedule a failover rehearsal",
+        "summary": "Produce a feasible rehearsal schedule from dependencies, exclusive roles, maintenance windows, rollback reserve, and a required post-event validation buffer.",
+        "input_contract_kind": "controlled_failover_schedule_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "Every scheduled step respects dependencies, role capacity, and window limits.",
+          "Rollback and validation reserves remain available in the final schedule.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "scheduling"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-02",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_bu-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_expand_contract_migration-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. planning-execution-02 is materially reauthored as “Plan an expand-contract migration” in the distinct planning_expand_contract_migration-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Plan an expand-contract migration",
+        "summary": "Plan a multi-version contract migration whose checkpoints remain deployable, with exact producer and consumer ordering, observation gates, and the last safe rollback boundary.",
+        "input_contract_kind": "controlled_expand_contract_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "Every checkpoint supports the declared mixed-version state.",
+          "Observation gates and the last safe rollback boundary are explicit.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "migration"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-03",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_bv-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_qualified_coverage_roster-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. planning-execution-03 is materially reauthored as “Build a qualified coverage roster” in the distinct planning_qualified_coverage_roster-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Build a qualified coverage roster",
+        "summary": "Allocate qualified people to interval demand under availability, rest, continuity, and no-double-booking constraints, then report any provably uncovered interval.",
+        "input_contract_kind": "controlled_coverage_roster_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "Assignments satisfy skill, availability, rest, and concurrency constraints.",
+          "Continuity choices and any unavoidable coverage gap are justified from the inputs.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "staffing"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-04",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_bw-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_metric_guarded_rollout-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. planning-execution-04 is materially reauthored as “Plan a metric-guarded rollout” in the distinct planning_metric_guarded_rollout-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Plan a metric-guarded rollout",
+        "summary": "Execute eligible rollout stages from frozen metrics, stop at the first failed guard, and record the evidence, rollback action, and prohibited later stages.",
+        "input_contract_kind": "controlled_rollout_gate_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "Only stages whose entry and exit guards pass are marked executed.",
+          "The first failed guard, rollback, evidence, and blocked later stages remain explicit.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "rollout"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-05",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_bx-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_checkpointed_backfill-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. planning-execution-05 is materially reauthored as “Plan a checkpointed backfill” in the distinct planning_checkpointed_backfill-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Plan a checkpointed backfill",
+        "summary": "Plan a bounded data backfill with dry-run sampling, monotonic checkpoints, invariants, pause conditions, idempotent resume, and rollback before source retirement.",
+        "input_contract_kind": "controlled_backfill_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "Dry-run, checkpoint, invariant, pause, resume, and rollback stages are ordered correctly.",
+          "No source retirement occurs before reconciliation and acceptance.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "backfill"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-06",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_by-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_dependency_api_migration-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. planning-execution-06 is materially reauthored as “Plan a dependency API migration” in the distinct planning_dependency_api_migration-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Plan a dependency API migration",
+        "summary": "Plan one direct dependency update with supported API edits, lockfile provenance, transitive graph review, focused tests, and a rollback point before publication.",
+        "input_contract_kind": "controlled_dependency_update_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "The plan separates version selection, API migration, lock regeneration, and graph review.",
+          "Focused validation and rollback occur before any publication action.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "dependencies"
+        ]
+      }
     },
     {
       "task_id": "planning-execution-07",
-      "decision": "retained",
-      "cluster_id": "planning_execution_candidate_bz-cluster-01",
+      "decision": "revised",
+      "cluster_id": "planning_platform_package_matrix-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. planning-execution-07 is materially reauthored as “Plan a platform package matrix repair” in the distinct planning_platform_package_matrix-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Plan a platform package matrix repair",
+        "summary": "Plan platform-specific package paths and archive formats across a frozen build matrix while preserving action pins, signing boundaries, and artifact identity checks.",
+        "input_contract_kind": "controlled_packaging_matrix_plan",
+        "evaluator_kind": "structured_plan_evaluator",
+        "pass_conditions": [
+          "Every platform maps to the correct path, archive, and validation boundary.",
+          "Pins, signing, identity checks, and publication gates remain separate.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "planning",
+          "packaging"
+        ]
+      }
     },
     {
       "task_id": "tool-use-01",
-      "decision": "retained",
-      "cluster_id": "tool_use_candidate_ca-cluster-01",
+      "decision": "revised",
+      "cluster_id": "tool_owner_map_edit_receipt-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal full-credit ceiling, so it supplied no configuration discrimination. tool-use-01 is materially reauthored as “Use an owner map before editing” in the distinct tool_owner_map_edit_receipt-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Use an owner map before editing",
+        "summary": "Run the supplied owner-map command, edit only the reported source owner, leave generated output unchanged, and produce a digest-bound validation receipt.",
+        "input_contract_kind": "local_owner_map_tool_task",
+        "evaluator_kind": "tool_evidence_evaluator",
+        "pass_conditions": [
+          "The command evidence selects the actual source owner before mutation.",
+          "Only the owned file changes and the final receipt binds the validated bytes.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write",
+          "command_execution"
+        ],
+        "tags": [
+          "tools",
+          "ownership"
+        ]
+      }
     },
     {
       "task_id": "tool-use-02",
-      "decision": "retained",
-      "cluster_id": "tool_use_candidate_cb-cluster-01",
+      "decision": "revised",
+      "cluster_id": "tool_dual_extractor_reconciliation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. tool-use-02 is materially reauthored as “Reconcile two local extractors” in the distinct tool_dual_extractor_reconciliation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Reconcile two local extractors",
+        "summary": "Run two immutable local extractors over different inputs and combine their versioned outputs into one deterministic reconciliation without copying diagnostic fields.",
+        "input_contract_kind": "local_dual_extractor_tool_task",
+        "evaluator_kind": "tool_evidence_evaluator",
+        "pass_conditions": [
+          "Both required commands are represented by valid tool evidence.",
+          "The report reconciles selected fields and excludes diagnostics and environment data.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write",
+          "command_execution"
+        ],
+        "tags": [
+          "tools",
+          "reconciliation"
+        ]
+      }
     },
     {
       "task_id": "tool-use-03",
-      "decision": "retained",
-      "cluster_id": "tool_use_candidate_cc-cluster-01",
+      "decision": "revised",
+      "cluster_id": "tool_validator_repair_cycle-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. tool-use-03 is materially reauthored as “Complete a validator repair cycle” in the distinct tool_validator_repair_cycle-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Complete a validator repair cycle",
+        "summary": "Use the supplied local validator to capture the initial failures, repair only the allowed configuration, rerun validation, and retain before-and-after digests.",
+        "input_contract_kind": "local_validator_repair_tool_task",
+        "evaluator_kind": "tool_evidence_evaluator",
+        "pass_conditions": [
+          "The initial and final validator invocations are reflected in the receipts.",
+          "The allowed configuration is repaired without changing protected inputs.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write",
+          "command_execution"
+        ],
+        "tags": [
+          "tools",
+          "validation"
+        ]
+      }
     },
     {
       "task_id": "tool-use-04",
-      "decision": "retained",
-      "cluster_id": "tool_use_candidate_cd-cluster-01",
+      "decision": "revised",
+      "cluster_id": "tool_captured_index_navigation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. tool-use-04 is materially reauthored as “Navigate a captured evidence index” in the distinct tool_captured_index_navigation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Navigate a captured evidence index",
+        "summary": "Use the supplied local index command to select the authoritative release, open its bounded source anchors, reject a newer draft, and write recomputable source receipts.",
+        "input_contract_kind": "local_evidence_index_tool_task",
+        "evaluator_kind": "tool_evidence_evaluator",
+        "pass_conditions": [
+          "The required command evidence and selected source anchors agree.",
+          "The draft is rejected for the documented authority reason.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write",
+          "command_execution"
+        ],
+        "tags": [
+          "tools",
+          "evidence"
+        ]
+      }
     },
     {
       "task_id": "tool-use-05",
-      "decision": "retained",
-      "cluster_id": "tool_use_candidate_ce-cluster-01",
+      "decision": "revised",
+      "cluster_id": "tool_structured_patch_gate-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. tool-use-05 is materially reauthored as “Apply a structured patch through its gate” in the distinct tool_structured_patch_gate-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Apply a structured patch through its gate",
+        "summary": "Use the supplied patch and validation commands to update an exact multi-file contract, preserve forbidden files, and make the focused gate reject a seeded regression.",
+        "input_contract_kind": "local_patch_gate_tool_task",
+        "evaluator_kind": "tool_evidence_evaluator",
+        "pass_conditions": [
+          "Tool evidence shows the patch and final validation path.",
+          "The allowed files satisfy the contract and every forbidden file remains unchanged.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write",
+          "command_execution"
+        ],
+        "tags": [
+          "tools",
+          "patch"
+        ]
+      }
     },
     {
       "task_id": "tool-use-06",
       "decision": "retained",
-      "cluster_id": "tool_use_candidate_cf-cluster-01",
+      "cluster_id": "local_evidence-cluster-02",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "tool-use-06 is retained as the sole anchor from predecessor cluster local_evidence-cluster-02. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.187; mean pair delta 0.082. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "tool-use-07",
-      "decision": "retained",
-      "cluster_id": "tool_use_candidate_cg-cluster-01",
+      "decision": "revised",
+      "cluster_id": "tool_index_failure_fallback-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "tool-use-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. tool-use-07 is materially reauthored as “Recover from an index-tool failure” in the distinct tool_index_failure_fallback-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Recover from an index-tool failure",
+        "summary": "Attempt the supplied failing index command, use the bounded ripgrep fallback, and produce a source receipt that distinguishes preferred-tool failure from successful evidence retrieval.",
+        "input_contract_kind": "local_tool_fallback_task",
+        "evaluator_kind": "tool_evidence_evaluator",
+        "pass_conditions": [
+          "Tool evidence includes command execution and the fallback result.",
+          "The report records the failed preferred route and cites only verified fallback evidence.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write",
+          "command_execution"
+        ],
+        "tags": [
+          "tools",
+          "fallback"
+        ]
+      }
     },
     {
       "task_id": "instruction-following-01",
-      "decision": "retained",
-      "cluster_id": "instruction_following_candidate_ch-cluster-01",
+      "decision": "revised",
+      "cluster_id": "instruction_computed_exact_schema-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal full-credit ceiling, so it supplied no configuration discrimination. instruction-following-01 is materially reauthored as “Return a computed exact JSON schema” in the distinct instruction_computed_exact_schema-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Return a computed exact JSON schema",
+        "summary": "Compute derived values from supplied facts and return exactly the required nested JSON keys, types, ordering-insensitive values, and no surrounding prose.",
+        "input_contract_kind": "exact_computed_json_instruction",
+        "evaluator_kind": "structured_instruction_evaluator",
+        "pass_conditions": [
+          "Every required value is computed correctly from the supplied facts.",
+          "The response contains the exact schema and no additional prose or keys.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "instructions",
+          "schema"
+        ]
+      }
     },
     {
       "task_id": "instruction-following-02",
-      "decision": "retained",
-      "cluster_id": "instruction_following_candidate_ci-cluster-01",
+      "decision": "revised",
+      "cluster_id": "instruction_protected_file_scope-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. instruction-following-02 is materially reauthored as “Honor a protected file scope” in the distinct instruction_protected_file_scope-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Honor a protected file scope",
+        "summary": "Complete a local change while modifying exactly two allowed files, preserving digest-bound protected paths, and reporting the focused validation result.",
+        "input_contract_kind": "protected_scope_instruction",
+        "evaluator_kind": "structured_instruction_evaluator",
+        "pass_conditions": [
+          "Exactly the allowed files change and satisfy the requested behavior.",
+          "Every protected path retains its original digest.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "instructions",
+          "scope"
+        ]
+      }
     },
     {
       "task_id": "instruction-following-03",
-      "decision": "retained",
-      "cluster_id": "instruction_following_candidate_cj-cluster-01",
+      "decision": "revised",
+      "cluster_id": "instruction_constraint_precedence_matrix-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. instruction-following-03 is materially reauthored as “Apply a constraint precedence matrix” in the distinct instruction_constraint_precedence_matrix-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Apply a constraint precedence matrix",
+        "summary": "Produce one artifact under nested global, section, exception, terminology, and length rules, resolving conflicts by the supplied precedence matrix.",
+        "input_contract_kind": "constraint_precedence_instruction",
+        "evaluator_kind": "structured_instruction_evaluator",
+        "pass_conditions": [
+          "The highest-authority rule controls every declared conflict.",
+          "Format, terminology, exception, and length constraints are all satisfied.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "instructions",
+          "precedence"
+        ]
+      }
     },
     {
       "task_id": "instruction-following-04",
-      "decision": "retained",
-      "cluster_id": "instruction_following_candidate_ck-cluster-01",
+      "decision": "revised",
+      "cluster_id": "instruction_prepare_without_external_effect-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal full-credit ceiling, so it supplied no configuration discrimination. instruction-following-04 is materially reauthored as “Prepare migration inputs without external effects” in the distinct instruction_prepare_without_external_effect-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Prepare migration inputs without external effects",
+        "summary": "Create validated local migration inputs and a dry-run receipt while avoiding the explicitly prohibited resource creation, message, database write, or deployment.",
+        "input_contract_kind": "no_external_effect_instruction",
+        "evaluator_kind": "structured_instruction_evaluator",
+        "pass_conditions": [
+          "All requested local artifacts validate and remain production-inactive.",
+          "No evidence claims or performs the prohibited external actions.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "instructions",
+          "safety_boundary"
+        ]
+      }
     },
     {
       "task_id": "instruction-following-05",
       "decision": "retained",
-      "cluster_id": "instruction_following_candidate_cl-cluster-01",
+      "cluster_id": "instruction_following-cluster-03",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "instruction-following-05 is retained as the sole anchor from predecessor cluster instruction_following-cluster-03. 119 numeric diagnostic cells; the sole retained calibration anchor for this weak domain; informative in both semantic-complete matrices and all seven coverage-aware runs. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "instruction-following-06",
-      "decision": "retained",
-      "cluster_id": "instruction_following_candidate_cm-cluster-01",
+      "decision": "revised",
+      "cluster_id": "instruction_dense_compatibility_edit-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. instruction-following-06 is materially reauthored as “Complete a dense compatibility edit” in the distinct instruction_dense_compatibility_edit-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Complete a dense compatibility edit",
+        "summary": "Apply exact naming, backward compatibility, validation, documentation, secret-handling, and file-boundary constraints to one local contract change.",
+        "input_contract_kind": "dense_compatibility_instruction",
+        "evaluator_kind": "structured_instruction_evaluator",
+        "pass_conditions": [
+          "Naming, compatibility, validation, documentation, and scope requirements all hold.",
+          "No secret value, generated output, or forbidden path enters the change.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "instructions",
+          "compatibility"
+        ]
+      }
     },
     {
       "task_id": "reliability-recovery-01",
-      "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_cn-cluster-01",
+      "decision": "revised",
+      "cluster_id": "reliability_capability_probe_resume-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal semantic-zero floor, so it did not measure the intended construct reliably. reliability-recovery-01 is materially reauthored as “Resume an incomplete capability probe” in the distinct reliability_capability_probe_resume-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Resume an incomplete capability probe",
+        "summary": "Classify incomplete capability evidence, preserve every completed probe, retry only eligible missing work, and avoid inventing a semantic result for the interrupted cell.",
+        "input_contract_kind": "capability_probe_recovery_task",
+        "evaluator_kind": "recovery_state_evaluator",
+        "pass_conditions": [
+          "Completed probes are preserved byte-for-byte and never rerun.",
+          "Only eligible missing work remains pending; no result is invented from failure evidence.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "recovery",
+          "capability"
+        ]
+      }
     },
     {
       "task_id": "reliability-recovery-02",
-      "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_co-cluster-01",
+      "decision": "revised",
+      "cluster_id": "reliability_watermark_queue_resume-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Coverage-aware repeated-run diagnostics showed material cell movement relative to configuration signal, so the old scenario was too run-variable to retain. reliability-recovery-02 is materially reauthored as “Resume a watermark-controlled queue” in the distinct reliability_watermark_queue_resume-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Resume a watermark-controlled queue",
+        "summary": "Resume a local queue from a durable watermark and side-effect receipts, handling output ahead of state without duplicating committed effects.",
+        "input_contract_kind": "watermark_queue_recovery_task",
+        "evaluator_kind": "recovery_state_evaluator",
+        "pass_conditions": [
+          "Committed effects are not repeated and pending items resume in order.",
+          "Output-ahead, stale watermark, and duplicate receipt states reconcile deterministically.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "recovery",
+          "idempotency"
+        ]
+      }
     },
     {
       "task_id": "reliability-recovery-03",
-      "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_cp-cluster-01",
+      "decision": "revised",
+      "cluster_id": "reliability_chunk_manifest_quarantine-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained calibration placed this item at the universal full-credit ceiling, so it supplied no configuration discrimination. reliability-recovery-03 is materially reauthored as “Recover a partial chunk manifest” in the distinct reliability_chunk_manifest_quarantine-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Recover a partial chunk manifest",
+        "summary": "Reconcile a partial artifact against a chunk manifest, retain verified chunks, quarantine corrupt bytes, and produce a resumable missing-range plan.",
+        "input_contract_kind": "chunk_manifest_recovery_task",
+        "evaluator_kind": "recovery_state_evaluator",
+        "pass_conditions": [
+          "Verified, missing, and corrupt chunks are classified by exact digest evidence.",
+          "The recovery plan reuses good bytes and never promotes an incomplete artifact.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "recovery",
+          "integrity"
+        ]
+      }
     },
     {
       "task_id": "reliability-recovery-04",
       "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_cq-cluster-01",
+      "cluster_id": "reliability_artifact_delivery-cluster-02",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "reliability-recovery-04 is retained as the sole anchor from predecessor cluster reliability_artifact_delivery-cluster-02. 119 numeric diagnostic cells; informative in both semantic-complete matrices and four coverage-aware runs; configuration-mean range 0.468; exact repeat agreement 0.776. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     },
     {
       "task_id": "reliability-recovery-05",
-      "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_cr-cluster-01",
+      "decision": "revised",
+      "cluster_id": "reliability_output_checkpoint_reconciliation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "Task-level calibration and repeated-run diagnostics showed weak range, ceiling or floor pressure, or redundant coverage within its predecessor cluster. reliability-recovery-05 is materially reauthored as “Reconcile output ahead of checkpoint” in the distinct reliability_output_checkpoint_reconciliation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Reconcile output ahead of checkpoint",
+        "summary": "Recover a state where final output exists ahead of the durable checkpoint, validate its identity, promote or discard it once, and retire temporary state safely.",
+        "input_contract_kind": "output_checkpoint_recovery_task",
+        "evaluator_kind": "recovery_state_evaluator",
+        "pass_conditions": [
+          "Identity-valid output is promoted without repeating work; invalid output is quarantined.",
+          "Checkpoint and temporary-state transitions are monotonic and idempotent.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "recovery",
+          "checkpoint"
+        ]
+      }
     },
     {
       "task_id": "reliability-recovery-06",
-      "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_cs-cluster-01",
+      "decision": "revised",
+      "cluster_id": "reliability_malformed_batch_isolation-cluster-01",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "The retained matrices showed a constant partial score across configurations, so the old evaluator partition could not distinguish ability. reliability-recovery-06 is materially reauthored as “Isolate malformed batch entries” in the distinct reliability_malformed_batch_isolation-cluster-01 construct. Its private evaluator uses semantic weighted checks and hard gates, ignores irrelevant representation differences, and has no elapsed-time, step, tool-call, aggregate, or per-check deadline.",
+      "public_task_revision": {
+        "title": "Isolate malformed batch entries",
+        "summary": "Validate a mixed batch, reject malformed entries with stable reasons, continue independent valid entries, and emit an exact processed, rejected, and pending summary.",
+        "input_contract_kind": "batch_isolation_recovery_task",
+        "evaluator_kind": "recovery_state_evaluator",
+        "pass_conditions": [
+          "Malformed entries cannot affect independent valid processing.",
+          "The batch summary and per-entry reasons reconcile to the complete input set.",
+          "Protected source inputs and unrelated workspace files remain unchanged.",
+          "Deterministic evidence distinguishes complete, alternate-correct, partial, adversarial-format, and empty outcomes."
+        ],
+        "allowed_tools": [
+          "filesystem_read",
+          "filesystem_write"
+        ],
+        "tags": [
+          "recovery",
+          "isolation"
+        ]
+      }
     },
     {
       "task_id": "reliability-recovery-07",
       "decision": "retained",
-      "cluster_id": "reliability_recovery_candidate_ct-cluster-01",
+      "cluster_id": "reliability_claim_conflict-cluster-03",
       "acceptance_fixture_applicability": {
-        "empty": "pending_private_reconciliation",
-        "timeout": "pending_private_reconciliation"
+        "empty": "required",
+        "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+      "rationale": "reliability-recovery-07 is retained as the sole anchor from predecessor cluster reliability_claim_conflict-cluster-03. 119 numeric diagnostic cells; informative in both semantic-complete matrices and all seven coverage-aware runs; configuration-mean range 0.238. The construct remains bounded and deterministic; the 1.1.0 authoring converts its evaluator to natural completion, gives the new acceptance suite a fresh identity, and keeps all historical results diagnostic-only.",
+      "public_task_revision": null
     }
   ]
 }

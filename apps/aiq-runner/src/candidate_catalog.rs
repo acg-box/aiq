@@ -34,8 +34,8 @@ const OPTIONAL_ACCEPTANCE_CLASSES: [&str; 2] = ["empty", "timeout"];
 pub enum CandidateCatalogStatus {
 	/// Public source foundation with unresolved controlled authoring inputs.
 	DraftSourceFoundation,
-	/// Complete catalog authority permitted to enter sealing and qualification.
-	QualificationReady,
+	/// Immutable source identity ready for independent review and later sealing.
+	FrozenCandidate,
 	/// Immutable rejected candidate. A new candidate identity is required for another attempt.
 	Failed,
 }
@@ -123,10 +123,10 @@ impl CandidateCatalogAuthority {
 		self.tasks.iter().find(|task| task.task_id == task_id)
 	}
 
-	/// Requires a complete, nonfailed candidate before sealing or qualification.
-	pub fn require_qualification_ready(&self) -> Result<(), CandidateCatalogError> {
-		if self.status != CandidateCatalogStatus::QualificationReady {
-			return Err(CandidateCatalogError::new("candidate catalog is not qualification_ready"));
+	/// Requires a frozen, resolved candidate before sealing or qualification.
+	pub fn require_frozen_candidate(&self) -> Result<(), CandidateCatalogError> {
+		if self.status != CandidateCatalogStatus::FrozenCandidate {
+			return Err(CandidateCatalogError::new("candidate catalog is not frozen_candidate"));
 		}
 
 		for task in &self.tasks {
@@ -235,11 +235,6 @@ pub fn validate_candidate_catalog(
 		.zip(task_values)
 		.map(|(task, raw)| validate_candidate_task(task, raw, input.status, &mut task_ids))
 		.collect::<Result<Vec<_>, _>>()?;
-
-	if input.status == CandidateCatalogStatus::QualificationReady {
-		validate_ready_fixture_counts(&tasks)?;
-	}
-
 	let catalog_digest = protocol::canonical_hash(value).map_err(|error| {
 		CandidateCatalogError::new(format!("cannot hash candidate catalog: {error}"))
 	})?;
@@ -251,27 +246,6 @@ pub fn validate_candidate_catalog(
 		catalog_digest,
 		tasks,
 	})
-}
-
-fn validate_ready_fixture_counts(
-	tasks: &[CandidateTaskAuthority],
-) -> Result<(), CandidateCatalogError> {
-	let required_count = |class: &str| {
-		tasks
-			.iter()
-			.filter(|task| {
-				task.fixture_applicability.get(class) == Some(&FixtureApplicability::Required)
-			})
-			.count()
-	};
-
-	if required_count("empty") != 57 || required_count("timeout") != 4 {
-		return Err(CandidateCatalogError::new(
-			"qualification-ready fixture applicability must preserve 57 empty and 4 timeout tasks",
-		));
-	}
-
-	Ok(())
 }
 
 fn validate_catalog_header(input: &CandidateCatalogInput) -> Result<(), CandidateCatalogError> {
@@ -354,11 +328,11 @@ fn validate_fixture_declarations(
 				"candidate task {task_id} makes required class {class} non-required"
 			)));
 		}
-		if status == CandidateCatalogStatus::QualificationReady
+		if status == CandidateCatalogStatus::FrozenCandidate
 			&& declaration.applicability == FixtureApplicability::PendingPrivateReconciliation
 		{
 			return Err(CandidateCatalogError::new(format!(
-				"qualification-ready task {task_id} has pending fixture applicability"
+				"frozen candidate task {task_id} has pending fixture applicability"
 			)));
 		}
 
@@ -486,11 +460,11 @@ mod tests {
 				.expect("draft catalog");
 
 		assert_eq!(catalog.tasks.len(), 72);
-		assert!(catalog.require_qualification_ready().is_err());
+		assert!(catalog.require_frozen_candidate().is_err());
 	}
 
 	#[test]
-	fn checked_in_source_foundation_is_valid_draft_authority() {
+	fn checked_in_candidate_is_frozen_resolved_authority() {
 		let value: Value = serde_json::from_str(include_str!(
 			"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
 		))
@@ -499,48 +473,23 @@ mod tests {
 			candidate_catalog::validate_candidate_catalog(&value).expect("candidate authority");
 
 		assert_eq!(catalog.tasks.len(), 72);
-		assert_eq!(
-			catalog.status,
-			candidate_catalog::CandidateCatalogStatus::DraftSourceFoundation
-		);
-		assert!(catalog.require_qualification_ready().is_err());
+		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
+
+		catalog.require_frozen_candidate().expect("frozen candidate");
 	}
 
 	#[test]
-	fn ready_catalog_requires_resolved_exact_fixture_authority() {
-		let mut value = fixture("qualification_ready");
+	fn frozen_catalog_requires_resolved_exact_fixture_authority() {
+		let mut value = fixture("frozen_candidate");
 
 		assert!(candidate_catalog::validate_candidate_catalog(&value).is_err());
 
-		let mut wrong_counts = value.clone();
-
-		for task in wrong_counts["tasks"].as_array_mut().expect("tasks") {
-			for class in ["empty", "timeout"] {
-				task["evaluator"]["acceptance_fixture_commitments"][class] =
-					serde_json::json!({"applicability":"not_applicable","handle":null});
-			}
-		}
-
-		let wrong_tasks = wrong_counts["tasks"].as_array().expect("tasks");
-
-		wrong_counts["candidate_identity"]["task_metadata_digest"] =
-			serde_json::json!(protocol::canonical_hash(wrong_tasks).expect("task digest"));
-
-		assert!(candidate_catalog::validate_candidate_catalog(&wrong_counts).is_err());
-
-		for (index, task) in value["tasks"].as_array_mut().expect("tasks").iter_mut().enumerate() {
+		for task in value["tasks"].as_array_mut().expect("tasks") {
 			let task_id = task["task_id"].as_str().expect("task id").to_owned();
 
-			task["evaluator"]["acceptance_fixture_commitments"]["empty"] = if index < 57 {
-				serde_json::json!({"applicability":"required","handle":format!("aiq-acceptance://{task_id}/v4/empty")})
-			} else {
-				serde_json::json!({"applicability":"not_applicable","handle":null})
-			};
-			task["evaluator"]["acceptance_fixture_commitments"]["timeout"] = if index < 4 {
-				serde_json::json!({"applicability":"required","handle":format!("aiq-acceptance://{task_id}/v4/timeout")})
-			} else {
-				serde_json::json!({"applicability":"not_applicable","handle":null})
-			};
+			task["evaluator"]["acceptance_fixture_commitments"]["empty"] = serde_json::json!({"applicability":"required","handle":format!("aiq-acceptance://{task_id}/v5/empty")});
+			task["evaluator"]["acceptance_fixture_commitments"]["timeout"] =
+				serde_json::json!({"applicability":"not_applicable","handle":null});
 		}
 
 		let tasks = value["tasks"].as_array().expect("tasks");
@@ -548,11 +497,12 @@ mod tests {
 		value["candidate_identity"]["task_metadata_digest"] =
 			serde_json::json!(protocol::canonical_hash(tasks).expect("task digest"));
 
-		let catalog = candidate_catalog::validate_candidate_catalog(&value).expect("ready catalog");
+		let catalog =
+			candidate_catalog::validate_candidate_catalog(&value).expect("frozen catalog");
 
-		catalog.require_qualification_ready().expect("ready authority");
+		catalog.require_frozen_candidate().expect("frozen authority");
 
-		assert_eq!(catalog.tasks[0].expected_acceptance_classes().expect("classes").len(), 6);
+		assert_eq!(catalog.tasks[0].expected_acceptance_classes().expect("classes").len(), 5);
 	}
 
 	#[test]
