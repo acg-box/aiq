@@ -36,12 +36,54 @@ The isolated `--calibration-source-1-0-7` mode accepts only the retained signed
 issues calibration admission v3 under aggregate scoring 1.0.8 and policy v2.
 Production ingestion does not accept this source-only path.
 
-Show the production worker contract and the two model-free local modes:
+Use `renew-calibration-admission` only after a source or native-binary repair
+when the active private release still has a valid complete signed
+`aiq.calibration-admission-bundle.v3`. The command does not read the original
+package or replay artifacts. It does not run Codex, a model, or a task
+evaluator. It verifies the retained stage, attestation, admission signatures,
+digests, frozen bank, diagnostic, and internal links against the controlled
+tasks. It independently validates the production reference before it trusts
+the retained runner and verifier keys.
+
+The target production reference, approved identities, corpus and source
+manifest, tasks and evaluators, model toolchain, evaluator runtime, Codex, and
+Codex code-mode host must have the same identities as the retained admission.
+Only the final-build receipt, repository commit and tree, runner executable,
+and verifier executable can change. The command signs a new admission binding.
+It preserves the original run and package identities, stage, attestation,
+replay provenance, bank, diagnostic, and observation time. The output path must
+not exist.
+
+Run the final target verifier binary itself. Its digest must match the target
+final-build receipt. Export `AIQ_VERIFIER_SIGNING_KEY` for the verifier identity
+that the protected production reference approves, then run:
+
+```sh
+/controlled/target/bin/aiq-verifier renew-calibration-admission \
+  --source-bundle /private/current/calibration-admission-bundle.v3.json \
+  --tasks /controlled/tasks \
+  --environment /controlled/target/verifier-environment.json \
+  --evaluator-root /controlled/evaluators \
+  --corpus-commitment /controlled/corpus-commitment.json \
+  --evaluator-runtime /controlled/toolchain/node \
+  --codex-toolchain-root /controlled/toolchain \
+  --source-root /controlled/target/source-detached \
+  --runner-binary /controlled/target/bin/aiq-runner \
+  --codex-binary /controlled/codex-runtime/codex \
+  --production-reference /controlled/production-reference.json \
+  --expected-production-reference-sha256 'sha256:<exact-reference-digest>' \
+  --build-receipt /private/target/final-build-receipt.v2.json \
+  --expected-build-receipt-sha256 'sha256:<exact-receipt-digest>' \
+  --output /private/target/calibration-admission-bundle.v3.json
+```
+
+Show the production worker contract and the model-free operator modes:
 
 ```sh
 cargo run -p aiq-verifier -- --help
 cargo run -p aiq-verifier -- validate-environment --help
 cargo run -p aiq-verifier -- verify-local --help
+cargo run -p aiq-verifier -- renew-calibration-admission --help
 ```
 
 The production worker emits one compact `aiq.verifier-record.v2` JSON object to
