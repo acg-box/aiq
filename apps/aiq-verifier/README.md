@@ -45,14 +45,17 @@ cargo run -p aiq-verifier -- verify-local --help
 ```
 
 The production worker emits one compact `aiq.verifier-record.v2` JSON object to
-standard output after each claimed package. If the operator retains those
-objects in a create-once private JSONL file, the operator shell owns that
-redirection. The offline `verify-local` mode instead writes its explicit,
-create-new stage and attestation output files and does not publish them.
+standard output after each claimed package. The record includes the exact claim
+idempotency key and package SHA-256. The recurring orchestrator appends each
+non-success record to a private attempt JSONL file. It writes a separate
+create-once success receipt only after both identities match the local package.
+The offline `verify-local` mode instead writes its explicit, create-new stage
+and attestation output files and does not publish them.
 
 The worker has bounded claim, lease, retry, polling, and HTTP timeout settings.
-It renews an active lease while it processes a package and records a controlled
-rejection when validation cannot continue.
+It renews an active lease while it processes a package. Package, signature,
+provenance, and artifact evidence failures remain controlled terminal
+rejections. An evaluator invocation failure acknowledges the claim for retry.
 
 The default gateway request timeout is 120 seconds. It leaves room for the
 bounded Official staging transaction and the following attestation and
@@ -68,11 +71,13 @@ Candidate replay uses `--replay-jobs 4` by default. Set it from `1` through
 order, independent of this setting.
 
 For each completed cell, the verifier executes the committed formal evaluator
-exactly once. It compares the parsed result and exact raw-output digest with the
-runner observation. Formal evaluator work has no elapsed deadline and is never
-retried until it matches. A mismatch retains the runner and verifier observation
-digests in rejection evidence, blocks verification and publication, and does
-not invoke the model.
+exactly once per claim attempt. It compares the parsed result and exact
+raw-output digest with the runner observation. Formal evaluator work has no
+elapsed deadline. An invocation failure releases the claim for a later attempt.
+A first successful replay with different output also releases the claim for one
+confirmation attempt. A repeated difference can produce a terminal mismatch.
+Every failure blocks verification and publication, preserves the submitted
+model evidence, and does not invoke the model.
 
 Before the worker replays an Official claim, it independently verifies the
 private calibration admission against the current production reference, build

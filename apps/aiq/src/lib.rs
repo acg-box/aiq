@@ -43,8 +43,16 @@ impl Error {
 		Self { kind: ErrorKind::SubscriptionBackpressure, message: message.into() }
 	}
 
+	pub(crate) fn verifier_rejection(message: impl Into<String>) -> Self {
+		Self { kind: ErrorKind::VerifierRejection, message: message.into() }
+	}
+
 	pub(crate) fn is_subscription_backpressure(&self) -> bool {
 		self.kind == ErrorKind::SubscriptionBackpressure
+	}
+
+	pub(crate) fn is_verifier_rejection(&self) -> bool {
+		self.kind == ErrorKind::VerifierRejection
 	}
 }
 
@@ -60,6 +68,7 @@ impl error::Error for Error {}
 enum ErrorKind {
 	General,
 	SubscriptionBackpressure,
+	VerifierRejection,
 }
 impl<T, E> ResultContext<T> for std::result::Result<T, E>
 where

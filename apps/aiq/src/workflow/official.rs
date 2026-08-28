@@ -4,11 +4,15 @@ use std::{collections::BTreeMap, fs, path::Path};
 
 use serde_json::Value;
 
+use crate::workflow::{
+	self, CommandStep, OFFICIAL_DISPATCH_GRACE_MILLISECONDS, OFFICIAL_RESULT_COUNT,
+	OFFICIAL_RUN_SCHEMA, PaidWorkRecoveryState, PublicationOwner, REQUIRED_OFFICIAL_JOBS,
+	SlotPaths,
+};
 use crate::{
 	Error, Result, ResultContext, config::Configuration, credentials::RuntimeSecrets,
 	release::Release, schedule::ScheduledSlot,
 };
-use crate::workflow::{self, CaptureKind, OFFICIAL_DISPATCH_GRACE_MILLISECONDS, OFFICIAL_RESULT_COUNT, OFFICIAL_RUN_SCHEMA, PaidWorkRecoveryState, PublicationOwner, REQUIRED_OFFICIAL_JOBS, SlotPaths};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Dispatch {
@@ -64,7 +68,10 @@ pub(super) fn dispatch_window_is_open(slot: &ScheduledSlot, now_unix_ms: i64) ->
 }
 
 pub(super) fn is_published(paths: &SlotPaths) -> Result<bool> {
-	workflow::captured_receipt_is_complete(&paths.official.verifier_records, CaptureKind::Verifier)
+	workflow::verifier_receipt_is_complete(
+		&paths.official.verifier_records,
+		&paths.official.package,
+	)
 }
 
 pub(super) fn run(
@@ -143,6 +150,21 @@ pub(super) fn run(
 			record_failure(paths, slot, &error)?;
 
 			Err(error)
+		},
+		Err(error) if error.is_verifier_rejection() => {
+			let detail = workflow::safe_detail(&error.to_string());
+
+			cleanup(release, configuration, slot, paths)?;
+
+			workflow::append_log(&paths.log, "official_unpublished", &detail)?;
+
+			workflow::write_publication_status(
+				paths,
+				slot,
+				PublicationOwner::Official,
+				"unpublished",
+				&detail,
+			)
 		},
 		Err(error) => {
 			record_failure(paths, slot, &error)?;
@@ -288,9 +310,25 @@ pub(super) fn cleanup_state(paths: &SlotPaths) -> Result<()> {
 		workflow::remove_managed(path, &paths.official.root)?;
 	}
 
-	workflow::remove_managed(&paths.official.verification.join("replay"), &paths.official.verification)?;
+	workflow::remove_managed(
+		&paths.official.verification.join("replay"),
+		&paths.official.verification,
+	)?;
 
 	workflow::remove_managed(&paths.official.checkpoint, &paths.official.state)
+}
+
+pub(super) fn run_steps_after_model(
+	steps: &[CommandStep],
+	paths: &SlotPaths,
+	slot: &ScheduledSlot,
+	secrets: &RuntimeSecrets,
+) -> Result<()> {
+	for step in steps.iter().skip(3) {
+		workflow::run_create_once_step(step, paths, slot, secrets, PublicationOwner::Official)?;
+	}
+
+	Ok(())
 }
 
 fn run_inner(
@@ -343,7 +381,13 @@ fn record_failure(paths: &SlotPaths, slot: &ScheduledSlot, error: &Error) -> Res
 
 	workflow::append_log(&paths.log, "official_failed", &detail)?;
 
-	workflow::write_publication_status(paths, slot, PublicationOwner::Official, "retryable_failure", &detail)
+	workflow::write_publication_status(
+		paths,
+		slot,
+		PublicationOwner::Official,
+		"retryable_failure",
+		&detail,
+	)
 }
 
 fn run_after_model(
@@ -364,9 +408,7 @@ fn run_after_model(
 
 	let steps = workflow::official_steps(configuration, release, paths, slot, source);
 
-	for step in steps.iter().skip(3) {
-		workflow::run_create_once_step(step, paths, slot, secrets, PublicationOwner::Official)?;
-	}
+	run_steps_after_model(&steps, paths, slot, secrets)?;
 
 	summarize_run(&paths.official.run)
 }

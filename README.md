@@ -53,8 +53,10 @@ under the active tuple.
   semantic evaluator result for each sealed response and workspace. A retryable
   evaluator process failure keeps that evidence pending and reruns only the
   evaluator on resume. The independent verifier executes the evaluator once and
-  compares the parsed result and exact raw output digest. It never rounds a
-  result or retries a semantic mismatch to obtain a match.
+  compares the parsed result and exact raw output digest. A failed verifier
+  invocation releases the claim for a later model-free replay. A first
+  successful replay with different output also requires a later confirmation
+  attempt. Publication remains blocked until one exact replay matches.
 - The source-head AIQ measurement contract is `2.0.0`: the Official ranking
   score is `100 × logistic(theta)` from the admitted fixed Rasch item bank;
   theta and its conditional Wald interval are reported separately from the raw
@@ -302,7 +304,9 @@ or to production.
 4. `POST /api/submissions` stores the exact package bytes and queues the package
    as unverified.
 5. The verifier claims the package, reconstructs the workspaces, and executes
-   each deterministic evaluator once as the independent replay.
+   each deterministic evaluator once for that claim attempt. An operational
+   replay failure releases the claim for retry without changing the retained
+   package or invoking a model.
 6. `POST /api/verifications` stages the normalized batch and records the signed
    verifier attestation.
 7. A distinct publisher identity completes publication through the gateway.
@@ -452,8 +456,11 @@ the affected cells pending under `aiq.subscription-backpressure.v1`; the runner
 also migrates v9 checkpoints to the v10 evaluator-resume shape and legacy v8
 checkpoints that incorrectly committed those limits as terminal results. On resume, `aiq` revalidates the permission
 admission, complete Official run, submission receipts, and verifier receipt
-before it reuses them. Copied credentials are removed after each invocation. A
-terminal slot keeps both owner-status records, the compact batch,
+before it reuses them. It stores non-success verifier records in a private
+append-only attempt log. A create-once success receipt is valid only when its
+package SHA-256 and idempotency identity match the exact local package. Copied
+credentials are removed after each invocation. A terminal slot keeps both
+owner-status records, the compact batch,
 package, score, attestation, and receipts. It removes the detached source, raw
 local artifacts, replay scratch, checkpoints, and disposable workspaces.
 

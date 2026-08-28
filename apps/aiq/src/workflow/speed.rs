@@ -1,10 +1,10 @@
 //! Auxiliary Speed publication owner.
 
+use crate::workflow::{self, CaptureKind, CommandStep, PublicationOwner, SlotPaths, StepSecrets};
 use crate::{
 	Error, Result, config::Configuration, credentials::RuntimeSecrets, release::ReleasePaths,
 	schedule::ScheduledSlot,
 };
-use crate::workflow::{self, CaptureKind, CommandStep, PublicationOwner, SlotPaths, StepSecrets};
 
 pub(super) const DISPATCH_WINDOW_MILLISECONDS: i64 = 12 * 60 * 60 * 1_000;
 
@@ -48,7 +48,7 @@ pub(super) fn dispatch_window_is_open(slot: &ScheduledSlot, now_unix_ms: i64) ->
 
 pub(super) fn is_published(paths: &SlotPaths) -> Result<bool> {
 	Ok(workflow::existing_regular_file(&paths.speed.batch)?
-		&& workflow::captured_receipt_is_complete(&paths.speed.receipt, CaptureKind::Submission)?)
+		&& workflow::submission_receipt_is_complete(&paths.speed.receipt)?)
 }
 
 pub(super) fn run(
@@ -107,7 +107,13 @@ pub(super) fn run(
 			let detail = workflow::safe_detail(&error.to_string());
 
 			workflow::append_log(&paths.log, "speed_failed", &detail)?;
-			workflow::write_publication_status(paths, slot, PublicationOwner::Speed, phase, &detail)?;
+			workflow::write_publication_status(
+				paths,
+				slot,
+				PublicationOwner::Speed,
+				phase,
+				&detail,
+			)?;
 
 			if retryable { Err(error) } else { Ok(()) }
 		},
