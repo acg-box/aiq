@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "acceptance_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "baselines_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "corpus_kind": {
+      "const": "core"
+    },
+    "evaluator_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "release_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "runtime_authority_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "schema_version": {
+      "const": "aiq.corpus-authoring-input.v2"
+    },
+    "source_commit": {
+      "pattern": "^[0-9a-f]{40}(?![\\s\\S])",
+      "type": "string"
+    },
+    "source_manifest_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "source_tree": {
+      "pattern": "^[0-9a-f]{40}(?![\\s\\S])",
+      "type": "string"
+    },
+    "task_count": {
+      "const": 72
+    },
+    "tasks_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "toolchain_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "catalog_identity_sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "fixture_applicability_authority": {
+      "const": "catalog_exact_per_task"
+    },
+    "expected_acceptance_classes_by_task": {
+      "$ref": "#/$defs/classMap"
+    },
+    "observed_acceptance_classes_by_task": {
+      "$ref": "#/$defs/classMap"
+    },
+    "acceptance_classes_exact_match": {
+      "const": true
+    },
+    "leakage_review_schema_version": {
+      "const": "aiq.leakage-review.v2"
+    },
+    "leakage_reviews_tree_sha256": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "required": [
+    "schema_version",
+    "corpus_kind",
+    "release_id",
+    "source_commit",
+    "source_tree",
+    "task_count",
+    "catalog_identity_sha256",
+    "fixture_applicability_authority",
+    "expected_acceptance_classes_by_task",
+    "observed_acceptance_classes_by_task",
+    "acceptance_classes_exact_match",
+    "leakage_review_schema_version",
+    "tasks_tree_sha256",
+    "baselines_tree_sha256",
+    "acceptance_tree_sha256",
+    "leakage_reviews_tree_sha256",
+    "evaluator_tree_sha256",
+    "toolchain_tree_sha256",
+    "source_manifest_sha256",
+    "runtime_authority_sha256"
+  ],
+  "type": "object",
+  "$defs": {
+    "classMap": {
+      "additionalProperties": {
+        "$ref": "#/$defs/coreClassList"
+      },
+      "maxProperties": 72,
+      "minProperties": 72,
+      "propertyNames": {
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?![\\s\\S])"
+      },
+      "type": "object"
+    },
+    "classList": {
+      "items": {
+        "$ref": "#/$defs/className"
+      },
+      "maxItems": 6,
+      "minItems": 4,
+      "type": "array",
+      "uniqueItems": true
+    },
+    "className": {
+      "enum": [
+        "adversarial_format",
+        "alternate_correct",
+        "challenge",
+        "empty",
+        "format",
+        "gold",
+        "near_miss",
+        "partial",
+        "reference",
+        "tamper",
+        "timeout"
+      ],
+      "type": "string"
+    },
+    "contrastClassList": {
+      "const": [
+        "challenge",
+        "empty",
+        "format",
+        "near_miss",
+        "reference",
+        "tamper"
+      ]
+    },
+    "coreClassList": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/classList"
+        },
+        {
+          "items": {
+            "enum": [
+              "adversarial_format",
+              "alternate_correct",
+              "empty",
+              "gold",
+              "partial",
+              "timeout"
+            ]
+          }
+        },
+        {
+          "contains": {
+            "const": "adversarial_format"
+          }
+        },
+        {
+          "contains": {
+            "const": "alternate_correct"
+          }
+        },
+        {
+          "contains": {
+            "const": "gold"
+          }
+        },
+        {
+          "contains": {
+            "const": "partial"
+          }
+        }
+      ]
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+      "type": "string"
+    }
+  }
+}
