@@ -1313,9 +1313,9 @@ pub fn renew_calibration_admission(
 
 	let provenance = &source.admission.claims.replay_provenance;
 
-	if provenance.corpus_commitment_sha256 != source_bindings.corpus_commitment_sha256
-		|| provenance.source_manifest_digest != source_bindings.source_manifest_digest
-		|| provenance.task_set_digest != source_bindings.task_set_digest
+	// Corpus and source provenance identify the historical replay inputs. They remain signed
+	// evidence across renewal; only replay identities shared with issuance authority must match.
+	if provenance.task_set_digest != source_bindings.task_set_digest
 		|| provenance.evaluator_digest != source_bindings.evaluator_digest
 		|| provenance.codex_executable_digest != source_bindings.codex_executable_digest
 		|| provenance.codex_code_mode_host_digest != source_bindings.codex_code_mode_host_digest
