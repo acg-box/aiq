@@ -2992,6 +2992,12 @@ impl EvaluationError {
 	pub const fn kind(&self) -> EvaluationErrorKind {
 		self.kind
 	}
+
+	/// Returns whether the same sealed model evidence can be evaluated again.
+	#[must_use]
+	pub(crate) const fn is_retryable(&self) -> bool {
+		matches!(self.kind, EvaluationErrorKind::Execution)
+	}
 }
 
 impl std::error::Error for EvaluationError {}
