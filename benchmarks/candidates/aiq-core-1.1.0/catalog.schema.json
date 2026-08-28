@@ -46,12 +46,7 @@
     "task_metadata_identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "algorithm",
-        "canonicalization",
-        "digest",
-        "scope"
-      ],
+      "required": ["algorithm", "canonicalization", "digest", "scope"],
       "properties": {
         "algorithm": {
           "const": "sha256"
@@ -82,7 +77,7 @@
       ],
       "properties": {
         "release_identity": {
-          "const": "aiq-core/1.1.0-candidate.1"
+          "const": "aiq-core/1.1.0-candidate.2"
         },
         "scoring_version": {
           "const": "1.0.6"
@@ -90,12 +85,7 @@
         "task_metadata_identity": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "algorithm",
-            "canonicalization",
-            "digest",
-            "scope"
-          ],
+          "required": ["algorithm", "canonicalization", "digest", "scope"],
           "properties": {
             "algorithm": {
               "const": "sha256"
@@ -130,10 +120,7 @@
     "content_policy": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "public_repository",
-        "controlled_source"
-      ],
+      "required": ["public_repository", "controlled_source"],
       "properties": {
         "public_repository": {
           "type": "string",
@@ -148,13 +135,7 @@
     "distribution": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "total",
-        "domains",
-        "difficulties",
-        "domain_difficulty",
-        "difficulty_role"
-      ],
+      "required": ["total", "domains", "difficulties", "domain_difficulty", "difficulty_role"],
       "properties": {
         "total": {
           "const": 72
@@ -185,13 +166,10 @@
     "candidate_identity": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "candidate_id",
-        "task_metadata_digest"
-      ],
+      "required": ["candidate_id", "task_metadata_digest"],
       "properties": {
         "candidate_id": {
-          "const": "aiq-core/1.1.0-candidate.1"
+          "const": "aiq-core/1.1.0-candidate.2"
         },
         "task_metadata_digest": {
           "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
@@ -205,15 +183,21 @@
       "required": [
         "identity_state",
         "predecessor_task_set_version",
+        "predecessor_candidate",
         "decision_record",
-        "legacy_observed_fixture_counts",
-        "historical_evidence",
+        "semantic_decision_counts",
+        "issue_closure_counts",
         "private_fixture_mapping_reconciled",
         "private_tasks_authored",
+        "predecessor_review_status",
         "independent_review_status",
         "seal_status",
+        "calibration_status",
         "qualification_status",
         "release_status",
+        "activation_status",
+        "deployment_status",
+        "production_acceptance_status",
         "active",
         "production_publishable",
         "next_required_actions"
@@ -225,40 +209,39 @@
         "predecessor_task_set_version": {
           "const": "1.0.7"
         },
+        "predecessor_candidate": {
+          "const": {
+            "candidate_id": "aiq-core/1.1.0-candidate.1",
+            "disposition": "rejected_nonsealable_superseded_evidence",
+            "merge_commit": "c3358404e247be575929e65b8c557b8bfa831889",
+            "change_commit": "1db9431ef3696c2f377ac741aad70094803d9987",
+            "source_tree": "ad6e528adfb3f22597eaa9f32b03bc71e57e34ad",
+            "aggregate_review_sha256": "sha256:4420248576150192a516be9ffe9c43a25112a58baf7c4a5519b0db6bca1dac45",
+            "catalog_sha256": "sha256:a8e4f6f0f0effc1fddbfe320b2efaeaf20b9121f723a1abbeca4c7fc513563c7",
+            "accepted_tasks": 20,
+            "rejected_tasks": 52,
+            "semantic_retention_rule": "only_review_approved_tasks_may_retain_candidate_1_semantics"
+          }
+        },
         "decision_record": {
           "const": "benchmarks/candidates/aiq-core-1.1.0/design-decisions.json"
         },
-        "legacy_observed_fixture_counts": {
+        "semantic_decision_counts": {
           "const": {
-            "empty": 57,
-            "timeout": 4
+            "retained": 20,
+            "revised": 52
           }
         },
-        "historical_evidence": {
+        "issue_closure_counts": {
           "const": {
-            "role": "diagnostic_design_evidence_only",
-            "qualification_evidence": false,
-            "calibration_informative_tasks": 32,
-            "calibration_clusters": 37,
-            "calibration_universal_full_credit_tasks": 5,
-            "calibration_universal_semantic_zero_tasks": 2,
-            "retained_run_records": 7,
-            "semantic_complete_matrices": 2,
-            "coverage_aware_diagnostic_runs": 5,
-            "numeric_semantic_cells": [
-              1224,
-              1223,
-              1222,
-              1224,
-              1221,
-              1223,
-              1222
-            ],
-            "configuration_rank_spearman": {
-              "minimum": -0.1691,
-              "median": 0.2598,
-              "maximum": 0.7721
-            }
+            "ACCEPTANCE_SEMANTICS_INVALID": 4,
+            "BEHAVIORAL_COVERAGE_GAP": 5,
+            "CROSS_TASK_CONSTRUCT_DUPLICATION": 4,
+            "HIDDEN_OUTPUT_SCHEMA": 36,
+            "KEYWORD_ONLY_EVALUATOR": 6,
+            "PUBLIC_PRIVATE_CONSTRUCT_MISMATCH": 25,
+            "PUBLIC_SEMANTIC_CONTAMINATION": 3,
+            "TOOL_EVIDENCE_UNBOUND": 7
           }
         },
         "private_fixture_mapping_reconciled": {
@@ -267,16 +250,31 @@
         "private_tasks_authored": {
           "const": true
         },
+        "predecessor_review_status": {
+          "const": "complete_rejected_nonsealable"
+        },
         "independent_review_status": {
           "const": "pending"
         },
         "seal_status": {
           "const": "pending"
         },
+        "calibration_status": {
+          "const": "pending"
+        },
         "qualification_status": {
           "const": "pending"
         },
         "release_status": {
+          "const": "pending"
+        },
+        "activation_status": {
+          "const": "pending"
+        },
+        "deployment_status": {
+          "const": "pending"
+        },
+        "production_acceptance_status": {
           "const": "pending"
         },
         "active": {
@@ -301,11 +299,7 @@
     "scoringComponent": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "component_id",
-        "weight_basis_points",
-        "criterion"
-      ],
+      "required": ["component_id", "weight_basis_points", "criterion"],
       "properties": {
         "component_id": {
           "type": "string"
@@ -368,11 +362,7 @@
           ]
         },
         "difficulty": {
-          "enum": [
-            "easy",
-            "medium",
-            "hard"
-          ]
+          "enum": ["easy", "medium", "hard"]
         },
         "summary": {
           "type": "string",
@@ -383,22 +373,25 @@
           "additionalProperties": false,
           "required": [
             "supersedes_task_version",
+            "supersedes_candidate_id",
             "decision",
             "decision_record",
             "kind",
             "objective",
             "task_specific_delta",
+            "candidate_1_review",
+            "candidate_2_contract",
             "controlled_corpus_requirements"
           ],
           "properties": {
             "supersedes_task_version": {
               "const": "1.0.7"
             },
+            "supersedes_candidate_id": {
+              "const": "aiq-core/1.1.0-candidate.1"
+            },
             "decision": {
-              "enum": [
-                "retained",
-                "revised"
-              ]
+              "enum": ["retained", "revised"]
             },
             "decision_record": {
               "const": "benchmarks/candidates/aiq-core-1.1.0/design-decisions.json"
@@ -414,6 +407,183 @@
               "type": "string",
               "minLength": 160
             },
+            "candidate_1_review": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "verdict",
+                "record_sha256",
+                "notes_sha256",
+                "task_definition_sha256",
+                "catalog_entry_sha256",
+                "issue_codes"
+              ],
+              "properties": {
+                "verdict": {
+                  "enum": ["approved", "rejected"]
+                },
+                "record_sha256": {
+                  "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+                  "type": "string"
+                },
+                "notes_sha256": {
+                  "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+                  "type": "string"
+                },
+                "task_definition_sha256": {
+                  "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+                  "type": "string"
+                },
+                "catalog_entry_sha256": {
+                  "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
+                  "type": "string"
+                },
+                "issue_codes": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "ACCEPTANCE_SEMANTICS_INVALID",
+                      "BEHAVIORAL_COVERAGE_GAP",
+                      "CROSS_TASK_CONSTRUCT_DUPLICATION",
+                      "HIDDEN_OUTPUT_SCHEMA",
+                      "KEYWORD_ONLY_EVALUATOR",
+                      "PUBLIC_PRIVATE_CONSTRUCT_MISMATCH",
+                      "PUBLIC_SEMANTIC_CONTAMINATION",
+                      "TOOL_EVIDENCE_UNBOUND"
+                    ]
+                  }
+                }
+              }
+            },
+            "candidate_2_contract": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "construct_id",
+                "response_contract",
+                "fixture_applicability",
+                "mechanism_classes",
+                "falsifiers",
+                "coverage_claims"
+              ],
+              "properties": {
+                "construct_id": {
+                  "type": "string",
+                  "minLength": 12,
+                  "maxLength": 128
+                },
+                "response_contract": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "shape_kind",
+                    "transport",
+                    "locations",
+                    "required_fields",
+                    "optional_fields",
+                    "field_types",
+                    "field_semantics"
+                  ],
+                  "properties": {
+                    "shape_kind": {
+                      "type": "string",
+                      "minLength": 4
+                    },
+                    "transport": {
+                      "enum": ["final_response", "workspace"]
+                    },
+                    "locations": {
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$)).+$"
+                      }
+                    },
+                    "required_fields": {
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "optional_fields": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "field_types": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": {
+                        "enum": [
+                          "array",
+                          "artifact",
+                          "boolean",
+                          "module",
+                          "null",
+                          "number",
+                          "object",
+                          "string"
+                        ]
+                      }
+                    },
+                    "field_semantics": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": {
+                        "type": "string",
+                        "minLength": 20
+                      }
+                    }
+                  }
+                },
+                "fixture_applicability": {
+                  "const": {
+                    "gold": "required",
+                    "alternate_correct": "required",
+                    "partial": "required",
+                    "adversarial_format": "required",
+                    "empty": "required",
+                    "timeout": "not_applicable"
+                  }
+                },
+                "mechanism_classes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                },
+                "falsifiers": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                },
+                "coverage_claims": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 20
+                  }
+                }
+              }
+            },
             "controlled_corpus_requirements": {
               "type": "array",
               "minItems": 4,
@@ -428,11 +598,7 @@
         "input_contract": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "kind",
-            "fixture_profile",
-            "content_handle"
-          ],
+          "required": ["kind", "fixture_profile", "content_handle"],
           "properties": {
             "kind": {
               "type": "string",
@@ -440,7 +606,7 @@
             },
             "fixture_profile": {
               "type": "string",
-              "pattern": "^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v(?:1|2)(?![\\s\\S])"
+              "pattern": "^aiq-fixture://[a-z0-9-]+-[0-9]{2}/v3(?![\\s\\S])"
             },
             "content_handle": {
               "type": "string",
@@ -490,10 +656,7 @@
               "then": {
                 "type": "array",
                 "contains": {
-                  "enum": [
-                    "filesystem_read",
-                    "filesystem_write"
-                  ]
+                  "enum": ["filesystem_read", "filesystem_write"]
                 }
               }
             }
@@ -502,11 +665,7 @@
         "budget": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "wall_seconds",
-            "max_steps",
-            "max_tool_calls"
-          ],
+          "required": ["wall_seconds", "max_steps", "max_tool_calls"],
           "properties": {
             "wall_seconds": {
               "type": "null"
@@ -680,12 +839,13 @@
             "owner",
             "recorded_date",
             "predecessor_task_version",
+            "predecessor_candidate_id",
             "source",
             "decision_record"
           ],
           "properties": {
             "origin": {
-              "const": "evidence_selected_candidate_authoring"
+              "const": "candidate_1_review_remediation_authoring"
             },
             "owner": {
               "const": "AIQ benchmark maintainers"
@@ -695,6 +855,9 @@
             },
             "predecessor_task_version": {
               "const": "1.0.7"
+            },
+            "predecessor_candidate_id": {
+              "const": "aiq-core/1.1.0-candidate.1"
             },
             "source": {
               "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"
@@ -707,12 +870,7 @@
         "leakage_review": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "status",
-            "owner",
-            "review_requirement",
-            "notes"
-          ],
+          "required": ["status", "owner", "review_requirement", "notes"],
           "properties": {
             "status": {
               "const": "public_design_versioned_private_content_required"
@@ -767,22 +925,13 @@
     "acceptanceFixtureCommitment": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "applicability",
-        "handle"
-      ],
+      "required": ["applicability", "handle"],
       "properties": {
         "applicability": {
-          "enum": [
-            "required",
-            "not_applicable"
-          ]
+          "enum": ["required", "not_applicable"]
         },
         "handle": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "pattern": "^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])"
         }
       },
