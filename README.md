@@ -152,24 +152,33 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.3`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.4`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. The catalog records 65 candidate.2 review-approved semantic
-retentions and seven revised tool-use tasks. It has 72 distinct within-domain
+`aiq.catalog.v2`. The catalog records 65 candidate.3 review-approved semantic
+retentions and seven revised tool-evidence bindings. It has 72 distinct within-domain
 clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 
-Candidate.2 is immutable rejected, permanently non-sealable predecessor
-evidence. Candidate.3 closes exactly 14 predecessor issues. For each tool-use
-task, the public metadata discloses the complete eight-field `receipt.json`
-contract and the runner/tool producer boundary. Candidate.3 remains inactive
-and not production-publishable. Independent review, sealing, calibration,
-qualification, release, activation, deployment, and production acceptance are
-pending.
+Candidates.1, .2, and .3 are immutable rejected, permanently non-sealable
+predecessor evidence. Candidate.4 retains the 14 valid candidate.2 closure
+entries and adds 21 candidate.3 closure entries. For each tool-use task, the
+hard gate requires exactly one total tool call, exactly one
+`command_execution` call, and one completed command-line digest for
+`node bin/task-tool.mjs`:
+`sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319`.
+The separate receipt `command_sha256` continues to identify the supplied tool
+file bytes. The runner retains digest counts only for task-declared required
+command identities; exact total and per-tool counts still expose undeclared or
+extra calls. One matrix can contain at most 119 declared digest entries. The
+runner removes command text from provider stdout and stderr evidence, but it
+extracts and preserves the exact semantic final response before that log
+redaction. Candidate.4 remains inactive and not production-publishable. Fresh
+independent review, double sealing, three qualification matrices,
+qualification, adoption, and cutover are pending.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
 `aiq.leakage-review.v2` record for every task. Each record binds the reviewer,

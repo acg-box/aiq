@@ -118,10 +118,11 @@ pub const PREFLIGHT_MARKER_SHA256: &str =
 
 /// Normalization contract for Codex `exec --json` item events.
 ///
-/// Version 3 binds the exact inert collaboration wait shape and its
-/// started/completed lifecycle to the live and replay counters.
-pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v3";
+/// Version 4 additionally binds a digest-only command-execution lifecycle to
+/// the replayed tool evidence without retaining command text.
+pub(crate) const CODEX_ITEM_ACCOUNTING_VERSION: &str = "codex.exec-json-items.v4";
 
+const MAX_COMMAND_ITEM_ID_BYTES: usize = 256;
 // Current ChatGPT-bundled Codex 5.6 requires this host transport; aiq_benchmark,
 // denied roots, no-network policy, and the remaining disabled features stay the security boundary.
 const DISABLED_CODEX_FEATURES: &[&str] = &[
@@ -287,7 +288,8 @@ pub struct AdapterFailure {
 	pub stdout_truncated: bool,
 	/// Whether stderr exceeded its byte limit.
 	pub stderr_truncated: bool,
-	/// Content-addressed references for retained raw failure streams.
+	/// Content-addressed references for retained failure streams. Structured
+	/// command text is replaced with its digest before retention.
 	pub artifacts: Vec<ArtifactReference>,
 	/// Complete bounded stdout retained only in the invoking process so failed
 	/// attempts can sign the same tool and provider counters as their artifact.
@@ -606,8 +608,11 @@ pub struct CodexOutput {
 	pub stderr: String,
 	/// Successful exit code.
 	pub exit_code: Option<i32>,
-	/// References for large raw streams.
+	/// References for large streams. Structured command text is replaced with
+	/// its digest before retention.
 	pub artifacts: Vec<ArtifactReference>,
+	/// Exact final model response extracted before provider-log redaction.
+	pub(crate) final_response: Option<String>,
 	pub(crate) stdout_full: String,
 }
 impl Debug for CodexOutput {
@@ -618,6 +623,7 @@ impl Debug for CodexOutput {
 			.field("stderr", &"[REDACTED]")
 			.field("exit_code", &self.exit_code)
 			.field("artifacts", &self.artifacts)
+			.field("final_response", &"[REDACTED]")
 			.field("stdout_full", &"[REDACTED]")
 			.finish()
 	}
@@ -1611,6 +1617,8 @@ pub(crate) struct NormalizedCodexItem {
 	pub phase: CodexItemPhase,
 	pub item_id: Option<String>,
 	pub raw_type: String,
+	pub command_sha256: Option<String>,
+	pub command_shape_supported: bool,
 	pub is_tool_call: bool,
 	pub counts_as_step: bool,
 	pub collaboration: Option<CodexCollaborationItem>,
@@ -1622,13 +1630,22 @@ pub(crate) struct CodexItemAccounting {
 	pub(crate) steps: u32,
 	pub(crate) tool_calls: u32,
 	pub(crate) by_tool: BTreeMap<String, u32>,
+	pub(crate) completed_command_sha256: BTreeMap<String, u32>,
 	pending_ids: BTreeMap<String, String>,
 	pending_types: BTreeMap<String, u32>,
+	pending_command_sha256: BTreeMap<String, PendingCommandDigest>,
 	pending_collaboration_senders: BTreeMap<String, String>,
 }
 impl CodexItemAccounting {
 	pub(crate) fn observe(&mut self, line: &[u8]) -> Result<(), CodexItemPolicyError> {
 		let Some(item) = normalize_codex_item(line)? else {
+			let unsupported_item_shape = serde_json::from_slice::<Value>(line)
+				.map_or(true, |value| value.get("item").is_some());
+
+			if unsupported_item_shape {
+				self.invalidate_pending_command_digests();
+			}
+
 			return Ok(());
 		};
 
@@ -1636,6 +1653,12 @@ impl CodexItemAccounting {
 			let item_id = item.item_id.as_deref().ok_or_else(|| {
 				CodexItemPolicyError::new("inert collaboration wait item has no id")
 			})?;
+
+			if self.pending_command_sha256.contains_key(item_id) {
+				self.pending_command_sha256
+					.insert(item_id.to_owned(), PendingCommandDigest::Unattestable);
+			}
+
 			let sender = item.collaboration_sender.as_deref().ok_or_else(|| {
 				CodexItemPolicyError::new("inert collaboration wait item has no sender")
 			})?;
@@ -1684,12 +1707,52 @@ impl CodexItemAccounting {
 			self.steps = self.steps.saturating_add(1);
 		}
 		if !item.is_tool_call {
+			if let Some(item_id) = item.item_id.as_deref()
+				&& self.pending_command_sha256.contains_key(item_id)
+			{
+				self.pending_command_sha256
+					.insert(item_id.to_owned(), PendingCommandDigest::Unattestable);
+			}
+
 			return Ok(());
 		}
+
+		self.observe_tool_item(item);
+
+		Ok(())
+	}
+
+	fn observe_tool_item(&mut self, item: NormalizedCodexItem) {
+		let command_shape_supported = item.command_shape_supported;
 
 		match (item.phase, item.item_id) {
 			(CodexItemPhase::Started, Some(item_id)) => {
 				let raw_type = item.raw_type;
+				let command_state = if raw_type == "command_execution"
+					&& valid_command_item_id(&item_id)
+					&& command_shape_supported
+				{
+					Some(item.command_sha256.map_or(
+						PendingCommandDigest::Unattestable,
+						PendingCommandDigest::Attestable,
+					))
+				} else {
+					None
+				};
+
+				if let Some(command_state) = command_state {
+					match self.pending_command_sha256.entry(item_id.clone()) {
+						std::collections::btree_map::Entry::Vacant(entry) => {
+							entry.insert(command_state);
+						},
+						std::collections::btree_map::Entry::Occupied(mut entry) => {
+							entry.insert(PendingCommandDigest::Unattestable);
+						},
+					}
+				} else if self.pending_command_sha256.contains_key(&item_id) {
+					self.pending_command_sha256
+						.insert(item_id.clone(), PendingCommandDigest::Unattestable);
+				}
 
 				if self.pending_ids.insert(item_id, raw_type.clone()).is_none() {
 					self.tool_calls = self.tool_calls.saturating_add(1);
@@ -1698,7 +1761,19 @@ impl CodexItemAccounting {
 			},
 			(CodexItemPhase::Completed, Some(item_id)) => {
 				let raw_type = item.raw_type;
+				let lifecycle_matches = self.pending_ids.get(&item_id) == Some(&raw_type);
 
+				if raw_type == "command_execution" && lifecycle_matches && command_shape_supported {
+					if let Some(PendingCommandDigest::Attestable(digest)) =
+						self.pending_command_sha256.remove(&item_id)
+					{
+						let count = self.completed_command_sha256.entry(digest).or_default();
+
+						*count = count.saturating_add(1);
+					}
+				} else {
+					self.pending_command_sha256.remove(&item_id);
+				}
 				if self.pending_ids.remove(&item_id).as_deref() != Some(&raw_type) {
 					self.tool_calls = self.tool_calls.saturating_add(1);
 					*self.by_tool.entry(raw_type).or_default() += 1;
@@ -1724,8 +1799,12 @@ impl CodexItemAccounting {
 				}
 			},
 		}
+	}
 
-		Ok(())
+	fn invalidate_pending_command_digests(&mut self) {
+		for state in self.pending_command_sha256.values_mut() {
+			*state = PendingCommandDigest::Unattestable;
+		}
 	}
 
 	pub(crate) fn finish(&self) -> Result<(), CodexItemPolicyError> {
@@ -2496,6 +2575,11 @@ pub(crate) enum CodexItemPhase {
 	Completed,
 }
 
+enum PendingCommandDigest {
+	Attestable(String),
+	Unattestable,
+}
+
 enum JsonRpcStdoutEvent {
 	Chunk(Vec<u8>),
 	CaptureLimitExceeded,
@@ -2818,6 +2902,18 @@ pub(crate) fn normalize_codex_item(
 		.is_some()
 		.then(|| item.get("sender_thread_id").and_then(Value::as_str).map(ToOwned::to_owned))
 		.flatten();
+	let command_sha256 = (raw_type == "command_execution" && phase == CodexItemPhase::Started)
+		.then(|| {
+			item.get("command_sha256")
+				.and_then(Value::as_str)
+				.filter(|digest| valid_sha256_digest(digest))
+				.map(ToOwned::to_owned)
+		})
+		.flatten();
+	let command_shape_supported = raw_type == "command_execution"
+		&& item.get("id").and_then(Value::as_str).is_some_and(valid_command_item_id)
+		&& command_status_supported(item, phase)
+		&& (phase == CodexItemPhase::Completed || command_sha256.is_some());
 	// Known presentation/reasoning items are not tools. Error items remain in the
 	// raw evidence but are not agent steps; unknown completed items stay bounded
 	// conservatively as both steps and tools.
@@ -2831,6 +2927,8 @@ pub(crate) fn normalize_codex_item(
 		phase,
 		item_id: item.get("id").and_then(Value::as_str).map(ToOwned::to_owned),
 		raw_type: raw_type.to_owned(),
+		command_sha256,
+		command_shape_supported,
 		is_tool_call,
 		counts_as_step,
 		collaboration,
@@ -2866,6 +2964,23 @@ pub(crate) fn extract_probe_response(stdout: &str) -> Option<String> {
 		(!trimmed.is_empty() && serde_json::from_str::<Value>(stdout).is_err())
 			.then(|| trimmed.to_owned())
 	})
+}
+
+pub(crate) fn extract_semantic_response(stdout: &str) -> Option<String> {
+	let mut response = None;
+
+	for line in stdout.lines() {
+		let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
+		let item = value.get("item").unwrap_or(&value);
+
+		if matches!(item.get("type").and_then(Value::as_str), Some("agent_message" | "message"))
+			&& let Some(text) = item.get("text").and_then(Value::as_str)
+		{
+			response = Some(text.to_owned());
+		}
+	}
+
+	response
 }
 
 fn validate_inert_collaboration_wait(
@@ -2943,6 +3058,287 @@ fn validate_inert_collaboration_wait(
 fn valid_collaboration_identifier(value: &str) -> bool {
 	(1..=256).contains(&value.len())
 		&& value.bytes().all(|byte| byte.is_ascii_graphic() && !matches!(byte, b'"' | b'\\'))
+}
+
+fn valid_command_item_id(value: &str) -> bool {
+	(1..=MAX_COMMAND_ITEM_ID_BYTES).contains(&value.len())
+		&& value.bytes().all(|byte| byte.is_ascii_graphic() && !matches!(byte, b'"' | b'\\'))
+}
+
+fn valid_sha256_digest(value: &str) -> bool {
+	value.strip_prefix("sha256:").is_some_and(|digest| {
+		digest.len() == 64
+			&& digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+	})
+}
+
+fn command_status_supported(item: &serde_json::Map<String, Value>, phase: CodexItemPhase) -> bool {
+	let expected = match phase {
+		CodexItemPhase::Started => "in_progress",
+		CodexItemPhase::Completed => "completed",
+	};
+
+	item.get("status").is_none_or(|status| status.as_str() == Some(expected))
+}
+
+fn contains_bytes(value: &[u8], needle: &[u8]) -> bool {
+	!needle.is_empty() && value.windows(needle.len()).any(|window| window == needle)
+}
+
+fn looks_like_command_event(line: &[u8]) -> bool {
+	contains_bytes(line, br#""command""#) || contains_bytes(line, b"command_execution")
+}
+
+fn looks_like_json_record(line: &[u8]) -> bool {
+	line.iter()
+		.copied()
+		.find(|byte| !byte.is_ascii_whitespace())
+		.is_some_and(|byte| matches!(byte, b'{' | b'['))
+}
+
+fn command_stream_requires_full_stderr_redaction(stdout: &[u8]) -> bool {
+	stdout.split(|byte| *byte == b'\n').any(|line| {
+		let Ok(value) = serde_json::from_slice::<Value>(line) else {
+			return looks_like_json_record(line);
+		};
+
+		if !looks_like_command_event(line) {
+			return false;
+		}
+
+		let Some(item) = value.get("item").and_then(Value::as_object) else { return true };
+
+		item.get("type").and_then(Value::as_str) != Some("command_execution")
+			|| item.get("command").is_some_and(|command| !command.is_string())
+	})
+}
+
+fn codex_command_redactions(stdout: &[u8]) -> BTreeMap<String, String> {
+	let mut redactions = BTreeMap::new();
+
+	for line in stdout.split(|byte| *byte == b'\n') {
+		let Ok(value) = serde_json::from_slice::<Value>(line) else { continue };
+		let Some(item) = value.get("item").and_then(Value::as_object) else { continue };
+
+		if item.get("type").and_then(Value::as_str) != Some("command_execution") {
+			continue;
+		}
+
+		let Some(command) =
+			item.get("command").and_then(Value::as_str).filter(|value| !value.is_empty())
+		else {
+			continue;
+		};
+		let digest = format!("sha256:{}", hex::encode(Sha256::digest(command.as_bytes())));
+
+		redactions.insert(command.to_owned(), digest);
+	}
+
+	redactions
+}
+
+fn redact_command_occurrences(value: &[u8], redactions: &BTreeMap<String, String>) -> Vec<u8> {
+	let mut redacted = String::from_utf8_lossy(value).into_owned();
+
+	for (command, digest) in redactions {
+		let mut output = String::with_capacity(redacted.len());
+		let mut retained_from = 0;
+
+		for (start, matched) in redacted.match_indices(command) {
+			let end = start + matched.len();
+			let before_is_boundary = redacted[..start]
+				.chars()
+				.next_back()
+				.is_none_or(|character| !character.is_alphanumeric() && character != '_');
+			let after_is_boundary = redacted[end..]
+				.chars()
+				.next()
+				.is_none_or(|character| !character.is_alphanumeric() && character != '_');
+
+			if before_is_boundary && after_is_boundary {
+				output.push_str(&redacted[retained_from..start]);
+				output.push_str(digest);
+
+				retained_from = end;
+			}
+		}
+
+		output.push_str(&redacted[retained_from..]);
+
+		redacted = output;
+	}
+
+	redacted.into_bytes()
+}
+
+fn redact_json_text_values(
+	value: &mut Value,
+	field: Option<&str>,
+	redactions: &BTreeMap<String, String>,
+) -> bool {
+	const STRUCTURAL_FIELDS: [&str; 8] = [
+		"agents_states",
+		"command_sha256",
+		"id",
+		"receiver_thread_ids",
+		"sender_thread_id",
+		"status",
+		"tool",
+		"type",
+	];
+
+	if field.is_some_and(|field| STRUCTURAL_FIELDS.contains(&field)) {
+		return false;
+	}
+	if field == Some("command") {
+		*value = Value::String("[REDACTED_COMMAND]".to_owned());
+
+		return true;
+	}
+
+	match value {
+		Value::String(text) => {
+			let redacted = redact_command_occurrences(text.as_bytes(), redactions);
+			let redacted = String::from_utf8_lossy(&redacted).into_owned();
+			let changed = redacted != *text;
+
+			*text = redacted;
+
+			changed
+		},
+		Value::Array(values) => {
+			let mut changed = false;
+
+			for value in values {
+				changed |= redact_json_text_values(value, field, redactions);
+			}
+
+			changed
+		},
+		Value::Object(fields) => {
+			let mut changed = false;
+
+			for (field, value) in fields {
+				changed |= redact_json_text_values(value, Some(field), redactions);
+			}
+
+			changed
+		},
+		Value::Null | Value::Bool(_) | Value::Number(_) => false,
+	}
+}
+
+fn redact_stdout_text_occurrences(stdout: &[u8], redactions: &BTreeMap<String, String>) -> Vec<u8> {
+	let mut output = Vec::with_capacity(stdout.len());
+
+	for chunk in stdout.split_inclusive(|byte| *byte == b'\n') {
+		let (line, has_newline) =
+			chunk.strip_suffix(b"\n").map_or((chunk, false), |line| (line, true));
+		let redacted_line = match serde_json::from_slice::<Value>(line) {
+			Ok(mut value) => {
+				if redact_json_text_values(&mut value, None, redactions) {
+					serde_json::to_vec(&value)
+						.unwrap_or_else(|_| br#"{"type":"aiq.command-event-redacted.v1"}"#.to_vec())
+				} else {
+					line.to_vec()
+				}
+			},
+			Err(_) => redact_command_occurrences(line, redactions),
+		};
+
+		output.extend_from_slice(&redacted_line);
+
+		if has_newline {
+			output.push(b'\n');
+		}
+	}
+
+	output
+}
+
+fn redact_codex_command_text(stdout: &[u8]) -> Vec<u8> {
+	let mut redacted = Vec::with_capacity(stdout.len());
+
+	for chunk in stdout.split_inclusive(|byte| *byte == b'\n') {
+		let (line, has_newline) =
+			chunk.strip_suffix(b"\n").map_or((chunk, false), |line| (line, true));
+		let Ok(mut value) = serde_json::from_slice::<Value>(line) else {
+			if looks_like_command_event(line) || looks_like_json_record(line) {
+				redacted.extend_from_slice(br#"{"type":"aiq.command-event-redacted.v1"}"#);
+			} else {
+				redacted.extend_from_slice(line);
+			}
+			if has_newline {
+				redacted.push(b'\n');
+			}
+
+			continue;
+		};
+		let event_type = value.get("type").and_then(Value::as_str).map(ToOwned::to_owned);
+		let Some(item) = value.get_mut("item").and_then(Value::as_object_mut) else {
+			if looks_like_command_event(line) {
+				redacted.extend_from_slice(br#"{"type":"aiq.command-event-redacted.v1"}"#);
+			} else {
+				redacted.extend_from_slice(line);
+			}
+			if has_newline {
+				redacted.push(b'\n');
+			}
+
+			continue;
+		};
+
+		if item.get("type").and_then(Value::as_str) != Some("command_execution") {
+			if item.remove("command").is_some() {
+				item.remove("command_sha256");
+
+				match serde_json::to_vec(&value) {
+					Ok(line) => redacted.extend_from_slice(&line),
+					Err(_) => {
+						redacted.extend_from_slice(br#"{"type":"aiq.command-event-redacted.v1"}"#)
+					},
+				}
+			} else {
+				redacted.extend_from_slice(line);
+			}
+			if has_newline {
+				redacted.push(b'\n');
+			}
+
+			continue;
+		}
+
+		let command = item.remove("command");
+
+		item.remove("command_sha256");
+
+		if event_type.as_deref() == Some("item.started")
+			&& item.get("id").and_then(Value::as_str).is_some_and(valid_command_item_id)
+			&& command_status_supported(item, CodexItemPhase::Started)
+			&& let Some(command) = command.and_then(|value| value.as_str().map(ToOwned::to_owned))
+		{
+			let digest = format!("sha256:{}", hex::encode(Sha256::digest(command.as_bytes())));
+
+			item.insert("command_sha256".to_owned(), Value::String(digest));
+		}
+
+		match serde_json::to_vec(&value) {
+			Ok(line) => redacted.extend_from_slice(&line),
+			Err(_) => redacted.extend_from_slice(br#"{"type":"aiq.command-event-redacted.v1"}"#),
+		}
+
+		if has_newline {
+			redacted.push(b'\n');
+		}
+	}
+
+	redacted
+}
+
+fn sanitize_codex_stdout(stdout: &[u8], redactions: &BTreeMap<String, String>) -> Vec<u8> {
+	let stdout = redact_codex_command_text(stdout);
+
+	redact_stdout_text_occurrences(&stdout, redactions)
 }
 
 fn completed_command_execution_count(stdout: &str) -> Result<usize, CodexItemPolicyError> {
@@ -5340,13 +5736,27 @@ where
 }
 
 fn classify_capture<S>(
-	capture: ExecutionCapture,
+	mut capture: ExecutionCapture,
 	sink: &S,
 	retain_stdout: bool,
 ) -> Result<CodexOutput, AdapterFailure>
 where
 	S: ArtifactSink,
 {
+	let diagnostic_stdout = String::from_utf8_lossy(&capture.stdout).into_owned();
+	let diagnostic_stderr = String::from_utf8_lossy(&capture.stderr).into_owned();
+	let final_response =
+		retain_stdout.then(|| extract_semantic_response(&diagnostic_stdout)).flatten();
+	let command_redactions = codex_command_redactions(&capture.stdout);
+	let redact_all_stderr = command_stream_requires_full_stderr_redaction(&capture.stdout);
+
+	capture.stdout = sanitize_codex_stdout(&capture.stdout, &command_redactions);
+	capture.stderr = if redact_all_stderr {
+		b"[REDACTED_COMMAND_ERROR]".to_vec()
+	} else {
+		redact_command_occurrences(&capture.stderr, &command_redactions)
+	};
+
 	let stdout_full = String::from_utf8_lossy(&capture.stdout).into_owned();
 	let stderr_full = String::from_utf8_lossy(&capture.stderr).into_owned();
 	let stderr = preview(&stderr_full);
@@ -5402,33 +5812,7 @@ where
 		});
 	}
 	if capture.exit_code != Some(0) {
-		let diagnostic = format!("{stdout_full}\n{stderr_full}").to_lowercase();
-		let (kind, message) = if [
-			"unsupported model",
-			"model is not supported",
-			"unknown model",
-			"invalid reasoning effort",
-		]
-		.iter()
-		.any(|needle| diagnostic.contains(needle))
-		{
-			(AdapterFailureKind::Unsupported, "Codex CLI exited unsuccessfully")
-		} else if let Some(message) = subscription_limit_message(&stdout_full, &stderr_full) {
-			(AdapterFailureKind::UsageLimit, message)
-		} else if [
-			"not logged in",
-			"authentication",
-			"unauthorized",
-			"please login",
-			"please log in",
-		]
-		.iter()
-		.any(|needle| diagnostic.contains(needle))
-		{
-			(AdapterFailureKind::Authentication, "Codex CLI exited unsuccessfully")
-		} else {
-			(AdapterFailureKind::NonZeroExit, "Codex CLI exited unsuccessfully")
-		};
+		let (kind, message) = classify_nonzero_exit(&diagnostic_stdout, &diagnostic_stderr);
 
 		return Err(AdapterFailure {
 			kind,
@@ -5447,8 +5831,29 @@ where
 		stderr: preview(&stderr_full),
 		exit_code: capture.exit_code,
 		artifacts,
+		final_response,
 		stdout_full,
 	})
+}
+
+fn classify_nonzero_exit(stdout: &str, stderr: &str) -> (AdapterFailureKind, &'static str) {
+	let diagnostic = format!("{stdout}\n{stderr}").to_lowercase();
+
+	if ["unsupported model", "model is not supported", "unknown model", "invalid reasoning effort"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+	{
+		(AdapterFailureKind::Unsupported, "Codex CLI exited unsuccessfully")
+	} else if let Some(message) = subscription_limit_message(stdout, stderr) {
+		(AdapterFailureKind::UsageLimit, message)
+	} else if ["not logged in", "authentication", "unauthorized", "please login", "please log in"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+	{
+		(AdapterFailureKind::Authentication, "Codex CLI exited unsuccessfully")
+	} else {
+		(AdapterFailureKind::NonZeroExit, "Codex CLI exited unsuccessfully")
+	}
 }
 
 fn subscription_limit_message(stdout: &str, stderr: &str) -> Option<&'static str> {
@@ -5846,6 +6251,8 @@ mod tests {
 		time::{Duration, Instant},
 	};
 
+	use serde_json::Value;
+
 	#[cfg(target_os = "linux")]
 	use crate::adapter::process_group;
 	use crate::pinned_path;
@@ -5856,13 +6263,17 @@ mod tests {
 			CapabilityValidationStatus, ChildProcessObserver, CodexAdapter, CodexExecutionConfig,
 			CodexItemAccounting, CodexItemPhase, CommandRequest, ConfigurationProbeStatus,
 			ExecutionCapture, Executor, ExecutorError, InvocationRequest, LiveBudgetKind,
-			LocalArtifactSink, MAX_INLINE_PREVIEW_BYTES, PREFLIGHT_MARKER_ARTIFACT_KIND,
-			PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_COMMAND, PREFLIGHT_MARKER_NAME, SandboxPolicy,
-			SystemExecutor,
+			LocalArtifactSink, MAX_COMMAND_ITEM_ID_BYTES, MAX_INLINE_PREVIEW_BYTES,
+			PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_COMMAND,
+			PREFLIGHT_MARKER_NAME, SandboxPolicy, SystemExecutor,
 		},
 		corpus_commitment,
 		model::{CapabilityManifest, CapabilityStatus, MODEL_MATRIX, ModelCapability},
 	};
+
+	const PUBLIC_REQUIRED_COMMAND: &str = "node bin/task-tool.mjs";
+	const PUBLIC_REQUIRED_COMMAND_SHA256: &str =
+		"sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319";
 
 	static AUTH_FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 	static PROCESS_FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -5886,12 +6297,6 @@ mod tests {
 		replacement: RefCell<Option<PathBuf>>,
 	}
 
-	#[derive(Clone, Copy)]
-	enum CanaryFileKind {
-		Regular,
-		Directory,
-	}
-
 	#[derive(Default)]
 	struct MemorySink {
 		values: RefCell<Vec<Vec<u8>>>,
@@ -5908,6 +6313,12 @@ mod tests {
 	#[cfg(target_os = "macos")]
 	struct OwnerImmutableAuthFixture {
 		root: PathBuf,
+	}
+
+	#[derive(Clone, Copy)]
+	enum CanaryFileKind {
+		Regular,
+		Directory,
 	}
 
 	impl ChildProcessObserver for RecordingChildObserver {
@@ -6561,6 +6972,7 @@ mod tests {
 			stderr: "private provider stderr".to_owned(),
 			exit_code: Some(0),
 			artifacts: Vec::new(),
+			final_response: Some(secret.to_owned()),
 			stdout_full: secret.to_owned(),
 		};
 		let rendered = format!("{output:?}");
@@ -7501,11 +7913,21 @@ mod tests {
 			br#"{"type":"item.completed","item":{"id":"tool-1","type":"command_execution"}}"#;
 		let adapter = adapter(vec![Ok(capture(0, output.to_vec(), Vec::new()))]);
 		let result = adapter.invoke(&invocation()).expect("capture must succeed");
+		let retained = sanitize_stdout(output);
 
-		assert_eq!(result.stdout.as_bytes(), &output[..MAX_INLINE_PREVIEW_BYTES]);
+		assert_eq!(
+			result.stdout.as_bytes(),
+			&retained[..MAX_INLINE_PREVIEW_BYTES.min(retained.len())]
+		);
 		assert_eq!(result.artifacts.len(), 1);
 		assert_eq!(result.artifacts[0].kind, "stdout.jsonl");
-		assert_eq!(adapter.sink.values.borrow().as_slice(), &[output.to_vec()]);
+		assert_eq!(adapter.sink.values.borrow().as_slice(), slice::from_ref(&retained));
+		assert_eq!(
+			runner::parse_codex_tool_usage(&String::from_utf8(retained).expect("retained JSONL"))
+				.expect("retained tool usage")
+				.total_calls,
+			1
+		);
 	}
 
 	#[test]
@@ -8141,7 +8563,7 @@ mod tests {
 	fn codex_json_lines_normalize_versioned_items_and_bound_unknowns() {
 		let cases = [
 			(
-				r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"pwd"}}"#,
+				r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"node bin/task-tool.mjs"}}"#,
 				Some((CodexItemPhase::Started, "command_execution", true, false)),
 			),
 			(
@@ -8189,6 +8611,316 @@ mod tests {
 				assert_eq!(item.version, CODEX_ITEM_ACCOUNTING_VERSION);
 			}
 		}
+	}
+
+	fn command_event(event_type: &str, item_id: Option<&str>, command: Option<Value>) -> String {
+		let mut item = serde_json::json!({"type": "command_execution"});
+
+		if let Some(item_id) = item_id {
+			item["id"] = Value::String(item_id.to_owned());
+		}
+		if let Some(command) = command {
+			item["command"] = command;
+		}
+
+		serde_json::json!({"type": event_type, "item": item}).to_string()
+	}
+
+	fn sanitize_stdout(stdout: &[u8]) -> Vec<u8> {
+		let redactions = super::codex_command_redactions(stdout);
+
+		super::sanitize_codex_stdout(stdout, &redactions)
+	}
+
+	fn redacted_command_start(item_id: &str) -> String {
+		String::from_utf8(sanitize_stdout(
+			command_event(
+				"item.started",
+				Some(item_id),
+				Some(Value::String(PUBLIC_REQUIRED_COMMAND.to_owned())),
+			)
+			.as_bytes(),
+		))
+		.expect("redacted command event must remain UTF-8")
+	}
+
+	#[test]
+	fn command_capture_replaces_text_with_the_exact_digest() {
+		let raw = command_event(
+			"item.started",
+			Some("command-1"),
+			Some(Value::String(PUBLIC_REQUIRED_COMMAND.to_owned())),
+		);
+		let redacted =
+			String::from_utf8(sanitize_stdout(raw.as_bytes())).expect("redacted command event");
+		let value: Value = serde_json::from_str(&redacted).expect("redacted JSON");
+
+		assert_eq!(
+			value["item"]["command_sha256"],
+			Value::String(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned())
+		);
+		assert!(value["item"].get("command").is_none());
+		assert!(!redacted.contains(PUBLIC_REQUIRED_COMMAND));
+
+		let redactions = super::codex_command_redactions(raw.as_bytes());
+		let stderr = format!("failure while running {PUBLIC_REQUIRED_COMMAND}");
+		let redacted_stderr =
+			String::from_utf8(super::redact_command_occurrences(stderr.as_bytes(), &redactions))
+				.expect("redacted stderr");
+
+		assert!(!redacted_stderr.contains(PUBLIC_REQUIRED_COMMAND));
+		assert!(redacted_stderr.contains(PUBLIC_REQUIRED_COMMAND_SHA256));
+
+		let malformed = format!(
+			r#"{{"type":"item.started","item":{{"type":"command_execution","command":"{PUBLIC_REQUIRED_COMMAND}""#
+		);
+		let redacted_malformed = String::from_utf8(sanitize_stdout(malformed.as_bytes()))
+			.expect("redacted malformed command event");
+
+		assert!(!redacted_malformed.contains(PUBLIC_REQUIRED_COMMAND));
+		assert!(super::command_stream_requires_full_stderr_redaction(malformed.as_bytes()));
+
+		let malformed_output = super::classify_capture(
+			capture(0, malformed.as_bytes().to_vec(), Vec::new()),
+			&MemorySink::default(),
+			true,
+		)
+		.expect("malformed command capture remains bounded");
+
+		assert!(malformed_output.final_response.is_none());
+		assert!(!malformed_output.stdout_full.contains(PUBLIC_REQUIRED_COMMAND));
+
+		let escaped_malformed = format!(
+			r#"{{"type":"item.started","item":{{"type":"command_executio\u006e","\u0063ommand":"{PUBLIC_REQUIRED_COMMAND}""#
+		);
+		let escaped_output = super::classify_capture(
+			capture(0, escaped_malformed.into_bytes(), Vec::new()),
+			&MemorySink::default(),
+			true,
+		)
+		.expect("escaped malformed command capture remains bounded");
+
+		assert!(escaped_output.final_response.is_none());
+		assert!(!escaped_output.stdout_full.contains(PUBLIC_REQUIRED_COMMAND));
+
+		let no_response =
+			format!("{raw}\n{}", command_event("item.completed", Some("command-1"), None));
+		let no_response_output = super::classify_capture(
+			capture(0, no_response.into_bytes(), Vec::new()),
+			&MemorySink::default(),
+			true,
+		)
+		.expect("structured command-only capture");
+
+		assert!(no_response_output.final_response.is_none());
+
+		let final_response = format!("unrelated text before {PUBLIC_REQUIRED_COMMAND} after");
+		let echoed = [
+			raw,
+			serde_json::json!({
+				"type": "item.completed",
+				"item": {
+					"id": "error-1",
+					"type": "error",
+					"message": format!("error from {PUBLIC_REQUIRED_COMMAND} remains classified")
+				}
+			})
+			.to_string(),
+			serde_json::json!({
+				"type": "item.completed",
+				"item": {
+					"id": "message-1",
+					"type": "agent_message",
+					"text": final_response.clone()
+				}
+			})
+			.to_string(),
+		]
+		.join("\n");
+		let sink = MemorySink::default();
+		let output =
+			super::classify_capture(capture(0, echoed.into_bytes(), Vec::new()), &sink, true)
+				.expect("echoed command capture");
+
+		assert_eq!(output.final_response.as_deref(), Some(final_response.as_str()));
+		assert!(!output.stdout_full.contains(PUBLIC_REQUIRED_COMMAND));
+		assert!(output.stdout_full.contains("unrelated text before"));
+		assert!(output.stdout_full.contains("remains classified"));
+		assert!(
+			sink.values
+				.borrow()
+				.iter()
+				.all(|bytes| { !String::from_utf8_lossy(bytes).contains(PUBLIC_REQUIRED_COMMAND) })
+		);
+
+		let short_redactions = BTreeMap::from([("a".to_owned(), "sha256:short".to_owned())]);
+		let mut short_text = Value::String("data a remains".to_owned());
+
+		assert!(super::redact_json_text_values(&mut short_text, Some("text"), &short_redactions,));
+		assert_eq!(short_text, Value::String("data sha256:short remains".to_owned()));
+	}
+
+	#[test]
+	fn completed_command_digest_requires_one_valid_started_completed_lifecycle() {
+		let started = redacted_command_start("command-1");
+		let completed = command_event("item.completed", Some("command-1"), None);
+		let stdout = format!("{started}\n{completed}");
+		let usage = runner::parse_codex_tool_usage(&stdout).expect("command lifecycle evidence");
+
+		assert_eq!(usage.total_calls, 1);
+		assert_eq!(usage.by_tool.get("command_execution"), Some(&1));
+		assert_eq!(
+			usage.completed_command_sha256,
+			BTreeMap::from([(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned(), 1)])
+		);
+	}
+
+	#[test]
+	fn completed_command_digest_retains_multiplicity_without_command_text() {
+		let stdout = [
+			redacted_command_start("command-1"),
+			command_event("item.completed", Some("command-1"), None),
+			redacted_command_start("command-2"),
+			command_event("item.completed", Some("command-2"), None),
+		]
+		.join("\n");
+		let usage = runner::parse_codex_tool_usage(&stdout).expect("command multiplicity");
+
+		assert_eq!(
+			usage.completed_command_sha256,
+			BTreeMap::from([(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned(), 2)])
+		);
+		assert!(!stdout.contains(PUBLIC_REQUIRED_COMMAND));
+	}
+
+	#[test]
+	fn malformed_or_incomplete_command_lifecycles_never_attest_a_digest() {
+		let valid_start = command_event(
+			"item.started",
+			Some("command-shared"),
+			Some(Value::String(PUBLIC_REQUIRED_COMMAND.to_owned())),
+		);
+		let invalid_id = "x".repeat(MAX_COMMAND_ITEM_ID_BYTES + 1);
+		let cases = [
+			vec![command_event("item.completed", Some("missing-start"), None)],
+			vec![redacted_command_start("missing-completion")],
+			vec![
+				valid_start.clone(),
+				valid_start.clone(),
+				command_event("item.completed", Some("command-shared"), None),
+			],
+			vec![
+				valid_start.clone(),
+				r#"{"type":"item.completed","item":{"id":"command-shared"}}"#.to_owned(),
+				command_event("item.completed", Some("command-shared"), None),
+			],
+			vec![
+				valid_start.clone(),
+				"not-json".to_owned(),
+				command_event("item.completed", Some("command-shared"), None),
+			],
+			vec![
+				valid_start.clone(),
+				serde_json::json!({
+					"type": "item.completed",
+					"item": {"id": "command-shared", "type": "file_change"}
+				})
+				.to_string(),
+				command_event("item.completed", Some("command-shared"), None),
+			],
+			vec![
+				valid_start.clone(),
+				serde_json::json!({
+					"type": "item.completed",
+					"item": {
+						"id": "command-shared",
+						"type": "agent_message",
+						"text": "interleaved lifecycle type"
+					}
+				})
+				.to_string(),
+				command_event("item.completed", Some("command-shared"), None),
+			],
+			vec![
+				command_event("item.started", Some("missing-command"), None),
+				command_event("item.completed", Some("missing-command"), None),
+			],
+			vec![
+				command_event(
+					"item.started",
+					Some("unsupported-command"),
+					Some(serde_json::json!([PUBLIC_REQUIRED_COMMAND])),
+				),
+				command_event("item.completed", Some("unsupported-command"), None),
+			],
+			vec![
+				command_event(
+					"item.started",
+					Some(&invalid_id),
+					Some(Value::String(PUBLIC_REQUIRED_COMMAND.to_owned())),
+				),
+				command_event("item.completed", Some(&invalid_id), None),
+			],
+			vec![
+				serde_json::json!({
+					"type": "item.started",
+					"item": {
+						"id": "wrong-start-status",
+						"type": "command_execution",
+						"command": PUBLIC_REQUIRED_COMMAND,
+						"status": "completed"
+					}
+				})
+				.to_string(),
+				command_event("item.completed", Some("wrong-start-status"), None),
+			],
+			vec![
+				command_event(
+					"item.started",
+					Some("wrong-completion-status"),
+					Some(Value::String(PUBLIC_REQUIRED_COMMAND.to_owned())),
+				),
+				serde_json::json!({
+					"type": "item.completed",
+					"item": {
+						"id": "wrong-completion-status",
+						"type": "command_execution",
+						"status": "in_progress"
+					}
+				})
+				.to_string(),
+			],
+		];
+
+		for lines in cases {
+			let redacted = String::from_utf8(sanitize_stdout(lines.join("\n").as_bytes()))
+				.expect("redacted lifecycle");
+			let usage = runner::parse_codex_tool_usage(&redacted).expect("conservative accounting");
+
+			assert!(usage.completed_command_sha256.is_empty(), "{redacted}");
+			assert!(!redacted.contains(PUBLIC_REQUIRED_COMMAND));
+		}
+	}
+
+	#[test]
+	fn capture_discards_a_supplied_digest_that_has_no_command_text() {
+		let fabricated = serde_json::json!({
+			"type": "item.started",
+			"item": {
+				"id": "command-1",
+				"type": "command_execution",
+				"command_sha256": PUBLIC_REQUIRED_COMMAND_SHA256
+			}
+		})
+		.to_string();
+		let completed = command_event("item.completed", Some("command-1"), None);
+		let redacted =
+			String::from_utf8(sanitize_stdout(format!("{fabricated}\n{completed}").as_bytes()))
+				.expect("redacted fabricated digest");
+		let usage = runner::parse_codex_tool_usage(&redacted).expect("conservative accounting");
+
+		assert!(usage.completed_command_sha256.is_empty());
+		assert!(!redacted.contains(PUBLIC_REQUIRED_COMMAND_SHA256));
 	}
 
 	fn inert_wait_event(event_type: &str, status: &str, item_id: &str) -> String {

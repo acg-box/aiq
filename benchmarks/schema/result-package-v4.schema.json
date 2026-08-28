@@ -702,6 +702,20 @@
             "minimum": 0,
             "maximum": 4294967295
           }
+        },
+        "completed_command_sha256": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 119,
+          "propertyNames": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])"
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          }
         }
       },
       "x-aiq-saturatingSum": {
@@ -1992,6 +2006,7 @@
     "result_preview_utf8_bytes": 64,
     "result_artifact_references": 4,
     "result_artifact_references_including_workspace_manifest": 5,
+    "completed_command_digest_entries_per_run": 119,
     "artifact_reference_bytes": 4194304,
     "maximum_depth": 32,
     "maximum_nodes": 100000,

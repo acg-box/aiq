@@ -19,6 +19,7 @@ export const OFFICIAL_SCORING_VERSION = AIQ_CORE_SCORING_VERSION;
 export const EVALUATOR_RESULTS_ARTIFACT_MAX_BYTES = 3_948_544;
 export const MAX_RESULTS = 1_224;
 export const MAX_MODELS = 17;
+export const MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN = 7 * 17;
 export const MAX_JSON_DEPTH = 32;
 export const MAX_JSON_NODES = 100_000;
 export const MAX_OBJECT_PROPERTIES = 256;
@@ -113,6 +114,12 @@ const modelConfigKeys = ['family', 'reasoning_effort'] as const;
 const resultFailureKeys = ['exit_code', 'kind', 'message', 'retryable'] as const;
 const latencyKeys = ['evaluator_ms', 'wall_ms'] as const;
 const toolUsageKeys = ['by_tool', 'steps', 'total_calls'] as const;
+const toolUsageWithCommandDigestsKeys = [
+  'by_tool',
+  'completed_command_sha256',
+  'steps',
+  'total_calls',
+] as const;
 const resultProvenanceKeys = [
   'codex_version',
   'local_trust',
@@ -261,6 +268,7 @@ export interface SignedTaskResult {
     readonly steps: number;
     readonly total_calls: number;
     readonly by_tool: Readonly<Record<string, number>>;
+    readonly completed_command_sha256?: Readonly<Record<string, number>>;
   }>;
   readonly workspace_manifest: WorkspaceManifestArtifactReference | null;
   readonly provenance: Readonly<{
@@ -775,7 +783,8 @@ function isResultFailure(value: unknown): value is Record<string, unknown> {
 function isToolUsage(value: unknown): boolean {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, toolUsageKeys) ||
+    (!hasExactKeys(value, toolUsageKeys) &&
+      !hasExactKeys(value, toolUsageWithCommandDigestsKeys)) ||
     !isU32(value.steps) ||
     !isU32(value.total_calls) ||
     !isRecord(value.by_tool) ||
@@ -790,7 +799,26 @@ function isToolUsage(value: unknown): boolean {
     }
     total = Math.min(0xffff_ffff, total + count);
   }
-  return total === value.total_calls;
+  if (total !== value.total_calls) return false;
+
+  if (value.completed_command_sha256 === undefined) return true;
+  if (
+    !isRecord(value.completed_command_sha256) ||
+    Object.keys(value.completed_command_sha256).length === 0 ||
+    Object.keys(value.completed_command_sha256).length >
+      MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN
+  ) {
+    return false;
+  }
+  let completedCommands = 0;
+  for (const [digest, count] of Object.entries(value.completed_command_sha256)) {
+    if (!/^sha256:[0-9a-f]{64}(?![\s\S])/u.test(digest) || !isU32(count) || count === 0) {
+      return false;
+    }
+    completedCommands += count;
+  }
+  const commandCalls = value.by_tool.command_execution;
+  return completedCommands <= (isU32(commandCalls) ? commandCalls : 0);
 }
 
 function isResultProvenance(
@@ -1211,10 +1239,20 @@ function validateOfficialRunPayload(
   }
   const metadata = new Map<string, { version: string; hash: string }>();
   const pairs = new Set<string>();
+  let completedCommandDigestEntries = 0;
   for (const result of payload.results) {
     const validated = validateTaskResult(result, payload, capabilityByModel, signerNodeId);
     if (!validated) {
       return false;
+    }
+    const toolUsage = (result as Record<string, unknown>).tool_usage as Record<string, unknown>;
+    const completedCommandSha256 = toolUsage.completed_command_sha256;
+
+    if (isRecord(completedCommandSha256)) {
+      completedCommandDigestEntries += Object.keys(completedCommandSha256).length;
+      if (completedCommandDigestEntries > MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN) {
+        return false;
+      }
     }
     const existing = metadata.get(validated.taskId);
     if (

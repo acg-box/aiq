@@ -15,6 +15,7 @@ mod tests {
 		sync::atomic::{AtomicBool, AtomicU64, Ordering},
 	};
 
+	use serde_json::{Map, Value};
 	use sha2::{Digest, Sha256};
 
 	use crate::{ArtifactResolverClient, ReasonCode, WorkerError, replay};
@@ -519,6 +520,37 @@ mod tests {
 		}
 	}
 
+	fn declare_completed_command_digest_projection(fixture: &mut Fixture, digest: &str) {
+		let required = Map::from_iter([(digest.to_owned(), Value::Number(1.into()))]);
+		let configuration = serde_json::from_value(serde_json::json!({
+			"checks": [{
+				"type": "tool_evidence",
+				"required_completed_command_sha256": required
+			}]
+		}))
+		.expect("projection configuration");
+		let task = &mut fixture.tasks[0];
+		let scorer_version = task.scorer_version.clone();
+		let evaluator = task.evaluator.as_mut().expect("fixture evaluator");
+
+		evaluator.external = Some(ExternalEvaluatorBinding {
+			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
+			scorer_version,
+			runtime_kind: EvaluatorRuntimeKind::Node,
+			runtime_executable_digest: fixture.evaluator_runtime.executable_digest().to_owned(),
+			executable_ref: PathBuf::from("unused-evaluator"),
+			executable_digest: format!("sha256:{}", "a".repeat(64)),
+			configuration_digest: protocol::canonical_hash(&configuration)
+				.expect("projection configuration digest"),
+			arguments: Vec::new(),
+			timeout_ms: None,
+			max_input_bytes: 8_192,
+			max_output_bytes: 8_192,
+			configuration,
+		});
+		fixture.run.results[0].task_hash = task.content_hash().expect("projected task hash");
+	}
+
 	#[cfg(unix)]
 	fn install_shell_evaluator(fixture: &mut Fixture, script: &str) {
 		let executable_ref = PathBuf::from("evaluator.sh");
@@ -931,23 +963,42 @@ mod tests {
 
 	#[test]
 	fn shared_stdout_parser_recomputes_tool_evidence_for_replay() {
+		let command_digest =
+			"sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319";
 		let stdout = [
-			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#,
-			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"OK"}}"#,
+			format!(
+				r#"{{"type":"item.started","item":{{"id":"command-1","type":"command_execution","command_sha256":"{command_digest}"}}}}"#
+			),
+			r#"{"type":"item.completed","item":{"id":"command-1","type":"command_execution","status":"completed"}}"#.to_owned(),
+			r#"{"type":"item.completed","item":{"id":"error-1","type":"error","message":"redacted"}}"#.to_owned(),
+			r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"OK"}}"#.to_owned(),
 		]
 		.join("\n");
 		let mut fixture = Fixture::completed("OK");
 
+		fixture.make_failed(FailureKind::NonZeroExit);
+
+		declare_completed_command_digest_projection(&mut fixture, command_digest);
+
 		fixture.replace_artifact("stdout.jsonl", stdout.as_bytes().to_vec());
 
-		let expected = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
+		let mut expected = runner::parse_codex_tool_usage(&stdout).expect("fixture stdout policy");
 
-		assert_eq!(expected.steps, 1);
-		assert_eq!(expected.total_calls, 0);
+		runner::project_completed_command_digests(&fixture.tasks[0], &mut expected);
 
-		fixture.run.results[0].tool_usage = expected;
+		assert_eq!(expected.steps, 2);
+		assert_eq!(expected.total_calls, 1);
+		assert_eq!(expected.completed_command_sha256.get(command_digest), Some(&1));
+
+		fixture.run.results[0].tool_usage = expected.clone();
 
 		fixture.verify().expect("shared parser replay");
+		fixture.run.results[0].tool_usage.completed_command_sha256.clear();
+
+		assert_replay_error(
+			fixture.verify().expect_err("completed command digest drift"),
+			ReasonCode::ArtifactEvidenceMismatch,
+		);
 	}
 
 	#[test]
@@ -2342,11 +2393,11 @@ where
 			&& result.workspace_manifest.is_none();
 
 		if workspace_integrity_without_snapshot {
-			verified_failed_tool_usage_without_workspace(result, resolver)?;
+			verified_failed_tool_usage_without_workspace(result, task, resolver)?;
 		} else {
 			let evidence = materialize_candidate(result, resolver, &destination)?;
 
-			verified_failed_tool_usage(result, &evidence)?;
+			verified_failed_tool_usage(result, &evidence, task)?;
 		}
 
 		return Ok(CandidateReplayOutput {
@@ -2364,7 +2415,7 @@ where
 	let destination = claim_root.join(format!("candidate-{index:04}"));
 	let evidence = materialize_candidate(result, resolver, &destination)?;
 	let response = complete_response(result, &evidence)?;
-	let tool_usage = verified_tool_usage(result, &evidence)?;
+	let tool_usage = verified_tool_usage(result, &evidence, task)?;
 
 	resolver.maintain_lease()?;
 
@@ -2654,7 +2705,7 @@ where
 	if workspace_integrity_without_snapshot {
 		verify_failed_result_policy(result)?;
 
-		let tool_usage = verified_failed_tool_usage_without_workspace(result, resolver)?;
+		let tool_usage = verified_failed_tool_usage_without_workspace(result, task, resolver)?;
 
 		resolver.maintain_lease()?;
 
@@ -2677,7 +2728,7 @@ where
 					)
 				})?;
 			let response = complete_response(result, &evidence)?;
-			let tool_usage = verified_tool_usage(result, &evidence)?;
+			let tool_usage = verified_tool_usage(result, &evidence, task)?;
 
 			resolver.maintain_lease()?;
 
@@ -2703,7 +2754,7 @@ where
 		ResultStatus::Failed => {
 			verify_failed_result_policy(result)?;
 
-			let tool_usage = verified_failed_tool_usage(result, &evidence)?;
+			let tool_usage = verified_failed_tool_usage(result, &evidence, task)?;
 
 			resolver.maintain_lease()?;
 
@@ -2917,6 +2968,7 @@ where
 fn verified_tool_usage(
 	result: &TaskResult,
 	evidence: &CandidateEvidence,
+	task: &TaskDefinition,
 ) -> Result<aiq_runner::runner::ToolUsage, WorkerError> {
 	let stdout = evidence.artifacts.get("stdout.jsonl").ok_or_else(|| {
 		WorkerError::terminal(
@@ -2930,10 +2982,11 @@ fn verified_tool_usage(
 			"content-addressed stdout is not UTF-8",
 		)
 	})?;
-	let observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
+	let mut observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
 		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
 	})?;
 
+	runner::project_completed_command_digests(task, &mut observed);
 	runner::validate_invocation_attempt_evidence(result, stdout).map_err(|error| {
 		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
 	})?;
@@ -2941,6 +2994,7 @@ fn verified_tool_usage(
 	if observed.steps != result.tool_usage.steps
 		|| observed.total_calls != result.tool_usage.total_calls
 		|| observed.by_tool != result.tool_usage.by_tool
+		|| observed.completed_command_sha256 != result.tool_usage.completed_command_sha256
 	{
 		return Err(WorkerError::terminal(
 			ReasonCode::ArtifactEvidenceMismatch,
@@ -2954,9 +3008,10 @@ fn verified_tool_usage(
 fn verified_failed_tool_usage(
 	result: &TaskResult,
 	evidence: &CandidateEvidence,
+	task: &TaskDefinition,
 ) -> Result<aiq_runner::runner::ToolUsage, WorkerError> {
 	if evidence.artifacts.contains_key("stdout.jsonl") {
-		return verified_tool_usage(result, evidence);
+		return verified_tool_usage(result, evidence, task);
 	}
 	if result.tool_usage != aiq_runner::runner::ToolUsage::default() {
 		return Err(WorkerError::terminal(
@@ -2970,6 +3025,7 @@ fn verified_failed_tool_usage(
 
 fn verified_failed_tool_usage_without_workspace<R>(
 	result: &TaskResult,
+	task: &TaskDefinition,
 	resolver: &R,
 ) -> Result<aiq_runner::runner::ToolUsage, WorkerError>
 where
@@ -3007,10 +3063,11 @@ where
 			"content-addressed stdout is not UTF-8",
 		)
 	})?;
-	let observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
+	let mut observed = runner::parse_codex_tool_usage(stdout).map_err(|error| {
 		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
 	})?;
 
+	runner::project_completed_command_digests(task, &mut observed);
 	runner::validate_invocation_attempt_evidence(result, stdout).map_err(|error| {
 		WorkerError::terminal(ReasonCode::InvalidReplayEvidence, error.to_string())
 	})?;
@@ -3018,6 +3075,7 @@ where
 	if observed.steps != result.tool_usage.steps
 		|| observed.total_calls != result.tool_usage.total_calls
 		|| observed.by_tool != result.tool_usage.by_tool
+		|| observed.completed_command_sha256 != result.tool_usage.completed_command_sha256
 	{
 		return Err(WorkerError::terminal(
 			ReasonCode::ArtifactEvidenceMismatch,
@@ -3214,6 +3272,7 @@ fn evaluate_candidate(
 		steps: tool_usage.steps,
 		total_calls: tool_usage.total_calls,
 		by_tool: tool_usage.by_tool.clone(),
+		completed_command_sha256: tool_usage.completed_command_sha256.clone(),
 	};
 	let context = EvaluatorContext {
 		task_id: &result.task_id,
