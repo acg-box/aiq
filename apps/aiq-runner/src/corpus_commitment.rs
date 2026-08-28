@@ -20,6 +20,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
+	candidate_catalog::{CANDIDATE_CATALOG_SCHEMA_VERSION, CANDIDATE_TASK_SET_VERSION},
 	protocol,
 	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	task::{
@@ -37,16 +38,30 @@ const CODEX_CODE_MODE_HOST_EXECUTABLE_NAME: &str =
 	if cfg!(windows) { "codex-code-mode-host.exe" } else { "codex-code-mode-host" };
 const CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json");
+const CANDIDATE_CORE_CATALOG_JSON: &str =
+	include_str!("../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json");
+const CANDIDATE_CORE_TASK_METADATA_IDENTITY_SHA256: &str =
+	"sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6";
 #[cfg(test)]
 const CONTRAST_PUBLIC_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/contrast-catalog.json");
 const CORE_CATALOG: CatalogContract = CatalogContract {
+	commitment_schema_version: "aiq.corpus-commitment.v2",
 	catalog_schema_version: "aiq.catalog.v1",
 	task_set_id: AIQ_TASK_SET_ID,
 	task_set_version: AIQ_TASK_SET_VERSION,
 	identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256,
 	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::Embedded(CORE_CATALOG_JSON),
+};
+const CANDIDATE_CORE_CATALOG: CatalogContract = CatalogContract {
+	commitment_schema_version: "aiq.corpus-commitment.v3",
+	catalog_schema_version: CANDIDATE_CATALOG_SCHEMA_VERSION,
+	task_set_id: AIQ_TASK_SET_ID,
+	task_set_version: CANDIDATE_TASK_SET_VERSION,
+	identity_sha256: CANDIDATE_CORE_TASK_METADATA_IDENTITY_SHA256,
+	identity_scope: "ordered_full_task_metadata",
+	tasks: CatalogTaskAuthority::Embedded(CANDIDATE_CORE_CATALOG_JSON),
 };
 const CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-coupled-challenge-01",
@@ -57,6 +72,7 @@ const CONTRAST_TASK_IDS: [&str; 6] = [
 	"contrast-recovery-reference-01",
 ];
 const CONTRAST_CATALOG: CatalogContract = CatalogContract {
+	commitment_schema_version: "aiq.corpus-commitment.v2",
 	catalog_schema_version: "aiq.contrast-corpus.v1",
 	task_set_id: "aiq-core-contrast",
 	task_set_version: CONTROLLED_CONTRAST_TASK_SET_VERSION,
@@ -339,6 +355,7 @@ impl ValidatedModelToolchain {
 
 #[derive(Clone, Copy)]
 struct CatalogContract {
+	commitment_schema_version: &'static str,
 	catalog_schema_version: &'static str,
 	task_set_id: &'static str,
 	task_set_version: &'static str,
@@ -697,6 +714,18 @@ pub fn validate_core_corpus_commitment(
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
 	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
+}
+
+/// Loads and validates an isolated AIQ Core 1.1.0 candidate commitment.
+///
+/// This path does not change the active production catalog or accept the
+/// candidate in any Official scoring or publication path.
+pub fn validate_candidate_core_corpus_commitment_v1_1_0(
+	path: &Path,
+	tasks: &[TaskDefinition],
+	source_root: &Path,
+) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
+	validate_corpus_commitment_inner(path, tasks, source_root, CANDIDATE_CORE_CATALOG)
 }
 
 /// Loads the six controlled AIQ Core 1.0.7 contrast variants.
@@ -1349,7 +1378,7 @@ fn validate_header(
 ) -> Result<(), CorpusCommitmentError> {
 	let catalog = &commitment.catalog;
 
-	if commitment.schema_version != "aiq.corpus-commitment.v2"
+	if commitment.schema_version != catalog_contract.commitment_schema_version
 		|| !valid_release_id(&commitment.release_id)
 		|| !commitment.controlled
 		|| commitment.synthetic
@@ -2660,6 +2689,23 @@ mod tests {
 	#[test]
 	fn current_corpus_header_is_strict() {
 		assert!(corpus_commitment::validate_header(&commitment(), super::CORE_CATALOG).is_ok());
+
+		let mut candidate = commitment();
+
+		candidate.schema_version =
+			super::CANDIDATE_CORE_CATALOG.commitment_schema_version.to_owned();
+		candidate.catalog.schema_version =
+			super::CANDIDATE_CORE_CATALOG.catalog_schema_version.to_owned();
+		candidate.catalog.task_set_version =
+			super::CANDIDATE_CORE_CATALOG.task_set_version.to_owned();
+		candidate.catalog.identity_sha256 =
+			super::CANDIDATE_CORE_CATALOG.identity_sha256.to_owned();
+
+		assert!(
+			corpus_commitment::validate_header(&candidate, super::CANDIDATE_CORE_CATALOG).is_ok()
+		);
+		assert!(corpus_commitment::validate_header(&candidate, super::CORE_CATALOG).is_err());
+		assert!(super::catalog_contract(&candidate.catalog).is_err());
 
 		let mut predecessor = commitment();
 

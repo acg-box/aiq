@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/benchmark-qualification-matrix-v1.schema.json",
+  "title": "AIQ benchmark qualification child matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "child_id",
+    "source_run_id",
+    "source_run_digest",
+    "verifier_attestation_digest",
+    "disposition",
+    "rejection_digest",
+    "synthetic",
+    "candidate",
+    "models",
+    "task_ids",
+    "cells"
+  ],
+  "properties": {
+    "schema_version": { "const": "aiq.benchmark-qualification-matrix.v1" },
+    "child_id": { "$ref": "#/$defs/identity" },
+    "source_run_id": { "$ref": "#/$defs/identity" },
+    "source_run_digest": { "$ref": "#/$defs/digest" },
+    "verifier_attestation_digest": { "$ref": "#/$defs/digest" },
+    "disposition": { "enum": ["accepted", "rejected"] },
+    "rejection_digest": {
+      "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+    },
+    "synthetic": { "const": false },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "models": {
+      "type": "array",
+      "minItems": 17,
+      "maxItems": 17,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/model" }
+    },
+    "task_ids": {
+      "type": "array",
+      "minItems": 72,
+      "maxItems": 72,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/taskId" }
+    },
+    "cells": {
+      "type": "array",
+      "minItems": 1224,
+      "maxItems": 1224,
+      "items": { "$ref": "#/$defs/cell" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "disposition": { "const": "accepted" } } },
+      "then": { "properties": { "rejection_digest": { "type": "null" } } },
+      "else": { "properties": { "rejection_digest": { "$ref": "#/$defs/digest" } } }
+    }
+  ],
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._:/-]+(?![\\s\\S])"
+    },
+    "taskId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?![\\s\\S])"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "catalog_digest",
+        "task_set_digest",
+        "corpus_release_id",
+        "corpus_commitment_digest",
+        "evaluator_digest",
+        "runtime_digest",
+        "toolchain_digest",
+        "source_manifest_digest",
+        "model_selection_digest"
+      ],
+      "properties": {
+        "candidate_id": { "$ref": "#/$defs/identity" },
+        "catalog_digest": { "$ref": "#/$defs/digest" },
+        "task_set_digest": { "$ref": "#/$defs/digest" },
+        "corpus_release_id": { "$ref": "#/$defs/identity" },
+        "corpus_commitment_digest": { "$ref": "#/$defs/digest" },
+        "evaluator_digest": { "$ref": "#/$defs/digest" },
+        "runtime_digest": { "$ref": "#/$defs/digest" },
+        "toolchain_digest": { "$ref": "#/$defs/digest" },
+        "source_manifest_digest": { "$ref": "#/$defs/digest" },
+        "model_selection_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "reasoning_effort"],
+      "properties": {
+        "family": { "enum": ["sol", "terra", "luna"] },
+        "reasoning_effort": { "enum": ["low", "medium", "high", "xhigh", "max", "ultra"] }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "model", "status", "semantic_score"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/taskId" },
+        "model": { "$ref": "#/$defs/model" },
+        "status": { "enum": ["completed", "runtime_invalid"] },
+        "semantic_score": {
+          "oneOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "completed" } } },
+          "then": {
+            "properties": {
+              "semantic_score": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          },
+          "else": { "properties": { "semantic_score": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}

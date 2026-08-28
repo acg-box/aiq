@@ -149,6 +149,65 @@ descriptions. Users can select system, light, or dark color themes. Production
 views must use only real evidence for the sole production tuple, not synthetic
 or legacy data.
 
+## AIQ Core 1.1.0 source foundation
+
+The repository also contains a side-by-side AIQ Core `1.1.0` source
+foundation. It does not change the sole active production tuple above. It is
+not an authored corpus, a sealed candidate, a qualification result, a release,
+or production-ready evidence.
+
+`benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
+`aiq.catalog.v2`. The catalog records one explicit retained or revised decision
+for each of the 72 predecessor task entries. Its current draft has 60
+within-domain clusters, with at most two tasks per cluster. The retained private
+1.0.7 harness observed `empty` for 57 tasks and `timeout` for four tasks, but the
+public source does not contain the private task-to-class mapping. The draft
+therefore records those two classes as `pending_private_reconciliation` for
+every task and blocks sealing. A future candidate identity must replace each
+pending value with `required` or `not_applicable`. The sealer then requires the
+observed controlled class set to equal the catalog declaration exactly.
+
+AIQ Core 1.1.0 sealing also requires one independently supplied
+`aiq.leakage-review.v2` record for every task. Each record binds the reviewer,
+the reviewer task or thread, review time, source commit and tree, source
+manifest, task definition, catalog entry, verdict, method, scope, and notes.
+The sealer copies and hashes the supplied record. It rejects missing, extra,
+rejected, stale, or mismatched records. It never creates a completed review
+from task-authored notes. Recorded process separation is review evidence. It is
+not cryptographic proof that a human reviewer was independent. The v1 review
+contract remains isolated to frozen 1.0.7 compatibility.
+
+The shared `aiq-runner` library owns
+`aiq.benchmark-qualification-policy.v1`. Both existing executables use that
+same in-process implementation:
+
+```sh
+cargo run -p aiq-runner -- qualify-candidate --help
+cargo run -p aiq-verifier -- verify-qualification --help
+```
+
+Qualification accepts exactly three predeclared, independently identified,
+complete, non-synthetic 17-by-72 semantic matrices for one exact candidate.
+Each matrix remains one 1,224-cell publication unit. Qualification does not
+pool, splice, publish, or relabel child runs. The policy requires 72 tasks in
+ten domains, at least 60 clusters, at least 48 informative tasks per matrix,
+at least three informative and four non-uniform tasks in every domain, at most
+three universal semantic-zero tasks, and at most three universal full-credit
+tasks. It also requires the median of the three pairwise configuration-rank
+Spearman values to be at least `0.70` and limits every pairwise configuration
+mean movement to five AIQ points.
+
+Exact-cell agreement and mean absolute cell delta are diagnostics, not gates.
+Each configuration also receives a separate 95% future-single-run prediction
+interval from its three equal-domain mean scores. The deterministic method uses
+the Student t value for two degrees of freedom, sample standard deviation, and
+the `sqrt(1 + 1/3)` prediction factor, then clamps the result to 0 through 100.
+Prediction-interval overlap components form uncertainty-aware comparison
+groups. This run-to-run interval is separate from the existing fixed-item-bank
+conditional interval. A rejected sealed candidate stays rejected. Any task,
+evaluator, policy, or identity revision requires a new candidate identity and a
+new three-run manifest.
+
 ## Repository map
 
 | Path                 | Purpose                                                                   |

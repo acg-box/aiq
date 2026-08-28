@@ -1,0 +1,735 @@
+{
+  "schema_version": "aiq.candidate-design-decisions.v1",
+  "candidate_id": "aiq-core/1.1.0-candidate.1",
+  "predecessor_task_set_version": "1.0.7",
+  "candidate_task_set_version": "1.1.0",
+  "recorded_date": "2026-08-28",
+  "authority": "explicit_per_task_maintainer_decision",
+  "legacy_observed_fixture_counts": {
+    "empty": 57,
+    "timeout": 4
+  },
+  "private_reconciliation_required": true,
+  "decisions": [
+    {
+      "task_id": "coding-01",
+      "decision": "retained",
+      "cluster_id": "coding_validation_mutation-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-02",
+      "decision": "retained",
+      "cluster_id": "coding_api_state-cluster-02",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-03",
+      "decision": "retained",
+      "cluster_id": "coding_candidate_ac-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-04",
+      "decision": "retained",
+      "cluster_id": "coding_validation_mutation-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-05",
+      "decision": "retained",
+      "cluster_id": "coding_data_transform-cluster-03",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-06",
+      "decision": "retained",
+      "cluster_id": "coding_api_state-cluster-02",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-07",
+      "decision": "retained",
+      "cluster_id": "coding_data_transform-cluster-03",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "coding-08",
+      "decision": "retained",
+      "cluster_id": "coding_candidate_ah-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "coding-08 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-01",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-02",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-03",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-02",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-04",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-02",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-05",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-03",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-06",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-03",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-07",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-04",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "debugging-08",
+      "decision": "retained",
+      "cluster_id": "debugging-cluster-04",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "debugging-08 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-01",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_aq-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-02",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_ar-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-03",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_as-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-04",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_at-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-05",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_au-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-06",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_av-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "repository-understanding-07",
+      "decision": "retained",
+      "cluster_id": "repository_understanding_candidate_aw-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "repository-understanding-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-01",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-02",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-03",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-02",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-04",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-02",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-05",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-03",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-06",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-03",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-07",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-04",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "data-processing-08",
+      "decision": "retained",
+      "cluster_id": "data_processing-cluster-04",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "data-processing-08 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-01",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bf-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-02",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bg-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-03",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bh-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-04",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bi-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-05",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bj-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-06",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bk-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "retrieval-verification-07",
+      "decision": "retained",
+      "cluster_id": "retrieval_verification_candidate_bl-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "retrieval-verification-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-01",
+      "decision": "retained",
+      "cluster_id": "documentation_communication-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-02",
+      "decision": "retained",
+      "cluster_id": "documentation_communication-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-03",
+      "decision": "retained",
+      "cluster_id": "documentation_communication_candidate_bo-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-04",
+      "decision": "retained",
+      "cluster_id": "documentation_communication_candidate_bp-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-05",
+      "decision": "retained",
+      "cluster_id": "documentation_communication_candidate_bq-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-06",
+      "decision": "retained",
+      "cluster_id": "documentation_communication_candidate_br-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "documentation-communication-07",
+      "decision": "retained",
+      "cluster_id": "documentation_communication_candidate_bs-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "documentation-communication-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-01",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_bt-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-02",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_bu-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-03",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_bv-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-04",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_bw-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-05",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_bx-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-06",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_by-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "planning-execution-07",
+      "decision": "retained",
+      "cluster_id": "planning_execution_candidate_bz-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "planning-execution-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-01",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_ca-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-02",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_cb-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-03",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_cc-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-04",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_cd-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-05",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_ce-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-06",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_cf-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "tool-use-07",
+      "decision": "retained",
+      "cluster_id": "tool_use_candidate_cg-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "tool-use-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "instruction-following-01",
+      "decision": "retained",
+      "cluster_id": "instruction_following_candidate_ch-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "instruction-following-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "instruction-following-02",
+      "decision": "retained",
+      "cluster_id": "instruction_following_candidate_ci-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "instruction-following-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "instruction-following-03",
+      "decision": "retained",
+      "cluster_id": "instruction_following_candidate_cj-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "instruction-following-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "instruction-following-04",
+      "decision": "retained",
+      "cluster_id": "instruction_following_candidate_ck-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "instruction-following-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "instruction-following-05",
+      "decision": "retained",
+      "cluster_id": "instruction_following_candidate_cl-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "instruction-following-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "instruction-following-06",
+      "decision": "retained",
+      "cluster_id": "instruction_following_candidate_cm-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "instruction-following-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-01",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_cn-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-01 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-02",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_co-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-02 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-03",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_cp-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-03 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-04",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_cq-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-04 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-05",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_cr-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-05 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-06",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_cs-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-06 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    },
+    {
+      "task_id": "reliability-recovery-07",
+      "decision": "retained",
+      "cluster_id": "reliability_recovery_candidate_ct-cluster-01",
+      "acceptance_fixture_applicability": {
+        "empty": "pending_private_reconciliation",
+        "timeout": "pending_private_reconciliation"
+      },
+      "rationale": "reliability-recovery-07 retains its 1.0.7 semantic scorer contract for the source foundation. Its cluster assignment is explicit, and its optional fixture applicability must be reconciled against the retained private harness before this candidate can be sealed."
+    }
+  ]
+}
