@@ -1218,6 +1218,12 @@ pub fn sign_full_calibration_admission(
 		|| stage.runner == *identity.node()
 		|| stage.provenance.task_set_digest != bindings.task_set_digest
 		|| stage.provenance.evaluator_digest != bindings.evaluator_digest
+		|| stage.provenance.corpus_commitment_sha256 != bindings.corpus_commitment_sha256
+		|| stage.provenance.source_manifest_digest != bindings.source_manifest_digest
+		|| stage.provenance.runner_executable_digest != bindings.runner_executable_digest
+		|| stage.provenance.codex_executable_digest != bindings.codex_executable_digest
+		|| stage.provenance.codex_code_mode_host_digest != bindings.codex_code_mode_host_digest
+		|| stage.runner_commit != bindings.runner_commit
 		|| stage.task_set_hash != bindings.task_set_digest
 		|| diagnostic.policy != OfficialCalibrationPolicy::default()
 		|| !diagnostic.passed()
@@ -1274,24 +1280,66 @@ pub fn sign_full_calibration_admission(
 		issuance_bindings: bindings,
 		observed_unix_ms: attestation.observed_unix_ms,
 	};
-	let admission_digest = protocol::canonical_hash(&claims)
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-	let mut admission = CalibrationAdmissionV3 {
-		schema_version: CALIBRATION_ADMISSION_SCHEMA_VERSION.to_owned(),
-		signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
-		signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
-		claims,
-		admission_digest,
-		signature: String::new(),
-	};
-	let bytes = protocol::canonical_json(&UnsignedCalibrationAdmission::from(&admission))
-		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	let admission = sign_calibration_admission_claims(identity, claims)?;
 
-	admission.signature = identity.sign_calibration_bytes(&bytes);
-
-	admission.verify(&admission.claims.issuance_bindings.clone(), tasks, results)?;
+	admission.verify(&admission.claims.issuance_bindings, tasks, results)?;
 
 	Ok(admission)
+}
+
+/// Renews only the operational issuance bindings of a previously valid admission bundle.
+///
+/// The target bindings must retain every immutable calibration authority. The source package,
+/// result artifacts, model, and evaluator are not inputs to this operation.
+pub fn renew_calibration_admission(
+	identity: &VerifierSigningIdentity,
+	source: &CalibrationAdmissionBundleV3,
+	target_bindings: CalibrationAdmissionBindings,
+	tasks: &[TaskDefinition],
+) -> Result<CalibrationAdmissionBundleV3, CalibrationVerificationError> {
+	let source_bindings = &source.admission.claims.issuance_bindings;
+
+	if !same_immutable_calibration_authority(source_bindings, &target_bindings)
+		|| identity.node() != &target_bindings.approved_verifier
+	{
+		return Err(CalibrationVerificationError::new(
+			"calibration admission renewal changed immutable calibration authority",
+		));
+	}
+
+	// The independently supplied target identities are compared above before this verifies the
+	// source signatures with the source bundle's approved verifier key.
+	source.verify_for_official(source_bindings, tasks)?;
+
+	let provenance = &source.admission.claims.replay_provenance;
+
+	if provenance.corpus_commitment_sha256 != source_bindings.corpus_commitment_sha256
+		|| provenance.source_manifest_digest != source_bindings.source_manifest_digest
+		|| provenance.task_set_digest != source_bindings.task_set_digest
+		|| provenance.evaluator_digest != source_bindings.evaluator_digest
+		|| provenance.codex_executable_digest != source_bindings.codex_executable_digest
+		|| provenance.codex_code_mode_host_digest != source_bindings.codex_code_mode_host_digest
+	{
+		return Err(CalibrationVerificationError::new(
+			"source calibration admission does not match its immutable replay authority",
+		));
+	}
+
+	let mut claims = source.admission.claims.clone();
+
+	claims.issuance_bindings = target_bindings.clone();
+
+	let admission = sign_calibration_admission_claims(identity, claims)?;
+	let renewed = CalibrationAdmissionBundleV3 {
+		schema_version: source.schema_version.clone(),
+		stage: source.stage.clone(),
+		attestation: source.attestation.clone(),
+		admission,
+	};
+
+	renewed.verify_for_official(&target_bindings, tasks)?;
+
+	Ok(renewed)
 }
 
 /// Builds verifier-facing efficiency evidence without changing score semantics.
@@ -1384,6 +1432,47 @@ pub fn attest_calibration_stage(
 	attestation.verify(stage, identity.node())?;
 
 	Ok(attestation)
+}
+
+fn same_immutable_calibration_authority(
+	source: &CalibrationAdmissionBindings,
+	target: &CalibrationAdmissionBindings,
+) -> bool {
+	// The build receipt, repository commit/tree, and runner/verifier executable digests are the
+	// complete renewal allowlist. Every field compared here is immutable across renewal.
+	source.production_reference_sha256 == target.production_reference_sha256
+		&& source.approved_runner == target.approved_runner
+		&& source.approved_verifier == target.approved_verifier
+		&& source.corpus_commitment_sha256 == target.corpus_commitment_sha256
+		&& source.source_manifest_digest == target.source_manifest_digest
+		&& source.task_set_digest == target.task_set_digest
+		&& source.evaluator_digest == target.evaluator_digest
+		&& source.model_toolchain_digest == target.model_toolchain_digest
+		&& source.evaluator_runtime_digest == target.evaluator_runtime_digest
+		&& source.codex_executable_digest == target.codex_executable_digest
+		&& source.codex_code_mode_host_digest == target.codex_code_mode_host_digest
+}
+
+fn sign_calibration_admission_claims(
+	identity: &VerifierSigningIdentity,
+	claims: CalibrationAdmissionClaims,
+) -> Result<CalibrationAdmissionV3, CalibrationVerificationError> {
+	let admission_digest = protocol::canonical_hash(&claims)
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	let mut admission = CalibrationAdmissionV3 {
+		schema_version: CALIBRATION_ADMISSION_SCHEMA_VERSION.to_owned(),
+		signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
+		signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
+		claims,
+		admission_digest,
+		signature: String::new(),
+	};
+	let bytes = protocol::canonical_json(&UnsignedCalibrationAdmission::from(&admission))
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+	admission.signature = identity.sign_calibration_bytes(&bytes);
+
+	Ok(admission)
 }
 
 fn verify_calibration_run_inner(
