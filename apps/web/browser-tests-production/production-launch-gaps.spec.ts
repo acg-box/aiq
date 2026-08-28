@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
+import { classifyAggregateCostText } from './production-acceptance-helpers.ts';
 import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production requests stay serial to bound load and preserve before/after evidence order. */
@@ -108,22 +109,26 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
     name: 'Filtered configuration comparison table',
   });
   await expect(status).toContainText('17/17 visible');
-  await expect(comparison.locator('tbody tr')).toHaveCount(17);
-  const snapshots = await comparison.locator('tbody tr').allInnerTexts();
-  expect(snapshots.some((row) => row.includes('Unavailable'))).toBe(true);
-  expect(snapshots.some((row) => /\$\d/.test(row))).toBe(true);
+  const rows = comparison.locator('tbody tr');
+  await expect(rows).toHaveCount(17);
+  const snapshots = await rows.allInnerTexts();
+  const costShapes = await Promise.all(
+    (await rows.all()).map(async (row) =>
+      classifyAggregateCostText(await row.getByRole('cell').nth(2).innerText()),
+    ),
+  );
+  expect(costShapes.some((shape) => shape === 'exact' || shape === 'range')).toBe(true);
 
   await workbench.getByRole('button', { name: /Filters & configurations/ }).click();
   await workbench.getByRole('button', { name: 'Exact cost only', exact: true }).click();
   await expect(page).toHaveURL(/compareCost=estimated/);
   const measuredRows = comparison.locator('tbody tr');
   const measuredCount = await measuredRows.count();
-  expect(measuredCount).toBeGreaterThan(0);
-  expect(measuredCount).toBeLessThan(17);
+  expect(measuredCount).toBe(costShapes.filter((shape) => shape === 'exact').length);
   await expect(status).toContainText(`${measuredCount}/17 visible`);
-  expect((await measuredRows.allInnerTexts()).every((row) => !row.includes('Unavailable'))).toBe(
-    true,
-  );
+  for (const row of await measuredRows.all()) {
+    expect(classifyAggregateCostText(await row.getByRole('cell').nth(2).innerText())).toBe('exact');
+  }
 
   await workbench.getByRole('button', { name: 'Reset filters', exact: true }).click();
   await expect(status).toContainText('17/17 visible');
@@ -210,7 +215,7 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   return snapshots;
 }
 
-test('production compare exposes filterable all-configuration evidence and honest unavailable cost', async ({
+test('production compare exposes filterable evidence-dependent aggregate cost', async ({
   page,
 }) => {
   await compareEvidenceSnapshot(page);
