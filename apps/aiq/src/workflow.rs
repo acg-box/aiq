@@ -1600,15 +1600,15 @@ mod tests {
 
 		fs::write(
 			&path,
-			br#"{"results":[{"status":"completed","task_score":0.75},{"status":"failed","task_score":null,"failure":{"kind":"evaluator_failure"}}]}"#,
+			br#"{"results":[{"status":"completed","task_score":0.75},{"status":"failed","task_score":null,"failure":{"kind":"evaluator_failure"}},{"status":"failed","task_score":0.5,"failure":{"kind":"evaluator_failure"}}]}"#,
 		)
 		.expect("summary fixture");
 
 		let summary = official::summarize_run(&path).expect("summary");
 
-		assert_eq!(summary.total_results, 2);
-		assert_eq!(summary.non_semantic_results, 1);
-		assert_eq!(summary.failure_kinds.get("evaluator_failure"), Some(&1));
+		assert_eq!(summary.total_results, 3);
+		assert_eq!(summary.non_semantic_results, 2);
+		assert_eq!(summary.failure_kinds.get("evaluator_failure"), Some(&2));
 
 		fs::remove_dir_all(root).expect("remove summary fixture");
 	}

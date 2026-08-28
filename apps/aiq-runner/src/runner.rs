@@ -315,8 +315,8 @@ pub struct ResultFailure {
 	pub message: String,
 	/// Process exit code.
 	pub exit_code: Option<i32>,
-	/// Whether the live runner can retry the invocation before it commits a terminal result.
-	/// Checkpoint resume never retries an already committed result.
+	/// Whether the live runner can retry the unfinished phase before it commits a terminal result.
+	/// Checkpoint resume never retries an already committed result or repeats completed model work.
 	pub retryable: bool,
 }
 
@@ -1050,6 +1050,10 @@ where
 				self.evaluator_runtime,
 			)?;
 
+			if retryable_evaluator_result(&result) {
+				return Err(retryable_evaluator_error(&result));
+			}
+
 			result.assign_result_id()?;
 			committed.insert(index, result);
 			checkpoint.pending_evaluations.retain(|candidate| {
@@ -1206,7 +1210,9 @@ where
 
 			if match result.as_ref() {
 				Ok(cell) => {
-					subscription_limit_result(&cell.result) || aborts_paid_run(&cell.result)
+					subscription_limit_result(&cell.result)
+						|| retryable_evaluator_result(&cell.result)
+						|| aborts_paid_run(&cell.result)
 				},
 				Err(_) => true,
 			} {
@@ -1484,6 +1490,28 @@ where
 				&& candidate.task_version == marker.task_version
 				&& candidate.model == marker.model
 		});
+
+		if retryable_evaluator_result(&result) {
+			let Some(position) = pending_position else {
+				return Err(RunnerError::new(
+					"retryable evaluator failure has no durable pending evaluation",
+				));
+			};
+			let retained = sealed_workspace.as_ref().ok_or_else(|| {
+				RunnerError::new("retryable evaluator failure lost its sealed workspace")
+			})?;
+
+			if in_flight_position.is_some()
+				|| retained.path()
+					!= checkpoint.pending_evaluations[position].sealed_workspace.as_path()
+			{
+				return Err(RunnerError::new(
+					"retryable evaluator failure does not match its durable pending evidence",
+				));
+			}
+
+			return Err(retryable_evaluator_error(&result));
+		}
 
 		match (in_flight_position, pending_position) {
 			(Some(position), None) => {
@@ -2820,6 +2848,29 @@ fn subscription_limit_result(result: &TaskResult) -> bool {
 				&& result.evaluator_result_sha256.is_none()
 				&& result.evaluator_stdout_sha256.is_none()
 		})
+}
+
+fn retryable_evaluator_result(result: &TaskResult) -> bool {
+	result.status == ResultStatus::Failed
+		&& result.evaluation == EvaluationOutcome::NotEvaluated
+		&& result.task_score.is_none()
+		&& result.response.is_some()
+		&& result.response_sha256.is_some()
+		&& result.evaluator_result_sha256.is_none()
+		&& result.evaluator_stdout_sha256.is_none()
+		&& result.evaluator_checks.is_empty()
+		&& result.workspace_manifest.is_some()
+		&& result.failure.as_ref().is_some_and(|failure| {
+			failure.kind == FailureKind::EvaluatorFailure && failure.retryable
+		})
+}
+
+fn retryable_evaluator_error(result: &TaskResult) -> RunnerError {
+	RunnerError::new(format!(
+		"retryable evaluator failure retained pending evidence for {} / {}; model output remains unchanged",
+		result.model.key(),
+		result.task_id,
+	))
 }
 
 fn reject_inline_evaluator_checks<'de, D>(_deserializer: D) -> Result<Vec<EvaluatorCheck>, D::Error>
@@ -4379,18 +4430,22 @@ fn evaluation_fields(
 			result.checks,
 			None,
 		),
-		Err(error) => (
-			ResultStatus::Failed,
-			EvaluationOutcome::NotEvaluated,
-			None,
-			Vec::new(),
-			Some(ResultFailure {
-				kind: FailureKind::EvaluatorFailure,
-				message: format!("controlled evaluator {:?} failure: {error}", error.kind()),
-				exit_code,
-				retryable: false,
-			}),
-		),
+		Err(error) => {
+			let retryable = error.is_retryable();
+
+			(
+				ResultStatus::Failed,
+				EvaluationOutcome::NotEvaluated,
+				None,
+				Vec::new(),
+				Some(ResultFailure {
+					kind: FailureKind::EvaluatorFailure,
+					message: format!("controlled evaluator {:?} failure: {error}", error.kind()),
+					exit_code,
+					retryable,
+				}),
+			)
+		},
 	}
 }
 
@@ -5174,6 +5229,71 @@ mod tests {
 		}
 	}
 
+	#[cfg(unix)]
+	fn transient_execution_evaluator(
+		evaluator_root: &Path,
+	) -> (ExternalEvaluatorBinding, EvaluatorRuntime) {
+		let executable = evaluator_root.join("evaluator");
+		let runtime_path = evaluator_root.join("node-test-runtime");
+		let first_attempt = evaluator_root.join("first-attempt");
+		let second_attempt = evaluator_root.join("second-attempt");
+
+		fs::write(
+			&runtime_path,
+			"#!/bin/sh\nif [ \"$1\" = --version ]; then printf 'v0.0.0-test\\n'; else exec /bin/sh \"$@\"; fi\n",
+		)
+		.expect("test runtime");
+		fs::set_permissions(&runtime_path, fs::Permissions::from_mode(0o700))
+			.expect("test runtime permissions");
+		fs::write(
+			&executable,
+			format!(
+				concat!(
+					"#!/bin/sh\n",
+					"cat >/dev/null\n",
+					"if [ ! -f '{}' ]; then : > '{}'; exit 1; fi\n",
+					"if [ ! -f '{}' ]; then : > '{}'; exit 1; fi\n",
+					"printf '%s\\n' '{}'\n",
+				),
+				first_attempt.display(),
+				first_attempt.display(),
+				second_attempt.display(),
+				second_attempt.display(),
+				r#"{"schema_version":"aiq.evaluator-result.v3","outcome":"correct","score":1.0,"checks":[{"check_id":"transient_recovery","weight":1,"passed":true,"failure_class":"none","evidence_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}"#,
+			),
+		)
+		.expect("transient evaluator executable");
+		fs::set_permissions(&executable, fs::Permissions::from_mode(0o700))
+			.expect("transient evaluator permissions");
+
+		let runtime = EvaluatorRuntime::resolve(&runtime_path).expect("shell-backed test runtime");
+		let executable_digest = format!(
+			"sha256:{}",
+			hex::encode(Sha256::digest(fs::read(&executable).expect("evaluator bytes")))
+		);
+		let configuration = serde_json::from_value(serde_json::json!({
+			"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion"
+		}))
+		.expect("formal evaluator configuration");
+		let binding = ExternalEvaluatorBinding {
+			protocol_version: EVALUATOR_PROTOCOL_VERSION.to_owned(),
+			scorer_version: "1.0.0".to_owned(),
+			runtime_kind: EvaluatorRuntimeKind::Node,
+			runtime_executable_digest: runtime.executable_digest().to_owned(),
+			executable_ref: PathBuf::from("evaluator"),
+			executable_digest,
+			configuration_digest: protocol::canonical_hash(&configuration)
+				.expect("configuration digest"),
+			arguments: Vec::new(),
+			max_input_bytes: 8_192,
+			max_output_bytes: 8_192,
+			configuration,
+		};
+
+		(binding, runtime)
+	}
+
 	fn selected_validation(version: &str, node_id: String) -> CapabilityValidationReport {
 		CapabilityValidationReport {
 			schema_version: "aiq.capability-validation.v3".to_owned(),
@@ -5363,6 +5483,33 @@ mod tests {
 		};
 
 		(tasks, models, manifest, validation, slot, commitments)
+	}
+
+	fn refresh_selected_task_commitments(
+		commitments: &mut RunCommitments,
+		tasks: &[TaskDefinition],
+		validation: &CapabilityValidationReport,
+	) {
+		let task_set_hash = task::task_set_hash(tasks).expect("task set hash");
+		let evaluator_digest = protocol::canonical_hash(&tasks).expect("evaluator digest");
+		let models = commitments.models.clone();
+
+		commitments.task_set_hash.clone_from(&task_set_hash);
+		commitments.evaluator_digest.clone_from(&evaluator_digest);
+
+		commitments.provenance.task_set_digest = task_set_hash;
+		commitments.provenance.evaluator_digest = evaluator_digest;
+
+		set_capacity_jobs(commitments, tasks, &models, validation, 1);
+
+		commitments.run_id = resume::classified_run_id(
+			&commitments.schedule_slot,
+			&commitments.task_set_hash,
+			&commitments.provenance.corpus_commitment_sha256,
+			&models,
+			commitments.run_class,
+		)
+		.expect("run id");
 	}
 
 	fn assert_full_calibration_analysis(
@@ -6486,6 +6633,127 @@ mod tests {
 		assert_eq!(run.results.len(), 1);
 		assert_eq!(run.results[0].status, ResultStatus::Completed);
 		assert_eq!(run.results[0].response.as_deref(), Some("WRONG"));
+		assert!(completed.pending_evaluations.is_empty());
+		assert!(!retained.exists());
+
+		fs::remove_dir_all(root).expect("cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn retryable_evaluator_failure_stays_pending_and_replays_without_model_reexecution() {
+		let root = env::temp_dir().join(format!(
+			"aiq-runner-retryable-evaluator-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace_root = root.join("workspaces");
+		let evaluator_root = root.join("evaluators");
+
+		fs::create_dir_all(&workspace_root).expect("workspace root");
+		fs::create_dir(&evaluator_root).expect("evaluator root");
+
+		let workspace =
+			TestWorkspace { root: workspace_root.clone(), quarantines: AtomicUsize::new(0) };
+		let calls = Arc::new(AtomicUsize::new(0));
+		let adapter = CodexAdapter::new(
+			IncorrectExecutor(Arc::clone(&calls)),
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home")),
+		);
+		let (mut tasks, _models, manifest, validation, _slot, mut commitments) =
+			selected_fixture(1, 1);
+		let (binding, runtime) = transient_execution_evaluator(&evaluator_root);
+
+		tasks[0].evaluator = Some(Evaluator {
+			kind: "repository_test_suite".to_owned(),
+			expected: None,
+			case_sensitive: false,
+			external: Some(binding),
+		});
+		commitments.execution_root = fs::canonicalize(&workspace_root)
+			.expect("canonical workspace root")
+			.display()
+			.to_string();
+
+		refresh_selected_task_commitments(&mut commitments, &tasks, &validation);
+
+		let first = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation.clone(),
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: Some((&evaluator_root, &runtime)),
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect_err("retryable evaluator failure must not produce a terminal run");
+		let pending =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+		let retained = pending.pending_evaluations[0].sealed_workspace.clone();
+		let response_sha256 = pending.pending_evaluations[0].response_sha256.clone();
+
+		assert!(first.to_string().contains("retryable evaluator failure"));
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+		assert!(pending.results.is_empty());
+		assert!(pending.evaluator_results.is_empty());
+		assert_eq!(pending.pending_evaluations.len(), 1);
+		assert_eq!(pending.pending_evaluations[0].final_response, "WRONG");
+		assert!(retained.is_dir());
+
+		let second = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation.clone(),
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: Some((&evaluator_root, &runtime)),
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect_err("a resumed evaluator failure must stay pending");
+		let still_pending =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+
+		assert!(second.to_string().contains("retryable evaluator failure"));
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+		assert_eq!(still_pending.results, pending.results);
+		assert_eq!(still_pending.evaluator_results, pending.evaluator_results);
+		assert_eq!(still_pending.pending_evaluations, pending.pending_evaluations);
+		assert!(retained.is_dir());
+
+		let resumed = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: Some((&evaluator_root, &runtime)),
+				checkpoint_path: &checkpoint_path,
+				jobs: 1,
+			},
+		)
+		.expect("pending evaluator must replay without a model call");
+		let SelectedRun::Calibration(run) = resumed else { panic!("calibration fixture") };
+		let completed =
+			RunCheckpoint::load(&checkpoint_path, &commitments).expect("load").expect("checkpoint");
+
+		assert_eq!(calls.load(Ordering::SeqCst), 1);
+		assert_eq!(run.results.len(), 1);
+		assert_eq!(run.results[0].status, ResultStatus::Completed);
+		assert_eq!(run.results[0].response.as_deref(), Some("WRONG"));
+		assert_eq!(run.results[0].response_sha256.as_ref(), Some(&response_sha256));
 		assert!(completed.pending_evaluations.is_empty());
 		assert!(!retained.exists());
 
@@ -8188,6 +8456,7 @@ mod tests {
 			failed.4.as_ref().map(|failure| failure.kind),
 			Some(FailureKind::EvaluatorFailure)
 		);
+		assert_eq!(failed.4.as_ref().map(|failure| failure.retryable), Some(false));
 		assert_eq!(failed.2, None);
 	}
 }
