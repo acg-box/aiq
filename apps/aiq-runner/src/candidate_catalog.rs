@@ -231,7 +231,10 @@ pub fn validate_candidate_catalog(
 	let mut task_ids = BTreeSet::new();
 	let supersedes_task_version = if matches!(
 		input.candidate_identity.candidate_id.as_str(),
-		"aiq-core/1.1.0-candidate.3" | "aiq-core/1.1.0-candidate.4"
+		"aiq-core/1.1.0-candidate.3"
+			| "aiq-core/1.1.0-candidate.4"
+			| "aiq-core/1.1.0-candidate.5"
+			| "aiq-core/1.1.0-candidate.6"
 	) {
 		"1.1.0"
 	} else {
@@ -485,7 +488,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.4");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.6");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 	}
