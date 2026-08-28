@@ -1310,7 +1310,7 @@ enum Command {
 		/// Current public-safe controlled-corpus commitment.
 		#[arg(long)]
 		corpus_commitment: PathBuf,
-		/// Repository root used to verify every committed runner source byte.
+		/// Retained corpus source snapshot used to verify every committed runner source byte.
 		#[arg(long)]
 		source_root: PathBuf,
 		/// Capability manifest protected from benchmark children.
@@ -1389,7 +1389,7 @@ enum Command {
 			requires_all = ["source_root", "evaluator_root", "evaluator_runtime", "codex_toolchain_root"]
 		)]
 		corpus_commitment: Option<PathBuf>,
-		/// Repository root used to verify the committed runner source manifest.
+		/// Corpus source root used to verify the committed runner source manifest.
 		#[arg(
 			long,
 			requires_all = ["corpus_commitment", "evaluator_root", "evaluator_runtime", "codex_toolchain_root"]
@@ -1425,7 +1425,7 @@ enum Command {
 		/// Current public-safe controlled-corpus commitment.
 		#[arg(long)]
 		corpus_commitment: PathBuf,
-		/// Repository root used to verify every committed runner source byte.
+		/// Retained corpus source snapshot used to verify every committed runner source byte.
 		#[arg(long)]
 		source_root: PathBuf,
 		/// Required capability manifest.
