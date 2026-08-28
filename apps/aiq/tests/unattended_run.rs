@@ -520,6 +520,12 @@ fn write_fake_runner(
 	gate_started: &Path,
 	gate_release: &Path,
 ) {
+	let run_id = format!("run_{}", "a".repeat(64));
+	let package = serde_json::to_string(&serde_json::json!({
+		"idempotency_key": run_id.as_str(),
+		"payload": { "run_id": run_id.as_str() },
+	}))
+	.expect("fake package JSON");
 	let official_gate = match mode {
 		FixtureMode::BlockOfficial => format!(
 			"printf '%s\\n' started >{started}\nwhile [ ! -f {release} ]; do sleep 0.01; done\n",
@@ -568,7 +574,7 @@ case "$1" in
     [ -z "${{AIQ_RUNNER_SUBMISSION_TOKEN+x}}" ]
     [ -z "${{AIQ_VERIFIER_INGRESS_TOKEN+x}}" ]
     printf '%s\n' package:runner-signing >>{log}
-    printf '{{}}\n' >"$(output_arg "$@")"
+    printf '%s\n' {package} >"$(output_arg "$@")"
     ;;
   submit|submit-speed)
     [ "$AIQ_RUNNER_SUBMISSION_TOKEN" = runner-submission-sentinel ]
@@ -589,25 +595,42 @@ esac
 "#,
 			log = shell_quote(log),
 			official_gate = official_gate,
+			package = shell_quote_text(&package),
 			speed_gate = speed_gate,
 		),
 	);
 }
 
 fn write_fake_verifier(path: &Path, log: &Path) {
+	let run_id = format!("run_{}", "a".repeat(64));
+
 	write_script(
 		path,
 		&format!(
-			r#"[ "$AIQ_VERIFIER_INGRESS_TOKEN" = verifier-ingress-sentinel ]
+			r#"argument_value() {{
+  expected="$1"
+  shift
+  previous=
+  for argument in "$@"; do
+    if [ "$previous" = "$expected" ]; then printf %s "$argument"; return; fi
+    previous=$argument
+  done
+  return 1
+}}
+[ "$AIQ_VERIFIER_INGRESS_TOKEN" = verifier-ingress-sentinel ]
 [ "$AIQ_VERIFIER_SIGNING_KEY" = verifier-signing-sentinel ]
 [ -z "${{AIQ_RUNNER_SIGNING_KEY+x}}" ]
 [ -z "${{AIQ_RUNNER_SUBMISSION_TOKEN+x}}" ]
 [ -z "${{INFISICAL_TOKEN+x}}" ]
 [ -z "${{AMBIENT_SECRET+x}}" ]
 printf '%s\n' verifier:verifier >>{log}
-printf '%s\n' '{{"disposition":"verified"}}'
+environment="$(argument_value --environment "$@")"
+package="$(dirname "$environment")/../state/package.json"
+package_sha256="$(/usr/bin/shasum -a 256 "$package" | /usr/bin/awk '{{print $1}}')"
+printf '{{"schema_version":"aiq.verifier-record.v2","inbox_id":"223e4567-e89b-42d3-a456-426614174000","idempotency_key":"%s","package_sha256":"%s","disposition":"verified","attempt":1}}\n' {run_id} "$package_sha256"
 "#,
 			log = shell_quote(log),
+			run_id = shell_quote_text(&run_id),
 		),
 	);
 }
@@ -791,7 +814,11 @@ fn write_script(path: &Path, body: &str) {
 }
 
 fn shell_quote(path: &Path) -> String {
-	format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
+	shell_quote_text(&path.display().to_string())
+}
+
+fn shell_quote_text(value: &str) -> String {
+	format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn digest(path: &Path) -> String {
