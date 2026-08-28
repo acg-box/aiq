@@ -506,6 +506,7 @@ fn validate_trials(batch: &SpeedObservationBatch) -> Result<(), SpeedObservation
 			|| trial.post_first_token_output_tps_millis.is_some()
 			|| trial.tool_usage.total_calls != 0
 			|| !trial.tool_usage.by_tool.is_empty()
+			|| !trial.tool_usage.completed_command_sha256.is_empty()
 			|| trial.artifacts.len() > 2
 			|| trial.artifacts.iter().any(|artifact| {
 				!matches!(artifact.kind.as_str(), "stdout.jsonl" | "stderr.txt")

@@ -1430,6 +1430,58 @@ await test('capability validation accepts the serialized workspace-integrity ada
   strictEqual(matchesSchema(unknown, reportSchema, schema), false);
 });
 
+await test('tool evidence schemas accept optional completed-command digest counts', async () => {
+  const resultSchema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
+  const resultPackage = requireObject(
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
+    'result package fixture',
+  );
+  const result = requireObjectAt(
+    requireArrayProperty(requireObjectProperty(resultPackage, 'payload'), 'results'),
+    0,
+    'results',
+  );
+  const resultToolUsage = requireObjectProperty(result, 'tool_usage');
+  const commandDigest = 'sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319';
+
+  resultToolUsage.total_calls = 1;
+  resultToolUsage.by_tool = { command_execution: 1 };
+  resultToolUsage.completed_command_sha256 = { [commandDigest]: 1 };
+
+  strictEqual(matchesSchema(resultPackage, resultSchema, resultSchema), true);
+
+  const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
+  const normalized = normalizedResult({ family: 'sol', reasoning_effort: 'low' }, 0, 0);
+
+  const normalizedToolUsage = requireObjectProperty(normalized, 'tool_usage');
+  normalizedToolUsage.total_calls = 1;
+  normalizedToolUsage.by_tool = { command_execution: 1 };
+  normalizedToolUsage.completed_command_sha256 = {
+    [commandDigest]: 1,
+  };
+
+  const normalizedTaskResultSchema = resolveReference(
+    normalizedSchema,
+    '#/$defs/normalizedTaskResult',
+  );
+
+  strictEqual(matchesSchema(normalized, normalizedTaskResultSchema, normalizedSchema), true);
+
+  resultToolUsage.completed_command_sha256 = {};
+  strictEqual(matchesSchema(resultPackage, resultSchema, resultSchema), false);
+
+  resultToolUsage.completed_command_sha256 = { [`sha256:${'A'.repeat(64)}`]: 1 };
+  strictEqual(matchesSchema(resultPackage, resultSchema, resultSchema), false);
+
+  normalizedToolUsage.completed_command_sha256 = {};
+  strictEqual(matchesSchema(normalized, normalizedTaskResultSchema, normalizedSchema), false);
+
+  normalizedToolUsage.completed_command_sha256 = {
+    [commandDigest]: 0,
+  };
+  strictEqual(matchesSchema(normalized, normalizedTaskResultSchema, normalizedSchema), false);
+});
+
 await test('result submission schema rejects matrix, pair, status, byte, artifact, and tool mutations', async () => {
   const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixture = requireObject(
@@ -1669,6 +1721,7 @@ await test('normalized batch schema enforces closed records and exact matrix car
   strictEqual(requireArrayProperty(batch, 'efficiency').length, 17);
   deepStrictEqual(requireObjectProperty(schema, 'x-aiq-limits'), {
     canonical_stage_bytes: 4_194_304,
+    completed_command_digest_entries_per_batch: 119,
     model_runs: 17,
     results_per_model_run: 72,
     execution_concurrency: 32,

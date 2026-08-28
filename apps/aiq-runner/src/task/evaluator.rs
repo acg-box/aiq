@@ -261,8 +261,12 @@ process.stdin.on('end', () => {{
 		workspace: &Path,
 		runtime: &EvaluatorRuntime,
 	) -> Result<crate::task::EvaluationResult, crate::task::EvaluationError> {
-		let tool_evidence =
-			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let tool_evidence = NormalizedToolEvidence {
+			steps: 1,
+			total_calls: 0,
+			by_tool: BTreeMap::new(),
+			completed_command_sha256: BTreeMap::new(),
+		};
 		let context = EvaluatorContext {
 			task_id: "coding-01",
 			task_version: "1.0.0",
@@ -294,8 +298,12 @@ process.stdin.on('end', () => {{
 		evaluator_root: &Path,
 		workspace: &Path,
 	) -> Result<super::CheckedEvaluatorObservation, crate::task::EvaluationError> {
-		let tool_evidence =
-			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let tool_evidence = NormalizedToolEvidence {
+			steps: 1,
+			total_calls: 0,
+			by_tool: BTreeMap::new(),
+			completed_command_sha256: BTreeMap::new(),
+		};
 		let context = EvaluatorContext {
 			task_id: "coding-01",
 			task_version: "1.0.0",
@@ -322,6 +330,47 @@ process.stdin.on('end', () => {{
 		assert_eq!(value["executable_ref"], "tests/fixtures/echo-evaluator.mjs");
 		assert!(value.get("executable").is_none());
 		assert!(value.get("evaluator_root").is_none());
+	}
+
+	#[test]
+	fn evaluator_input_carries_only_completed_command_digest_counts() {
+		let unique =
+			SystemTime::now().duration_since(UNIX_EPOCH).expect("fixture clock").as_nanos();
+		let root = env::temp_dir()
+			.join(format!("aiq-evaluator-command-digest-{}-{unique}", process::id()));
+		let evaluator_root = root.join("evaluator");
+		let workspace = root.join("workspace");
+
+		fs::create_dir_all(&evaluator_root).expect("evaluator root");
+		fs::create_dir_all(&workspace).expect("candidate workspace");
+
+		let digest = "sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319";
+		let tool_evidence = NormalizedToolEvidence {
+			steps: 1,
+			total_calls: 1,
+			by_tool: BTreeMap::from([("command_execution".to_owned(), 1)]),
+			completed_command_sha256: BTreeMap::from([(digest.to_owned(), 1)]),
+		};
+		let context = EvaluatorContext {
+			task_id: "tool-use-01",
+			task_version: "1.1.0",
+			run_id: "run_fixture",
+			model: MODEL_MATRIX[0],
+			final_response: "OK",
+			candidate_workspace: &workspace,
+			workspace_manifest_sha256: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			tool_evidence: &tool_evidence,
+		};
+		let controlled_cwd = fs::canonicalize(&evaluator_root).expect("controlled evaluator root");
+		let input = echo_binding("{}")
+			.build_input("bound_tool_receipt_evaluator", &context, &controlled_cwd)
+			.expect("evaluator input");
+		let value: Value = serde_json::from_slice(&input).expect("evaluator input JSON");
+
+		assert_eq!(value["tool_evidence"]["completed_command_sha256"][digest], 1);
+		assert!(value["tool_evidence"].get("command").is_none());
+
+		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]
@@ -420,6 +469,7 @@ process.stdin.on('end', () => {{
 						steps: 1,
 						total_calls: 0,
 						by_tool: BTreeMap::new(),
+						completed_command_sha256: BTreeMap::new(),
 					};
 					let task_id = format!("coding-{worker:02}");
 					let context = EvaluatorContext {
@@ -499,8 +549,12 @@ process.stdin.on('end', () => {{
 
 		let runtime = resolve_node_runtime(&root.join("runtime"));
 		let binding = gate_test_binding(&evaluator_root, &runtime, 0);
-		let tool_evidence =
-			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let tool_evidence = NormalizedToolEvidence {
+			steps: 1,
+			total_calls: 0,
+			by_tool: BTreeMap::new(),
+			completed_command_sha256: BTreeMap::new(),
+		};
 		let context = EvaluatorContext {
 			task_id: "coding-01",
 			task_version: "1.0.0",
@@ -785,8 +839,12 @@ process.stdin.on('end', () => {{
 			.is_err()
 		);
 
-		let tool_evidence =
-			NormalizedToolEvidence { steps: 1, total_calls: 0, by_tool: BTreeMap::new() };
+		let tool_evidence = NormalizedToolEvidence {
+			steps: 1,
+			total_calls: 0,
+			by_tool: BTreeMap::new(),
+			completed_command_sha256: BTreeMap::new(),
+		};
 		let context = EvaluatorContext {
 			task_id: "coding-01",
 			task_version: "1.0.0",
@@ -3170,6 +3228,9 @@ pub struct NormalizedToolEvidence {
 	pub total_calls: u32,
 	/// Tool calls grouped by stable item type.
 	pub by_tool: BTreeMap<String, u32>,
+	/// Completed command lines grouped by lowercase SHA-256 digest.
+	#[serde(skip_serializing_if = "BTreeMap::is_empty")]
+	pub completed_command_sha256: BTreeMap<String, u32>,
 }
 
 /// Complete execution evidence supplied to an external evaluator.

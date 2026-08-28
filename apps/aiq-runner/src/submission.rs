@@ -1925,6 +1925,7 @@ mod tests {
 				(format!("c{}", "c".repeat(31)), u32::MAX),
 				(format!("d{}", "d".repeat(31)), u32::MAX),
 			]),
+			completed_command_sha256: BTreeMap::new(),
 			provider_tokens: runner::ProviderTokenUsage::default(),
 		};
 		result.latency.wall_ms = 9_007_199_254_740_991;
