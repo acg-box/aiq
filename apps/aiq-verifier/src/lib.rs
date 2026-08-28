@@ -8026,6 +8026,135 @@ mod tests {
 	}
 
 	#[test]
+	fn renewal_preserves_distinct_historical_replay_corpus_and_source_provenance() {
+		let (mut source, tasks) = retained_calibration_evidence();
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+		let historical_replay = source.admission.claims.replay_provenance.clone();
+		let historical_replay_bytes =
+			protocol::canonical_json(&historical_replay).expect("historical replay provenance");
+
+		source.admission.claims.issuance_bindings.corpus_commitment_sha256 =
+			different_digest(&historical_replay.corpus_commitment_sha256);
+		source.admission.claims.issuance_bindings.source_manifest_digest =
+			different_digest(&historical_replay.source_manifest_digest);
+
+		resign_calibration_admission(&mut source.admission, [8; 32]);
+
+		let source_bindings = source.admission.claims.issuance_bindings.clone();
+
+		source
+			.verify_for_official(&source_bindings, &tasks)
+			.expect("signed Official source with historical replay provenance");
+
+		assert_ne!(
+			historical_replay.corpus_commitment_sha256,
+			source_bindings.corpus_commitment_sha256
+		);
+		assert_ne!(
+			historical_replay.source_manifest_digest,
+			source_bindings.source_manifest_digest
+		);
+
+		let target = target_renewal_bindings(&source);
+		let renewed = calibration_verification::renew_calibration_admission(
+			&verifier,
+			&source,
+			target.clone(),
+			&tasks,
+		)
+		.expect("renewal preserves historical replay provenance");
+
+		renewed
+			.verify_for_official(&target, &tasks)
+			.expect("renewed historical bundle verifies for Official consumption");
+
+		assert_eq!(renewed.admission.claims.replay_provenance, historical_replay);
+		assert_eq!(
+			protocol::canonical_json(&renewed.admission.claims.replay_provenance)
+				.expect("renewed replay provenance"),
+			historical_replay_bytes
+		);
+
+		let mut changed = target.clone();
+
+		changed.corpus_commitment_sha256 = different_digest(&changed.corpus_commitment_sha256);
+
+		assert!(
+			calibration_verification::renew_calibration_admission(
+				&verifier, &source, changed, &tasks,
+			)
+			.is_err(),
+			"target corpus drift must fail"
+		);
+
+		let mut changed = target;
+
+		changed.source_manifest_digest = different_digest(&changed.source_manifest_digest);
+
+		assert!(
+			calibration_verification::renew_calibration_admission(
+				&verifier, &source, changed, &tasks,
+			)
+			.is_err(),
+			"target source-manifest drift must fail"
+		);
+	}
+
+	#[test]
+	fn renewal_rejects_replay_task_evaluator_and_codex_identity_drift() {
+		let (source, tasks) = retained_calibration_evidence();
+		let verifier = VerifierSigningIdentity::from_secret([8; 32]);
+
+		for mutation in 0..4 {
+			let mut changed = source.clone();
+			let identity = match mutation {
+				0 => {
+					changed.admission.claims.issuance_bindings.task_set_digest = different_digest(
+						&source.admission.claims.replay_provenance.task_set_digest,
+					);
+
+					"task set"
+				},
+				1 => {
+					changed.admission.claims.issuance_bindings.evaluator_digest = different_digest(
+						&source.admission.claims.replay_provenance.evaluator_digest,
+					);
+
+					"evaluator"
+				},
+				2 => {
+					changed.admission.claims.issuance_bindings.codex_executable_digest =
+						different_digest(
+							&source.admission.claims.replay_provenance.codex_executable_digest,
+						);
+
+					"Codex executable"
+				},
+				_ => {
+					changed.admission.claims.issuance_bindings.codex_code_mode_host_digest =
+						different_digest(
+							&source.admission.claims.replay_provenance.codex_code_mode_host_digest,
+						);
+
+					"Codex code-mode host"
+				},
+			};
+
+			resign_calibration_admission(&mut changed.admission, [8; 32]);
+
+			let target = target_renewal_bindings(&changed);
+
+			assert!(
+				calibration_verification::renew_calibration_admission(
+					&verifier, &changed, target, &tasks,
+				)
+				.is_err(),
+				"replay {identity} drift must fail"
+			);
+		}
+	}
+
+	#[test]
 	fn renewal_rejects_tampered_source_stage_attestation_admission_bank_and_diagnostic() {
 		let (source, tasks) = retained_calibration_evidence();
 		let target = target_renewal_bindings(&source);
