@@ -1,37 +1,38 @@
 {
-  "schema_version": "aiq.candidate-design-decisions.v6",
-  "candidate_id": "aiq-core/1.1.0-candidate.6",
+  "schema_version": "aiq.candidate-design-decisions.v7",
+  "candidate_id": "aiq-core/1.1.0-candidate.7",
   "candidate_task_set_version": "1.1.0",
   "recorded_date": "2026-08-28",
-  "authority": "candidate_5_source_integrity_remediation",
+  "authority": "candidate_6_qualification_bridge_remediation",
   "predecessor_candidate": {
-    "candidate_id": "aiq-core/1.1.0-candidate.5",
-    "disposition": "rejected_nonsealable_source_identity_drift",
-    "change_commit": "61b78b185ce522bf1966986142d4cd688b90e72e",
-    "source_tree": "2b430dd9a9e69b119fa5b362606b83d68d7d3879",
-    "pull_request": 138,
-    "author_task_identity": "01a04a0b-e93f-7711-aef8-bad18cc8a260",
-    "authoring_receipt_raw_sha256": "sha256:3cf82eb6304d3714bc29cc47d3b6c9f6780fc9cc9bb5e13a0544855a235100a6",
-    "full_inventory_sha256": "sha256:a4db85fa9443a55fee191ceed888d0d661abdcd6842ec7c6d6b909ee874244f4",
-    "catalog_canonical_sha256": "sha256:f19dd1c9a84c8274db8a240994b208bba8f6fd0f3fb6919237bcc4314d53c2cf",
-    "catalog_entry_bindings_sha256": "sha256:c37b87e8458209826164c48e74d0292c426be9b0c60dc18e664253a22bc7a95c",
-    "task_metadata_sha256": "sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4",
+    "candidate_id": "aiq-core/1.1.0-candidate.6",
+    "disposition": "superseded_unqualified_evidence_bridge",
+    "change_commit": "2746646c5f962f0aedc1b08f6efc7176bb4d9487",
+    "source_tree": "098d7665d56c94b96fa17240fd57b3c6207de8a4",
+    "pull_request": 139,
+    "author_task_identity": "01a04a80-491e-76b1-90b5-c199e12d488e",
+    "authoring_receipt_raw_sha256": "sha256:5accab79689a7a8ff5d387ed71d039e55d5a55434bce36629b321d85ec6d3c6b",
+    "full_inventory_sha256": "sha256:b37bbdeab31e1bacbdf41905f9916877f77f288219426a693eed2d49161994b4",
+    "catalog_canonical_sha256": "sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170",
+    "catalog_entry_bindings_sha256": "sha256:9a33da06a0292b389c37c936105dd991721f61e4af0b6c6e4f0722f53d2992c8",
+    "task_metadata_sha256": "sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95",
     "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
-    "source_review_task_identity": "01a04a69-b89a-7773-bd35-3c5070055aef",
+    "source_review_task_identity": "01a04ad3-053a-7672-ae71-29130b5f56e8",
     "task_semantics": "accepted_unchanged_72",
     "task_issue_closure_entries": 42,
-    "semantic_retention_rule": "all_candidate_5_task_facing_semantics_must_remain_identical"
+    "semantic_retention_rule": "all_candidate_6_task_facing_semantics_must_remain_identical"
   },
   "immutable_rejected_predecessors": [
     "aiq-core/1.1.0-candidate.1",
     "aiq-core/1.1.0-candidate.2",
     "aiq-core/1.1.0-candidate.3",
     "aiq-core/1.1.0-candidate.4",
-    "aiq-core/1.1.0-candidate.5"
+    "aiq-core/1.1.0-candidate.5",
+    "aiq-core/1.1.0-candidate.6"
   ],
   "retained_candidate_5_task_issue_closures": {
     "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-    "successor_candidate_id": "aiq-core/1.1.0-candidate.6",
+    "successor_candidate_id": "aiq-core/1.1.0-candidate.7",
     "disposition": "preserved_unchanged_and_revalidated",
     "closure_entries": 42,
     "issue_code_counts": {
@@ -46,15 +47,15 @@
     }
   },
   "source_integrity_closure": {
-    "issue_code": "CANDIDATE_CATALOG_COMMITMENT_IDENTITY_DRIFT",
-    "scope": "repository_source_integration",
-    "status": "closed_in_candidate_6",
+    "issue_code": "QUALIFICATION_EVIDENCE_BRIDGE_UNAUTHENTICATED",
+    "scope": "trusted_execution_and_evidence_bridge",
+    "status": "closed_in_candidate_7",
     "counts_toward_task_issue_closures": false,
-    "source_review_task_identity": "01a04a69-b89a-7773-bd35-3c5070055aef",
-    "candidate_5_catalog_identity_sha256": "sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4",
-    "rejected_stale_consumer_identity_sha256": "sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6",
-    "runtime_authority": "validated_embedded_candidate_catalog",
-    "regression": "catalog_commitment_schema_round_trip_with_stale_identity_mutations"
+    "diagnosis_task_identity": "01a04786-3f39-7852-a41b-fb57bd73dfad",
+    "predecessor_candidate_id": "aiq-core/1.1.0-candidate.6",
+    "predecessor_commitment_sha256": "sha256:37291d7da5f2b5d5b112b54b8ce1b296c20f718ebead87c14118056769e47011",
+    "runtime_authority": "explicit_candidate_qualification_boundary",
+    "regression": "replay_verified_projection_and_candidate_route_substitution_suite"
   },
   "task_issue_code_counts": {
     "ACCEPTANCE_SEMANTICS_INVALID": 0,
@@ -95,7 +96,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement a strict duration expression parser",
         "summary": "Implement a small parser that normalizes compound duration expressions while rejecting duplicate units, ambiguous signs, overflow, and trailing data without changing the supplied contract fixtures.",
@@ -283,7 +284,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement a stable mutable priority queue",
         "summary": "Implement enqueue, reprioritize, cancel, and pop operations with stable tie ordering, idempotent cancellation, and deterministic behavior when an item is updated while already queued.",
@@ -471,7 +472,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement deterministic circuit-breaker transitions",
         "summary": "Implement a pure circuit-breaker transition function for closed, open, and half-open states with exact failure thresholds, one probe lease, monotonic epochs, and stale-result rejection.",
@@ -659,7 +660,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement a byte-budget LRU cache",
         "summary": "Implement a byte-budget cache with replacement accounting, deterministic least-recent eviction, oversized-item rejection, and read promotion without evicting more entries than necessary.",
@@ -847,7 +848,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement an incremental line decoder",
         "summary": "Implement a chunked UTF-8 line decoder that normalizes CRLF, preserves intentional empty records, reports byte offsets for malformed input, and flushes a final unterminated line exactly once. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1052,7 +1053,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1227,7 +1228,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement dependency execution batches",
         "summary": "Implement deterministic topological execution batches with stable source ordering, missing-dependency diagnostics, and one concrete cycle witness without mutating the supplied graph. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1432,7 +1433,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-08 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "coding-08 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1607,7 +1608,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a fragmented frame decoder",
         "summary": "Repair a length-prefixed frame decoder that currently corrupts split headers, accepts oversized frames, and loses buffered bytes after a recoverable malformed frame. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1814,7 +1815,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1989,7 +1990,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair aborted refresh generation handling",
         "summary": "Repair a cache refresh path where an aborted generation can overwrite a newer committed value, while preserving independent-key concurrency and read-through hits. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -2192,7 +2193,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -2367,7 +2368,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a lease-renewal race",
         "summary": "Repair a worker lease state machine that can acknowledge work after losing ownership or schedule two renewals for one epoch under a deterministic interleaving.",
@@ -2555,7 +2556,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a DST recurrence cutoff",
         "summary": "Repair a local-time recurrence calculation across spring-forward and fall-back transitions while preserving the configured IANA zone, exclusive cutoff, and stable occurrence identity. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -2760,7 +2761,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair cancellation-safe permit transfer",
         "summary": "Repair a bounded semaphore queue where cancellation between selection and delivery leaks capacity, while retaining FIFO eligibility and idempotent release.",
@@ -2948,7 +2949,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-08 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-08 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair archive path identity checks",
         "summary": "Repair archive-entry normalization so Windows separators and Unicode-normalized aliases cannot bypass traversal, duplicate-path, or symlink-target protections. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3153,7 +3154,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Locate a CLI policy owner",
         "summary": "Trace one CLI policy from parser declaration through configuration merge, runtime enforcement, focused tests, and operator documentation, then record the exact owning files and evidence roles. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3394,7 +3395,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Trace request authorization and persistence",
         "summary": "Trace a request through routing, authentication, authorization, validation, transaction persistence, and error translation using only the bounded repository snapshot. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3635,7 +3636,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Explain a generated client pipeline",
         "summary": "Identify the schema source, generator configuration, generated client outputs, supported regeneration command, validation owner, and files that must never be edited directly. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3876,7 +3877,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Assess an event schema rename",
         "summary": "Determine the exact producer, consumer, generated type, migration, compatibility, test, and documentation changes required for a named event-field rename. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4117,7 +4118,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconstruct an artifact promotion graph",
         "summary": "Reconstruct which build, attest, stage, promote, and publish jobs can run after each supplied failure edge, including the identity of every retained artifact. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4358,7 +4359,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover a configuration precedence contract",
         "summary": "Recover defaults, file, environment, and CLI precedence plus normalization, disable sentinels, provenance, startup enforcement, and the tests that own each branch. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4599,7 +4600,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Map a package split boundary",
         "summary": "Map the callers, exports, build metadata, tests, local commands, and release inputs needed to split one package without adding a compatibility facade that owns no behavior. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4840,7 +4841,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -5048,7 +5049,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile a weighted many-to-many join",
         "summary": "Join allocation and event rows under an explicit many-to-many policy, normalize weights, preserve unmatched keys, and emit deterministic duplicate and conservation diagnostics. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5287,7 +5288,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -5483,7 +5484,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile inventory movements",
         "summary": "Reconcile receipts, shipments, transfers, reversals, and duplicate references into per-location balances and a deterministic exception report without treating missing rows as zero. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5722,7 +5723,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Aggregate a funnel with late duplicates",
         "summary": "Build ordered funnel counts from nested events while deduplicating late arrivals, preserving unknown valid attributes, and separating malformed records from out-of-order valid activity. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5961,7 +5962,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -6184,7 +6185,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -6401,7 +6402,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-08 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-08 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Build bitemporal price intervals",
         "summary": "Construct non-overlapping valid-time and system-time price intervals from out-of-order updates, late corrections, and exact duplicate events. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6642,7 +6643,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Verify a scoped request limit",
         "summary": "Apply captured first-party limits, exclusions, and amendment dates to a concrete request plan, showing the exact arithmetic and rejecting an out-of-scope draft source. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6883,7 +6884,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile a capability-default timeline",
         "summary": "Reconstruct preview availability, general availability, default activation, and one later exception from bounded first-party release artifacts. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -7124,7 +7125,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Interpret a normative exception chain",
         "summary": "Determine whether a concrete implementation satisfies a captured MUST, its explicit exception, and an informative note while preserving the authority level of each source clause. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -7365,7 +7366,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Verify a signed local policy snapshot",
         "summary": "Use only a bounded local evidence bundle to select the signed policy snapshot, reject superseded drafts, and map each conclusion to a content-addressed source anchor.",
@@ -7610,7 +7611,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Resolve a versioned local data dictionary",
         "summary": "Resolve a disputed field definition from a bounded versioned data dictionary, distinguish current authority from commentary, and record exact source evidence and uncertainty.",
@@ -7855,7 +7856,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Confirm a local protocol compatibility claim",
         "summary": "Check a compatibility claim against bounded local protocol records, separate normative and informative evidence, and return supported, contradicted, and unresolved conclusions.",
@@ -8100,7 +8101,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Audit a multi-claim security brief",
         "summary": "Classify a bounded technical brief claim by claim against captured advisories, migration guidance, and version metadata, including unsupported and partially supported claims. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8341,7 +8342,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Write an uncertainty-aware incident update",
         "summary": "Write a concise operator update from frozen facts that separates confirmed impact, current mitigation, explicit unknowns, owner, and the next timestamped update. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8580,7 +8581,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -8755,7 +8756,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Produce a cutover handoff",
         "summary": "Produce a migration handoff that separates completed source work from pending environment inputs, names verification and rollback commands, and states the exact next owner. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8994,7 +8995,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Explain an interval to two audiences",
         "summary": "Create a short executive explanation and a technical appendix for a supplied interval method without calling it a universal confidence interval or hiding its conditional assumptions. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9235,7 +9236,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a scoped release note",
         "summary": "Replace an overstated release note with precise shipped behavior, a compatibility condition, rollback guidance, and a clear statement of what remains pending. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9474,7 +9475,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Draft a decision with replacement triggers",
         "summary": "Turn supplied constraints and evidence into a decision record with rejected alternatives, consequences, verification, and explicit conditions that require replacement or review. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9713,7 +9714,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Consolidate runbook authority",
         "summary": "Create one canonical operational runbook from two drifting sources, preserving valid divergence as scoped notes and replacing duplicate procedures with owner links. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9952,7 +9953,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Schedule a failover rehearsal",
         "summary": "Produce a feasible rehearsal schedule from dependencies, exclusive roles, maintenance windows, rollback reserve, and a required post-event validation buffer. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10191,7 +10192,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan an expand-contract migration",
         "summary": "Plan a multi-version contract migration whose checkpoints remain deployable, with exact producer and consumer ordering, observation gates, and the last safe rollback boundary. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10430,7 +10431,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Build a qualified coverage roster",
         "summary": "Allocate qualified people to interval demand under availability, rest, continuity, and no-double-booking constraints, then report any provably uncovered interval. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10669,7 +10670,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a metric-guarded rollout",
         "summary": "Execute eligible rollout stages from frozen metrics, stop at the first failed guard, and record the evidence, rollback action, and prohibited later stages. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10908,7 +10909,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a checkpointed backfill",
         "summary": "Plan a bounded data backfill with dry-run sampling, monotonic checkpoints, invariants, pause conditions, idempotent resume, and rollback before source retirement. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11147,7 +11148,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a dependency API migration",
         "summary": "Plan one direct dependency update with supported API edits, lockfile provenance, transitive graph review, focused tests, and a rollback point before publication. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11386,7 +11387,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a platform package matrix repair",
         "summary": "Plan platform-specific package paths and archive formats across a frozen build matrix while preserving action pins, signing boundaries, and artifact identity checks. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11625,7 +11626,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Use an owner map before editing",
         "summary": "Run the supplied owner-map tool once. It resolves the source owner for a bounded requested path, validates the proposed edits, preserves generated outputs, and emits a digest-bound semantic result and receipt.",
@@ -12335,7 +12336,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Cross-check a package manifest with a checksum tool",
         "summary": "Run the supplied package reconciliation tool once. It hashes bounded package files, compares them with the declared manifest, classifies verified, missing, and mismatched entries, and emits a digest-bound report and receipt.",
@@ -13046,7 +13047,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Complete a validator repair cycle",
         "summary": "Run the supplied validator-cycle tool once. It evaluates the initial configuration, applies only permitted deterministic repairs, evaluates the repaired configuration, preserves the protected identity, and emits a digest-bound result and receipt.",
@@ -13756,7 +13757,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Navigate a captured evidence index",
         "summary": "Run the supplied evidence-index tool once. It filters releases for the bounded query, selects the authoritative approved release under the declared policy, opens a bounded anchor set, rejects drafts, and emits a digest-bound result and receipt.",
@@ -14463,7 +14464,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Apply a structured patch through its gate",
         "summary": "Run the supplied structured-patch tool once. It applies bounded pointer updates only to allowed documents, preserves forbidden documents, evaluates the focused gate, proves a seeded regression is rejected, and emits a digest-bound result and receipt.",
@@ -15186,7 +15187,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Probe and normalize a local capability matrix",
         "summary": "Run the supplied capability-matrix tool once. It consumes bounded probe records, normalizes versions and capabilities, classifies required capability support, redacts declared diagnostic fields, and emits a digest-bound matrix and receipt.",
@@ -15902,7 +15903,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover from an index-tool failure",
         "summary": "Run the supplied fallback tool once. It verifies the captured preferred-index failure, searches the bounded fallback corpus under the disclosed policy, filters citations to trusted roots, and emits a digest-bound fallback result and receipt.",
@@ -16619,7 +16620,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Return a computed exact JSON schema",
         "summary": "Compute derived values from supplied facts and return exactly the required nested JSON keys, types, ordering-insensitive values, and no surrounding prose.",
@@ -16825,7 +16826,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Honor a protected file scope",
         "summary": "Complete a local change while modifying exactly two allowed files, preserving digest-bound protected paths, and reporting the focused validation result. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17057,7 +17058,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Apply a constraint precedence matrix",
         "summary": "Produce one artifact under nested global, section, exception, terminology, and length rules, resolving conflicts by the supplied precedence matrix. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17287,7 +17288,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Prepare migration inputs without external effects",
         "summary": "Create validated local migration inputs and a dry-run receipt while avoiding the explicitly prohibited resource creation, message, database write, or deployment. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17519,7 +17520,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -17709,7 +17710,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Complete a dense compatibility edit",
         "summary": "Apply exact naming, backward compatibility, validation, documentation, secret-handling, and file-boundary constraints to one local contract change. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17941,7 +17942,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-01 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Resume an incomplete capability probe",
         "summary": "Classify incomplete capability evidence, preserve every completed probe, retry only eligible missing work, and avoid inventing a semantic result for the interrupted cell. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -18180,7 +18181,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-02 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover a split-lease queue ledger",
         "summary": "Reconcile a local queue whose durable lease ledger and completed-effect receipts disagree, preserve one current owner, resume only uncommitted items, and prove idempotent recovery.",
@@ -18421,7 +18422,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-03 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover a partial chunk manifest",
         "summary": "Reconcile a partial artifact against a chunk manifest, retain verified chunks, quarantine corrupt bytes, and produce a resumable missing-range plan. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -18660,7 +18661,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-04 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -18838,7 +18839,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-05 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile an orphaned artifact promotion",
         "summary": "Classify a staged artifact whose promotion marker is missing, validate its content identity, promote or quarantine it once, and retire temporary state with monotonic evidence.",
@@ -19079,7 +19080,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-06 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Isolate malformed batch entries",
         "summary": "Validate a mixed batch, reject malformed entries with stable reasons, continue independent valid entries, and emit an exact processed, rejected, and pending summary.",
@@ -19294,7 +19295,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.6 changes only immutable candidate, catalog, source, review-request, and provenance bindings while repairing the catalog-to-commitment identity authority; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-07 preserves the exact candidate.5 public task title, summary, input contract, cluster, allowed tools, budgets, evaluator contract, scoring, acceptance fixtures, tags, and private task-facing behavior. Candidate.7 changes only immutable candidate, catalog, source, review-request, trusted execution, and replay-verified qualification bindings; candidate.6 reviews and seals are stale for this source identity, and fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",

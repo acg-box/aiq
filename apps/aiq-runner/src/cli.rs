@@ -40,9 +40,7 @@ use crate::official_admission::{
 };
 use crate::pinned_path::{PinnedDirectoryIdentity, PinnedPathIdentity};
 use crate::{
-	benchmark_qualification::{
-		self, BenchmarkQualificationManifest, BenchmarkQualificationStatus, QualificationMatrix,
-	},
+	benchmark_qualification::{self, BenchmarkQualificationManifest, BenchmarkQualificationStatus},
 	candidate_catalog,
 };
 use aiq_runner::{
@@ -51,7 +49,9 @@ use aiq_runner::{
 		ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus,
 		Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor,
 	},
-	calibration_verification::CalibrationAdmissionBundleV3,
+	calibration_verification::{
+		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
+	},
 	capacity::{self, CapacityAdmission},
 	corpus_commitment::{
 		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment,
@@ -142,6 +142,7 @@ struct RunOptions {
 	model_selectors: Vec<String>,
 	jobs: usize,
 	run_class: RunClass,
+	candidate_qualification: bool,
 	output: PathBuf,
 }
 
@@ -1278,13 +1279,19 @@ enum Command {
 		/// Exact predeclared candidate, policy, and three-child manifest.
 		#[arg(long)]
 		manifest: PathBuf,
+		/// Independently retained canonical SHA-256 of the predeclared manifest.
+		#[arg(long)]
+		expected_manifest_sha256: String,
 		/// Exact qualification-ready AIQ Core 1.1.0 public catalog.
 		#[arg(long)]
 		catalog: PathBuf,
-		/// Complete independently verified child matrix. Repeat exactly three times in
-		/// predeclared order.
-		#[arg(long = "matrix", required = true)]
-		matrices: Vec<PathBuf>,
+		/// Replay-verified candidate calibration stage. Repeat exactly three times in
+		/// predeclared child order.
+		#[arg(long = "stage", required = true)]
+		stages: Vec<PathBuf>,
+		/// Signed verifier attestation paired with each stage in the same order.
+		#[arg(long = "attestation", required = true)]
+		attestations: Vec<PathBuf>,
 		/// Create-new deterministic qualification or rejection artifact.
 		#[arg(long)]
 		output: PathBuf,
@@ -1521,6 +1528,10 @@ enum Command {
 		/// Execution class fixed before benchmark validation. Calibration is always non-Official.
 		#[arg(long, value_enum, default_value_t = RunClassArgument::Calibration)]
 		run_class: RunClassArgument,
+		/// Select the isolated complete AIQ Core 1.1.0 candidate qualification route.
+		/// This cannot be combined with Official execution or partial selections.
+		#[arg(long, default_value_t = false, conflicts_with = "official_admission")]
+		candidate_qualification: bool,
 		/// Run output path. Official requires a durable path and writes one create-once
 		/// reservation.
 		#[arg(long, default_value = "-")]
@@ -1804,6 +1815,23 @@ pub(crate) fn atomic_rename_no_replace(
 		ErrorKind::Unsupported,
 		"atomic no-replace rename is unavailable on this platform",
 	))
+}
+
+pub(crate) fn validate_run_corpus(
+	candidate_qualification: bool,
+	corpus_commitment_path: &Path,
+	tasks: &[TaskDefinition],
+	source_root: &Path,
+) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
+	if candidate_qualification {
+		corpus_commitment::validate_candidate_core_corpus_commitment_v1_1_0(
+			corpus_commitment_path,
+			tasks,
+			source_root,
+		)
+	} else {
+		corpus_commitment::validate_corpus_commitment(corpus_commitment_path, tasks, source_root)
+	}
 }
 
 fn read_held_bounded_file(
@@ -2116,24 +2144,39 @@ fn dispatch_corpus_seal(command: Command) -> Result<(), Box<dyn std::error::Erro
 
 fn run_qualify_candidate(
 	manifest_path: &Path,
+	expected_manifest_sha256: &str,
 	catalog_path: &Path,
-	matrix_paths: &[PathBuf],
+	stage_paths: &[PathBuf],
+	attestation_paths: &[PathBuf],
 	output: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	validate_new_output_set(&[("qualification output", output)])?;
 
-	if matrix_paths.len() != 3 {
-		return Err("qualify-candidate requires exactly three --matrix inputs".into());
+	if stage_paths.len() != 3 || attestation_paths.len() != 3 {
+		return Err(
+			"qualify-candidate requires exactly three --stage and three --attestation inputs"
+				.into(),
+		);
 	}
 
 	let manifest = read_json::<BenchmarkQualificationManifest>(manifest_path)?;
 	let catalog_value = read_json::<serde_json::Value>(catalog_path)?;
 	let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)?;
-	let matrices = matrix_paths
+	let stages = stage_paths
 		.iter()
-		.map(|path| read_json::<QualificationMatrix>(path))
+		.map(|path| read_json::<CalibrationVerifiedStageV1>(path))
 		.collect::<Result<Vec<_>, _>>()?;
-	let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)?;
+	let attestations = attestation_paths
+		.iter()
+		.map(|path| read_json::<CalibrationVerifierAttestationV1>(path))
+		.collect::<Result<Vec<_>, _>>()?;
+	let artifact = benchmark_qualification::qualify_candidate(
+		&manifest,
+		expected_manifest_sha256,
+		&catalog,
+		&stages,
+		&attestations,
+	)?;
 	let rejected = artifact.claims.status == BenchmarkQualificationStatus::Rejected;
 
 	write_json(output, &artifact)?;
@@ -2150,11 +2193,26 @@ fn run_qualify_candidate(
 }
 
 fn dispatch_candidate_qualification(command: Command) -> Result<(), Box<dyn std::error::Error>> {
-	let Command::QualifyCandidate { manifest, catalog, matrices, output } = command else {
+	let Command::QualifyCandidate {
+		manifest,
+		expected_manifest_sha256,
+		catalog,
+		stages,
+		attestations,
+		output,
+	} = command
+	else {
 		unreachable!("dispatch requires qualify-candidate")
 	};
 
-	run_qualify_candidate(&manifest, &catalog, &matrices, &output)
+	run_qualify_candidate(
+		&manifest,
+		&expected_manifest_sha256,
+		&catalog,
+		&stages,
+		&attestations,
+		&output,
+	)
 }
 
 fn dispatch_corpus_validation(command: Command) -> Result<(), Box<dyn std::error::Error>> {
@@ -2345,6 +2403,7 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		models,
 		jobs,
 		run_class,
+		candidate_qualification,
 		output,
 	} = command
 	else {
@@ -2378,6 +2437,7 @@ fn dispatch_run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
 		model_selectors: models,
 		jobs,
 		run_class: run_class.into(),
+		candidate_qualification,
 		output,
 	})
 }
@@ -2933,6 +2993,7 @@ fn prepare_permission_admission(
 		model_selectors: Vec::new(),
 		jobs: options.jobs,
 		run_class: RunClass::Official,
+		candidate_qualification: false,
 		output: options.planned_output.clone(),
 	};
 	let prepared_run = prepare_run_model_free(&planning_options)?;
@@ -3214,12 +3275,50 @@ fn validate_run_mode_options(
 	options: &RunOptions,
 	official_shape: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	validate_candidate_run_mode(
+		options.candidate_qualification,
+		options.run_class,
+		official_shape,
+		&options.output,
+	)?;
+
 	if options.run_class == RunClass::Official && !official_shape {
 		return Err("Official runs require exactly 72 controlled tasks and the exact 17-model matrix; no model was invoked".into());
 	}
 	if options.run_class == RunClass::Official && options.output == Path::new("-") {
 		return Err(
 			"Official runs require a new durable --output path; no model was invoked".into()
+		);
+	}
+
+	Ok(())
+}
+
+fn validate_candidate_run_mode(
+	candidate_qualification: bool,
+	run_class: RunClass,
+	complete_shape: bool,
+	output: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+	if !candidate_qualification {
+		return Ok(());
+	}
+	if run_class == RunClass::Official {
+		return Err(
+			"candidate qualification cannot be selected for Official execution; no model was invoked"
+				.into(),
+		);
+	}
+	if !complete_shape {
+		return Err(
+			"candidate qualification requires exactly 72 controlled tasks and the exact 17-model matrix; no model was invoked"
+				.into(),
+		);
+	}
+	if output == Path::new("-") {
+		return Err(
+			"candidate qualification requires a new durable --output path; no model was invoked"
+				.into(),
 		);
 	}
 
@@ -3245,7 +3344,8 @@ fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn s
 
 	validate_run_mode_options(options, official_shape)?;
 
-	let corpus = corpus_commitment::validate_corpus_commitment(
+	let corpus = validate_run_corpus(
+		options.candidate_qualification,
 		&options.corpus_commitment,
 		&selected_tasks,
 		&options.source_root,
@@ -6283,6 +6383,27 @@ mod tests {
 	}
 
 	#[test]
+	fn candidate_selector_exists_only_on_the_local_run_command() {
+		let command = <cli::Cli as clap::CommandFactory>::command();
+		let run = command.find_subcommand("run").expect("run command");
+
+		assert!(run.get_arguments().any(|argument| argument.get_id() == "candidate_qualification"));
+
+		for subcommand_name in
+			["admit-permissions", "preflight", "score", "package", "submit", "normalize"]
+		{
+			let subcommand = command.find_subcommand(subcommand_name).expect("existing command");
+
+			assert!(
+				subcommand
+					.get_arguments()
+					.all(|argument| argument.get_id() != "candidate_qualification"),
+				"{subcommand_name} must not expose candidate qualification"
+			);
+		}
+	}
+
+	#[test]
 	fn historical_diagnostic_rescore_is_non_publication_and_preserves_source_identity() {
 		let tasks = runner::synthetic_demo_tasks();
 		let slot = crate::schedule::ScheduleConfig::default()
@@ -6619,28 +6740,37 @@ mod tests {
 	}
 
 	#[test]
-	fn qualification_cli_uses_three_explicit_matrix_inputs() {
+	fn qualification_cli_uses_three_explicit_stage_and_attestation_pairs() {
 		let parsed = super::Cli::try_parse_from([
 			"aiq-runner",
 			"qualify-candidate",
 			"--manifest",
 			"manifest.json",
+			"--expected-manifest-sha256",
+			"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			"--catalog",
 			"catalog.json",
-			"--matrix",
-			"matrix-1.json",
-			"--matrix",
-			"matrix-2.json",
-			"--matrix",
-			"matrix-3.json",
+			"--stage",
+			"stage-1.json",
+			"--stage",
+			"stage-2.json",
+			"--stage",
+			"stage-3.json",
+			"--attestation",
+			"attestation-1.json",
+			"--attestation",
+			"attestation-2.json",
+			"--attestation",
+			"attestation-3.json",
 			"--output",
 			"qualification.json",
 		]);
 
 		assert!(matches!(
 			parsed,
-			Ok(super::Cli { command: super::Command::QualifyCandidate { matrices, .. } })
-				if matrices.len() == 3
+			Ok(super::Cli {
+				command: super::Command::QualifyCandidate { stages, attestations, .. },
+			}) if stages.len() == 3 && attestations.len() == 3
 		));
 
 		let root = fixture_root("qualification-count");
@@ -6648,7 +6778,9 @@ mod tests {
 		assert!(
 			super::run_qualify_candidate(
 				Path::new("manifest.json"),
+				"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				Path::new("catalog.json"),
+				&[PathBuf::from("one.json")],
 				&[PathBuf::from("one.json")],
 				&root.join("qualification.json"),
 			)
@@ -6817,6 +6949,29 @@ mod tests {
 		assert_eq!(fs::read(&existing_output).expect("preserved output"), b"preserve");
 
 		fs::remove_dir_all(root).expect("fixture cleanup");
+	}
+
+	#[test]
+	fn candidate_qualification_mode_is_complete_calibration_only_before_model_work() {
+		let durable = Path::new("candidate-run.json");
+
+		assert!(
+			super::validate_candidate_run_mode(true, RunClass::Official, true, durable,)
+				.expect_err("Official candidate mode")
+				.to_string()
+				.contains("no model was invoked")
+		);
+		assert!(
+			super::validate_candidate_run_mode(true, RunClass::Calibration, false, durable,)
+				.is_err()
+		);
+		assert!(
+			super::validate_candidate_run_mode(true, RunClass::Calibration, true, Path::new("-"),)
+				.is_err()
+		);
+
+		super::validate_candidate_run_mode(true, RunClass::Calibration, true, durable)
+			.expect("complete candidate calibration plan");
 	}
 
 	#[test]

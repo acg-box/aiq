@@ -16,6 +16,7 @@ use crate::{
 		PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_SHA256,
 		ProbeStatus,
 	},
+	candidate_catalog,
 	corpus_commitment::{self, RunClass},
 	model::{MODEL_MATRIX, ModelConfig},
 	protocol, resume,
@@ -91,6 +92,38 @@ pub fn validate_calibration_source_1_0_7_with_tasks(
 	validate_calibration_run_record_inner(run, true, CALIBRATION_SOURCE_1_0_7_SCORING_VERSION)?;
 
 	validate_calibration_task_bindings(run, tasks, scoring::task_bindings_match_frozen_catalog)
+}
+
+/// Validates one complete candidate-only qualification calibration.
+pub fn validate_candidate_qualification_calibration_with_tasks(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+) -> Result<(), RunValidationError> {
+	validate_calibration_run_record_inner(run, true, AIQ_SCORING_VERSION)?;
+
+	let preflight_digest =
+		protocol::canonical_hash(&run.capability_validation).map_err(|error| {
+			RunValidationError::new(format!("capability commitment failed: {error}"))
+		})?;
+
+	corpus_commitment::validate_candidate_qualification_provenance_v1_1_0(
+		&run.provenance,
+		&run.task_set_hash,
+		&preflight_digest,
+	)
+	.map_err(|error| RunValidationError::new(error.to_string()))?;
+
+	if run.models != MODEL_MATRIX || run.task_ids.len() != 72 || run.results.len() != 1_224 {
+		return Err(RunValidationError::new(
+			"candidate qualification requires one complete 17-by-72 calibration",
+		));
+	}
+
+	validate_calibration_task_bindings(
+		run,
+		tasks,
+		candidate_catalog::task_bindings_match_checked_candidate,
+	)
 }
 
 /// Validates a complete run. Supplied tasks add source-authoritative hash checks.

@@ -80,6 +80,7 @@
       "uniqueItems": true,
       "items": { "$ref": "#/$defs/model" }
     },
+    "qualification_projection": { "$ref": "#/$defs/qualificationProjection" },
     "scores": {
       "type": "array",
       "minItems": 1,
@@ -94,8 +95,8 @@
     },
     "pricing": { "$ref": "#/$defs/pricing" },
     "task_set_id": { "const": "aiq-core" },
-    "task_set_version": { "const": "1.0.7" },
-    "benchmark_version": { "const": "aiq-core@1.0.7" },
+    "task_set_version": { "enum": ["1.0.7", "1.1.0"] },
+    "benchmark_version": { "enum": ["aiq-core@1.0.7", "aiq-core@1.1.0"] },
     "prompt_set_digest": { "$ref": "#/$defs/hash" },
     "runner_commit": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
     "region": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
@@ -104,11 +105,58 @@
     "finished_unix_ms": { "$ref": "#/$defs/count" },
     "stage_digest": { "$ref": "#/$defs/hash" }
   },
+  "allOf": [
+    {
+      "if": { "required": ["qualification_projection"] },
+      "then": {
+        "properties": {
+          "task_set_version": { "const": "1.1.0" },
+          "benchmark_version": { "const": "aiq-core@1.1.0" },
+          "task_ids": { "minItems": 72, "maxItems": 72 },
+          "models": { "minItems": 17, "maxItems": 17 }
+        }
+      },
+      "else": {
+        "properties": {
+          "task_set_version": { "const": "1.0.7" },
+          "benchmark_version": { "const": "aiq-core@1.0.7" }
+        }
+      }
+    }
+  ],
   "$defs": {
     "runId": { "type": "string", "pattern": "^run_[a-f0-9]{64}(?![\\s\\S])" },
     "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}(?![\\s\\S])" },
     "plainHash": { "type": "string", "pattern": "^[a-f0-9]{64}(?![\\s\\S])" },
     "model": { "$ref": "calibration-run-v4.schema.json#/$defs/model" },
+    "qualificationProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "candidate_id", "disposition", "synthetic", "cells"],
+      "properties": {
+        "schema_version": { "const": "aiq.benchmark-qualification-projection.v1" },
+        "candidate_id": { "const": "aiq-core/1.1.0-candidate.7" },
+        "disposition": { "const": "accepted" },
+        "synthetic": { "const": false },
+        "cells": {
+          "type": "array",
+          "minItems": 1224,
+          "maxItems": 1224,
+          "items": { "$ref": "#/$defs/qualificationCell" }
+        }
+      }
+    },
+    "qualificationCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "model", "status", "semantic_score"],
+      "properties": {
+        "task_id": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
+        "model": { "$ref": "#/$defs/model" },
+        "status": { "const": "completed" },
+        "semantic_score": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
     "tokens": {
       "type": "object",
       "additionalProperties": false,

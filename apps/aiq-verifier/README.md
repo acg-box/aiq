@@ -97,13 +97,23 @@ cargo run -p aiq-verifier -- verify-qualification --help
 `verify-qualification` is an offline, model-free AIQ Core 1.1.0 candidate
 check. It uses the qualification implementation from the `aiq-runner` library,
 which is the same owner used by the runner command. It recomputes the exact
-artifact from the predeclared manifest, qualification-ready catalog, and three
-child matrices. It rejects unsupported versions, changed policy, catalog or
-candidate identity drift, missing or duplicate cells, runtime-invalid or
-synthetic cells, reused or swapped child identities, rejected children,
-threshold failures, and any artifact mismatch. It does not create a new
+artifact from the predeclared manifest, its independently retained expected
+digest, the qualification-ready catalog, and three replay-verified stage and
+attestation pairs. The trusted verifier derives every cell during replay and
+binds it through the signed stage digest. The command rejects unsupported
+versions, changed policy, catalog or candidate identity drift, missing or
+duplicate cells, runtime-invalid or synthetic cells, reused or swapped child
+evidence, untrusted signers, rejected children, threshold failures, and any
+artifact mismatch. It does not create a new
 qualification artifact, invoke a model, publish evidence, or change an already
 rejected child.
+
+Use `verify-local --candidate-qualification --candidate-source-root ...` only
+for one complete signed candidate Calibration package. This mode selects the
+same candidate commitment boundary as runner preparation and writes create-new
+candidate stage and attestation files. It rejects Official, partial, synthetic,
+runtime-invalid, or active-1.0.7 evidence. The production worker has no candidate
+mode and continues to accept only its active 1.0.7 environment.
 
 The artifact reports a separate future-single-run prediction interval for each
 configuration and prediction-interval overlap groups. These are run-to-run
