@@ -1,22 +1,22 @@
 {
-  "schema_version": "aiq.candidate-design-decisions.v10",
-  "candidate_id": "aiq-core/1.1.0-candidate.10",
+  "schema_version": "aiq.candidate-design-decisions.v11",
+  "candidate_id": "aiq-core/1.1.0-candidate.11",
   "candidate_task_set_version": "1.1.0",
   "recorded_date": "2026-08-29",
-  "authority": "candidate_9_public_response_contract_repair",
+  "authority": "candidate_10_independent_response_source_repair",
   "predecessor_candidate": {
-    "candidate_id": "aiq-core/1.1.0-candidate.9",
-    "disposition": "rejected_public_response_contract_source_and_schema_drift",
-    "source_commit": "2690d13a069f85de6045802196be408fb98f70d9",
-    "source_tree": "fb530afdd873b8fea1f95b4aad42610fceb91270",
-    "catalog_canonical_sha256": "sha256:03ce2d0ed7199bd99b85631704fa64bf50fcb995a7bc299e7ffce0b200736f1b",
-    "catalog_entry_bindings_sha256": "sha256:b77091d3085c58323f63c14aec6ca1e71818ceca0e1e60196ea3cd29d3e0da51",
-    "task_metadata_sha256": "sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb",
-    "public_contract_projection_sha256": "sha256:388c998272084c06719d037dae523a5bb71694ca7e653c774de26aa94051ba61",
+    "candidate_id": "aiq-core/1.1.0-candidate.10",
+    "disposition": "rejected_circular_response_location_validation",
+    "source_commit": "787ae854fe7b5d91295ff594dac114270c2dbe9d",
+    "source_tree": "e7be66f8fcb644b562a66b90d285bd847700bddc",
+    "catalog_canonical_sha256": "sha256:2876800d4ffe0a1712f34dac72ae3e8fcbc88616292a5f8841d235cbe4c59682",
+    "catalog_entry_bindings_sha256": "sha256:2cebbffe111d4ad67b82b14c35991151ce4bf3ee02dfbae6eaf8d69091be4560",
+    "task_metadata_sha256": "sha256:e613b92fe5fc8847b883a3ea3e7acaafaf0e3cca953bdbc8f29910a1ad75654c",
+    "public_contract_projection_sha256": "sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5",
     "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
     "task_semantics": "accepted_unchanged_72",
     "task_issue_closure_entries": 42,
-    "semantic_retention_rule": "candidate_9_task_facing_semantics_unchanged_and_only_two_response_contract_fields_corrected"
+    "semantic_retention_rule": "candidate_10_task_facing_evaluator_fixture_tool_semantics_unchanged"
   },
   "immutable_rejected_predecessors": [
     "aiq-core/1.1.0-candidate.1",
@@ -27,11 +27,12 @@
     "aiq-core/1.1.0-candidate.6",
     "aiq-core/1.1.0-candidate.7",
     "aiq-core/1.1.0-candidate.8",
-    "aiq-core/1.1.0-candidate.9"
+    "aiq-core/1.1.0-candidate.9",
+    "aiq-core/1.1.0-candidate.10"
   ],
   "retained_candidate_5_task_issue_closures": {
     "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-    "successor_candidate_id": "aiq-core/1.1.0-candidate.10",
+    "successor_candidate_id": "aiq-core/1.1.0-candidate.11",
     "disposition": "preserved_unchanged_and_revalidated",
     "closure_entries": 42,
     "issue_code_counts": {
@@ -129,7 +130,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement a strict duration expression parser",
         "summary": "Implement a small parser that normalizes compound duration expressions while rejecting duplicate units, ambiguous signs, overflow, and trailing data without changing the supplied contract fixtures.",
@@ -317,7 +318,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement a stable mutable priority queue",
         "summary": "Implement enqueue, reprioritize, cancel, and pop operations with stable tie ordering, idempotent cancellation, and deterministic behavior when an item is updated while already queued.",
@@ -505,7 +506,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement deterministic circuit-breaker transitions",
         "summary": "Implement a pure circuit-breaker transition function for closed, open, and half-open states with exact failure thresholds, one probe lease, monotonic epochs, and stale-result rejection.",
@@ -693,7 +694,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement a byte-budget LRU cache",
         "summary": "Implement a byte-budget cache with replacement accounting, deterministic least-recent eviction, oversized-item rejection, and read promotion without evicting more entries than necessary.",
@@ -881,7 +882,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement an incremental line decoder",
         "summary": "Implement a chunked UTF-8 line decoder that normalizes CRLF, preserves intentional empty records, reports byte offsets for malformed input, and flushes a final unterminated line exactly once. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1086,7 +1087,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1261,7 +1262,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Implement dependency execution batches",
         "summary": "Implement deterministic topological execution batches with stable source ordering, missing-dependency diagnostics, and one concrete cycle witness without mutating the supplied graph. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1466,7 +1467,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-08 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "coding-08 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1641,7 +1642,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a fragmented frame decoder",
         "summary": "Repair a length-prefixed frame decoder that currently corrupts split headers, accepts oversized frames, and loses buffered bytes after a recoverable malformed frame. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1848,7 +1849,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -2023,7 +2024,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair aborted refresh generation handling",
         "summary": "Repair a cache refresh path where an aborted generation can overwrite a newer committed value, while preserving independent-key concurrency and read-through hits. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -2226,7 +2227,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -2401,7 +2402,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a lease-renewal race",
         "summary": "Repair a worker lease state machine that can acknowledge work after losing ownership or schedule two renewals for one epoch under a deterministic interleaving.",
@@ -2589,7 +2590,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a DST recurrence cutoff",
         "summary": "Repair a local-time recurrence calculation across spring-forward and fall-back transitions while preserving the configured IANA zone, exclusive cutoff, and stable occurrence identity. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -2794,7 +2795,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair cancellation-safe permit transfer",
         "summary": "Repair a bounded semaphore queue where cancellation between selection and delivery leaks capacity, while retaining FIFO eligibility and idempotent release.",
@@ -2982,7 +2983,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-08 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "debugging-08 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair archive path identity checks",
         "summary": "Repair archive-entry normalization so Windows separators and Unicode-normalized aliases cannot bypass traversal, duplicate-path, or symlink-target protections. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3187,7 +3188,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Locate a CLI policy owner",
         "summary": "Trace one CLI policy from parser declaration through configuration merge, runtime enforcement, focused tests, and operator documentation, then record the exact owning files and evidence roles. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3428,7 +3429,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Trace request authorization and persistence",
         "summary": "Trace a request through routing, authentication, authorization, validation, transaction persistence, and error translation using only the bounded repository snapshot. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3669,7 +3670,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Explain a generated client pipeline",
         "summary": "Identify the schema source, generator configuration, generated client outputs, supported regeneration command, validation owner, and files that must never be edited directly. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3910,7 +3911,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Assess an event schema rename",
         "summary": "Determine the exact producer, consumer, generated type, migration, compatibility, test, and documentation changes required for a named event-field rename. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4151,7 +4152,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconstruct an artifact promotion graph",
         "summary": "Reconstruct which build, attest, stage, promote, and publish jobs can run after each supplied failure edge, including the identity of every retained artifact. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4392,7 +4393,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover a configuration precedence contract",
         "summary": "Recover defaults, file, environment, and CLI precedence plus normalization, disable sentinels, provenance, startup enforcement, and the tests that own each branch. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4633,7 +4634,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "repository-understanding-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Map a package split boundary",
         "summary": "Map the callers, exports, build metadata, tests, local commands, and release inputs needed to split one package without adding a compatibility facade that owns no behavior. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4874,7 +4875,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -5082,7 +5083,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile a weighted many-to-many join",
         "summary": "Join allocation and event rows under an explicit many-to-many policy, normalize weights, preserve unmatched keys, and emit deterministic duplicate and conservation diagnostics. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5321,7 +5322,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -5517,7 +5518,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile inventory movements",
         "summary": "Reconcile receipts, shipments, transfers, reversals, and duplicate references into per-location balances and a deterministic exception report without treating missing rows as zero. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5756,7 +5757,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Aggregate a funnel with late duplicates",
         "summary": "Build ordered funnel counts from nested events while deduplicating late arrivals, preserving unknown valid attributes, and separating malformed records from out-of-order valid activity. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5995,7 +5996,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -6218,7 +6219,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -6435,7 +6436,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-08 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "data-processing-08 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Build bitemporal price intervals",
         "summary": "Construct non-overlapping valid-time and system-time price intervals from out-of-order updates, late corrections, and exact duplicate events. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6676,7 +6677,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Verify a scoped request limit",
         "summary": "Apply captured first-party limits, exclusions, and amendment dates to a concrete request plan, showing the exact arithmetic and rejecting an out-of-scope draft source. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6917,7 +6918,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile a capability-default timeline",
         "summary": "Reconstruct preview availability, general availability, default activation, and one later exception from bounded first-party release artifacts. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -7158,7 +7159,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Interpret a normative exception chain",
         "summary": "Determine whether a concrete implementation satisfies a captured MUST, its explicit exception, and an informative note while preserving the authority level of each source clause. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -7399,7 +7400,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Verify a signed local policy snapshot",
         "summary": "Use only a bounded local evidence bundle to select the signed policy snapshot, reject superseded drafts, and map each conclusion to a content-addressed source anchor.",
@@ -7644,7 +7645,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Resolve a versioned local data dictionary",
         "summary": "Resolve a disputed field definition from a bounded versioned data dictionary, distinguish current authority from commentary, and record exact source evidence and uncertainty.",
@@ -7889,7 +7890,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Confirm a local protocol compatibility claim",
         "summary": "Check a compatibility claim against bounded local protocol records, separate normative and informative evidence, and return supported, contradicted, and unresolved conclusions.",
@@ -8134,7 +8135,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "retrieval-verification-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Audit a multi-claim security brief",
         "summary": "Classify a bounded technical brief claim by claim against captured advisories, migration guidance, and version metadata, including unsupported and partially supported claims. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8375,7 +8376,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Write an uncertainty-aware incident update",
         "summary": "Write a concise operator update from frozen facts that separates confirmed impact, current mitigation, explicit unknowns, owner, and the next timestamped update. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8614,7 +8615,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -8789,7 +8790,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Produce a cutover handoff",
         "summary": "Produce a migration handoff that separates completed source work from pending environment inputs, names verification and rollback commands, and states the exact next owner. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9028,7 +9029,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Explain an interval to two audiences",
         "summary": "Create a short executive explanation and a technical appendix for a supplied interval method without calling it a universal confidence interval or hiding its conditional assumptions. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9269,7 +9270,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Repair a scoped release note",
         "summary": "Replace an overstated release note with precise shipped behavior, a compatibility condition, rollback guidance, and a clear statement of what remains pending. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9508,7 +9509,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Draft a decision with replacement triggers",
         "summary": "Turn supplied constraints and evidence into a decision record with rejected alternatives, consequences, verification, and explicit conditions that require replacement or review. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9747,7 +9748,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "documentation-communication-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Consolidate runbook authority",
         "summary": "Create one canonical operational runbook from two drifting sources, preserving valid divergence as scoped notes and replacing duplicate procedures with owner links. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9986,7 +9987,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Schedule a failover rehearsal",
         "summary": "Produce a feasible rehearsal schedule from dependencies, exclusive roles, maintenance windows, rollback reserve, and a required post-event validation buffer. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10225,7 +10226,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan an expand-contract migration",
         "summary": "Plan a multi-version contract migration whose checkpoints remain deployable, with exact producer and consumer ordering, observation gates, and the last safe rollback boundary. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10464,7 +10465,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Build a qualified coverage roster",
         "summary": "Allocate qualified people to interval demand under availability, rest, continuity, and no-double-booking constraints, then report any provably uncovered interval. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10703,7 +10704,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a metric-guarded rollout",
         "summary": "Execute eligible rollout stages from frozen metrics, stop at the first failed guard, and record the evidence, rollback action, and prohibited later stages. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10942,7 +10943,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a checkpointed backfill",
         "summary": "Plan a bounded data backfill with dry-run sampling, monotonic checkpoints, invariants, pause conditions, idempotent resume, and rollback before source retirement. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11181,7 +11182,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a dependency API migration",
         "summary": "Plan one direct dependency update with supported API edits, lockfile provenance, transitive graph review, focused tests, and a rollback point before publication. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11420,7 +11421,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "planning-execution-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Plan a platform package matrix repair",
         "summary": "Plan platform-specific package paths and archive formats across a frozen build matrix while preserving action pins, signing boundaries, and artifact identity checks. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11659,7 +11660,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Use an owner map before editing",
         "summary": "Run the supplied owner-map tool once. It resolves the source owner for a bounded requested path, validates the proposed edits, preserves generated outputs, and emits a digest-bound semantic result and receipt.",
@@ -12369,7 +12370,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Cross-check a package manifest with a checksum tool",
         "summary": "Run the supplied package reconciliation tool once. It hashes bounded package files, compares them with the declared manifest, classifies verified, missing, and mismatched entries, and emits a digest-bound report and receipt.",
@@ -13080,7 +13081,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Complete a validator repair cycle",
         "summary": "Run the supplied validator-cycle tool once. It evaluates the initial configuration, applies only permitted deterministic repairs, evaluates the repaired configuration, preserves the protected identity, and emits a digest-bound result and receipt.",
@@ -13790,7 +13791,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Navigate a captured evidence index",
         "summary": "Run the supplied evidence-index tool once. It filters releases for the bounded query, selects the authoritative approved release under the declared policy, opens a bounded anchor set, rejects drafts, and emits a digest-bound result and receipt.",
@@ -14497,7 +14498,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Apply a structured patch through its gate",
         "summary": "Run the supplied structured-patch tool once. It applies bounded pointer updates only to allowed documents, preserves forbidden documents, evaluates the focused gate, proves a seeded regression is rejected, and emits a digest-bound result and receipt.",
@@ -15220,7 +15221,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Probe and normalize a local capability matrix",
         "summary": "Run the supplied capability-matrix tool once. It consumes bounded probe records, normalizes versions and capabilities, classifies required capability support, redacts declared diagnostic fields, and emits a digest-bound matrix and receipt.",
@@ -15936,7 +15937,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "tool-use-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover from an index-tool failure",
         "summary": "Run the supplied fallback tool once. It verifies the captured preferred-index failure, searches the bounded fallback corpus under the disclosed policy, filters citations to trusted roots, and emits a digest-bound fallback result and receipt.",
@@ -16653,7 +16654,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Return a computed exact JSON schema",
         "summary": "Compute derived values from supplied facts and return exactly the required nested JSON keys, types, ordering-insensitive values, and no surrounding prose.",
@@ -16859,7 +16860,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Honor a protected file scope",
         "summary": "Complete a local change while modifying exactly two allowed files, preserving digest-bound protected paths, and reporting the focused validation result. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17091,7 +17092,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Apply a constraint precedence matrix",
         "summary": "Produce one artifact under nested global, section, exception, terminology, and length rules, resolving conflicts by the supplied precedence matrix. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17321,7 +17322,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Prepare migration inputs without external effects",
         "summary": "Create validated local migration inputs and a dry-run receipt while avoiding the explicitly prohibited resource creation, message, database write, or deployment. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17553,7 +17554,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -17743,7 +17744,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "instruction-following-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Complete a dense compatibility edit",
         "summary": "Apply exact naming, backward compatibility, validation, documentation, secret-handling, and file-boundary constraints to one local contract change. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17975,7 +17976,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-01 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-01 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Resume an incomplete capability probe",
         "summary": "Classify incomplete capability evidence, preserve every completed probe, retry only eligible missing work, and avoid inventing a semantic result for the interrupted cell. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -18214,7 +18215,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-02 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-02 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover a split-lease queue ledger",
         "summary": "Reconcile a local queue whose durable lease ledger and completed-effect receipts disagree, preserve one current owner, resume only uncommitted items, and prove idempotent recovery.",
@@ -18455,7 +18456,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-03 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-03 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Recover a partial chunk manifest",
         "summary": "Reconcile a partial artifact against a chunk manifest, retain verified chunks, quarantine corrupt bytes, and produce a resumable missing-range plan. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -18694,7 +18695,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-04 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-04 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -18872,7 +18873,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-05 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-05 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Reconcile an orphaned artifact promotion",
         "summary": "Classify a staged artifact whose promotion marker is missing, validate its content identity, promote or quarantine it once, and retire temporary state with monotonic evidence.",
@@ -19113,7 +19114,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-06 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-06 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": {
         "title": "Isolate malformed batch entries",
         "summary": "Validate a mixed batch, reject malformed entries with stable reasons, continue independent valid entries, and emit an exact processed, rejected, and pending summary.",
@@ -19328,7 +19329,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-07 preserves the exact candidate.9 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, and behavior. Candidate.10 changes only the rejected response-contract source location or schema-owned field type where applicable, plus necessary candidate identity and digest bindings; fresh independent review and sealing remain pending.",
+      "rationale": "reliability-recovery-07 preserves the exact candidate.10 task-facing title, summary, input contract, cluster, allowed tools, budgets, evaluator configuration, scoring, acceptance fixtures, tags, private prompt, baselines, tools, and behavior. Candidate.11 changes only candidate identity, provenance, and independent response-source authority metadata; fresh independent review and sealing remain pending.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -19510,5 +19511,15 @@
     "corrected_field_type": "instruction-following-05:calculation_note:string",
     "repair": "schema_owned_response_types_and_task_owned_source_locations",
     "regression": "generic_catalog_mutation_and_private_source_counterexample_suite"
+  },
+  "response_source_authority_closure": {
+    "issue_code": "RESPONSE_LOCATION_VALIDATION_AUTHORITY_CIRCULAR",
+    "scope": "tracked_generation_and_private_authoring_response_authority",
+    "status": "closed_in_candidate_11",
+    "counts_toward_task_issue_closures": false,
+    "predecessor_candidate_id": "aiq-core/1.1.0-candidate.10",
+    "failure_class": "versioned_response_contract_selected_its_own_source_locations",
+    "repair": "separate_public_task_source_projection_and_private_task_byte_derivation",
+    "regression": "synchronized_contract_mutation_and_private_byte_projection_suite"
   }
 }
