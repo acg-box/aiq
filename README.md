@@ -152,25 +152,25 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.9`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.10`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.9 retains all 72 candidate.8 task-facing semantics,
+`aiq.catalog.v2`. Candidate.10 retains all 72 candidate.9 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:03ce2d0ed7199bd99b85631704fa64bf50fcb995a7bc299e7ffce0b200736f1b`.
+`sha256:2876800d4ffe0a1712f34dac72ae3e8fcbc88616292a5f8841d235cbe4c59682`.
 Its ordered task-metadata digest is
-`sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb`.
+`sha256:e613b92fe5fc8847b883a3ea3e7acaafaf0e3cca953bdbc8f29910a1ad75654c`.
 Its public release digest is
-`sha256:320df1b906cacb6f51a94f207d08ebcbbb3a795ffcf8fe2cf18fad6cf39591d9`.
+`sha256:e3728488b66fbf06ea1b85bfdf1c8bb053c6f8c59460f8f068eb7ae9a25f3431`.
 
-Candidates.1 through .8 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
+Candidates.1 through .9 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
 distinct disclosed scenario, operation, result, evaluator, metamorphic, and
 cross-task substitution contracts. Its source integration was rejected because
 its catalog task-metadata identity was
@@ -188,12 +188,22 @@ corpus, and source inputs for candidate packaging. It binds the complete validat
 context through signed-payload serialization and uses Node.js 24.18.0. The active
 1.0.7, Contrast, historical, and Official validators remain
 unchanged. The commitment validator derives the expected candidate identity from
-the validated embedded catalog and rejects candidate.7 and older identities.
+the validated embedded catalog and rejects candidate.9 and older identities.
+Candidate.9 is rejected because `debugging-04` declared `src/task.mjs` while its
+prompt, workspace bindings, and weighted evaluator import `src/task.ts`, and
+`instruction-following-05` declared the non-schema field type `undefined` for
+`calculation_note`. Candidate.10 corrects those values to `src/task.ts` and
+`string`. The generator now derives its allowed response types from the catalog
+schema enum and checks every response location against its task-owned source
+contract. The tracked private-authoring validator applies the same checks to
+prompt, workspace allowlist, progress, and evaluator-import projections.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
 separate source-integrity closure. It records the candidate.7 end-to-end validation
 failure as a second source-only closure. Neither closure counts as a task issue.
+The package-input, Node.js runtime, and public response-contract repairs are three
+additional source-only closures. None counts as a task issue.
 
 For each tool-use task, the hard gate requires exactly one total tool call and
 one `command_execution` call. It also requires one completed command-line digest for
@@ -205,7 +215,7 @@ command identities; exact total and per-tool counts still expose undeclared or
 extra calls. One matrix can contain at most 119 declared digest entries. The
 runner removes command text from provider stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.8 remains inactive and not production-publishable. Fresh
+redaction. Candidate.10 remains inactive and not production-publishable. Fresh
 independent review, double sealing, three qualification matrices,
 qualification, adoption, and cutover are pending.
 

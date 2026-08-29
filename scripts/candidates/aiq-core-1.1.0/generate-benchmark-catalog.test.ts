@@ -13,6 +13,11 @@ import {
   parseDecisionManifest,
   type CandidateDecisionManifest,
 } from './generate-benchmark-catalog.ts';
+import {
+  assertPrivateAuthoringResponseContract,
+  assertSourceCounterexampleRejected,
+  RESPONSE_FIELD_TYPES,
+} from './private-authoring-validator.ts';
 
 type JsonObject = Record<string, unknown>;
 
@@ -132,6 +137,58 @@ function taskFacingSemantics(task: JsonObject): JsonObject {
   };
 }
 
+function publicContractProjection(tasks: readonly JsonObject[]): JsonObject[] {
+  return tasks.map((task) => ({
+    task_facing: taskFacingSemantics(task),
+    response_contract: jsonObject(
+      jsonObject(
+        jsonObject(task.design_revision, `${String(task.task_id)} design revision`)
+          .candidate_5_contract,
+        `${String(task.task_id)} candidate.5 contract`,
+      ).response_contract,
+      `${String(task.task_id)} response contract`,
+    ),
+  }));
+}
+
+function responseContract(
+  manifest: CandidateDecisionManifest,
+  taskId: string,
+  generation = 'candidate_5_contract',
+): JsonObject {
+  const decision = manifest.decisions.find((candidate) => candidate.task_id === taskId);
+  if (decision === undefined) throw new TypeError(`${taskId} decision is missing.`);
+  return jsonObject(
+    jsonObject(Reflect.get(decision, generation), `${taskId} ${generation}`).response_contract,
+    `${taskId} response contract`,
+  );
+}
+
+function differingResponsePaths(
+  predecessor: readonly JsonObject[],
+  candidate: readonly JsonObject[],
+): string[] {
+  const differences: string[] = [];
+  const visit = (left: unknown, right: unknown, path: string): void => {
+    if (canonicalJson(left) === canonicalJson(right)) return;
+    if (Array.isArray(left) && Array.isArray(right) && left.length === right.length) {
+      left.forEach((value, index) => visit(value, right[index], `${path}[${String(index)}]`));
+      return;
+    }
+    if (isJsonObject(left) && isJsonObject(right)) {
+      const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].toSorted();
+      for (const key of keys) visit(left[key], right[key], `${path}.${key}`);
+      return;
+    }
+    differences.push(path);
+  };
+  for (const [index, current] of candidate.entries()) {
+    const taskId = String(jsonObject(current.task_facing, 'task-facing projection').task_id);
+    visit(predecessor[index], current, taskId);
+  }
+  return differences;
+}
+
 function assertCommitmentSchemaMatchesCatalog(catalog: JsonObject, schema: JsonObject): void {
   const tasks = objectArray(catalog.tasks, 'catalog tasks');
   const observedIdentity = digestValue(tasks);
@@ -196,7 +253,35 @@ function expectInvalidReceiptMutation(
   throws(() => parseDecisionManifest(clone), /receipt contract|fields are invalid/u);
 }
 
-await test('the generated candidate.9 public source is deterministic', async () => {
+function runPrivateAuthoringSourceCounterexample(
+  label: string,
+  responseContractValue: JsonObject,
+  sources: {
+    readonly prompt: readonly string[];
+    readonly workspace_allowlist: readonly string[];
+    readonly progress_binding: readonly string[];
+    readonly evaluator_imports: readonly string[];
+  },
+  expectedEvidence: string,
+): string {
+  const validatorUrl = new URL('./private-authoring-validator.ts', import.meta.url).href;
+  const source = `
+    import { assertPrivateAuthoringResponseContract } from ${JSON.stringify(validatorUrl)};
+    let input = '';
+    process.stdin.setEncoding('utf8');
+    for await (const chunk of process.stdin) input += chunk;
+    const value = JSON.parse(input);
+    assertPrivateAuthoringResponseContract(value.response_contract, value.sources, value.label);
+  `;
+  const child = spawnSync(process.execPath, ['--input-type=module', '--eval', source], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+    input: JSON.stringify({ label, response_contract: responseContractValue, sources }),
+  });
+  return assertSourceCounterexampleRejected(label, child, expectedEvidence);
+}
+
+await test('the generated candidate.10 public source is deterministic', async () => {
   const catalog = buildCatalog();
   deepStrictEqual(
     JSON.parse(await readFile(new URL('catalog.json', candidateRoot), 'utf8')),
@@ -208,15 +293,15 @@ await test('the generated candidate.9 public source is deterministic', async () 
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.9',
+    'aiq-core/1.1.0-candidate.10',
   );
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').task_metadata_digest,
-    'sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb',
+    'sha256:e613b92fe5fc8847b883a3ea3e7acaafaf0e3cca953bdbc8f29910a1ad75654c',
   );
 });
 
-await test('candidate.9 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
+await test('candidate.10 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
   const rootPackage = jsonObject(
     JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')),
     'root package',
@@ -253,37 +338,26 @@ await test('candidate.9 uses the exact checked-in Node, npm, and TypeScript iden
   );
 });
 
-await test('candidate.8 is exact rejected source evidence and candidate.1 through .8 stay immutable', async () => {
+await test('candidate.9 is exact rejected source evidence and candidate.1 through .9 stay immutable', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.8',
-    disposition: 'rejected_package_input_self_authority_and_node_runtime_drift',
-    change_commit: '9b9de9951308d98b039cbadae34c2e6369848cde',
-    source_tree: '67e47e59780f0ec85da9c024ae8e2308417e031e',
-    pull_request: 141,
-    author_task_identity: '01a04baf-4875-7961-9802-df817567e2c7',
-    authoring_receipt_raw_sha256:
-      'sha256:bde6b4c2407749168bf7ef68276a73de75d4a5829a74984087a5936634561a17',
-    full_inventory_sha256:
-      'sha256:820825a6bcf85f5240f361443357af3c1d5434f8e7c32e5b115e4f6bd48d9a6e',
+    candidate_id: 'aiq-core/1.1.0-candidate.9',
+    disposition: 'rejected_public_response_contract_source_and_schema_drift',
+    source_commit: '2690d13a069f85de6045802196be408fb98f70d9',
+    source_tree: 'fb530afdd873b8fea1f95b4aad42610fceb91270',
     catalog_canonical_sha256:
-      'sha256:946b506301a50c275986c2a0280bdccef1c2562d50d9d209cb774a0bda2c2359',
+      'sha256:03ce2d0ed7199bd99b85631704fa64bf50fcb995a7bc299e7ffce0b200736f1b',
     catalog_entry_bindings_sha256:
-      'sha256:5eb226f746dee754072bcbdc61029cca8c8309869a7a2668c790eeead3196e2f',
-    task_metadata_sha256: 'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',
+      'sha256:b77091d3085c58323f63c14aec6ca1e71818ceca0e1e60196ea3cd29d3e0da51',
+    task_metadata_sha256: 'sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb',
+    public_contract_projection_sha256:
+      'sha256:388c998272084c06719d037dae523a5bb71694ca7e653c774de26aa94051ba61',
     task_facing_semantics_sha256:
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
-    source_review_task_identity: '01a04786-3f39-7852-a41b-fb57bd73dfad',
     task_semantics: 'accepted_unchanged_72',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'all_candidate_8_task_facing_semantics_must_remain_identical',
-    prior_rejected_authoring_attempt: {
-      disposition: 'rejected_readback_failure',
-      authoring_receipt_raw_sha256:
-        'sha256:b37a4a84fa8adef31879b790ce108185ce1a79e3fee7885ded6c8b3ab518c7eb',
-      full_inventory_sha256:
-        'sha256:2e94fc8395cc7c4c88044bf7619413a5a96f2ec70633a5498289d1f381f4c224',
-    },
+    semantic_retention_rule:
+      'candidate_9_task_facing_semantics_unchanged_and_only_two_response_contract_fields_corrected',
   });
   deepStrictEqual(manifest.immutable_rejected_predecessors, [
     'aiq-core/1.1.0-candidate.1',
@@ -294,6 +368,7 @@ await test('candidate.8 is exact rejected source evidence and candidate.1 throug
     'aiq-core/1.1.0-candidate.6',
     'aiq-core/1.1.0-candidate.7',
     'aiq-core/1.1.0-candidate.8',
+    'aiq-core/1.1.0-candidate.9',
   ]);
 });
 
@@ -335,7 +410,7 @@ await test('all exact candidate.4 task-review records remain bound as historical
   }
 });
 
-await test('candidate.9 retains all tasks while preserving candidate.5 design history', async () => {
+await test('candidate.10 retains all tasks while preserving candidate.5 design history', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   const expected = {
@@ -363,7 +438,7 @@ await test('candidate.9 retains all tasks while preserving candidate.5 design hi
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.9 identity and exact candidate.8 semantics', async () => {
+await test('every task has one candidate.10 identity and exact candidate.9 task-facing semantics', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   assertDecisionManifest(manifest, taskIds());
@@ -378,7 +453,7 @@ await test('every task has one candidate.9 identity and exact candidate.8 semant
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.8');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.9');
     strictEqual(design.decision, 'retained');
     strictEqual(design.predecessor_decision, decision.predecessor_decision);
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
@@ -419,7 +494,156 @@ await test('every task has one candidate.9 identity and exact candidate.8 semant
   );
 });
 
-await test('the 42 task closures remain distinct from all four source-only closures', async () => {
+await test('candidate.9 to candidate.10 changes only the two rejected public contract fields', () => {
+  const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
+  const candidateProjection = publicContractProjection(tasks);
+  const predecessorProjection = structuredClone(candidateProjection);
+  const predecessorByTask = new Map(
+    predecessorProjection.map((projection) => [
+      String(jsonObject(projection.task_facing, 'task-facing projection').task_id),
+      jsonObject(projection.response_contract, 'response contract'),
+    ]),
+  );
+  const debugging = jsonObject(
+    predecessorByTask.get('debugging-04'),
+    'debugging-04 predecessor response contract',
+  );
+  debugging.locations = ['src/task.mjs'];
+  const instruction = jsonObject(
+    predecessorByTask.get('instruction-following-05'),
+    'instruction-following-05 predecessor response contract',
+  );
+  jsonObject(instruction.field_types, 'instruction-following-05 field types').calculation_note =
+    'undefined';
+
+  strictEqual(
+    digestValue(predecessorProjection),
+    'sha256:388c998272084c06719d037dae523a5bb71694ca7e653c774de26aa94051ba61',
+  );
+  strictEqual(
+    digestValue(candidateProjection),
+    'sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5',
+  );
+  deepStrictEqual(differingResponsePaths(predecessorProjection, candidateProjection).toSorted(), [
+    'debugging-04.response_contract.locations[0]',
+    'instruction-following-05.response_contract.field_types.calculation_note',
+  ]);
+});
+
+await test('schema-owned response types and task-owned locations reject candidate.9 mutations', async () => {
+  const manifest = await decisions();
+  const catalogTasks = objectArray(buildCatalog().tasks, 'candidate tasks');
+  const allowed = new Set<string>(RESPONSE_FIELD_TYPES);
+  for (const task of catalogTasks) {
+    const design = jsonObject(task.design_revision, `${String(task.task_id)} design`);
+    const contract = jsonObject(
+      jsonObject(design.candidate_5_contract, `${String(task.task_id)} candidate.5 contract`)
+        .response_contract,
+      `${String(task.task_id)} response contract`,
+    );
+    for (const type of Object.values(jsonObject(contract.field_types, 'response field types'))) {
+      strictEqual(allowed.has(String(type)), true, `${String(task.task_id)} uses ${String(type)}`);
+    }
+  }
+
+  const locationMutation = structuredClone(manifest);
+  responseContract(locationMutation, 'debugging-04').locations = ['src/task.mjs'];
+  throws(
+    () => buildCatalogFrom(locationMutation),
+    /response locations do not match task-owned source/u,
+  );
+
+  const typeMutation = structuredClone(manifest);
+  jsonObject(
+    responseContract(typeMutation, 'instruction-following-05').field_types,
+    'instruction-following-05 field types',
+  ).calculation_note = 'undefined';
+  throws(() => buildCatalogFrom(typeMutation), /schema-owned enum/u);
+});
+
+await test('private authoring source counterexamples retain bounded fail-closed child diagnostics', () => {
+  const correctLocations = ['src/task.ts'];
+  const sources = {
+    prompt: correctLocations,
+    workspace_allowlist: correctLocations,
+    progress_binding: correctLocations,
+    evaluator_imports: correctLocations,
+  };
+  assertPrivateAuthoringResponseContract(
+    { locations: correctLocations, field_types: { module_exports: 'module' } },
+    sources,
+    'debugging-04 positive source',
+  );
+  throws(
+    () =>
+      assertPrivateAuthoringResponseContract(
+        { locations: correctLocations, field_types: { module_exports: 'module' } },
+        { ...sources, evaluator_imports: undefined },
+        'incomplete private source',
+      ),
+    /source owners are incomplete|must be a string array/u,
+  );
+
+  const locationDiagnosticValue: unknown = JSON.parse(
+    runPrivateAuthoringSourceCounterexample(
+      'debugging-04 candidate.9 location',
+      { locations: ['src/task.mjs'], field_types: { module_exports: 'module' } },
+      sources,
+      'response locations do not match task-owned source',
+    ),
+  );
+  const locationDiagnostic = jsonObject(locationDiagnosticValue, 'location diagnostic');
+  deepStrictEqual(
+    {
+      label: locationDiagnostic.label,
+      child_status: locationDiagnostic.child_status,
+      signal: locationDiagnostic.signal,
+      error: locationDiagnostic.error,
+    },
+    {
+      label: 'debugging-04 candidate.9 location',
+      child_status: 1,
+      signal: null,
+      error: null,
+    },
+  );
+  strictEqual(String(locationDiagnostic.stderr).includes('task-owned source'), true);
+
+  const typeDiagnosticValue: unknown = JSON.parse(
+    runPrivateAuthoringSourceCounterexample(
+      'instruction-following-05 candidate.9 type',
+      { locations: correctLocations, field_types: { calculation_note: 'undefined' } },
+      sources,
+      'schema-owned enum',
+    ),
+  );
+  const typeDiagnostic = jsonObject(typeDiagnosticValue, 'type diagnostic');
+  strictEqual(typeDiagnostic.child_status, 1);
+  strictEqual(typeDiagnostic.signal, null);
+  strictEqual(typeDiagnostic.error, null);
+  strictEqual(String(typeDiagnostic.stderr).includes('schema-owned enum'), true);
+
+  const boundedValue: unknown = JSON.parse(
+    assertSourceCounterexampleRejected(
+      'bounded diagnostic',
+      { status: 1, signal: null, stdout: `expected rejection ${'x'.repeat(4_096)}`, stderr: '' },
+      'expected rejection',
+    ),
+  );
+  const bounded = jsonObject(boundedValue, 'bounded diagnostic');
+  strictEqual(String(bounded.stdout).endsWith('[truncated]'), true);
+  throws(
+    () =>
+      assertSourceCounterexampleRejected(
+        'retry must not become success',
+        { status: 0, signal: null, stdout: 'retry succeeded', stderr: '' },
+        'rejected',
+      ),
+    /did not fail through its validator/u,
+  );
+});
+
+await test('the 42 task closures remain distinct from all five source-only closures', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.task_issue_code_counts, issueCounts);
   deepStrictEqual(manifest.retained_candidate_5_task_issue_closures.issue_code_counts, issueCounts);
@@ -473,6 +697,19 @@ await test('the 42 task closures remain distinct from all four source-only closu
     predecessor_observed_node_version: 'v24.19.0',
     repair: 'checked_in_node_version_enforced_at_private_build_and_readback',
     regression: 'candidate_private_build_and_readback_runtime_mismatch_suite',
+  });
+  deepStrictEqual(manifest.public_response_contract_validation_closure, {
+    issue_code: 'PUBLIC_RESPONSE_CONTRACT_SOURCE_OR_SCHEMA_DRIFT',
+    scope: 'catalog_response_locations_and_field_types',
+    status: 'closed_in_candidate_10',
+    counts_toward_task_issue_closures: false,
+    predecessor_candidate_id: 'aiq-core/1.1.0-candidate.9',
+    rejected_location: 'debugging-04:src/task.mjs',
+    corrected_location: 'debugging-04:src/task.ts',
+    rejected_field_type: 'instruction-following-05:calculation_note:undefined',
+    corrected_field_type: 'instruction-following-05:calculation_note:string',
+    repair: 'schema_owned_response_types_and_task_owned_source_locations',
+    regression: 'generic_catalog_mutation_and_private_source_counterexample_suite',
   });
   for (const issueCode of reviewIssueCodes) {
     strictEqual(
@@ -786,7 +1023,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   throws(() => buildCatalogFrom(reordered), /ordered explicit retained\/revised decision/u);
 });
 
-await test('candidate schemas bind candidate.9 identity and candidate.5 behavior contracts', async () => {
+await test('candidate schemas bind candidate.10 identity and candidate.5 behavior contracts', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -802,6 +1039,25 @@ await test('candidate schemas bind candidate.9 identity and candidate.5 behavior
   const taskDefinitionProperties = jsonObject(taskDefinition.properties, 'task properties');
   const designRevision = jsonObject(taskDefinitionProperties.design_revision, 'design revision');
   const serialized = JSON.stringify(designRevision);
+  const designProperties = jsonObject(designRevision.properties, 'design properties');
+  const currentContract = jsonObject(
+    designProperties.candidate_5_contract,
+    'candidate.5 contract schema',
+  );
+  const currentContractProperties = jsonObject(
+    currentContract.properties,
+    'candidate.5 contract properties',
+  );
+  const responseSchema = jsonObject(
+    currentContractProperties.response_contract,
+    'response contract schema',
+  );
+  const responseProperties = jsonObject(responseSchema.properties, 'response properties');
+  const fieldTypes = jsonObject(responseProperties.field_types, 'response field types schema');
+  deepStrictEqual(
+    jsonObject(fieldTypes.additionalProperties, 'response field type values').enum,
+    RESPONSE_FIELD_TYPES,
+  );
   deepStrictEqual(catalogProperties.schema_version, { const: 'aiq.catalog.v2' });
   deepStrictEqual(catalogProperties.task_set_version, { const: '1.1.0' });
   deepStrictEqual(catalogProperties.status, { const: 'frozen_candidate' });
@@ -817,6 +1073,12 @@ await test('candidate schemas bind candidate.9 identity and candidate.5 behavior
   );
   strictEqual(
     JSON.stringify(catalogProperties.candidate_state).includes('node_runtime_correction_closure'),
+    true,
+  );
+  strictEqual(
+    JSON.stringify(catalogProperties.candidate_state).includes(
+      'public_response_contract_validation_closure',
+    ),
     true,
   );
   deepStrictEqual(taskProperties.task_version, { const: '1.1.0' });
@@ -914,7 +1176,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const projectionProperties = jsonObject(projection.properties, 'projection properties');
   deepStrictEqual(projectionProperties.candidate_id, {
-    const: 'aiq-core/1.1.0-candidate.9',
+    const: 'aiq-core/1.1.0-candidate.10',
   });
   deepStrictEqual(projectionProperties.disposition, { const: 'accepted' });
   deepStrictEqual(projectionProperties.synthetic, { const: false });
@@ -937,6 +1199,7 @@ await test('catalog, commitment validator schema, and stale mutations share one 
   assertCommitmentSchemaMatchesCatalog(catalog, commitmentSchema);
 
   for (const staleIdentity of [
+    'sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb',
     'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',
     'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80',
     'sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95',
