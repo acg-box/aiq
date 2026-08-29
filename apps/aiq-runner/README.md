@@ -39,9 +39,9 @@ path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.3 source is frozen for a fresh
-independent review. Candidate.2 is rejected predecessor evidence, its review
-records do not satisfy candidate.3, and an empty candidate.3 review directory
+declaration exactly. The checked-in candidate.7 source is frozen for a fresh
+independent review. Candidate.6 is immutable predecessor evidence, its review
+records do not satisfy candidate.7, and an empty candidate.7 review directory
 blocks sealing without creating output.
 The Contrast path retains bounded 1.0.7 compatibility and copies supplied v1
 review records; no path synthesizes review completion from task notes.
@@ -57,13 +57,17 @@ review-process separation is evidence, not cryptographic proof of human
 independence.
 
 Create a deterministic qualification or rejection artifact from three
-predeclared complete matrices without invoking a model:
+predeclared, replay-verified complete calibration stages without invoking a model:
 
 ```sh
 cargo run -p aiq-runner -- qualify-candidate --help
 ```
 
-Qualification keeps every 1,224-cell child separate. It never pools, splices,
+Supply three `--stage` and three paired `--attestation` paths in manifest order,
+plus the independently retained `--expected-manifest-sha256`. The manifest fixes
+the policy, candidate, and child/run/verifier identities before analysis. The
+completed package, stage, attestation, and matrix digests are bound after the
+exact runs exist. Qualification keeps every 1,224-cell child separate. It never pools, splices,
 publishes, or relabels a child run. A rejected candidate requires a new
 candidate identity before any revised task or evaluator is run.
 
@@ -145,6 +149,12 @@ remain pending.
 The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
+
+`run --candidate-qualification` is the only execution route that selects the
+AIQ Core 1.1.0 candidate commitment validator. It requires Calibration, all 72
+candidate tasks, the exact 17-model matrix, and a new durable output. Combining
+it with Official fails before preflight or model work. Omitting the flag keeps
+the active 1.0.7 validator and rejects a candidate commitment.
 
 The retained complete `1.0.7` calibration is replayed without model calls before
 the real Official publication path. Every formal model task has

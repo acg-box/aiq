@@ -150,21 +150,21 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.6`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.7`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-The candidate.6 public identities are:
+The candidate.7 public identities are:
 
 - canonical catalog:
-  `sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170`;
+  `sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40`;
 - ordered task metadata:
-  `sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95`;
+  `sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80`;
 - public release:
-  `sha256:367dd82c1bfe282f5b2c408d0058a14ac76429c2f8f276ffb30c97b8f18ee839`.
+  `sha256:a8449dfdde489585fcfdaefaf3a2a95393b653db885fa4f7451175cf40a976df`.
 
-Candidates.1 through .5 are immutable rejected and permanently non-sealable.
+Candidates.1 through .6 are immutable predecessor evidence.
 Candidate.5 retains its model-free authoring evidence and all task semantics,
 but its source integration is rejected. Its catalog declared task-metadata
 identity
@@ -175,13 +175,19 @@ stale identity
 The sealer writes the catalog identity and immediately validates through that
 consumer, so candidate.5 cannot complete a positive seal round trip.
 
-Candidate.6 preserves all 72 candidate.5 task-facing semantics. Its public
+Candidate.6 preserved all 72 candidate.5 task-facing semantics. Its public
 semantic projection commitment is
 `sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54`.
 The Rust validator derives candidate identity from the validated embedded
 catalog. The public commitment schema binds the same identity. Source tests
 exercise the positive catalog-to-commitment round trip and reject both stale
-identities.
+identities. Candidate.7 keeps those task semantics and repairs the separate
+candidate execution and replay-verified qualification-evidence boundary.
+Candidate.6 retains 72 approved reviews and two byte-identical model-free
+seals with canonical commitment
+`sha256:37291d7da5f2b5d5b112b54b8ce1b296c20f718ebead87c14118056769e47011`.
+Those private bytes remain unchanged, but they cannot be relabeled or reused for
+candidate.7 because every review and seal binds candidate.6 source identity.
 
 Each revised task discloses a distinct `input.json` scenario contract, one
 deterministic domain operation, and one task-specific semantic result contract.
@@ -191,8 +197,8 @@ a metamorphic basis for all task-specific scenario fields. The authoring proof
 must run all 42 cross-task supplied-tool substitutions. A failure caused only
 by a changed receipt is not behavior evidence.
 
-Candidate.6 preserves the exact 42 candidate.5 task-issue closures. The
-`CANDIDATE_CATALOG_COMMITMENT_IDENTITY_DRIFT` repair is one separate
+Candidate.7 preserves the exact 42 candidate.5 task-issue closures. The
+`QUALIFICATION_EVIDENCE_BRIDGE_UNAUTHENTICATED` repair is one separate
 source-integrity closure and does not count toward those 42 entries.
 
 Each tool-use contract keeps the complete eight-field `receipt.json` contract.
@@ -217,7 +223,7 @@ behavior.
 Each task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
 candidate uses natural completion. The catalog is the sole expected-class
-authority. Candidate.6 is frozen for a fresh independent review, but it is inactive and
+authority. Candidate.7 is frozen for a fresh independent review, but it is inactive and
 not production-publishable. Fresh review, double sealing, three complete
 qualification matrices, qualification, adoption, and cutover are pending.
 
@@ -230,28 +236,32 @@ The candidate contracts are:
   authority;
 - `schema/corpus-commitment-v3.schema.json` for an isolated 1.1.0 candidate
   seal;
-- `schema/benchmark-qualification-manifest-v1.schema.json` for the exact
-  candidate, fixed policy, and three predeclared children;
-- `schema/benchmark-qualification-matrix-v1.schema.json` for each separate
-  complete 17-by-72 child; and
-- `schema/benchmark-qualification-v1.schema.json` for the deterministic
+- `schema/benchmark-qualification-manifest-v2.schema.json` for the exact
+  candidate, fixed policy, and three predeclared child/run/verifier identities;
+- `schema/calibration-verified-stage-v2.schema.json` for the optional candidate-only
+  verifier-derived 17-by-72 cell projection; and
+- `schema/benchmark-qualification-v2.schema.json` for the deterministic
   qualification or rejection result.
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.5 evidence does not satisfy
-candidate.6. The sealer requires one fresh matching record for each exact
-candidate.6 task and catalog entry. It does not infer review completion from
+verdict, method, scope, and notes. Candidate.6 evidence does not satisfy
+candidate.7. The sealer requires one fresh matching record for each exact
+candidate.7 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
-Qualification uses three complete matrices only. It reports all three pairwise
+Qualification consumes three complete replay-verified stage and attestation
+pairs only. The independently retained manifest digest fixes thresholds,
+candidate identity, and the three child/run/verifier identities before
+analysis. Completed package, stage, attestation, and derived-matrix digests are
+bound after the exact runs exist. Qualification reports all three pairwise
 rank correlations, exact-cell agreement, mean absolute cell delta, a separate
 run-to-run prediction interval for every configuration, and uncertainty-aware
 comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the candidate.6 public source without private inputs:
+Regenerate and test the candidate.7 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts

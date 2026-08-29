@@ -152,39 +152,42 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.6`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.7`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.6 retains all 72 candidate.5 task-facing semantics,
+`aiq.catalog.v2`. Candidate.7 retains all 72 candidate.6 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170`.
+`sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40`.
 Its ordered task-metadata digest is
-`sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95`.
+`sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80`.
 Its public release digest is
-`sha256:367dd82c1bfe282f5b2c408d0058a14ac76429c2f8f276ffb30c97b8f18ee839`.
+`sha256:a8449dfdde489585fcfdaefaf3a2a95393b653db885fa4f7451175cf40a976df`.
 
-Candidates.1 through .5 are immutable rejected, permanently non-sealable
-predecessor evidence. Candidate.5 remains the durable source for the seven
+Candidates.1 through .6 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
 distinct disclosed scenario, operation, result, evaluator, metamorphic, and
 cross-task substitution contracts. Its source integration was rejected because
 its catalog task-metadata identity was
 `sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4`,
 while the Rust commitment consumer and public v3 schema still required
 `sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6`.
-Candidate.6 removes that duplicate Rust identity authority. The commitment
-validator now derives the expected candidate identity from the validated
-embedded catalog, and a cross-boundary regression binds that runtime path to
-the public schema while rejecting both stale values.
+Candidate.6 removed that duplicate Rust identity authority. Its 72 approved
+reviews and two byte-identical seals remain unchanged candidate.6 evidence, but
+their source bindings are stale for candidate.7. Candidate.7 keeps the
+catalog-derived commitment authority and repairs the trusted execution and
+qualification-evidence bridge. The commitment validator derives the expected
+candidate identity from the validated embedded catalog and rejects candidate.6
+and older identities.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
-catalog/commitment/schema drift as one separate source-integrity closure, which
+unauthenticated candidate execution and qualification-evidence bridge as one
+separate source-integrity closure, which
 does not count as a task issue.
 
 For each tool-use task, the hard gate requires exactly one total tool call and
@@ -197,7 +200,7 @@ command identities; exact total and per-tool counts still expose undeclared or
 extra calls. One matrix can contain at most 119 declared digest entries. The
 runner removes command text from provider stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.6 remains inactive and not production-publishable. Fresh
+redaction. Candidate.7 remains inactive and not production-publishable. Fresh
 independent review, double sealing, three qualification matrices,
 qualification, adoption, and cutover are pending.
 
@@ -221,7 +224,13 @@ cargo run -p aiq-verifier -- verify-qualification --help
 ```
 
 Qualification accepts exactly three predeclared, independently identified,
-complete, non-synthetic 17-by-72 semantic matrices for one exact candidate.
+complete, non-synthetic 17-by-72 calibration stages for one exact candidate.
+Each stage contains verifier-derived semantic cells and has a valid attestation
+from its predeclared verifier identity. The policy, candidate, and three
+child/run/verifier identities are fixed before analysis and supplied with an
+independently retained manifest digest. Completed package, stage, and
+attestation digests are unpredictable outputs; the artifact binds them only
+after those exact runs exist.
 Each matrix remains one 1,224-cell publication unit. Qualification does not
 pool, splice, publish, or relabel child runs. The policy requires 72 tasks in
 ten domains, at least 60 clusters, at least 48 informative tasks per matrix,

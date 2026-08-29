@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/benchmark-qualification-v2.schema.json",
+  "title": "AIQ benchmark qualification artifact v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "claims_digest",
+    "claims"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aiq.benchmark-qualification.v2"
+    },
+    "claims_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "candidate",
+        "policy",
+        "policy_digest",
+        "manifest_digest",
+        "method_version",
+        "official_publication_unit",
+        "children",
+        "matrices",
+        "pairwise",
+        "median_configuration_rank_spearman",
+        "configurations",
+        "comparison_group_method",
+        "comparison_groups",
+        "violations"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "qualified",
+            "rejected"
+          ]
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        },
+        "policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "method_version": {
+          "const": "aiq.three-replay-verified-complete-matrix-qualification.v2"
+        },
+        "official_publication_unit": {
+          "const": "one_complete_1224_cell_matrix"
+        },
+        "children": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/child"
+          }
+        },
+        "matrices": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/matrixDiagnostic"
+          }
+        },
+        "pairwise": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/pairwise"
+          }
+        },
+        "median_configuration_rank_spearman": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "configurations": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "items": {
+            "$ref": "#/$defs/configuration"
+          }
+        },
+        "comparison_group_method": {
+          "const": "prediction_interval_overlap_components_v1"
+        },
+        "comparison_groups": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 17,
+          "items": {
+            "$ref": "#/$defs/group"
+          }
+        },
+        "violations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "qualified"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "violations": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "violations": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "plainDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "nodeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "public_key"],
+      "properties": {
+        "node_id": { "type": "string", "pattern": "^node_[0-9a-f]{64}(?![\\s\\S])" },
+        "public_key": { "$ref": "#/$defs/plainDigest" }
+      }
+    },
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._:/-]+(?![\\s\\S])"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "rate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "family",
+        "reasoning_effort"
+      ],
+      "properties": {
+        "family": {
+          "enum": [
+            "sol",
+            "terra",
+            "luna"
+          ]
+        },
+        "reasoning_effort": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ]
+        }
+      }
+    },
+    "child": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "child_id",
+        "source_run_id",
+        "source_run_digest",
+        "source_package_sha256",
+        "source_package_content_hash",
+        "runner",
+        "verifier",
+        "verifier_attestation_digest",
+        "run_provenance_digest",
+        "matrix_digest"
+      ],
+      "properties": {
+        "child_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "source_run_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "source_run_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "source_package_sha256": {
+          "$ref": "#/$defs/plainDigest"
+        },
+        "source_package_content_hash": {
+          "$ref": "#/$defs/digest"
+        },
+        "runner": {
+          "$ref": "#/$defs/nodeIdentity"
+        },
+        "verifier": {
+          "$ref": "#/$defs/nodeIdentity"
+        },
+        "verifier_attestation_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "run_provenance_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "matrix_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "domain": {
+      "enum": [
+        "coding",
+        "debugging",
+        "repository_understanding",
+        "data_processing",
+        "retrieval_verification",
+        "documentation_communication",
+        "planning_execution",
+        "tool_use",
+        "instruction_following",
+        "reliability_recovery"
+      ]
+    },
+    "domainDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain",
+        "tasks",
+        "informative_tasks",
+        "non_uniform_tasks"
+      ],
+      "properties": {
+        "domain": {
+          "$ref": "#/$defs/domain"
+        },
+        "tasks": {
+          "$ref": "#/$defs/count"
+        },
+        "informative_tasks": {
+          "$ref": "#/$defs/count"
+        },
+        "non_uniform_tasks": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "meanScore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "mean_score"
+      ],
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "mean_score": {
+          "$ref": "#/$defs/score"
+        }
+      }
+    },
+    "matrixDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "child_id",
+        "semantic_cells",
+        "informative_tasks",
+        "universal_semantic_zero_tasks",
+        "universal_full_credit_tasks",
+        "domains",
+        "configuration_means"
+      ],
+      "properties": {
+        "child_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "semantic_cells": {
+          "const": 1224
+        },
+        "informative_tasks": {
+          "$ref": "#/$defs/count"
+        },
+        "universal_semantic_zero_tasks": {
+          "$ref": "#/$defs/count"
+        },
+        "universal_full_credit_tasks": {
+          "$ref": "#/$defs/count"
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/domainDiagnostic"
+          }
+        },
+        "configuration_means": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "items": {
+            "$ref": "#/$defs/meanScore"
+          }
+        }
+      }
+    },
+    "pairwise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first_child_id",
+        "second_child_id",
+        "configuration_rank_spearman",
+        "exact_cell_agreement_count",
+        "exact_cell_agreement_rate",
+        "mean_absolute_cell_delta",
+        "maximum_configuration_mean_shift"
+      ],
+      "properties": {
+        "first_child_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "second_child_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "configuration_rank_spearman": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "exact_cell_agreement_count": {
+          "$ref": "#/$defs/count"
+        },
+        "exact_cell_agreement_rate": {
+          "$ref": "#/$defs/rate"
+        },
+        "mean_absolute_cell_delta": {
+          "$ref": "#/$defs/rate"
+        },
+        "maximum_configuration_mean_shift": {
+          "$ref": "#/$defs/score"
+        }
+      }
+    },
+    "prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "level",
+        "observations",
+        "mean",
+        "sample_standard_deviation",
+        "low",
+        "high"
+      ],
+      "properties": {
+        "method": {
+          "const": "student_t_future_single_run_n3_95_v1"
+        },
+        "level": {
+          "const": 0.95
+        },
+        "observations": {
+          "const": 3
+        },
+        "mean": {
+          "$ref": "#/$defs/score"
+        },
+        "sample_standard_deviation": {
+          "type": "number",
+          "minimum": 0
+        },
+        "low": {
+          "$ref": "#/$defs/score"
+        },
+        "high": {
+          "$ref": "#/$defs/score"
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "child_mean_scores",
+        "run_to_run_prediction_interval"
+      ],
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/model"
+        },
+        "child_mean_scores": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/score"
+          }
+        },
+        "run_to_run_prediction_interval": {
+          "$ref": "#/$defs/prediction"
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "group_id",
+        "models"
+      ],
+      "properties": {
+        "group_id": {
+          "type": "string",
+          "pattern": "^group-[0-9]{2}(?![\\s\\S])"
+        },
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 17,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/model"
+          }
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "catalog_digest",
+        "task_metadata_digest",
+        "task_set_digest",
+        "corpus_release_id",
+        "corpus_commitment_digest",
+        "evaluator_digest",
+        "harness_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "network_policy_digest",
+        "environment_digest",
+        "source_manifest_digest",
+        "model_selection_digest"
+      ],
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "catalog_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "task_metadata_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "task_set_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "corpus_release_id": {
+          "$ref": "#/$defs/identity"
+        },
+        "corpus_commitment_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "evaluator_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "harness_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "prompt_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "tool_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "network_policy_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "environment_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "source_manifest_digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "model_selection_digest": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "required_matrices",
+        "required_tasks",
+        "required_domains",
+        "required_model_configurations",
+        "minimum_clusters",
+        "maximum_tasks_per_cluster",
+        "informative_facility_min",
+        "informative_facility_max",
+        "informative_task_range_min",
+        "minimum_informative_tasks",
+        "minimum_domain_informative_tasks",
+        "minimum_domain_non_uniform_tasks",
+        "maximum_universal_semantic_zero_tasks",
+        "maximum_universal_full_credit_tasks",
+        "minimum_median_rank_spearman",
+        "maximum_configuration_mean_shift"
+      ],
+      "properties": {
+        "version": {
+          "const": "aiq.benchmark-qualification-policy.v1"
+        },
+        "required_matrices": {
+          "const": 3
+        },
+        "required_tasks": {
+          "const": 72
+        },
+        "required_domains": {
+          "const": 10
+        },
+        "required_model_configurations": {
+          "const": 17
+        },
+        "minimum_clusters": {
+          "const": 60
+        },
+        "maximum_tasks_per_cluster": {
+          "const": 2
+        },
+        "informative_facility_min": {
+          "const": 0.1
+        },
+        "informative_facility_max": {
+          "const": 0.9
+        },
+        "informative_task_range_min": {
+          "const": 0.1
+        },
+        "minimum_informative_tasks": {
+          "const": 48
+        },
+        "minimum_domain_informative_tasks": {
+          "const": 3
+        },
+        "minimum_domain_non_uniform_tasks": {
+          "const": 4
+        },
+        "maximum_universal_semantic_zero_tasks": {
+          "const": 3
+        },
+        "maximum_universal_full_credit_tasks": {
+          "const": 3
+        },
+        "minimum_median_rank_spearman": {
+          "const": 0.7
+        },
+        "maximum_configuration_mean_shift": {
+          "const": 5
+        }
+      }
+    }
+  }
+}
