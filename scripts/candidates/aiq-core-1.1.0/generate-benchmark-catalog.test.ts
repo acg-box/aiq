@@ -281,43 +281,232 @@ function runPrivateAuthoringSourceCounterexample(
   return assertSourceCounterexampleRejected(label, child, expectedEvidence);
 }
 
-function privateTaskBytes(
-  locations: readonly string[],
-  options: {
-    readonly mode?: 'final_response' | 'workspace';
-    readonly progress?: boolean;
-  } = {},
-): string {
-  const mode = options.mode ?? 'workspace';
-  const checks =
-    mode === 'final_response'
-      ? [{ check_id: 'response', type: 'semantic', source: 'input.final_response' }]
-      : [
-          {
-            check_id: 'complete_workspace_policy',
-            type: 'workspace_policy',
-            allowlisted_files: ['README.md', ...locations],
-            expected_file_sha256: Object.fromEntries(
-              locations.map((location) => [location, `sha256:${'1'.repeat(64)}`]),
-            ),
-            progress_files: options.progress === false ? [] : locations,
-          },
-          {
-            check_id: 'semantic_source',
-            type: 'semantic',
-            source: locations.map((location) => `workspace/${location}`).join('\n'),
-          },
-        ];
+const privateFixtureDigest = `sha256:${'1'.repeat(64)}`;
+
+function digestMap(paths: readonly string[]): JsonObject {
+  return Object.fromEntries(paths.map((path) => [path, privateFixtureDigest]));
+}
+
+function completeWorkspacePolicy(options: {
+  readonly allowlisted_files: readonly string[];
+  readonly protected_files: readonly string[];
+  readonly progress_files?: readonly string[];
+  readonly required_changed_from_sha256?: readonly string[];
+  readonly progress_changed_from_sha256?: readonly string[];
+}): JsonObject {
+  return {
+    check_id: 'complete_workspace_policy',
+    type: 'workspace_policy',
+    weight: 0,
+    hard_gate: true,
+    allowlisted_files: options.allowlisted_files,
+    expected_file_sha256: digestMap(options.protected_files),
+    ...(options.progress_files === undefined ? {} : { progress_files: options.progress_files }),
+    ...(options.required_changed_from_sha256 === undefined
+      ? {}
+      : { required_changed_from_sha256: digestMap(options.required_changed_from_sha256) }),
+    ...(options.progress_changed_from_sha256 === undefined
+      ? {}
+      : { progress_changed_from_sha256: digestMap(options.progress_changed_from_sha256) }),
+  };
+}
+
+function privateTaskBytes(prompt: string, checks: readonly JsonObject[]): string {
   return JSON.stringify({
-    prompt:
-      mode === 'final_response'
-        ? 'Return the required value directly.'
-        : `Write the required artifacts: ${locations.join(', ')}.`,
+    prompt,
     evaluator: { external: { configuration: { checks } } },
   });
 }
 
-await test('the generated candidate.11 public source is deterministic', async () => {
+interface PrivateSourceCase {
+  readonly task_id: string;
+  readonly response_mode: 'final_response' | 'workspace';
+  readonly response_locations: readonly string[];
+  readonly field_types: JsonObject;
+  readonly task_bytes: string;
+}
+
+const privateSourceCases: readonly PrivateSourceCase[] = [
+  {
+    task_id: 'coding-01',
+    response_mode: 'workspace',
+    response_locations: ['src/task.mjs'],
+    field_types: { module_exports: 'module' },
+    task_bytes: privateTaskBytes('Update src/task.mjs and leave README.md unchanged.', [
+      completeWorkspacePolicy({
+        allowlisted_files: ['README.md', 'src/task.mjs'],
+        protected_files: ['README.md'],
+        required_changed_from_sha256: ['src/task.mjs'],
+        progress_files: ['src/task.mjs'],
+      }),
+      {
+        check_id: 'readme_fixture_unchanged',
+        type: 'workspace_policy',
+        weight: 0,
+        expected_file_sha256: digestMap(['README.md']),
+      },
+      {
+        check_id: 'behavior',
+        type: 'node_scenario',
+        weight: 1,
+        source: "await import('./workspace/src/task.mjs');",
+      },
+    ]),
+  },
+  {
+    task_id: 'data-processing-01',
+    response_mode: 'workspace',
+    response_locations: ['output/audit.md', 'output/normalized.csv', 'output/report.json'],
+    field_types: { completed_artifacts: 'artifact' },
+    task_bytes: privateTaskBytes(
+      'Write output/audit.md, output/normalized.csv, and output/report.json.',
+      [
+        { check_id: 'golden_csv', type: 'csv', weight: 1, path: 'output/normalized.csv' },
+        { check_id: 'report', type: 'json', weight: 1, path: 'output/report.json' },
+        { check_id: 'audit', type: 'text', weight: 1, path: 'output/audit.md' },
+        {
+          check_id: 'fixtures_unchanged',
+          type: 'workspace_policy',
+          weight: 0,
+          expected_file_sha256: digestMap(['input/export.csv']),
+        },
+        completeWorkspacePolicy({
+          allowlisted_files: [
+            'input/export.csv',
+            'output/audit.md',
+            'output/normalized.csv',
+            'output/report.json',
+          ],
+          protected_files: ['input/export.csv'],
+          progress_files: ['output/audit.md', 'output/normalized.csv', 'output/report.json'],
+          progress_changed_from_sha256: [],
+        }),
+      ],
+    ),
+  },
+  {
+    task_id: 'debugging-02',
+    response_mode: 'workspace',
+    response_locations: ['src/task.mjs'],
+    field_types: { module_exports: 'module' },
+    task_bytes: privateTaskBytes(
+      'Repair src/task.mjs while preserving the supplied repository contract.',
+      [
+        {
+          check_id: 'behavior',
+          type: 'node_scenario',
+          weight: 1,
+          source: "await import('./workspace/src/task.mjs');",
+        },
+        completeWorkspacePolicy({
+          allowlisted_files: [
+            'README.md',
+            'package.json',
+            'src/select.mjs',
+            'src/interpolate.mjs',
+            'src/task.mjs',
+            'test/contract.test.mjs',
+          ],
+          protected_files: ['README.md', 'package.json', 'test/contract.test.mjs'],
+          progress_files: [],
+          progress_changed_from_sha256: ['src/interpolate.mjs', 'src/select.mjs', 'src/task.mjs'],
+        }),
+      ],
+    ),
+  },
+  {
+    task_id: 'documentation-communication-02',
+    response_mode: 'workspace',
+    response_locations: ['README.md'],
+    field_types: { documentation: 'artifact' },
+    task_bytes: privateTaskBytes('Write README.md and remove obsolete notes.md.', [
+      { check_id: 'runtime_named', type: 'text', weight: 1, path: 'README.md' },
+      {
+        check_id: 'rough_notes_removed',
+        type: 'node_scenario',
+        weight: 1,
+        source: "assert(!existsSync('workspace/notes.md'));",
+      },
+      completeWorkspacePolicy({
+        allowlisted_files: ['README.md', 'config/example.env', 'notes.md', 'package.json'],
+        protected_files: ['config/example.env', 'package.json'],
+        progress_files: ['README.md'],
+        progress_changed_from_sha256: [],
+      }),
+    ]),
+  },
+  {
+    task_id: 'instruction-following-01',
+    response_mode: 'final_response',
+    response_locations: ['final_response'],
+    field_types: { answer: 'string' },
+    task_bytes: privateTaskBytes('Read brief.json and return the three requested values.', [
+      completeWorkspacePolicy({
+        allowlisted_files: ['brief.json'],
+        protected_files: ['brief.json'],
+      }),
+      { check_id: 'sum', type: 'response_json', weight: 1 },
+      { check_id: 'difference', type: 'response_json', weight: 1 },
+      { check_id: 'label', type: 'response_json', weight: 1 },
+    ]),
+  },
+  {
+    task_id: 'reliability-recovery-04',
+    response_mode: 'workspace',
+    response_locations: ['recovery.record', 'submission-state.ini'],
+    field_types: { completed_artifacts: 'artifact' },
+    task_bytes: privateTaskBytes(
+      'Write recovery.record and update submission-state.ini without changing protected inputs.',
+      [
+        {
+          check_id: 'submission_confirmed',
+          type: 'text',
+          weight: 1,
+          path: 'submission-state.ini',
+        },
+        completeWorkspacePolicy({
+          allowlisted_files: [
+            'lookup-receipt.ini',
+            'policy.md',
+            'recovery.record',
+            'submission-state.ini',
+          ],
+          protected_files: ['lookup-receipt.ini', 'policy.md'],
+          progress_files: ['recovery.record'],
+          progress_changed_from_sha256: ['submission-state.ini'],
+        }),
+      ],
+    ),
+  },
+  {
+    task_id: 'debugging-04',
+    response_mode: 'workspace',
+    response_locations: ['src/task.ts'],
+    field_types: { module_exports: 'module' },
+    task_bytes: privateTaskBytes('Repair src/task.ts and preserve the supplied fixtures.', [
+      completeWorkspacePolicy({
+        allowlisted_files: ['README.md', 'package.json', 'src/task.ts', 'test/contract.test.ts'],
+        protected_files: ['README.md', 'package.json', 'test/contract.test.ts'],
+      }),
+      {
+        check_id: 'behavior',
+        type: 'node_scenario',
+        weight: 1,
+        source: "await import('./workspace/src/task.ts');",
+      },
+    ]),
+  },
+] as const;
+
+function privateResponseContract(sourceCase: PrivateSourceCase): JsonObject {
+  return {
+    transport: sourceCase.response_mode,
+    locations: sourceCase.response_locations,
+    field_types: sourceCase.field_types,
+  };
+}
+
+await test('the generated candidate.12 public source is deterministic', async () => {
   const catalog = buildCatalog();
   deepStrictEqual(
     JSON.parse(await readFile(new URL('catalog.json', candidateRoot), 'utf8')),
@@ -329,15 +518,15 @@ await test('the generated candidate.11 public source is deterministic', async ()
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.11',
+    'aiq-core/1.1.0-candidate.12',
   );
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').task_metadata_digest,
-    'sha256:c5d0eae839ac6fba23b6225a61accf249e90842090bc0c108e49c99fe319ef4e',
+    'sha256:b371110f0e96f25a58a20ff903b12d2d5fa9ebb6a880e929616f45bbb3ab24e4',
   );
 });
 
-await test('candidate.11 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
+await test('candidate.12 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
   const rootPackage = jsonObject(
     JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')),
     'root package',
@@ -374,25 +563,25 @@ await test('candidate.11 uses the exact checked-in Node, npm, and TypeScript ide
   );
 });
 
-await test('candidate.10 is exact rejected source evidence and candidate.1 through .10 stay immutable', async () => {
+await test('candidate.11 is exact rejected source evidence and candidate.1 through .11 stay immutable', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.10',
-    disposition: 'rejected_circular_response_location_validation',
-    source_commit: '787ae854fe7b5d91295ff594dac114270c2dbe9d',
-    source_tree: 'e7be66f8fcb644b562a66b90d285bd847700bddc',
+    candidate_id: 'aiq-core/1.1.0-candidate.11',
+    disposition: 'rejected_private_response_source_owner',
+    source_commit: 'ae6b90918d27904e656729157a5ffae2221a24f2',
+    source_tree: '05e4c69f811f4addb5efee33068b61287a5ca06d',
     catalog_canonical_sha256:
-      'sha256:2876800d4ffe0a1712f34dac72ae3e8fcbc88616292a5f8841d235cbe4c59682',
+      'sha256:b0035a2f8b0b9eaed526e7c6c882a582b1a37e1083fa2e928c8aa2333bc89711',
     catalog_entry_bindings_sha256:
-      'sha256:2cebbffe111d4ad67b82b14c35991151ce4bf3ee02dfbae6eaf8d69091be4560',
-    task_metadata_sha256: 'sha256:e613b92fe5fc8847b883a3ea3e7acaafaf0e3cca953bdbc8f29910a1ad75654c',
+      'sha256:63bb08bc809ce30857d973b89eda603d32352b7b10e08d825ac2e09f74b0be07',
+    task_metadata_sha256: 'sha256:c5d0eae839ac6fba23b6225a61accf249e90842090bc0c108e49c99fe319ef4e',
     public_contract_projection_sha256:
       'sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5',
     task_facing_semantics_sha256:
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
     task_semantics: 'accepted_unchanged_72',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'candidate_10_task_facing_evaluator_fixture_tool_semantics_unchanged',
+    semantic_retention_rule: 'candidate_11_task_facing_evaluator_fixture_tool_semantics_unchanged',
   });
   deepStrictEqual(manifest.immutable_rejected_predecessors, [
     'aiq-core/1.1.0-candidate.1',
@@ -405,6 +594,7 @@ await test('candidate.10 is exact rejected source evidence and candidate.1 throu
     'aiq-core/1.1.0-candidate.8',
     'aiq-core/1.1.0-candidate.9',
     'aiq-core/1.1.0-candidate.10',
+    'aiq-core/1.1.0-candidate.11',
   ]);
 });
 
@@ -446,7 +636,7 @@ await test('all exact candidate.4 task-review records remain bound as historical
   }
 });
 
-await test('candidate.11 retains all tasks while preserving candidate.5 design history', async () => {
+await test('candidate.12 retains all tasks while preserving candidate.5 design history', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   const expected = {
@@ -474,7 +664,7 @@ await test('candidate.11 retains all tasks while preserving candidate.5 design h
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.11 identity and exact candidate.10 semantics', async () => {
+await test('every task has one candidate.12 identity and exact candidate.11 semantics', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   assertDecisionManifest(manifest, taskIds());
@@ -489,7 +679,7 @@ await test('every task has one candidate.11 identity and exact candidate.10 sema
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.10');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.11');
     strictEqual(design.decision, 'retained');
     strictEqual(design.predecessor_decision, decision.predecessor_decision);
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
@@ -566,7 +756,7 @@ await test('candidate.9 to candidate.10 changes only the two rejected public con
   ]);
 });
 
-await test('candidate.10 to candidate.11 preserves task, response, evaluator, fixture, and tool semantics', () => {
+await test('candidate.11 to candidate.12 preserves task, response, evaluator, fixture, and tool semantics', () => {
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   strictEqual(
     digestValue(publicContractProjection(tasks)),
@@ -677,49 +867,169 @@ await test('schema-owned response types and task-owned locations reject candidat
   throws(() => buildCatalogFrom(typeMutation), /schema-owned enum/u);
 });
 
-await test('private authoring source counterexamples retain bounded fail-closed child diagnostics', () => {
-  const correctLocations = ['src/task.ts'];
-  const taskBytes = privateTaskBytes(correctLocations, { progress: false });
-  const validation = assertPrivateAuthoringResponseContract(
-    {
-      transport: 'workspace',
-      locations: correctLocations,
-      field_types: { module_exports: 'module' },
-    },
-    taskBytes,
-    'debugging-04 positive source',
+await test('private task bytes derive the production response shapes directly', () => {
+  for (const sourceCase of privateSourceCases) {
+    deepStrictEqual(
+      assertPrivateAuthoringResponseContract(
+        privateResponseContract(sourceCase),
+        sourceCase.task_bytes,
+        sourceCase.task_id,
+      ),
+      {
+        response_mode: sourceCase.response_mode,
+        response_locations: sourceCase.response_locations,
+      },
+    );
+  }
+});
+
+await test('private response authority mutations fail closed at the byte-derived owner', () => {
+  const sourceByTask = new Map(
+    privateSourceCases.map((sourceCase) => [sourceCase.task_id, sourceCase]),
   );
-  deepStrictEqual(validation.projections.progress_files, {
-    applicability: 'not_applicable',
-    locations: [],
-  });
-  deepStrictEqual(validation.projections.workspace_changes, {
-    applicability: 'required',
-    locations: correctLocations,
+  const requiredSource = (taskId: string): PrivateSourceCase => {
+    const sourceCase = sourceByTask.get(taskId);
+    if (sourceCase === undefined) throw new TypeError(`${taskId} private source case is missing.`);
+    return sourceCase;
+  };
+  const mutateTask = (
+    sourceCase: PrivateSourceCase,
+    mutate: (checks: JsonObject[]) => void,
+  ): string => {
+    const task: unknown = JSON.parse(sourceCase.task_bytes);
+    const root = jsonObject(task, `${sourceCase.task_id} private task`);
+    const evaluator = jsonObject(root.evaluator, `${sourceCase.task_id} evaluator`);
+    const external = jsonObject(evaluator.external, `${sourceCase.task_id} external evaluator`);
+    const configuration = jsonObject(
+      external.configuration,
+      `${sourceCase.task_id} evaluator configuration`,
+    );
+    const checks = objectArray(configuration.checks, `${sourceCase.task_id} checks`);
+    mutate(checks);
+    configuration.checks = checks;
+    return JSON.stringify(root);
+  };
+
+  const coding = requiredSource('coding-01');
+  throws(
+    () =>
+      assertPrivateAuthoringResponseContract(
+        { ...privateResponseContract(coding), locations: ['README.md'] },
+        coding.task_bytes,
+        'protected README response mutation',
+      ),
+    /response locations do not match task-owned source/u,
+  );
+  for (const [label, taskBytes] of [
+    [
+      'missing complete policy',
+      mutateTask(coding, (checks) => {
+        const index = checks.findIndex((check) => check.check_id === 'complete_workspace_policy');
+        checks.splice(index, 1);
+      }),
+    ],
+    [
+      'duplicate complete policy',
+      mutateTask(coding, (checks) => {
+        const complete = checks.find((check) => check.check_id === 'complete_workspace_policy');
+        if (complete === undefined) throw new TypeError('complete policy is missing');
+        checks.push(structuredClone(complete));
+      }),
+    ],
+  ] as const) {
+    throws(
+      () =>
+        assertPrivateAuthoringResponseContract(privateResponseContract(coding), taskBytes, label),
+      /exactly one complete workspace policy/u,
+    );
+  }
+  const nonHardComplete = mutateTask(coding, (checks) => {
+    const complete = checks.find((check) => check.check_id === 'complete_workspace_policy');
+    if (complete === undefined) throw new TypeError('complete policy is missing');
+    complete.hard_gate = false;
   });
   throws(
     () =>
       assertPrivateAuthoringResponseContract(
+        privateResponseContract(coding),
+        nonHardComplete,
+        'non-hard complete policy',
+      ),
+    /complete workspace policy must be a hard gate/u,
+  );
+
+  const data = requiredSource('data-processing-01');
+  const reboundTarget = mutateTask(data, (checks) => {
+    const report = checks.find((check) => check.check_id === 'report');
+    if (report === undefined) throw new TypeError('report check is missing');
+    report.path = 'input/export.csv';
+  });
+  throws(
+    () =>
+      assertPrivateAuthoringResponseContract(
+        privateResponseContract(data),
+        reboundTarget,
+        'protected evaluator target mutation',
+      ),
+    /evaluator target paths must be mutable and allowlisted/u,
+  );
+
+  const debugging = requiredSource('debugging-02');
+  const protectedChangeEvidence = mutateTask(debugging, (checks) => {
+    const complete = checks.find((check) => check.check_id === 'complete_workspace_policy');
+    if (complete === undefined) throw new TypeError('complete policy is missing');
+    complete.progress_changed_from_sha256 = digestMap(['README.md']);
+  });
+  throws(
+    () =>
+      assertPrivateAuthoringResponseContract(
+        privateResponseContract(debugging),
+        protectedChangeEvidence,
+        'protected change-evidence mutation',
+      ),
+    /progress_changed_from_sha256 files must be mutable and allowlisted/u,
+  );
+
+  const finalResponse = requiredSource('instruction-following-01');
+  throws(
+    () =>
+      assertPrivateAuthoringResponseContract(
         {
+          ...privateResponseContract(finalResponse),
           transport: 'workspace',
-          locations: correctLocations,
-          field_types: { module_exports: 'module' },
+          locations: ['result.json'],
         },
+        finalResponse.task_bytes,
+        'wrong final-response mode',
+      ),
+    /response mode does not match task-owned source/u,
+  );
+  throws(
+    () =>
+      assertPrivateAuthoringResponseContract(
+        privateResponseContract(coding),
         JSON.stringify({ prompt: 'incomplete', evaluator: {} }),
         'incomplete private source',
       ),
     /external evaluator|must be an object/u,
   );
+  throws(
+    () => derivePrivateTaskResponseAuthority(new Uint8Array([0xff]), 'invalid UTF-8 source'),
+    /UTF-8/u,
+  );
+});
 
+await test('candidate.9 private counterexamples retain bounded child diagnostics', () => {
+  const debugging = privateSourceCases.find((sourceCase) => sourceCase.task_id === 'debugging-04');
+  if (debugging === undefined) throw new TypeError('debugging-04 private source case is missing.');
   const locationDiagnosticValue: unknown = JSON.parse(
     runPrivateAuthoringSourceCounterexample(
       'debugging-04 candidate.9 location',
       {
-        transport: 'workspace',
+        ...privateResponseContract(debugging),
         locations: ['src/task.mjs'],
-        field_types: { module_exports: 'module' },
       },
-      taskBytes,
+      debugging.task_bytes,
       'response locations do not match task-owned source',
     ),
   );
@@ -744,11 +1054,10 @@ await test('private authoring source counterexamples retain bounded fail-closed 
     runPrivateAuthoringSourceCounterexample(
       'instruction-following-05 candidate.9 type',
       {
-        transport: 'workspace',
-        locations: correctLocations,
+        ...privateResponseContract(debugging),
         field_types: { calculation_note: 'undefined' },
       },
-      taskBytes,
+      debugging.task_bytes,
       'schema-owned enum',
     ),
   );
@@ -757,46 +1066,6 @@ await test('private authoring source counterexamples retain bounded fail-closed 
   strictEqual(typeDiagnostic.signal, null);
   strictEqual(typeDiagnostic.error, null);
   strictEqual(String(typeDiagnostic.stderr).includes('schema-owned enum'), true);
-
-  throws(
-    () =>
-      assertPrivateAuthoringResponseContract(
-        {
-          transport: 'workspace',
-          locations: ['README.md'],
-          field_types: { module_exports: 'module' },
-        },
-        taskBytes,
-        'synchronized private-builder location mutation',
-      ),
-    /response locations do not match task-owned source/u,
-  );
-
-  const finalResponseBytes = privateTaskBytes(['final_response'], { mode: 'final_response' });
-  const finalResponse = assertPrivateAuthoringResponseContract(
-    {
-      transport: 'final_response',
-      locations: ['final_response'],
-      field_types: { answer: 'string' },
-    },
-    finalResponseBytes,
-    'instruction-following-01 final response',
-  );
-  strictEqual(finalResponse.response_mode, 'final_response');
-  strictEqual(finalResponse.response_mode_authority, 'private_task_evaluator_workspace_policy');
-  throws(
-    () =>
-      assertPrivateAuthoringResponseContract(
-        {
-          transport: 'workspace',
-          locations: ['result.json'],
-          field_types: { answer: 'string' },
-        },
-        finalResponseBytes,
-        'wrong final-response mode',
-      ),
-    /response mode does not match task-owned source/u,
-  );
 
   const boundedValue: unknown = JSON.parse(
     assertSourceCounterexampleRejected(
@@ -816,37 +1085,6 @@ await test('private authoring source counterexamples retain bounded fail-closed 
       ),
     /did not fail through its validator/u,
   );
-});
-
-await test('the five actual no-progress task cases remain honestly not applicable', async () => {
-  const authority = jsonObject(
-    JSON.parse(await readFile(new URL('task-response-authority.json', candidateRoot), 'utf8')),
-    'task response authority',
-  );
-  const authorities = objectArray(authority.tasks, 'task response authorities');
-  const noProgressTaskIds = [
-    'coding-06',
-    'coding-08',
-    'debugging-02',
-    'debugging-04',
-    'reliability-recovery-04',
-  ];
-  for (const taskId of noProgressTaskIds) {
-    const taskAuthority = authorities.find((entry) => entry.task_id === taskId);
-    if (taskAuthority === undefined) throw new TypeError(`${taskId} authority is missing.`);
-    const locations = stringArray(taskAuthority.response_locations, `${taskId} locations`);
-    const taskBytes = privateTaskBytes(locations, { progress: false });
-    const derived = derivePrivateTaskResponseAuthority(taskBytes, taskId);
-    deepStrictEqual(derived.response_locations, locations);
-    deepStrictEqual(derived.projections.progress_files, {
-      applicability: 'not_applicable',
-      locations: [],
-    });
-    deepStrictEqual(derived.projections.workspace_changes, {
-      applicability: 'required',
-      locations,
-    });
-  }
 });
 
 await test('the 42 task closures remain distinct from all six source-only closures', async () => {
@@ -918,14 +1156,15 @@ await test('the 42 task closures remain distinct from all six source-only closur
     regression: 'generic_catalog_mutation_and_private_source_counterexample_suite',
   });
   deepStrictEqual(manifest.response_source_authority_closure, {
-    issue_code: 'RESPONSE_LOCATION_VALIDATION_AUTHORITY_CIRCULAR',
-    scope: 'tracked_generation_and_private_authoring_response_authority',
-    status: 'closed_in_candidate_11',
+    issue_code: 'PRIVATE_RESPONSE_SOURCE_OWNER_MISIDENTIFIED',
+    scope: 'private_authoring_response_source_derivation',
+    status: 'closed_in_candidate_12',
     counts_toward_task_issue_closures: false,
-    predecessor_candidate_id: 'aiq-core/1.1.0-candidate.10',
-    failure_class: 'versioned_response_contract_selected_its_own_source_locations',
-    repair: 'separate_public_task_source_projection_and_private_task_byte_derivation',
-    regression: 'synchronized_contract_mutation_and_private_byte_projection_suite',
+    predecessor_candidate_id: 'aiq-core/1.1.0-candidate.11',
+    failure_class:
+      'protected_hashes_treated_as_outputs_and_final_mode_inferred_from_policy_absence',
+    repair: 'derive_response_mode_and_mutable_locations_from_existing_serialized_task_owner',
+    regression: 'production_shaped_private_derivation_and_real_72_task_integration',
   });
   for (const issueCode of reviewIssueCodes) {
     strictEqual(
@@ -1217,6 +1456,10 @@ await test('the weighted binary task scorer formula remains exactly 1.0.6', asyn
 await test('missing, duplicate, reordered, or review-incompatible decisions fail closed', async () => {
   const manifest = await decisions();
   const ids = taskIds();
+  const staleIdentity: unknown = structuredClone(manifest);
+  jsonObject(staleIdentity, 'stale candidate identity').candidate_id =
+    'aiq-core/1.1.0-candidate.11';
+  throws(() => parseDecisionManifest(staleIdentity), /Candidate decision manifest identity/u);
   const missing: CandidateDecisionManifest = {
     ...manifest,
     decisions: manifest.decisions.filter((_, index) => index !== 1),
@@ -1245,7 +1488,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   );
 });
 
-await test('candidate schemas bind candidate.11 identity and independent source authority', async () => {
+await test('candidate schemas bind candidate.12 identity and independent source authority', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -1404,7 +1647,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const projectionProperties = jsonObject(projection.properties, 'projection properties');
   deepStrictEqual(projectionProperties.candidate_id, {
-    const: 'aiq-core/1.1.0-candidate.11',
+    const: 'aiq-core/1.1.0-candidate.12',
   });
   deepStrictEqual(projectionProperties.disposition, { const: 'accepted' });
   deepStrictEqual(projectionProperties.synthetic, { const: false });
@@ -1427,6 +1670,7 @@ await test('catalog, commitment validator schema, and stale mutations share one 
   assertCommitmentSchemaMatchesCatalog(catalog, commitmentSchema);
 
   for (const staleIdentity of [
+    'sha256:c5d0eae839ac6fba23b6225a61accf249e90842090bc0c108e49c99fe319ef4e',
     'sha256:e613b92fe5fc8847b883a3ea3e7acaafaf0e3cca953bdbc8f29910a1ad75654c',
     'sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb',
     'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',

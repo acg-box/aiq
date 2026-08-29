@@ -20,26 +20,6 @@ export interface TaskResponseSourceAuthority {
   readonly response_locations: readonly string[];
 }
 
-type ProjectionApplicability = 'not_applicable' | 'required';
-
-interface PrivateSourceProjection {
-  readonly applicability: ProjectionApplicability;
-  readonly locations: readonly string[];
-}
-
-export interface PrivateAuthoringResponseValidation {
-  readonly response_mode: ResponseMode;
-  readonly response_locations: readonly string[];
-  readonly response_mode_authority: 'private_task_evaluator_workspace_policy';
-  readonly projections: {
-    readonly prompt: PrivateSourceProjection;
-    readonly workspace_allowlist: PrivateSourceProjection;
-    readonly workspace_changes: PrivateSourceProjection;
-    readonly progress_files: PrivateSourceProjection;
-    readonly evaluator_sources: PrivateSourceProjection;
-  };
-}
-
 interface SourceCounterexampleChildResult {
   readonly status: number | null;
   readonly signal: NodeJS.Signals | null;
@@ -194,14 +174,28 @@ function privateTask(value: unknown, label: string): JsonObject {
   return jsonObject(parsed, label);
 }
 
+function evaluatorPathTargets(value: unknown, key: string | undefined, output: string[]): void {
+  if (key === 'path') {
+    if (typeof value !== 'string') {
+      throw new TypeError('Private task evaluator target paths must be strings.');
+    }
+    output.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const child of value) evaluatorPathTargets(child, undefined, output);
+    return;
+  }
+  if (isJsonObject(value)) {
+    for (const [childKey, child] of Object.entries(value)) {
+      evaluatorPathTargets(child, childKey, output);
+    }
+  }
+}
+
 function evaluatorSourceText(value: unknown, key: string | undefined, output: string[]): void {
   if (typeof value === 'string') {
-    if (
-      key !== undefined &&
-      ['import', 'imports', 'source', 'source_ref', 'source_refs'].includes(key)
-    ) {
-      output.push(value);
-    }
+    if (key === 'source') output.push(value);
     return;
   }
   if (Array.isArray(value)) {
@@ -215,30 +209,28 @@ function evaluatorSourceText(value: unknown, key: string | undefined, output: st
   }
 }
 
-function requiredProjection(
-  source: string | readonly string[],
-  locations: readonly string[],
-  label: string,
-): PrivateSourceProjection {
-  const observed = locations.filter((location) =>
-    typeof source === 'string' ? source.includes(location) : source.includes(location),
-  );
-  exactStringArray(observed, locations, label);
-  return { applicability: 'required', locations: observed };
-}
+const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 
-function notApplicableProjection(): PrivateSourceProjection {
-  return { applicability: 'not_applicable', locations: [] };
+function digestMapPaths(value: unknown, label: string): readonly string[] {
+  const digests = jsonObject(value, label);
+  const paths = responseLocations(Object.keys(digests), 'workspace', `${label} paths`, true);
+  for (const [path, digest] of Object.entries(digests)) {
+    if (typeof digest !== 'string' || !SHA256_PATTERN.test(digest)) {
+      throw new TypeError(`${label} digest for ${path} is invalid.`);
+    }
+  }
+  return paths;
 }
 
 export function derivePrivateTaskResponseAuthority(
   privateTaskBytes: unknown,
   label: string,
-): PrivateAuthoringResponseValidation {
+): TaskResponseSourceAuthority {
   const task = privateTask(privateTaskBytes, `${label} private task bytes`);
   if (typeof task.prompt !== 'string' || task.prompt.trim().length === 0) {
     throw new TypeError(`${label} private task prompt is invalid.`);
   }
+  const prompt = task.prompt;
   const evaluator = jsonObject(task.evaluator, `${label} private task evaluator`);
   const external = jsonObject(evaluator.external, `${label} private task external evaluator`);
   const configuration = jsonObject(
@@ -250,78 +242,116 @@ export function derivePrivateTaskResponseAuthority(
   );
   if (checks.length === 0) throw new TypeError(`${label} private task evaluator has no checks.`);
 
-  const workspaceChecks = checks.filter((check) => check.type === 'workspace_policy');
-  if (workspaceChecks.length > 1) {
-    throw new TypeError(`${label} private task has multiple workspace authorities.`);
+  const completeWorkspaceChecks = checks.filter(
+    (check) => check.check_id === 'complete_workspace_policy',
+  );
+  if (completeWorkspaceChecks.length !== 1) {
+    throw new TypeError(`${label} private task must have exactly one complete workspace policy.`);
   }
-  const sourceValues: string[] = [];
-  evaluatorSourceText(checks, undefined, sourceValues);
-  const source = sourceValues.join('\n');
-
-  if (workspaceChecks.length === 0) {
-    const authority = {
-      response_mode: 'final_response',
-      response_locations: ['final_response'],
-    } as const;
-    return {
-      ...authority,
-      response_mode_authority: 'private_task_evaluator_workspace_policy',
-      projections: {
-        prompt: notApplicableProjection(),
-        workspace_allowlist: notApplicableProjection(),
-        workspace_changes: notApplicableProjection(),
-        progress_files: notApplicableProjection(),
-        evaluator_sources: requiredProjection(
-          source,
-          authority.response_locations,
-          `${label} evaluator sources`,
-        ),
-      },
-    };
+  const completeWorkspace = completeWorkspaceChecks[0];
+  if (
+    completeWorkspace === undefined ||
+    completeWorkspace.type !== 'workspace_policy' ||
+    completeWorkspace.hard_gate !== true
+  ) {
+    throw new TypeError(`${label} complete workspace policy must be a hard gate.`);
   }
 
-  const workspace = workspaceChecks[0];
-  if (workspace === undefined) throw new TypeError(`${label} workspace authority is missing.`);
-  const expectedFiles = jsonObject(
-    workspace.expected_file_sha256,
-    `${label} workspace expected-file authority`,
-  );
-  const locations = responseLocations(
-    Object.keys(expectedFiles).toSorted(),
-    'workspace',
-    `${label} workspace change locations`,
-  );
   const allowlistedFiles = responseLocations(
-    workspace.allowlisted_files,
+    completeWorkspace.allowlisted_files,
     'workspace',
-    `${label} workspace allowlist`,
-    true,
+    `${label} complete workspace allowlist`,
   );
-  const progressFiles = responseLocations(
-    workspace.progress_files ?? [],
+  const allowlisted = new Set(allowlistedFiles);
+  const protectedFiles = digestMapPaths(
+    completeWorkspace.expected_file_sha256,
+    `${label} complete workspace expected-file authority`,
+  );
+  if (protectedFiles.some((path) => !allowlisted.has(path))) {
+    throw new TypeError(`${label} protected workspace inputs must be allowlisted.`);
+  }
+  const protectedSet = new Set(protectedFiles);
+  const mutableFiles = allowlistedFiles.filter((path) => !protectedSet.has(path));
+  const mutable = new Set(mutableFiles);
+  const progressFiles: string[] = [];
+
+  const workspaceChecks = checks.filter((check) => check.type === 'workspace_policy');
+  for (const [index, check] of workspaceChecks.entries()) {
+    const checkLabel = `${label} workspace policy ${String(index)}`;
+    if (check.allowlisted_files !== undefined) {
+      const corroboratingAllowlist = responseLocations(
+        check.allowlisted_files,
+        'workspace',
+        `${checkLabel} allowlist`,
+        true,
+      );
+      if (corroboratingAllowlist.some((path) => !allowlisted.has(path))) {
+        throw new TypeError(`${checkLabel} allowlist exceeds the complete workspace policy.`);
+      }
+    }
+    if (check.expected_file_sha256 !== undefined) {
+      const expectedFiles = digestMapPaths(
+        check.expected_file_sha256,
+        `${checkLabel} expected-file evidence`,
+      );
+      if (expectedFiles.some((path) => !protectedSet.has(path))) {
+        throw new TypeError(`${checkLabel} expected files do not corroborate protected inputs.`);
+      }
+    }
+    for (const field of ['required_changed_from_sha256', 'progress_changed_from_sha256']) {
+      if (check[field] === undefined) continue;
+      const changedFiles = digestMapPaths(check[field], `${checkLabel} ${field} evidence`);
+      if (changedFiles.some((path) => !mutable.has(path))) {
+        throw new TypeError(`${checkLabel} ${field} files must be mutable and allowlisted.`);
+      }
+    }
+    if (check.progress_files !== undefined) {
+      const progress = responseLocations(
+        check.progress_files,
+        'workspace',
+        `${checkLabel} progress files`,
+        true,
+      );
+      if (progress.some((path) => !mutable.has(path))) {
+        throw new TypeError(`${checkLabel} progress files must be mutable and allowlisted.`);
+      }
+      progressFiles.push(...progress);
+    }
+  }
+
+  if (
+    checks.some((check) => typeof check.type === 'string' && check.type.startsWith('response_'))
+  ) {
+    return { response_mode: 'final_response', response_locations: ['final_response'] };
+  }
+
+  const evaluatorTargets: string[] = [];
+  evaluatorPathTargets(checks, undefined, evaluatorTargets);
+  for (const [index, target] of evaluatorTargets.entries()) {
+    responseLocations([target], 'workspace', `${label} evaluator target path ${String(index)}`);
+    if (!mutable.has(target)) {
+      throw new TypeError(`${label} evaluator target paths must be mutable and allowlisted.`);
+    }
+  }
+
+  let locations = [...new Set([...progressFiles, ...evaluatorTargets])];
+  if (locations.length === 0) {
+    const sourceValues: string[] = [];
+    evaluatorSourceText(checks, undefined, sourceValues);
+    locations = mutableFiles.filter((path) => sourceValues.some((source) => source.includes(path)));
+  }
+  const canonicalLocations = responseLocations(
+    locations,
     'workspace',
-    `${label} progress files`,
-    true,
+    `${label} derived workspace response locations`,
   );
+  if (canonicalLocations.some((location) => !prompt.includes(location))) {
+    throw new TypeError(`${label} prompt must cover every workspace response location.`);
+  }
 
   return {
     response_mode: 'workspace',
-    response_locations: locations,
-    response_mode_authority: 'private_task_evaluator_workspace_policy',
-    projections: {
-      prompt: requiredProjection(task.prompt, locations, `${label} prompt references`),
-      workspace_allowlist: requiredProjection(
-        allowlistedFiles,
-        locations,
-        `${label} workspace allowlist`,
-      ),
-      workspace_changes: { applicability: 'required', locations },
-      progress_files:
-        progressFiles.length === 0
-          ? notApplicableProjection()
-          : requiredProjection(progressFiles, locations, `${label} progress files`),
-      evaluator_sources: requiredProjection(source, locations, `${label} evaluator sources`),
-    },
+    response_locations: canonicalLocations,
   };
 }
 
@@ -329,7 +359,7 @@ export function assertPrivateAuthoringResponseContract(
   responseContractValue: unknown,
   privateTaskBytes: unknown,
   label: string,
-): PrivateAuthoringResponseValidation {
+): TaskResponseSourceAuthority {
   const authority = derivePrivateTaskResponseAuthority(privateTaskBytes, label);
   assertGeneratedResponseContract(responseContractValue, authority, label);
   return authority;

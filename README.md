@@ -152,27 +152,28 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.11`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.12`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.11 retains all 72 candidate.10 task-facing semantics,
+`aiq.catalog.v2`. Candidate.12 retains all 72 candidate.11 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:b0035a2f8b0b9eaed526e7c6c882a582b1a37e1083fa2e928c8aa2333bc89711`.
+`sha256:bce01005d0b8591102b85d669be69e7829e65d69a286b68ca11acf358392b2f4`.
 Its ordered task-metadata digest is
-`sha256:c5d0eae839ac6fba23b6225a61accf249e90842090bc0c108e49c99fe319ef4e`.
+`sha256:b371110f0e96f25a58a20ff903b12d2d5fa9ebb6a880e929616f45bbb3ab24e4`.
 Its public release digest is
-`sha256:1aa684550f393f012d9af7e7890424dd6ca4d87ee7a02205c95361902de896f2`.
+`sha256:baed93769d0a4ddf81066c41190b10e22fa76186cf1e5a9cbe17736e5a55e165`.
 
-Candidates.1 through .10 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
-distinct disclosed scenario, operation, result, evaluator, metamorphic, and
-cross-task substitution contracts. Its source integration was rejected because
+Candidates.1 through .11 are immutable predecessor evidence. Candidate.5
+remains the durable source for the seven distinct disclosed scenario, operation,
+result, evaluator, metamorphic, and cross-task substitution contracts. Its
+source integration was rejected because
 its catalog task-metadata identity was
 `sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4`,
 while the Rust commitment consumer and public v3 schema still required
@@ -188,7 +189,7 @@ corpus, and source inputs for candidate packaging. It binds the complete validat
 context through signed-payload serialization and uses Node.js 24.18.0. The active
 1.0.7, Contrast, historical, and Official validators remain
 unchanged. The commitment validator derives the expected candidate identity from
-the validated embedded catalog and rejects candidate.10 and older identities.
+the validated embedded catalog and rejects candidate.11 and older identities.
 Candidate.9 is rejected because `debugging-04` declared `src/task.mjs` while its
 prompt, workspace bindings, and weighted evaluator import `src/task.ts`, and
 `instruction-following-05` declared the non-schema field type `undefined` for
@@ -196,21 +197,26 @@ prompt, workspace bindings, and weighted evaluator import `src/task.ts`, and
 `string`, but its location check is rejected because candidate.3's versioned
 response contract selected the source locations used to validate candidate.3
 through candidate.5. Candidate.11 preserves the corrected leaves and all task,
-evaluator, fixture, and tool semantics. The separately tracked
+evaluator, fixture, and tool semantics. Its separately tracked
 `benchmarks/candidates/aiq-core-1.1.0/task-response-authority.json` file owns the
 public-safe response mode and locations for every task. The generator validates
-all versioned contracts against that projection. The private validator derives
-prompt references, workspace allowlist and change authority, optional progress
-evidence, evaluator source references, and response mode from serialized private
-task bytes. Empty progress evidence is `not_applicable` for the five tasks that
-do not declare progress files.
+all versioned contracts against that unchanged projection. Candidate.11 is
+rejected because its tracked private validator treated protected
+`expected_file_sha256` inputs as response outputs and inferred final response
+from workspace-policy absence. Candidate.12 corrects that existing owner only.
+It requires one hard-gate `complete_workspace_policy`, detects `response_*`
+checks for final response, excludes protected inputs from the mutable allowlist,
+and derives workspace locations from progress files plus evaluator `path`
+targets, with evaluator-source fallback only when both are empty. The immutable
+tasks resolve to 71 workspace responses and one final response: progress is exact
+for 66 workspace tasks, empty for four, and a strict subset for one.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
 separate source-integrity closure. It records the candidate.7 end-to-end validation
 failure as a second source-only closure. Neither closure counts as a task issue.
-The package-input, Node.js runtime, public response-contract, and independent
-response-source-authority repairs are four additional source-only closures. None
+The package-input, Node.js runtime, public response-contract, and private
+response-source-owner repairs are four additional source-only closures. None
 counts as a task issue.
 
 For each tool-use task, the hard gate requires exactly one total tool call and
@@ -223,7 +229,7 @@ command identities; exact total and per-tool counts still expose undeclared or
 extra calls. One matrix can contain at most 119 declared digest entries. The
 runner removes command text from provider stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.11 remains inactive and not production-publishable. Fresh
+redaction. Candidate.12 remains inactive and not production-publishable. Fresh
 independent review, double sealing, three qualification matrices,
 qualification, adoption, and cutover are pending.
 
