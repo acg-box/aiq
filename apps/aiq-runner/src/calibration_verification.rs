@@ -20,6 +20,8 @@ use crate::scoring::{
 };
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
+	benchmark_qualification::{self, CandidateQualificationProjection},
+	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::{MODEL_MATRIX, ModelConfig, ModelFamily},
 	normalization::{
@@ -52,6 +54,47 @@ const MAX_JCS_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_SHORT_CONTEXT_INPUT_TOKENS: u64 = 272_000;
 const PRICING_SOURCE: &str = "https://developers.openai.com/api/docs/pricing";
 const PRICING_AS_OF: &str = "2026-08-02";
+
+/// Why an API-equivalent estimate is present or unavailable.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostEstimateStatus {
+	/// Every counter required by the standard-rate formula was reported.
+	Estimated,
+	/// At least one required provider counter was absent.
+	UnavailableMissingUsage,
+	/// Provider counters were internally inconsistent.
+	UnavailableInvalidUsage,
+	/// Aggregate input cannot prove that every request used short-context rates.
+	UnavailableContextBand,
+}
+
+/// Evidence authority for one efficiency field.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EfficiencyEvidenceLevel {
+	/// Measured by the runner clock and not independently reproducible.
+	RunnerObserved,
+	/// Numeric provider metadata extracted from retained evidence.
+	ProviderReported,
+	/// Independently parsed again by the verifier from exact retained bytes.
+	VerifierRecomputed,
+}
+
+/// The only successful calibration replay disposition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CalibrationReplayStatus {
+	/// The verifier replayed every deterministic evaluator.
+	EvaluatorReplayed,
+}
+
+#[derive(Clone, Copy)]
+enum CalibrationVerificationMode {
+	Current,
+	PromotedSource1_0_7,
+	CandidateQualification,
+}
 
 /// Calibration verification or attestation failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -272,6 +315,10 @@ pub struct CalibrationVerifiedStageV1 {
 	pub task_ids: Vec<String>,
 	/// Ordered selected model configurations.
 	pub models: Vec<ModelConfig>,
+	/// Candidate-only verifier-derived qualification cells. Existing and Official-facing
+	/// calibration evidence omits this field byte-for-byte.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub qualification_projection: Option<CandidateQualificationProjection>,
 	/// Recomputed score and efficiency report for each model.
 	pub scores: Vec<CalibrationVerifiedScore>,
 	/// Per-result public-safe efficiency observations.
@@ -308,6 +355,18 @@ impl CalibrationVerifiedStageV1 {
 
 	/// Checks immutable digests and the permanent non-Official boundary.
 	pub fn verify(&self) -> Result<(), CalibrationVerificationError> {
+		self.verify_with_mode(false)
+	}
+
+	/// Checks the explicit candidate-only complete qualification boundary.
+	pub fn verify_candidate_qualification(&self) -> Result<(), CalibrationVerificationError> {
+		self.verify_with_mode(true)
+	}
+
+	fn verify_with_mode(
+		&self,
+		candidate_qualification: bool,
+	) -> Result<(), CalibrationVerificationError> {
 		let model_set = self.models.iter().copied().collect::<BTreeSet<_>>();
 		let task_set = self.task_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
 
@@ -326,7 +385,13 @@ impl CalibrationVerifiedStageV1 {
 			|| self.task_ids.iter().any(|task_id| !is_identifier(task_id, 64))
 			|| self.scores.len() != self.models.len()
 			|| self.result_efficiency.len() != self.models.len().saturating_mul(self.task_ids.len())
-			|| self.started_unix_ms > self.finished_unix_ms
+			|| if candidate_qualification {
+				self.models != MODEL_MATRIX
+					|| self.task_ids.len() != 72
+					|| self.qualification_projection.is_none()
+			} else {
+				self.qualification_projection.is_some()
+			} || self.started_unix_ms > self.finished_unix_ms
 			|| [self.scheduled_unix_ms, self.started_unix_ms, self.finished_unix_ms]
 				.into_iter()
 				.any(|value| value > MAX_JCS_SAFE_INTEGER)
@@ -345,6 +410,8 @@ impl CalibrationVerifiedStageV1 {
 				"calibration stage classification or cardinality is invalid",
 			));
 		}
+
+		self.validate_qualification_projection(candidate_qualification)?;
 
 		let aggregates =
 			self.scores.iter().map(|score| score.efficiency.clone()).collect::<Vec<_>>();
@@ -391,10 +458,44 @@ impl CalibrationVerifiedStageV1 {
 			));
 		}
 
-		corpus_commitment::validate_run_provenance(
-			&self.provenance,
-			&self.task_set_hash,
-			&self.capability_validation_digest,
+		let provenance_validation = if candidate_qualification {
+			corpus_commitment::validate_candidate_qualification_provenance_v1_1_0(
+				&self.provenance,
+				&self.task_set_hash,
+				&self.capability_validation_digest,
+			)
+		} else {
+			corpus_commitment::validate_run_provenance(
+				&self.provenance,
+				&self.task_set_hash,
+				&self.capability_validation_digest,
+			)
+		};
+
+		provenance_validation.map_err(|error| CalibrationVerificationError::new(error.to_string()))
+	}
+
+	fn validate_qualification_projection(
+		&self,
+		candidate_qualification: bool,
+	) -> Result<(), CalibrationVerificationError> {
+		if !candidate_qualification {
+			return Ok(());
+		}
+
+		let candidate = candidate_catalog::checked_candidate_catalog_authority()
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+		let projection = self.qualification_projection.as_ref().ok_or_else(|| {
+			CalibrationVerificationError::new(
+				"candidate qualification stage omits its verifier-derived projection",
+			)
+		})?;
+
+		benchmark_qualification::validate_candidate_projection(
+			projection,
+			&candidate.candidate_id,
+			&self.models,
+			&self.task_ids,
 		)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))
 	}
@@ -464,6 +565,24 @@ impl CalibrationVerifierAttestationV1 {
 		stage: &CalibrationVerifiedStageV1,
 		expected_verifier: &NodeIdentity,
 	) -> Result<(), CalibrationVerificationError> {
+		self.verify_with_mode(stage, expected_verifier, false)
+	}
+
+	/// Verifies one candidate-only stage against its predeclared trusted verifier.
+	pub fn verify_candidate_qualification(
+		&self,
+		stage: &CalibrationVerifiedStageV1,
+		expected_verifier: &NodeIdentity,
+	) -> Result<(), CalibrationVerificationError> {
+		self.verify_with_mode(stage, expected_verifier, true)
+	}
+
+	fn verify_with_mode(
+		&self,
+		stage: &CalibrationVerifiedStageV1,
+		expected_verifier: &NodeIdentity,
+		candidate_qualification: bool,
+	) -> Result<(), CalibrationVerificationError> {
 		if self.schema_version != CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION
 			|| self.signature_algorithm != VERIFIER_SIGNATURE_ALGORITHM
 			|| self.signature_version != VERIFIER_SIGNATURE_VERSION
@@ -493,8 +612,11 @@ impl CalibrationVerifierAttestationV1 {
 				"calibration attestation bindings are invalid",
 			));
 		}
-
-		stage.verify()?;
+		if candidate_qualification {
+			stage.verify_candidate_qualification()?;
+		} else {
+			stage.verify()?;
+		}
 
 		validate_node(&self.verifier)?;
 
@@ -933,6 +1055,8 @@ struct UnsignedCalibrationStage<'a> {
 	execution_concurrency: usize,
 	task_ids: &'a [String],
 	models: &'a [ModelConfig],
+	#[serde(skip_serializing_if = "Option::is_none")]
+	qualification_projection: &'a Option<CandidateQualificationProjection>,
 	scores: &'a [CalibrationVerifiedScore],
 	result_efficiency: &'a [CalibrationResultEfficiency],
 	pricing: &'a ApiEquivalentPricingModel,
@@ -972,6 +1096,7 @@ impl<'a> From<&'a CalibrationVerifiedStageV1> for UnsignedCalibrationStage<'a> {
 			execution_concurrency: stage.execution_concurrency,
 			task_ids: &stage.task_ids,
 			models: &stage.models,
+			qualification_projection: &stage.qualification_projection,
 			scores: &stage.scores,
 			result_efficiency: &stage.result_efficiency,
 			pricing: &stage.pricing,
@@ -1048,40 +1173,6 @@ impl<'a> From<&'a CalibrationVerifierAttestationV1> for UnsignedCalibrationAttes
 	}
 }
 
-/// Why an API-equivalent estimate is present or unavailable.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CostEstimateStatus {
-	/// Every counter required by the standard-rate formula was reported.
-	Estimated,
-	/// At least one required provider counter was absent.
-	UnavailableMissingUsage,
-	/// Provider counters were internally inconsistent.
-	UnavailableInvalidUsage,
-	/// Aggregate input cannot prove that every request used short-context rates.
-	UnavailableContextBand,
-}
-
-/// Evidence authority for one efficiency field.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EfficiencyEvidenceLevel {
-	/// Measured by the runner clock and not independently reproducible.
-	RunnerObserved,
-	/// Numeric provider metadata extracted from retained evidence.
-	ProviderReported,
-	/// Independently parsed again by the verifier from exact retained bytes.
-	VerifierRecomputed,
-}
-
-/// The only successful calibration replay disposition.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CalibrationReplayStatus {
-	/// The verifier replayed every deterministic evaluator.
-	EvaluatorReplayed,
-}
-
 /// Validates, recomputes, and creates a calibration stage without using Official normalization.
 pub(crate) fn verify_calibration_run(
 	run: &CalibrationRunRecord,
@@ -1090,7 +1181,14 @@ pub(crate) fn verify_calibration_run(
 	metadata: &AttestedDeploymentMetadata,
 	provider_usage: &[ProviderTokenUsage],
 ) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
-	verify_calibration_run_inner(run, tasks, package, metadata, provider_usage, false)
+	verify_calibration_run_inner(
+		run,
+		tasks,
+		package,
+		metadata,
+		provider_usage,
+		CalibrationVerificationMode::Current,
+	)
 }
 
 /// Checks the exact persisted time, token, and pricing contract for one complete matrix.
@@ -1186,8 +1284,42 @@ pub fn verify_and_attest_calibration_source_1_0_7(
 	(CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1),
 	CalibrationVerificationError,
 > {
-	let stage = verify_calibration_run_inner(run, tasks, package, metadata, provider_usage, true)?;
+	let stage = verify_calibration_run_inner(
+		run,
+		tasks,
+		package,
+		metadata,
+		provider_usage,
+		CalibrationVerificationMode::PromotedSource1_0_7,
+	)?;
 	let attestation = attest_calibration_stage(identity, &stage, observed_unix_ms)?;
+
+	Ok((stage, attestation))
+}
+
+/// Recomputes one exact candidate-only complete calibration and signs its derived cells.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_and_attest_candidate_qualification_run(
+	identity: &VerifierSigningIdentity,
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	package: &VerifiedPackageIdentity,
+	metadata: &AttestedDeploymentMetadata,
+	provider_usage: &[ProviderTokenUsage],
+	observed_unix_ms: u64,
+) -> Result<
+	(CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1),
+	CalibrationVerificationError,
+> {
+	let stage = verify_calibration_run_inner(
+		run,
+		tasks,
+		package,
+		metadata,
+		provider_usage,
+		CalibrationVerificationMode::CandidateQualification,
+	)?;
+	let attestation = attest_candidate_qualification_stage(identity, &stage, observed_unix_ms)?;
 
 	Ok((stage, attestation))
 }
@@ -1388,8 +1520,28 @@ pub fn attest_calibration_stage(
 	stage: &CalibrationVerifiedStageV1,
 	observed_unix_ms: u64,
 ) -> Result<CalibrationVerifierAttestationV1, CalibrationVerificationError> {
-	stage.verify()?;
+	attest_calibration_stage_with_mode(identity, stage, observed_unix_ms, false)
+}
 
+fn attest_candidate_qualification_stage(
+	identity: &VerifierSigningIdentity,
+	stage: &CalibrationVerifiedStageV1,
+	observed_unix_ms: u64,
+) -> Result<CalibrationVerifierAttestationV1, CalibrationVerificationError> {
+	attest_calibration_stage_with_mode(identity, stage, observed_unix_ms, true)
+}
+
+fn attest_calibration_stage_with_mode(
+	identity: &VerifierSigningIdentity,
+	stage: &CalibrationVerifiedStageV1,
+	observed_unix_ms: u64,
+	candidate_qualification: bool,
+) -> Result<CalibrationVerifierAttestationV1, CalibrationVerificationError> {
+	if candidate_qualification {
+		stage.verify_candidate_qualification()?;
+	} else {
+		stage.verify()?;
+	}
 	if identity.node() == &stage.runner || observed_unix_ms > MAX_JCS_SAFE_INTEGER {
 		return Err(CalibrationVerificationError::new(
 			"calibration verifier identity or observation time is invalid",
@@ -1429,7 +1581,11 @@ pub fn attest_calibration_stage(
 
 	attestation.signature = identity.sign_calibration_bytes(&bytes);
 
-	attestation.verify(stage, identity.node())?;
+	if candidate_qualification {
+		attestation.verify_candidate_qualification(stage, identity.node())?;
+	} else {
+		attestation.verify(stage, identity.node())?;
+	}
 
 	Ok(attestation)
 }
@@ -1481,7 +1637,7 @@ fn verify_calibration_run_inner(
 	package: &VerifiedPackageIdentity,
 	metadata: &AttestedDeploymentMetadata,
 	provider_usage: &[ProviderTokenUsage],
-	calibration_source_1_0_7: bool,
+	mode: CalibrationVerificationMode,
 ) -> Result<CalibrationVerifiedStageV1, CalibrationVerificationError> {
 	runner::validate_terminal_attempt_lineage(&run.results, &run.terminal_attempt_lineage)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
@@ -1498,12 +1654,12 @@ fn verify_calibration_run_inner(
 		));
 	}
 
-	validate_calibration_run_identity(run, tasks, calibration_source_1_0_7)?;
+	validate_calibration_run_identity(run, tasks, mode)?;
 
 	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 
-	validate_metadata(run, package, metadata)?;
+	validate_metadata(run, package, metadata, mode)?;
 
 	let pricing = ApiEquivalentPricingModel::default();
 	let result_efficiency = run
@@ -1512,39 +1668,7 @@ fn verify_calibration_run_inner(
 		.zip(provider_usage)
 		.map(|(result, usage)| result_efficiency(result, usage, &pricing, false))
 		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
-	let scores = run
-		.models
-		.iter()
-		.copied()
-		.map(|model| {
-			let preflight_configuration_not_applicable =
-				run.capability_validation.model(model).is_some_and(|entry| {
-					run.capability_validation.manifest_issues.is_empty()
-						&& run.capability_validation.cli_probe.status == ProbeStatus::Available
-						&& entry.status == CapabilityValidationStatus::Unsupported
-						&& entry.probe.status == ConfigurationProbeStatus::ObservedUnsupported
-				});
-			let score = scoring::score_calibration_model_with_context(
-				tasks,
-				&run.results,
-				model,
-				ScoreContext {
-					preflight_configuration_not_applicable,
-					receiver_authorized_publication: false,
-				},
-				ScoreOptions::default(),
-			)
-			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
-			let model_results =
-				result_efficiency.iter().filter(|result| result.model == model).collect::<Vec<_>>();
-
-			Ok(CalibrationVerifiedScore {
-				model,
-				score,
-				efficiency: aggregate_efficiency(model, &model_results)?,
-			})
-		})
-		.collect::<Result<Vec<_>, CalibrationVerificationError>>()?;
+	let scores = calibration_verified_scores(run, tasks, &result_efficiency)?;
 	let capability_validation_digest = protocol::canonical_hash(&run.capability_validation)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 	let mut stage = CalibrationVerifiedStageV1 {
@@ -1576,6 +1700,7 @@ fn verify_calibration_run_inner(
 		execution_concurrency,
 		task_ids: run.task_ids.clone(),
 		models: run.models.clone(),
+		qualification_projection: candidate_qualification_projection(mode, run)?,
 		scores,
 		result_efficiency,
 		pricing,
@@ -1593,20 +1718,93 @@ fn verify_calibration_run_inner(
 
 	stage.stage_digest = stage.compute_stage_digest()?;
 
-	stage.verify()?;
+	match mode {
+		CalibrationVerificationMode::CandidateQualification => {
+			stage.verify_candidate_qualification()?;
+		},
+		CalibrationVerificationMode::Current | CalibrationVerificationMode::PromotedSource1_0_7 => {
+			stage.verify()?
+		},
+	}
 
 	Ok(stage)
+}
+
+fn calibration_verified_scores(
+	run: &CalibrationRunRecord,
+	tasks: &[TaskDefinition],
+	result_efficiency: &[CalibrationResultEfficiency],
+) -> Result<Vec<CalibrationVerifiedScore>, CalibrationVerificationError> {
+	run.models
+		.iter()
+		.copied()
+		.map(|model| {
+			let preflight_configuration_not_applicable =
+				run.capability_validation.model(model).is_some_and(|entry| {
+					run.capability_validation.manifest_issues.is_empty()
+						&& run.capability_validation.cli_probe.status == ProbeStatus::Available
+						&& entry.status == CapabilityValidationStatus::Unsupported
+						&& entry.probe.status == ConfigurationProbeStatus::ObservedUnsupported
+				});
+			let score = scoring::score_calibration_model_with_context(
+				tasks,
+				&run.results,
+				model,
+				ScoreContext {
+					preflight_configuration_not_applicable,
+					receiver_authorized_publication: false,
+				},
+				ScoreOptions::default(),
+			)
+			.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+			let model_results =
+				result_efficiency.iter().filter(|result| result.model == model).collect::<Vec<_>>();
+
+			Ok(CalibrationVerifiedScore {
+				model,
+				score,
+				efficiency: aggregate_efficiency(model, &model_results)?,
+			})
+		})
+		.collect()
+}
+
+fn candidate_qualification_projection(
+	mode: CalibrationVerificationMode,
+	run: &CalibrationRunRecord,
+) -> Result<Option<CandidateQualificationProjection>, CalibrationVerificationError> {
+	if !matches!(mode, CalibrationVerificationMode::CandidateQualification) {
+		return Ok(None);
+	}
+
+	let candidate = candidate_catalog::checked_candidate_catalog_authority()
+		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+	let projection = benchmark_qualification::candidate_projection_from_replayed_results(
+		&candidate.candidate_id,
+		&run.models,
+		&run.task_ids,
+		&run.results,
+	)
+	.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
+
+	Ok(Some(projection))
 }
 
 fn validate_calibration_run_identity(
 	run: &CalibrationRunRecord,
 	tasks: &[TaskDefinition],
-	calibration_source_1_0_7: bool,
+	mode: CalibrationVerificationMode,
 ) -> Result<(), CalibrationVerificationError> {
-	let validation = if calibration_source_1_0_7 {
-		run_validation::validate_calibration_source_1_0_7_with_tasks(run, tasks)
-	} else {
-		run_validation::validate_calibration_run_record_with_tasks(run, tasks)
+	let validation = match mode {
+		CalibrationVerificationMode::Current => {
+			run_validation::validate_calibration_run_record_with_tasks(run, tasks)
+		},
+		CalibrationVerificationMode::PromotedSource1_0_7 => {
+			run_validation::validate_calibration_source_1_0_7_with_tasks(run, tasks)
+		},
+		CalibrationVerificationMode::CandidateQualification => {
+			run_validation::validate_candidate_qualification_calibration_with_tasks(run, tasks)
+		},
 	};
 
 	validation.map_err(|error| CalibrationVerificationError::new(error.to_string()))
@@ -1926,16 +2124,27 @@ fn validate_metadata(
 	run: &CalibrationRunRecord,
 	package: &VerifiedPackageIdentity,
 	metadata: &AttestedDeploymentMetadata,
+	mode: CalibrationVerificationMode,
 ) -> Result<(), CalibrationVerificationError> {
 	validate_node(&package.signer)?;
 	validate_hash(&package.package_sha256, false)?;
 	validate_hash(&package.content_hash, true)?;
 	validate_hash(&metadata.prompt_set_digest, true)?;
 
+	let (expected_task_set_version, expected_benchmark_version) = match mode {
+		CalibrationVerificationMode::CandidateQualification => (
+			CANDIDATE_TASK_SET_VERSION,
+			format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION),
+		),
+		CalibrationVerificationMode::Current | CalibrationVerificationMode::PromotedSource1_0_7 => {
+			(AIQ_TASK_SET_VERSION, AIQ_BENCHMARK_VERSION.to_owned())
+		},
+	};
+
 	if metadata.synthetic_test
 		|| metadata.task_set_id != AIQ_TASK_SET_ID
-		|| metadata.task_set_version != AIQ_TASK_SET_VERSION
-		|| metadata.benchmark_version != AIQ_BENCHMARK_VERSION
+		|| metadata.task_set_version != expected_task_set_version
+		|| metadata.benchmark_version != expected_benchmark_version
 		|| metadata.prompt_set_digest != run.provenance.prompt_digest
 		|| metadata.started_unix_ms != run.started_unix_ms
 		|| metadata.finished_unix_ms != run.finished_unix_ms

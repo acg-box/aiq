@@ -4835,7 +4835,8 @@ mod tests {
 
 	use sha2::{Digest, Sha256};
 
-	use crate::capacity;
+	#[cfg(unix)]
+	use crate::corpus_commitment::tests::RunnerProvenancePathFixture;
 	use crate::{
 		adapter::{
 			self, AdapterFailure, AdapterFailureKind, ArtifactReference, ArtifactSink,
@@ -4859,7 +4860,7 @@ mod tests {
 		scoring::{
 			self, CalibrationDescriptiveStatus, FalseOnly, ScoreContext, ScoreOptions, ScoreTier,
 		},
-		submission::MAX_SUBMISSION_BYTES,
+		submission::{self, MAX_SUBMISSION_BYTES},
 		task::{
 			self, EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationResult, Evaluator, EvaluatorCheck,
 			EvaluatorOutcome, TaskDefinition, evaluator::EvaluatorCheckFailureClass,
@@ -4873,6 +4874,7 @@ mod tests {
 			ExternalEvaluatorBinding, NormalizedToolEvidence,
 		},
 	};
+	use crate::{candidate_catalog, capacity};
 
 	struct NeverExecutor;
 	struct UsageLimitExecutor(Arc<AtomicUsize>);
@@ -5585,6 +5587,70 @@ mod tests {
 		(tasks, models, manifest, validation, slot, commitments)
 	}
 
+	#[cfg(unix)]
+	fn candidate_selected_fixture(
+		node_id: String,
+		tasks: Vec<crate::task::TaskDefinition>,
+		corpus: &crate::corpus_commitment::ValidatedCorpusCommitment,
+	) -> (
+		Vec<crate::task::TaskDefinition>,
+		Vec<crate::model::ModelConfig>,
+		CapabilityManifest,
+		CapabilityValidationReport,
+		ScheduleSlot,
+		RunCommitments,
+	) {
+		let (_synthetic_tasks, models, mut manifest, mut validation, slot, mut commitments) =
+			selected_fixture(72, MODEL_MATRIX.len());
+		let candidate = candidate_catalog::checked_candidate_catalog_authority()
+			.expect("checked candidate catalog");
+
+		candidate.require_frozen_candidate().expect("frozen candidate catalog");
+
+		assert!(candidate_catalog::task_bindings_match_checked_candidate(&tasks));
+
+		manifest.node_id.clone_from(&node_id);
+
+		validation.node_id = node_id;
+		commitments.preflight_digest =
+			protocol::canonical_hash(&validation).expect("candidate preflight digest");
+
+		commitments.provenance.preflight_digest.clone_from(&commitments.preflight_digest);
+
+		let task_set_hash = task::task_set_hash(&tasks).expect("candidate task-set hash");
+		let evaluator_digest =
+			corpus_commitment::evaluator_digest(&tasks).expect("candidate evaluator digest");
+
+		commitments.task_set_hash.clone_from(&task_set_hash);
+		commitments.evaluator_digest.clone_from(&evaluator_digest);
+
+		set_capacity_jobs(&mut commitments, &tasks, &models, &validation, 8);
+
+		commitments.catalog_digest = corpus.catalog_digest().to_owned();
+		commitments.provenance = corpus.run_provenance(
+			crate::corpus_commitment::RunClass::Calibration,
+			task_set_hash.clone(),
+			evaluator_digest,
+			commitments.runtime_digest.clone(),
+			commitments.preflight_digest.clone(),
+			commitments.provenance.runner_executable_digest.clone(),
+			commitments.provenance.codex_executable_digest.clone(),
+			commitments.provenance.codex_code_mode_host_digest.clone(),
+			commitments.permission_evidence_digest.clone(),
+		);
+		commitments.run_id = resume::classified_run_id(
+			&slot,
+			&task_set_hash,
+			corpus.canonical_sha256(),
+			&models,
+			crate::corpus_commitment::RunClass::Calibration,
+		)
+		.expect("candidate run id");
+		commitments.observed_at = "unix-ms:1".to_owned();
+
+		(tasks, models, manifest, validation, slot, commitments)
+	}
+
 	fn refresh_selected_task_commitments(
 		commitments: &mut RunCommitments,
 		tasks: &[TaskDefinition],
@@ -5610,6 +5676,192 @@ mod tests {
 			commitments.run_class,
 		)
 		.expect("run id");
+	}
+
+	fn assert_candidate_validation_context_mismatches_rejected(
+		validation_context: &run_validation::CalibrationValidationContext,
+		run: &super::CalibrationRunRecord,
+		tasks: &[TaskDefinition],
+	) {
+		for field in [
+			"corpus_release_id",
+			"corpus_commitment_sha256",
+			"catalog_digest",
+			"evaluator_digest",
+			"harness_digest",
+			"prompt_digest",
+			"tool_policy_digest",
+			"network_policy_digest",
+			"environment_digest",
+			"source_manifest_digest",
+		] {
+			let mismatch = format!("sha256:{}", "c".repeat(64));
+			let mut rebound = run.clone();
+
+			match field {
+				"corpus_release_id" => {
+					rebound.provenance.corpus_release_id = "unrelated_candidate".to_owned();
+				},
+				"corpus_commitment_sha256" => {
+					rebound.provenance.corpus_commitment_sha256 = mismatch;
+				},
+				"catalog_digest" => rebound.provenance.catalog_digest = mismatch,
+				"evaluator_digest" => rebound.provenance.evaluator_digest = mismatch,
+				"harness_digest" => rebound.provenance.harness_digest = mismatch,
+				"prompt_digest" => rebound.provenance.prompt_digest = mismatch,
+				"tool_policy_digest" => rebound.provenance.tool_policy_digest = mismatch,
+				"network_policy_digest" => rebound.provenance.network_policy_digest = mismatch,
+				"environment_digest" => rebound.provenance.environment_digest = mismatch,
+				"source_manifest_digest" => {
+					rebound.provenance.source_manifest_digest = mismatch;
+				},
+				_ => unreachable!("enumerated candidate validation context field"),
+			}
+
+			let error = validation_context
+				.validate(&rebound, Some(tasks))
+				.expect_err("candidate context mismatch");
+
+			assert_eq!(
+				error.to_string(),
+				"completed run does not match its candidate validation context",
+				"candidate context accepted mismatched {field}"
+			);
+		}
+	}
+
+	fn assert_candidate_package_boundaries(
+		identity: &protocol::SigningIdentity,
+		validation_context: &run_validation::CalibrationValidationContext,
+		run: &super::CalibrationRunRecord,
+		tasks: &[TaskDefinition],
+	) {
+		let active_error = run_validation::validate_calibration_run_record(run)
+			.expect_err("active validation must reject candidate provenance");
+
+		assert_eq!(active_error.to_string(), "signed run provenance bindings are invalid");
+
+		let envelope = identity
+			.sign(
+				&run.run_id,
+				protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+				run,
+				protocol::TrustTier::Untrusted,
+			)
+			.expect("candidate package signature");
+		let active_package_error = submission::serialize_signed_package(&envelope)
+			.expect_err("production submission serialization must reject candidate provenance");
+
+		assert!(
+			active_package_error.to_string().contains("signed run provenance bindings are invalid")
+		);
+
+		let package = submission::serialize_calibration_package_for_local_verification(
+			&envelope,
+			validation_context,
+			Some(tasks),
+		)
+		.expect("candidate package for local verifier replay");
+		let decoded: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&package).expect("candidate package JSON");
+
+		decoded.verify(&BTreeSet::new()).expect("candidate package signature");
+
+		assert_eq!(decoded.idempotency_key, run.run_id);
+		assert_eq!(decoded.content_hash, envelope.content_hash);
+		assert_eq!(decoded.signature, envelope.signature);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn candidate_completed_run_recovery_and_local_package_keep_exact_validation_context() {
+		let root = env::temp_dir().join(format!(
+			"aiq-candidate-completed-recovery-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let identity = protocol::SigningIdentity::from_secret([31; 32]);
+		let corpus_fixture = RunnerProvenancePathFixture::new("candidate-package-recovery");
+		let corpus_path = corpus_fixture.write("candidate", &corpus_fixture.candidate_commitment);
+		let tasks = corpus_fixture.candidate_tasks.clone();
+		let corpus = corpus_commitment::validate_candidate_core_corpus_commitment_v1_1_0(
+			&corpus_path,
+			&tasks,
+			&corpus_fixture.source_root,
+		)
+		.expect("candidate corpus and source fixture");
+		let validation_context =
+			run_validation::CalibrationValidationContext::candidate_qualification(&corpus, &tasks)
+				.expect("candidate package validation context");
+		let (tasks, _models, manifest, validation, _slot, commitments) =
+			candidate_selected_fixture(identity.node().node_id.clone(), tasks, &corpus);
+		let (executor, stats) = DeterministicExecutor::new(0, None);
+		let adapter = CodexAdapter::new(
+			executor,
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home")),
+		);
+
+		fs::create_dir_all(&root).expect("candidate fixture root");
+
+		let first = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation.clone(),
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: Some((&corpus_fixture.evaluator_root, &corpus_fixture.runtime)),
+				checkpoint_path: &checkpoint_path,
+				jobs: 8,
+			},
+		)
+		.expect("candidate completed run");
+		let recovered = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments,
+			runner::LocalRunExecution {
+				evaluator: Some((&corpus_fixture.evaluator_root, &corpus_fixture.runtime)),
+				checkpoint_path: &checkpoint_path,
+				jobs: 8,
+			},
+		)
+		.expect("candidate completed-run recovery");
+		let SelectedRun::Calibration(first) = first else { panic!("candidate calibration") };
+		let SelectedRun::Calibration(recovered) = recovered else {
+			panic!("recovered candidate calibration")
+		};
+
+		assert_eq!(stats.calls.lock().expect("candidate call count").len(), 1_224);
+		assert_eq!(first.results, recovered.results);
+
+		validation_context
+			.validate(&first, Some(&tasks))
+			.expect("candidate completed run validation");
+		validation_context
+			.validate(&recovered, Some(&tasks))
+			.expect("candidate recovered run validation");
+
+		assert!(validation_context.validate(&recovered, None).is_err());
+
+		assert_candidate_validation_context_mismatches_rejected(
+			&validation_context,
+			&recovered,
+			&tasks,
+		);
+		assert_candidate_package_boundaries(&identity, &validation_context, &recovered, &tasks);
+
+		fs::remove_dir_all(root).expect("candidate fixture cleanup");
+		fs::remove_dir_all(corpus_fixture.root).expect("candidate corpus fixture cleanup");
 	}
 
 	fn assert_full_calibration_analysis(

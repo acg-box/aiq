@@ -9,7 +9,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{protocol, task::Domain};
+use crate::{
+	protocol,
+	task::{Domain, TaskDefinition},
+};
 
 /// Candidate catalog schema introduced for explicit fixture applicability.
 pub const CANDIDATE_CATALOG_SCHEMA_VERSION: &str = "aiq.catalog.v2";
@@ -235,6 +238,9 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.4"
 			| "aiq-core/1.1.0-candidate.5"
 			| "aiq-core/1.1.0-candidate.6"
+			| "aiq-core/1.1.0-candidate.7"
+			| "aiq-core/1.1.0-candidate.8"
+			| "aiq-core/1.1.0-candidate.9"
 	) {
 		"1.1.0"
 	} else {
@@ -259,6 +265,56 @@ pub fn validate_candidate_catalog(
 		catalog_digest,
 		tasks,
 	})
+}
+
+pub(crate) fn task_bindings_match_checked_candidate(tasks: &[TaskDefinition]) -> bool {
+	let Ok(catalog) = checked_candidate_catalog_authority() else { return false };
+
+	tasks.len() == catalog.tasks.len()
+		&& tasks.iter().zip(&catalog.tasks).all(|(task, expected)| {
+			task.task_id == expected.task_id
+				&& task.task_version == CANDIDATE_TASK_SET_VERSION
+				&& task.domain == expected.domain
+				&& task.cluster_id.as_deref() == Some(expected.cluster_id.as_str())
+				&& task.catalog_entry_digest.as_deref()
+					== Some(expected.catalog_entry_digest.as_str())
+				&& task.scorer_version == "1.0.6"
+		})
+}
+
+/// Orders exact candidate task sources by the checked catalog authority.
+pub(crate) fn order_tasks_by_checked_candidate(
+	tasks: &mut [TaskDefinition],
+) -> Result<(), CandidateCatalogError> {
+	let catalog = checked_candidate_catalog_authority()?;
+	let positions = catalog
+		.tasks
+		.iter()
+		.enumerate()
+		.map(|(index, task)| (task.task_id.as_str(), index))
+		.collect::<BTreeMap<_, _>>();
+
+	if tasks.len() != catalog.tasks.len()
+		|| tasks.iter().any(|task| !positions.contains_key(task.task_id.as_str()))
+	{
+		return Err(CandidateCatalogError::new(
+			"candidate task sources do not match the checked catalog",
+		));
+	}
+
+	tasks.sort_by_key(|task| positions.get(task.task_id.as_str()).copied().unwrap_or(usize::MAX));
+
+	Ok(())
+}
+
+pub(crate) fn checked_candidate_catalog_authority()
+-> Result<CandidateCatalogAuthority, CandidateCatalogError> {
+	let value = serde_json::from_str::<Value>(include_str!(
+		"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
+	))
+	.map_err(|error| CandidateCatalogError::new(format!("checked candidate catalog: {error}")))?;
+
+	validate_candidate_catalog(&value)
 }
 
 fn validate_catalog_header(input: &CandidateCatalogInput) -> Result<(), CandidateCatalogError> {
@@ -488,7 +544,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.6");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.9");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 	}

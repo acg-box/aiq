@@ -7,30 +7,40 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-use crate::candidate_catalog::CandidateTaskAuthority;
+use crate::candidate_catalog::CANDIDATE_TASK_SET_VERSION;
 use crate::{
+	calibration_verification::{CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1},
+	candidate_catalog::CandidateTaskAuthority,
 	candidate_catalog::{CandidateCatalogAuthority, CandidateCatalogStatus},
+	corpus_commitment::RunClass,
 	model::{MODEL_MATRIX, ModelConfig},
-	protocol,
+	protocol::{self, NodeIdentity},
+	runner::{EvaluationOutcome, ResultStatus, TaskResult},
+	scoring::{AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID},
 	task::Domain,
 };
 
 /// Predeclared qualification-manifest schema.
-pub const QUALIFICATION_MANIFEST_SCHEMA_VERSION: &str = "aiq.benchmark-qualification-manifest.v1";
-/// One independently identified child-matrix schema.
-pub const QUALIFICATION_MATRIX_SCHEMA_VERSION: &str = "aiq.benchmark-qualification-matrix.v1";
+pub const QUALIFICATION_MANIFEST_SCHEMA_VERSION: &str = "aiq.benchmark-qualification-manifest.v2";
+/// Verifier-owned candidate cell-projection schema.
+pub const QUALIFICATION_PROJECTION_SCHEMA_VERSION: &str =
+	"aiq.benchmark-qualification-projection.v1";
 /// Deterministic qualification artifact schema.
-pub const QUALIFICATION_ARTIFACT_SCHEMA_VERSION: &str = "aiq.benchmark-qualification.v1";
+pub const QUALIFICATION_ARTIFACT_SCHEMA_VERSION: &str = "aiq.benchmark-qualification.v2";
 /// Exact hard-policy identity.
 pub const QUALIFICATION_POLICY_VERSION: &str = "aiq.benchmark-qualification-policy.v1";
 /// Exact analysis method identity.
-pub const QUALIFICATION_METHOD_VERSION: &str = "aiq.three-complete-matrix-qualification.v1";
+pub const QUALIFICATION_METHOD_VERSION: &str =
+	"aiq.three-replay-verified-complete-matrix-qualification.v2";
 /// Separate run-to-run prediction-interval method.
 pub const PREDICTION_INTERVAL_METHOD: &str = "student_t_future_single_run_n3_95_v1";
 /// Deterministic uncertainty-aware comparison grouping method.
 pub const COMPARISON_GROUP_METHOD: &str = "prediction_interval_overlap_components_v1";
 
+/// One internally derived child-matrix schema.
+const QUALIFICATION_MATRIX_SCHEMA_VERSION: &str = "aiq.benchmark-qualification-matrix.v2";
 const PUBLICATION_UNIT: &str = "one_complete_1224_cell_matrix";
 const COMPARISON_TOLERANCE: f64 = 1e-12;
 const T_975_DF_2: f64 = 4.302_652_729_911_275;
@@ -106,6 +116,8 @@ pub struct QualificationCandidateIdentity {
 	pub candidate_id: String,
 	/// Complete public candidate catalog digest.
 	pub catalog_digest: String,
+	/// Ordered full task-metadata identity committed by the candidate corpus.
+	pub task_metadata_digest: String,
 	/// Complete private task-set digest.
 	pub task_set_digest: String,
 	/// Controlled corpus release identifier.
@@ -114,10 +126,16 @@ pub struct QualificationCandidateIdentity {
 	pub corpus_commitment_digest: String,
 	/// Selected evaluator identity.
 	pub evaluator_digest: String,
-	/// Runtime identity.
-	pub runtime_digest: String,
-	/// Exact model-visible toolchain identity.
-	pub toolchain_digest: String,
+	/// Controlled benchmark harness identity.
+	pub harness_digest: String,
+	/// Exact prompt-source identity.
+	pub prompt_digest: String,
+	/// Declared model-visible tool policy identity.
+	pub tool_policy_digest: String,
+	/// Declared network policy identity.
+	pub network_policy_digest: String,
+	/// Controlled execution environment identity.
+	pub environment_digest: String,
 	/// Source-manifest identity.
 	pub source_manifest_digest: String,
 	/// Exact ordered model-selection identity.
@@ -132,10 +150,8 @@ pub struct PredeclaredQualificationChild {
 	pub child_id: String,
 	/// Exact source run identity expected for this child.
 	pub source_run_id: String,
-	/// Exact canonical digest of the completed source run.
-	pub source_run_digest: String,
-	/// Exact verifier-attestation digest for the completed source run.
-	pub verifier_attestation_digest: String,
+	/// Exact trusted verifier identity fixed before qualification analysis.
+	pub verifier: NodeIdentity,
 }
 
 /// Predeclared candidate and three-child contract.
@@ -166,33 +182,19 @@ pub struct QualificationCell {
 	pub semantic_score: Option<f64>,
 }
 
-/// One complete independently identified qualification matrix.
+/// Candidate-only semantic-cell projection created inside verifier replay.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct QualificationMatrix {
-	/// Matrix schema.
+pub struct CandidateQualificationProjection {
+	/// Projection schema.
 	pub schema_version: String,
-	/// Predeclared child identity.
-	pub child_id: String,
-	/// Exact originating run identity.
-	pub source_run_id: String,
-	/// Canonical digest of the complete originating run.
-	pub source_run_digest: String,
-	/// Digest of the independent verifier evidence for the originating run.
-	pub verifier_attestation_digest: String,
-	/// Whether upstream verification accepted or rejected this child.
+	/// Exact candidate identity selected by the verified corpus.
+	pub candidate_id: String,
+	/// Only replay-accepted evidence can support qualification.
 	pub disposition: QualificationChildDisposition,
-	/// Exact rejection evidence when the child was rejected.
-	pub rejection_digest: Option<String>,
-	/// Synthetic matrices are never qualification inputs.
+	/// Synthetic evidence is permanently ineligible.
 	pub synthetic: bool,
-	/// Exact candidate identities repeated in every child.
-	pub candidate: QualificationCandidateIdentity,
-	/// Exact ordered 17-configuration selection.
-	pub models: Vec<ModelConfig>,
-	/// Exact ordered 72-task selection.
-	pub task_ids: Vec<String>,
-	/// Model-major, then task-major complete semantic cells.
+	/// Model-major, then task-major semantic cells derived from replayed results.
 	pub cells: Vec<QualificationCell>,
 }
 
@@ -206,8 +208,18 @@ pub struct QualificationChildBinding {
 	pub source_run_id: String,
 	/// Exact source run digest.
 	pub source_run_digest: String,
+	/// SHA-256 of the exact signed package bytes.
+	pub source_package_sha256: String,
+	/// Signed package content commitment.
+	pub source_package_content_hash: String,
+	/// Runner identity authenticated by the verifier attestation.
+	pub runner: NodeIdentity,
+	/// Trusted verifier identity that signed this child evidence.
+	pub verifier: NodeIdentity,
 	/// Exact independent verifier evidence digest.
 	pub verifier_attestation_digest: String,
+	/// Exact signed run-provenance digest for this child.
+	pub run_provenance_digest: String,
 	/// Canonical digest of the complete supplied matrix.
 	pub matrix_digest: String,
 }
@@ -385,6 +397,46 @@ impl Display for BenchmarkQualificationError {
 	}
 }
 
+/// One complete independently identified qualification matrix.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct QualificationMatrix {
+	/// Matrix schema.
+	pub schema_version: String,
+	/// Predeclared child identity.
+	pub child_id: String,
+	/// Exact originating run identity.
+	pub source_run_id: String,
+	/// Canonical digest of the complete originating run.
+	pub source_run_digest: String,
+	/// SHA-256 of the exact signed source package bytes.
+	pub source_package_sha256: String,
+	/// Signed package content commitment.
+	pub source_package_content_hash: String,
+	/// Authenticated runner identity.
+	pub runner: NodeIdentity,
+	/// Trusted verifier identity.
+	pub verifier: NodeIdentity,
+	/// Digest of the independent verifier evidence for the originating run.
+	pub verifier_attestation_digest: String,
+	/// Digest of the exact signed run provenance.
+	pub run_provenance_digest: String,
+	/// Whether upstream verification accepted or rejected this child.
+	pub disposition: QualificationChildDisposition,
+	/// Exact rejection evidence when the child was rejected.
+	pub rejection_digest: Option<String>,
+	/// Synthetic matrices are never qualification inputs.
+	pub synthetic: bool,
+	/// Exact candidate identities repeated in every child.
+	pub candidate: QualificationCandidateIdentity,
+	/// Exact ordered 17-configuration selection.
+	pub models: Vec<ModelConfig>,
+	/// Exact ordered 72-task selection.
+	pub task_ids: Vec<String>,
+	/// Model-major, then task-major complete semantic cells.
+	pub cells: Vec<QualificationCell>,
+}
+
 struct ValidatedMatrix<'a> {
 	matrix: &'a QualificationMatrix,
 	digest: String,
@@ -421,8 +473,144 @@ pub enum BenchmarkQualificationStatus {
 	Rejected,
 }
 
-/// Applies the exact qualification protocol to three structurally valid child matrices.
+pub(crate) fn candidate_projection_from_replayed_results(
+	candidate_id: &str,
+	models: &[ModelConfig],
+	task_ids: &[String],
+	results: &[TaskResult],
+) -> Result<CandidateQualificationProjection, BenchmarkQualificationError> {
+	if !valid_token(candidate_id, 128)
+		|| models != MODEL_MATRIX
+		|| task_ids.len() != 72
+		|| results.len() != 1_224
+	{
+		return Err(BenchmarkQualificationError::new(
+			"candidate qualification projection requires one complete 17-by-72 result matrix",
+		));
+	}
+
+	let cells = results
+		.iter()
+		.enumerate()
+		.map(|(index, result)| {
+			let expected_model = MODEL_MATRIX[index / task_ids.len()];
+			let expected_task_id = &task_ids[index % task_ids.len()];
+			let score = result.task_score.ok_or_else(|| {
+				BenchmarkQualificationError::new(
+					"candidate qualification result has no semantic score",
+				)
+			})?;
+
+			if result.model != expected_model
+				|| &result.task_id != expected_task_id
+				|| result.status != ResultStatus::Completed
+				|| result.evaluation == EvaluationOutcome::NotEvaluated
+				|| !score.is_finite()
+				|| !(0.0..=1.0).contains(&score)
+			{
+				return Err(BenchmarkQualificationError::new(
+					"candidate qualification result is incomplete, reordered, or runtime-invalid",
+				));
+			}
+
+			Ok(QualificationCell {
+				task_id: result.task_id.clone(),
+				model: result.model,
+				status: QualificationCellStatus::Completed,
+				semantic_score: Some(score),
+			})
+		})
+		.collect::<Result<Vec<_>, _>>()?;
+
+	Ok(CandidateQualificationProjection {
+		schema_version: QUALIFICATION_PROJECTION_SCHEMA_VERSION.to_owned(),
+		candidate_id: candidate_id.to_owned(),
+		disposition: QualificationChildDisposition::Accepted,
+		synthetic: false,
+		cells,
+	})
+}
+
+pub(crate) fn validate_candidate_projection(
+	projection: &CandidateQualificationProjection,
+	candidate_id: &str,
+	models: &[ModelConfig],
+	task_ids: &[String],
+) -> Result<(), BenchmarkQualificationError> {
+	if projection.schema_version != QUALIFICATION_PROJECTION_SCHEMA_VERSION
+		|| projection.candidate_id != candidate_id
+		|| projection.disposition != QualificationChildDisposition::Accepted
+		|| projection.synthetic
+		|| models != MODEL_MATRIX
+		|| task_ids.len() != 72
+		|| projection.cells.len() != 1_224
+	{
+		return Err(BenchmarkQualificationError::new(
+			"candidate qualification projection is not accepted complete evidence",
+		));
+	}
+
+	for (index, cell) in projection.cells.iter().enumerate() {
+		validate_cell(cell, index, task_ids, candidate_id)?;
+	}
+
+	Ok(())
+}
+
+/// Applies the exact qualification protocol to three replay-verified child stages.
 pub fn qualify_candidate(
+	manifest: &BenchmarkQualificationManifest,
+	expected_manifest_digest: &str,
+	catalog: &CandidateCatalogAuthority,
+	stages: &[CalibrationVerifiedStageV1],
+	attestations: &[CalibrationVerifierAttestationV1],
+) -> Result<BenchmarkQualificationArtifact, BenchmarkQualificationError> {
+	if !valid_digest(expected_manifest_digest)
+		|| canonical_hash(manifest, "qualification manifest")? != expected_manifest_digest
+	{
+		return Err(BenchmarkQualificationError::new(
+			"qualification manifest does not match the independently expected predeclaration digest",
+		));
+	}
+
+	let matrices = derive_verified_matrices(manifest, catalog, stages, attestations)?;
+
+	qualify_derived_matrices(manifest, catalog, &matrices)
+}
+
+/// Recomputes the complete qualification and requires byte-semantic artifact equality.
+pub fn verify_qualification_artifact(
+	artifact: &BenchmarkQualificationArtifact,
+	manifest: &BenchmarkQualificationManifest,
+	expected_manifest_digest: &str,
+	catalog: &CandidateCatalogAuthority,
+	stages: &[CalibrationVerifiedStageV1],
+	attestations: &[CalibrationVerifierAttestationV1],
+) -> Result<(), BenchmarkQualificationError> {
+	if artifact.schema_version != QUALIFICATION_ARTIFACT_SCHEMA_VERSION {
+		return Err(BenchmarkQualificationError::new(
+			"qualification artifact uses an unsupported schema version",
+		));
+	}
+	if canonical_hash(&artifact.claims, "qualification claims")? != artifact.claims_digest {
+		return Err(BenchmarkQualificationError::new(
+			"qualification artifact claims digest does not match",
+		));
+	}
+
+	let expected =
+		qualify_candidate(manifest, expected_manifest_digest, catalog, stages, attestations)?;
+
+	if artifact != &expected {
+		return Err(BenchmarkQualificationError::new(
+			"qualification artifact does not equal deterministic recomputation",
+		));
+	}
+
+	Ok(())
+}
+
+fn qualify_derived_matrices(
 	manifest: &BenchmarkQualificationManifest,
 	catalog: &CandidateCatalogAuthority,
 	matrices: &[QualificationMatrix],
@@ -505,29 +693,164 @@ pub fn qualify_candidate(
 	})
 }
 
-/// Recomputes the complete qualification and requires byte-semantic artifact equality.
-pub fn verify_qualification_artifact(
+#[cfg(test)]
+fn verify_derived_qualification_artifact(
 	artifact: &BenchmarkQualificationArtifact,
 	manifest: &BenchmarkQualificationManifest,
 	catalog: &CandidateCatalogAuthority,
 	matrices: &[QualificationMatrix],
 ) -> Result<(), BenchmarkQualificationError> {
-	if artifact.schema_version != QUALIFICATION_ARTIFACT_SCHEMA_VERSION {
-		return Err(BenchmarkQualificationError::new(
-			"qualification artifact uses an unsupported schema version",
-		));
+	if artifact.schema_version != QUALIFICATION_ARTIFACT_SCHEMA_VERSION
+		|| canonical_hash(&artifact.claims, "qualification claims")? != artifact.claims_digest
+	{
+		return Err(BenchmarkQualificationError::new("qualification artifact identity is invalid"));
 	}
-	if canonical_hash(&artifact.claims, "qualification claims")? != artifact.claims_digest {
-		return Err(BenchmarkQualificationError::new(
-			"qualification artifact claims digest does not match",
-		));
-	}
-
-	let expected = qualify_candidate(manifest, catalog, matrices)?;
-
-	if artifact != &expected {
+	if artifact != &qualify_derived_matrices(manifest, catalog, matrices)? {
 		return Err(BenchmarkQualificationError::new(
 			"qualification artifact does not equal deterministic recomputation",
+		));
+	}
+
+	Ok(())
+}
+
+fn derive_verified_matrices(
+	manifest: &BenchmarkQualificationManifest,
+	catalog: &CandidateCatalogAuthority,
+	stages: &[CalibrationVerifiedStageV1],
+	attestations: &[CalibrationVerifierAttestationV1],
+) -> Result<Vec<QualificationMatrix>, BenchmarkQualificationError> {
+	validate_manifest(manifest, catalog)?;
+
+	if stages.len() != manifest.policy.required_matrices
+		|| attestations.len() != manifest.policy.required_matrices
+	{
+		return Err(BenchmarkQualificationError::new(
+			"qualification requires exactly three stage and attestation pairs",
+		));
+	}
+
+	let expected_task_ids =
+		catalog.tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
+	let mut run_ids = BTreeSet::new();
+	let mut package_digests = BTreeSet::new();
+	let mut stage_digests = BTreeSet::new();
+	let mut attestation_digests = BTreeSet::new();
+	let mut matrices = Vec::with_capacity(stages.len());
+
+	for (((declaration, stage), attestation), index) in
+		manifest.children.iter().zip(stages).zip(attestations).zip(0_usize..)
+	{
+		stage.verify_candidate_qualification().map_err(|error| {
+			BenchmarkQualificationError::new(format!(
+				"qualification child {} stage is not accepted candidate evidence: {error}",
+				declaration.child_id
+			))
+		})?;
+		attestation.verify_candidate_qualification(stage, &declaration.verifier).map_err(
+			|error| {
+				BenchmarkQualificationError::new(format!(
+					"qualification child {} attestation is not trusted: {error}",
+					declaration.child_id
+				))
+			},
+		)?;
+
+		validate_stage_candidate_identity(stage, &manifest.candidate, catalog)?;
+
+		let projection = stage.qualification_projection.as_ref().ok_or_else(|| {
+			BenchmarkQualificationError::new(format!(
+				"qualification child {} has no verifier-derived projection",
+				declaration.child_id
+			))
+		})?;
+		let attestation_digest = canonical_hash(attestation, "verifier attestation")?;
+
+		if stage.run_id != declaration.source_run_id
+			|| projection.schema_version != QUALIFICATION_PROJECTION_SCHEMA_VERSION
+			|| projection.candidate_id != manifest.candidate.candidate_id
+			|| projection.disposition != QualificationChildDisposition::Accepted
+			|| projection.synthetic
+			|| stage.models != MODEL_MATRIX
+			|| stage.task_ids != expected_task_ids
+		{
+			return Err(BenchmarkQualificationError::new(format!(
+				"qualification child {} has swapped, rejected, synthetic, or drifted evidence",
+				declaration.child_id
+			)));
+		}
+		if !run_ids.insert(stage.run_id.as_str())
+			|| !package_digests.insert(stage.package_sha256.as_str())
+			|| !stage_digests.insert(stage.stage_digest.as_str())
+			|| !attestation_digests.insert(attestation_digest.clone())
+		{
+			return Err(BenchmarkQualificationError::new(
+				"qualification reuses a run, package, stage, or verifier attestation",
+			));
+		}
+
+		matrices.push(QualificationMatrix {
+			schema_version: QUALIFICATION_MATRIX_SCHEMA_VERSION.to_owned(),
+			child_id: declaration.child_id.clone(),
+			source_run_id: stage.run_id.clone(),
+			source_run_digest: stage.stage_digest.clone(),
+			source_package_sha256: stage.package_sha256.clone(),
+			source_package_content_hash: stage.content_hash.clone(),
+			runner: stage.runner.clone(),
+			verifier: attestation.verifier.clone(),
+			verifier_attestation_digest: attestation_digest,
+			run_provenance_digest: canonical_hash(&stage.provenance, "run provenance")?,
+			disposition: projection.disposition,
+			rejection_digest: None,
+			synthetic: projection.synthetic,
+			candidate: manifest.candidate.clone(),
+			models: stage.models.clone(),
+			task_ids: stage.task_ids.clone(),
+			cells: projection.cells.clone(),
+		});
+
+		debug_assert_eq!(matrices.len(), index + 1);
+	}
+
+	Ok(matrices)
+}
+
+fn validate_stage_candidate_identity(
+	stage: &CalibrationVerifiedStageV1,
+	identity: &QualificationCandidateIdentity,
+	catalog: &CandidateCatalogAuthority,
+) -> Result<(), BenchmarkQualificationError> {
+	let provenance = &stage.provenance;
+
+	if identity.candidate_id != catalog.candidate_id
+		|| identity.catalog_digest != catalog.catalog_digest
+		|| identity.task_metadata_digest != catalog.task_metadata_digest
+		|| provenance.run_class != RunClass::Calibration
+		|| provenance.corpus_release_id != identity.corpus_release_id
+		|| provenance.corpus_commitment_sha256 != identity.corpus_commitment_digest
+		|| provenance.catalog_digest != identity.task_metadata_digest
+		|| provenance.task_set_digest != identity.task_set_digest
+		|| stage.task_set_hash != identity.task_set_digest
+		|| provenance.evaluator_digest != identity.evaluator_digest
+		|| provenance.harness_digest != identity.harness_digest
+		|| provenance.prompt_digest != identity.prompt_digest
+		|| provenance.tool_policy_digest != identity.tool_policy_digest
+		|| provenance.network_policy_digest != identity.network_policy_digest
+		|| provenance.environment_digest != identity.environment_digest
+		|| provenance.source_manifest_digest != identity.source_manifest_digest
+		|| stage.model_selection_digest != identity.model_selection_digest
+		|| stage.task_set_id != AIQ_TASK_SET_ID
+		|| stage.task_set_version != CANDIDATE_TASK_SET_VERSION
+		|| stage.benchmark_version
+			!= format!(
+				"{}@{}",
+				AIQ_TASK_SET_ID,
+				crate::candidate_catalog::CANDIDATE_TASK_SET_VERSION
+			) || stage.scoring_version != AIQ_SCORING_VERSION
+		|| stage.benchmark_version == AIQ_BENCHMARK_VERSION
+	{
+		return Err(BenchmarkQualificationError::new(
+			"qualification stage does not bind the exact candidate identity",
 		));
 	}
 
@@ -555,6 +878,7 @@ fn validate_manifest(
 		|| catalog.require_frozen_candidate().is_err()
 		|| manifest.candidate.candidate_id != catalog.candidate_id
 		|| manifest.candidate.catalog_digest != catalog.catalog_digest
+		|| manifest.candidate.task_metadata_digest != catalog.task_metadata_digest
 	{
 		return Err(BenchmarkQualificationError::new(
 			"qualification manifest does not bind a qualification-ready exact catalog",
@@ -570,26 +894,13 @@ fn validate_manifest(
 		manifest.children.iter().map(|child| child.child_id.as_str()).collect::<BTreeSet<_>>();
 	let run_ids =
 		manifest.children.iter().map(|child| child.source_run_id.as_str()).collect::<BTreeSet<_>>();
-	let run_digests = manifest
-		.children
-		.iter()
-		.map(|child| child.source_run_digest.as_str())
-		.collect::<BTreeSet<_>>();
-	let verifier_digests = manifest
-		.children
-		.iter()
-		.map(|child| child.verifier_attestation_digest.as_str())
-		.collect::<BTreeSet<_>>();
 
 	if child_ids.len() != manifest.children.len()
 		|| run_ids.len() != manifest.children.len()
-		|| run_digests.len() != manifest.children.len()
-		|| verifier_digests.len() != manifest.children.len()
 		|| manifest.children.iter().any(|child| {
 			!valid_token(&child.child_id, 128)
 				|| !valid_token(&child.source_run_id, 256)
-				|| !valid_digest(&child.source_run_digest)
-				|| !valid_digest(&child.verifier_attestation_digest)
+				|| !valid_node(&child.verifier)
 		}) {
 		return Err(BenchmarkQualificationError::new(
 			"qualification child declarations are invalid or reused",
@@ -606,11 +917,15 @@ fn validate_candidate_identity(
 		|| !valid_token(&identity.corpus_release_id, 128)
 		|| [
 			&identity.catalog_digest,
+			&identity.task_metadata_digest,
 			&identity.task_set_digest,
 			&identity.corpus_commitment_digest,
 			&identity.evaluator_digest,
-			&identity.runtime_digest,
-			&identity.toolchain_digest,
+			&identity.harness_digest,
+			&identity.prompt_digest,
+			&identity.tool_policy_digest,
+			&identity.network_policy_digest,
+			&identity.environment_digest,
 			&identity.source_manifest_digest,
 			&identity.model_selection_digest,
 		]
@@ -647,6 +962,7 @@ fn validate_matrices<'a>(
 	let expected_task_ids =
 		catalog.tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
 	let mut source_run_digests = BTreeSet::new();
+	let mut source_package_digests = BTreeSet::new();
 	let mut verifier_digests = BTreeSet::new();
 	let mut matrix_digests = BTreeSet::new();
 	let mut validated = Vec::with_capacity(matrices.len());
@@ -656,6 +972,7 @@ fn validate_matrices<'a>(
 			validate_matrix(declaration, matrix, &manifest.candidate, &expected_task_ids, index)?;
 
 		if !source_run_digests.insert(matrix.source_run_digest.as_str())
+			|| !source_package_digests.insert(matrix.source_package_sha256.as_str())
 			|| !verifier_digests.insert(matrix.verifier_attestation_digest.as_str())
 			|| !matrix_digests.insert(evidence.digest.clone())
 		{
@@ -684,14 +1001,19 @@ fn validate_matrix<'a>(
 	}
 	if matrix.child_id != declaration.child_id
 		|| matrix.source_run_id != declaration.source_run_id
-		|| matrix.source_run_digest != declaration.source_run_digest
-		|| matrix.verifier_attestation_digest != declaration.verifier_attestation_digest
+		|| matrix.verifier != declaration.verifier
+		|| matrix.runner == matrix.verifier
 		|| &matrix.candidate != candidate
 		|| matrix.models != MODEL_MATRIX
 		|| matrix.task_ids != expected_task_ids
 		|| matrix.synthetic
+		|| !valid_plain_digest(&matrix.source_package_sha256)
+		|| !valid_digest(&matrix.source_package_content_hash)
 		|| !valid_digest(&matrix.source_run_digest)
 		|| !valid_digest(&matrix.verifier_attestation_digest)
+		|| !valid_digest(&matrix.run_provenance_digest)
+		|| !valid_node(&matrix.runner)
+		|| !valid_node(&matrix.verifier)
 	{
 		return Err(BenchmarkQualificationError::new(format!(
 			"qualification child {} has swapped, synthetic, or drifted identity",
@@ -1228,7 +1550,12 @@ fn child_bindings(matrices: &[ValidatedMatrix<'_>]) -> Vec<QualificationChildBin
 			child_id: evidence.matrix.child_id.clone(),
 			source_run_id: evidence.matrix.source_run_id.clone(),
 			source_run_digest: evidence.matrix.source_run_digest.clone(),
+			source_package_sha256: evidence.matrix.source_package_sha256.clone(),
+			source_package_content_hash: evidence.matrix.source_package_content_hash.clone(),
+			runner: evidence.matrix.runner.clone(),
+			verifier: evidence.matrix.verifier.clone(),
 			verifier_attestation_digest: evidence.matrix.verifier_attestation_digest.clone(),
+			run_provenance_digest: evidence.matrix.run_provenance_digest.clone(),
 			matrix_digest: evidence.digest.clone(),
 		})
 		.collect()
@@ -1255,10 +1582,24 @@ fn valid_digest(value: &str) -> bool {
 		&& value[7..].bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
+fn valid_plain_digest(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn valid_node(node: &NodeIdentity) -> bool {
+	let Ok(public) = hex::decode(&node.public_key) else { return false };
+
+	public.len() == 32
+		&& valid_plain_digest(&node.public_key)
+		&& node.node_id == format!("node_{}", hex::encode(Sha256::digest(public)))
+}
+
 #[cfg(test)]
 mod tests {
 	use serde_json::{self, Value};
 
+	use crate::runner;
 	use crate::{
 		benchmark_qualification::{
 			self, BenchmarkQualificationManifest, BenchmarkQualificationStatus,
@@ -1368,12 +1709,16 @@ mod tests {
 		let candidate = QualificationCandidateIdentity {
 			candidate_id: catalog.candidate_id.clone(),
 			catalog_digest: catalog.catalog_digest.clone(),
+			task_metadata_digest: catalog.task_metadata_digest.clone(),
 			task_set_digest: digest('1'),
 			corpus_release_id: "aiq-core/1.1.0-candidate.1".to_owned(),
 			corpus_commitment_digest: digest('2'),
 			evaluator_digest: digest('3'),
-			runtime_digest: digest('4'),
-			toolchain_digest: digest('5'),
+			harness_digest: digest('4'),
+			prompt_digest: digest('5'),
+			tool_policy_digest: digest('6'),
+			network_policy_digest: digest('7'),
+			environment_digest: digest('8'),
 			source_manifest_digest: digest('6'),
 			model_selection_digest: protocol::canonical_hash(&MODEL_MATRIX).expect("models"),
 		};
@@ -1381,8 +1726,9 @@ mod tests {
 			.map(|index| PredeclaredQualificationChild {
 				child_id: format!("child-{}", index + 1),
 				source_run_id: format!("run-{}", index + 1),
-				source_run_digest: digest(char::from(b'a' + index as u8)),
-				verifier_attestation_digest: digest(char::from(b'd' + index as u8)),
+				verifier: protocol::SigningIdentity::from_secret([10 + index as u8; 32])
+					.node()
+					.clone(),
 			})
 			.collect::<Vec<_>>();
 		let manifest = BenchmarkQualificationManifest {
@@ -1432,8 +1778,15 @@ mod tests {
 			schema_version: benchmark_qualification::QUALIFICATION_MATRIX_SCHEMA_VERSION.to_owned(),
 			child_id: child.child_id.clone(),
 			source_run_id: child.source_run_id.clone(),
-			source_run_digest: child.source_run_digest.clone(),
-			verifier_attestation_digest: child.verifier_attestation_digest.clone(),
+			source_run_digest: digest(char::from(b'a' + run_index as u8)),
+			source_package_sha256: char::from(b'7' + run_index as u8).to_string().repeat(64),
+			source_package_content_hash: digest(char::from(b'd' + run_index as u8)),
+			runner: protocol::SigningIdentity::from_secret([30 + run_index as u8; 32])
+				.node()
+				.clone(),
+			verifier: child.verifier.clone(),
+			verifier_attestation_digest: digest(char::from(b'1' + run_index as u8)),
+			run_provenance_digest: digest(char::from(b'4' + run_index as u8)),
 			disposition: QualificationChildDisposition::Accepted,
 			rejection_digest: None,
 			synthetic: false,
@@ -1447,10 +1800,12 @@ mod tests {
 	#[test]
 	fn three_complete_stable_matrices_qualify_deterministically() {
 		let (catalog, manifest, matrices) = fixture();
-		let first = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("qualification");
-		let second = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("qualification again");
+		let first =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("qualification");
+		let second =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("qualification again");
 
 		assert_eq!(first, second);
 		assert_eq!(first.claims.status, BenchmarkQualificationStatus::Qualified);
@@ -1459,10 +1814,50 @@ mod tests {
 		assert_eq!(first.claims.configurations.len(), 17);
 		assert!(first.claims.violations.is_empty());
 
-		benchmark_qualification::verify_qualification_artifact(
+		benchmark_qualification::verify_derived_qualification_artifact(
 			&first, &manifest, &catalog, &matrices,
 		)
 		.expect("verification");
+	}
+
+	#[test]
+	fn verifier_projection_is_derived_from_exact_complete_result_cells() {
+		let tasks = runner::synthetic_demo_tasks();
+		let slot = crate::schedule::ScheduleConfig::default()
+			.slot("2026-08-28", crate::schedule::ScheduleOccurrence::Day)
+			.expect("fixture slot");
+		let run = runner::synthetic_demo(slot, &crate::runner::TestArtifactSink)
+			.expect("synthetic matrix");
+		let task_ids = tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
+		let projection = benchmark_qualification::candidate_projection_from_replayed_results(
+			"aiq-core/1.1.0-candidate.9",
+			&run.models,
+			&task_ids,
+			&run.results,
+		)
+		.expect("complete verifier projection");
+
+		assert_eq!(projection.cells.len(), 1_224);
+
+		for (cell, result) in projection.cells.iter().zip(&run.results) {
+			assert_eq!(cell.task_id, result.task_id);
+			assert_eq!(cell.model, result.model);
+			assert_eq!(cell.semantic_score, result.task_score);
+		}
+
+		let mut invalid = run.results;
+
+		invalid[0].status = crate::runner::ResultStatus::Failed;
+
+		assert!(
+			benchmark_qualification::candidate_projection_from_replayed_results(
+				"aiq-core/1.1.0-candidate.9",
+				&MODEL_MATRIX,
+				&task_ids,
+				&invalid,
+			)
+			.is_err()
+		);
 	}
 
 	#[test]
@@ -1482,7 +1877,7 @@ mod tests {
 					changed[0].cells[0].semantic_score = None;
 				},
 				3 => changed[0].synthetic = true,
-				4 => changed[0].candidate.runtime_digest = digest('9'),
+				4 => changed[0].candidate.harness_digest = digest('9'),
 				5 => changed[1].source_run_digest = changed[0].source_run_digest.clone(),
 				_ => {
 					changed[0].disposition = QualificationChildDisposition::Rejected;
@@ -1491,7 +1886,8 @@ mod tests {
 			}
 
 			assert!(
-				benchmark_qualification::qualify_candidate(&manifest, &catalog, &changed).is_err(),
+				benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &changed)
+					.is_err(),
 				"mutation {mutation} must fail"
 			);
 		}
@@ -1504,42 +1900,57 @@ mod tests {
 
 		changed.policy.minimum_median_rank_spearman = 0.0;
 
-		assert!(benchmark_qualification::qualify_candidate(&changed, &catalog, &matrices).is_err());
+		assert!(
+			benchmark_qualification::qualify_derived_matrices(&changed, &catalog, &matrices)
+				.is_err()
+		);
 
 		let mut changed = manifest.clone();
 
 		changed.children[1].child_id = changed.children[0].child_id.clone();
 
-		assert!(benchmark_qualification::qualify_candidate(&changed, &catalog, &matrices).is_err());
+		assert!(
+			benchmark_qualification::qualify_derived_matrices(&changed, &catalog, &matrices)
+				.is_err()
+		);
 
 		let mut changed = manifest;
 
-		changed.schema_version = "aiq.benchmark-qualification-manifest.v2".to_owned();
+		changed.schema_version = "aiq.benchmark-qualification-manifest.v3".to_owned();
 
-		assert!(benchmark_qualification::qualify_candidate(&changed, &catalog, &matrices).is_err());
+		assert!(
+			benchmark_qualification::qualify_derived_matrices(&changed, &catalog, &matrices)
+				.is_err()
+		);
 	}
 
 	#[test]
 	fn every_candidate_identity_component_must_match_all_children() {
 		let (catalog, manifest, matrices) = fixture();
 
-		for mutation in 0..9 {
+		for mutation in 0..14 {
 			let mut changed = matrices.clone();
 
 			match mutation {
-				0 => changed[0].candidate.catalog_digest = digest('7'),
-				1 => changed[0].candidate.task_set_digest = digest('7'),
-				2 => changed[0].candidate.corpus_release_id = "other-candidate".to_owned(),
-				3 => changed[0].candidate.corpus_commitment_digest = digest('7'),
-				4 => changed[0].candidate.evaluator_digest = digest('7'),
-				5 => changed[0].candidate.runtime_digest = digest('7'),
-				6 => changed[0].candidate.toolchain_digest = digest('7'),
-				7 => changed[0].candidate.source_manifest_digest = digest('7'),
-				_ => changed[0].candidate.model_selection_digest = digest('7'),
+				0 => changed[0].candidate.catalog_digest = digest('0'),
+				1 => changed[0].candidate.task_metadata_digest = digest('0'),
+				2 => changed[0].candidate.task_set_digest = digest('0'),
+				3 => changed[0].candidate.corpus_release_id = "other-candidate".to_owned(),
+				4 => changed[0].candidate.corpus_commitment_digest = digest('0'),
+				5 => changed[0].candidate.evaluator_digest = digest('0'),
+				6 => changed[0].candidate.harness_digest = digest('0'),
+				7 => changed[0].candidate.prompt_digest = digest('0'),
+				8 => changed[0].candidate.tool_policy_digest = digest('0'),
+				9 => changed[0].candidate.network_policy_digest = digest('0'),
+				10 => changed[0].candidate.environment_digest = digest('0'),
+				11 => changed[0].candidate.source_manifest_digest = digest('0'),
+				12 => changed[0].candidate.model_selection_digest = digest('0'),
+				_ => changed[0].candidate.candidate_id = "other-candidate".to_owned(),
 			}
 
 			assert!(
-				benchmark_qualification::qualify_candidate(&manifest, &catalog, &changed).is_err(),
+				benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &changed)
+					.is_err(),
 				"identity mutation {mutation} must fail"
 			);
 		}
@@ -1554,8 +1965,9 @@ mod tests {
 			task.cluster_id = "one-cluster".to_owned();
 		}
 
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &bad_shape, &matrices)
-			.expect("shape rejection artifact");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &bad_shape, &matrices)
+				.expect("shape rejection artifact");
 
 		assert_eq!(artifact.claims.status, BenchmarkQualificationStatus::Rejected);
 
@@ -1571,7 +1983,7 @@ mod tests {
 			}
 
 			let artifact =
-				benchmark_qualification::qualify_candidate(&manifest, &catalog, &changed)
+				benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &changed)
 					.expect("threshold rejection artifact");
 
 			assert_eq!(
@@ -1593,7 +2005,7 @@ mod tests {
 		}
 
 		let artifact =
-			benchmark_qualification::qualify_candidate(&manifest, &wrong_domains, &matrices)
+			benchmark_qualification::qualify_derived_matrices(&manifest, &wrong_domains, &matrices)
 				.expect("domain rejection");
 
 		assert_eq!(artifact.claims.status, BenchmarkQualificationStatus::Rejected);
@@ -1604,8 +2016,9 @@ mod tests {
 		oversized.tasks[1].cluster_id.clone_from(&cluster);
 		oversized.tasks[2].cluster_id.clone_from(&cluster);
 
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &oversized, &matrices)
-			.expect("cluster-size rejection");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &oversized, &matrices)
+				.expect("cluster-size rejection");
 
 		assert!(artifact.claims.violations.iter().any(|value| value.contains("above 2")));
 
@@ -1620,7 +2033,7 @@ mod tests {
 		other_domain.cluster_id = first_cluster;
 
 		let artifact =
-			benchmark_qualification::qualify_candidate(&manifest, &cross_domain, &matrices)
+			benchmark_qualification::qualify_derived_matrices(&manifest, &cross_domain, &matrices)
 				.expect("cross-domain rejection");
 
 		assert!(artifact.claims.violations.iter().any(|value| value.contains("crosses domains")));
@@ -1678,8 +2091,9 @@ mod tests {
 	#[test]
 	fn artifact_tamper_swapped_children_and_future_versions_fail_closed() {
 		let (catalog, manifest, matrices) = fixture();
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("artifact");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("artifact");
 		let mut changed = artifact.clone();
 
 		changed.claims.children.swap(0, 1);
@@ -1687,7 +2101,7 @@ mod tests {
 		changed.claims_digest = protocol::canonical_hash(&changed.claims).expect("changed digest");
 
 		assert!(
-			benchmark_qualification::verify_qualification_artifact(
+			benchmark_qualification::verify_derived_qualification_artifact(
 				&changed, &manifest, &catalog, &matrices,
 			)
 			.is_err()
@@ -1695,10 +2109,10 @@ mod tests {
 
 		let mut changed = artifact;
 
-		changed.schema_version = "aiq.benchmark-qualification.v2".to_owned();
+		changed.schema_version = "aiq.benchmark-qualification.v3".to_owned();
 
 		assert!(
-			benchmark_qualification::verify_qualification_artifact(
+			benchmark_qualification::verify_derived_qualification_artifact(
 				&changed, &manifest, &catalog, &matrices,
 			)
 			.is_err()
@@ -1720,8 +2134,9 @@ mod tests {
 		assert!((benchmark_qualification::spearman(&first, &second) - 0.7).abs() < 1e-12);
 
 		let (catalog, manifest, matrices) = fixture();
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("artifact");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("artifact");
 
 		assert!(!artifact.claims.comparison_groups.is_empty());
 		assert_eq!(
@@ -1773,8 +2188,9 @@ mod tests {
 			set_task_indices(matrix, &[23, 30, 37], 1.0);
 		}
 
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("boundary artifact");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("boundary artifact");
 
 		assert_eq!(
 			artifact.claims.status,
@@ -1834,8 +2250,9 @@ mod tests {
 			set_task_indices(matrix, &uniform, 0.5);
 		}
 
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("48-task boundary");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("48-task boundary");
 
 		assert_eq!(artifact.claims.status, BenchmarkQualificationStatus::Qualified);
 		assert!(artifact.claims.matrices.iter().all(|matrix| matrix.informative_tasks == 48));
@@ -1852,8 +2269,9 @@ mod tests {
 
 		shift_configuration(&mut matrices[1], 0, 0.05);
 
-		let artifact = benchmark_qualification::qualify_candidate(&manifest, &catalog, &matrices)
-			.expect("five-point boundary");
+		let artifact =
+			benchmark_qualification::qualify_derived_matrices(&manifest, &catalog, &matrices)
+				.expect("five-point boundary");
 
 		assert_eq!(artifact.claims.status, BenchmarkQualificationStatus::Qualified);
 		assert!(

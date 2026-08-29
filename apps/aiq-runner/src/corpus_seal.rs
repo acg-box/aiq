@@ -2150,6 +2150,7 @@ mod tests {
 			manifest.entries.iter().map(|entry| entry.path.as_str()).collect::<BTreeSet<_>>();
 
 		for required in [
+			".node-version",
 			"rust-toolchain.toml",
 			"apps/aiq-verifier/README.md",
 			"apps/aiq-runner/tests/admit_permissions_cli.rs",
