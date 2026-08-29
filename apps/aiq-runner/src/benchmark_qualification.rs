@@ -1658,7 +1658,7 @@ mod tests {
 					"domain":domain,
 					"cluster_id":cluster_id,
 					"design_revision":{
-						"supersedes_task_version":"1.0.7",
+						"supersedes_task_version":"1.1.0",
 						"decision":"retained",
 						"decision_record":"benchmarks/candidates/aiq-core-1.1.0/design-decisions.json"
 					},
@@ -1681,7 +1681,7 @@ mod tests {
 			"scoring_version":"1.0.6",
 			"status":"frozen_candidate",
 			"candidate_identity":{
-				"candidate_id":"aiq-core/1.1.0-candidate.1",
+				"candidate_id":candidate_catalog::CANDIDATE_ID,
 				"task_metadata_digest":task_metadata_digest
 			},
 			"tasks":tasks
@@ -1830,7 +1830,7 @@ mod tests {
 			.expect("synthetic matrix");
 		let task_ids = tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
 		let projection = benchmark_qualification::candidate_projection_from_replayed_results(
-			"aiq-core/1.1.0-candidate.9",
+			"aiq-core/1.1.0-candidate.12",
 			&run.models,
 			&task_ids,
 			&run.results,
@@ -1851,7 +1851,7 @@ mod tests {
 
 		assert!(
 			benchmark_qualification::candidate_projection_from_replayed_results(
-				"aiq-core/1.1.0-candidate.9",
+				"aiq-core/1.1.0-candidate.12",
 				&MODEL_MATRIX,
 				&task_ids,
 				&invalid,
