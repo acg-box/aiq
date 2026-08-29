@@ -10,31 +10,37 @@ const TASK_SET_VERSION = '1.1.0' as const;
 const TASK_SCORER_VERSION = '1.0.6' as const;
 const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts';
 const DECISION_PATH = 'benchmarks/candidates/aiq-core-1.1.0/design-decisions.json';
-const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.7' as const;
-const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.6' as const;
+const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.8' as const;
+const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.7' as const;
 const TASK_ISSUE_PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.5' as const;
-const PREDECESSOR_SOURCE_COMMIT = '2746646c5f962f0aedc1b08f6efc7176bb4d9487' as const;
-const PREDECESSOR_SOURCE_TREE = '098d7665d56c94b96fa17240fd57b3c6207de8a4' as const;
-const PREDECESSOR_AUTHOR_TASK_IDENTITY = '01a04a80-491e-76b1-90b5-c199e12d488e' as const;
+const PREDECESSOR_SOURCE_COMMIT = '73567104be50b9c8d45e004cd4e8b33af28ad72f' as const;
+const PREDECESSOR_SOURCE_TREE = 'e31aaff7ea06567a0f704c45078cd066032524be' as const;
+const PREDECESSOR_AUTHOR_TASK_IDENTITY = '01a04b8c-239d-7482-b91d-7d5a2a77b4ff' as const;
 const PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256 =
-  'sha256:5accab79689a7a8ff5d387ed71d039e55d5a55434bce36629b321d85ec6d3c6b' as const;
+  'sha256:890d8310e9e6c025b5131e6e60aa929536c397b2692a712acbd19c70ca175512' as const;
 const PREDECESSOR_FULL_INVENTORY_SHA256 =
-  'sha256:b37bbdeab31e1bacbdf41905f9916877f77f288219426a693eed2d49161994b4' as const;
+  'sha256:3c9877c94de8ee968eb88a26e75b89617e74fbd22c6631c2e9c9816a4b4650c0' as const;
 const PREDECESSOR_TASK_METADATA_SHA256 =
-  'sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95' as const;
+  'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80' as const;
 const PREDECESSOR_CATALOG_CANONICAL_SHA256 =
-  'sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170' as const;
+  'sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40' as const;
 const PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 =
   'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54' as const;
 const PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256 =
-  'sha256:9a33da06a0292b389c37c936105dd991721f61e4af0b6c6e4f0722f53d2992c8' as const;
+  'sha256:c1319651b30285f03f2ffdbe4029b97cc42f675097781222a5cee46845bc1af3' as const;
 const CANDIDATE_5_CATALOG_ENTRY_BINDINGS_SHA256 =
   'sha256:c37b87e8458209826164c48e74d0292c426be9b0c60dc18e664253a22bc7a95c' as const;
-const PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY = '01a04ad3-053a-7672-ae71-29130b5f56e8' as const;
-const PREDECESSOR_COMMITMENT_SHA256 =
+const PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY = '01a04b9e-903b-72d2-9819-8b0c2fde6336' as const;
+const PREDECESSOR_REJECTED_ATTEMPT_RECEIPT_RAW_SHA256 =
+  'sha256:b37a4a84fa8adef31879b790ce108185ce1a79e3fee7885ded6c8b3ab518c7eb' as const;
+const PREDECESSOR_REJECTED_ATTEMPT_FULL_INVENTORY_SHA256 =
+  'sha256:2e94fc8395cc7c4c88044bf7619413a5a96f2ec70633a5498289d1f381f4c224' as const;
+const BRIDGE_PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.6' as const;
+const BRIDGE_PREDECESSOR_COMMITMENT_SHA256 =
   'sha256:37291d7da5f2b5d5b112b54b8ce1b296c20f718ebead87c14118056769e47011' as const;
 const QUALIFICATION_BRIDGE_DIAGNOSIS_TASK_IDENTITY =
   '01a04786-3f39-7852-a41b-fb57bd73dfad' as const;
+const CANDIDATE_7_REJECTION_TASK_IDENTITY = '01a04b9e-903b-72d2-9819-8b0c2fde6336' as const;
 const REQUIRED_COMMAND = 'node bin/task-tool.mjs' as const;
 const REQUIRED_COMMAND_SHA256 =
   'sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319' as const;
@@ -231,17 +237,17 @@ function receiptContractMatchesTask(decision: TaskDecision): boolean {
 }
 
 export interface CandidateDecisionManifest {
-  readonly schema_version: 'aiq.candidate-design-decisions.v7';
+  readonly schema_version: 'aiq.candidate-design-decisions.v8';
   readonly candidate_id: typeof CANDIDATE_ID;
   readonly candidate_task_set_version: '1.1.0';
-  readonly recorded_date: '2026-08-28';
-  readonly authority: 'candidate_6_qualification_bridge_remediation';
+  readonly recorded_date: '2026-08-29';
+  readonly authority: 'candidate_7_end_to_end_validation_remediation';
   readonly predecessor_candidate: {
     readonly candidate_id: typeof PREDECESSOR_CANDIDATE_ID;
-    readonly disposition: 'superseded_unqualified_evidence_bridge';
+    readonly disposition: 'rejected_source_end_to_end_validation';
     readonly change_commit: typeof PREDECESSOR_SOURCE_COMMIT;
     readonly source_tree: typeof PREDECESSOR_SOURCE_TREE;
-    readonly pull_request: 139;
+    readonly pull_request: 140;
     readonly author_task_identity: typeof PREDECESSOR_AUTHOR_TASK_IDENTITY;
     readonly authoring_receipt_raw_sha256: typeof PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256;
     readonly full_inventory_sha256: typeof PREDECESSOR_FULL_INVENTORY_SHA256;
@@ -252,7 +258,12 @@ export interface CandidateDecisionManifest {
     readonly source_review_task_identity: typeof PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY;
     readonly task_semantics: 'accepted_unchanged_72';
     readonly task_issue_closure_entries: 42;
-    readonly semantic_retention_rule: 'all_candidate_6_task_facing_semantics_must_remain_identical';
+    readonly semantic_retention_rule: 'all_candidate_7_task_facing_semantics_must_remain_identical';
+    readonly prior_rejected_authoring_attempt: {
+      readonly disposition: 'rejected_readback_failure';
+      readonly authoring_receipt_raw_sha256: typeof PREDECESSOR_REJECTED_ATTEMPT_RECEIPT_RAW_SHA256;
+      readonly full_inventory_sha256: typeof PREDECESSOR_REJECTED_ATTEMPT_FULL_INVENTORY_SHA256;
+    };
   };
   readonly immutable_rejected_predecessors: readonly [
     'aiq-core/1.1.0-candidate.1',
@@ -261,10 +272,11 @@ export interface CandidateDecisionManifest {
     'aiq-core/1.1.0-candidate.4',
     'aiq-core/1.1.0-candidate.5',
     'aiq-core/1.1.0-candidate.6',
+    'aiq-core/1.1.0-candidate.7',
   ];
   readonly retained_candidate_5_task_issue_closures: {
     readonly predecessor_candidate_id: typeof TASK_ISSUE_PREDECESSOR_CANDIDATE_ID;
-    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.7';
+    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.8';
     readonly disposition: 'preserved_unchanged_and_revalidated';
     readonly closure_entries: 42;
     readonly issue_code_counts: Readonly<Record<IssueCode, number>>;
@@ -275,10 +287,21 @@ export interface CandidateDecisionManifest {
     readonly status: 'closed_in_candidate_7';
     readonly counts_toward_task_issue_closures: false;
     readonly diagnosis_task_identity: typeof QUALIFICATION_BRIDGE_DIAGNOSIS_TASK_IDENTITY;
-    readonly predecessor_candidate_id: typeof PREDECESSOR_CANDIDATE_ID;
-    readonly predecessor_commitment_sha256: typeof PREDECESSOR_COMMITMENT_SHA256;
+    readonly predecessor_candidate_id: typeof BRIDGE_PREDECESSOR_CANDIDATE_ID;
+    readonly predecessor_commitment_sha256: typeof BRIDGE_PREDECESSOR_COMMITMENT_SHA256;
     readonly runtime_authority: 'explicit_candidate_qualification_boundary';
     readonly regression: 'replay_verified_projection_and_candidate_route_substitution_suite';
+  };
+  readonly source_end_to_end_validation_closure: {
+    readonly issue_code: 'CANDIDATE_VALIDATION_CONTEXT_DROPPED_AFTER_PREPARATION';
+    readonly scope: 'completed_run_recovery_and_package_validation';
+    readonly status: 'closed_in_candidate_8';
+    readonly counts_toward_task_issue_closures: false;
+    readonly diagnosis_task_identity: typeof CANDIDATE_7_REJECTION_TASK_IDENTITY;
+    readonly predecessor_candidate_id: typeof PREDECESSOR_CANDIDATE_ID;
+    readonly failure_class: 'candidate_provenance_routed_to_active_validator_after_model_work';
+    readonly repair: 'provenance_bound_in_process_validation_context';
+    readonly regression: 'candidate_completed_recovery_package_and_active_rejection_suite';
   };
   readonly task_issue_code_counts: Readonly<Record<IssueCode, number>>;
   readonly lifecycle: {
@@ -1041,6 +1064,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'recorded_date',
       'retained_candidate_5_task_issue_closures',
       'schema_version',
+      'source_end_to_end_validation_closure',
       'source_integrity_closure',
       'task_issue_code_counts',
     ],
@@ -1059,6 +1083,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'disposition',
       'full_inventory_sha256',
       'pull_request',
+      'prior_rejected_authoring_attempt',
       'semantic_retention_rule',
       'source_review_task_identity',
       'source_tree',
@@ -1068,6 +1093,15 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'task_semantics',
     ],
     'predecessor candidate',
+  );
+  const priorRejectedAuthoringAttempt = jsonObject(
+    predecessor.prior_rejected_authoring_attempt,
+    'predecessor prior rejected authoring attempt',
+  );
+  exactKeys(
+    priorRejectedAuthoringAttempt,
+    ['authoring_receipt_raw_sha256', 'disposition', 'full_inventory_sha256'],
+    'predecessor prior rejected authoring attempt',
   );
   const immutableRejectedPredecessors = stringArray(
     manifest.immutable_rejected_predecessors,
@@ -1112,6 +1146,25 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     ],
     'source integrity closure',
   );
+  const sourceEndToEndValidationClosure = jsonObject(
+    manifest.source_end_to_end_validation_closure,
+    'source end-to-end validation closure',
+  );
+  exactKeys(
+    sourceEndToEndValidationClosure,
+    [
+      'counts_toward_task_issue_closures',
+      'diagnosis_task_identity',
+      'failure_class',
+      'issue_code',
+      'predecessor_candidate_id',
+      'regression',
+      'repair',
+      'scope',
+      'status',
+    ],
+    'source end-to-end validation closure',
+  );
   const counts = jsonObject(manifest.task_issue_code_counts, 'task issue closure counts');
   exactKeys(counts, ISSUE_CODES, 'issue-code counts');
   const taskIssueCodeCounts: Record<IssueCode, number> = {
@@ -1143,16 +1196,16 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     'candidate lifecycle',
   );
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v7' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v8' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
-    manifest.recorded_date !== '2026-08-28' ||
-    manifest.authority !== 'candidate_6_qualification_bridge_remediation' ||
+    manifest.recorded_date !== '2026-08-29' ||
+    manifest.authority !== 'candidate_7_end_to_end_validation_remediation' ||
     predecessor.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    predecessor.disposition !== 'superseded_unqualified_evidence_bridge' ||
+    predecessor.disposition !== 'rejected_source_end_to_end_validation' ||
     predecessor.change_commit !== PREDECESSOR_SOURCE_COMMIT ||
     predecessor.source_tree !== PREDECESSOR_SOURCE_TREE ||
-    predecessor.pull_request !== 139 ||
+    predecessor.pull_request !== 140 ||
     predecessor.author_task_identity !== PREDECESSOR_AUTHOR_TASK_IDENTITY ||
     predecessor.authoring_receipt_raw_sha256 !== PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256 ||
     predecessor.full_inventory_sha256 !== PREDECESSOR_FULL_INVENTORY_SHA256 ||
@@ -1164,7 +1217,12 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     predecessor.task_semantics !== 'accepted_unchanged_72' ||
     predecessor.task_issue_closure_entries !== 42 ||
     predecessor.semantic_retention_rule !==
-      'all_candidate_6_task_facing_semantics_must_remain_identical' ||
+      'all_candidate_7_task_facing_semantics_must_remain_identical' ||
+    priorRejectedAuthoringAttempt.disposition !== 'rejected_readback_failure' ||
+    priorRejectedAuthoringAttempt.authoring_receipt_raw_sha256 !==
+      PREDECESSOR_REJECTED_ATTEMPT_RECEIPT_RAW_SHA256 ||
+    priorRejectedAuthoringAttempt.full_inventory_sha256 !==
+      PREDECESSOR_REJECTED_ATTEMPT_FULL_INVENTORY_SHA256 ||
     JSON.stringify(immutableRejectedPredecessors) !==
       JSON.stringify([
         'aiq-core/1.1.0-candidate.1',
@@ -1173,6 +1231,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
         'aiq-core/1.1.0-candidate.4',
         'aiq-core/1.1.0-candidate.5',
         'aiq-core/1.1.0-candidate.6',
+        'aiq-core/1.1.0-candidate.7',
       ]) ||
     retainedTaskClosures.predecessor_candidate_id !== TASK_ISSUE_PREDECESSOR_CANDIDATE_ID ||
     retainedTaskClosures.successor_candidate_id !== CANDIDATE_ID ||
@@ -1187,11 +1246,24 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     sourceIntegrityClosure.counts_toward_task_issue_closures !== false ||
     sourceIntegrityClosure.diagnosis_task_identity !==
       QUALIFICATION_BRIDGE_DIAGNOSIS_TASK_IDENTITY ||
-    sourceIntegrityClosure.predecessor_candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    sourceIntegrityClosure.predecessor_commitment_sha256 !== PREDECESSOR_COMMITMENT_SHA256 ||
+    sourceIntegrityClosure.predecessor_candidate_id !== BRIDGE_PREDECESSOR_CANDIDATE_ID ||
+    sourceIntegrityClosure.predecessor_commitment_sha256 !== BRIDGE_PREDECESSOR_COMMITMENT_SHA256 ||
     sourceIntegrityClosure.runtime_authority !== 'explicit_candidate_qualification_boundary' ||
     sourceIntegrityClosure.regression !==
       'replay_verified_projection_and_candidate_route_substitution_suite' ||
+    sourceEndToEndValidationClosure.issue_code !==
+      'CANDIDATE_VALIDATION_CONTEXT_DROPPED_AFTER_PREPARATION' ||
+    sourceEndToEndValidationClosure.scope !== 'completed_run_recovery_and_package_validation' ||
+    sourceEndToEndValidationClosure.status !== 'closed_in_candidate_8' ||
+    sourceEndToEndValidationClosure.counts_toward_task_issue_closures !== false ||
+    sourceEndToEndValidationClosure.diagnosis_task_identity !==
+      CANDIDATE_7_REJECTION_TASK_IDENTITY ||
+    sourceEndToEndValidationClosure.predecessor_candidate_id !== PREDECESSOR_CANDIDATE_ID ||
+    sourceEndToEndValidationClosure.failure_class !==
+      'candidate_provenance_routed_to_active_validator_after_model_work' ||
+    sourceEndToEndValidationClosure.repair !== 'provenance_bound_in_process_validation_context' ||
+    sourceEndToEndValidationClosure.regression !==
+      'candidate_completed_recovery_package_and_active_rejection_suite' ||
     ISSUE_CODES.some((code) => taskIssueCodeCounts[code] !== EXPECTED_CLOSURE_ISSUE_COUNTS[code]) ||
     lifecycle.identity_state !== 'frozen_for_independent_review' ||
     lifecycle.active !== false ||
@@ -1212,17 +1284,17 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
   const decisions = unknownArray(manifest.decisions, 'candidate decisions').map(taskDecision);
 
   return {
-    schema_version: 'aiq.candidate-design-decisions.v7',
+    schema_version: 'aiq.candidate-design-decisions.v8',
     candidate_id: CANDIDATE_ID,
     candidate_task_set_version: TASK_SET_VERSION,
-    recorded_date: '2026-08-28',
-    authority: 'candidate_6_qualification_bridge_remediation',
+    recorded_date: '2026-08-29',
+    authority: 'candidate_7_end_to_end_validation_remediation',
     predecessor_candidate: {
       candidate_id: PREDECESSOR_CANDIDATE_ID,
-      disposition: 'superseded_unqualified_evidence_bridge',
+      disposition: 'rejected_source_end_to_end_validation',
       change_commit: PREDECESSOR_SOURCE_COMMIT,
       source_tree: PREDECESSOR_SOURCE_TREE,
-      pull_request: 139,
+      pull_request: 140,
       author_task_identity: PREDECESSOR_AUTHOR_TASK_IDENTITY,
       authoring_receipt_raw_sha256: PREDECESSOR_AUTHORING_RECEIPT_RAW_SHA256,
       full_inventory_sha256: PREDECESSOR_FULL_INVENTORY_SHA256,
@@ -1233,7 +1305,12 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       source_review_task_identity: PREDECESSOR_SOURCE_REVIEW_TASK_IDENTITY,
       task_semantics: 'accepted_unchanged_72',
       task_issue_closure_entries: 42,
-      semantic_retention_rule: 'all_candidate_6_task_facing_semantics_must_remain_identical',
+      semantic_retention_rule: 'all_candidate_7_task_facing_semantics_must_remain_identical',
+      prior_rejected_authoring_attempt: {
+        disposition: 'rejected_readback_failure',
+        authoring_receipt_raw_sha256: PREDECESSOR_REJECTED_ATTEMPT_RECEIPT_RAW_SHA256,
+        full_inventory_sha256: PREDECESSOR_REJECTED_ATTEMPT_FULL_INVENTORY_SHA256,
+      },
     },
     immutable_rejected_predecessors: [
       'aiq-core/1.1.0-candidate.1',
@@ -1242,6 +1319,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'aiq-core/1.1.0-candidate.4',
       'aiq-core/1.1.0-candidate.5',
       'aiq-core/1.1.0-candidate.6',
+      'aiq-core/1.1.0-candidate.7',
     ],
     retained_candidate_5_task_issue_closures: {
       predecessor_candidate_id: TASK_ISSUE_PREDECESSOR_CANDIDATE_ID,
@@ -1256,10 +1334,21 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       status: 'closed_in_candidate_7',
       counts_toward_task_issue_closures: false,
       diagnosis_task_identity: QUALIFICATION_BRIDGE_DIAGNOSIS_TASK_IDENTITY,
-      predecessor_candidate_id: PREDECESSOR_CANDIDATE_ID,
-      predecessor_commitment_sha256: PREDECESSOR_COMMITMENT_SHA256,
+      predecessor_candidate_id: BRIDGE_PREDECESSOR_CANDIDATE_ID,
+      predecessor_commitment_sha256: BRIDGE_PREDECESSOR_COMMITMENT_SHA256,
       runtime_authority: 'explicit_candidate_qualification_boundary',
       regression: 'replay_verified_projection_and_candidate_route_substitution_suite',
+    },
+    source_end_to_end_validation_closure: {
+      issue_code: 'CANDIDATE_VALIDATION_CONTEXT_DROPPED_AFTER_PREPARATION',
+      scope: 'completed_run_recovery_and_package_validation',
+      status: 'closed_in_candidate_8',
+      counts_toward_task_issue_closures: false,
+      diagnosis_task_identity: CANDIDATE_7_REJECTION_TASK_IDENTITY,
+      predecessor_candidate_id: PREDECESSOR_CANDIDATE_ID,
+      failure_class: 'candidate_provenance_routed_to_active_validator_after_model_work',
+      repair: 'provenance_bound_in_process_validation_context',
+      regression: 'candidate_completed_recovery_package_and_active_rejection_suite',
     },
     task_issue_code_counts: taskIssueCodeCounts,
     lifecycle: {
@@ -1357,13 +1446,13 @@ export function assertDecisionManifest(
     TOOL_EVIDENCE_UNBOUND: 7,
   } satisfies Readonly<Record<IssueCode, number>>;
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v7' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v8' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
-    manifest.recorded_date !== '2026-08-28' ||
-    manifest.authority !== 'candidate_6_qualification_bridge_remediation' ||
+    manifest.recorded_date !== '2026-08-29' ||
+    manifest.authority !== 'candidate_7_end_to_end_validation_remediation' ||
     manifest.predecessor_candidate.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    manifest.predecessor_candidate.disposition !== 'superseded_unqualified_evidence_bridge' ||
+    manifest.predecessor_candidate.disposition !== 'rejected_source_end_to_end_validation' ||
     manifest.predecessor_candidate.change_commit !== PREDECESSOR_SOURCE_COMMIT ||
     manifest.predecessor_candidate.source_tree !== PREDECESSOR_SOURCE_TREE ||
     manifest.predecessor_candidate.author_task_identity !== PREDECESSOR_AUTHOR_TASK_IDENTITY ||
@@ -1375,8 +1464,13 @@ export function assertDecisionManifest(
       PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256 ||
     manifest.predecessor_candidate.task_facing_semantics_sha256 !==
       PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 ||
+    manifest.predecessor_candidate.prior_rejected_authoring_attempt.authoring_receipt_raw_sha256 !==
+      PREDECESSOR_REJECTED_ATTEMPT_RECEIPT_RAW_SHA256 ||
+    manifest.predecessor_candidate.prior_rejected_authoring_attempt.full_inventory_sha256 !==
+      PREDECESSOR_REJECTED_ATTEMPT_FULL_INVENTORY_SHA256 ||
     manifest.retained_candidate_5_task_issue_closures.closure_entries !== 42 ||
     manifest.source_integrity_closure.counts_toward_task_issue_closures ||
+    manifest.source_end_to_end_validation_closure.counts_toward_task_issue_closures ||
     ISSUE_CODES.some(
       (issueCode) =>
         manifest.task_issue_code_counts[issueCode] !== EXPECTED_CLOSURE_ISSUE_COUNTS[issueCode] ||
@@ -1620,7 +1714,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
       decision_record: DECISION_PATH,
       kind: 'frozen_candidate_authoring',
       objective:
-        'Freeze AIQ Core 1.1.0 candidate.7 after repairing the candidate.6 trusted execution and qualification-evidence bridge without changing any task-facing semantics or the active production benchmark.',
+        'Freeze AIQ Core 1.1.0 candidate.8 after carrying the exact candidate validation authority through completed-run recovery and local packaging without changing any task-facing semantics or the active production benchmark.',
       task_specific_delta: decision.rationale,
       candidate_4_review: decision.candidate_4_review,
       candidate_5_contract: decision.candidate_5_contract,
@@ -1645,9 +1739,9 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
     },
     tags: revision?.tags ?? prior.tags,
     provenance: {
-      origin: 'candidate_6_qualification_bridge_remediation_authoring',
+      origin: 'candidate_7_end_to_end_validation_remediation_authoring',
       owner: 'AIQ benchmark maintainers',
-      recorded_date: '2026-08-28',
+      recorded_date: '2026-08-29',
       predecessor_task_version: '1.1.0',
       predecessor_candidate_id: PREDECESSOR_CANDIDATE_ID,
       source: GENERATOR_PATH,
@@ -1657,7 +1751,7 @@ function reviseTask(priorValue: unknown, decision: TaskDecision): JsonObject {
       status: 'independent_private_review_v2_required',
       owner: 'AIQ benchmark maintainers',
       review_requirement: 'exactly_one_matching_aiq_leakage_review_v2_per_task',
-      notes: `${decision.task_id} is candidate.7 source frozen for a fresh independent review. Candidate.6 review and seal evidence has stale source bindings and does not satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
+      notes: `${decision.task_id} is candidate.8 source frozen for a fresh independent review. Candidate.7 is rejected source evidence and has no review or seal that can satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
     },
   };
 }
@@ -1681,7 +1775,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       decision === undefined ||
       digestValue(projection) !== decision.candidate_5_task_facing_semantics_sha256
     ) {
-      throw new Error('Candidate.7 task-facing semantics drift from candidate.6.');
+      throw new Error('Candidate.8 task-facing semantics drift from candidate.7.');
     }
   }
   if (
@@ -1711,7 +1805,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     ...prior,
     schema_version: 'aiq.catalog.v2',
     task_set_version: TASK_SET_VERSION,
-    title: 'AIQ Core 1.1.0 candidate.7 frozen for independent review',
+    title: 'AIQ Core 1.1.0 candidate.8 frozen for independent review',
     status: 'frozen_candidate',
     generated_from: GENERATOR_PATH,
     candidate_identity: {
@@ -1732,7 +1826,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       controlled_source:
         'The catalog is the sole expected acceptance-fixture applicability authority. Observed controlled classes must equal each task declaration exactly. Private tasks, fixtures, evaluator content, review requests, leakage reviews, and signing material stay outside Git.',
       predecessor_relation:
-        'Candidates.1 through .6 are immutable predecessor evidence. Candidate.7 preserves all 72 candidate.6 task-facing semantics and repairs only the trusted candidate execution and replay-verified qualification-evidence bridge before a fresh isolated review.',
+        'Candidates.1 through .7 are immutable predecessor evidence. Candidate.8 preserves all 72 candidate.7 task-facing semantics and repairs only the end-to-end candidate validation context plus the clean locked test import boundary before a fresh isolated review.',
     },
     candidate_state: {
       identity_state: 'frozen_for_independent_review',
@@ -1741,13 +1835,14 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       immutable_rejected_predecessors: manifest.immutable_rejected_predecessors,
       retained_candidate_5_task_issue_closures: manifest.retained_candidate_5_task_issue_closures,
       source_integrity_closure: manifest.source_integrity_closure,
+      source_end_to_end_validation_closure: manifest.source_end_to_end_validation_closure,
       decision_record: DECISION_PATH,
       semantic_decision_counts: { retained: 72, revised: 0 },
       predecessor_design_decision_counts: { retained: 65, revised: 7 },
       task_issue_closure_counts: manifest.task_issue_code_counts,
       private_fixture_mapping_reconciled: true,
       private_tasks_authored: true,
-      predecessor_review_status: 'approved_but_stale_source_binding',
+      predecessor_review_status: 'not_completed_source_rejected',
       independent_review_status: 'pending',
       seal_status: 'pending',
       calibration_status: 'pending',
@@ -1759,7 +1854,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       active: false,
       production_publishable: false,
       next_required_actions: [
-        'Complete one new independent aiq.leakage-review.v2 record for every exact candidate.7 task and catalog-entry digest; candidate.6 records are stale.',
+        'Complete one new independent aiq.leakage-review.v2 record for every exact candidate.8 task and catalog-entry digest; candidate.7 has no transferable review records.',
         'Seal the reviewed private corpus twice without changing this frozen candidate identity.',
         'Run three fresh, predeclared, complete non-synthetic 17-by-72 matrices and pass aiq.benchmark-qualification-policy.v1.',
         'Complete qualification, release adoption, and production acceptance before cutover, activation, or publication.',
@@ -1809,6 +1904,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'immutable_rejected_predecessors',
       'retained_candidate_5_task_issue_closures',
       'source_integrity_closure',
+      'source_end_to_end_validation_closure',
       'decision_record',
       'semantic_decision_counts',
       'predecessor_design_decision_counts',
@@ -1841,6 +1937,9 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       source_integrity_closure: {
         const: decisionManifest.source_integrity_closure,
       },
+      source_end_to_end_validation_closure: {
+        const: decisionManifest.source_end_to_end_validation_closure,
+      },
       decision_record: { const: DECISION_PATH },
       semantic_decision_counts: { const: { retained: 72, revised: 0 } },
       predecessor_design_decision_counts: {
@@ -1849,7 +1948,7 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       task_issue_closure_counts: { const: decisionManifest.task_issue_code_counts },
       private_fixture_mapping_reconciled: { const: true },
       private_tasks_authored: { const: true },
-      predecessor_review_status: { const: 'approved_but_stale_source_binding' },
+      predecessor_review_status: { const: 'not_completed_source_rejected' },
       independent_review_status: { const: 'pending' },
       seal_status: { const: 'pending' },
       calibration_status: { const: 'pending' },
@@ -2407,9 +2506,9 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'decision_record',
     ],
     properties: {
-      origin: { const: 'candidate_6_qualification_bridge_remediation_authoring' },
+      origin: { const: 'candidate_7_end_to_end_validation_remediation_authoring' },
       owner: { const: 'AIQ benchmark maintainers' },
-      recorded_date: { const: '2026-08-28' },
+      recorded_date: { const: '2026-08-29' },
       predecessor_task_version: { const: '1.1.0' },
       predecessor_candidate_id: { const: PREDECESSOR_CANDIDATE_ID },
       source: { const: GENERATOR_PATH },

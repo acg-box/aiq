@@ -152,43 +152,44 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.7`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.8`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.7 retains all 72 candidate.6 task-facing semantics,
+`aiq.catalog.v2`. Candidate.8 retains all 72 candidate.7 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40`.
+`sha256:946b506301a50c275986c2a0280bdccef1c2562d50d9d209cb774a0bda2c2359`.
 Its ordered task-metadata digest is
-`sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80`.
+`sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2`.
 Its public release digest is
-`sha256:a8449dfdde489585fcfdaefaf3a2a95393b653db885fa4f7451175cf40a976df`.
+`sha256:27571ab58643edeebb96f046574eeb1eb1ac7914b129736d2ee436c92d945cfd`.
 
-Candidates.1 through .6 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
+Candidates.1 through .7 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
 distinct disclosed scenario, operation, result, evaluator, metamorphic, and
 cross-task substitution contracts. Its source integration was rejected because
 its catalog task-metadata identity was
 `sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4`,
 while the Rust commitment consumer and public v3 schema still required
 `sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6`.
-Candidate.6 removed that duplicate Rust identity authority. Its 72 approved
-reviews and two byte-identical seals remain unchanged candidate.6 evidence, but
-their source bindings are stale for candidate.7. Candidate.7 keeps the
-catalog-derived commitment authority and repairs the trusted execution and
-qualification-evidence bridge. The commitment validator derives the expected
-candidate identity from the validated embedded catalog and rejects candidate.6
-and older identities.
+Candidate.6 removed that duplicate Rust identity authority. Candidate.7 kept the
+catalog-derived commitment authority and repaired the trusted execution and
+qualification-evidence bridge. Candidate.7 is rejected because its completed-run,
+recovery, and package paths returned to the active 1.0.7 validator after candidate
+preparation. Candidate.8 carries one provenance-bound validation context through
+those paths. The active 1.0.7, Contrast, historical, and Official validators remain
+unchanged. The commitment validator derives the expected candidate identity from
+the validated embedded catalog and rejects candidate.7 and older identities.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
-separate source-integrity closure, which
-does not count as a task issue.
+separate source-integrity closure. It records the candidate.7 end-to-end validation
+failure as a second source-only closure. Neither closure counts as a task issue.
 
 For each tool-use task, the hard gate requires exactly one total tool call and
 one `command_execution` call. It also requires one completed command-line digest for
@@ -200,7 +201,7 @@ command identities; exact total and per-tool counts still expose undeclared or
 extra calls. One matrix can contain at most 119 declared digest entries. The
 runner removes command text from provider stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.7 remains inactive and not production-publishable. Fresh
+redaction. Candidate.8 remains inactive and not production-publishable. Fresh
 independent review, double sealing, three qualification matrices,
 qualification, adoption, and cutover are pending.
 

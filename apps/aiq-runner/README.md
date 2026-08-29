@@ -39,9 +39,9 @@ path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.7 source is frozen for a fresh
-independent review. Candidate.6 is immutable predecessor evidence, its review
-records do not satisfy candidate.7, and an empty candidate.7 review directory
+declaration exactly. The checked-in candidate.8 source is frozen for a fresh
+independent review. Candidate.7 is immutable rejected predecessor evidence, it
+has no transferable review records, and an empty candidate.8 review directory
 blocks sealing without creating output.
 The Contrast path retains bounded 1.0.7 compatibility and copies supplied v1
 review records; no path synthesizes review completion from task notes.

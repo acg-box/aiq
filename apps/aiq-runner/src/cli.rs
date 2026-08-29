@@ -70,6 +70,7 @@ use aiq_runner::{
 	},
 	public_fixture,
 	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
+	run_validation::CalibrationValidationContext,
 	runner::{
 		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
 		LocalDirectoryWorkspaceProvider, LocalRunExecution, MAX_RUN_JOBS, RUN_SCHEMA_VERSION,
@@ -554,6 +555,7 @@ struct PreparedRun {
 	report: TaskLoadReport,
 	selected_models: Vec<ModelConfig>,
 	corpus: ValidatedCorpusCommitment,
+	validation_context: CalibrationValidationContext,
 	conservative_capacity: CapacityAdmission,
 	slot: ScheduleSlot,
 	task_set_hash: String,
@@ -567,6 +569,7 @@ struct AuthorizedRun {
 	report: TaskLoadReport,
 	selected_models: Vec<ModelConfig>,
 	corpus: ValidatedCorpusCommitment,
+	validation_context: CalibrationValidationContext,
 	adapter: CodexAdapter<SystemExecutor, LocalArtifactSink>,
 	workspace_provider: LocalDirectoryWorkspaceProvider,
 	evaluator_root: PathBuf,
@@ -592,6 +595,7 @@ struct AuthorizedRun {
 struct ExecutedLiveRun {
 	run: SelectedRun,
 	tasks: Vec<TaskDefinition>,
+	validation_context: CalibrationValidationContext,
 	options: RunOptions,
 	future_files: FutureProtectedFiles,
 	dispatch_deadline: DispatchDeadline,
@@ -3350,6 +3354,11 @@ fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn s
 		&selected_tasks,
 		&options.source_root,
 	)?;
+	let validation_context = if options.candidate_qualification {
+		CalibrationValidationContext::candidate_qualification(&corpus, &selected_tasks)?
+	} else {
+		CalibrationValidationContext::current()
+	};
 	let (slot, seconds_until_next_slot, scheduled_unix_ms, next_slot_unix_ms) =
 		run_schedule_bounds(options)?;
 	let (model_free_available, model_free_unsupported) = if options.run_class == RunClass::Official
@@ -3382,6 +3391,7 @@ fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn s
 		report,
 		selected_models,
 		corpus,
+		validation_context,
 		conservative_capacity,
 		slot,
 		task_set_hash,
@@ -3870,6 +3880,7 @@ fn prepare_authorized_live_run(
 		report,
 		selected_models,
 		corpus,
+		validation_context,
 		conservative_capacity: _,
 		slot,
 		task_set_hash,
@@ -3907,6 +3918,7 @@ fn prepare_authorized_live_run(
 		report,
 		selected_models,
 		corpus,
+		validation_context,
 		adapter,
 		workspace_provider,
 		evaluator_root,
@@ -4158,14 +4170,13 @@ where
 fn validate_selected_run(
 	run: &SelectedRun,
 	tasks: &[TaskDefinition],
+	validation_context: &CalibrationValidationContext,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	match run {
 		SelectedRun::OfficialShape(run) => {
 			aiq_runner::run_validation::validate_run_record(run, Some(tasks))?
 		},
-		SelectedRun::Calibration(run) => {
-			aiq_runner::run_validation::validate_calibration_run_record(run)?
-		},
+		SelectedRun::Calibration(run) => validation_context.validate(run, Some(tasks))?,
 	}
 
 	Ok(())
@@ -4190,11 +4201,12 @@ fn write_selected_run(
 fn write_selected_run_and_disarm(
 	run: SelectedRun,
 	tasks: &[TaskDefinition],
+	validation_context: &CalibrationValidationContext,
 	options: &RunOptions,
 	future_files: &mut FutureProtectedFiles,
 	dispatch_deadline: &DispatchDeadline,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	validate_selected_run(&run, tasks)?;
+	validate_selected_run(&run, tasks, validation_context)?;
 
 	let (started_unix_ms, finished_unix_ms) = match &run {
 		SelectedRun::OfficialShape(run) => (run.started_unix_ms, run.finished_unix_ms),
@@ -4220,6 +4232,7 @@ fn complete_live_run(context: AuthorizedRun) -> Result<(), Box<dyn std::error::E
 	write_selected_run_and_disarm(
 		executed.run,
 		&executed.tasks,
+		&executed.validation_context,
 		&executed.options,
 		&mut executed.future_files,
 		&executed.dispatch_deadline,
@@ -4246,6 +4259,7 @@ fn execute_authorized_live_run(
 		report,
 		selected_models: _,
 		corpus: _,
+		validation_context,
 		adapter,
 		workspace_provider,
 		evaluator_root,
@@ -4312,9 +4326,16 @@ fn execute_authorized_live_run(
 		&codex_executable_digest,
 		&codex_code_mode_host_digest,
 	)?;
-	validate_selected_run(&run, &report.tasks)?;
+	validate_selected_run(&run, &report.tasks, &validation_context)?;
 
-	Ok(ExecutedLiveRun { run, tasks: report.tasks, options, future_files, dispatch_deadline })
+	Ok(ExecutedLiveRun {
+		run,
+		tasks: report.tasks,
+		validation_context,
+		options,
+		future_files,
+		dispatch_deadline,
+	})
 }
 
 fn build_live_run_commitments(
@@ -5518,12 +5539,13 @@ fn run_package(
 			}
 
 			let mut run: CalibrationRunRecord = serde_json::from_value(value)?;
+			let validation_context = CalibrationValidationContext::from_package_provenance(&run)?;
 
-			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
+			validation_context.validate(&run, None)?;
 
 			bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
 
-			aiq_runner::run_validation::validate_calibration_run_record(&run)?;
+			validation_context.validate(&run, None)?;
 
 			let evaluator_results = submission::read_evaluator_results_artifact(
 				artifact_root,
@@ -5548,7 +5570,7 @@ fn run_package(
 				TrustTier::Untrusted,
 			)?;
 
-			submission::serialize_signed_package(&envelope)?
+			submission::serialize_calibration_package_for_local_verification(&envelope)?
 		},
 		_ => return Err("run schema is unsupported for packaging".into()),
 	};

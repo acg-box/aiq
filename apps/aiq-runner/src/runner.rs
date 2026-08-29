@@ -4835,7 +4835,6 @@ mod tests {
 
 	use sha2::{Digest, Sha256};
 
-	use crate::capacity;
 	use crate::{
 		adapter::{
 			self, AdapterFailure, AdapterFailureKind, ArtifactReference, ArtifactSink,
@@ -4859,7 +4858,7 @@ mod tests {
 		scoring::{
 			self, CalibrationDescriptiveStatus, FalseOnly, ScoreContext, ScoreOptions, ScoreTier,
 		},
-		submission::MAX_SUBMISSION_BYTES,
+		submission::{self, MAX_SUBMISSION_BYTES},
 		task::{
 			self, EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationResult, Evaluator, EvaluatorCheck,
 			EvaluatorOutcome, TaskDefinition, evaluator::EvaluatorCheckFailureClass,
@@ -4873,6 +4872,7 @@ mod tests {
 			ExternalEvaluatorBinding, NormalizedToolEvidence,
 		},
 	};
+	use crate::{candidate_catalog, capacity};
 
 	struct NeverExecutor;
 	struct UsageLimitExecutor(Arc<AtomicUsize>);
@@ -5585,6 +5585,54 @@ mod tests {
 		(tasks, models, manifest, validation, slot, commitments)
 	}
 
+	fn candidate_selected_fixture(
+		node_id: String,
+	) -> (
+		Vec<crate::task::TaskDefinition>,
+		Vec<crate::model::ModelConfig>,
+		CapabilityManifest,
+		CapabilityValidationReport,
+		ScheduleSlot,
+		RunCommitments,
+	) {
+		let (mut tasks, models, mut manifest, mut validation, slot, mut commitments) =
+			selected_fixture(72, MODEL_MATRIX.len());
+		let candidate = candidate_catalog::checked_candidate_catalog_authority()
+			.expect("checked candidate catalog");
+
+		candidate.require_frozen_candidate().expect("frozen candidate catalog");
+
+		for (task, expected) in tasks.iter_mut().zip(&candidate.tasks) {
+			task.task_id.clone_from(&expected.task_id);
+
+			task.task_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+			task.domain = expected.domain;
+			task.cluster_id = Some(expected.cluster_id.clone());
+			task.catalog_entry_digest = Some(expected.catalog_entry_digest.clone());
+			task.scorer_version = "1.0.6".to_owned();
+		}
+
+		manifest.node_id.clone_from(&node_id);
+
+		validation.node_id = node_id;
+		commitments.preflight_digest =
+			protocol::canonical_hash(&validation).expect("candidate preflight digest");
+
+		commitments.provenance.preflight_digest.clone_from(&commitments.preflight_digest);
+
+		refresh_selected_task_commitments(&mut commitments, &tasks, &validation);
+		set_capacity_jobs(&mut commitments, &tasks, &models, &validation, 8);
+
+		commitments.catalog_digest.clone_from(&candidate.task_metadata_digest);
+
+		commitments.provenance.catalog_digest = candidate.task_metadata_digest;
+		commitments.provenance.corpus_release_id =
+			"corpus_candidate_qualification_fixture".to_owned();
+		commitments.observed_at = "unix-ms:1".to_owned();
+
+		(tasks, models, manifest, validation, slot, commitments)
+	}
+
 	fn refresh_selected_task_commitments(
 		commitments: &mut RunCommitments,
 		tasks: &[TaskDefinition],
@@ -5610,6 +5658,116 @@ mod tests {
 			commitments.run_class,
 		)
 		.expect("run id");
+	}
+
+	#[test]
+	fn candidate_completed_run_recovery_and_local_package_keep_exact_validation_context() {
+		let root = env::temp_dir().join(format!(
+			"aiq-candidate-completed-recovery-{}-{}",
+			process::id(),
+			super::unix_ms()
+		));
+		let checkpoint_path = root.join("checkpoint.json");
+		let workspace =
+			TestWorkspace { root: root.join("workspaces"), quarantines: AtomicUsize::new(0) };
+		let identity = protocol::SigningIdentity::from_secret([31; 32]);
+		let (tasks, _models, manifest, validation, _slot, commitments) =
+			candidate_selected_fixture(identity.node().node_id.clone());
+		let (executor, stats) = DeterministicExecutor::new(0, None);
+		let adapter = CodexAdapter::new(
+			executor,
+			MemorySink,
+			"codex",
+			CodexExecutionConfig::isolated(root.join("codex-home")),
+		);
+
+		fs::create_dir_all(&root).expect("candidate fixture root");
+
+		let first = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation.clone(),
+			commitments.clone(),
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 8,
+			},
+		)
+		.expect("candidate completed run");
+		let recovered = runner::execute_selected_run(
+			&adapter,
+			&workspace,
+			&manifest,
+			&tasks,
+			validation,
+			commitments,
+			runner::LocalRunExecution {
+				evaluator: None,
+				checkpoint_path: &checkpoint_path,
+				jobs: 8,
+			},
+		)
+		.expect("candidate completed-run recovery");
+		let SelectedRun::Calibration(first) = first else { panic!("candidate calibration") };
+		let SelectedRun::Calibration(recovered) = recovered else {
+			panic!("recovered candidate calibration")
+		};
+
+		assert_eq!(stats.calls.lock().expect("candidate call count").len(), 1_224);
+		assert_eq!(first.results, recovered.results);
+
+		let validation_context =
+			run_validation::CalibrationValidationContext::from_package_provenance(&recovered)
+				.expect("candidate package validation context");
+
+		validation_context
+			.validate(&first, Some(&tasks))
+			.expect("candidate completed run validation");
+		validation_context
+			.validate(&recovered, Some(&tasks))
+			.expect("candidate recovered run validation");
+
+		let mut rebound = recovered.clone();
+
+		rebound.provenance.corpus_commitment_sha256 = format!("sha256:{}", "c".repeat(64));
+
+		assert!(validation_context.validate(&rebound, Some(&tasks)).is_err());
+
+		let active_error = run_validation::validate_calibration_run_record(&recovered)
+			.expect_err("active validation must reject candidate provenance");
+
+		assert_eq!(active_error.to_string(), "signed run provenance bindings are invalid");
+
+		let envelope = identity
+			.sign(
+				&recovered.run_id,
+				protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+				&recovered,
+				protocol::TrustTier::Untrusted,
+			)
+			.expect("candidate package signature");
+		let active_package_error = submission::serialize_signed_package(&envelope)
+			.expect_err("production submission serialization must reject candidate provenance");
+
+		assert!(
+			active_package_error.to_string().contains("signed run provenance bindings are invalid")
+		);
+
+		let package = submission::serialize_calibration_package_for_local_verification(&envelope)
+			.expect("candidate package for local verifier replay");
+		let decoded: protocol::SubmissionEnvelope =
+			serde_json::from_slice(&package).expect("candidate package JSON");
+
+		decoded.verify(&BTreeSet::new()).expect("candidate package signature");
+
+		assert_eq!(decoded.idempotency_key, recovered.run_id);
+		assert_eq!(decoded.content_hash, envelope.content_hash);
+		assert_eq!(decoded.signature, envelope.signature);
+
+		fs::remove_dir_all(root).expect("candidate fixture cleanup");
 	}
 
 	fn assert_full_calibration_analysis(
