@@ -25,9 +25,10 @@ use crate::runner::{self, MAX_RUN_JOBS};
 use crate::{
 	adapter::ArtifactReference,
 	protocol::{self, SubmissionEnvelope},
-	run_validation,
+	run_validation::{self, CalibrationValidationContext},
 	runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult},
 	speed_observation::{self, SpeedObservationBatch},
+	task::TaskDefinition,
 };
 
 /// Maximum signed package size accepted for submission.
@@ -150,6 +151,12 @@ impl SubmissionOutcomeKind {
 			Self::Configuration => "configuration",
 		}
 	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ArtifactUploadOutcome {
+	Stored,
+	Duplicate,
 }
 
 /// A bearer token that does not implement serialization and redacts debug output.
@@ -371,12 +378,6 @@ impl Display for SubmissionError {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum ArtifactUploadOutcome {
-	Stored,
-	Duplicate,
-}
-
 #[derive(Clone, Copy)]
 struct RetryPolicy {
 	max_attempts: usize,
@@ -397,30 +398,10 @@ impl TransportPolicy {
 
 /// Serializes a signed package as compact JCS and enforces the transport bound.
 pub fn serialize_signed_package(envelope: &SubmissionEnvelope) -> Result<Vec<u8>, SubmissionError> {
-	envelope.verify(&BTreeSet::new()).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package verification failed: {error}"),
-		)
-	})?;
-
+	verify_package_envelope(envelope)?;
 	decode_validated_payload(envelope)?;
 
-	let bytes = protocol::canonical_json(envelope).map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package serialization failed: {error}"),
-		)
-	})?;
-
-	if bytes.len() > MAX_SIGNED_PACKAGE_BYTES {
-		return Err(SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			"signed package exceeds the guarded submission limit",
-		));
-	}
-
-	Ok(bytes)
+	serialize_verified_package(envelope)
 }
 
 /// Rebinds synthetic result provenance to the key that will sign the package.
@@ -670,6 +651,51 @@ pub fn read_evaluator_results_artifact(
 	read_artifact(&root, &artifact.kind, digest, artifact.bytes)
 }
 
+/// Serializes one signed calibration package for offline local verification.
+///
+/// The caller supplies the same independent validation authority and exact tasks used to validate
+/// the saved run. The normal submission serializer remains on the active 1.0.7 and Contrast
+/// validator.
+pub(crate) fn serialize_calibration_package_for_local_verification(
+	envelope: &SubmissionEnvelope,
+	validation_context: &CalibrationValidationContext,
+	tasks: Option<&[TaskDefinition]>,
+) -> Result<Vec<u8>, SubmissionError> {
+	verify_package_envelope(envelope)?;
+	decode_local_calibration_payload(envelope, validation_context, tasks)?;
+
+	serialize_verified_package(envelope)
+}
+
+fn verify_package_envelope(envelope: &SubmissionEnvelope) -> Result<(), SubmissionError> {
+	envelope.verify(&BTreeSet::new()).map_err(|error| {
+		SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			format!("signed package verification failed: {error}"),
+		)
+	})?;
+
+	Ok(())
+}
+
+fn serialize_verified_package(envelope: &SubmissionEnvelope) -> Result<Vec<u8>, SubmissionError> {
+	let bytes = protocol::canonical_json(envelope).map_err(|error| {
+		SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			format!("signed package serialization failed: {error}"),
+		)
+	})?;
+
+	if bytes.len() > MAX_SIGNED_PACKAGE_BYTES {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"signed package exceeds the guarded submission limit",
+		));
+	}
+
+	Ok(bytes)
+}
+
 fn transport_response_status(mut response: Response<Body>) -> TransportResponse {
 	let status = response.status().as_u16();
 	let _ = response.body_mut().with_config().limit(MAX_TRANSPORT_RESPONSE_BYTES).read_to_vec();
@@ -764,6 +790,45 @@ fn decode_validated_payload(
 			"signed package payload type is unsupported",
 		)),
 	}
+}
+
+fn decode_local_calibration_payload(
+	envelope: &SubmissionEnvelope,
+	validation_context: &CalibrationValidationContext,
+	tasks: Option<&[TaskDefinition]>,
+) -> Result<CalibrationRunRecord, SubmissionError> {
+	if envelope.payload_type != CALIBRATION_RUN_PAYLOAD_TYPE {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"local calibration package payload type is unsupported",
+		));
+	}
+	if envelope.claimed_trust != TrustTier::Untrusted {
+		return Err(SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			"calibration packages must claim untrusted handling",
+		));
+	}
+
+	let run: CalibrationRunRecord =
+		serde_json::from_value(envelope.payload.clone()).map_err(|error| {
+			SubmissionError::new(
+				SubmissionOutcomeKind::Configuration,
+				format!("signed package payload is not a CalibrationRunRecord: {error}"),
+			)
+		})?;
+
+	validation_context.validate(&run, tasks).map_err(|error| {
+		SubmissionError::new(
+			SubmissionOutcomeKind::Configuration,
+			format!("signed package CalibrationRunRecord validation failed: {error}"),
+		)
+	})?;
+
+	require_packaged_execution_concurrency(run.execution_concurrency, "calibration")?;
+	validate_calibration_signer_binding(&run, &envelope.signer.node_id)?;
+
+	Ok(run)
 }
 
 fn require_packaged_execution_concurrency(
@@ -3050,6 +3115,20 @@ mod tests {
 
 		let calibration_bytes = submission::serialize_signed_package(&calibration_envelope)
 			.expect("valid calibration package must enter artifact submission");
+		let validation_context = run_validation::CalibrationValidationContext::current();
+		let local_calibration_bytes =
+			submission::serialize_calibration_package_for_local_verification(
+				&calibration_envelope,
+				&validation_context,
+				None,
+			)
+			.expect("active calibration package must retain its local-verification bytes");
+
+		assert_eq!(
+			local_calibration_bytes, calibration_bytes,
+			"active 1.0.7 calibration packaging must remain byte-semantically identical"
+		);
+
 		let transport = FakeTransport { status: 202, request: RefCell::new(None) };
 		let calibration_submission = submission::submit_signed_package(
 			&transport,

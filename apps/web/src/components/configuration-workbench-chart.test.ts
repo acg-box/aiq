@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { describe, it } from 'node:test';
 
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 
 registerHooks({
   load(url, context, nextLoad) {

@@ -172,6 +172,36 @@ impl ValidatedCorpusCommitment {
 		&self.catalog_digest
 	}
 
+	/// Returns the controlled harness commitment.
+	#[must_use]
+	pub fn harness_digest(&self) -> &str {
+		&self.harness_digest
+	}
+
+	/// Returns the exact runner prompt-source commitment.
+	#[must_use]
+	pub fn prompt_digest(&self) -> &str {
+		&self.prompt_digest
+	}
+
+	/// Returns the declared tool-policy commitment.
+	#[must_use]
+	pub fn tool_policy_digest(&self) -> &str {
+		&self.tool_policy_digest
+	}
+
+	/// Returns the declared network-policy commitment.
+	#[must_use]
+	pub fn network_policy_digest(&self) -> &str {
+		&self.network_policy_digest
+	}
+
+	/// Returns the controlled execution-environment commitment.
+	#[must_use]
+	pub fn environment_digest(&self) -> &str {
+		&self.environment_digest
+	}
+
 	/// Returns the canonical source-manifest digest.
 	#[must_use]
 	pub fn source_manifest_digest(&self) -> &str {
@@ -787,6 +817,28 @@ pub fn validate_historical_calibration_provenance(
 	task_set_hash: &str,
 	preflight_digest: &str,
 ) -> Result<(), CorpusCommitmentError> {
+	validate_run_provenance_inner(provenance, task_set_hash, preflight_digest, true)
+}
+
+/// Validates the isolated AIQ Core 1.1.0 candidate qualification provenance.
+///
+/// This boundary accepts only Calibration evidence for the exact embedded candidate. It is not
+/// used by Official execution, active 1.0.7 validation, or production verification.
+pub fn validate_candidate_qualification_provenance_v1_1_0(
+	provenance: &RunProvenanceCommitment,
+	task_set_hash: &str,
+	preflight_digest: &str,
+) -> Result<(), CorpusCommitmentError> {
+	let authority = validated_candidate_core_catalog()?;
+
+	if provenance.run_class != RunClass::Calibration
+		|| provenance.catalog_digest != authority.task_metadata_digest
+	{
+		return Err(CorpusCommitmentError::new(
+			"candidate qualification provenance does not match the exact embedded candidate",
+		));
+	}
+
 	validate_run_provenance_inner(provenance, task_set_hash, preflight_digest, true)
 }
 
@@ -1825,7 +1877,7 @@ fn valid_digest(value: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 	use std::{env, fs, process, slice};
 	#[cfg(unix)]
 	use std::{
@@ -1836,6 +1888,8 @@ mod tests {
 	use serde_json::{self, Value};
 	use sha2::{Digest as _, Sha256};
 
+	use crate::candidate_catalog;
+	use crate::cli;
 	use crate::{
 		corpus_commitment::{
 			self, CorpusCatalog, CorpusCommitment, CorpusExecution, SourceManifest,
@@ -1846,20 +1900,23 @@ mod tests {
 	};
 
 	#[cfg(unix)]
-	struct RunnerProvenancePathFixture {
-		root: std::path::PathBuf,
-		source_root: std::path::PathBuf,
+	pub(crate) struct RunnerProvenancePathFixture {
+		pub(crate) root: std::path::PathBuf,
+		pub(crate) source_root: std::path::PathBuf,
+		pub(crate) evaluator_root: std::path::PathBuf,
 		toolchain_root: std::path::PathBuf,
-		runtime: crate::task::EvaluatorRuntime,
+		pub(crate) runtime: crate::task::EvaluatorRuntime,
 		core_tasks: Vec<crate::task::TaskDefinition>,
+		pub(crate) candidate_tasks: Vec<crate::task::TaskDefinition>,
 		contrast_tasks: Vec<crate::task::TaskDefinition>,
 		core_commitment: serde_json::Value,
+		pub(crate) candidate_commitment: serde_json::Value,
 		contrast_commitment: serde_json::Value,
 	}
 
 	#[cfg(unix)]
 	impl RunnerProvenancePathFixture {
-		fn new(label: &str) -> Self {
+		pub(crate) fn new(label: &str) -> Self {
 			let root = env::temp_dir().join(format!(
 				"aiq-runner-provenance-{label}-{}-{}",
 				process::id(),
@@ -1871,13 +1928,26 @@ mod tests {
 			let source_root = root.join("repository");
 			let runner_source = source_root.join("apps/aiq-runner/src/runner.rs");
 			let executable_source = root.join("executables");
+			let evaluator_root = root.join("evaluators");
+			let evaluator_path = evaluator_root.join("fixture/evaluator");
 			let toolchain_root = root.join("toolchain");
 
 			fs::create_dir_all(runner_source.parent().expect("runner source parent"))
 				.expect("fixture source root");
 			fs::create_dir_all(&executable_source).expect("fixture executable source");
+			fs::create_dir_all(evaluator_path.parent().expect("fixture evaluator parent"))
+				.expect("fixture evaluator root");
 			fs::create_dir(&toolchain_root).expect("fixture toolchain root");
 			fs::write(&runner_source, b"committed runner source").expect("fixture runner source");
+			fs::write(&evaluator_path, b"process.stdout.write('{}\\n');\\n")
+				.expect("fixture evaluator");
+
+			let evaluator_digest = format!(
+				"sha256:{}",
+				hex::encode(Sha256::digest(
+					fs::read(&evaluator_path).expect("fixture evaluator bytes")
+				))
+			);
 
 			for (name, version) in [("node", "v24.18.0"), ("rg", "ripgrep 15.1.0")] {
 				let source = executable_source.join(name);
@@ -1896,7 +1966,11 @@ mod tests {
 				.clone();
 			let mut core_tasks = runner::synthetic_demo_tasks();
 
-			Self::bind_external_evaluators(&mut core_tasks, runtime.executable_digest());
+			Self::bind_external_evaluators(
+				&mut core_tasks,
+				runtime.executable_digest(),
+				&evaluator_digest,
+			);
 
 			let mut contrast_tasks = core_tasks[..super::CONTRAST_TASK_IDS.len()].to_vec();
 
@@ -1908,8 +1982,28 @@ mod tests {
 
 			Self::apply_core_catalog_budgets(&mut core_tasks);
 
+			let candidate_value: serde_json::Value =
+				serde_json::from_str(super::CANDIDATE_CORE_CATALOG_JSON)
+					.expect("embedded candidate catalog");
+			let candidate_authority =
+				candidate_catalog::validate_candidate_catalog(&candidate_value)
+					.expect("candidate authority");
+			let candidate_contract = super::candidate_core_catalog_contract(&candidate_authority);
+			let candidate_tasks = Self::candidate_tasks(
+				&candidate_value,
+				&candidate_authority,
+				runtime.executable_digest(),
+				&evaluator_digest,
+			);
 			let core_commitment =
 				Self::commitment(super::CORE_CATALOG, &core_tasks, &source_root, &runtime, &policy);
+			let candidate_commitment = Self::commitment(
+				candidate_contract,
+				&candidate_tasks,
+				&source_root,
+				&runtime,
+				&policy,
+			);
 			let contrast_commitment = Self::commitment(
 				super::CONTRAST_CATALOG,
 				&contrast_tasks,
@@ -1921,18 +2015,56 @@ mod tests {
 			Self {
 				root,
 				source_root,
+				evaluator_root,
 				toolchain_root,
 				runtime,
 				core_tasks,
+				candidate_tasks,
 				contrast_tasks,
 				core_commitment,
+				candidate_commitment,
 				contrast_commitment,
 			}
+		}
+
+		fn candidate_tasks(
+			candidate_value: &serde_json::Value,
+			candidate_authority: &candidate_catalog::CandidateCatalogAuthority,
+			runtime_digest: &str,
+			evaluator_digest: &str,
+		) -> Vec<crate::task::TaskDefinition> {
+			let candidate_catalog: super::FrozenCatalog =
+				serde_json::from_value(candidate_value.clone()).expect("candidate frozen catalog");
+			let candidate_raw_tasks =
+				candidate_value["tasks"].as_array().expect("candidate task metadata");
+			let mut tasks = runner::synthetic_demo_tasks();
+
+			for (((task, frozen), raw), expected) in tasks
+				.iter_mut()
+				.zip(candidate_catalog.tasks)
+				.zip(candidate_raw_tasks)
+				.zip(&candidate_authority.tasks)
+			{
+				task.task_id = frozen.task_id;
+				task.task_version = frozen.task_version;
+				task.domain = expected.domain;
+				task.cluster_id = Some(expected.cluster_id.clone());
+				task.allowed_tools = frozen.allowed_tools;
+				task.budgets = frozen.budget;
+				task.catalog_entry_digest =
+					Some(protocol::canonical_hash(raw).expect("candidate catalog entry digest"));
+				task.scorer_version = "1.0.6".to_owned();
+			}
+
+			Self::bind_external_evaluators(&mut tasks, runtime_digest, evaluator_digest);
+
+			tasks
 		}
 
 		fn bind_external_evaluators(
 			tasks: &mut [crate::task::TaskDefinition],
 			runtime_digest: &str,
+			evaluator_digest: &str,
 		) {
 			for task in tasks {
 				let configuration = serde_json::from_value(serde_json::json!({
@@ -1954,7 +2086,7 @@ mod tests {
 						runtime_kind: crate::task::EvaluatorRuntimeKind::Node,
 						runtime_executable_digest: runtime_digest.to_owned(),
 						executable_ref: std::path::PathBuf::from("fixture/evaluator"),
-						executable_digest: format!("sha256:{}", "e".repeat(64)),
+						executable_digest: evaluator_digest.to_owned(),
 						configuration_digest,
 						arguments: Vec::new(),
 						timeout_ms: None,
@@ -1981,7 +2113,7 @@ mod tests {
 		}
 
 		fn commitment(
-			catalog: super::CatalogContract<'static>,
+			catalog: super::CatalogContract<'_>,
 			tasks: &[crate::task::TaskDefinition],
 			source_root: &std::path::Path,
 			runtime: &crate::task::EvaluatorRuntime,
@@ -2066,7 +2198,7 @@ mod tests {
 				.collect::<Vec<_>>();
 
 			serde_json::json!({
-				"schema_version": "aiq.corpus-commitment.v2",
+				"schema_version": catalog.commitment_schema_version,
 				"release_id": "corpus_runner_provenance_fixture",
 				"controlled": true,
 				"synthetic": false,
@@ -2089,7 +2221,7 @@ mod tests {
 			})
 		}
 
-		fn write(&self, label: &str, value: &serde_json::Value) -> std::path::PathBuf {
+		pub(crate) fn write(&self, label: &str, value: &serde_json::Value) -> std::path::PathBuf {
 			let path = self.root.join(format!("{label}.json"));
 
 			fs::write(&path, serde_json::to_vec(value).expect("serialize fixture commitment"))
@@ -2317,6 +2449,24 @@ mod tests {
 		value["execution"]["environment_sha256"] = serde_json::json!(
 			protocol::canonical_hash(&runtime_provenance).expect("mutated environment digest")
 		);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn candidate_commitment_uses_only_the_explicit_model_free_route() {
+		let fixture = RunnerProvenancePathFixture::new("candidate-route");
+		let path = fixture.write("candidate", &fixture.candidate_commitment);
+
+		cli::validate_run_corpus(true, &path, &fixture.candidate_tasks, &fixture.source_root)
+			.expect("explicit candidate preparation route");
+
+		assert!(
+			cli::validate_run_corpus(false, &path, &fixture.candidate_tasks, &fixture.source_root,)
+				.is_err(),
+			"the unflagged active 1.0.7 validator must reject candidate input"
+		);
+
+		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
 	}
 
 	#[cfg(unix)]

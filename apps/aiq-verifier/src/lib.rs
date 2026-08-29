@@ -36,13 +36,13 @@ use ureq::{
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
 use aiq_runner::{
 	benchmark_qualification::{
-		self, BenchmarkQualificationArtifact, BenchmarkQualificationManifest, QualificationMatrix,
+		self, BenchmarkQualificationArtifact, BenchmarkQualificationManifest,
 	},
 	calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
 		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	},
-	candidate_catalog,
+	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
 	corpus_commitment::{
 		self, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain,
 	},
@@ -62,7 +62,7 @@ use aiq_runner::{
 	},
 	scoring::{
 		self, AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION,
-		FalseOnly, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy,
+		AIQ_TASK_SET_ID, FalseOnly, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy,
 		OfficialCalibrationSummary, ScoreContext, ScoreOptions, ScoreReport,
 	},
 	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
@@ -484,6 +484,22 @@ struct VerifyLocalCli {
 	/// New output path for the signed `aiq.verifier-attestation.v4`.
 	#[arg(long)]
 	attestation_output: PathBuf,
+	/// Select the isolated complete AIQ Core 1.1.0 candidate qualification replay.
+	/// This route cannot issue or consume an Official calibration admission.
+	#[arg(
+		long,
+		default_value_t = false,
+		requires = "candidate_source_root",
+		conflicts_with_all = [
+			"calibration_admission",
+			"calibration_source_1_0_7",
+			"admission_output"
+		]
+	)]
+	candidate_qualification: bool,
+	/// Clean candidate source root bound by the candidate corpus commitment.
+	#[arg(long, requires = "candidate_qualification")]
+	candidate_source_root: Option<PathBuf>,
 	/// Private verifier-signed calibration admission required for Official replay.
 	#[arg(
 		long,
@@ -788,12 +804,18 @@ struct VerifyQualificationCli {
 	/// Exact predeclared candidate, policy, and child manifest.
 	#[arg(long)]
 	manifest: PathBuf,
+	/// Independently retained canonical SHA-256 of the predeclared manifest.
+	#[arg(long)]
+	expected_manifest_sha256: String,
 	/// Exact qualification-ready AIQ Core 1.1.0 public catalog.
 	#[arg(long)]
 	catalog: PathBuf,
-	/// Complete child matrix. Repeat exactly three times in predeclared order.
-	#[arg(long = "matrix", required = true)]
-	matrices: Vec<PathBuf>,
+	/// Replay-verified candidate calibration stage. Repeat exactly three times in predeclared order.
+	#[arg(long = "stage", required = true)]
+	stages: Vec<PathBuf>,
+	/// Signed verifier attestation paired with each stage in the same order.
+	#[arg(long = "attestation", required = true)]
+	attestations: Vec<PathBuf>,
 }
 
 struct OperatorDiagnostic {
@@ -2241,6 +2263,13 @@ enum PreparedEvidence {
 	Calibration { stage: CalibrationVerifiedStageV1, attestation: CalibrationVerifierAttestationV1 },
 }
 
+#[derive(Clone, Copy)]
+enum CalibrationReplayMode {
+	Current,
+	PromotedSource1_0_7,
+	CandidateQualification,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum OperatorErrorClass {
@@ -2394,6 +2423,61 @@ fn prepare_package_verification(
 	}
 }
 
+fn prepare_candidate_qualification_verification(
+	request: PreparationRequest<'_>,
+) -> Result<PreparedVerification, WorkerError> {
+	let observed_package_sha256 = hex::encode(Sha256::digest(request.package_bytes));
+
+	if observed_package_sha256 != request.package_sha256 {
+		return Err(WorkerError::terminal(
+			ReasonCode::PackageIntegrityMismatch,
+			"candidate package bytes do not match the expected SHA-256",
+		));
+	}
+
+	let envelope: SubmissionEnvelope =
+		serde_json::from_slice(request.package_bytes).map_err(|_| {
+			WorkerError::terminal(
+				ReasonCode::InvalidPackageProtocol,
+				"candidate package is not a valid result envelope",
+			)
+		})?;
+
+	if request.expected_idempotency_key.is_some_and(|expected| envelope.idempotency_key != expected)
+	{
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"expected idempotency key does not match the candidate package",
+		));
+	}
+	if envelope.claimed_trust != TrustTier::Untrusted {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"candidate qualification package must claim untrusted handling",
+		));
+	}
+
+	let verified = envelope.verify(&BTreeSet::new()).map_err(|_| {
+		WorkerError::terminal(
+			ReasonCode::InvalidPackageSignature,
+			"candidate package identity, content hash, or signature is invalid",
+		)
+	})?;
+
+	if verified.payload_type != CALIBRATION_RUN_PAYLOAD_TYPE {
+		return Err(WorkerError::terminal(
+			ReasonCode::InvalidPackageProtocol,
+			"candidate qualification accepts only a signed calibration package",
+		));
+	}
+
+	prepare_calibration_verification_inner(
+		request,
+		verified,
+		CalibrationReplayMode::CandidateQualification,
+	)
+}
+
 fn prepare_calibration_source_1_0_7_verification(
 	request: PreparationRequest<'_>,
 ) -> Result<PreparedVerification, WorkerError> {
@@ -2474,7 +2558,11 @@ fn prepare_calibration_source_1_0_7_verification(
 		effective_trust: verified.effective_trust,
 		payload,
 	};
-	let mut prepared = prepare_calibration_verification_inner(request, promoted, true)?;
+	let mut prepared = prepare_calibration_verification_inner(
+		request,
+		promoted,
+		CalibrationReplayMode::PromotedSource1_0_7,
+	)?;
 
 	prepared.calibration_source_scoring_version = Some(AIQ_TASK_SCORER_VERSION.to_owned());
 
@@ -2677,14 +2765,88 @@ fn prepare_calibration_verification(
 	request: PreparationRequest<'_>,
 	verified: VerifiedSubmission,
 ) -> Result<PreparedVerification, WorkerError> {
-	prepare_calibration_verification_inner(request, verified, false)
+	prepare_calibration_verification_inner(request, verified, CalibrationReplayMode::Current)
 }
 
 fn prepare_calibration_verification_inner(
 	request: PreparationRequest<'_>,
 	verified: VerifiedSubmission,
-	calibration_source_1_0_7: bool,
+	mode: CalibrationReplayMode,
 ) -> Result<PreparedVerification, WorkerError> {
+	let (run, tasks, package) = validated_calibration_source(&request, verified, mode)?;
+	let provider_usage = replay::verify_production_run(
+		&run,
+		&tasks,
+		request.resolver,
+		request.evaluator_root,
+		request.evaluator_runtime.ok_or_else(|| {
+			WorkerError::configuration("calibration replay lacks an evaluator runtime")
+		})?,
+		request.replay_root,
+		request.replay_identity,
+		request.replay_jobs,
+	)?;
+	let metadata = calibration_metadata_for(&run, request.environment)?;
+	let verification = match mode {
+		CalibrationReplayMode::PromotedSource1_0_7 => {
+			calibration_verification::verify_and_attest_calibration_source_1_0_7(
+				request.signing_identity,
+				&run,
+				&tasks,
+				&package,
+				&metadata,
+				&provider_usage,
+				request.observed_unix_ms,
+			)
+		},
+		CalibrationReplayMode::Current => {
+			calibration_verification::verify_and_attest_calibration_run(
+				request.signing_identity,
+				&run,
+				&tasks,
+				&package,
+				&metadata,
+				&provider_usage,
+				request.observed_unix_ms,
+			)
+		},
+		CalibrationReplayMode::CandidateQualification => {
+			calibration_verification::verify_and_attest_candidate_qualification_run(
+				request.signing_identity,
+				&run,
+				&tasks,
+				&package,
+				&metadata,
+				&provider_usage,
+				request.observed_unix_ms,
+			)
+		},
+	};
+	let (stage, attestation) = verification.map_err(|error| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			format!(
+				"calibration recomputation or verifier attestation construction failed: {error}"
+			),
+		)
+	})?;
+
+	verify_calibration_attestation_for_mode(&stage, &attestation, request.signing_identity, mode)?;
+
+	Ok(PreparedVerification {
+		evidence: PreparedEvidence::Calibration { stage, attestation },
+		replay_scope: PRODUCTION_REPLAY_SCOPE,
+		official_calibration: None,
+		calibration_source: Some(run),
+		calibration_source_scoring_version: Some(AIQ_TASK_SCORER_VERSION.to_owned()),
+	})
+}
+
+fn validated_calibration_source(
+	request: &PreparationRequest<'_>,
+	verified: VerifiedSubmission,
+	mode: CalibrationReplayMode,
+) -> Result<(CalibrationRunRecord, Vec<TaskDefinition>, VerifiedPackageIdentity), WorkerError> {
 	let run: CalibrationRunRecord = serde_json::from_value(verified.payload).map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::InvalidPackageProtocol,
@@ -2692,10 +2854,16 @@ fn prepare_calibration_verification_inner(
 		)
 	})?;
 	let tasks = selected_calibration_tasks(&run, request.tasks)?;
-	let validation = if calibration_source_1_0_7 {
-		run_validation::validate_calibration_source_1_0_7_with_tasks(&run, &tasks)
-	} else {
-		run_validation::validate_calibration_run_record_with_tasks(&run, &tasks)
+	let validation = match mode {
+		CalibrationReplayMode::Current => {
+			run_validation::validate_calibration_run_record_with_tasks(&run, &tasks)
+		},
+		CalibrationReplayMode::PromotedSource1_0_7 => {
+			run_validation::validate_calibration_source_1_0_7_with_tasks(&run, &tasks)
+		},
+		CalibrationReplayMode::CandidateQualification => {
+			run_validation::validate_candidate_qualification_calibration_with_tasks(&run, &tasks)
+		},
 	};
 
 	validation.map_err(|_| {
@@ -2738,69 +2906,35 @@ fn prepare_calibration_verification_inner(
 		));
 	}
 
-	let provider_usage = replay::verify_production_run(
-		&run,
-		&tasks,
-		request.resolver,
-		request.evaluator_root,
-		request.evaluator_runtime.ok_or_else(|| {
-			WorkerError::configuration("calibration replay lacks an evaluator runtime")
-		})?,
-		request.replay_root,
-		request.replay_identity,
-		request.replay_jobs,
-	)?;
-	let metadata = calibration_metadata_for(&run, request.environment)?;
 	let package = VerifiedPackageIdentity {
 		package_sha256: request.package_sha256.to_owned(),
 		content_hash: verified.content_hash,
 		signer: verified.signer,
 	};
-	let verification = if calibration_source_1_0_7 {
-		calibration_verification::verify_and_attest_calibration_source_1_0_7(
-			request.signing_identity,
-			&run,
-			&tasks,
-			&package,
-			&metadata,
-			&provider_usage,
-			request.observed_unix_ms,
-		)
-	} else {
-		calibration_verification::verify_and_attest_calibration_run(
-			request.signing_identity,
-			&run,
-			&tasks,
-			&package,
-			&metadata,
-			&provider_usage,
-			request.observed_unix_ms,
-		)
-	};
-	let (stage, attestation) = verification.map_err(|error| {
-		WorkerError::terminal(
-			ReasonCode::NormalizationMismatch,
-			format!(
-				"calibration recomputation or verifier attestation construction failed: {error}"
-			),
-		)
-	})?;
 
-	attestation.verify(&stage, request.signing_identity.node()).map_err(|_| {
+	Ok((run, tasks, package))
+}
+
+fn verify_calibration_attestation_for_mode(
+	stage: &CalibrationVerifiedStageV1,
+	attestation: &CalibrationVerifierAttestationV1,
+	identity: &VerifierSigningIdentity,
+	mode: CalibrationReplayMode,
+) -> Result<(), WorkerError> {
+	let result = match mode {
+		CalibrationReplayMode::CandidateQualification => {
+			attestation.verify_candidate_qualification(stage, identity.node())
+		},
+		CalibrationReplayMode::Current | CalibrationReplayMode::PromotedSource1_0_7 => {
+			attestation.verify(stage, identity.node())
+		},
+	};
+
+	result.map_err(|_| {
 		WorkerError::terminal(
 			ReasonCode::NormalizationMismatch,
 			"calibration verifier attestation self-check failed",
 		)
-	})?;
-
-	let source_scoring_version = AIQ_TASK_SCORER_VERSION.to_owned();
-
-	Ok(PreparedVerification {
-		evidence: PreparedEvidence::Calibration { stage, attestation },
-		replay_scope: PRODUCTION_REPLAY_SCOPE,
-		official_calibration: None,
-		calibration_source: Some(run),
-		calibration_source_scoring_version: Some(source_scoring_version),
 	})
 }
 
@@ -2885,6 +3019,45 @@ fn verify_and_write_local(
 	}
 
 	Ok(prepared)
+}
+
+fn verify_and_write_candidate_qualification(
+	request: PreparationRequest<'_>,
+	stage_output: &Path,
+	attestation_output: &Path,
+) -> Result<(), WorkerError> {
+	let stage_target = OutputTarget::new(stage_output, "candidate qualification stage output")?;
+	let attestation_target =
+		OutputTarget::new(attestation_output, "candidate qualification attestation output")?;
+
+	if stage_target.path == attestation_target.path {
+		return Err(WorkerError::configuration(
+			"candidate stage and attestation outputs must use different paths",
+		));
+	}
+
+	let expected_verifier = request.signing_identity.node().clone();
+	let prepared = prepare_candidate_qualification_verification(request)?;
+	let PreparedEvidence::Calibration { stage, attestation } = &prepared.evidence else {
+		return Err(WorkerError::configuration(
+			"candidate qualification requires a calibration package",
+		));
+	};
+
+	stage.verify_candidate_qualification().map_err(|error| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			format!("candidate qualification stage self-check failed: {error}"),
+		)
+	})?;
+	attestation.verify_candidate_qualification(stage, &expected_verifier).map_err(|error| {
+		WorkerError::terminal(
+			ReasonCode::NormalizationMismatch,
+			format!("candidate qualification attestation self-check failed: {error}"),
+		)
+	})?;
+
+	write_outputs_atomically(stage_output, attestation_output, stage, attestation)
 }
 
 fn verify_and_write_local_with_admission(
@@ -4261,8 +4434,11 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 	let environment: VerifierEnvironment =
 		read_regular_json(&cli.environment, "verifier environment")?;
 
-	validate_environment(&environment)?;
-
+	if cli.candidate_qualification {
+		validate_candidate_qualification_environment(&environment)?;
+	} else {
+		validate_environment(&environment)?;
+	}
 	if environment.synthetic_test || environment.expected_provenance.is_none() {
 		return Err(WorkerError::configuration(
 			"verify-local requires a production verifier environment",
@@ -4285,26 +4461,25 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 
 	let evaluator_runtime = EvaluatorRuntime::resolve(&cli.evaluator_runtime)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let _corpus_bytes =
-		regular_file_bytes(&cli.corpus_commitment, "corpus commitment", MAX_SUBMISSION_BYTES)?;
-	let expected = environment.expected_provenance.as_ref().ok_or_else(|| {
-		WorkerError::configuration("production verifier environment lacks expected provenance")
-	})?;
 
-	corpus_commitment::validate_evaluator_runtime_commitment(
-		&cli.corpus_commitment,
-		&expected.corpus_commitment_sha256,
+	validate_local_replay_assets(
+		&cli,
+		&tasks,
+		&environment,
+		&evaluator_root,
 		&evaluator_runtime,
 		&toolchain_root,
-	)
-	.map_err(|error| WorkerError::configuration(error.to_string()))?;
-
-	validate_evaluator_bindings(&tasks, &evaluator_root, &evaluator_runtime)?;
+	)?;
 
 	let signing_identity =
 		VerifierSigningIdentity::from_secret(signing_key_from_environment(&cli.signing_key_env)?);
 	let admission_mode = cli.admission_output.is_some() || cli.calibration_admission.is_some();
 
+	if cli.candidate_qualification && admission_mode {
+		return Err(WorkerError::configuration(
+			"candidate qualification cannot issue or consume an Official calibration admission",
+		));
+	}
 	if has_operational_admission_inputs(&cli) && !admission_mode {
 		return Err(WorkerError::configuration(
 			"operational admission inputs require admission issuance or Official consumption",
@@ -4319,8 +4494,11 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 	} else {
 		None
 	};
-	let official_admission =
-		validate_official_calibration_admission(&cli, &package_bytes, &tasks, admission.as_ref())?;
+	let official_admission = if cli.candidate_qualification {
+		None
+	} else {
+		validate_official_calibration_admission(&cli, &package_bytes, &tasks, admission.as_ref())?
+	};
 	let request = PreparationRequest {
 		package_bytes: &package_bytes,
 		package_sha256: &package_sha256,
@@ -4340,7 +4518,15 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 		replay_jobs: cli.replay_jobs,
 	};
 
-	if let (Some(output), Some(context)) = (cli.admission_output.as_deref(), admission.as_ref()) {
+	if cli.candidate_qualification {
+		verify_and_write_candidate_qualification(
+			request,
+			&cli.stage_output,
+			&cli.attestation_output,
+		)
+	} else if let (Some(output), Some(context)) =
+		(cli.admission_output.as_deref(), admission.as_ref())
+	{
 		verify_and_write_local_with_admission(
 			request,
 			&cli.stage_output,
@@ -4352,6 +4538,71 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 	} else {
 		verify_and_write_local(request, &cli.stage_output, &cli.attestation_output).map(|_| ())
 	}
+}
+
+fn validate_local_replay_assets(
+	cli: &VerifyLocalCli,
+	tasks: &[TaskDefinition],
+	environment: &VerifierEnvironment,
+	evaluator_root: &Path,
+	evaluator_runtime: &EvaluatorRuntime,
+	toolchain_root: &Path,
+) -> Result<(), WorkerError> {
+	let _corpus_bytes =
+		regular_file_bytes(&cli.corpus_commitment, "corpus commitment", MAX_SUBMISSION_BYTES)?;
+	let expected = environment.expected_provenance.as_ref().ok_or_else(|| {
+		WorkerError::configuration("production verifier environment lacks expected provenance")
+	})?;
+
+	if cli.candidate_qualification {
+		let source_root = controlled_root(
+			cli.candidate_source_root.as_deref().ok_or_else(|| {
+				WorkerError::configuration(
+					"candidate qualification requires --candidate-source-root",
+				)
+			})?,
+			"candidate source root",
+		)?;
+		let corpus = corpus_commitment::validate_candidate_core_corpus_commitment_v1_1_0(
+			&cli.corpus_commitment,
+			tasks,
+			&source_root,
+		)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+		corpus
+			.validate_evaluator_runtime(evaluator_runtime)
+			.and_then(|()| {
+				corpus.validate_model_toolchain(toolchain_root, evaluator_runtime).map(|_| ())
+			})
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+		let task_set_digest = task::task_set_hash(tasks)
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+		let evaluator_digest = corpus_commitment::evaluator_digest(tasks)
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+
+		if corpus.canonical_sha256() != expected.corpus_commitment_sha256
+			|| corpus.catalog_digest() != expected.catalog_digest
+			|| corpus.source_manifest_digest() != expected.source_manifest_digest
+			|| task_set_digest != expected.task_set_digest
+			|| evaluator_digest != expected.evaluator_digest
+		{
+			return Err(WorkerError::configuration(
+				"candidate corpus, source, task, or evaluator identity differs from the verifier environment",
+			));
+		}
+	} else {
+		corpus_commitment::validate_evaluator_runtime_commitment(
+			&cli.corpus_commitment,
+			&expected.corpus_commitment_sha256,
+			evaluator_runtime,
+			toolchain_root,
+		)
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	}
+
+	validate_evaluator_bindings(tasks, evaluator_root, evaluator_runtime)
 }
 
 fn validate_local_root_separation(
@@ -4463,7 +4714,7 @@ fn configure_candidate_evaluator_set(
 	let evaluator_runtime = EvaluatorRuntime::resolve(evaluator_runtime_path)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
 	let tasks = load_local_tasks(&tasks_root)?;
-	let corpus = corpus_commitment::validate_core_corpus_commitment(
+	let corpus = corpus_commitment::validate_candidate_core_corpus_commitment_v1_1_0(
 		corpus_commitment_path,
 		&tasks,
 		&source_root,
@@ -4777,9 +5028,9 @@ fn run_validate_environment(cli: ValidateEnvironmentCli) -> Result<(), WorkerErr
 }
 
 fn run_verify_qualification(cli: VerifyQualificationCli) -> Result<(), WorkerError> {
-	if cli.matrices.len() != 3 {
+	if cli.stages.len() != 3 || cli.attestations.len() != 3 {
 		return Err(WorkerError::configuration(
-			"verify-qualification requires exactly three --matrix inputs",
+			"verify-qualification requires exactly three --stage and three --attestation inputs",
 		));
 	}
 
@@ -4790,14 +5041,31 @@ fn run_verify_qualification(cli: VerifyQualificationCli) -> Result<(), WorkerErr
 	let catalog_value: Value = read_regular_json(&cli.catalog, "candidate catalog")?;
 	let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let matrices = cli
-		.matrices
+	let stages = cli
+		.stages
 		.iter()
-		.map(|path| read_regular_json::<QualificationMatrix>(path, "qualification child matrix"))
+		.map(|path| {
+			read_regular_json::<CalibrationVerifiedStageV1>(path, "candidate qualification stage")
+		})
+		.collect::<Result<Vec<_>, _>>()?;
+	let attestations = cli
+		.attestations
+		.iter()
+		.map(|path| {
+			read_regular_json::<CalibrationVerifierAttestationV1>(
+				path,
+				"candidate qualification attestation",
+			)
+		})
 		.collect::<Result<Vec<_>, _>>()?;
 
 	benchmark_qualification::verify_qualification_artifact(
-		&artifact, &manifest, &catalog, &matrices,
+		&artifact,
+		&manifest,
+		&cli.expected_manifest_sha256,
+		&catalog,
+		&stages,
+		&attestations,
 	)
 	.map_err(|error| WorkerError::configuration(error.to_string()))?;
 
@@ -5191,6 +5459,48 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 	Ok(())
 }
 
+fn validate_candidate_qualification_environment(
+	environment: &VerifierEnvironment,
+) -> Result<(), WorkerError> {
+	if verifier_environment_has_placeholders(environment) {
+		return Err(WorkerError::configuration(
+			"candidate verifier environment contains placeholder commitments",
+		));
+	}
+
+	let provenance = environment.expected_provenance.as_ref().ok_or_else(|| {
+		WorkerError::configuration("candidate verifier environment lacks expected provenance")
+	})?;
+
+	corpus_commitment::validate_candidate_qualification_provenance_v1_1_0(
+		provenance,
+		&provenance.task_set_digest,
+		&provenance.preflight_digest,
+	)
+	.map_err(|_| WorkerError::configuration("candidate verifier provenance is invalid"))?;
+
+	if environment.schema_version != "aiq.verifier-environment.v2"
+		|| environment.task_set_id != AIQ_TASK_SET_ID
+		|| environment.task_set_version != CANDIDATE_TASK_SET_VERSION
+		|| environment.benchmark_version
+			!= format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION)
+		|| environment.prompt_set_digest != provenance.prompt_digest
+		|| environment.synthetic_test
+		|| environment.runner_commit.len() < 7
+		|| environment.runner_commit.len() > 40
+		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+		|| !valid_identifier(&environment.region, 64)
+		|| environment
+			.artifact_resolver_endpoint
+			.as_ref()
+			.is_some_and(|url| url.ends_with('/') || !endpoint_origin_is_allowed(url, false))
+	{
+		return Err(WorkerError::configuration("candidate verifier environment is invalid"));
+	}
+
+	Ok(())
+}
+
 fn valid_identifier(value: &str, maximum_bytes: usize) -> bool {
 	!value.is_empty()
 		&& value.len() <= maximum_bytes
@@ -5428,9 +5738,10 @@ mod tests {
 		WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
-		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
-		CalibrationAdmissionBundleV3, CalibrationAdmissionV3, CalibrationVerifiedStageV1,
-		CalibrationVerifierAttestationV1,
+		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION,
+		CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION, CalibrationAdmissionBindings,
+		CalibrationAdmissionBundleV3, CalibrationAdmissionV3, CalibrationReplayStatus,
+		CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
 	};
 	use aiq_runner::{
 		AIQ_BENCHMARK_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
@@ -5439,10 +5750,17 @@ mod tests {
 			CapabilityValidationReport, CapabilityValidationStatus, CliProbe, ConfigurationProbe,
 			ConfigurationProbeStatus, ExecutorError, ProbeStatus,
 		},
+		benchmark_qualification::{
+			self, BenchmarkQualificationManifest, BenchmarkQualificationStatus,
+			PredeclaredQualificationChild, QualificationCandidateIdentity, QualificationCell,
+			QualificationCellStatus, QualificationChildDisposition,
+		},
+		candidate_catalog,
 		corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 		model::MODEL_MATRIX,
 		normalization::{
-			NormalizedBatchStage, ReplayStatus, VerifierAttestationV2, VerifierSigningIdentity,
+			NormalizedBatchStage, ReplayStatus, VERIFIER_SIGNATURE_ALGORITHM,
+			VERIFIER_SIGNATURE_VERSION, VerifierAttestationV2, VerifierSigningIdentity,
 		},
 		protocol::{self, NodeIdentity, SigningIdentity, TrustTier},
 		resume, run_validation,
@@ -6068,6 +6386,127 @@ mod tests {
 			self.convert_to_calibration_task_count(self.tasks.len());
 		}
 
+		fn convert_to_candidate_calibration(&mut self) {
+			self.convert_to_calibration();
+
+			let catalog_value: serde_json::Value = serde_json::from_str(include_str!(
+				"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
+			))
+			.expect("candidate catalog JSON");
+			let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
+				.expect("candidate catalog authority");
+			let catalog_tasks = catalog_value["tasks"].as_array().expect("candidate catalog tasks");
+			let positions = catalog
+				.tasks
+				.iter()
+				.enumerate()
+				.map(|(index, task)| (task.task_id.as_str(), index))
+				.collect::<std::collections::BTreeMap<_, _>>();
+
+			for task in &mut self.tasks {
+				let authority = catalog.task(&task.task_id).expect("candidate task authority");
+				let raw = catalog_tasks
+					.iter()
+					.find(|entry| entry["task_id"].as_str() == Some(&task.task_id))
+					.expect("candidate catalog task");
+
+				task.task_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+				task.domain = authority.domain;
+				task.cluster_id = Some(authority.cluster_id.clone());
+				task.allowed_tools = serde_json::from_value(raw["allowed_tools"].clone())
+					.expect("candidate allowed tools");
+				task.budgets =
+					serde_json::from_value(raw["budget"].clone()).expect("candidate budget");
+				task.catalog_entry_digest =
+					Some(protocol::canonical_hash(raw).expect("candidate catalog entry digest"));
+				task.scorer_version = "1.0.6".to_owned();
+			}
+
+			self.tasks.sort_by_key(|task| {
+				positions.get(task.task_id.as_str()).copied().unwrap_or(usize::MAX)
+			});
+
+			let envelope: protocol::SubmissionEnvelope =
+				serde_json::from_slice(&self.package).expect("current calibration envelope");
+			let task_hashes = self
+				.tasks
+				.iter()
+				.map(|task| {
+					(task.task_id.as_str(), task.content_hash().expect("candidate task digest"))
+				})
+				.collect::<std::collections::BTreeMap<_, _>>();
+			let task_set_hash = task::task_set_hash(&self.tasks).expect("candidate task-set hash");
+			let evaluator_digest = corpus_commitment::evaluator_digest(&self.tasks)
+				.expect("candidate evaluator digest");
+			let mut run: CalibrationRunRecord =
+				serde_json::from_value(envelope.payload).expect("current calibration payload");
+
+			run.task_ids = self.tasks.iter().map(|task| task.task_id.clone()).collect();
+
+			run.task_set_hash.clone_from(&task_set_hash);
+
+			run.provenance.corpus_release_id = "corpus_candidate_package_fixture".to_owned();
+			run.provenance.corpus_commitment_sha256 = format!("sha256:{}", "c".repeat(64));
+
+			run.provenance.catalog_digest.clone_from(&catalog.task_metadata_digest);
+			run.provenance.task_set_digest.clone_from(&task_set_hash);
+			run.provenance.evaluator_digest.clone_from(&evaluator_digest);
+
+			run.run_id = resume::classified_run_id(
+				&run.schedule_slot,
+				&task_set_hash,
+				&run.provenance.corpus_commitment_sha256,
+				&run.models,
+				RunClass::Calibration,
+			)
+			.expect("candidate calibration run id");
+
+			for result in &mut run.results {
+				result.run_id.clone_from(&run.run_id);
+
+				result.task_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+				result.task_hash = task_hashes
+					.get(result.task_id.as_str())
+					.expect("candidate result task")
+					.clone();
+				result.result_id = format!(
+					"result_{}",
+					result
+						.content_hash()
+						.expect("candidate result digest")
+						.trim_start_matches("sha256:")
+				);
+			}
+
+			run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
+
+			run_validation::validate_candidate_qualification_calibration_with_tasks(
+				&run,
+				&self.tasks,
+			)
+			.expect("candidate calibration validation");
+
+			self.environment.task_set_version =
+				candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+			self.environment.benchmark_version =
+				format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION);
+			self.environment.expected_provenance = Some(run.provenance.clone());
+
+			let identity = SigningIdentity::from_secret([7; 32]);
+			let envelope = identity
+				.sign(
+					&run.run_id,
+					protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+					&run,
+					TrustTier::Untrusted,
+				)
+				.expect("signed candidate calibration package");
+
+			self.package = protocol::canonical_json(&envelope)
+				.expect("candidate local-verification package bytes");
+			self.package_sha256 = hex::encode(Sha256::digest(&self.package));
+		}
+
 		fn convert_to_calibration_task_count(&mut self, task_count: usize) {
 			let envelope: protocol::SubmissionEnvelope =
 				serde_json::from_slice(&self.package).expect("official envelope");
@@ -6193,6 +6632,30 @@ mod tests {
 			attestation_output: &Path,
 		) -> Result<super::PreparedVerification, WorkerError> {
 			self.prepare_with_jobs(stage_output, attestation_output, DEFAULT_REPLAY_JOBS)
+		}
+
+		fn prepare_candidate(&self) -> Result<super::PreparedVerification, WorkerError> {
+			let resolver = LocalArtifactResolver::new(&self.artifact_root)?;
+			let signing_identity = VerifierSigningIdentity::from_secret([8; 32]);
+
+			crate::prepare_candidate_qualification_verification(PreparationRequest {
+				package_bytes: &self.package,
+				package_sha256: &self.package_sha256,
+				expected_idempotency_key: None,
+				replay_identity: &format!("candidate-local-{}", self.package_sha256),
+				resolver: &resolver,
+				tasks: &self.tasks,
+				environment: &self.environment,
+				evaluator_root: &self.evaluator_root,
+				evaluator_runtime: Some(&self.evaluator_runtime),
+				replay_root: &self.replay_root,
+				signing_identity: &signing_identity,
+				official_admission: None,
+				require_official_admission: false,
+				observed_unix_ms: 1_000,
+				require_production: true,
+				replay_jobs: DEFAULT_REPLAY_JOBS,
+			})
 		}
 
 		fn prepare_with_jobs(
@@ -6398,6 +6861,393 @@ mod tests {
 			PreparedEvidence::Official { stage, attestation } => (stage, attestation),
 			PreparedEvidence::Calibration { .. } => panic!("expected Official evidence"),
 		}
+	}
+
+	fn candidate_qualification_catalog() -> candidate_catalog::CandidateCatalogAuthority {
+		let value: serde_json::Value = serde_json::from_str(include_str!(
+			"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
+		))
+		.expect("candidate catalog JSON");
+
+		candidate_catalog::validate_candidate_catalog(&value).expect("candidate catalog")
+	}
+
+	fn candidate_qualification_stage(
+		mut stage: CalibrationVerifiedStageV1,
+		index: usize,
+	) -> (CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1, [u8; 32]) {
+		let catalog = candidate_qualification_catalog();
+		let task_ids = catalog.tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
+		let run_shift = [-0.005, 0.0, 0.005][index];
+		let cells = MODEL_MATRIX
+			.iter()
+			.enumerate()
+			.flat_map(|(model_index, model)| {
+				task_ids.iter().enumerate().map(move |(task_index, task_id)| QualificationCell {
+					task_id: task_id.clone(),
+					model: *model,
+					status: QualificationCellStatus::Completed,
+					semantic_score: Some(
+						0.12 + model_index as f64 * 0.045
+							+ (task_index % 5) as f64 * 0.01
+							+ run_shift,
+					),
+				})
+			})
+			.collect();
+		let identity_character = char::from(b'1' + index as u8);
+
+		stage.run_id = format!("run_{}", identity_character.to_string().repeat(64));
+		stage.package_sha256 = identity_character.to_string().repeat(64);
+		stage.content_hash = format!("sha256:{}", identity_character.to_string().repeat(64));
+		stage.task_ids = task_ids.clone();
+		stage.task_selection_digest = protocol::canonical_hash(&task_ids).expect("task selection");
+		stage.task_set_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+		stage.benchmark_version =
+			format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION);
+		stage.provenance.run_class = RunClass::Calibration;
+		stage.provenance.corpus_release_id = "corpus_candidate_qualification_fixture".to_owned();
+		stage.provenance.catalog_digest = catalog.task_metadata_digest;
+
+		stage.provenance.task_set_digest.clone_from(&stage.task_set_hash);
+
+		for (result_index, result) in stage.result_efficiency.iter_mut().enumerate() {
+			result.task_id.clone_from(&task_ids[result_index % task_ids.len()]);
+		}
+
+		stage.telemetry_digest =
+			protocol::canonical_hash(&stage.result_efficiency).expect("candidate telemetry");
+		stage.qualification_projection =
+			Some(aiq_runner::benchmark_qualification::CandidateQualificationProjection {
+				schema_version: benchmark_qualification::QUALIFICATION_PROJECTION_SCHEMA_VERSION
+					.to_owned(),
+				candidate_id: catalog.candidate_id,
+				disposition: QualificationChildDisposition::Accepted,
+				synthetic: false,
+				cells,
+			});
+		stage.stage_digest = stage.compute_stage_digest().expect("candidate stage digest");
+
+		stage.verify_candidate_qualification().expect("candidate stage");
+
+		let verifier_secret = [80 + index as u8; 32];
+		let attestation =
+			sign_candidate_qualification_attestation(&stage, verifier_secret, 100 + index as u64);
+
+		attestation
+			.verify_candidate_qualification(
+				&stage,
+				VerifierSigningIdentity::from_secret(verifier_secret).node(),
+			)
+			.expect("candidate attestation");
+
+		(stage, attestation, verifier_secret)
+	}
+
+	fn sign_candidate_qualification_attestation(
+		stage: &CalibrationVerifiedStageV1,
+		secret: [u8; 32],
+		observed_unix_ms: u64,
+	) -> CalibrationVerifierAttestationV1 {
+		let verifier = VerifierSigningIdentity::from_secret(secret).node().clone();
+		let mut attestation = CalibrationVerifierAttestationV1 {
+			schema_version: CALIBRATION_VERIFIER_ATTESTATION_SCHEMA_VERSION.to_owned(),
+			signature_algorithm: VERIFIER_SIGNATURE_ALGORITHM.to_owned(),
+			signature_version: VERIFIER_SIGNATURE_VERSION.to_owned(),
+			run_id: stage.run_id.clone(),
+			package_sha256: stage.package_sha256.clone(),
+			content_hash: stage.content_hash.clone(),
+			stage_digest: stage.stage_digest.clone(),
+			runner: stage.runner.clone(),
+			verifier,
+			classification: stage.classification.clone(),
+			run_class: RunClass::Calibration,
+			official_eligible: FalseOnly,
+			ranking_eligible: FalseOnly,
+			trust: TrustTier::Untrusted,
+			task_set_hash: stage.task_set_hash.clone(),
+			terminal_attempt_lineage_digest: stage.terminal_attempt_lineage_digest.clone(),
+			task_selection_digest: stage.task_selection_digest.clone(),
+			model_selection_digest: stage.model_selection_digest.clone(),
+			score_reports_digest: stage.score_reports_digest.clone(),
+			telemetry_digest: stage.telemetry_digest.clone(),
+			capability_validation_digest: stage.capability_validation_digest.clone(),
+			scoring_version: stage.scoring_version.clone(),
+			execution_concurrency: stage.execution_concurrency,
+			observed_unix_ms,
+			replay_status: CalibrationReplayStatus::EvaluatorReplayed,
+			signature: String::new(),
+		};
+		let unsigned = serde_json::json!({
+			"schema_version": &attestation.schema_version,
+			"signature_algorithm": &attestation.signature_algorithm,
+			"signature_version": &attestation.signature_version,
+			"run_id": &attestation.run_id,
+			"package_sha256": &attestation.package_sha256,
+			"content_hash": &attestation.content_hash,
+			"stage_digest": &attestation.stage_digest,
+			"runner": &attestation.runner,
+			"verifier": &attestation.verifier,
+			"classification": &attestation.classification,
+			"run_class": attestation.run_class,
+			"official_eligible": false,
+			"ranking_eligible": false,
+			"trust": attestation.trust,
+			"task_set_hash": &attestation.task_set_hash,
+			"terminal_attempt_lineage_digest": &attestation.terminal_attempt_lineage_digest,
+			"task_selection_digest": &attestation.task_selection_digest,
+			"model_selection_digest": &attestation.model_selection_digest,
+			"score_reports_digest": &attestation.score_reports_digest,
+			"telemetry_digest": &attestation.telemetry_digest,
+			"capability_validation_digest": &attestation.capability_validation_digest,
+			"scoring_version": &attestation.scoring_version,
+			"execution_concurrency": attestation.execution_concurrency,
+			"observed_unix_ms": attestation.observed_unix_ms,
+			"replay_status": attestation.replay_status,
+		});
+		let bytes = protocol::canonical_json(&unsigned).expect("candidate attestation bytes");
+
+		attestation.signature =
+			hex::encode(SigningKey::from_bytes(&secret).sign(&bytes).to_bytes());
+
+		attestation
+	}
+
+	fn candidate_qualification_manifest(
+		catalog: &candidate_catalog::CandidateCatalogAuthority,
+		stages: &[CalibrationVerifiedStageV1],
+		attestations: &[CalibrationVerifierAttestationV1],
+	) -> BenchmarkQualificationManifest {
+		let stage = &stages[0];
+		let provenance = &stage.provenance;
+
+		BenchmarkQualificationManifest {
+			schema_version: benchmark_qualification::QUALIFICATION_MANIFEST_SCHEMA_VERSION
+				.to_owned(),
+			candidate: QualificationCandidateIdentity {
+				candidate_id: catalog.candidate_id.clone(),
+				catalog_digest: catalog.catalog_digest.clone(),
+				task_metadata_digest: catalog.task_metadata_digest.clone(),
+				task_set_digest: stage.task_set_hash.clone(),
+				corpus_release_id: provenance.corpus_release_id.clone(),
+				corpus_commitment_digest: provenance.corpus_commitment_sha256.clone(),
+				evaluator_digest: provenance.evaluator_digest.clone(),
+				harness_digest: provenance.harness_digest.clone(),
+				prompt_digest: provenance.prompt_digest.clone(),
+				tool_policy_digest: provenance.tool_policy_digest.clone(),
+				network_policy_digest: provenance.network_policy_digest.clone(),
+				environment_digest: provenance.environment_digest.clone(),
+				source_manifest_digest: provenance.source_manifest_digest.clone(),
+				model_selection_digest: stage.model_selection_digest.clone(),
+			},
+			policy: benchmark_qualification::BenchmarkQualificationPolicy::default(),
+			children: stages
+				.iter()
+				.zip(attestations)
+				.enumerate()
+				.map(|(index, (stage, attestation))| PredeclaredQualificationChild {
+					child_id: format!("candidate-child-{}", index + 1),
+					source_run_id: stage.run_id.clone(),
+					verifier: attestation.verifier.clone(),
+				})
+				.collect(),
+		}
+	}
+
+	fn assert_candidate_authentication_mutations_rejected(
+		manifest: &BenchmarkQualificationManifest,
+		manifest_digest: &str,
+		catalog: &candidate_catalog::CandidateCatalogAuthority,
+		stages: &[CalibrationVerifiedStageV1],
+		attestations: &[CalibrationVerifierAttestationV1],
+	) {
+		let mut changed_stages = stages.to_vec();
+
+		changed_stages[0].qualification_projection.as_mut().expect("projection").cells[0]
+			.semantic_score = Some(0.99);
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				&changed_stages,
+				attestations,
+			)
+			.is_err(),
+			"cell tamper must invalidate the signed stage"
+		);
+
+		let mut swapped_attestations = attestations.to_vec();
+
+		swapped_attestations.swap(0, 1);
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				stages,
+				&swapped_attestations,
+			)
+			.is_err(),
+			"stage and attestation swap must fail"
+		);
+
+		let mut reused_stages = stages.to_vec();
+		let mut reused_attestations = attestations.to_vec();
+
+		reused_stages[1] = reused_stages[0].clone();
+		reused_attestations[1] = reused_attestations[0].clone();
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				&reused_stages,
+				&reused_attestations,
+			)
+			.is_err(),
+			"reused child evidence must fail"
+		);
+
+		let mut untrusted_attestations = attestations.to_vec();
+
+		untrusted_attestations[0] =
+			sign_candidate_qualification_attestation(&stages[0], [99; 32], 500);
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				stages,
+				&untrusted_attestations,
+			)
+			.is_err(),
+			"an untrusted self-selected verifier must fail"
+		);
+
+		let mut unsigned_attestations = attestations.to_vec();
+
+		unsigned_attestations[0].signature.clear();
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				stages,
+				&unsigned_attestations,
+			)
+			.is_err(),
+			"unsigned evidence must fail"
+		);
+
+		let mut changed_manifest = manifest.clone();
+
+		changed_manifest.candidate.candidate_id = "aiq-core/1.1.0-candidate.changed".to_owned();
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				&changed_manifest,
+				manifest_digest,
+				catalog,
+				stages,
+				attestations,
+			)
+			.is_err(),
+			"changed candidate identity must fail"
+		);
+	}
+
+	fn assert_candidate_state_and_source_mutations_rejected(
+		manifest: &BenchmarkQualificationManifest,
+		manifest_digest: &str,
+		catalog: &candidate_catalog::CandidateCatalogAuthority,
+		stages: &[CalibrationVerifiedStageV1],
+		attestations: &[CalibrationVerifierAttestationV1],
+		secrets: &[[u8; 32]],
+	) {
+		for mutation in 0..4 {
+			let mut changed_stages = stages.to_vec();
+			let projection =
+				changed_stages[0].qualification_projection.as_mut().expect("projection");
+
+			match mutation {
+				0 => projection.disposition = QualificationChildDisposition::Rejected,
+				1 => {
+					projection.cells[0].status = QualificationCellStatus::RuntimeInvalid;
+					projection.cells[0].semantic_score = None;
+				},
+				2 => projection.synthetic = true,
+				_ => {
+					projection.cells.pop();
+				},
+			}
+
+			changed_stages[0].stage_digest =
+				changed_stages[0].compute_stage_digest().expect("mutated stage digest");
+
+			let mut changed_attestations = attestations.to_vec();
+
+			changed_attestations[0] = sign_candidate_qualification_attestation(
+				&changed_stages[0],
+				secrets[0],
+				600 + mutation,
+			);
+
+			assert!(
+				benchmark_qualification::qualify_candidate(
+					manifest,
+					manifest_digest,
+					catalog,
+					&changed_stages,
+					&changed_attestations,
+				)
+				.is_err(),
+				"rejected, runtime-invalid, synthetic, or incomplete evidence mutation {mutation} must fail"
+			);
+		}
+
+		let mut changed_stages = stages.to_vec();
+
+		changed_stages[0].package_sha256 = "f".repeat(64);
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				&changed_stages,
+				attestations,
+			)
+			.is_err(),
+			"changed package digest must fail"
+		);
+
+		changed_stages[0] = stages[0].clone();
+		changed_stages[0].run_id = format!("run_{}", "e".repeat(64));
+		changed_stages[0].stage_digest =
+			changed_stages[0].compute_stage_digest().expect("changed source stage digest");
+
+		let mut changed_attestations = attestations.to_vec();
+
+		changed_attestations[0] =
+			sign_candidate_qualification_attestation(&changed_stages[0], secrets[0], 700);
+
+		assert!(
+			benchmark_qualification::qualify_candidate(
+				manifest,
+				manifest_digest,
+				catalog,
+				&changed_stages,
+				&changed_attestations,
+			)
+			.is_err(),
+			"changed source run identity must fail"
+		);
 	}
 
 	fn diagnostic_source_run(fixture: &LocalReplayFixture) -> runner::RunRecord {
@@ -6759,6 +7609,14 @@ mod tests {
 
 	#[test]
 	fn verifier_cli_requires_production_runtime_bindings_but_keeps_synthetic_demo_minimal() {
+		assert!(
+			<Cli as clap::CommandFactory>::command().get_arguments().all(|argument| !matches!(
+				argument.get_id().as_str(),
+				"candidate_qualification" | "candidate_source_root"
+			)),
+			"the production worker must not expose candidate qualification"
+		);
+
 		let base = [
 			"aiq-verifier",
 			"--endpoint",
@@ -6871,31 +7729,44 @@ mod tests {
 	}
 
 	#[test]
-	fn qualification_verifier_requires_three_explicit_matrices() {
+	fn qualification_verifier_requires_three_explicit_stage_and_attestation_pairs() {
 		let parsed = VerifyQualificationCli::try_parse_from([
 			"aiq-verifier verify-qualification",
 			"--artifact",
 			"qualification.json",
 			"--manifest",
 			"manifest.json",
+			"--expected-manifest-sha256",
+			"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			"--catalog",
 			"catalog.json",
-			"--matrix",
-			"matrix-1.json",
-			"--matrix",
-			"matrix-2.json",
-			"--matrix",
-			"matrix-3.json",
+			"--stage",
+			"stage-1.json",
+			"--stage",
+			"stage-2.json",
+			"--stage",
+			"stage-3.json",
+			"--attestation",
+			"attestation-1.json",
+			"--attestation",
+			"attestation-2.json",
+			"--attestation",
+			"attestation-3.json",
 		])
 		.expect("qualification CLI");
 
-		assert_eq!(parsed.matrices.len(), 3);
+		assert_eq!(parsed.stages.len(), 3);
+		assert_eq!(parsed.attestations.len(), 3);
 		assert!(
 			crate::run_verify_qualification(VerifyQualificationCli {
 				artifact: PathBuf::from("qualification.json"),
 				manifest: PathBuf::from("manifest.json"),
+				expected_manifest_sha256:
+					"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+						.to_owned(),
 				catalog: PathBuf::from("catalog.json"),
-				matrices: vec![PathBuf::from("matrix-1.json")],
+				stages: vec![PathBuf::from("stage-1.json")],
+				attestations: vec![PathBuf::from("attestation-1.json")],
 			})
 			.is_err()
 		);
@@ -7020,9 +7891,71 @@ mod tests {
 
 		assert!(VerifyLocalCli::try_parse_from(overridden).is_err());
 
-		let mut admitted = arguments.to_vec();
+		let mut candidate = arguments.to_vec();
 
-		admitted.extend([
+		candidate.extend([
+			"--candidate-qualification",
+			"--candidate-source-root",
+			"/candidate/source",
+		]);
+
+		assert!(VerifyLocalCli::try_parse_from(&candidate).is_ok());
+		assert!(
+			VerifyLocalCli::try_parse_from(
+				[arguments.as_slice(), ["--candidate-qualification"].as_slice(),].concat()
+			)
+			.is_err()
+		);
+
+		let admitted = admission_issuer_arguments(&arguments);
+
+		assert!(VerifyLocalCli::try_parse_from(&admitted).is_ok());
+		assert!(VerifyLocalCli::try_parse_from(&admitted[..admitted.len() - 2]).is_err());
+
+		let mut calibration_source = admitted.clone();
+
+		calibration_source.push("--calibration-source-1-0-7");
+
+		assert!(VerifyLocalCli::try_parse_from(calibration_source).is_ok());
+
+		let mut candidate_with_admission = admitted.clone();
+
+		candidate_with_admission.extend([
+			"--candidate-qualification",
+			"--candidate-source-root",
+			"/candidate/source",
+		]);
+
+		assert!(VerifyLocalCli::try_parse_from(candidate_with_admission).is_err());
+
+		let mut obsolete_calibration_source = admitted.clone();
+
+		obsolete_calibration_source.push("--calibration-source-1-0-6");
+
+		assert!(VerifyLocalCli::try_parse_from(obsolete_calibration_source).is_err());
+
+		let consuming = official_consumer_arguments(&arguments);
+
+		assert!(VerifyLocalCli::try_parse_from(&consuming).is_ok());
+		assert!(VerifyLocalCli::try_parse_from(&consuming[..consuming.len() - 2]).is_err());
+
+		let mut conflicting = consuming;
+
+		conflicting.extend(["--admission-output", "new-admission.json"]);
+
+		assert!(VerifyLocalCli::try_parse_from(conflicting).is_err());
+
+		let mut incomplete = arguments.to_vec();
+
+		incomplete.extend(["--admission-output", "admission.json"]);
+
+		assert!(VerifyLocalCli::try_parse_from(incomplete).is_err());
+	}
+
+	fn admission_issuer_arguments<'a>(base: &'a [&'a str]) -> Vec<&'a str> {
+		let mut arguments = base.to_vec();
+
+		arguments.extend([
 			"--admission-output",
 			"admission.json",
 			"--admission-tasks",
@@ -7055,37 +7988,7 @@ mod tests {
 			"sha256:2222222222222222222222222222222222222222222222222222222222222222",
 		]);
 
-		assert!(VerifyLocalCli::try_parse_from(&admitted).is_ok());
-		assert!(VerifyLocalCli::try_parse_from(&admitted[..admitted.len() - 2]).is_err());
-
-		let mut calibration_source = admitted.clone();
-
-		calibration_source.push("--calibration-source-1-0-7");
-
-		assert!(VerifyLocalCli::try_parse_from(calibration_source).is_ok());
-
-		let mut obsolete_calibration_source = admitted.clone();
-
-		obsolete_calibration_source.push("--calibration-source-1-0-6");
-
-		assert!(VerifyLocalCli::try_parse_from(obsolete_calibration_source).is_err());
-
-		let consuming = official_consumer_arguments(&arguments);
-
-		assert!(VerifyLocalCli::try_parse_from(&consuming).is_ok());
-		assert!(VerifyLocalCli::try_parse_from(&consuming[..consuming.len() - 2]).is_err());
-
-		let mut conflicting = consuming;
-
-		conflicting.extend(["--admission-output", "new-admission.json"]);
-
-		assert!(VerifyLocalCli::try_parse_from(conflicting).is_err());
-
-		let mut incomplete = arguments.to_vec();
-
-		incomplete.extend(["--admission-output", "admission.json"]);
-
-		assert!(VerifyLocalCli::try_parse_from(incomplete).is_err());
+		arguments
 	}
 
 	fn official_consumer_arguments<'a>(base: &'a [&'a str]) -> Vec<&'a str> {
@@ -7901,10 +8804,131 @@ mod tests {
 		assert_eq!(stage.result_efficiency.len(), 72 * 17);
 		assert_eq!(stage.scores.len(), 17);
 		assert_eq!(stage.trust, TrustTier::Untrusted);
+		assert!(stage.qualification_projection.is_none());
+		assert!(
+			serde_json::to_value(&stage)
+				.expect("calibration stage JSON")
+				.get("qualification_projection")
+				.is_none(),
+			"existing calibration stages must remain byte-compatible"
+		);
 		assert_eq!(attestation.stage_digest, stage.stage_digest);
 		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
 
 		assert_calibration_attestation_mutations_rejected(&stage, &attestation);
+	}
+
+	#[test]
+	fn candidate_local_package_is_accepted_by_the_offline_verifier() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_candidate_calibration();
+
+		let prepared = fixture.prepare_candidate().expect("candidate offline replay");
+		let PreparedEvidence::Calibration { stage, attestation } = prepared.evidence else {
+			panic!("expected candidate calibration evidence");
+		};
+		let projection =
+			stage.qualification_projection.as_ref().expect("candidate qualification projection");
+
+		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.9");
+		assert_eq!(projection.cells.len(), 1_224);
+		assert_eq!(stage.trust, TrustTier::Untrusted);
+		assert_eq!(attestation.stage_digest, stage.stage_digest);
+		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
+	}
+
+	#[test]
+	fn candidate_qualification_replay_rejects_official_before_evaluator_work() {
+		let fixture = LocalReplayFixture::new();
+		let resolver =
+			LocalArtifactResolver::new(&fixture.artifact_root).expect("artifact resolver");
+		let signing_identity = VerifierSigningIdentity::from_secret([8; 32]);
+		let error = crate::prepare_candidate_qualification_verification(PreparationRequest {
+			package_bytes: &fixture.package,
+			package_sha256: &fixture.package_sha256,
+			expected_idempotency_key: None,
+			replay_identity: "candidate-official-rejection",
+			resolver: &resolver,
+			tasks: &fixture.tasks,
+			environment: &fixture.environment,
+			evaluator_root: &fixture.evaluator_root,
+			evaluator_runtime: Some(&fixture.evaluator_runtime),
+			replay_root: &fixture.replay_root,
+			signing_identity: &signing_identity,
+			official_admission: None,
+			require_official_admission: false,
+			observed_unix_ms: 1_000,
+			require_production: true,
+			replay_jobs: DEFAULT_REPLAY_JOBS,
+		})
+		.expect_err("candidate mode must reject an Official package");
+
+		assert_eq!(error.kind, ErrorKind::Terminal(ReasonCode::InvalidPackageProtocol));
+		assert_eq!(fs::read_dir(&fixture.replay_root).expect("replay root").count(), 0);
+	}
+
+	#[test]
+	fn replay_verified_candidate_qualification_rejects_fabrication_and_substitution() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_calibration();
+
+		let prepared = fixture
+			.prepare(
+				&fixture.root.join("candidate-base-stage.json"),
+				&fixture.root.join("candidate-base-attestation.json"),
+			)
+			.expect("base calibration replay");
+		let PreparedEvidence::Calibration { stage: base_stage, .. } = prepared.evidence else {
+			panic!("expected calibration evidence");
+		};
+		let evidence = (0..3)
+			.map(|index| candidate_qualification_stage(base_stage.clone(), index))
+			.collect::<Vec<_>>();
+		let stages = evidence.iter().map(|(stage, _, _)| stage.clone()).collect::<Vec<_>>();
+		let attestations =
+			evidence.iter().map(|(_, attestation, _)| attestation.clone()).collect::<Vec<_>>();
+		let secrets = evidence.iter().map(|(_, _, secret)| *secret).collect::<Vec<_>>();
+		let catalog = candidate_qualification_catalog();
+		let manifest = candidate_qualification_manifest(&catalog, &stages, &attestations);
+		let manifest_digest = protocol::canonical_hash(&manifest).expect("manifest digest");
+		let artifact = benchmark_qualification::qualify_candidate(
+			&manifest,
+			&manifest_digest,
+			&catalog,
+			&stages,
+			&attestations,
+		)
+		.expect("replay-verified qualification");
+
+		assert_eq!(artifact.claims.status, BenchmarkQualificationStatus::Qualified);
+
+		benchmark_qualification::verify_qualification_artifact(
+			&artifact,
+			&manifest,
+			&manifest_digest,
+			&catalog,
+			&stages,
+			&attestations,
+		)
+		.expect("qualification verification");
+
+		assert_candidate_authentication_mutations_rejected(
+			&manifest,
+			&manifest_digest,
+			&catalog,
+			&stages,
+			&attestations,
+		);
+		assert_candidate_state_and_source_mutations_rejected(
+			&manifest,
+			&manifest_digest,
+			&catalog,
+			&stages,
+			&attestations,
+			&secrets,
+		);
 	}
 
 	#[test]
