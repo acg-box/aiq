@@ -2167,6 +2167,7 @@ mod tests {
 			"databases/schema.sql",
 			candidate_catalog::CANDIDATE_CATALOG_GENERATOR_PATH,
 			candidate_catalog::CANDIDATE_PRIVATE_AUTHORING_VALIDATOR_PATH,
+			candidate_catalog::CANDIDATE_TASK_RESPONSE_AUTHORITY_PATH,
 			corpus_seal::LEGACY_CATALOG_GENERATOR,
 			corpus_seal::SOURCE_INVENTORY,
 		] {
