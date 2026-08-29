@@ -239,6 +239,7 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.5"
 			| "aiq-core/1.1.0-candidate.6"
 			| "aiq-core/1.1.0-candidate.7"
+			| "aiq-core/1.1.0-candidate.8"
 	) {
 		"1.1.0"
 	} else {
@@ -517,7 +518,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.7");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.8");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 	}

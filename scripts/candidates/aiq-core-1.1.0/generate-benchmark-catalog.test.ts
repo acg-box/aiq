@@ -196,7 +196,7 @@ function expectInvalidReceiptMutation(
   throws(() => parseDecisionManifest(clone), /receipt contract|fields are invalid/u);
 }
 
-await test('the generated candidate.7 public source is deterministic', async () => {
+await test('the generated candidate.8 public source is deterministic', async () => {
   const catalog = buildCatalog();
   deepStrictEqual(
     JSON.parse(await readFile(new URL('catalog.json', candidateRoot), 'utf8')),
@@ -208,38 +208,45 @@ await test('the generated candidate.7 public source is deterministic', async () 
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.7',
+    'aiq-core/1.1.0-candidate.8',
   );
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').task_metadata_digest,
-    'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80',
+    'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',
   );
 });
 
-await test('candidate.6 is exact superseded source evidence and candidate.1 through .6 stay immutable', async () => {
+await test('candidate.7 is exact rejected source evidence and candidate.1 through .7 stay immutable', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.6',
-    disposition: 'superseded_unqualified_evidence_bridge',
-    change_commit: '2746646c5f962f0aedc1b08f6efc7176bb4d9487',
-    source_tree: '098d7665d56c94b96fa17240fd57b3c6207de8a4',
-    pull_request: 139,
-    author_task_identity: '01a04a80-491e-76b1-90b5-c199e12d488e',
+    candidate_id: 'aiq-core/1.1.0-candidate.7',
+    disposition: 'rejected_source_end_to_end_validation',
+    change_commit: '73567104be50b9c8d45e004cd4e8b33af28ad72f',
+    source_tree: 'e31aaff7ea06567a0f704c45078cd066032524be',
+    pull_request: 140,
+    author_task_identity: '01a04b8c-239d-7482-b91d-7d5a2a77b4ff',
     authoring_receipt_raw_sha256:
-      'sha256:5accab79689a7a8ff5d387ed71d039e55d5a55434bce36629b321d85ec6d3c6b',
+      'sha256:890d8310e9e6c025b5131e6e60aa929536c397b2692a712acbd19c70ca175512',
     full_inventory_sha256:
-      'sha256:b37bbdeab31e1bacbdf41905f9916877f77f288219426a693eed2d49161994b4',
+      'sha256:3c9877c94de8ee968eb88a26e75b89617e74fbd22c6631c2e9c9816a4b4650c0',
     catalog_canonical_sha256:
-      'sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170',
+      'sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40',
     catalog_entry_bindings_sha256:
-      'sha256:9a33da06a0292b389c37c936105dd991721f61e4af0b6c6e4f0722f53d2992c8',
-    task_metadata_sha256: 'sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95',
+      'sha256:c1319651b30285f03f2ffdbe4029b97cc42f675097781222a5cee46845bc1af3',
+    task_metadata_sha256: 'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80',
     task_facing_semantics_sha256:
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
-    source_review_task_identity: '01a04ad3-053a-7672-ae71-29130b5f56e8',
+    source_review_task_identity: '01a04b9e-903b-72d2-9819-8b0c2fde6336',
     task_semantics: 'accepted_unchanged_72',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'all_candidate_6_task_facing_semantics_must_remain_identical',
+    semantic_retention_rule: 'all_candidate_7_task_facing_semantics_must_remain_identical',
+    prior_rejected_authoring_attempt: {
+      disposition: 'rejected_readback_failure',
+      authoring_receipt_raw_sha256:
+        'sha256:b37a4a84fa8adef31879b790ce108185ce1a79e3fee7885ded6c8b3ab518c7eb',
+      full_inventory_sha256:
+        'sha256:2e94fc8395cc7c4c88044bf7619413a5a96f2ec70633a5498289d1f381f4c224',
+    },
   });
   deepStrictEqual(manifest.immutable_rejected_predecessors, [
     'aiq-core/1.1.0-candidate.1',
@@ -248,6 +255,7 @@ await test('candidate.6 is exact superseded source evidence and candidate.1 thro
     'aiq-core/1.1.0-candidate.4',
     'aiq-core/1.1.0-candidate.5',
     'aiq-core/1.1.0-candidate.6',
+    'aiq-core/1.1.0-candidate.7',
   ]);
 });
 
@@ -289,7 +297,7 @@ await test('all exact candidate.4 task-review records remain bound as historical
   }
 });
 
-await test('candidate.7 retains all tasks while preserving candidate.5 design history', async () => {
+await test('candidate.8 retains all tasks while preserving candidate.5 design history', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   const expected = {
@@ -317,7 +325,7 @@ await test('candidate.7 retains all tasks while preserving candidate.5 design hi
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.7 identity and exact candidate.6 semantics', async () => {
+await test('every task has one candidate.8 identity and exact candidate.7 semantics', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   assertDecisionManifest(manifest, taskIds());
@@ -332,7 +340,7 @@ await test('every task has one candidate.7 identity and exact candidate.6 semant
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.6');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.7');
     strictEqual(design.decision, 'retained');
     strictEqual(design.predecessor_decision, decision.predecessor_decision);
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
@@ -373,7 +381,7 @@ await test('every task has one candidate.7 identity and exact candidate.6 semant
   );
 });
 
-await test('the 42 task closures remain distinct from the source-integrity closure', async () => {
+await test('the 42 task closures remain distinct from both source-only closures', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.task_issue_code_counts, issueCounts);
   deepStrictEqual(manifest.retained_candidate_5_task_issue_closures.issue_code_counts, issueCounts);
@@ -390,6 +398,21 @@ await test('the 42 task closures remain distinct from the source-integrity closu
     manifest.source_integrity_closure.issue_code,
     'QUALIFICATION_EVIDENCE_BRIDGE_UNAUTHENTICATED',
   );
+  strictEqual(
+    manifest.source_end_to_end_validation_closure.counts_toward_task_issue_closures,
+    false,
+  );
+  deepStrictEqual(manifest.source_end_to_end_validation_closure, {
+    issue_code: 'CANDIDATE_VALIDATION_CONTEXT_DROPPED_AFTER_PREPARATION',
+    scope: 'completed_run_recovery_and_package_validation',
+    status: 'closed_in_candidate_8',
+    counts_toward_task_issue_closures: false,
+    diagnosis_task_identity: '01a04b9e-903b-72d2-9819-8b0c2fde6336',
+    predecessor_candidate_id: 'aiq-core/1.1.0-candidate.7',
+    failure_class: 'candidate_provenance_routed_to_active_validator_after_model_work',
+    repair: 'provenance_bound_in_process_validation_context',
+    regression: 'candidate_completed_recovery_package_and_active_rejection_suite',
+  });
   for (const issueCode of reviewIssueCodes) {
     strictEqual(
       manifest.decisions.filter((decision) =>
@@ -624,7 +647,7 @@ await test('fixture authority and frozen pending lifecycle remain exact with no 
   deepStrictEqual(state.semantic_decision_counts, { retained: 72, revised: 0 });
   deepStrictEqual(state.predecessor_design_decision_counts, { retained: 65, revised: 7 });
   deepStrictEqual(state.task_issue_closure_counts, issueCounts);
-  strictEqual(state.predecessor_review_status, 'approved_but_stale_source_binding');
+  strictEqual(state.predecessor_review_status, 'not_completed_source_rejected');
   for (const status of [
     'independent_review_status',
     'seal_status',
@@ -702,7 +725,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   throws(() => buildCatalogFrom(reordered), /ordered explicit retained\/revised decision/u);
 });
 
-await test('candidate schemas bind candidate.7 identity and candidate.5 behavior contracts', async () => {
+await test('candidate schemas bind candidate.8 identity and candidate.5 behavior contracts', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -721,6 +744,12 @@ await test('candidate schemas bind candidate.7 identity and candidate.5 behavior
   deepStrictEqual(catalogProperties.schema_version, { const: 'aiq.catalog.v2' });
   deepStrictEqual(catalogProperties.task_set_version, { const: '1.1.0' });
   deepStrictEqual(catalogProperties.status, { const: 'frozen_candidate' });
+  strictEqual(
+    JSON.stringify(catalogProperties.candidate_state).includes(
+      'source_end_to_end_validation_closure',
+    ),
+    true,
+  );
   deepStrictEqual(taskProperties.task_version, { const: '1.1.0' });
   deepStrictEqual(taskProperties.scorer_version, { const: '1.0.6' });
   for (const field of [
@@ -816,7 +845,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const projectionProperties = jsonObject(projection.properties, 'projection properties');
   deepStrictEqual(projectionProperties.candidate_id, {
-    const: 'aiq-core/1.1.0-candidate.7',
+    const: 'aiq-core/1.1.0-candidate.8',
   });
   deepStrictEqual(projectionProperties.disposition, { const: 'accepted' });
   deepStrictEqual(projectionProperties.synthetic, { const: false });
@@ -839,6 +868,7 @@ await test('catalog, commitment validator schema, and stale mutations share one 
   assertCommitmentSchemaMatchesCatalog(catalog, commitmentSchema);
 
   for (const staleIdentity of [
+    'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80',
     'sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95',
     'sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4',
     'sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6',

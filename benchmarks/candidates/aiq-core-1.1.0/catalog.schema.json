@@ -82,7 +82,7 @@
       ],
       "properties": {
         "release_identity": {
-          "const": "aiq-core/1.1.0-candidate.7"
+          "const": "aiq-core/1.1.0-candidate.8"
         },
         "scoring_version": {
           "const": "1.0.6"
@@ -191,7 +191,7 @@
       ],
       "properties": {
         "candidate_id": {
-          "const": "aiq-core/1.1.0-candidate.7"
+          "const": "aiq-core/1.1.0-candidate.8"
         },
         "task_metadata_digest": {
           "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
@@ -209,6 +209,7 @@
         "immutable_rejected_predecessors",
         "retained_candidate_5_task_issue_closures",
         "source_integrity_closure",
+        "source_end_to_end_validation_closure",
         "decision_record",
         "semantic_decision_counts",
         "predecessor_design_decision_counts",
@@ -237,22 +238,27 @@
         },
         "predecessor_candidate": {
           "const": {
-            "candidate_id": "aiq-core/1.1.0-candidate.6",
-            "disposition": "superseded_unqualified_evidence_bridge",
-            "change_commit": "2746646c5f962f0aedc1b08f6efc7176bb4d9487",
-            "source_tree": "098d7665d56c94b96fa17240fd57b3c6207de8a4",
-            "pull_request": 139,
-            "author_task_identity": "01a04a80-491e-76b1-90b5-c199e12d488e",
-            "authoring_receipt_raw_sha256": "sha256:5accab79689a7a8ff5d387ed71d039e55d5a55434bce36629b321d85ec6d3c6b",
-            "full_inventory_sha256": "sha256:b37bbdeab31e1bacbdf41905f9916877f77f288219426a693eed2d49161994b4",
-            "catalog_canonical_sha256": "sha256:2ce983eb58368e1f7cd071fde2fa1ad8c6e537ef8ca7796d5ed0801c436e1170",
-            "catalog_entry_bindings_sha256": "sha256:9a33da06a0292b389c37c936105dd991721f61e4af0b6c6e4f0722f53d2992c8",
-            "task_metadata_sha256": "sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95",
+            "candidate_id": "aiq-core/1.1.0-candidate.7",
+            "disposition": "rejected_source_end_to_end_validation",
+            "change_commit": "73567104be50b9c8d45e004cd4e8b33af28ad72f",
+            "source_tree": "e31aaff7ea06567a0f704c45078cd066032524be",
+            "pull_request": 140,
+            "author_task_identity": "01a04b8c-239d-7482-b91d-7d5a2a77b4ff",
+            "authoring_receipt_raw_sha256": "sha256:890d8310e9e6c025b5131e6e60aa929536c397b2692a712acbd19c70ca175512",
+            "full_inventory_sha256": "sha256:3c9877c94de8ee968eb88a26e75b89617e74fbd22c6631c2e9c9816a4b4650c0",
+            "catalog_canonical_sha256": "sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40",
+            "catalog_entry_bindings_sha256": "sha256:c1319651b30285f03f2ffdbe4029b97cc42f675097781222a5cee46845bc1af3",
+            "task_metadata_sha256": "sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80",
             "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
-            "source_review_task_identity": "01a04ad3-053a-7672-ae71-29130b5f56e8",
+            "source_review_task_identity": "01a04b9e-903b-72d2-9819-8b0c2fde6336",
             "task_semantics": "accepted_unchanged_72",
             "task_issue_closure_entries": 42,
-            "semantic_retention_rule": "all_candidate_6_task_facing_semantics_must_remain_identical"
+            "semantic_retention_rule": "all_candidate_7_task_facing_semantics_must_remain_identical",
+            "prior_rejected_authoring_attempt": {
+              "disposition": "rejected_readback_failure",
+              "authoring_receipt_raw_sha256": "sha256:b37a4a84fa8adef31879b790ce108185ce1a79e3fee7885ded6c8b3ab518c7eb",
+              "full_inventory_sha256": "sha256:2e94fc8395cc7c4c88044bf7619413a5a96f2ec70633a5498289d1f381f4c224"
+            }
           }
         },
         "immutable_rejected_predecessors": {
@@ -262,13 +268,14 @@
             "aiq-core/1.1.0-candidate.3",
             "aiq-core/1.1.0-candidate.4",
             "aiq-core/1.1.0-candidate.5",
-            "aiq-core/1.1.0-candidate.6"
+            "aiq-core/1.1.0-candidate.6",
+            "aiq-core/1.1.0-candidate.7"
           ]
         },
         "retained_candidate_5_task_issue_closures": {
           "const": {
             "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-            "successor_candidate_id": "aiq-core/1.1.0-candidate.7",
+            "successor_candidate_id": "aiq-core/1.1.0-candidate.8",
             "disposition": "preserved_unchanged_and_revalidated",
             "closure_entries": 42,
             "issue_code_counts": {
@@ -294,6 +301,19 @@
             "predecessor_commitment_sha256": "sha256:37291d7da5f2b5d5b112b54b8ce1b296c20f718ebead87c14118056769e47011",
             "runtime_authority": "explicit_candidate_qualification_boundary",
             "regression": "replay_verified_projection_and_candidate_route_substitution_suite"
+          }
+        },
+        "source_end_to_end_validation_closure": {
+          "const": {
+            "issue_code": "CANDIDATE_VALIDATION_CONTEXT_DROPPED_AFTER_PREPARATION",
+            "scope": "completed_run_recovery_and_package_validation",
+            "status": "closed_in_candidate_8",
+            "counts_toward_task_issue_closures": false,
+            "diagnosis_task_identity": "01a04b9e-903b-72d2-9819-8b0c2fde6336",
+            "predecessor_candidate_id": "aiq-core/1.1.0-candidate.7",
+            "failure_class": "candidate_provenance_routed_to_active_validator_after_model_work",
+            "repair": "provenance_bound_in_process_validation_context",
+            "regression": "candidate_completed_recovery_package_and_active_rejection_suite"
           }
         },
         "decision_record": {
@@ -330,7 +350,7 @@
           "const": true
         },
         "predecessor_review_status": {
-          "const": "approved_but_stale_source_binding"
+          "const": "not_completed_source_rejected"
         },
         "independent_review_status": {
           "const": "pending"
@@ -476,7 +496,7 @@
               "const": "1.1.0"
             },
             "supersedes_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.6"
+              "const": "aiq-core/1.1.0-candidate.7"
             },
             "decision": {
               "const": "retained"
@@ -1559,19 +1579,19 @@
           ],
           "properties": {
             "origin": {
-              "const": "candidate_6_qualification_bridge_remediation_authoring"
+              "const": "candidate_7_end_to_end_validation_remediation_authoring"
             },
             "owner": {
               "const": "AIQ benchmark maintainers"
             },
             "recorded_date": {
-              "const": "2026-08-28"
+              "const": "2026-08-29"
             },
             "predecessor_task_version": {
               "const": "1.1.0"
             },
             "predecessor_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.6"
+              "const": "aiq-core/1.1.0-candidate.7"
             },
             "source": {
               "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"
