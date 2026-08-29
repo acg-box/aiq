@@ -1129,6 +1129,20 @@ struct ValidationOptions {
 	mode: CorpusValidationMode,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CandidatePackageInputs<'a> {
+	public_tasks: Option<&'a Path>,
+	hidden_tasks: Option<&'a Path>,
+	corpus_commitment: Option<&'a Path>,
+	source_root: Option<&'a Path>,
+}
+
+#[derive(Debug)]
+struct PackageCalibrationValidation {
+	context: CalibrationValidationContext,
+	tasks: Option<Vec<TaskDefinition>>,
+}
+
 impl From<ReplayMode> for ReplayStatus {
 	fn from(value: ReplayMode) -> Self {
 		match value {
@@ -1685,6 +1699,18 @@ enum Command {
 		/// Declared maximum concurrent task executions. Required when a real saved run predates this binding.
 		#[arg(long)]
 		execution_concurrency: Option<usize>,
+		/// Directory of public-example candidate task JSON files.
+		#[arg(long)]
+		public_tasks: Option<PathBuf>,
+		/// Controlled directory of hidden candidate task JSON files.
+		#[arg(long)]
+		hidden_tasks: Option<PathBuf>,
+		/// Exact candidate corpus commitment. Requires candidate tasks and `--source-root`.
+		#[arg(long)]
+		corpus_commitment: Option<PathBuf>,
+		/// Exact source root committed by the candidate corpus.
+		#[arg(long)]
+		source_root: Option<PathBuf>,
 		/// Output signed-envelope JSON file.
 		#[arg(long)]
 		output: PathBuf,
@@ -2286,6 +2312,10 @@ fn dispatch_package(command: Command) -> Result<(), Box<dyn std::error::Error>> 
 		artifact_root,
 		signing_key_env,
 		execution_concurrency,
+		public_tasks,
+		hidden_tasks,
+		corpus_commitment,
+		source_root,
 		output,
 		official_admission,
 	} = command
@@ -2298,6 +2328,12 @@ fn dispatch_package(command: Command) -> Result<(), Box<dyn std::error::Error>> 
 		&artifact_root,
 		&signing_key_env,
 		execution_concurrency,
+		CandidatePackageInputs {
+			public_tasks: public_tasks.as_deref(),
+			hidden_tasks: hidden_tasks.as_deref(),
+			corpus_commitment: corpus_commitment.as_deref(),
+			source_root: source_root.as_deref(),
+		},
 		&output,
 		official_admission.as_deref(),
 	)
@@ -5469,15 +5505,22 @@ fn run_package(
 	artifact_root: &Path,
 	signing_key_env: &str,
 	execution_concurrency: Option<usize>,
+	candidate_inputs: CandidatePackageInputs<'_>,
 	output: &Path,
 	official_admission: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	validate_new_output_set(&[("signed package output", output)])?;
 
-	let secret = signing_secret_from_environment(signing_key_env)?;
-	let identity = SigningIdentity::from_secret(secret);
+	let package_validation = package_calibration_validation(candidate_inputs)?;
 	let value = read_json::<serde_json::Value>(run_path)?;
 	let schema = value.get("schema_version").and_then(serde_json::Value::as_str);
+
+	if schema == Some(RUN_SCHEMA_VERSION) && package_validation.tasks.is_some() {
+		return Err("candidate package inputs require a calibration run".into());
+	}
+
+	let secret = signing_secret_from_environment(signing_key_env)?;
+	let identity = SigningIdentity::from_secret(secret);
 	let package = match schema {
 		Some(schema) if schema == RUN_SCHEMA_VERSION => {
 			let mut run: RunRecord = serde_json::from_value(value)?;
@@ -5538,14 +5581,15 @@ fn run_package(
 				);
 			}
 
+			let validation_context = &package_validation.context;
+			let tasks = package_validation.tasks.as_deref();
 			let mut run: CalibrationRunRecord = serde_json::from_value(value)?;
-			let validation_context = CalibrationValidationContext::from_package_provenance(&run)?;
 
-			validation_context.validate(&run, None)?;
+			validation_context.validate(&run, tasks)?;
 
 			bind_execution_concurrency(&mut run.execution_concurrency, execution_concurrency)?;
 
-			validation_context.validate(&run, None)?;
+			validation_context.validate(&run, tasks)?;
 
 			let evaluator_results = submission::read_evaluator_results_artifact(
 				artifact_root,
@@ -5570,11 +5614,19 @@ fn run_package(
 				TrustTier::Untrusted,
 			)?;
 
-			submission::serialize_calibration_package_for_local_verification(&envelope)?
+			submission::serialize_calibration_package_for_local_verification(
+				&envelope,
+				validation_context,
+				tasks,
+			)?
 		},
 		_ => return Err("run schema is unsupported for packaging".into()),
 	};
 
+	write_package_output(output, package)
+}
+
+fn write_package_output(output: &Path, package: Vec<u8>) -> Result<(), Box<dyn std::error::Error>> {
 	if output == Path::new("-") {
 		print!("{}", String::from_utf8(package)?);
 	} else {
@@ -5582,6 +5634,51 @@ fn run_package(
 	}
 
 	Ok(())
+}
+
+fn package_calibration_validation(
+	inputs: CandidatePackageInputs<'_>,
+) -> Result<PackageCalibrationValidation, Box<dyn std::error::Error>> {
+	let CandidatePackageInputs { public_tasks, hidden_tasks, corpus_commitment, source_root } =
+		inputs;
+	let has_tasks = public_tasks.is_some() || hidden_tasks.is_some();
+	let has_any_candidate_input = has_tasks || corpus_commitment.is_some() || source_root.is_some();
+
+	if !has_any_candidate_input {
+		return Ok(PackageCalibrationValidation {
+			context: CalibrationValidationContext::current(),
+			tasks: None,
+		});
+	}
+
+	let (Some(corpus_commitment), Some(source_root)) = (corpus_commitment, source_root) else {
+		return Err(
+			"candidate packaging requires --public-tasks, --hidden-tasks, or both, plus --corpus-commitment and --source-root"
+				.into(),
+		);
+	};
+
+	if !has_tasks {
+		return Err(
+			"candidate packaging requires --public-tasks, --hidden-tasks, or both, plus --corpus-commitment and --source-root"
+				.into(),
+		);
+	}
+
+	let mut report = load_tasks(public_tasks, hidden_tasks)?;
+
+	if !report.issues.is_empty() {
+		write_task_validation_report(&report, public_tasks, hidden_tasks)?;
+
+		return Err("task validation failed".into());
+	}
+
+	candidate_catalog::order_tasks_by_checked_candidate(&mut report.tasks)?;
+
+	let corpus = validate_run_corpus(true, corpus_commitment, &report.tasks, source_root)?;
+	let context = CalibrationValidationContext::candidate_qualification(&corpus, &report.tasks)?;
+
+	Ok(PackageCalibrationValidation { context, tasks: Some(report.tasks) })
 }
 
 fn bind_execution_concurrency(
@@ -6341,6 +6438,8 @@ mod tests {
 	use clap::Parser as _;
 
 	use crate::capacity;
+	#[cfg(unix)]
+	use crate::corpus_commitment::tests::RunnerProvenancePathFixture;
 	use crate::protocol;
 	use crate::resume;
 	use crate::run_validation;
@@ -6520,6 +6619,27 @@ mod tests {
 				.expect("repository root");
 
 		repository_root.join("target").join(format!("aiq-cli-{name}-{}-{suffix}", process::id()))
+	}
+
+	#[cfg(unix)]
+	fn write_task_directory(
+		root: &Path,
+		name: &str,
+		tasks: &[crate::task::TaskDefinition],
+	) -> PathBuf {
+		let directory = root.join(name);
+
+		fs::create_dir(&directory).expect("candidate task directory");
+
+		for (index, task) in tasks.iter().rev().enumerate() {
+			fs::write(
+				directory.join(format!("{index:03}-{}.json", task.task_id)),
+				serde_json::to_vec(task).expect("candidate task JSON"),
+			)
+			.expect("candidate task source");
+		}
+
+		directory
 	}
 
 	fn codex_runtime_fixture(root: &Path) -> PathBuf {
@@ -6844,6 +6964,186 @@ mod tests {
 			super::bind_execution_concurrency(&mut absent, Some(crate::runner::MAX_RUN_JOBS + 1))
 				.is_err()
 		);
+	}
+
+	#[test]
+	fn package_without_candidate_inputs_keeps_current_validation_authority() {
+		let validation = super::package_calibration_validation(super::CandidatePackageInputs {
+			public_tasks: None,
+			hidden_tasks: None,
+			corpus_commitment: None,
+			source_root: None,
+		})
+		.expect("current package validation");
+
+		assert_eq!(validation.context, run_validation::CalibrationValidationContext::current());
+		assert!(validation.tasks.is_none());
+	}
+
+	#[test]
+	fn every_incomplete_candidate_package_input_group_fails_before_output() {
+		let root = fixture_root("candidate-package-incomplete");
+		let tasks = root.join("tasks");
+		let corpus = root.join("corpus.json");
+		let source = root.join("source");
+
+		fs::create_dir_all(&root).expect("incomplete package fixture root");
+
+		for (index, (has_tasks, has_corpus, has_source)) in [
+			(true, false, false),
+			(false, true, false),
+			(false, false, true),
+			(true, true, false),
+			(true, false, true),
+			(false, true, true),
+		]
+		.into_iter()
+		.enumerate()
+		{
+			let output = root.join(format!("package-{index}.json"));
+			let error = super::run_package(
+				&root.join("unread-run.json"),
+				&root.join("artifacts"),
+				"AIQ_TEST_UNUSED_SIGNING_KEY",
+				None,
+				super::CandidatePackageInputs {
+					public_tasks: None,
+					hidden_tasks: has_tasks.then_some(tasks.as_path()),
+					corpus_commitment: has_corpus.then_some(corpus.as_path()),
+					source_root: has_source.then_some(source.as_path()),
+				},
+				&output,
+				None,
+			)
+			.expect_err("incomplete candidate package inputs");
+
+			assert_eq!(
+				error.to_string(),
+				"candidate packaging requires --public-tasks, --hidden-tasks, or both, plus --corpus-commitment and --source-root"
+			);
+			assert!(!output.exists());
+		}
+
+		fs::remove_dir_all(root).expect("incomplete package fixture cleanup");
+	}
+
+	#[test]
+	fn candidate_package_task_load_issues_fail_before_output() {
+		let root = fixture_root("candidate-package-task-load");
+		let tasks = root.join("tasks");
+		let output = root.join("package.json");
+
+		fs::create_dir_all(&tasks).expect("invalid task fixture root");
+		fs::write(tasks.join("invalid.json"), b"{").expect("invalid task fixture");
+
+		let error = super::run_package(
+			&root.join("unread-run.json"),
+			&root.join("artifacts"),
+			"AIQ_TEST_UNUSED_SIGNING_KEY",
+			None,
+			super::CandidatePackageInputs {
+				public_tasks: None,
+				hidden_tasks: Some(&tasks),
+				corpus_commitment: Some(&root.join("corpus.json")),
+				source_root: Some(&root.join("source")),
+			},
+			&output,
+			None,
+		)
+		.expect_err("invalid candidate task source");
+
+		assert_eq!(error.to_string(), "task validation failed");
+		assert!(!output.exists());
+
+		fs::remove_dir_all(root).expect("invalid task fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn candidate_package_tasks_are_catalog_ordered_and_source_authoritative() {
+		let fixture = RunnerProvenancePathFixture::new("package-input-authority");
+		let corpus_path = fixture.write("candidate", &fixture.candidate_commitment);
+		let tasks_path =
+			write_task_directory(&fixture.root, "candidate-tasks", &fixture.candidate_tasks);
+		let validation = super::package_calibration_validation(super::CandidatePackageInputs {
+			public_tasks: None,
+			hidden_tasks: Some(&tasks_path),
+			corpus_commitment: Some(&corpus_path),
+			source_root: Some(&fixture.source_root),
+		})
+		.expect("exact candidate package inputs");
+		let ordered = validation.tasks.expect("candidate task authority");
+
+		assert_eq!(
+			ordered.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>(),
+			fixture.candidate_tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>()
+		);
+
+		let mut unrelated = fixture.candidate_tasks.clone();
+
+		unrelated[0].task_id = "coding-99".to_owned();
+
+		let unrelated_path = write_task_directory(&fixture.root, "unrelated-tasks", &unrelated);
+		let output = fixture.root.join("unrelated-package.json");
+		let error = super::run_package(
+			&fixture.root.join("unread-run.json"),
+			&fixture.root.join("artifacts"),
+			"AIQ_TEST_UNUSED_SIGNING_KEY",
+			None,
+			super::CandidatePackageInputs {
+				public_tasks: None,
+				hidden_tasks: Some(&unrelated_path),
+				corpus_commitment: Some(&corpus_path),
+				source_root: Some(&fixture.source_root),
+			},
+			&output,
+			None,
+		)
+		.expect_err("unrelated candidate task data");
+
+		assert_eq!(error.to_string(), "candidate task sources do not match the checked catalog");
+		assert!(!output.exists());
+
+		fs::remove_dir_all(fixture.root).expect("candidate package authority fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn candidate_package_inputs_reject_non_calibration_runs_before_output() {
+		let fixture = RunnerProvenancePathFixture::new("package-input-run-class");
+		let corpus_path = fixture.write("candidate", &fixture.candidate_commitment);
+		let tasks_path =
+			write_task_directory(&fixture.root, "candidate-tasks", &fixture.candidate_tasks);
+		let run_path = fixture.root.join("official-run.json");
+		let output = fixture.root.join("package.json");
+
+		fs::write(
+			&run_path,
+			serde_json::to_vec(&serde_json::json!({"schema_version": runner::RUN_SCHEMA_VERSION}))
+				.expect("non-calibration run fixture"),
+		)
+		.expect("non-calibration run source");
+
+		let error = super::run_package(
+			&run_path,
+			&fixture.root.join("artifacts"),
+			"AIQ_TEST_UNUSED_SIGNING_KEY",
+			None,
+			super::CandidatePackageInputs {
+				public_tasks: None,
+				hidden_tasks: Some(&tasks_path),
+				corpus_commitment: Some(&corpus_path),
+				source_root: Some(&fixture.source_root),
+			},
+			&output,
+			None,
+		)
+		.expect_err("candidate inputs with non-calibration run");
+
+		assert_eq!(error.to_string(), "candidate package inputs require a calibration run");
+		assert!(!output.exists());
+
+		fs::remove_dir_all(fixture.root).expect("candidate run-class fixture cleanup");
 	}
 
 	#[test]

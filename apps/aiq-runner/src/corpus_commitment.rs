@@ -172,6 +172,36 @@ impl ValidatedCorpusCommitment {
 		&self.catalog_digest
 	}
 
+	/// Returns the controlled harness commitment.
+	#[must_use]
+	pub fn harness_digest(&self) -> &str {
+		&self.harness_digest
+	}
+
+	/// Returns the exact runner prompt-source commitment.
+	#[must_use]
+	pub fn prompt_digest(&self) -> &str {
+		&self.prompt_digest
+	}
+
+	/// Returns the declared tool-policy commitment.
+	#[must_use]
+	pub fn tool_policy_digest(&self) -> &str {
+		&self.tool_policy_digest
+	}
+
+	/// Returns the declared network-policy commitment.
+	#[must_use]
+	pub fn network_policy_digest(&self) -> &str {
+		&self.network_policy_digest
+	}
+
+	/// Returns the controlled execution-environment commitment.
+	#[must_use]
+	pub fn environment_digest(&self) -> &str {
+		&self.environment_digest
+	}
+
 	/// Returns the canonical source-manifest digest.
 	#[must_use]
 	pub fn source_manifest_digest(&self) -> &str {
@@ -1847,7 +1877,7 @@ fn valid_digest(value: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 	use std::{env, fs, process, slice};
 	#[cfg(unix)]
 	use std::{
@@ -1859,6 +1889,7 @@ mod tests {
 	use sha2::{Digest as _, Sha256};
 
 	use crate::candidate_catalog;
+	use crate::cli;
 	use crate::{
 		corpus_commitment::{
 			self, CorpusCatalog, CorpusCommitment, CorpusExecution, SourceManifest,
@@ -1867,26 +1898,25 @@ mod tests {
 		protocol, runner,
 		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
-	use crate::cli;
-
 
 	#[cfg(unix)]
-	struct RunnerProvenancePathFixture {
-		root: std::path::PathBuf,
-		source_root: std::path::PathBuf,
+	pub(crate) struct RunnerProvenancePathFixture {
+		pub(crate) root: std::path::PathBuf,
+		pub(crate) source_root: std::path::PathBuf,
+		pub(crate) evaluator_root: std::path::PathBuf,
 		toolchain_root: std::path::PathBuf,
-		runtime: crate::task::EvaluatorRuntime,
+		pub(crate) runtime: crate::task::EvaluatorRuntime,
 		core_tasks: Vec<crate::task::TaskDefinition>,
-		candidate_tasks: Vec<crate::task::TaskDefinition>,
+		pub(crate) candidate_tasks: Vec<crate::task::TaskDefinition>,
 		contrast_tasks: Vec<crate::task::TaskDefinition>,
 		core_commitment: serde_json::Value,
-		candidate_commitment: serde_json::Value,
+		pub(crate) candidate_commitment: serde_json::Value,
 		contrast_commitment: serde_json::Value,
 	}
 
 	#[cfg(unix)]
 	impl RunnerProvenancePathFixture {
-		fn new(label: &str) -> Self {
+		pub(crate) fn new(label: &str) -> Self {
 			let root = env::temp_dir().join(format!(
 				"aiq-runner-provenance-{label}-{}-{}",
 				process::id(),
@@ -1898,13 +1928,26 @@ mod tests {
 			let source_root = root.join("repository");
 			let runner_source = source_root.join("apps/aiq-runner/src/runner.rs");
 			let executable_source = root.join("executables");
+			let evaluator_root = root.join("evaluators");
+			let evaluator_path = evaluator_root.join("fixture/evaluator");
 			let toolchain_root = root.join("toolchain");
 
 			fs::create_dir_all(runner_source.parent().expect("runner source parent"))
 				.expect("fixture source root");
 			fs::create_dir_all(&executable_source).expect("fixture executable source");
+			fs::create_dir_all(evaluator_path.parent().expect("fixture evaluator parent"))
+				.expect("fixture evaluator root");
 			fs::create_dir(&toolchain_root).expect("fixture toolchain root");
 			fs::write(&runner_source, b"committed runner source").expect("fixture runner source");
+			fs::write(&evaluator_path, b"process.stdout.write('{}\\n');\\n")
+				.expect("fixture evaluator");
+
+			let evaluator_digest = format!(
+				"sha256:{}",
+				hex::encode(Sha256::digest(
+					fs::read(&evaluator_path).expect("fixture evaluator bytes")
+				))
+			);
 
 			for (name, version) in [("node", "v24.18.0"), ("rg", "ripgrep 15.1.0")] {
 				let source = executable_source.join(name);
@@ -1923,7 +1966,11 @@ mod tests {
 				.clone();
 			let mut core_tasks = runner::synthetic_demo_tasks();
 
-			Self::bind_external_evaluators(&mut core_tasks, runtime.executable_digest());
+			Self::bind_external_evaluators(
+				&mut core_tasks,
+				runtime.executable_digest(),
+				&evaluator_digest,
+			);
 
 			let mut contrast_tasks = core_tasks[..super::CONTRAST_TASK_IDS.len()].to_vec();
 
@@ -1942,26 +1989,12 @@ mod tests {
 				candidate_catalog::validate_candidate_catalog(&candidate_value)
 					.expect("candidate authority");
 			let candidate_contract = super::candidate_core_catalog_contract(&candidate_authority);
-			let candidate_catalog: super::FrozenCatalog =
-				serde_json::from_value(candidate_value.clone()).expect("candidate frozen catalog");
-			let candidate_raw_tasks =
-				candidate_value["tasks"].as_array().expect("candidate task metadata");
-			let mut candidate_tasks = runner::synthetic_demo_tasks();
-
-			for ((task, frozen), raw) in
-				candidate_tasks.iter_mut().zip(candidate_catalog.tasks).zip(candidate_raw_tasks)
-			{
-				task.task_id = frozen.task_id;
-				task.task_version = frozen.task_version;
-				task.allowed_tools = frozen.allowed_tools;
-				task.budgets = frozen.budget;
-				task.catalog_entry_digest =
-					Some(protocol::canonical_hash(raw).expect("candidate catalog entry digest"));
-				task.scorer_version = "1.0.6".to_owned();
-			}
-
-			Self::bind_external_evaluators(&mut candidate_tasks, runtime.executable_digest());
-
+			let candidate_tasks = Self::candidate_tasks(
+				&candidate_value,
+				&candidate_authority,
+				runtime.executable_digest(),
+				&evaluator_digest,
+			);
 			let core_commitment =
 				Self::commitment(super::CORE_CATALOG, &core_tasks, &source_root, &runtime, &policy);
 			let candidate_commitment = Self::commitment(
@@ -1982,6 +2015,7 @@ mod tests {
 			Self {
 				root,
 				source_root,
+				evaluator_root,
 				toolchain_root,
 				runtime,
 				core_tasks,
@@ -1993,9 +2027,44 @@ mod tests {
 			}
 		}
 
+		fn candidate_tasks(
+			candidate_value: &serde_json::Value,
+			candidate_authority: &candidate_catalog::CandidateCatalogAuthority,
+			runtime_digest: &str,
+			evaluator_digest: &str,
+		) -> Vec<crate::task::TaskDefinition> {
+			let candidate_catalog: super::FrozenCatalog =
+				serde_json::from_value(candidate_value.clone()).expect("candidate frozen catalog");
+			let candidate_raw_tasks =
+				candidate_value["tasks"].as_array().expect("candidate task metadata");
+			let mut tasks = runner::synthetic_demo_tasks();
+
+			for (((task, frozen), raw), expected) in tasks
+				.iter_mut()
+				.zip(candidate_catalog.tasks)
+				.zip(candidate_raw_tasks)
+				.zip(&candidate_authority.tasks)
+			{
+				task.task_id = frozen.task_id;
+				task.task_version = frozen.task_version;
+				task.domain = expected.domain;
+				task.cluster_id = Some(expected.cluster_id.clone());
+				task.allowed_tools = frozen.allowed_tools;
+				task.budgets = frozen.budget;
+				task.catalog_entry_digest =
+					Some(protocol::canonical_hash(raw).expect("candidate catalog entry digest"));
+				task.scorer_version = "1.0.6".to_owned();
+			}
+
+			Self::bind_external_evaluators(&mut tasks, runtime_digest, evaluator_digest);
+
+			tasks
+		}
+
 		fn bind_external_evaluators(
 			tasks: &mut [crate::task::TaskDefinition],
 			runtime_digest: &str,
+			evaluator_digest: &str,
 		) {
 			for task in tasks {
 				let configuration = serde_json::from_value(serde_json::json!({
@@ -2017,7 +2086,7 @@ mod tests {
 						runtime_kind: crate::task::EvaluatorRuntimeKind::Node,
 						runtime_executable_digest: runtime_digest.to_owned(),
 						executable_ref: std::path::PathBuf::from("fixture/evaluator"),
-						executable_digest: format!("sha256:{}", "e".repeat(64)),
+						executable_digest: evaluator_digest.to_owned(),
 						configuration_digest,
 						arguments: Vec::new(),
 						timeout_ms: None,
@@ -2152,7 +2221,7 @@ mod tests {
 			})
 		}
 
-		fn write(&self, label: &str, value: &serde_json::Value) -> std::path::PathBuf {
+		pub(crate) fn write(&self, label: &str, value: &serde_json::Value) -> std::path::PathBuf {
 			let path = self.root.join(format!("{label}.json"));
 
 			fs::write(&path, serde_json::to_vec(value).expect("serialize fixture commitment"))
@@ -2388,22 +2457,12 @@ mod tests {
 		let fixture = RunnerProvenancePathFixture::new("candidate-route");
 		let path = fixture.write("candidate", &fixture.candidate_commitment);
 
-		cli::validate_run_corpus(
-			true,
-			&path,
-			&fixture.candidate_tasks,
-			&fixture.source_root,
-		)
-		.expect("explicit candidate preparation route");
+		cli::validate_run_corpus(true, &path, &fixture.candidate_tasks, &fixture.source_root)
+			.expect("explicit candidate preparation route");
 
 		assert!(
-			cli::validate_run_corpus(
-				false,
-				&path,
-				&fixture.candidate_tasks,
-				&fixture.source_root,
-			)
-			.is_err(),
+			cli::validate_run_corpus(false, &path, &fixture.candidate_tasks, &fixture.source_root,)
+				.is_err(),
 			"the unflagged active 1.0.7 validator must reject candidate input"
 		);
 

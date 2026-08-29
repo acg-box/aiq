@@ -6386,6 +6386,127 @@ mod tests {
 			self.convert_to_calibration_task_count(self.tasks.len());
 		}
 
+		fn convert_to_candidate_calibration(&mut self) {
+			self.convert_to_calibration();
+
+			let catalog_value: serde_json::Value = serde_json::from_str(include_str!(
+				"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
+			))
+			.expect("candidate catalog JSON");
+			let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
+				.expect("candidate catalog authority");
+			let catalog_tasks = catalog_value["tasks"].as_array().expect("candidate catalog tasks");
+			let positions = catalog
+				.tasks
+				.iter()
+				.enumerate()
+				.map(|(index, task)| (task.task_id.as_str(), index))
+				.collect::<std::collections::BTreeMap<_, _>>();
+
+			for task in &mut self.tasks {
+				let authority = catalog.task(&task.task_id).expect("candidate task authority");
+				let raw = catalog_tasks
+					.iter()
+					.find(|entry| entry["task_id"].as_str() == Some(&task.task_id))
+					.expect("candidate catalog task");
+
+				task.task_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+				task.domain = authority.domain;
+				task.cluster_id = Some(authority.cluster_id.clone());
+				task.allowed_tools = serde_json::from_value(raw["allowed_tools"].clone())
+					.expect("candidate allowed tools");
+				task.budgets =
+					serde_json::from_value(raw["budget"].clone()).expect("candidate budget");
+				task.catalog_entry_digest =
+					Some(protocol::canonical_hash(raw).expect("candidate catalog entry digest"));
+				task.scorer_version = "1.0.6".to_owned();
+			}
+
+			self.tasks.sort_by_key(|task| {
+				positions.get(task.task_id.as_str()).copied().unwrap_or(usize::MAX)
+			});
+
+			let envelope: protocol::SubmissionEnvelope =
+				serde_json::from_slice(&self.package).expect("current calibration envelope");
+			let task_hashes = self
+				.tasks
+				.iter()
+				.map(|task| {
+					(task.task_id.as_str(), task.content_hash().expect("candidate task digest"))
+				})
+				.collect::<std::collections::BTreeMap<_, _>>();
+			let task_set_hash = task::task_set_hash(&self.tasks).expect("candidate task-set hash");
+			let evaluator_digest = corpus_commitment::evaluator_digest(&self.tasks)
+				.expect("candidate evaluator digest");
+			let mut run: CalibrationRunRecord =
+				serde_json::from_value(envelope.payload).expect("current calibration payload");
+
+			run.task_ids = self.tasks.iter().map(|task| task.task_id.clone()).collect();
+
+			run.task_set_hash.clone_from(&task_set_hash);
+
+			run.provenance.corpus_release_id = "corpus_candidate_package_fixture".to_owned();
+			run.provenance.corpus_commitment_sha256 = format!("sha256:{}", "c".repeat(64));
+
+			run.provenance.catalog_digest.clone_from(&catalog.task_metadata_digest);
+			run.provenance.task_set_digest.clone_from(&task_set_hash);
+			run.provenance.evaluator_digest.clone_from(&evaluator_digest);
+
+			run.run_id = resume::classified_run_id(
+				&run.schedule_slot,
+				&task_set_hash,
+				&run.provenance.corpus_commitment_sha256,
+				&run.models,
+				RunClass::Calibration,
+			)
+			.expect("candidate calibration run id");
+
+			for result in &mut run.results {
+				result.run_id.clone_from(&run.run_id);
+
+				result.task_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+				result.task_hash = task_hashes
+					.get(result.task_id.as_str())
+					.expect("candidate result task")
+					.clone();
+				result.result_id = format!(
+					"result_{}",
+					result
+						.content_hash()
+						.expect("candidate result digest")
+						.trim_start_matches("sha256:")
+				);
+			}
+
+			run.terminal_attempt_lineage = runner::terminal_attempt_lineage(&run.results);
+
+			run_validation::validate_candidate_qualification_calibration_with_tasks(
+				&run,
+				&self.tasks,
+			)
+			.expect("candidate calibration validation");
+
+			self.environment.task_set_version =
+				candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
+			self.environment.benchmark_version =
+				format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION);
+			self.environment.expected_provenance = Some(run.provenance.clone());
+
+			let identity = SigningIdentity::from_secret([7; 32]);
+			let envelope = identity
+				.sign(
+					&run.run_id,
+					protocol::CALIBRATION_RUN_PAYLOAD_TYPE,
+					&run,
+					TrustTier::Untrusted,
+				)
+				.expect("signed candidate calibration package");
+
+			self.package = protocol::canonical_json(&envelope)
+				.expect("candidate local-verification package bytes");
+			self.package_sha256 = hex::encode(Sha256::digest(&self.package));
+		}
+
 		fn convert_to_calibration_task_count(&mut self, task_count: usize) {
 			let envelope: protocol::SubmissionEnvelope =
 				serde_json::from_slice(&self.package).expect("official envelope");
@@ -6511,6 +6632,30 @@ mod tests {
 			attestation_output: &Path,
 		) -> Result<super::PreparedVerification, WorkerError> {
 			self.prepare_with_jobs(stage_output, attestation_output, DEFAULT_REPLAY_JOBS)
+		}
+
+		fn prepare_candidate(&self) -> Result<super::PreparedVerification, WorkerError> {
+			let resolver = LocalArtifactResolver::new(&self.artifact_root)?;
+			let signing_identity = VerifierSigningIdentity::from_secret([8; 32]);
+
+			crate::prepare_candidate_qualification_verification(PreparationRequest {
+				package_bytes: &self.package,
+				package_sha256: &self.package_sha256,
+				expected_idempotency_key: None,
+				replay_identity: &format!("candidate-local-{}", self.package_sha256),
+				resolver: &resolver,
+				tasks: &self.tasks,
+				environment: &self.environment,
+				evaluator_root: &self.evaluator_root,
+				evaluator_runtime: Some(&self.evaluator_runtime),
+				replay_root: &self.replay_root,
+				signing_identity: &signing_identity,
+				official_admission: None,
+				require_official_admission: false,
+				observed_unix_ms: 1_000,
+				require_production: true,
+				replay_jobs: DEFAULT_REPLAY_JOBS,
+			})
 		}
 
 		fn prepare_with_jobs(
@@ -8671,6 +8816,26 @@ mod tests {
 		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
 
 		assert_calibration_attestation_mutations_rejected(&stage, &attestation);
+	}
+
+	#[test]
+	fn candidate_local_package_is_accepted_by_the_offline_verifier() {
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.convert_to_candidate_calibration();
+
+		let prepared = fixture.prepare_candidate().expect("candidate offline replay");
+		let PreparedEvidence::Calibration { stage, attestation } = prepared.evidence else {
+			panic!("expected candidate calibration evidence");
+		};
+		let projection =
+			stage.qualification_projection.as_ref().expect("candidate qualification projection");
+
+		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.9");
+		assert_eq!(projection.cells.len(), 1_224);
+		assert_eq!(stage.trust, TrustTier::Untrusted);
+		assert_eq!(attestation.stage_digest, stage.stage_digest);
+		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
 	}
 
 	#[test]

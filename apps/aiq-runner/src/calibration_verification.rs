@@ -21,7 +21,7 @@ use crate::scoring::{
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
 	benchmark_qualification::{self, CandidateQualificationProjection},
-	candidate_catalog,
+	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::{MODEL_MATRIX, ModelConfig, ModelFamily},
 	normalization::{
@@ -1659,7 +1659,7 @@ fn verify_calibration_run_inner(
 	submission::validate_calibration_signer_binding(run, &package.signer.node_id)
 		.map_err(|error| CalibrationVerificationError::new(error.to_string()))?;
 
-	validate_metadata(run, package, metadata)?;
+	validate_metadata(run, package, metadata, mode)?;
 
 	let pricing = ApiEquivalentPricingModel::default();
 	let result_efficiency = run
@@ -2124,16 +2124,27 @@ fn validate_metadata(
 	run: &CalibrationRunRecord,
 	package: &VerifiedPackageIdentity,
 	metadata: &AttestedDeploymentMetadata,
+	mode: CalibrationVerificationMode,
 ) -> Result<(), CalibrationVerificationError> {
 	validate_node(&package.signer)?;
 	validate_hash(&package.package_sha256, false)?;
 	validate_hash(&package.content_hash, true)?;
 	validate_hash(&metadata.prompt_set_digest, true)?;
 
+	let (expected_task_set_version, expected_benchmark_version) = match mode {
+		CalibrationVerificationMode::CandidateQualification => (
+			CANDIDATE_TASK_SET_VERSION,
+			format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION),
+		),
+		CalibrationVerificationMode::Current | CalibrationVerificationMode::PromotedSource1_0_7 => {
+			(AIQ_TASK_SET_VERSION, AIQ_BENCHMARK_VERSION.to_owned())
+		},
+	};
+
 	if metadata.synthetic_test
 		|| metadata.task_set_id != AIQ_TASK_SET_ID
-		|| metadata.task_set_version != AIQ_TASK_SET_VERSION
-		|| metadata.benchmark_version != AIQ_BENCHMARK_VERSION
+		|| metadata.task_set_version != expected_task_set_version
+		|| metadata.benchmark_version != expected_benchmark_version
 		|| metadata.prompt_set_digest != run.provenance.prompt_digest
 		|| metadata.started_unix_ms != run.started_unix_ms
 		|| metadata.finished_unix_ms != run.finished_unix_ms

@@ -196,7 +196,7 @@ function expectInvalidReceiptMutation(
   throws(() => parseDecisionManifest(clone), /receipt contract|fields are invalid/u);
 }
 
-await test('the generated candidate.8 public source is deterministic', async () => {
+await test('the generated candidate.9 public source is deterministic', async () => {
   const catalog = buildCatalog();
   deepStrictEqual(
     JSON.parse(await readFile(new URL('catalog.json', candidateRoot), 'utf8')),
@@ -208,38 +208,75 @@ await test('the generated candidate.8 public source is deterministic', async () 
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.8',
+    'aiq-core/1.1.0-candidate.9',
   );
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').task_metadata_digest,
-    'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',
+    'sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb',
   );
 });
 
-await test('candidate.7 is exact rejected source evidence and candidate.1 through .7 stay immutable', async () => {
+await test('candidate.9 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
+  const rootPackage = jsonObject(
+    JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')),
+    'root package',
+  );
+  const webPackage = jsonObject(
+    JSON.parse(await readFile(join(repositoryRoot, 'apps/web/package.json'), 'utf8')),
+    'Web package',
+  );
+  const lock = jsonObject(
+    JSON.parse(await readFile(join(repositoryRoot, 'package-lock.json'), 'utf8')),
+    'package lock',
+  );
+  const packages = jsonObject(lock.packages, 'locked packages');
+  const rootDevelopment = jsonObject(rootPackage.devDependencies, 'root development dependencies');
+  const webDevelopment = jsonObject(webPackage.devDependencies, 'Web development dependencies');
+  const npm = spawnSync('npm', ['--version'], { cwd: repositoryRoot, encoding: 'utf8' });
+
+  strictEqual((await readFile(join(repositoryRoot, '.node-version'), 'utf8')).trim(), '24.18.0');
+  strictEqual(process.version, 'v24.18.0');
+  strictEqual(rootPackage.packageManager, 'npm@11.17.0');
+  strictEqual(npm.status, 0);
+  strictEqual(npm.stdout.trim(), '11.17.0');
+  strictEqual(rootDevelopment.typescript, '7.0.2');
+  strictEqual(webDevelopment.typescript, '5.9.3');
+  strictEqual(webDevelopment['typescript-compiler-api'], 'npm:typescript@~5.9.0');
+  strictEqual(jsonObject(packages['node_modules/typescript'], 'root TypeScript').version, '7.0.2');
+  strictEqual(
+    jsonObject(packages['apps/web/node_modules/typescript'], 'Web TypeScript').version,
+    '5.9.3',
+  );
+  strictEqual(
+    jsonObject(packages['node_modules/typescript-compiler-api'], 'compiler API alias').version,
+    '5.9.3',
+  );
+});
+
+await test('candidate.8 is exact rejected source evidence and candidate.1 through .8 stay immutable', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.7',
-    disposition: 'rejected_source_end_to_end_validation',
-    change_commit: '73567104be50b9c8d45e004cd4e8b33af28ad72f',
-    source_tree: 'e31aaff7ea06567a0f704c45078cd066032524be',
-    pull_request: 140,
-    author_task_identity: '01a04b8c-239d-7482-b91d-7d5a2a77b4ff',
+    candidate_id: 'aiq-core/1.1.0-candidate.8',
+    disposition: 'rejected_package_input_self_authority_and_node_runtime_drift',
+    change_commit: '9b9de9951308d98b039cbadae34c2e6369848cde',
+    source_tree: '67e47e59780f0ec85da9c024ae8e2308417e031e',
+    pull_request: 141,
+    author_task_identity: '01a04baf-4875-7961-9802-df817567e2c7',
     authoring_receipt_raw_sha256:
-      'sha256:890d8310e9e6c025b5131e6e60aa929536c397b2692a712acbd19c70ca175512',
+      'sha256:bde6b4c2407749168bf7ef68276a73de75d4a5829a74984087a5936634561a17',
     full_inventory_sha256:
-      'sha256:3c9877c94de8ee968eb88a26e75b89617e74fbd22c6631c2e9c9816a4b4650c0',
+      'sha256:820825a6bcf85f5240f361443357af3c1d5434f8e7c32e5b115e4f6bd48d9a6e',
     catalog_canonical_sha256:
-      'sha256:baea3139a9843aaf469ceed3bab0e88db43680114a1cfde7c86ef97f9a25bc40',
+      'sha256:946b506301a50c275986c2a0280bdccef1c2562d50d9d209cb774a0bda2c2359',
     catalog_entry_bindings_sha256:
-      'sha256:c1319651b30285f03f2ffdbe4029b97cc42f675097781222a5cee46845bc1af3',
-    task_metadata_sha256: 'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80',
+      'sha256:5eb226f746dee754072bcbdc61029cca8c8309869a7a2668c790eeead3196e2f',
+    task_metadata_sha256: 'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',
     task_facing_semantics_sha256:
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
-    source_review_task_identity: '01a04b9e-903b-72d2-9819-8b0c2fde6336',
+    source_review_task_identity: '01a04786-3f39-7852-a41b-fb57bd73dfad',
     task_semantics: 'accepted_unchanged_72',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'all_candidate_7_task_facing_semantics_must_remain_identical',
+    semantic_retention_rule: 'all_candidate_8_task_facing_semantics_must_remain_identical',
     prior_rejected_authoring_attempt: {
       disposition: 'rejected_readback_failure',
       authoring_receipt_raw_sha256:
@@ -256,6 +293,7 @@ await test('candidate.7 is exact rejected source evidence and candidate.1 throug
     'aiq-core/1.1.0-candidate.5',
     'aiq-core/1.1.0-candidate.6',
     'aiq-core/1.1.0-candidate.7',
+    'aiq-core/1.1.0-candidate.8',
   ]);
 });
 
@@ -297,7 +335,7 @@ await test('all exact candidate.4 task-review records remain bound as historical
   }
 });
 
-await test('candidate.8 retains all tasks while preserving candidate.5 design history', async () => {
+await test('candidate.9 retains all tasks while preserving candidate.5 design history', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   const expected = {
@@ -325,7 +363,7 @@ await test('candidate.8 retains all tasks while preserving candidate.5 design hi
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.8 identity and exact candidate.7 semantics', async () => {
+await test('every task has one candidate.9 identity and exact candidate.8 semantics', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   assertDecisionManifest(manifest, taskIds());
@@ -340,7 +378,7 @@ await test('every task has one candidate.8 identity and exact candidate.7 semant
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.7');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.8');
     strictEqual(design.decision, 'retained');
     strictEqual(design.predecessor_decision, decision.predecessor_decision);
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
@@ -381,7 +419,7 @@ await test('every task has one candidate.8 identity and exact candidate.7 semant
   );
 });
 
-await test('the 42 task closures remain distinct from both source-only closures', async () => {
+await test('the 42 task closures remain distinct from all four source-only closures', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.task_issue_code_counts, issueCounts);
   deepStrictEqual(manifest.retained_candidate_5_task_issue_closures.issue_code_counts, issueCounts);
@@ -412,6 +450,29 @@ await test('the 42 task closures remain distinct from both source-only closures'
     failure_class: 'candidate_provenance_routed_to_active_validator_after_model_work',
     repair: 'provenance_bound_in_process_validation_context',
     regression: 'candidate_completed_recovery_package_and_active_rejection_suite',
+  });
+  deepStrictEqual(manifest.package_input_validation_closure, {
+    issue_code: 'CANDIDATE_PACKAGE_VALIDATION_AUTHORITY_DERIVED_FROM_SAVED_RUN',
+    scope: 'candidate_package_input_and_signed_payload_validation',
+    status: 'closed_in_candidate_9',
+    counts_toward_task_issue_closures: false,
+    diagnosis_task_identity: '01a04786-3f39-7852-a41b-fb57bd73dfad',
+    predecessor_candidate_id: 'aiq-core/1.1.0-candidate.8',
+    failure_class: 'saved_calibration_selected_its_own_candidate_validation_context',
+    repair: 'independent_tasks_corpus_and_source_bound_through_package_serialization',
+    regression: 'candidate_package_input_mismatch_and_current_byte_identity_suite',
+  });
+  deepStrictEqual(manifest.node_runtime_correction_closure, {
+    issue_code: 'CANDIDATE_NODE_RUNTIME_IDENTITY_DRIFT',
+    scope: 'private_authoring_build_and_readback_runtime',
+    status: 'closed_in_candidate_9',
+    counts_toward_task_issue_closures: false,
+    diagnosis_task_identity: '01a04c55-70b2-7943-89e1-e18e78f0f9ed',
+    predecessor_candidate_id: 'aiq-core/1.1.0-candidate.8',
+    expected_node_version: 'v24.18.0',
+    predecessor_observed_node_version: 'v24.19.0',
+    repair: 'checked_in_node_version_enforced_at_private_build_and_readback',
+    regression: 'candidate_private_build_and_readback_runtime_mismatch_suite',
   });
   for (const issueCode of reviewIssueCodes) {
     strictEqual(
@@ -725,7 +786,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   throws(() => buildCatalogFrom(reordered), /ordered explicit retained\/revised decision/u);
 });
 
-await test('candidate schemas bind candidate.8 identity and candidate.5 behavior contracts', async () => {
+await test('candidate schemas bind candidate.9 identity and candidate.5 behavior contracts', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -748,6 +809,14 @@ await test('candidate schemas bind candidate.8 identity and candidate.5 behavior
     JSON.stringify(catalogProperties.candidate_state).includes(
       'source_end_to_end_validation_closure',
     ),
+    true,
+  );
+  strictEqual(
+    JSON.stringify(catalogProperties.candidate_state).includes('package_input_validation_closure'),
+    true,
+  );
+  strictEqual(
+    JSON.stringify(catalogProperties.candidate_state).includes('node_runtime_correction_closure'),
     true,
   );
   deepStrictEqual(taskProperties.task_version, { const: '1.1.0' });
@@ -845,7 +914,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const projectionProperties = jsonObject(projection.properties, 'projection properties');
   deepStrictEqual(projectionProperties.candidate_id, {
-    const: 'aiq-core/1.1.0-candidate.8',
+    const: 'aiq-core/1.1.0-candidate.9',
   });
   deepStrictEqual(projectionProperties.disposition, { const: 'accepted' });
   deepStrictEqual(projectionProperties.synthetic, { const: false });
@@ -868,6 +937,7 @@ await test('catalog, commitment validator schema, and stale mutations share one 
   assertCommitmentSchemaMatchesCatalog(catalog, commitmentSchema);
 
   for (const staleIdentity of [
+    'sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2',
     'sha256:06995f8c1c08067a4b79a5cbba7d0d9467bf0f4234ebd50b33ea9b2b8c9fae80',
     'sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95',
     'sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4',

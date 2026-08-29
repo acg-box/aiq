@@ -22,7 +22,14 @@ use crate::adapter::PREFLIGHT_MARKER_ARTIFACT_KIND;
 use crate::adapter::PREFLIGHT_MARKER_BYTES;
 use crate::protocol::{CALIBRATION_RUN_PAYLOAD_TYPE, RUN_PAYLOAD_TYPE, TrustTier};
 use crate::runner::{self, MAX_RUN_JOBS};
-use crate::{adapter::ArtifactReference, protocol::{self, SubmissionEnvelope}, run_validation::{self, CalibrationValidationContext}, runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult}, speed_observation::{self, SpeedObservationBatch}};
+use crate::{
+	adapter::ArtifactReference,
+	protocol::{self, SubmissionEnvelope},
+	run_validation::{self, CalibrationValidationContext},
+	runner::{CalibrationRunRecord, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES, RunRecord, TaskResult},
+	speed_observation::{self, SpeedObservationBatch},
+	task::TaskDefinition,
+};
 
 /// Maximum signed package size accepted for submission.
 pub const MAX_SUBMISSION_BYTES: usize = 4 * 1_024 * 1_024;
@@ -646,13 +653,16 @@ pub fn read_evaluator_results_artifact(
 
 /// Serializes one signed calibration package for offline local verification.
 ///
-/// This boundary derives candidate qualification authority from exact run provenance. The normal
-/// submission serializer remains on the active 1.0.7 and Contrast validator.
+/// The caller supplies the same independent validation authority and exact tasks used to validate
+/// the saved run. The normal submission serializer remains on the active 1.0.7 and Contrast
+/// validator.
 pub(crate) fn serialize_calibration_package_for_local_verification(
 	envelope: &SubmissionEnvelope,
+	validation_context: &CalibrationValidationContext,
+	tasks: Option<&[TaskDefinition]>,
 ) -> Result<Vec<u8>, SubmissionError> {
 	verify_package_envelope(envelope)?;
-	decode_local_calibration_payload(envelope)?;
+	decode_local_calibration_payload(envelope, validation_context, tasks)?;
 
 	serialize_verified_package(envelope)
 }
@@ -784,6 +794,8 @@ fn decode_validated_payload(
 
 fn decode_local_calibration_payload(
 	envelope: &SubmissionEnvelope,
+	validation_context: &CalibrationValidationContext,
+	tasks: Option<&[TaskDefinition]>,
 ) -> Result<CalibrationRunRecord, SubmissionError> {
 	if envelope.payload_type != CALIBRATION_RUN_PAYLOAD_TYPE {
 		return Err(SubmissionError::new(
@@ -805,17 +817,8 @@ fn decode_local_calibration_payload(
 				format!("signed package payload is not a CalibrationRunRecord: {error}"),
 			)
 		})?;
-	let validation_context = CalibrationValidationContext::from_package_provenance(
-		&run,
-	)
-	.map_err(|error| {
-		SubmissionError::new(
-			SubmissionOutcomeKind::Configuration,
-			format!("signed package CalibrationRunRecord validation failed: {error}"),
-		)
-	})?;
 
-	validation_context.validate(&run, None).map_err(|error| {
+	validation_context.validate(&run, tasks).map_err(|error| {
 		SubmissionError::new(
 			SubmissionOutcomeKind::Configuration,
 			format!("signed package CalibrationRunRecord validation failed: {error}"),
@@ -3112,9 +3115,14 @@ mod tests {
 
 		let calibration_bytes = submission::serialize_signed_package(&calibration_envelope)
 			.expect("valid calibration package must enter artifact submission");
+		let validation_context = run_validation::CalibrationValidationContext::current();
 		let local_calibration_bytes =
-			submission::serialize_calibration_package_for_local_verification(&calibration_envelope)
-				.expect("active calibration package must retain its local-verification bytes");
+			submission::serialize_calibration_package_for_local_verification(
+				&calibration_envelope,
+				&validation_context,
+				None,
+			)
+			.expect("active calibration package must retain its local-verification bytes");
 
 		assert_eq!(
 			local_calibration_bytes, calibration_bytes,
