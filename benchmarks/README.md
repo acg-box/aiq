@@ -150,21 +150,21 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.8`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.9`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-The candidate.8 public identities are:
+The candidate.9 public identities are:
 
 - canonical catalog:
-  `sha256:946b506301a50c275986c2a0280bdccef1c2562d50d9d209cb774a0bda2c2359`;
+  `sha256:03ce2d0ed7199bd99b85631704fa64bf50fcb995a7bc299e7ffce0b200736f1b`;
 - ordered task metadata:
-  `sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2`;
+  `sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb`;
 - public release:
-  `sha256:27571ab58643edeebb96f046574eeb1eb1ac7914b129736d2ee436c92d945cfd`.
+  `sha256:320df1b906cacb6f51a94f207d08ebcbbb3a795ffcf8fe2cf18fad6cf39591d9`.
 
-Candidates.1 through .7 are immutable predecessor evidence.
+Candidates.1 through .8 are immutable predecessor evidence.
 Candidate.5 retains its model-free authoring evidence and all task semantics,
 but its source integration is rejected. Its catalog declared task-metadata
 identity
@@ -191,10 +191,15 @@ candidate.7 because every review and seal binds candidate.6 source identity.
 
 Candidate.7 is rejected source evidence. Candidate preparation accepted its
 corpus, but completed-run validation, recovery packaging, and package serialization
-returned to the active 1.0.7 validator. Candidate.8 carries the exact candidate
-validation context through those paths and derives local package validation from
-signed run provenance. The active 1.0.7, Contrast, historical, Official, and
-production-submission boundaries remain unchanged.
+returned to the active 1.0.7 validator. Candidate.8 carries the candidate context
+through those paths, but its package command derives the context from the saved
+record. It also records Node.js 24.19.0 instead of the checked-in 24.18.0 runtime.
+Candidate.9 accepts candidate package inputs only as one complete group: exact
+tasks, corpus commitment, and source root. It validates those inputs independently,
+binds every external corpus field and the exact task evaluator digest, and carries
+that same authority through signed-payload serialization. The active 1.0.7,
+Contrast, historical, Official, and production-submission boundaries remain
+unchanged.
 
 Each revised task discloses a distinct `input.json` scenario contract, one
 deterministic domain operation, and one task-specific semantic result contract.
@@ -204,10 +209,12 @@ a metamorphic basis for all task-specific scenario fields. The authoring proof
 must run all 42 cross-task supplied-tool substitutions. A failure caused only
 by a changed receipt is not behavior evidence.
 
-Candidate.8 preserves the exact 42 candidate.5 task-issue closures. The
+Candidate.9 preserves the exact 42 candidate.5 task-issue closures. The
 `QUALIFICATION_EVIDENCE_BRIDGE_UNAUTHENTICATED` repair is one separate
 source-integrity closure. The candidate.7 validation-context failure is a second
-source-only closure. Neither closure counts toward those 42 entries.
+source-only closure. The package-input correction and Node.js runtime correction
+are two more source-only closures. None of these closures counts toward those 42
+entries.
 
 Each tool-use contract keeps the complete eight-field `receipt.json` contract.
 The supplied local tool writes that receipt. Receipt `command_sha256` identifies
@@ -231,7 +238,7 @@ behavior.
 Each task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
 candidate uses natural completion. The catalog is the sole expected-class
-authority. Candidate.8 is frozen for a fresh independent review, but it is inactive and
+authority. Candidate.9 is frozen for a fresh independent review, but it is inactive and
 not production-publishable. Fresh review, double sealing, three complete
 qualification matrices, qualification, adoption, and cutover are pending.
 
@@ -253,9 +260,9 @@ The candidate contracts are:
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.7 has no transferable review
+verdict, method, scope, and notes. Candidate.8 has no transferable review
 evidence. The sealer requires one fresh matching record for each exact
-candidate.8 task and catalog entry. It does not infer review completion from
+candidate.9 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification consumes three complete replay-verified stage and attestation
@@ -269,7 +276,7 @@ comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the candidate.8 public source without private inputs:
+Regenerate and test the candidate.9 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts

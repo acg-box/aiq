@@ -39,9 +39,9 @@ path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.8 source is frozen for a fresh
-independent review. Candidate.7 is immutable rejected predecessor evidence, it
-has no transferable review records, and an empty candidate.8 review directory
+declaration exactly. The checked-in candidate.9 source is frozen for a fresh
+independent review. Candidate.8 is immutable rejected predecessor evidence, it
+has no transferable review records, and an empty candidate.9 review directory
 blocks sealing without creating output.
 The Contrast path retains bounded 1.0.7 compatibility and copies supplied v1
 review records; no path synthesizes review completion from task notes.
@@ -243,6 +243,14 @@ score and calibration bundle wrappers use their v2 schema identifiers.
 `package`
 binds the run and its artifacts into one signed `aiq.result-package.v4` envelope.
 The runner key must match the run's preflight node identity.
+
+Candidate calibration packaging requires `--public-tasks`, `--hidden-tasks`, or
+both, plus `--corpus-commitment` and `--source-root`. The runner loads the exact
+tasks in checked catalog order and validates the supplied corpus and source before
+it reads the saved run. It uses the same complete context before and after
+concurrency binding and during signed-payload serialization. Omit all four inputs
+for the unchanged AIQ Core 1.0.7 calibration path. A partial candidate input group
+fails without a package output.
 
 For an immutable historical pilot whose legacy runner JSON encoded a runtime
 failure as `task_score: 0`, use the explicitly non-publication diagnostic path:

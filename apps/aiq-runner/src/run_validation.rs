@@ -9,20 +9,30 @@ use std::{
 use sha2::{Digest, Sha256};
 
 use crate::runner::{self, MAX_RUN_JOBS};
-use crate::{adapter::{
+use crate::{
+	adapter::{
 		self, AdapterFailure, ArtifactReference, CapabilityValidationReport,
 		CapabilityValidationStatus, ConfigurationProbeStatus, MAX_INLINE_PREVIEW_BYTES,
 		PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_SHA256,
 		ProbeStatus,
-	}, candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION}, corpus_commitment::{self, RunClass, ValidatedCorpusCommitment}, model::{MODEL_MATRIX, ModelConfig}, protocol, resume, runner::{
+	},
+	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
+	corpus_commitment::{self, RunClass, ValidatedCorpusCommitment},
+	model::{MODEL_MATRIX, ModelConfig},
+	protocol, resume,
+	runner::{
 		CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord, EVALUATOR_RESULTS_SCHEMA_VERSION,
 		EvaluationOutcome, EvaluatorResultsBundle, FailureKind,
 		MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN, MAX_EVALUATOR_RESULTS_BUNDLE_BYTES,
 		MAX_RESULT_PREVIEW_BYTES, RESULT_SCHEMA_VERSION, RUN_SCHEMA_VERSION, ResultStatus,
 		RunRecord, TaskResult,
-	}, schedule, scoring::{self, AIQ_SCORING_VERSION}, task::{
+	},
+	schedule,
+	scoring::{self, AIQ_SCORING_VERSION},
+	task::{
 		self, EVALUATOR_RESULT_SCHEMA_VERSION, EvaluationResult, EvaluatorOutcome, TaskDefinition,
-	}};
+	},
+};
 
 const MAX_RESULT_ARTIFACT_REFERENCES: usize = 4;
 const MAX_PREFLIGHT_ARTIFACT_REFERENCES: usize = 3;
@@ -57,17 +67,11 @@ impl Display for RunValidationError {
 	}
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum CalibrationValidationKind {
-	Current,
-	CandidateQualification { corpus_commitment_sha256: String, catalog_digest: String },
-}
-
 /// In-process calibration validation authority carried across one runner operation.
 ///
-/// Candidate authority can be created only from an exact validated candidate corpus or from the
-/// exact candidate identity already bound by a completed run. Callers cannot select it with a
-/// loose package-time switch.
+/// Candidate authority can be created only from an exact validated candidate corpus and exact
+/// candidate tasks. Callers cannot select it from saved-run provenance or a loose package-time
+/// switch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CalibrationValidationContext {
 	kind: CalibrationValidationKind,
@@ -100,40 +104,22 @@ impl CalibrationValidationContext {
 		}
 
 		Ok(Self {
-			kind: CalibrationValidationKind::CandidateQualification {
-				corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
-				catalog_digest: candidate.task_metadata_digest,
-			},
-		})
-	}
-
-	/// Derives local package validation from exact completed-run provenance.
-	pub(crate) fn from_package_provenance(
-		run: &CalibrationRunRecord,
-	) -> Result<Self, RunValidationError> {
-		if validate_calibration_run_record(run).is_ok() {
-			return Ok(Self::current());
-		}
-
-		let candidate = candidate_catalog::checked_candidate_catalog_authority()
-			.map_err(|error| RunValidationError::new(error.to_string()))?;
-
-		candidate
-			.require_frozen_candidate()
-			.map_err(|error| RunValidationError::new(error.to_string()))?;
-
-		if run.provenance.run_class == RunClass::Calibration
-			&& run.provenance.catalog_digest == candidate.task_metadata_digest
-		{
-			return Ok(Self {
-				kind: CalibrationValidationKind::CandidateQualification {
-					corpus_commitment_sha256: run.provenance.corpus_commitment_sha256.clone(),
+			kind: CalibrationValidationKind::CandidateQualification(Box::new(
+				CandidateQualificationContext {
+					corpus_release_id: corpus.release_id().to_owned(),
+					corpus_commitment_sha256: corpus.canonical_sha256().to_owned(),
 					catalog_digest: candidate.task_metadata_digest,
+					evaluator_digest: corpus_commitment::evaluator_digest(tasks)
+						.map_err(|error| RunValidationError::new(error.to_string()))?,
+					harness_digest: corpus.harness_digest().to_owned(),
+					prompt_digest: corpus.prompt_digest().to_owned(),
+					tool_policy_digest: corpus.tool_policy_digest().to_owned(),
+					network_policy_digest: corpus.network_policy_digest().to_owned(),
+					environment_digest: corpus.environment_digest().to_owned(),
+					source_manifest_digest: corpus.source_manifest_digest().to_owned(),
 				},
-			});
-		}
-
-		Ok(Self::current())
+			)),
+		})
 	}
 
 	/// Validates one completed calibration under this exact authority.
@@ -147,27 +133,53 @@ impl CalibrationValidationContext {
 				Some(tasks) => validate_calibration_run_record_with_tasks(run, tasks),
 				None => validate_calibration_run_record(run),
 			},
-			CalibrationValidationKind::CandidateQualification {
-				corpus_commitment_sha256,
-				catalog_digest,
-			} => {
-				if &run.provenance.corpus_commitment_sha256 != corpus_commitment_sha256
-					|| &run.provenance.catalog_digest != catalog_digest
+			CalibrationValidationKind::CandidateQualification(candidate) => {
+				let tasks = tasks.ok_or_else(|| {
+					RunValidationError::new(
+						"candidate validation requires exact supplied task definitions",
+					)
+				})?;
+
+				if run.provenance.corpus_release_id != candidate.corpus_release_id
+					|| run.provenance.corpus_commitment_sha256 != candidate.corpus_commitment_sha256
+					|| run.provenance.catalog_digest != candidate.catalog_digest
+					|| run.provenance.evaluator_digest != candidate.evaluator_digest
+					|| run.provenance.harness_digest != candidate.harness_digest
+					|| run.provenance.prompt_digest != candidate.prompt_digest
+					|| run.provenance.tool_policy_digest != candidate.tool_policy_digest
+					|| run.provenance.network_policy_digest != candidate.network_policy_digest
+					|| run.provenance.environment_digest != candidate.environment_digest
+					|| run.provenance.source_manifest_digest != candidate.source_manifest_digest
 				{
 					return Err(RunValidationError::new(
 						"completed run does not match its candidate validation context",
 					));
 				}
 
-				match tasks {
-					Some(tasks) => {
-						validate_candidate_qualification_calibration_with_tasks(run, tasks)
-					},
-					None => validate_candidate_qualification_calibration(run),
-				}
+				validate_candidate_qualification_calibration_with_tasks(run, tasks)
 			},
 		}
 	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CandidateQualificationContext {
+	corpus_release_id: String,
+	corpus_commitment_sha256: String,
+	catalog_digest: String,
+	evaluator_digest: String,
+	harness_digest: String,
+	prompt_digest: String,
+	tool_policy_digest: String,
+	network_policy_digest: String,
+	environment_digest: String,
+	source_manifest_digest: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CalibrationValidationKind {
+	Current,
+	CandidateQualification(Box<CandidateQualificationContext>),
 }
 
 /// Validates a signed, explicitly non-Official selected calibration run.
@@ -230,10 +242,7 @@ pub fn validate_candidate_qualification_calibration(
 		|| run.task_ids.len() != 72
 		|| run.results.len() != 1_224
 		|| observed_task_ids != expected_task_ids
-		|| run
-			.results
-			.iter()
-			.any(|result| result.task_version != CANDIDATE_TASK_SET_VERSION)
+		|| run.results.iter().any(|result| result.task_version != CANDIDATE_TASK_SET_VERSION)
 	{
 		return Err(RunValidationError::new(
 			"candidate qualification requires one exact complete 17-by-72 calibration",

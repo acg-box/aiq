@@ -48,7 +48,7 @@
           "const": "1.1.0"
         },
         "identity_sha256": {
-          "const": "sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2"
+          "const": "sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb"
         },
         "identity_scope": {
           "const": "ordered_full_task_metadata"

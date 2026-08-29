@@ -152,25 +152,25 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.8`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.9`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.8 retains all 72 candidate.7 task-facing semantics,
+`aiq.catalog.v2`. Candidate.9 retains all 72 candidate.8 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:946b506301a50c275986c2a0280bdccef1c2562d50d9d209cb774a0bda2c2359`.
+`sha256:03ce2d0ed7199bd99b85631704fa64bf50fcb995a7bc299e7ffce0b200736f1b`.
 Its ordered task-metadata digest is
-`sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2`.
+`sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb`.
 Its public release digest is
-`sha256:27571ab58643edeebb96f046574eeb1eb1ac7914b129736d2ee436c92d945cfd`.
+`sha256:320df1b906cacb6f51a94f207d08ebcbbb3a795ffcf8fe2cf18fad6cf39591d9`.
 
-Candidates.1 through .7 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
+Candidates.1 through .8 are immutable predecessor evidence. Candidate.5 remains the durable source for the seven
 distinct disclosed scenario, operation, result, evaluator, metamorphic, and
 cross-task substitution contracts. Its source integration was rejected because
 its catalog task-metadata identity was
@@ -182,7 +182,11 @@ catalog-derived commitment authority and repaired the trusted execution and
 qualification-evidence bridge. Candidate.7 is rejected because its completed-run,
 recovery, and package paths returned to the active 1.0.7 validator after candidate
 preparation. Candidate.8 carries one provenance-bound validation context through
-those paths. The active 1.0.7, Contrast, historical, and Official validators remain
+those paths, but its package command derived that context from the saved record and
+its private runtime used Node.js 24.19.0. Candidate.9 requires independent task,
+corpus, and source inputs for candidate packaging. It binds the complete validated
+context through signed-payload serialization and uses Node.js 24.18.0. The active
+1.0.7, Contrast, historical, and Official validators remain
 unchanged. The commitment validator derives the expected candidate identity from
 the validated embedded catalog and rejects candidate.7 and older identities.
 
