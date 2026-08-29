@@ -2896,6 +2896,7 @@ pub(crate) mod tests {
 		assert!(super::catalog_contract(&candidate.catalog).is_err());
 
 		for stale_identity in [
+			"sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb",
 			"sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4",
 			"sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6",
 		] {

@@ -39,10 +39,13 @@ path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.9 source is frozen for a fresh
-independent review. Candidate.8 is immutable rejected predecessor evidence, it
-has no transferable review records, and an empty candidate.9 review directory
+declaration exactly. The checked-in candidate.10 source is frozen for a fresh
+independent review. Candidate.9 is immutable rejected predecessor evidence, it
+has no transferable review records, and an empty candidate.10 review directory
 blocks sealing without creating output.
+The tracked private-authoring validator checks response types against the
+schema-owned enum and response locations against prompt, workspace allowlist,
+progress, and weighted evaluator-import projections before private sealing.
 The Contrast path retains bounded 1.0.7 compatibility and copies supplied v1
 review records; no path synthesizes review completion from task notes.
 

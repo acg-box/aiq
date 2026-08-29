@@ -82,7 +82,7 @@
       ],
       "properties": {
         "release_identity": {
-          "const": "aiq-core/1.1.0-candidate.9"
+          "const": "aiq-core/1.1.0-candidate.10"
         },
         "scoring_version": {
           "const": "1.0.6"
@@ -191,7 +191,7 @@
       ],
       "properties": {
         "candidate_id": {
-          "const": "aiq-core/1.1.0-candidate.9"
+          "const": "aiq-core/1.1.0-candidate.10"
         },
         "task_metadata_digest": {
           "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
@@ -212,6 +212,7 @@
         "source_end_to_end_validation_closure",
         "package_input_validation_closure",
         "node_runtime_correction_closure",
+        "public_response_contract_validation_closure",
         "decision_record",
         "semantic_decision_counts",
         "predecessor_design_decision_counts",
@@ -240,27 +241,18 @@
         },
         "predecessor_candidate": {
           "const": {
-            "candidate_id": "aiq-core/1.1.0-candidate.8",
-            "disposition": "rejected_package_input_self_authority_and_node_runtime_drift",
-            "change_commit": "9b9de9951308d98b039cbadae34c2e6369848cde",
-            "source_tree": "67e47e59780f0ec85da9c024ae8e2308417e031e",
-            "pull_request": 141,
-            "author_task_identity": "01a04baf-4875-7961-9802-df817567e2c7",
-            "authoring_receipt_raw_sha256": "sha256:bde6b4c2407749168bf7ef68276a73de75d4a5829a74984087a5936634561a17",
-            "full_inventory_sha256": "sha256:820825a6bcf85f5240f361443357af3c1d5434f8e7c32e5b115e4f6bd48d9a6e",
-            "catalog_canonical_sha256": "sha256:946b506301a50c275986c2a0280bdccef1c2562d50d9d209cb774a0bda2c2359",
-            "catalog_entry_bindings_sha256": "sha256:5eb226f746dee754072bcbdc61029cca8c8309869a7a2668c790eeead3196e2f",
-            "task_metadata_sha256": "sha256:2fef66003c0d803bc834e694e7622334f3a928e5b723d00c7df116965ece28b2",
+            "candidate_id": "aiq-core/1.1.0-candidate.9",
+            "disposition": "rejected_public_response_contract_source_and_schema_drift",
+            "source_commit": "2690d13a069f85de6045802196be408fb98f70d9",
+            "source_tree": "fb530afdd873b8fea1f95b4aad42610fceb91270",
+            "catalog_canonical_sha256": "sha256:03ce2d0ed7199bd99b85631704fa64bf50fcb995a7bc299e7ffce0b200736f1b",
+            "catalog_entry_bindings_sha256": "sha256:b77091d3085c58323f63c14aec6ca1e71818ceca0e1e60196ea3cd29d3e0da51",
+            "task_metadata_sha256": "sha256:790894c76532c7e836d547289b09de13fdcf72c356d2e5f41262d9e73d8395eb",
+            "public_contract_projection_sha256": "sha256:388c998272084c06719d037dae523a5bb71694ca7e653c774de26aa94051ba61",
             "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
-            "source_review_task_identity": "01a04786-3f39-7852-a41b-fb57bd73dfad",
             "task_semantics": "accepted_unchanged_72",
             "task_issue_closure_entries": 42,
-            "semantic_retention_rule": "all_candidate_8_task_facing_semantics_must_remain_identical",
-            "prior_rejected_authoring_attempt": {
-              "disposition": "rejected_readback_failure",
-              "authoring_receipt_raw_sha256": "sha256:b37a4a84fa8adef31879b790ce108185ce1a79e3fee7885ded6c8b3ab518c7eb",
-              "full_inventory_sha256": "sha256:2e94fc8395cc7c4c88044bf7619413a5a96f2ec70633a5498289d1f381f4c224"
-            }
+            "semantic_retention_rule": "candidate_9_task_facing_semantics_unchanged_and_only_two_response_contract_fields_corrected"
           }
         },
         "immutable_rejected_predecessors": {
@@ -272,13 +264,14 @@
             "aiq-core/1.1.0-candidate.5",
             "aiq-core/1.1.0-candidate.6",
             "aiq-core/1.1.0-candidate.7",
-            "aiq-core/1.1.0-candidate.8"
+            "aiq-core/1.1.0-candidate.8",
+            "aiq-core/1.1.0-candidate.9"
           ]
         },
         "retained_candidate_5_task_issue_closures": {
           "const": {
             "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-            "successor_candidate_id": "aiq-core/1.1.0-candidate.9",
+            "successor_candidate_id": "aiq-core/1.1.0-candidate.10",
             "disposition": "preserved_unchanged_and_revalidated",
             "closure_entries": 42,
             "issue_code_counts": {
@@ -344,6 +337,21 @@
             "predecessor_observed_node_version": "v24.19.0",
             "repair": "checked_in_node_version_enforced_at_private_build_and_readback",
             "regression": "candidate_private_build_and_readback_runtime_mismatch_suite"
+          }
+        },
+        "public_response_contract_validation_closure": {
+          "const": {
+            "issue_code": "PUBLIC_RESPONSE_CONTRACT_SOURCE_OR_SCHEMA_DRIFT",
+            "scope": "catalog_response_locations_and_field_types",
+            "status": "closed_in_candidate_10",
+            "counts_toward_task_issue_closures": false,
+            "predecessor_candidate_id": "aiq-core/1.1.0-candidate.9",
+            "rejected_location": "debugging-04:src/task.mjs",
+            "corrected_location": "debugging-04:src/task.ts",
+            "rejected_field_type": "instruction-following-05:calculation_note:undefined",
+            "corrected_field_type": "instruction-following-05:calculation_note:string",
+            "repair": "schema_owned_response_types_and_task_owned_source_locations",
+            "regression": "generic_catalog_mutation_and_private_source_counterexample_suite"
           }
         },
         "decision_record": {
@@ -526,7 +534,7 @@
               "const": "1.1.0"
             },
             "supersedes_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.8"
+              "const": "aiq-core/1.1.0-candidate.9"
             },
             "decision": {
               "const": "retained"
@@ -1609,7 +1617,7 @@
           ],
           "properties": {
             "origin": {
-              "const": "candidate_8_package_input_and_runtime_remediation_authoring"
+              "const": "candidate_9_public_response_contract_repair_authoring"
             },
             "owner": {
               "const": "AIQ benchmark maintainers"
@@ -1621,7 +1629,7 @@
               "const": "1.1.0"
             },
             "predecessor_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.8"
+              "const": "aiq-core/1.1.0-candidate.9"
             },
             "source": {
               "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"

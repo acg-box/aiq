@@ -26,6 +26,9 @@ pub const CANDIDATE_TASK_SCHEMA_PATH: &str =
 /// Generator that owns the candidate catalog bytes.
 pub const CANDIDATE_CATALOG_GENERATOR_PATH: &str =
 	"scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts";
+/// Generic source validator shared with private candidate authoring checks.
+pub const CANDIDATE_PRIVATE_AUTHORING_VALIDATOR_PATH: &str =
+	"scripts/candidates/aiq-core-1.1.0/private-authoring-validator.ts";
 
 const REQUIRED_ACCEPTANCE_CLASSES: [&str; 4] =
 	["adversarial_format", "alternate_correct", "gold", "partial"];
@@ -241,6 +244,7 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.7"
 			| "aiq-core/1.1.0-candidate.8"
 			| "aiq-core/1.1.0-candidate.9"
+			| "aiq-core/1.1.0-candidate.10"
 	) {
 		"1.1.0"
 	} else {
@@ -544,7 +548,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.9");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.10");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 	}
