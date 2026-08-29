@@ -18,6 +18,8 @@ use crate::{
 pub const CANDIDATE_CATALOG_SCHEMA_VERSION: &str = "aiq.catalog.v2";
 /// Exact source-foundation task-set version.
 pub const CANDIDATE_TASK_SET_VERSION: &str = "1.1.0";
+/// Exact source-only candidate identity accepted by the checked candidate boundary.
+pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.12";
 /// Exact candidate catalog path. This does not replace the active 1.0.7 catalog.
 pub const CANDIDATE_CATALOG_PATH: &str = "benchmarks/candidates/aiq-core-1.1.0/catalog.json";
 /// Exact candidate task schema path.
@@ -26,6 +28,12 @@ pub const CANDIDATE_TASK_SCHEMA_PATH: &str =
 /// Generator that owns the candidate catalog bytes.
 pub const CANDIDATE_CATALOG_GENERATOR_PATH: &str =
 	"scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts";
+/// Generic source validator shared with private candidate authoring checks.
+pub const CANDIDATE_PRIVATE_AUTHORING_VALIDATOR_PATH: &str =
+	"scripts/candidates/aiq-core-1.1.0/private-authoring-validator.ts";
+/// Independent public-safe task response-mode and location authority.
+pub const CANDIDATE_TASK_RESPONSE_AUTHORITY_PATH: &str =
+	"benchmarks/candidates/aiq-core-1.1.0/task-response-authority.json";
 
 const REQUIRED_ACCEPTANCE_CLASSES: [&str; 4] =
 	["adversarial_format", "alternate_correct", "gold", "partial"];
@@ -241,6 +249,9 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.7"
 			| "aiq-core/1.1.0-candidate.8"
 			| "aiq-core/1.1.0-candidate.9"
+			| "aiq-core/1.1.0-candidate.10"
+			| "aiq-core/1.1.0-candidate.11"
+			| "aiq-core/1.1.0-candidate.12"
 	) {
 		"1.1.0"
 	} else {
@@ -322,6 +333,7 @@ fn validate_catalog_header(input: &CandidateCatalogInput) -> Result<(), Candidat
 		|| input.task_set_id != "aiq-core"
 		|| input.task_set_version != CANDIDATE_TASK_SET_VERSION
 		|| input.scoring_version != "1.0.6"
+		|| input.candidate_identity.candidate_id != CANDIDATE_ID
 		|| !valid_candidate_id(&input.candidate_identity.candidate_id)
 		|| !valid_digest(&input.candidate_identity.task_metadata_digest)
 	{
@@ -516,7 +528,7 @@ mod tests {
 			"scoring_version": "1.0.6",
 			"status": status,
 			"candidate_identity": {
-				"candidate_id": "aiq-core/1.1.0-candidate.3",
+				"candidate_id": candidate_catalog::CANDIDATE_ID,
 				"task_metadata_digest": task_metadata_digest
 			},
 			"tasks": tasks
@@ -544,9 +556,16 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.9");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.12");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
+
+		let mut stale = value;
+
+		stale["candidate_identity"]["candidate_id"] =
+			serde_json::json!("aiq-core/1.1.0-candidate.11");
+
+		assert!(candidate_catalog::validate_candidate_catalog(&stale).is_err());
 	}
 
 	#[test]
