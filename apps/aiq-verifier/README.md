@@ -113,6 +113,11 @@ same candidate commitment boundary as runner preparation and writes create-new
 candidate stage and attestation files. It rejects Official, partial, synthetic,
 runtime-invalid, or active-1.0.7 evidence. The production worker has no candidate
 mode and continues to accept only its active 1.0.7 environment.
+After the ordinary controlled task loader returns, candidate mode alone reuses
+the checked candidate-catalog owner to establish exact catalog order before
+corpus, evaluator, package, or replay validation. Candidate.14 is rejected
+evidence because its verifier retained lexical filename order at that boundary;
+normal and production-worker task loading remains unchanged.
 
 The artifact proves exact end-to-end identities and complete execution of Sol
 medium, Terra medium, and Luna medium over all 72 catalog-ordered tasks. It

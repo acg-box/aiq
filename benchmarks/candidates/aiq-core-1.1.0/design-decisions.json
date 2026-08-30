@@ -1,22 +1,22 @@
 {
-  "schema_version": "aiq.candidate-design-decisions.v14",
-  "candidate_id": "aiq-core/1.1.0-candidate.14",
+  "schema_version": "aiq.candidate-design-decisions.v15",
+  "candidate_id": "aiq-core/1.1.0-candidate.15",
   "candidate_task_set_version": "1.1.0",
   "recorded_date": "2026-08-30",
-  "authority": "candidate_13_quota_feasible_qualification_policy_repair",
+  "authority": "candidate_14_verifier_loader_catalog_order_repair",
   "predecessor_candidate": {
-    "candidate_id": "aiq-core/1.1.0-candidate.13",
-    "disposition": "rejected_qualification_quota_infeasible",
-    "source_commit": "6fdfe4a93efe51ba26dbd3bea897585f4372ca7f",
-    "source_tree": "d0033307eca6576a824ce599698769b6ad28c62b",
-    "catalog_canonical_sha256": "sha256:1fa2ee49cbb93cc5cbc27a91ba17da16c5e42f65d5e9bc583da090f005db97d0",
-    "catalog_entry_bindings_sha256": "sha256:c32d47e00928c7c42bbf82bf803248a387ac155c9bd4389d62298cc397d9d513",
-    "task_metadata_sha256": "sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147",
+    "candidate_id": "aiq-core/1.1.0-candidate.14",
+    "disposition": "rejected_verifier_loader_catalog_order_mismatch",
+    "source_commit": "38ae06828dd71080007ea7e36c8e1a729ab0d360",
+    "source_tree": "a8232a39f2cc57b4cd94094a84a4043aa027c0f4",
+    "catalog_canonical_sha256": "sha256:1b1b11a80a6221fde444f269eeab37a936bda8d5b4962bcb33f0a55a341546df",
+    "catalog_entry_bindings_sha256": "sha256:a05d7430e927cc11d0a78e53226a6d1cab34c7f0ac529b870883073b94359197",
+    "task_metadata_sha256": "sha256:7ea2202e1ac3efee9a83a33c4323487bdb1f5d32cdf46ee4c60aaac53471c927",
     "public_contract_projection_sha256": "sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5",
     "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
     "task_semantics": "accepted_unchanged_72",
     "task_issue_closure_entries": 42,
-    "semantic_retention_rule": "candidate_13_task_facing_evaluator_fixture_tool_semantics_unchanged"
+    "semantic_retention_rule": "candidate_14_task_facing_evaluator_fixture_tool_semantics_unchanged"
   },
   "immutable_rejected_predecessors": [
     "aiq-core/1.1.0-candidate.1",
@@ -31,11 +31,12 @@
     "aiq-core/1.1.0-candidate.10",
     "aiq-core/1.1.0-candidate.11",
     "aiq-core/1.1.0-candidate.12",
-    "aiq-core/1.1.0-candidate.13"
+    "aiq-core/1.1.0-candidate.13",
+    "aiq-core/1.1.0-candidate.14"
   ],
   "retained_candidate_5_task_issue_closures": {
     "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-    "successor_candidate_id": "aiq-core/1.1.0-candidate.14",
+    "successor_candidate_id": "aiq-core/1.1.0-candidate.15",
     "disposition": "preserved_unchanged_and_revalidated",
     "closure_entries": 42,
     "issue_code_counts": {

@@ -96,7 +96,7 @@
         "model_selection_digest"
       ],
       "properties": {
-        "candidate_id": { "const": "aiq-core/1.1.0-candidate.14" },
+        "candidate_id": { "const": "aiq-core/1.1.0-candidate.15" },
         "catalog_digest": { "$ref": "#/$defs/digest" },
         "task_metadata_digest": { "$ref": "#/$defs/digest" },
         "task_set_digest": { "$ref": "#/$defs/digest" },

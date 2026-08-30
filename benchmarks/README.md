@@ -150,21 +150,21 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.14`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.15`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-The candidate.14 public identities are:
+The candidate.15 public identities are:
 
 - canonical catalog:
-  `sha256:1b1b11a80a6221fde444f269eeab37a936bda8d5b4962bcb33f0a55a341546df`;
+  `sha256:3414c7f4aa9683ad89d3ca97afad94c57d49858a1e7ac38e81a479fbd4c77a79`;
 - ordered task metadata:
-  `sha256:7ea2202e1ac3efee9a83a33c4323487bdb1f5d32cdf46ee4c60aaac53471c927`;
+  `sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796`;
 - public release:
-  `sha256:849871d2a075ae3ec1bdf7cdf085dfe7af8465bb09224a4fdbca9f0c9bf6bfd3`.
+  `sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
 
-Candidates.1 through .13 are immutable predecessor evidence.
+Candidates.1 through .14 are immutable predecessor evidence.
 Candidate.5 retains its model-free authoring evidence and all task semantics,
 but its source integration is rejected. Its catalog declared task-metadata
 identity
@@ -236,7 +236,12 @@ all 17 capability probes and started 88 task cells, but only 56 of 1,224 cells
 completed before five-hour usage reached 100%; seven-day usage was 17%. It has no
 package, replay-verified stage, attestation, or qualification artifact.
 Candidate.14 preserves all task-facing semantics and replaces only that
-quota-infeasible release-qualification shape.
+quota-infeasible release-qualification shape. Its one 216-cell run and signed
+package completed, but `verify-local --candidate-qualification` loaded ordinary
+task filenames lexically. The first catalog mismatch was index 8, and the ordered
+evaluator identity failed before replay, so no stage, attestation, or qualification
+artifact exists. Candidate.15 calls the existing checked-catalog ordering owner
+immediately after candidate task loading and before verifier identity checks.
 
 Each revised task discloses a distinct `input.json` scenario contract, one
 deterministic domain operation, and one task-specific semantic result contract.
@@ -246,7 +251,7 @@ a metamorphic basis for all task-specific scenario fields. The authoring proof
 must run all 42 cross-task supplied-tool substitutions. A failure caused only
 by a changed receipt is not behavior evidence.
 
-Candidate.14 preserves the exact 42 candidate.5 task-issue closures. The
+Candidate.15 preserves the exact 42 candidate.5 task-issue closures. The
 `QUALIFICATION_EVIDENCE_BRIDGE_UNAUTHENTICATED` repair is one separate
 source-integrity closure. The candidate.7 validation-context failure is a second
 source-only closure. The package-input correction and Node.js runtime correction
@@ -275,7 +280,7 @@ most 21 declared digest entries, which remains within the signed-package bound.
 Each task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
 candidate uses natural completion. The catalog is the sole expected-class
-authority. Candidate.14 is frozen for a fresh independent review, but it is
+authority. Candidate.15 is frozen for a fresh independent review, but it is
 inactive and not production-publishable. Fresh review, double sealing, one
 complete qualification matrix, qualification, adoption, and cutover are
 pending.
@@ -298,9 +303,9 @@ The candidate contracts are:
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.13 has no transferable review
+verdict, method, scope, and notes. Candidate.14 review records are not transferable
 evidence. The sealer requires one fresh matching record for each exact
-candidate.14 task and catalog entry. It does not infer review completion from
+candidate.15 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification consumes one complete replay-verified stage and attestation pair.
@@ -313,7 +318,7 @@ prediction-interval, Spearman-correlation, run-variance, or precise-rank claim.
 The v3 policy and artifact contain no stability thresholds or synthetic zero
 values for removed claims.
 
-Regenerate and test the candidate.14 public source without private inputs:
+Regenerate and test the candidate.15 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts
